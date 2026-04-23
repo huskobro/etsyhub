@@ -19,10 +19,6 @@ import {
 } from "@prisma/client";
 import { db } from "@/server/db";
 import { handleTrendClusterUpdate } from "@/server/workers/trend-cluster-update.worker";
-import {
-  MAX_CLUSTER_MEMBERS_SCAN,
-  WINDOW_DAYS,
-} from "@/features/trend-stories/constants";
 
 // ---------------------------------------------------------------------------
 // Yardımcı fonksiyonlar
@@ -90,16 +86,6 @@ async function createListing(args: {
 function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 }
-
-// ---------------------------------------------------------------------------
-// Sabitler dışarıdan import edilmeli (Task kapsamı gereği)
-// ---------------------------------------------------------------------------
-// MAX_CLUSTER_MEMBERS_SCAN ve WINDOW_DAYS constants import edildi — yukarıda.
-// Aşağıdaki değişken ileride bağımlılık kontrolü için kullanılabilir.
-const _maxScan: number = MAX_CLUSTER_MEMBERS_SCAN;
-const _windows: readonly number[] = WINDOW_DAYS;
-void _maxScan;
-void _windows;
 
 // ---------------------------------------------------------------------------
 // Test suite
@@ -374,6 +360,7 @@ describe("TREND_CLUSTER_UPDATE worker", () => {
     // Bu senaryo SKIP DEĞİL — alanlar mevcut.
 
     let storeSnapId: string;
+    let storeSnap2Id: string;
     let listingSn1Id: string;
     let listingSn2Id: string;
     let listingSn3Id: string;
@@ -384,7 +371,8 @@ describe("TREND_CLUSTER_UPDATE worker", () => {
     beforeAll(async () => {
       const storeSnap1 = await createStore(userAId, `snap-store-1-${suffix}`);
       const storeSnap2 = await createStore(userAId, `snap-store-2-${suffix}`);
-      storeSnapId = storeSnap1.id; // cleanup için
+      storeSnapId = storeSnap1.id;
+      storeSnap2Id = storeSnap2.id;
 
       const l1 = await createListing({
         userId: userAId,
@@ -469,7 +457,7 @@ describe("TREND_CLUSTER_UPDATE worker", () => {
         where: { id: { in: [listingSn1Id, listingSn2Id, listingSn3Id] } },
       });
       await db.competitorStore.deleteMany({
-        where: { id: { contains: `snap-store` } },
+        where: { id: { in: [storeSnapId, storeSnap2Id] } },
       });
     });
 
