@@ -11,7 +11,6 @@
 
 import {
   afterAll,
-  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -28,6 +27,7 @@ import {
   UserStatus,
 } from "@prisma/client";
 import { db } from "@/server/db";
+import { NotFoundError } from "@/lib/errors";
 
 // BullMQ / enqueue mock'u
 let _mockBullCounter = 0;
@@ -37,6 +37,24 @@ vi.mock("@/server/queue", () => ({
     return Promise.resolve({ id: `bull-mock-${_mockBullCounter}` });
   }),
 }));
+
+// Feature-gate mock'u — parallel test dosyaları DB'deki feature_flag row'unu
+// paylaştığı için bu dosya gerçek row'dan bağımsız çalışmalı. Böylece diğer
+// integration testlerinin `enableFlags()` beforeEach'leri bu dosyadaki
+// flag-gate suite'ini etkilemez (Task 10 review #2 race fix).
+vi.mock(
+  "@/features/trend-stories/services/feature-gate",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/features/trend-stories/services/feature-gate")
+      >();
+    return {
+      ...actual,
+      assertTrendStoriesAvailable: vi.fn(),
+    };
+  },
+);
 
 // Session mock'u
 const currentUser: { id: string | null; role: UserRole } = {
@@ -80,6 +98,13 @@ const { GET: clusterDetailGET } = await import(
   "@/app/api/trend-stories/clusters/[id]/route"
 );
 
+// Mock'lanmış assertTrendStoriesAvailable'a test bazında davranış set etmek için
+// referansı çöz.
+const { assertTrendStoriesAvailable } = await import(
+  "@/features/trend-stories/services/feature-gate"
+);
+const mockAssert = vi.mocked(assertTrendStoriesAvailable);
+
 // ---------------------------------------------------------------------------
 // Yardımcı fonksiyonlar
 // ---------------------------------------------------------------------------
@@ -94,19 +119,6 @@ async function ensureUser(email: string, role: UserRole = UserRole.USER) {
       status: UserStatus.ACTIVE,
     },
     update: {},
-  });
-}
-
-async function setFlags(trend: boolean, competitors: boolean) {
-  await db.featureFlag.upsert({
-    where: { key: "trend_stories.enabled" },
-    create: { key: "trend_stories.enabled", enabled: trend },
-    update: { enabled: trend },
-  });
-  await db.featureFlag.upsert({
-    where: { key: "competitors.enabled" },
-    create: { key: "competitors.enabled", enabled: competitors },
-    update: { enabled: competitors },
   });
 }
 
@@ -165,8 +177,6 @@ describe("api/trend-stories integration", () => {
     const user = await ensureUser("api-trend-stories-a@etsyhub.local");
     userId = user.id;
     await cleanup([userId]);
-    // Flagleri varsayılan olarak açık bırak
-    await setFlags(true, true);
   });
 
   afterAll(async () => {
@@ -176,6 +186,11 @@ describe("api/trend-stories integration", () => {
   beforeEach(() => {
     currentUser.id = null;
     currentUser.role = UserRole.USER;
+    // Feature-gate mock'unu her test başında temizle; default: resolves
+    // (yani gate'ten geçer). FF/TF/FT testleri mockRejectedValueOnce ile
+    // kendi davranışını set eder.
+    mockAssert.mockReset();
+    mockAssert.mockResolvedValue(undefined);
   });
 
   // -------------------------------------------------------------------------
@@ -183,13 +198,8 @@ describe("api/trend-stories integration", () => {
   // -------------------------------------------------------------------------
 
   describe("Feature flag kapıları — GET /api/trend-stories/clusters", () => {
-    afterEach(async () => {
-      // Her testten sonra açık bırak
-      await setFlags(true, true);
-    });
-
     it("FF (trend=false, comp=false) → 404", async () => {
-      await setFlags(false, false);
+      mockAssert.mockRejectedValueOnce(new NotFoundError());
       currentUser.id = userId;
       const res = await clustersGET(
         new Request("http://localhost/api/trend-stories/clusters?window=7"),
@@ -198,7 +208,7 @@ describe("api/trend-stories integration", () => {
     });
 
     it("TF (trend=true, comp=false) → 404", async () => {
-      await setFlags(true, false);
+      mockAssert.mockRejectedValueOnce(new NotFoundError());
       currentUser.id = userId;
       const res = await clustersGET(
         new Request("http://localhost/api/trend-stories/clusters?window=7"),
@@ -207,7 +217,7 @@ describe("api/trend-stories integration", () => {
     });
 
     it("FT (trend=false, comp=true) → 404", async () => {
-      await setFlags(false, true);
+      mockAssert.mockRejectedValueOnce(new NotFoundError());
       currentUser.id = userId;
       const res = await clustersGET(
         new Request("http://localhost/api/trend-stories/clusters?window=7"),
@@ -216,7 +226,7 @@ describe("api/trend-stories integration", () => {
     });
 
     it("TT (trend=true, comp=true) → 200 ve clusters dizisi döner", async () => {
-      await setFlags(true, true);
+      // Default beforeEach zaten resolved; açıkça bir daha ayarlamaya gerek yok.
       currentUser.id = userId;
       const res = await clustersGET(
         new Request("http://localhost/api/trend-stories/clusters?window=7"),
@@ -235,8 +245,6 @@ describe("api/trend-stories integration", () => {
     let clusterId: string;
 
     beforeAll(async () => {
-      await setFlags(true, true);
-
       const store = await createStore(userId, `ts-page-store-${Date.now()}`);
 
       // Sayfa testi için cluster oluştur
