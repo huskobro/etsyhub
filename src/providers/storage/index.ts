@@ -1,4 +1,6 @@
 import { env } from "@/lib/env";
+import { MinioStorage } from "./minio-provider";
+import { S3Storage } from "./s3-provider";
 
 export type StoredObject = {
   key: string;
@@ -22,12 +24,6 @@ let cached: StorageProvider | null = null;
 
 export function getStorage(): StorageProvider {
   if (cached) return cached;
-  if (env.STORAGE_PROVIDER === "s3") {
-    const { S3Storage } = require("./s3-provider") as typeof import("./s3-provider");
-    cached = new S3Storage();
-  } else {
-    const { MinioStorage } = require("./minio-provider") as typeof import("./minio-provider");
-    cached = new MinioStorage();
-  }
+  cached = env.STORAGE_PROVIDER === "s3" ? new S3Storage() : new MinioStorage();
   return cached;
 }
