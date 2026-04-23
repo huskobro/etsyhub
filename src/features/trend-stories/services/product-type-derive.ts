@@ -27,6 +27,9 @@ export function deriveProductTypeKey(memberTitles: string[]): ProductTypeDerivat
   const [topKey, topCount] = top;
   const totalMatched = entries.reduce((acc, [, n]) => acc + n, 0);
   const confidence = Math.round((topCount / Math.max(memberTitles.length, 1)) * 100);
+  // "keyword_match": tek üye ya da tüm eşleşen üyeler aynı kategoriye gidiyor (ayrışma yok).
+  // "member_majority": birden çok kategori yarıştı, biri çoğunlukla kazandı.
+  // Telemetri amaçlı — cluster productType atamasının güven kaynağını audit'te ayırır.
   const source = memberTitles.length === 1 || topCount === totalMatched
     ? "keyword_match"
     : "member_majority";

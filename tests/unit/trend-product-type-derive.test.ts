@@ -23,4 +23,12 @@ describe("deriveProductTypeKey", () => {
     expect(r?.key).toBe("canvas");
     expect(r?.source).toBe("member_majority");
   });
+  it("iki üye aynı kategoriye gidiyorsa source = keyword_match (ayrışma yok)", () => {
+    const r = deriveProductTypeKey(["Boho Canvas", "Minimalist Canvas"]);
+    expect(r?.key).toBe("canvas");
+    expect(r?.source).toBe("keyword_match");
+  });
+  it("boş string güvenli: null döner", () => {
+    expect(deriveProductTypeKey([""])).toBeNull();
+  });
 });

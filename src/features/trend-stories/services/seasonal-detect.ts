@@ -13,9 +13,9 @@ function inRange(
 }
 
 export function detectSeasonalTag(label: string, today: Date): string | null {
-  const hay = label.toLowerCase();
+  const haystack = label.toLowerCase();
   for (const rule of SEASONAL_RULES) {
-    if (rule.keywords.some((kw) => hay.includes(kw)) && inRange(today, rule)) {
+    if (rule.keywords.some((kw) => haystack.includes(kw)) && inRange(today, rule)) {
       return rule.tag;
     }
   }
