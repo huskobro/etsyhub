@@ -3,7 +3,7 @@ import { JobStatus } from "@prisma/client";
 import { db } from "@/server/db";
 
 export default async function AdminOverviewPage() {
-  const [users, activeUsers, flags, themes, jobsRunning, jobsFailed, audits] = await Promise.all([
+  const [users, activeUsers, flags, themes, jobsRunning, jobsFailed, audits, scraperFlags] = await Promise.all([
     db.user.count({ where: { deletedAt: null } }),
     db.user.count({ where: { deletedAt: null, status: "ACTIVE" } }),
     db.featureFlag.count(),
@@ -11,6 +11,7 @@ export default async function AdminOverviewPage() {
     db.job.count({ where: { status: JobStatus.RUNNING } }),
     db.job.count({ where: { status: JobStatus.FAILED } }),
     db.auditLog.count(),
+    db.featureFlag.count({ where: { key: { startsWith: "scraper." } } }),
   ]);
 
   const cards = [
@@ -19,6 +20,7 @@ export default async function AdminOverviewPage() {
     { label: "Tema", value: themes, sub: "", href: "/admin/theme" },
     { label: "Çalışan İş", value: jobsRunning, sub: `${jobsFailed} hatalı`, href: "/admin/jobs" },
     { label: "Audit Kaydı", value: audits, sub: "", href: "/admin/audit-logs" },
+    { label: "Scraper Sağlayıcı", value: scraperFlags, sub: "aktif + API anahtarları", href: "/admin/scraper-providers" },
   ];
 
   return (

@@ -11,6 +11,7 @@ import {
   ListChecks,
   Settings as SettingsIcon,
   Shield,
+  Globe2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -38,6 +39,7 @@ export const USER_NAV: NavItem[] = [
 
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Admin", icon: Shield, roles: ["ADMIN"], phase: 1, enabled: true },
+  { href: "/admin/scraper-providers", label: "Scraper Providers", icon: Globe2, roles: ["ADMIN"], phase: 3, enabled: true },
 ];
 
 export function navForRole(role: UserRole): NavItem[] {

@@ -31,5 +31,12 @@ export {
   setActiveProvider,
   setApifyToken,
   setFirecrawlToken,
+  getScraperConfig,
+  updateScraperConfig,
+  SCRAPER_PROVIDER_NAMES,
 } from "./provider-config";
-export type { ProviderConfig } from "./provider-config";
+export type {
+  ProviderConfig,
+  ScraperConfigView,
+  ScraperConfigUpdate,
+} from "./provider-config";
