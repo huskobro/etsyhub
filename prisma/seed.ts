@@ -62,7 +62,7 @@ async function main() {
     { key: "bookmarks.enabled", enabled: true },
     { key: "references.enabled", enabled: true },
     { key: "collections.enabled", enabled: true },
-    { key: "trend_stories.enabled", enabled: false },
+    { key: "trend_stories.enabled", enabled: true },
     { key: "competitors.enabled", enabled: true },
     { key: "variations.enabled", enabled: false },
     { key: "mockups.enabled", enabled: false },
