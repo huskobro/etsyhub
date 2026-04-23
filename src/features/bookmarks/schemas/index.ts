@@ -31,11 +31,14 @@ export const createBookmarkInput = z.object({
 });
 export type CreateBookmarkInput = z.infer<typeof createBookmarkInput>;
 
-export const updateBookmarkInput = createBookmarkInput.partial().extend({
-  status: bookmarkStatusEnum.optional(),
-  riskLevel: riskLevelEnum.optional(),
-  collectionId: z.string().min(1).nullable().optional(),
-});
+export const updateBookmarkInput = createBookmarkInput
+  .omit({ trendClusterId: true })
+  .partial()
+  .extend({
+    status: bookmarkStatusEnum.optional(),
+    riskLevel: riskLevelEnum.optional(),
+    collectionId: z.string().min(1).nullable().optional(),
+  });
 export type UpdateBookmarkInput = z.infer<typeof updateBookmarkInput>;
 
 export const listBookmarksQuery = z.object({

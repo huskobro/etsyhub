@@ -10,14 +10,7 @@
  *    bookmark'taki snapshot write-time değerini korur.
  */
 
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
 import {
   TrendClusterStatus,
@@ -27,16 +20,7 @@ import {
 import { db } from "@/server/db";
 import { createBookmark } from "@/features/bookmarks/services/bookmark-service";
 import { ForbiddenError } from "@/lib/errors";
-
-// BullMQ mock'u — service dosyasının geçişli bağımlılıkları queue'yu
-// tetikleyebilir, test izolasyonu için mock şart.
-let _mockBullCounter = 0;
-vi.mock("@/server/queue", () => ({
-  enqueue: vi.fn().mockImplementation(() => {
-    _mockBullCounter += 1;
-    return Promise.resolve({ id: `bull-mock-${_mockBullCounter}` });
-  }),
-}));
+import { updateBookmarkInput } from "@/features/bookmarks/schemas";
 
 // ---------------------------------------------------------------------------
 // Yardımcı fonksiyonlar
@@ -206,5 +190,19 @@ describe("bookmark ↔ trend cluster snapshot", () => {
     expect(fresh?.trendClusterId).toBe(cluster.id);
     expect(fresh?.trendClusterLabelSnapshot).toBe("Original Label");
     expect(fresh?.trendWindowDaysSnapshot).toBe(14);
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 4: updateBookmarkInput schema, trendClusterId'yi kabul etmez
+  // (snapshot write-once contract — cluster bağlantısı create-only)
+  // -------------------------------------------------------------------------
+
+  it("updateBookmarkInput schema trendClusterId alanını stripleyerek write-once garanti eder", () => {
+    const parsed = updateBookmarkInput.parse({
+      title: "Yeni başlık",
+      trendClusterId: "should-be-stripped",
+    });
+    expect(parsed).not.toHaveProperty("trendClusterId");
+    expect(parsed.title).toBe("Yeni başlık");
   });
 });
