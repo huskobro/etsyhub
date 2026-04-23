@@ -11,6 +11,7 @@ describe("parseEnv", () => {
       NODE_ENV: "test",
       APP_URL: "http://localhost:3000",
       AUTH_SECRET: "x".repeat(32),
+      SECRETS_ENCRYPTION_KEY: "a".repeat(64),
       DATABASE_URL: "postgresql://x:y@localhost:5432/db",
       REDIS_URL: "redis://localhost:6379",
       STORAGE_PROVIDER: "minio",

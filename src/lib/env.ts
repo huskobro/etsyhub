@@ -11,6 +11,8 @@ const schema = z.object({
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(8).optional(),
 
+  SECRETS_ENCRYPTION_KEY: z.string().length(64), // 32-byte hex; generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
   DATABASE_URL: z.string().url(),
   DATABASE_URL_TEST: z.string().url().optional(),
 
