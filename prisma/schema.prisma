@@ -130,19 +130,21 @@ model User {
   updatedAt    DateTime   @updatedAt
   deletedAt    DateTime?
 
-  stores           Store[]
-  bookmarks        Bookmark[]
-  references       Reference[]
-  collections      Collection[]
-  tags             Tag[]
-  assets           Asset[]
-  jobs             Job[]
-  auditLogs        AuditLog[]
-  generatedDesigns GeneratedDesign[]
-  mockups          Mockup[]
-  listings         Listing[]
-  competitorStores CompetitorStore[]
-  costUsages       CostUsage[]
+  stores             Store[]
+  bookmarks          Bookmark[]
+  references         Reference[]
+  collections        Collection[]
+  tags               Tag[]
+  assets             Asset[]
+  jobs               Job[]
+  auditLogs          AuditLog[]
+  generatedDesigns   GeneratedDesign[]
+  mockups            Mockup[]
+  listings           Listing[]
+  competitorStores   CompetitorStore[]
+  competitorListings CompetitorListing[]
+  competitorScans    CompetitorScan[]
+  costUsages         CostUsage[]
 
   @@index([deletedAt])
 }
@@ -186,19 +188,112 @@ model EtsyConnection {
 }
 
 model CompetitorStore {
-  id            String    @id @default(cuid())
-  userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Restrict)
-  storeId       String?
-  store         Store?    @relation(fields: [storeId], references: [id])
-  etsyShopName  String
-  lastScannedAt DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
+  id              String         @id @default(cuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  storeId         String?
+  store           Store?         @relation(fields: [storeId], references: [id])
+  etsyShopName    String // canonical: lowercase, trimmed (service enforces)
+  shopUrl         String? // canonical: normalized (service enforces)
+  platform        SourcePlatform @default(ETSY)
+  displayName     String? // scraper'dan dönen gerçek mağaza adı
+  totalListings   Int? // son scan snapshot
+  totalReviews    Int? // son scan snapshot
+  autoScanEnabled Boolean        @default(false) // FETCH_NEW_LISTINGS için opt-in
+  lastScannedAt   DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+
+  listings CompetitorListing[]
+  scans    CompetitorScan[]
 
   @@unique([userId, etsyShopName])
   @@index([storeId])
+  @@index([userId])
+}
+
+enum CompetitorListingStatus {
+  ACTIVE
+  SOLD_OUT
+  DELETED
+  UNKNOWN
+}
+
+model CompetitorListing {
+  id                String                  @id @default(cuid())
+  competitorStoreId String
+  competitorStore   CompetitorStore         @relation(fields: [competitorStoreId], references: [id], onDelete: Cascade)
+  userId            String // denormalize — data isolation filter için
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  externalId        String // Etsy listing_id veya Amazon ASIN; canonical normalized (service responsibility)
+  platform          SourcePlatform
+  sourceUrl         String // canonical normalized URL (service responsibility)
+  title             String
+  thumbnailUrl      String?
+  imageUrls         String[]                @default([])
+  priceCents        Int?
+  currency          String?
+  reviewCount       Int                     @default(0)
+  favoritesCount    Int? // Etsy "favori" sayısı
+  // --- Tarih alanları (üç farklı zaman) ---
+  listingCreatedAt  DateTime? // scraper'dan gelen listing oluşturma / publish tarihi (varsa)
+  latestReviewAt    DateTime? // son review tarihi (ranking'de "son 30 gün" için)
+  firstSeenAt       DateTime                @default(now()) // bizim DB'ye ilk düştüğü an
+  lastSeenAt        DateTime                @default(now()) // bizim son scan'de gördüğümüz an
+  // --- Parser debug ---
+  parserSource      String? // hangi parser path: "json-ld", "og-meta", "fallback"
+  parserConfidence  Int? // 0-100, parse kalitesi
+  parseWarnings     String[]                @default([]) // partial parse uyarıları
+  // --- Durum + raw ---
+  status            CompetitorListingStatus @default(ACTIVE)
+  rawMetadata       Json? // scraper'dan ham veri (debug + ileride yeni alan ekleme için)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([competitorStoreId, externalId])
+  @@index([userId])
+  @@index([competitorStoreId, reviewCount(sort: Desc)])
+  @@index([competitorStoreId, lastSeenAt(sort: Desc)])
+  @@index([competitorStoreId, latestReviewAt(sort: Desc)])
+}
+
+enum CompetitorScanType {
+  INITIAL_FULL
+  INCREMENTAL_NEW
+  MANUAL_REFRESH
+}
+
+enum CompetitorScanStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  PARTIAL
+}
+
+model CompetitorScan {
+  id                String               @id @default(cuid())
+  competitorStoreId String
+  competitorStore   CompetitorStore      @relation(fields: [competitorStoreId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  jobId             String? // Job tablosu bağlantısı (BullMQ + internal Job row)
+  type              CompetitorScanType
+  status            CompetitorScanStatus @default(QUEUED)
+  provider          String // "apify" | "firecrawl" | "self-hosted"
+  listingsFound     Int                  @default(0)
+  listingsNew       Int                  @default(0)
+  listingsUpdated   Int                  @default(0)
+  listingsRemoved   Int                  @default(0)
+  parseWarnings     String[]             @default([]) // scan bazında toplanmış parser uyarıları
+  errorMessage      String?
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  createdAt         DateTime             @default(now())
+
+  @@index([competitorStoreId, createdAt(sort: Desc)])
+  @@index([userId])
 }
 
 model Asset {
