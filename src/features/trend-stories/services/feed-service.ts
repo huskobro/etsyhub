@@ -4,8 +4,8 @@
  * Tek public API: fetchFeed({ userId, windowDays, cursor, limit? })
  * Döner: { items: FeedItem[], nextCursor: string | null }
  *
- * Cursor: base64 encoded JSON { firstSeenAt: ISO string, listingId: string }
- * Decode API route'da (Task 10) yapılır; bu servise decoded gelir.
+ * Cursor encode/decode işlemleri `./listing-cursor` modülünde tanımlıdır.
+ * Bu servise cursor decoded olarak gelir; encode çıkışta listing-cursor'dan yapılır.
  */
 
 import { db } from "@/server/db";
@@ -17,6 +17,7 @@ import {
   TrendClusterStatus,
   CompetitorListingStatus,
 } from "@prisma/client";
+import { encodeListingCursor } from "./listing-cursor";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -44,16 +45,21 @@ export type FeedItem = {
 // Pure helper — exported for unit testing
 // ---------------------------------------------------------------------------
 
-type MembershipEntry = {
-  cluster: {
-    id: string;
-    label: string;
-    seasonalTag: string | null;
-    clusterScore: number;
-    storeCount: number;
-    memberCount: number;
-  };
+/** Cluster shape'i; pickTopMembership tarafından kullanılır. */
+type ClusterShape = {
+  id: string;
+  label: string;
+  seasonalTag: string | null;
+  clusterScore: number;
+  storeCount: number;
+  memberCount: number;
 };
+
+/** pickTopMembership için minimal giriş tipi — listingId gerekmez. */
+type MembershipLike = { cluster: ClusterShape };
+
+/** DB'den çekilen tam membership kaydı — listingId dahil. */
+type MembershipEntry = MembershipLike & { listingId: string };
 
 /**
  * Bir listing için birden fazla cluster membership varsa deterministik
@@ -66,7 +72,7 @@ type MembershipEntry = {
  *  4. label asc (alfabetik)
  */
 export function pickTopMembership(
-  memberships: MembershipEntry[]
+  memberships: MembershipLike[]
 ): MembershipHint | null {
   if (memberships.length === 0) return null;
 
@@ -78,7 +84,7 @@ export function pickTopMembership(
     if (bc.clusterScore !== ac.clusterScore) return bc.clusterScore - ac.clusterScore;
     if (bc.storeCount !== ac.storeCount) return bc.storeCount - ac.storeCount;
     if (bc.memberCount !== ac.memberCount) return bc.memberCount - ac.memberCount;
-    return ac.label.localeCompare(bc.label);
+    return ac.label.localeCompare(bc.label, "en");
   });
 
   const top = sorted[0];
@@ -166,7 +172,7 @@ export async function fetchFeed(args: {
       : [];
 
   // listingId → memberships map
-  const listingToMemberships = new Map<string, typeof memberships>();
+  const listingToMemberships = new Map<string, MembershipEntry[]>();
   for (const m of memberships) {
     const arr = listingToMemberships.get(m.listingId);
     if (arr) {
@@ -193,15 +199,12 @@ export async function fetchFeed(args: {
     };
   });
 
-  // Next cursor üret (base64 encoded)
+  // Next cursor üret — encode listing-cursor modülü üzerinden yapılır
   let nextCursor: string | null = null;
   if (hasMore && page.length > 0) {
     const last = page.at(-1);
     if (last) {
-      nextCursor = Buffer.from(
-        `${last.firstSeenAt.toISOString()}|${last.id}`,
-        "utf8"
-      ).toString("base64");
+      nextCursor = encodeListingCursor({ firstSeenAt: last.firstSeenAt, listingId: last.id });
     }
   }
 

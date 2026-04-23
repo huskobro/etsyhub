@@ -10,7 +10,9 @@ type Cluster = {
   memberCount: number;
 };
 
-function mk(overrides: Partial<Cluster> & { id: string; label: string }): { cluster: Cluster } {
+type MkInput = Partial<Cluster> & { id: string; label: string; seasonalTag?: string | null };
+
+function mk(overrides: MkInput): { cluster: Cluster } {
   return {
     cluster: {
       id: overrides.id,
