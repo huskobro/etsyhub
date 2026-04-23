@@ -152,7 +152,9 @@ describe("api/trend-stories cluster detail — kısmi veri toleransı", () => {
     await cleanup([userId]);
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Re-assert flags before every test to guard against parallel file flag toggles
+    await enableFlags();
     currentUser.id = userId;
     currentUser.role = UserRole.USER;
   });

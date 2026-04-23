@@ -177,7 +177,9 @@ describe("api/trend-stories data isolation", () => {
     await cleanup([userAId, userBId]);
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Re-assert flags before every test to guard against parallel file flag toggles
+    await enableFlags();
     currentUser.id = null;
     currentUser.role = UserRole.USER;
   });

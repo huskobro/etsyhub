@@ -67,10 +67,7 @@ export const GET = withErrorHandling(
           ? {
               OR: [
                 { listing: { firstSeenAt: { lt: cursor.firstSeenAt } } },
-                {
-                  listing: { firstSeenAt: cursor.firstSeenAt },
-                  listingId: { lt: cursor.listingId },
-                },
+                { listing: { firstSeenAt: cursor.firstSeenAt, id: { lt: cursor.listingId } } },
               ],
             }
           : {}),
