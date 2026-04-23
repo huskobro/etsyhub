@@ -6,6 +6,7 @@ import { withErrorHandling } from "@/lib/http";
 import { ValidationError } from "@/lib/errors";
 import { db } from "@/server/db";
 import { assertTrendStoriesAvailable } from "@/features/trend-stories/services/feature-gate";
+import { CLUSTERS_LIST_PAGE_SIZE } from "@/features/trend-stories/constants";
 
 const querySchema = z.object({
   window: z.enum(["1", "7", "30"]).default("7"),
@@ -32,7 +33,7 @@ export const GET = withErrorHandling(async (req: Request) => {
       status: TrendClusterStatus.ACTIVE,
     },
     orderBy: [{ clusterScore: "desc" }, { latestMemberSeenAt: "desc" }],
-    take: 50,
+    take: CLUSTERS_LIST_PAGE_SIZE,
     include: {
       heroListing: {
         select: {

@@ -6,6 +6,7 @@
  * 2. User A'nın feed item'ları User B'nin feed'inde görünmez
  * 3. clusters endpoint yalnızca ilgili kullanıcının cluster'larını döner
  * 4. Admin olmayan kullanıcı recompute endpoint'ini çağıramaz → 403
+ * 5. Admin, var olmayan userId ile recompute çağırırsa → 404
  */
 
 import {
@@ -316,5 +317,23 @@ describe("api/trend-stories data isolation", () => {
       }),
     );
     expect(res.status).toBe(403);
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 5: Admin, var olmayan userId ile recompute çağırırsa → 404
+  // -------------------------------------------------------------------------
+
+  it("Admin var olmayan userId ile recompute çağırırsa → 404", async () => {
+    currentUser.id = userAId;
+    currentUser.role = UserRole.ADMIN;
+
+    const res = await recomputePOST(
+      new Request("http://localhost/api/admin/trend-clusters/recompute", {
+        method: "POST",
+        body: JSON.stringify({ userId: "nonexistent-user-id-xyz" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(res.status).toBe(404);
   });
 });

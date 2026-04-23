@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
-import { ValidationError } from "@/lib/errors";
+import { NotFoundError, ValidationError } from "@/lib/errors";
+import { db } from "@/server/db";
 import { audit } from "@/server/audit";
 import { enqueueTrendClusterUpdate } from "@/features/trend-stories/services/trend-update-scheduler";
 
@@ -16,6 +17,14 @@ export const POST = withErrorHandling(async (req: Request) => {
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) {
     throw new ValidationError("Geçersiz istek", parsed.error.flatten());
+  }
+
+  const target = await db.user.findUnique({
+    where: { id: parsed.data.userId },
+    select: { id: true },
+  });
+  if (!target) {
+    throw new NotFoundError("Hedef kullanıcı bulunamadı");
   }
 
   const result = await enqueueTrendClusterUpdate(parsed.data.userId);

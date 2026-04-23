@@ -34,6 +34,11 @@ export const OVERLAP_PRUNE_THRESHOLD = 0.8;
 export const FEED_PAGE_SIZE = 40;
 
 /**
+ * Küme listesi endpoint'inde döndürülen maksimum küme sayısı.
+ */
+export const CLUSTERS_LIST_PAGE_SIZE = 50;
+
+/**
  * Küme detay sayfasında üye sayfa boyutu.
  */
 export const CLUSTER_MEMBERS_PAGE_SIZE = 30;
