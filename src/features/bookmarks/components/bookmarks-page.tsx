@@ -36,11 +36,18 @@ const STATUS_OPTIONS: { value: BookmarkStatus | "ALL"; label: string }[] = [
   { value: "ARCHIVED", label: "Arşiv" },
 ];
 
-export function BookmarksPage() {
+type ProductTypeOption = { id: string; displayName: string };
+
+export function BookmarksPage({
+  productTypes,
+}: {
+  productTypes: ProductTypeOption[];
+}) {
   const qc = useQueryClient();
   const [status, setStatus] = useState<BookmarkStatus | "ALL">("INBOX");
   const [q, setQ] = useState("");
   const [importOpen, setImportOpen] = useState(false);
+  const [promoteId, setPromoteId] = useState<string | null>(null);
 
   const query = useQuery<ListResponse>({
     queryKey: ["bookmarks", status, q],
@@ -64,6 +71,23 @@ export function BookmarksPage() {
       return res.json();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["bookmarks"] }),
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: async (args: { bookmarkId: string; productTypeId: string }) => {
+      const res = await fetch("/api/references/promote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(args),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Referansa taşıma başarısız");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bookmarks"] });
+      qc.invalidateQueries({ queryKey: ["references"] });
+      setPromoteId(null);
+    },
   });
 
   return (
@@ -122,6 +146,7 @@ export function BookmarksPage() {
               key={bm.id}
               bookmark={bm}
               onArchive={(id) => archiveMutation.mutate(id)}
+              onPromote={(id) => setPromoteId(id)}
             />
           ))}
         </div>
@@ -135,6 +160,85 @@ export function BookmarksPage() {
           }}
         />
       ) : null}
+
+      {promoteId ? (
+        <PromoteDialog
+          bookmarkId={promoteId}
+          productTypes={productTypes}
+          isPending={promoteMutation.isPending}
+          error={
+            promoteMutation.isError
+              ? (promoteMutation.error as Error).message
+              : null
+          }
+          onSubmit={(productTypeId) =>
+            promoteMutation.mutate({ bookmarkId: promoteId, productTypeId })
+          }
+          onClose={() => setPromoteId(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function PromoteDialog({
+  bookmarkId,
+  productTypes,
+  isPending,
+  error,
+  onSubmit,
+  onClose,
+}: {
+  bookmarkId: string;
+  productTypes: ProductTypeOption[];
+  isPending: boolean;
+  error: string | null;
+  onSubmit: (productTypeId: string) => void;
+  onClose: () => void;
+}) {
+  const firstId = productTypes[0]?.id ?? "";
+  const [productTypeId, setProductTypeId] = useState(firstId);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 p-4">
+      <div className="w-full max-w-md rounded-md border border-border bg-surface p-5 shadow-popover">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Referansa taşı</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Kapat
+          </button>
+        </div>
+        <p className="mb-3 text-xs text-text-muted">
+          Bookmark {bookmarkId.slice(0, 10)}… için ürün tipi seç:
+        </p>
+        <select
+          value={productTypeId}
+          onChange={(e) => setProductTypeId(e.target.value)}
+          className="h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-text"
+        >
+          {productTypes.map((pt) => (
+            <option key={pt.id} value={pt.id}>
+              {pt.displayName}
+            </option>
+          ))}
+        </select>
+        {error ? (
+          <p className="mt-3 text-xs text-danger">{error}</p>
+        ) : null}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={isPending || !productTypeId}
+            onClick={() => onSubmit(productTypeId)}
+            className="rounded-md bg-accent px-3 py-2 text-sm text-accent-foreground disabled:opacity-50"
+          >
+            {isPending ? "Taşınıyor…" : "Referansa Taşı"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
