@@ -27,6 +27,7 @@ export const createBookmarkInput = z.object({
   productTypeId: z.string().min(1).optional(),
   collectionId: z.string().min(1).optional(),
   tagIds: z.array(z.string().min(1)).optional(),
+  trendClusterId: z.string().min(1).optional(),
 });
 export type CreateBookmarkInput = z.infer<typeof createBookmarkInput>;
 

@@ -93,6 +93,14 @@ export async function createBookmark(args: {
     await ensureTagsOwned(userId, input.tagIds);
   }
 
+  let clusterSnapshot: { label: string; windowDays: number } | null = null;
+  if (input.trendClusterId) {
+    clusterSnapshot = await ensureClusterOwnedAndGetSnapshot(
+      userId,
+      input.trendClusterId,
+    );
+  }
+
   return db.bookmark.create({
     data: {
       userId,
@@ -104,6 +112,9 @@ export async function createBookmark(args: {
       productTypeId: input.productTypeId,
       collectionId: input.collectionId,
       status: BookmarkStatus.INBOX,
+      trendClusterId: input.trendClusterId,
+      trendClusterLabelSnapshot: clusterSnapshot?.label,
+      trendWindowDaysSnapshot: clusterSnapshot?.windowDays,
       ...(input.tagIds?.length
         ? {
             tags: {
@@ -216,4 +227,17 @@ async function ensureTagsOwned(userId: string, tagIds: string[]) {
     throw new NotFoundError("Tag bulunamadı");
   }
   for (const t of tags) assertOwnsResource(userId, t);
+}
+
+async function ensureClusterOwnedAndGetSnapshot(
+  userId: string,
+  clusterId: string,
+): Promise<{ label: string; windowDays: number }> {
+  const cluster = await db.trendCluster.findFirst({
+    where: { id: clusterId },
+    select: { userId: true, label: true, windowDays: true },
+  });
+  if (!cluster) throw new NotFoundError("Trend cluster bulunamadı");
+  assertOwnsResource(userId, cluster);
+  return { label: cluster.label, windowDays: cluster.windowDays };
 }
