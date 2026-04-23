@@ -228,7 +228,7 @@ describe("Trend + Scrape regression — SUCCESS branch", () => {
     await db.user.deleteMany({ where: { email: { in: [emailA, emailB] } } });
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Her test öncesinde mock'ların çağrı geçmişini sıfırla ve
     // varsayılan davranışı "enqueued" olarak ayarla.
     vi.mocked(enqueueTrendClusterUpdate).mockReset();
@@ -247,6 +247,21 @@ describe("Trend + Scrape regression — SUCCESS branch", () => {
       totalListings: 2,
       totalReviews: 0,
     };
+
+    // Senaryolar arası birikim engellemek için scan/listing/job kayıtlarını temizle.
+    // User fixture'larına (userAId, userBId) dokunulmaz.
+    await db.competitorListing.deleteMany({
+      where: { userId: { in: [userAId, userBId] } },
+    });
+    await db.competitorScan.deleteMany({
+      where: { userId: { in: [userAId, userBId] } },
+    });
+    await db.competitorStore.deleteMany({
+      where: { userId: { in: [userAId, userBId] } },
+    });
+    await db.job.deleteMany({
+      where: { userId: { in: [userAId, userBId] } },
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -299,8 +314,6 @@ describe("Trend + Scrape regression — SUCCESS branch", () => {
           (metaObj as Record<string, unknown>)["trendEnqueueError"],
         ).toBeUndefined();
       }
-
-      await cleanupUser(userAId);
     });
   });
 
@@ -349,8 +362,6 @@ describe("Trend + Scrape regression — SUCCESS branch", () => {
       expect(typeof finalScan.metadata).toBe("object");
       const meta = finalScan.metadata as Record<string, unknown>;
       expect(meta["trendEnqueueError"]).toBe("redis down");
-
-      await cleanupUser(userAId);
     });
 
     it("önceki scan metadata alanları spread pattern ile korunur", async () => {
@@ -390,8 +401,6 @@ describe("Trend + Scrape regression — SUCCESS branch", () => {
       // Önceki alanlar korundu (spread pattern doğrulaması)
       expect(meta["existingField"]).toBe("korunmalı");
       expect(meta["count"]).toBe(42);
-
-      await cleanupUser(userAId);
     });
   });
 
@@ -405,10 +414,7 @@ describe("Trend + Scrape regression — SUCCESS branch", () => {
         userAId,
         `s3a-${suffix}`,
       );
-      const { store: storeB, job: jobB, scan: scanB } = await seedFixtures(
-        userBId,
-        `s3b-${suffix}`,
-      );
+      await seedFixtures(userBId, `s3b-${suffix}`);
 
       // Yalnızca User A scrape'i çalıştır
       await handleScrapeCompetitor(
@@ -432,17 +438,6 @@ describe("Trend + Scrape regression — SUCCESS branch", () => {
       for (const call of calls) {
         expect(call[0]).not.toBe(userBId);
       }
-
-      // --- User B job'ı henüz çalıştırılmadı, oluşan trend job'lar
-      //     (DB'de mock olduğundan gerçekte oluşmuyor — ama mock çağrısı kontrol edildi) ---
-
-      await cleanupUser(userAId);
-      await cleanupUser(userBId);
-
-      // storeB + jobB + scanB temizliği (cleanupUser zaten siliyor ama güvence için)
-      void storeB;
-      void jobB;
-      void scanB;
     });
   });
 });

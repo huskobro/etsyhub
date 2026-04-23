@@ -251,11 +251,15 @@ export async function handleScrapeCompetitor(
     try {
       await enqueueTrendClusterUpdate(userId);
     } catch (err) {
-      const trendErr = err instanceof Error ? err.message : "Bilinmeyen hata";
+      const trendEnqueueMessage = err instanceof Error ? err.message : "Bilinmeyen hata";
       logger.warn(
-        { userId, scanId, err: trendErr },
+        { userId, scanId, err: trendEnqueueMessage },
         "trend cluster enqueue failed after scrape SUCCESS",
       );
+      // NOT: findUnique + update 2-step pattern race condition'a açık — aynı scanId için
+      // paralel iki hata önceki trendEnqueueError'ı üzerine yazabilir. MVP için kabul
+      // edilen risk; ileride Postgres JSONB operator ile single-statement UPDATE
+      // (metadata = metadata || jsonb_build_object(...)) ile çözülebilir.
       // Mevcut scan kaydını oku → metadata spread et → error alanı ekle
       const currentScan = await db.competitorScan.findUnique({
         where: { id: scanId },
@@ -270,7 +274,7 @@ export async function handleScrapeCompetitor(
       await db.competitorScan.update({
         where: { id: scanId },
         data: {
-          metadata: { ...existingMetadata, trendEnqueueError: trendErr },
+          metadata: { ...existingMetadata, trendEnqueueError: trendEnqueueMessage },
         },
       });
     }
