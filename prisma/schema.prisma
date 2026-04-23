@@ -1,0 +1,589 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============= ENUMS =============
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum BookmarkStatus {
+  INBOX
+  REFERENCED
+  ARCHIVED
+  RISKY
+}
+
+enum RiskLevel {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SourcePlatform {
+  ETSY
+  AMAZON
+  PINTEREST
+  INSTAGRAM
+  UPLOAD
+  OTHER
+}
+
+enum CollectionKind {
+  BOOKMARK
+  REFERENCE
+  MIXED
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum JobType {
+  ASSET_INGEST_FROM_URL
+  GENERATE_THUMBNAIL
+  BOOKMARK_PREVIEW_METADATA
+  SCRAPE_COMPETITOR
+  FETCH_NEW_LISTINGS
+  GENERATE_VARIATIONS
+  REVIEW_DESIGN
+  REMOVE_BACKGROUND
+  UPSCALE_IMAGE
+  CREATE_MOCKUP
+  GENERATE_LISTING_COPY
+  PUSH_ETSY_DRAFT
+  EXPORT_CLIPART_BUNDLE
+  SIMILARITY_CHECK
+  TREND_CLUSTER_UPDATE
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  NEEDS_REVIEW
+  REJECTED
+}
+
+enum ListingStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+  REJECTED
+  NEEDS_REVIEW
+}
+
+enum ThemeStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum PromptStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum FeatureFlagScope {
+  GLOBAL
+  USER
+  STORE
+}
+
+enum ProviderKind {
+  AI
+  SCRAPER
+  MOCKUP
+  STORAGE
+  ETSY
+  OCR
+}
+
+// ============= CORE =============
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String?
+  role         UserRole   @default(USER)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  stores           Store[]
+  bookmarks        Bookmark[]
+  references       Reference[]
+  collections      Collection[]
+  tags             Tag[]
+  assets           Asset[]
+  jobs             Job[]
+  auditLogs        AuditLog[]
+  generatedDesigns GeneratedDesign[]
+  mockups          Mockup[]
+  listings         Listing[]
+  competitorStores CompetitorStore[]
+  costUsages       CostUsage[]
+
+  @@index([deletedAt])
+}
+
+model Store {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  name           String
+  niche          String?
+  targetAudience String?
+  tone           String?
+  preferredStyle String?
+  bannedTerms    String[]  @default([])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  etsyConnection   EtsyConnection?
+  bookmarks        Bookmark[]
+  references       Reference[]
+  competitorStores CompetitorStore[]
+  listings         Listing[]
+  jobs             Job[]
+
+  @@index([userId])
+}
+
+model EtsyConnection {
+  id           String    @id @default(cuid())
+  storeId      String    @unique
+  store        Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  shopId       String?
+  shopName     String?
+  accessToken  String?
+  refreshToken String?
+  tokenExpires DateTime?
+  scopes       String[]  @default([])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model CompetitorStore {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  storeId       String?
+  store         Store?    @relation(fields: [storeId], references: [id])
+  etsyShopName  String
+  lastScannedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  @@unique([userId, etsyShopName])
+  @@index([storeId])
+}
+
+model Asset {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  storageProvider String
+  storageKey      String
+  bucket          String
+  mimeType        String
+  sizeBytes       Int
+  width           Int?
+  height          Int?
+  hash            String
+  sourceUrl       String?
+  sourcePlatform  SourcePlatform?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  bookmarks        Bookmark[]
+  references       Reference[]
+  generatedDesigns GeneratedDesign[]
+  mockups          Mockup[]
+
+  @@index([userId])
+  @@index([hash])
+}
+
+model Collection {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  name        String
+  slug        String
+  description String?
+  kind        CollectionKind @default(MIXED)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+
+  bookmarks  Bookmark[]
+  references Reference[]
+
+  @@unique([userId, slug])
+  @@index([userId])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  name      String
+  // color: semantic/token key (ör. "accent", "success", "warning", "berry"). Raw hex yasak.
+  color     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookmarkTags  BookmarkTag[]
+  referenceTags ReferenceTag[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model ProductType {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  displayName String
+  aspectRatio String?
+  description String?
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bookmarks        Bookmark[]
+  references       Reference[]
+  generatedDesigns GeneratedDesign[]
+  listings         Listing[]
+  recipes          Recipe[]
+}
+
+model Bookmark {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  storeId        String?
+  store          Store?         @relation(fields: [storeId], references: [id])
+  assetId        String?
+  asset          Asset?         @relation(fields: [assetId], references: [id])
+  sourceUrl      String?
+  sourcePlatform SourcePlatform @default(OTHER)
+  title          String?
+  notes          String?
+  status         BookmarkStatus @default(INBOX)
+  riskLevel      RiskLevel      @default(NONE)
+  productTypeId  String?
+  productType    ProductType?   @relation(fields: [productTypeId], references: [id])
+  collectionId   String?
+  collection     Collection?    @relation(fields: [collectionId], references: [id])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  tags       BookmarkTag[]
+  references Reference[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([productTypeId])
+  @@index([collectionId])
+}
+
+model BookmarkTag {
+  bookmarkId String
+  tagId      String
+  bookmark   Bookmark @relation(fields: [bookmarkId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([bookmarkId, tagId])
+}
+
+model Reference {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  storeId       String?
+  store         Store?      @relation(fields: [storeId], references: [id])
+  bookmarkId    String?
+  bookmark      Bookmark?   @relation(fields: [bookmarkId], references: [id])
+  assetId       String
+  asset         Asset       @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  productTypeId String
+  productType   ProductType @relation(fields: [productTypeId], references: [id])
+  collectionId  String?
+  collection    Collection? @relation(fields: [collectionId], references: [id])
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+
+  tags             ReferenceTag[]
+  generatedDesigns GeneratedDesign[]
+
+  @@index([userId])
+  @@index([productTypeId])
+  @@index([collectionId])
+}
+
+model ReferenceTag {
+  referenceId String
+  tagId       String
+  reference   Reference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+  tag         Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([referenceId, tagId])
+}
+
+// ============= PROMPTS / RECIPES =============
+
+model PromptTemplate {
+  id             String       @id @default(cuid())
+  name           String       @unique
+  taskType       String
+  productTypeKey String?
+  providerKind   ProviderKind
+  providerKey    String?
+  model          String?
+  description    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  versions PromptVersion[]
+}
+
+model PromptVersion {
+  id                 String         @id @default(cuid())
+  templateId         String
+  template           PromptTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  version            Int
+  systemPrompt       String
+  userPromptTemplate String
+  outputSchema       Json?
+  status             PromptStatus   @default(DRAFT)
+  changelog          String?
+  testInput          Json?
+  testOutput         Json?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  generatedDesigns GeneratedDesign[]
+
+  @@unique([templateId, version])
+}
+
+model Recipe {
+  id            String       @id @default(cuid())
+  key           String       @unique
+  name          String
+  productTypeId String?
+  productType   ProductType? @relation(fields: [productTypeId], references: [id])
+  config        Json
+  isSystem      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+// ============= DESIGN / REVIEW / MOCKUP / LISTING =============
+
+model GeneratedDesign {
+  id                String         @id @default(cuid())
+  userId            String
+  user              User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  referenceId       String
+  reference         Reference      @relation(fields: [referenceId], references: [id], onDelete: Restrict)
+  assetId           String
+  asset             Asset          @relation(fields: [assetId], references: [id])
+  productTypeId     String
+  productType       ProductType    @relation(fields: [productTypeId], references: [id])
+  promptVersionId   String?
+  promptVersion     PromptVersion? @relation(fields: [promptVersionId], references: [id])
+  jobId             String?
+  job               Job?           @relation(fields: [jobId], references: [id])
+  similarity        String?
+  qualityScore      Int?
+  reviewStatus      ReviewStatus   @default(PENDING)
+  reviewIssues      Json?
+  reviewSummary     String?
+  textDetected      Boolean        @default(false)
+  gibberishDetected Boolean        @default(false)
+  riskFlags         String[]       @default([])
+  reviewedAt        DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
+
+  review   DesignReview?
+  mockups  Mockup[]
+  listings Listing[]
+
+  @@index([userId])
+  @@index([referenceId])
+}
+
+model DesignReview {
+  id                String          @id @default(cuid())
+  generatedDesignId String          @unique
+  generatedDesign   GeneratedDesign @relation(fields: [generatedDesignId], references: [id], onDelete: Cascade)
+  reviewer          String
+  score             Int?
+  issues            Json?
+  decision          ReviewStatus
+  createdAt         DateTime        @default(now())
+}
+
+model Mockup {
+  id                String           @id @default(cuid())
+  userId            String
+  user              User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  generatedDesignId String?
+  generatedDesign   GeneratedDesign? @relation(fields: [generatedDesignId], references: [id])
+  assetId           String
+  asset             Asset            @relation(fields: [assetId], references: [id])
+  templateKey       String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  deletedAt         DateTime?
+
+  listings Listing[]
+
+  @@index([userId])
+}
+
+model Listing {
+  id                String           @id @default(cuid())
+  userId            String
+  user              User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  storeId           String?
+  store             Store?           @relation(fields: [storeId], references: [id])
+  generatedDesignId String?
+  generatedDesign   GeneratedDesign? @relation(fields: [generatedDesignId], references: [id])
+  productTypeId     String?
+  productType       ProductType?     @relation(fields: [productTypeId], references: [id])
+  title             String?
+  description       String?
+  tags              String[]         @default([])
+  category          String?
+  priceCents        Int?
+  materials         String[]         @default([])
+  status            ListingStatus    @default(DRAFT)
+  etsyDraftId       String?
+  mockups           Mockup[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  deletedAt         DateTime?
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ============= JOBS / AUDIT / FLAGS / THEME / COST =============
+
+model Job {
+  id           String    @id @default(cuid())
+  userId       String?
+  user         User?     @relation(fields: [userId], references: [id])
+  storeId      String?
+  store        Store?    @relation(fields: [storeId], references: [id])
+  type         JobType
+  status       JobStatus @default(QUEUED)
+  progress     Int       @default(0)
+  error        String?
+  retryCount   Int       @default(0)
+  costEstimate Int?
+  bullJobId    String?   @unique
+  metadata     Json?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  generatedDesigns GeneratedDesign[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  actor      String
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model Theme {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  tokens    Json
+  status    ThemeStatus @default(DRAFT)
+  isSystem  Boolean     @default(false)
+  createdBy String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model FeatureFlag {
+  id        String           @id @default(cuid())
+  key       String           @unique
+  enabled   Boolean          @default(false)
+  scope     FeatureFlagScope @default(GLOBAL)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model CostUsage {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  providerKind ProviderKind
+  providerKey  String
+  model        String?
+  jobId        String?
+  units        Int
+  costCents    Int
+  periodKey    String
+  createdAt    DateTime     @default(now())
+
+  @@index([userId, periodKey])
+}
+
+model NegativeLibraryEntry {
+  id        String   @id @default(cuid())
+  term      String   @unique
+  category  String?
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

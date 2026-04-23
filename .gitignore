@@ -1,7 +1,9 @@
 node_modules
 .next
+.env
 .env.local
 .env.*.local
+prisma/.env
 dist
 coverage
 playwright-report
@@ -11,3 +13,4 @@ next-env.d.ts
 .turbo
 *.log
 tsconfig.tsbuildinfo
+videolar/
