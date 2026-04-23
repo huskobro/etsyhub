@@ -14,7 +14,7 @@ export type SeasonalRule = {
   endDay: number; // 1-31
 };
 
-export const SEASONAL_RULES: readonly SeasonalRule[] = [
+export const SEASONAL_RULES: SeasonalRule[] = [
   {
     tag: "christmas",
     keywords: ["christmas", "xmas", "santa", "holiday", "winter"],
@@ -79,4 +79,4 @@ export const SEASONAL_RULES: readonly SeasonalRule[] = [
     endMonth: 9,
     endDay: 15,
   },
-] as const;
+];
