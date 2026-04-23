@@ -115,3 +115,59 @@ npm run test:all   # typecheck + lint + check:tokens + vitest + playwright
 - **Data isolation:** Her Prisma sorgusunda `userId + deletedAt: null`; her mutation `requireUser()` / `assertOwnsResource()`.
 - **Queue factory tüm 15 JobType için queue oluşturur; worker bootstrap kapsama göre handler başlatır.**
 - **Seed admin zorunlu; register lokal için açık, production default kapalı.**
+
+## Teknik Borç ve Stabilizasyon Notları (2026-04-23)
+
+Phase 1+2 kapanışından önce oturumda biriken, Phase 3'e girmeden kaydedilmesi gereken notlar:
+
+### 1. Collection Uniqueness — Service-Level
+
+- **Mevcut durum:** `Collection` modelinde DB seviyesinde yalnız `@@unique([userId, slug])` var. `(userId, name)` unique constraint'i yok.
+- **Çözüm:** `createCollection` servisinde isim çakışması `findFirst` ile pre-check ediliyor ve `ConflictError` atılıyor. Aksi halde `uniqueSlug` helper'ı `-2`, `-3` gibi suffix üretip aynı isimli ikinci kaydı sessizce oluşturuyordu.
+- **Borç:** İleride DB seviyesinde `@@unique([userId, name])` constraint'i ve buna uygun migration değerlendirilecek. Şimdilik service-level guard yeterli, test kapsamında (`tests/unit/collection-service.test.ts`).
+- **Neden sertleştirilmedi:** Schema migration Phase 3 başında başka değişiklikler yapılmadan tek başına maliyetli. Phase 3'te schema dokunuşu olduğunda birlikte eklenebilir.
+
+### 2. `.env.local` vs `prisma/.env` Kullanımı
+
+İki ayrı env dosyası var, görevleri farklı:
+
+- **`.env.local`** (git ignored, `dotenv/config` + Next.js otomatik):
+  - Uygulama runtime'ı okuyor: `npm run dev`, `npm run worker`, Playwright test runner, Vitest
+  - Tüm `src/lib/env.ts` Zod şemasına girecek değerler burada
+  - Dosya mevcut değilse Next.js boot etmez
+- **`prisma/.env`** (git ignored, **yalnız Prisma CLI**):
+  - `prisma migrate dev`, `prisma db seed`, `prisma studio` gibi CLI komutları için
+  - Sadece `DATABASE_URL` (ve gerekirse `SHADOW_DATABASE_URL`) yazılır
+  - Uygulama runtime'ı bunu **okumaz**; sadece Prisma CLI okur
+- **Pratik akış:** Yeni makinada `.env.example` → `.env.local` kopyalanır; `prisma/.env` içine de `DATABASE_URL` satırı elle eklenir. İki dosya içindeki `DATABASE_URL` aynı değer olmalı.
+- **Borç:** Phase 3'te `scripts/setup-env.ts` gibi bir helper ile `.env.example`'dan iki hedefi birden üretmek değerlendirilebilir.
+
+### 3. Redirect Kaynaklı Dev Log Gürültüsü — Bilinen Davranış
+
+`/` ve admin/user guard'larındaki `redirect()` çağrıları Next.js 14'te development sunucusunda `NEXT_REDIRECT` hata stack'i olarak loglanıyor:
+
+```
+Error: NEXT_REDIRECT
+    at getRedirectError (...)
+```
+
+- **Neden:** Next.js 14 App Router'da `redirect()` yapısı throw ile çalışıyor; dev modda stack trace pretty-printer tarafından yazılıyor.
+- **Gerçek etki:** Yok — HTTP response 307 ile doğru çalışıyor, Playwright testleri geçiyor.
+- **Not:** Bunu susturmak için try/catch eklemek veya custom logger filtresi yazmak **yapılmamalı** — kütüphane davranışı. Gerekirse Phase 3'te dev-experience için `next.config.ts` onDemandEntries veya logger filter değerlendirilebilir.
+
+### 4. Asset URL Import — Şu An Basit Mode
+
+`ASSET_INGEST_FROM_URL` worker'ı (`src/server/workers/asset-ingest.worker.ts`) yalnız iki dal işliyor:
+
+1. **Direkt image URL** (`content-type: image/*`) → doğrudan asset kaydı
+2. **HTML sayfa** → `<meta property="og:image">` veya `<meta name="twitter:image">` çıkar, o URL'yi tekrar fetch et, asset kaydet
+
+**Sınırlar:**
+
+- Etsy listing sayfasından **yalnız ana og:image** alınır. Listing title, açıklama, fiyat, review count, çoklu görsel, tag'ler, mağaza bilgisi **alınmaz**.
+- Amazon listing sayfalarından sadece og:image alınır; fiyat/review/kategori parsing yok.
+- Pinterest/Instagram public pin URL'leri genelde og:image veriyor; private içerikler başarısız olur.
+- User-Agent başlığı yok → bazı siteler 403/redirect dönebilir (bilinen edge case).
+- JavaScript-rendered sayfalar (CSR-only) og:image göstermeyebilir → başarısız olur.
+
+**Phase 3'te eklenecek:** `SourcePlatform.ETSY` / `AMAZON` için URL detect + özel parser branch + çoklu görsel + listing metadata extraction. Bu plan aşağıdaki Phase 3 dokümanında detaylandırıldı.
