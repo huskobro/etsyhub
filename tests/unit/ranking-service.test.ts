@@ -100,4 +100,9 @@ describe("REVIEW_COUNT_DISCLAIMER", () => {
     expect(typeof REVIEW_COUNT_DISCLAIMER).toBe("string");
     expect(REVIEW_COUNT_DISCLAIMER.length).toBeGreaterThan(10);
   });
+
+  it("constants.ts ile ranking-service re-export'u aynı referansı sunar (tek kaynak)", async () => {
+    const fromConstants = await import("@/features/competitors/constants");
+    expect(fromConstants.REVIEW_COUNT_DISCLAIMER).toBe(REVIEW_COUNT_DISCLAIMER);
+  });
 });

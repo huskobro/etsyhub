@@ -27,7 +27,7 @@ export type NavItem = {
 export const USER_NAV: NavItem[] = [
   { href: "/dashboard", label: "Panel", icon: LayoutDashboard, roles: ["USER", "ADMIN"], phase: 1, enabled: true },
   { href: "/trend-stories", label: "Trend Akışı", icon: Sparkles, roles: ["USER", "ADMIN"], phase: 4, enabled: false },
-  { href: "/competitors", label: "Rakipler", icon: Store, roles: ["USER", "ADMIN"], phase: 3, enabled: false },
+  { href: "/competitors", label: "Rakipler", icon: Store, roles: ["USER", "ADMIN"], phase: 3, enabled: true },
   { href: "/bookmarks", label: "Bookmark", icon: Bookmark, roles: ["USER", "ADMIN"], phase: 2, enabled: true },
   { href: "/references", label: "Referanslar", icon: ImageIcon, roles: ["USER", "ADMIN"], phase: 2, enabled: true },
   { href: "/collections", label: "Koleksiyonlar", icon: FolderOpen, roles: ["USER", "ADMIN"], phase: 2, enabled: true },

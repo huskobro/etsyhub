@@ -13,11 +13,11 @@ export function rankListings<T extends Rankable>(
 }
 
 /**
- * Yorum sayısı tahmini popülerlik göstergesidir; kesin satış rakamı değildir.
- * UI bu sabiti import edip kullanıcıya disclaimer olarak gösterir.
+ * Client-safe sabitler tek kaynaktan re-export edilir.
+ * Yeni kod `@/features/competitors/constants` üzerinden de import edebilir;
+ * bu re-export eski çağrıcıları kırmamak için korunur.
  */
-export const REVIEW_COUNT_DISCLAIMER =
-  "Yorum sayısı tahmini popülerlik göstergesidir; kesin satış rakamı değildir.";
+export { REVIEW_COUNT_DISCLAIMER } from "../constants";
 
 type Rankable = {
   reviewCount: number;
