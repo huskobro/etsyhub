@@ -5,9 +5,9 @@ import { logger } from "@/lib/logger";
 import { DEBOUNCE_WINDOW_MS } from "@/features/trend-stories/constants";
 
 /**
- * @todo TREND_CLUSTER_UPDATE worker'ı Task 7'de
- * src/server/workers/bootstrap.ts'e kayıt edilecek.
- * O ana kadar enqueue edilen job'lar QUEUED kalır.
+ * Task 7 itibarıyla TREND_CLUSTER_UPDATE worker'ı
+ * src/server/workers/bootstrap.ts'e kayıt edildi.
+ * Enqueue edilen job'lar artık worker tarafından işlenir.
  */
 
 export type EnqueueResult =

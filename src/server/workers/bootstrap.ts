@@ -7,6 +7,7 @@ import { handleGenerateThumbnail } from "./thumbnail.worker";
 import { handleBookmarkPreviewMetadata } from "./bookmark-preview.worker";
 import { handleScrapeCompetitor } from "./scrape-competitor.worker";
 import { handleFetchNewListings } from "./fetch-new-listings.worker";
+import { handleTrendClusterUpdate } from "./trend-cluster-update.worker";
 
 /** Günlük FETCH_NEW_LISTINGS repeat için sabit scheduler ID. */
 export const FETCH_NEW_LISTINGS_SCHEDULE_ID = "fetch-new-listings-daily";
@@ -20,6 +21,7 @@ export async function startWorkers() {
     { name: JobType.BOOKMARK_PREVIEW_METADATA, handler: handleBookmarkPreviewMetadata },
     { name: JobType.SCRAPE_COMPETITOR, handler: handleScrapeCompetitor },
     { name: JobType.FETCH_NEW_LISTINGS, handler: handleFetchNewListings },
+    { name: JobType.TREND_CLUSTER_UPDATE, handler: handleTrendClusterUpdate },
   ] as const;
 
   for (const s of specs) {
