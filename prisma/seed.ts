@@ -63,7 +63,7 @@ async function main() {
     { key: "references.enabled", enabled: true },
     { key: "collections.enabled", enabled: true },
     { key: "trend_stories.enabled", enabled: false },
-    { key: "competitors.enabled", enabled: false },
+    { key: "competitors.enabled", enabled: true },
     { key: "variations.enabled", enabled: false },
     { key: "mockups.enabled", enabled: false },
     { key: "listings.enabled", enabled: false },
