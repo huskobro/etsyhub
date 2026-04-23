@@ -50,8 +50,17 @@ export const env: Env = (() => {
   try {
     return loadEnv();
   } catch (err) {
+    // Vitest unit testlerinde env gerekmeyebilir. Integration testlerinde
+    // setup-integration.ts dotenv'i yükler ve parse başarılı olur.
     if (process.env.VITEST === "true" || process.env.NODE_ENV === "test") {
-      return {} as Env;
+      return new Proxy({} as Env, {
+        get(_target, prop: string) {
+          throw new Error(
+            `env.${prop} test modunda talep edildi ama .env.local yüklenmemiş. ` +
+              `vitest.config.ts setupFiles'a tests/setup-integration.ts ekle.`,
+          );
+        },
+      });
     }
     throw err;
   }
