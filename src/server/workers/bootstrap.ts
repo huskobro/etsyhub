@@ -5,12 +5,14 @@ import { logger } from "@/lib/logger";
 import { handleAssetIngestFromUrl } from "./asset-ingest.worker";
 import { handleGenerateThumbnail } from "./thumbnail.worker";
 import { handleBookmarkPreviewMetadata } from "./bookmark-preview.worker";
+import { handleScrapeCompetitor } from "./scrape-competitor.worker";
 
 export function startWorkers() {
   const specs = [
     { name: JobType.ASSET_INGEST_FROM_URL, handler: handleAssetIngestFromUrl },
     { name: JobType.GENERATE_THUMBNAIL, handler: handleGenerateThumbnail },
     { name: JobType.BOOKMARK_PREVIEW_METADATA, handler: handleBookmarkPreviewMetadata },
+    { name: JobType.SCRAPE_COMPETITOR, handler: handleScrapeCompetitor },
   ] as const;
 
   for (const s of specs) {
