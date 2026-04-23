@@ -99,6 +99,9 @@ describe("clusterListings", () => {
   });
 
   it("cluster score: recencyBoost son 3 gün için +5", () => {
+    // windowDays iki çağrıda da 30 tutulur — tek değişken firstSeenAt.
+    // Böylece recencyBoost etkisi izole olur, ileride windowDays scoring'e dahil
+    // edilirse test yanlış sebeple passing olmaz.
     const recent = new Date("2026-04-23");
     const old = new Date("2026-03-01");
     const r = clusterListings({
@@ -107,7 +110,7 @@ describe("clusterListings", () => {
         mk({ id: "l2", store: "s2", title: "Boho Wall Art Set", firstSeenAt: recent }),
         mk({ id: "l3", store: "s3", title: "Boho Wall Art Print", firstSeenAt: recent }),
       ],
-      windowDays: 7,
+      windowDays: 30,
       today,
     });
     const r2 = clusterListings({
