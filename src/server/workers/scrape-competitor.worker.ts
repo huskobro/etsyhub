@@ -10,6 +10,7 @@ import { db } from "@/server/db";
 import { getScraper } from "@/providers/scraper";
 import type { ScanScope } from "@/providers/scraper/types";
 import { logger } from "@/lib/logger";
+import { enqueueTrendClusterUpdate } from "@/features/trend-stories/services/trend-update-scheduler";
 
 export type ScrapeCompetitorPayload = {
   jobId: string;
@@ -244,6 +245,35 @@ export async function handleScrapeCompetitor(
       },
       "SCRAPE_COMPETITOR worker başarıyla tamamlandı",
     );
+
+    // Trend cluster recompute tetikle — NON-BLOCKING.
+    // Hata scrape'i başarısız yapmaz; metadata'ya yazılır.
+    try {
+      await enqueueTrendClusterUpdate(userId);
+    } catch (err) {
+      const trendErr = err instanceof Error ? err.message : "Bilinmeyen hata";
+      logger.warn(
+        { userId, scanId, err: trendErr },
+        "trend cluster enqueue failed after scrape SUCCESS",
+      );
+      // Mevcut scan kaydını oku → metadata spread et → error alanı ekle
+      const currentScan = await db.competitorScan.findUnique({
+        where: { id: scanId },
+        select: { metadata: true },
+      });
+      const existingMetadata =
+        currentScan?.metadata &&
+        typeof currentScan.metadata === "object" &&
+        !Array.isArray(currentScan.metadata)
+          ? (currentScan.metadata as Prisma.JsonObject)
+          : {};
+      await db.competitorScan.update({
+        where: { id: scanId },
+        data: {
+          metadata: { ...existingMetadata, trendEnqueueError: trendErr },
+        },
+      });
+    }
 
     return {
       listingsFound: result.listings.length,

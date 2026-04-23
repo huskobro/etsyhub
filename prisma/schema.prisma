@@ -298,6 +298,7 @@ model CompetitorScan {
   listingsRemoved   Int                  @default(0)
   parseWarnings     String[]             @default([]) // scan bazında toplanmış parser uyarıları
   errorMessage      String?
+  metadata          Json? // ek meta: trendEnqueueError, vb.
   startedAt         DateTime?
   finishedAt        DateTime?
   createdAt         DateTime             @default(now())
