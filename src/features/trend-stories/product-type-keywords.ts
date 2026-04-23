@@ -7,11 +7,11 @@
 
 export const PRODUCT_TYPE_KEYWORDS: Record<string, string[]> = {
   canvas: ["canvas"],
-  wall_art: ["wall art", "poster", "print"],
   printable: ["printable", "digital download", "instant download"],
   clipart: ["clipart", "clip art", "png pack", "svg bundle"],
   sticker: ["sticker", "decal"],
   tshirt: ["t-shirt", "tshirt", "tee"],
   hoodie: ["hoodie", "sweatshirt"],
   dtf: ["dtf", "dtf transfer", "dtf print"],
+  wall_art: ["wall art", "poster", "print"],
 };
