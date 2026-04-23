@@ -4,8 +4,12 @@ import { detectSeasonalTag } from "./seasonal-detect";
 import {
   WINDOW_THRESHOLDS,
   OVERLAP_PRUNE_THRESHOLD,
+  WINDOW_DAYS,
+  MAX_CLUSTER_MEMBERS_SCAN,
   type WindowDays,
 } from "@/features/trend-stories/constants";
+import { db } from "@/server/db";
+import { TrendClusterStatus } from "@prisma/client";
 
 export type CompetitorListingForCluster = {
   id: string;
@@ -142,4 +146,162 @@ export function clusterListings(input: {
   }
 
   return kept;
+}
+
+/**
+ * Kullanıcıya ait tüm zaman pencerelerinde trend cluster'larını yeniden
+ * hesaplar ve DB'yi upsert ile günceller.
+ *
+ * - Aktif rakip mağaza yoksa tüm ACTIVE cluster'lar STALE yapılır.
+ * - Her pencere için clusterListings() çalışır, sonuçlar DB'ye yazılır.
+ * - TrendClusterMember set farkı alınarak sadece delta güncellenir.
+ * - Eşik altında kalan (hesaplamada çıkmayan) cluster'lar STALE işaretlenir.
+ */
+export async function recomputeTrendClustersForUser(
+  userId: string,
+  now: Date = new Date(),
+): Promise<void> {
+  const userCompetitorStoreIds = (
+    await db.competitorStore.findMany({
+      where: { userId, deletedAt: null },
+      select: { id: true },
+    })
+  ).map((s) => s.id);
+
+  if (userCompetitorStoreIds.length === 0) {
+    await db.trendCluster.updateMany({
+      where: { userId, status: TrendClusterStatus.ACTIVE },
+      data: { status: TrendClusterStatus.STALE, computedAt: now },
+    });
+    return;
+  }
+
+  for (const windowDays of WINDOW_DAYS) {
+    const since = new Date(
+      now.getTime() - windowDays * 24 * 60 * 60 * 1000,
+    );
+    const listings = await db.competitorListing.findMany({
+      where: {
+        competitorStoreId: { in: userCompetitorStoreIds },
+        firstSeenAt: { gte: since },
+        status: "ACTIVE",
+      },
+      select: {
+        id: true,
+        competitorStoreId: true,
+        title: true,
+        reviewCount: true,
+        firstSeenAt: true,
+        listingCreatedAt: true,
+      },
+      take: MAX_CLUSTER_MEMBERS_SCAN,
+      orderBy: { firstSeenAt: "desc" },
+    });
+
+    const candidates = clusterListings({ listings, windowDays, today: now });
+
+    // ProductType FK resolve
+    const neededKeys = Array.from(
+      new Set(
+        candidates
+          .map((c) => c.productTypeKey)
+          .filter((k): k is string => !!k),
+      ),
+    );
+    const productTypes = neededKeys.length
+      ? await db.productType.findMany({
+          where: { key: { in: neededKeys } },
+          select: { id: true, key: true },
+        })
+      : [];
+    const keyToId = new Map(productTypes.map((p) => [p.key, p.id]));
+
+    const activeSignatures = new Set<string>();
+    for (const c of candidates) {
+      activeSignatures.add(c.signature);
+      const cluster = await db.trendCluster.upsert({
+        where: {
+          userId_signature_windowDays: {
+            userId,
+            signature: c.signature,
+            windowDays,
+          },
+        },
+        create: {
+          userId,
+          signature: c.signature,
+          label: c.label,
+          productTypeId: c.productTypeKey
+            ? (keyToId.get(c.productTypeKey) ?? null)
+            : null,
+          productTypeSource: c.productTypeSource,
+          productTypeConfidence: c.productTypeConfidence,
+          windowDays,
+          memberCount: c.memberCount,
+          storeCount: c.storeCount,
+          totalReviewCount: c.totalReviewCount,
+          latestMemberSeenAt: c.latestMemberSeenAt,
+          heroListingId: c.heroListingId,
+          seasonalTag: c.seasonalTag,
+          status: TrendClusterStatus.ACTIVE,
+          clusterScore: c.clusterScore,
+          computedAt: now,
+        },
+        update: {
+          label: c.label,
+          productTypeId: c.productTypeKey
+            ? (keyToId.get(c.productTypeKey) ?? null)
+            : null,
+          productTypeSource: c.productTypeSource,
+          productTypeConfidence: c.productTypeConfidence,
+          memberCount: c.memberCount,
+          storeCount: c.storeCount,
+          totalReviewCount: c.totalReviewCount,
+          latestMemberSeenAt: c.latestMemberSeenAt,
+          heroListingId: c.heroListingId,
+          seasonalTag: c.seasonalTag,
+          status: TrendClusterStatus.ACTIVE,
+          clusterScore: c.clusterScore,
+          computedAt: now,
+        },
+      });
+
+      // Member diff (set fark)
+      const existing = await db.trendClusterMember.findMany({
+        where: { clusterId: cluster.id },
+        select: { listingId: true },
+      });
+      const existingIds = new Set(existing.map((e) => e.listingId));
+      const newIds = new Set(c.memberListingIds);
+      const toAdd = [...newIds].filter((id) => !existingIds.has(id));
+      const toRemove = [...existingIds].filter((id) => !newIds.has(id));
+
+      if (toAdd.length) {
+        await db.trendClusterMember.createMany({
+          data: toAdd.map((listingId) => ({
+            clusterId: cluster.id,
+            listingId,
+            userId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      if (toRemove.length) {
+        await db.trendClusterMember.deleteMany({
+          where: { clusterId: cluster.id, listingId: { in: toRemove } },
+        });
+      }
+    }
+
+    // Eşik altına düşen cluster'ları STALE işaretle (window-scoped)
+    await db.trendCluster.updateMany({
+      where: {
+        userId,
+        windowDays,
+        status: TrendClusterStatus.ACTIVE,
+        signature: { notIn: Array.from(activeSignatures) },
+      },
+      data: { status: TrendClusterStatus.STALE, computedAt: now },
+    });
+  }
 }
