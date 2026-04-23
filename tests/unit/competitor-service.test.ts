@@ -124,19 +124,19 @@ describe("competitor-service", () => {
   describe("listCompetitors — data isolation", () => {
     it("userA sadece kendi mağazalarını görür", async () => {
       const listA = await listCompetitors(userAId);
-      expect(listA.every((s) => s.userId === userAId)).toBe(true);
+      expect(listA.items.every((s) => s.userId === userAId)).toBe(true);
     });
 
     it("userB sadece kendi mağazalarını görür", async () => {
       const listB = await listCompetitors(userBId);
-      expect(listB.every((s) => s.userId === userBId)).toBe(true);
+      expect(listB.items.every((s) => s.userId === userBId)).toBe(true);
     });
   });
 
   describe("getCompetitor", () => {
     it("sahibi store'u getirebilir", async () => {
       const stores = await listCompetitors(userAId);
-      const first = stores[0];
+      const first = stores.items[0];
       if (!first) throw new Error("Store yok");
 
       const store = await getCompetitor(userAId, first.id);
@@ -145,7 +145,7 @@ describe("competitor-service", () => {
 
     it("başka user'ın store'u → NotFoundError", async () => {
       const storesA = await listCompetitors(userAId);
-      const first = storesA[0];
+      const first = storesA.items[0];
       if (!first) throw new Error("Store yok");
 
       await expect(getCompetitor(userBId, first.id)).rejects.toThrow(NotFoundError);
@@ -155,7 +155,7 @@ describe("competitor-service", () => {
   describe("triggerScan", () => {
     it("Job + CompetitorScan kaydı oluşturur", async () => {
       const stores = await listCompetitors(userAId);
-      const first = stores[0];
+      const first = stores.items[0];
       if (!first) throw new Error("Store yok");
 
       const { jobId, scanId } = await triggerScan({
@@ -177,7 +177,7 @@ describe("competitor-service", () => {
 
     it("başka user'ın store'una triggerScan → NotFoundError", async () => {
       const storesA = await listCompetitors(userAId);
-      const first = storesA[0];
+      const first = storesA.items[0];
       if (!first) throw new Error("Store yok");
 
       await expect(
@@ -210,7 +210,7 @@ describe("competitor-service", () => {
 
     it("başka user'ın store'unu silmeye çalışınca NotFoundError", async () => {
       const stores = await listCompetitors(userAId);
-      const active = stores.find((s) => s.deletedAt === null);
+      const active = stores.items.find((s) => s.deletedAt === null);
       if (!active) throw new Error("Aktif store yok");
 
       await expect(deleteCompetitor(userBId, active.id)).rejects.toThrow(NotFoundError);

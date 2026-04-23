@@ -1,6 +1,18 @@
 import type { ReviewWindow } from "../schemas";
 
 /**
+ * filterByWindow + rankListingsByReviews bileşimi.
+ * API route'ları için tek noktadan çağrım.
+ */
+export function rankListings<T extends Rankable>(
+  listings: T[],
+  window: ReviewWindow,
+  now = new Date(),
+): T[] {
+  return rankListingsByReviews(filterByWindow(listings, window, now));
+}
+
+/**
  * Yorum sayısı tahmini popülerlik göstergesidir; kesin satış rakamı değildir.
  * UI bu sabiti import edip kullanıcıya disclaimer olarak gösterir.
  */

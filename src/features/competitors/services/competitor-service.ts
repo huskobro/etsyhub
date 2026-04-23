@@ -1,20 +1,100 @@
-import { CompetitorScanType, JobType, SourcePlatform } from "@prisma/client";
+import {
+  CompetitorListingStatus,
+  CompetitorScanType,
+  JobType,
+  SourcePlatform,
+  type Prisma,
+} from "@prisma/client";
 import { db } from "@/server/db";
 import { enqueue } from "@/server/queue";
 import { assertOwnsResource, scopedWhere } from "@/server/authorization";
 import { ConflictError, NotFoundError } from "@/lib/errors";
-import type { AddCompetitorInput } from "../schemas";
+import type {
+  AddCompetitorInput,
+  ListCompetitorListingsQuery,
+  ListCompetitorsQuery,
+  ReviewWindow,
+} from "../schemas";
 import { canonicalizeEtsyShopName } from "./canonical";
+import { rankListings } from "./ranking-service";
 
 /**
- * Kullanıcıya ait tüm rakip mağazaları listeler.
+ * Kullanıcıya ait rakip mağazaları listeler.
+ *
+ * Opsiyonel query:
+ *  - q: shop name contains filtresi (case-insensitive)
+ *  - cursor: önceki sayfanın son id'si
+ *  - limit: 1..200 (default 50)
  */
-export async function listCompetitors(userId: string) {
-  return db.competitorStore.findMany({
-    where: scopedWhere(userId),
+export async function listCompetitors(
+  userId: string,
+  query: ListCompetitorsQuery = { limit: 50 },
+) {
+  const { q, cursor, limit } = query;
+
+  const where: Prisma.CompetitorStoreWhereInput = {
+    ...scopedWhere(userId),
+    ...(q
+      ? {
+          OR: [
+            { etsyShopName: { contains: q, mode: "insensitive" } },
+            { displayName: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const rows = await db.competitorStore.findMany({
+    where,
     orderBy: { createdAt: "desc" },
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: { _count: { select: { listings: true } } },
   });
+
+  const hasMore = rows.length > limit;
+  const items = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore ? items[items.length - 1]?.id ?? null : null;
+
+  return { items, nextCursor };
+}
+
+/**
+ * Tek rakip mağazanın ranked listing listesini döndürür.
+ *
+ * Akış:
+ *  1. getCompetitor ownership doğrular (NotFoundError eğer user'a ait değilse).
+ *  2. DELETED olmayan listingleri çeker (cursor pagination).
+ *  3. filterByWindow + rankListingsByReviews uygular.
+ */
+export async function listCompetitorListings(
+  userId: string,
+  competitorStoreId: string,
+  query: ListCompetitorListingsQuery,
+) {
+  await getCompetitor(userId, competitorStoreId);
+
+  const { window, cursor, limit } = query;
+
+  const where: Prisma.CompetitorListingWhereInput = {
+    competitorStoreId,
+    userId,
+    status: { not: CompetitorListingStatus.DELETED },
+  };
+
+  const rows = await db.competitorListing.findMany({
+    where,
+    orderBy: [{ reviewCount: "desc" }, { id: "desc" }],
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  });
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const ranked = rankListings(page, window as ReviewWindow);
+  const nextCursor = hasMore ? page[page.length - 1]?.id ?? null : null;
+
+  return { items: ranked, nextCursor };
 }
 
 /**
