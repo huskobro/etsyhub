@@ -48,7 +48,7 @@ Phase 4'te **aktifleşmeyen** (Phase 5+):
 - **Dil:** Türkçe iletişim + hata mesajları; kod İngilizce.
 - **Token kuralı:** Raw hex (`#ff0000`), arbitrary value (`bg-[#ff0000]`, `w-[432px]`), inline `style={{...}}` yasak. Token scale Tailwind (`p-4`, `bg-accent`, `rounded-md`) serbest.
 - **Auth & Data Isolation:** Her trend endpoint `requireUser()` + `userId` filtre. `TrendCluster.userId` + `TrendClusterMember.userId` denormalize; iki seviyede de izolasyon test edilir.
-- **Feature gate merkezi:** `assertTrendStoriesAvailable()` tek noktada `trend_stories.enabled` + `competitors.enabled` iki flag'ı kontrol eder; biri kapalıysa `NotFoundError` (id enumeration önlemi). Tüm trend API route'ları bu helper'ı ilk satırda çağırır.
+- **Feature gate merkezi:** `assertTrendStoriesAvailable()` tek noktada `trend_stories.enabled` + `competitors.enabled` iki flag'ı kontrol eder; biri kapalıysa **her zaman** `NotFoundError` atar (id enumeration önlemi). Helper asla doğrudan `notFound()` çağırmaz — framework-agnostic kalır. Dönüşüm iki sınırda olur: (1) **API route handler**'ları `NotFoundError`'ı Next.js'in `error.ts` boundary'sine iletir; global error handler `status: 404` + `{error: "NOT_FOUND"}` JSON döner. (2) **Server component** (`/trend-stories` page) helper'ı `try/catch` ile sarıp `NotFoundError`'ı yakalar ve Next.js'in `notFound()` fonksiyonunu çağırır (`not-found.tsx`'i render etmek için). Pattern tek yönlü: helper → `NotFoundError`; çağıran bağlam (API vs page) dönüşümü yapar. Her trend route ve `/trend-stories/page.tsx` bu pattern'a uymak zorunda.
 - **Enum kullanımı:** Prisma enum kod içinde typed import (`TrendClusterStatus.ACTIVE`). Zod API payload şemaları hariç çıplak string yasak.
 - **Trend enqueue hatası scrape'i etkilemez:** `scrape-competitor.worker.ts` SUCCESS branch'inde `try/catch` ile `enqueueTrendClusterUpdate(userId)`; hata warning log + `CompetitorScan.metadata.trendEnqueueError` not, scrape SUCCESS kalır. Regression test zorunlu.
 - **Worker enqueue merkezi:** `src/features/trend-stories/services/trend-update-scheduler.ts > enqueueTrendClusterUpdate(userId)` tek giriş noktası; ham `enqueue(JobType.TREND_CLUSTER_UPDATE, ...)` çağrısı yasak.
@@ -122,7 +122,7 @@ EtsyHub/
 │   │       │   ├── normalize.ts                       # normalizeForSimilarity + normalizeForProductType
 │   │       │   ├── product-type-derive.ts             # deriveProductTypeKey()
 │   │       │   ├── seasonal-detect.ts                 # detectSeasonalTag()
-│   │       │   └── members-cursor.ts                  # encode/decode birleşik cursor
+│   │       │   └── listing-cursor.ts                  # encode/decode birleşik cursor (feed + cluster detail ortak)
 │   │       ├── constants.ts                           # WINDOW_DAYS, pencere-eşik haritası
 │   │       ├── seasonal-keywords.ts                   # keyword + tarih aralığı sözlüğü
 │   │       ├── stop-words.ts                          # signature stop-word seti
@@ -146,7 +146,7 @@ EtsyHub/
     │   ├── trend-product-type-derive.test.ts
     │   ├── trend-seasonal-detect.test.ts
     │   ├── trend-membership-hint.test.ts              # tekil seçim kuralı 4 katman
-    │   └── trend-members-cursor.test.ts               # encode/decode + kararlılık
+    │   └── trend-listing-cursor.test.ts               # encode/decode + kararlılık
     ├── integration/
     │   ├── trend-cluster-worker.test.ts               # user-scoped full recompute + STALE geçişi
     │   ├── trend-scrape-regression.test.ts            # enqueue fail → scrape SUCCESS kalır
@@ -958,7 +958,7 @@ git commit -m "feat(trend-stories): pure clusterListings with n-gram + dynamic t
 - Create: `src/features/trend-stories/services/listing-cursor.ts`
 - Test: `tests/unit/trend-listing-cursor.test.ts`
 
-> **Not:** Aynı cursor formatı hem feed endpoint'inde (`GET /api/trend-stories/feed?cursor=...`) hem cluster detail endpoint'inde (`GET /api/trend-stories/clusters/[id]?membersCursor=...`) kullanılır. İkisi de `CompetitorListing` satırlarını sayfalar. Bu yüzden helper generic isimlendirildi: `listing-cursor.ts` (önceki taslakta `members-cursor` idi; yanıltıcıydı).
+> **Not:** Aynı cursor formatı hem feed endpoint'inde (`GET /api/trend-stories/feed?cursor=...`) hem cluster detail endpoint'inde (`GET /api/trend-stories/clusters/[id]?membersCursor=...`) kullanılır. İkisi de `CompetitorListing` satırlarını sayfalar. Bu yüzden helper generic isimlendirildi: `listing-cursor.ts`. Query param'ları endpoint-specific (`cursor` / `membersCursor`) kalır, ama encode/decode fonksiyonları tek dosyadır.
 
 Cursor sözleşmesi: `CompetitorListing.firstSeenAt DESC, CompetitorListing.id DESC`. Encode: `base64("<firstSeenAt ISO>|<listingId>")`. `TrendClusterMember.id` kullanılmaz — recompute member row'u silip yeniden oluşturabilir → cursor kararsızlaşır. Listing PK + tarih kararlı.
 
@@ -966,20 +966,20 @@ Cursor sözleşmesi: `CompetitorListing.firstSeenAt DESC, CompetitorListing.id D
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { encodeMembersCursor, decodeMembersCursor } from "@/features/trend-stories/services/members-cursor";
+import { encodeListingCursor, decodeListingCursor } from "@/features/trend-stories/services/listing-cursor";
 
-describe("members cursor", () => {
+describe("listing cursor", () => {
   it("round-trip", () => {
     const seen = new Date("2026-04-24T12:34:56.000Z");
-    const cur = encodeMembersCursor({ firstSeenAt: seen, listingId: "l_abc" });
-    expect(decodeMembersCursor(cur)).toEqual({ firstSeenAt: seen, listingId: "l_abc" });
+    const cur = encodeListingCursor({ firstSeenAt: seen, listingId: "l_abc" });
+    expect(decodeListingCursor(cur)).toEqual({ firstSeenAt: seen, listingId: "l_abc" });
   });
   it("bozuk cursor → null", () => {
-    expect(decodeMembersCursor("not-base64!")).toBeNull();
-    expect(decodeMembersCursor(Buffer.from("just-a-string").toString("base64"))).toBeNull();
+    expect(decodeListingCursor("not-base64!")).toBeNull();
+    expect(decodeListingCursor(Buffer.from("just-a-string").toString("base64"))).toBeNull();
   });
   it("empty → null", () => {
-    expect(decodeMembersCursor("")).toBeNull();
+    expect(decodeListingCursor("")).toBeNull();
   });
 });
 ```
@@ -987,13 +987,13 @@ describe("members cursor", () => {
 - [ ] **Adım 2:** Implementation.
 
 ```ts
-export type MembersCursor = { firstSeenAt: Date; listingId: string };
+export type ListingCursor = { firstSeenAt: Date; listingId: string };
 
-export function encodeMembersCursor(c: MembersCursor): string {
+export function encodeListingCursor(c: ListingCursor): string {
   return Buffer.from(`${c.firstSeenAt.toISOString()}|${c.listingId}`, "utf8").toString("base64");
 }
 
-export function decodeMembersCursor(raw: string | null | undefined): MembersCursor | null {
+export function decodeListingCursor(raw: string | null | undefined): ListingCursor | null {
   if (!raw) return null;
   try {
     const decoded = Buffer.from(raw, "base64").toString("utf8");
@@ -1012,9 +1012,9 @@ export function decodeMembersCursor(raw: string | null | undefined): MembersCurs
 - [ ] **Adım 3:** Test PASS + commit.
 
 ```bash
-npm run test -- trend-members-cursor
-git add src/features/trend-stories/services/members-cursor.ts tests/unit/trend-members-cursor.test.ts
-git commit -m "feat(trend-stories): members cursor encode/decode (firstSeenAt + listingId)"
+npm run test -- trend-listing-cursor
+git add src/features/trend-stories/services/listing-cursor.ts tests/unit/trend-listing-cursor.test.ts
+git commit -m "feat(trend-stories): listing cursor encode/decode (firstSeenAt + listingId)"
 ```
 
 ---
@@ -1032,6 +1032,9 @@ git commit -m "feat(trend-stories): members cursor encode/decode (firstSeenAt + 
 import { db } from "@/server/db";
 import { NotFoundError } from "@/lib/errors";
 
+// Framework-agnostic: yalnız NotFoundError atar. Next.js notFound() import edilmez.
+// API route → global error boundary 404 JSON'a çevirir.
+// Server component → notFound() çağırma sorumluluğu page'e ait (Task 12 pattern'ı).
 export async function assertTrendStoriesAvailable(): Promise<void> {
   const flags = await db.featureFlag.findMany({
     where: { key: { in: ["trend_stories.enabled", "competitors.enabled"] } },
@@ -1539,9 +1542,9 @@ import {
   CLUSTER_MEMBERS_PAGE_SIZE,
 } from "@/features/trend-stories/constants";
 import {
-  encodeMembersCursor,
-  decodeMembersCursor,
-} from "@/features/trend-stories/services/members-cursor";
+  encodeListingCursor,
+  decodeListingCursor,
+} from "@/features/trend-stories/services/listing-cursor";
 
 const query = z.object({ membersCursor: z.string().optional() });
 
@@ -1561,7 +1564,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   });
   if (!cluster) throw new NotFoundError();
 
-  const cursor = decodeMembersCursor(parsed.data.membersCursor ?? null);
+  const cursor = decodeListingCursor(parsed.data.membersCursor ?? null);
   const members = await db.trendClusterMember.findMany({
     where: {
       clusterId: cluster.id,
@@ -1596,7 +1599,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const pageMembers = members.slice(0, CLUSTER_MEMBERS_PAGE_SIZE);
   const nextCursor =
     hasMore && pageMembers.length > 0
-      ? encodeMembersCursor({
+      ? encodeListingCursor({
           firstSeenAt: pageMembers[pageMembers.length - 1].listing.firstSeenAt,
           listingId: pageMembers[pageMembers.length - 1].listing.id,
         })
@@ -1638,7 +1641,7 @@ import { z } from "zod";
 import { requireUser } from "@/server/authorization";
 import { assertTrendStoriesAvailable } from "@/features/trend-stories/services/feature-gate";
 import { fetchFeed } from "@/features/trend-stories/services/feed-service";
-import { decodeMembersCursor } from "@/features/trend-stories/services/members-cursor";
+import { decodeListingCursor } from "@/features/trend-stories/services/listing-cursor";
 import type { WindowDays } from "@/features/trend-stories/constants";
 
 const query = z.object({
@@ -1656,7 +1659,7 @@ export async function GET(req: Request) {
   });
   if (!parsed.success) return NextResponse.json({ error: "invalid params" }, { status: 400 });
 
-  const cursor = decodeMembersCursor(parsed.data.cursor ?? null);
+  const cursor = decodeListingCursor(parsed.data.cursor ?? null);
   const result = await fetchFeed({
     userId: user.id,
     windowDays: Number(parsed.data.window) as WindowDays,
@@ -1789,7 +1792,23 @@ Seed reset: `npx prisma db seed`.
 
 - [ ] **Adım 4:** Componentler. Token scale class'lar (`bg-surface`, `text-text-muted`, `rounded-md`, `p-4`, `gap-3`, `shadow-card`). Yasak: hex, arbitrary, inline style.
 
-- `trend-stories-page.tsx` (server component): `assertTrendStoriesAvailable()` call (404 → Next.js `notFound()`) + client shell.
+- `trend-stories-page.tsx` (server component): feature gate dönüşüm örneği:
+  ```ts
+  import { notFound } from "next/navigation";
+  import { NotFoundError } from "@/lib/errors";
+  import { assertTrendStoriesAvailable } from "@/features/trend-stories/services/feature-gate";
+
+  export default async function Page() {
+    try {
+      await assertTrendStoriesAvailable();
+    } catch (err) {
+      if (err instanceof NotFoundError) notFound(); // Next.js not-found.tsx render eder
+      throw err;
+    }
+    return <TrendStoriesShell />;
+  }
+  ```
+  Helper `NotFoundError` atar; page `notFound()`'a çevirir. API route'ları aynı helper'ı çağırır ama dönüşüm yapmaz — `NotFoundError` global error boundary'ye iletilir (`status: 404` + `{error: "NOT_FOUND"}` JSON).
 - `window-tabs.tsx`: Bugün/7G/30G (URL query param'a yaz).
 - `trend-cluster-rail.tsx`: horizontal scroll rail; card grid.
 - `trend-cluster-card.tsx`: label, memberCount, storeCount, seasonalBadge, hero thumbnail (`<img>` + `eslint-disable-next-line @next/next/no-img-element` — Phase 3 carry-forward).
@@ -1887,7 +1906,7 @@ git commit -m "chore: phase 4 complete; all gates green"
 | `src/features/trend-stories/services/feature-gate.ts` | `assertTrendStoriesAvailable` iki-flag gate |
 | `src/features/trend-stories/services/trend-update-scheduler.ts` | `enqueueTrendClusterUpdate` debounce + aktif job kontrol |
 | `src/features/trend-stories/services/feed-service.ts` | Feed + deterministik `trendMembershipHint` |
-| `src/features/trend-stories/services/members-cursor.ts` | Birleşik cursor encode/decode |
+| `src/features/trend-stories/services/listing-cursor.ts` | Birleşik cursor encode/decode (feed + cluster detail ortak) |
 | `src/server/workers/trend-cluster-update.worker.ts` | User-scoped recompute worker |
 | `src/server/workers/scrape-competitor.worker.ts` | SUCCESS branch'te try/catch ile trend enqueue |
 | `src/app/api/trend-stories/**/route.ts` | User-scoped + flag-gated REST endpoint'ler |
@@ -1930,7 +1949,7 @@ git commit -m "chore: phase 4 complete; all gates green"
 - `normalizeForSimilarity` vs `normalizeForProductType`.
 - `deriveProductTypeKey` (keyword_match / member_majority / null).
 - `detectSeasonalTag` (aralık içi/dışı, yıl sarma).
-- `encodeMembersCursor` / `decodeMembersCursor` round-trip + bozuk input.
+- `encodeListingCursor` / `decodeListingCursor` round-trip + bozuk input.
 - `trendMembershipHint` resolver (4 katman tekil seçim).
 
 **Integration (gerçek Postgres + Redis):**
