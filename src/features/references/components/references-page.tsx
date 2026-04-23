@@ -60,6 +60,23 @@ export function ReferencesPage({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["references"] }),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async (args: {
+      id: string;
+      input: { collectionId?: string | null; tagIds?: string[] };
+    }) => {
+      const res = await fetch(`/api/references/${args.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(args.input),
+      });
+      if (!res.ok)
+        throw new Error((await res.json()).error ?? "Güncelleme başarısız");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["references"] }),
+  });
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -106,6 +123,13 @@ export function ReferencesPage({
               key={ref.id}
               reference={ref}
               onArchive={(id) => archiveMutation.mutate(id)}
+              onSetCollection={(id, collectionId) =>
+                updateMutation.mutate({ id, input: { collectionId } })
+              }
+              onSetTags={(id, tagIds) =>
+                updateMutation.mutate({ id, input: { tagIds } })
+              }
+              updating={updateMutation.isPending}
             />
           ))}
         </div>

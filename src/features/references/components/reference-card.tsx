@@ -1,5 +1,9 @@
 "use client";
 
+import { tagColorClass } from "@/features/tags/color-map";
+import { CollectionPicker } from "@/features/collections/components/collection-picker";
+import { TagPicker } from "@/features/tags/components/tag-picker";
+
 type ReferenceLite = {
   id: string;
   notes: string | null;
@@ -15,10 +19,16 @@ export function ReferenceCard({
   reference,
   onOpen,
   onArchive,
+  onSetCollection,
+  onSetTags,
+  updating,
 }: {
   reference: ReferenceLite;
   onOpen?: (id: string) => void;
   onArchive?: (id: string) => void;
+  onSetCollection?: (id: string, collectionId: string | null) => void;
+  onSetTags?: (id: string, tagIds: string[]) => void;
+  updating?: boolean;
 }) {
   const title =
     reference.bookmark?.title ??
@@ -54,12 +64,18 @@ export function ReferenceCard({
         </div>
       )}
 
-      {reference.tags.length > 0 ? (
+      {onSetTags ? (
+        <TagPicker
+          selected={reference.tags.map((t) => t.tag.id)}
+          onChange={(tagIds) => onSetTags(reference.id, tagIds)}
+          disabled={updating}
+        />
+      ) : reference.tags.length > 0 ? (
         <div className="flex flex-wrap gap-1">
           {reference.tags.map((t) => (
             <span
               key={t.tag.id}
-              className="rounded-md bg-surface-muted px-2 py-0.5 text-xs text-text-muted"
+              className={`rounded-md px-2 py-0.5 text-xs ${tagColorClass(t.tag.color)}`}
             >
               {t.tag.name}
             </span>
@@ -67,9 +83,24 @@ export function ReferenceCard({
         </div>
       ) : null}
 
+      {onSetCollection ? (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-muted">Koleksiyon</span>
+          <CollectionPicker
+            value={reference.collection?.id ?? null}
+            onChange={(id) => onSetCollection(reference.id, id)}
+            disabled={updating}
+          />
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-xs text-text-muted">
-          {reference.collection?.name ?? "Koleksiyon yok"}
+          {onSetCollection
+            ? reference.notes
+              ? ""
+              : "Not yok"
+            : reference.collection?.name ?? "Koleksiyon yok"}
         </span>
         <div className="flex gap-2">
           {onOpen ? (

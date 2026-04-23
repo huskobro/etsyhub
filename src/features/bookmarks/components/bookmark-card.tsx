@@ -1,6 +1,9 @@
 "use client";
 
 import type { BookmarkStatus, RiskLevel } from "@prisma/client";
+import { tagColorClass } from "@/features/tags/color-map";
+import { CollectionPicker } from "@/features/collections/components/collection-picker";
+import { TagPicker } from "@/features/tags/components/tag-picker";
 
 type BookmarkLite = {
   id: string;
@@ -21,11 +24,17 @@ export function BookmarkCard({
   onOpen,
   onArchive,
   onPromote,
+  onSetCollection,
+  onSetTags,
+  updating,
 }: {
   bookmark: BookmarkLite;
   onOpen?: (id: string) => void;
   onArchive?: (id: string) => void;
   onPromote?: (id: string) => void;
+  onSetCollection?: (id: string, collectionId: string | null) => void;
+  onSetTags?: (id: string, tagIds: string[]) => void;
+  updating?: boolean;
 }) {
   return (
     <article className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4 shadow-card">
@@ -66,12 +75,18 @@ export function BookmarkCard({
         </div>
       )}
 
-      {bookmark.tags.length > 0 ? (
+      {onSetTags ? (
+        <TagPicker
+          selected={bookmark.tags.map((t) => t.tag.id)}
+          onChange={(tagIds) => onSetTags(bookmark.id, tagIds)}
+          disabled={updating}
+        />
+      ) : bookmark.tags.length > 0 ? (
         <div className="flex flex-wrap gap-1">
           {bookmark.tags.map((t) => (
             <span
               key={t.tag.id}
-              className="rounded-md bg-surface-muted px-2 py-0.5 text-xs text-text-muted"
+              className={`rounded-md px-2 py-0.5 text-xs ${tagColorClass(t.tag.color)}`}
             >
               {t.tag.name}
             </span>
@@ -79,10 +94,23 @@ export function BookmarkCard({
         </div>
       ) : null}
 
+      {onSetCollection ? (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-muted">Koleksiyon</span>
+          <CollectionPicker
+            value={bookmark.collection?.id ?? null}
+            onChange={(id) => onSetCollection(bookmark.id, id)}
+            disabled={updating}
+          />
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-text-muted">
-          {bookmark.productType?.displayName ?? "Tip yok"} ·{" "}
-          {bookmark.collection?.name ?? "Koleksiyon yok"}
+          {bookmark.productType?.displayName ?? "Tip yok"}
+          {onSetCollection
+            ? null
+            : ` · ${bookmark.collection?.name ?? "Koleksiyon yok"}`}
         </span>
         <div className="flex gap-2">
           {onOpen ? (

@@ -73,6 +73,23 @@ export function BookmarksPage({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["bookmarks"] }),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async (args: {
+      id: string;
+      input: { collectionId?: string | null; tagIds?: string[] };
+    }) => {
+      const res = await fetch(`/api/bookmarks/${args.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(args.input),
+      });
+      if (!res.ok)
+        throw new Error((await res.json()).error ?? "Güncelleme başarısız");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bookmarks"] }),
+  });
+
   const promoteMutation = useMutation({
     mutationFn: async (args: { bookmarkId: string; productTypeId: string }) => {
       const res = await fetch("/api/references/promote", {
@@ -147,6 +164,13 @@ export function BookmarksPage({
               bookmark={bm}
               onArchive={(id) => archiveMutation.mutate(id)}
               onPromote={(id) => setPromoteId(id)}
+              onSetCollection={(id, collectionId) =>
+                updateMutation.mutate({ id, input: { collectionId } })
+              }
+              onSetTags={(id, tagIds) =>
+                updateMutation.mutate({ id, input: { tagIds } })
+              }
+              updating={updateMutation.isPending}
             />
           ))}
         </div>

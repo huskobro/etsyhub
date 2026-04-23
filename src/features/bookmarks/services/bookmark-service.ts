@@ -147,9 +147,12 @@ export async function updateBookmark(args: {
     productType: input.productTypeId
       ? { connect: { id: input.productTypeId } }
       : undefined,
-    collection: input.collectionId
-      ? { connect: { id: input.collectionId } }
-      : undefined,
+    collection:
+      input.collectionId === null
+        ? { disconnect: true }
+        : input.collectionId
+          ? { connect: { id: input.collectionId } }
+          : undefined,
   };
 
   if (input.tagIds) {
