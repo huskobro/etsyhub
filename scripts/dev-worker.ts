@@ -5,7 +5,7 @@ config({ path: path.resolve(process.cwd(), ".env.local") });
 
 async function main() {
   const { startWorkers } = await import("../src/server/workers/bootstrap");
-  startWorkers();
+  await startWorkers();
 }
 
 main().catch((err) => {
