@@ -117,6 +117,12 @@ enum ProviderKind {
   OCR
 }
 
+enum TrendClusterStatus {
+  ACTIVE
+  STALE
+  ARCHIVED
+}
+
 // ============= CORE =============
 
 model User {
@@ -145,6 +151,7 @@ model User {
   competitorListings CompetitorListing[]
   competitorScans    CompetitorScan[]
   costUsages         CostUsage[]
+  trendClusters      TrendCluster[]
 
   @@index([deletedAt])
 }
@@ -250,6 +257,9 @@ model CompetitorListing {
   rawMetadata       Json? // scraper'dan ham veri (debug + ileride yeni alan ekleme için)
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
+
+  trendMembers   TrendClusterMember[]
+  heroOfClusters TrendCluster[]       @relation("TrendClusterHero")
 
   @@unique([competitorStoreId, externalId])
   @@index([userId])
@@ -374,6 +384,7 @@ model ProductType {
   generatedDesigns GeneratedDesign[]
   listings         Listing[]
   recipes          Recipe[]
+  trendClusters    TrendCluster[]
 }
 
 model Bookmark {
@@ -398,6 +409,11 @@ model Bookmark {
   updatedAt      DateTime       @updatedAt
   deletedAt      DateTime?
 
+  trendClusterId            String?
+  trendCluster              TrendCluster? @relation(fields: [trendClusterId], references: [id], onDelete: SetNull)
+  trendClusterLabelSnapshot String?
+  trendWindowDaysSnapshot   Int?
+
   tags       BookmarkTag[]
   references Reference[]
 
@@ -405,6 +421,7 @@ model Bookmark {
   @@index([status])
   @@index([productTypeId])
   @@index([collectionId])
+  @@index([trendClusterId])
 }
 
 model BookmarkTag {
@@ -681,4 +698,51 @@ model NegativeLibraryEntry {
   category  String?
   isSystem  Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+// ============= TREND CLUSTERS =============
+
+model TrendCluster {
+  id                    String             @id @default(cuid())
+  userId                String
+  user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signature             String
+  label                 String
+  productTypeId         String?
+  productType           ProductType?       @relation(fields: [productTypeId], references: [id], onDelete: SetNull)
+  productTypeSource     String?
+  productTypeConfidence Int?
+  windowDays            Int
+  memberCount           Int                @default(0)
+  storeCount            Int                @default(0)
+  totalReviewCount      Int                @default(0)
+  latestMemberSeenAt    DateTime?
+  heroListingId         String?
+  heroListing           CompetitorListing? @relation("TrendClusterHero", fields: [heroListingId], references: [id], onDelete: SetNull)
+  seasonalTag           String?
+  status                TrendClusterStatus @default(ACTIVE)
+  clusterScore          Int                @default(0)
+  computedAt            DateTime           @default(now())
+
+  members   TrendClusterMember[]
+  bookmarks Bookmark[]
+
+  @@unique([userId, signature, windowDays])
+  @@index([userId, status, latestMemberSeenAt(sort: Desc)])
+  @@index([userId, windowDays, clusterScore(sort: Desc)])
+}
+
+model TrendClusterMember {
+  id        String            @id @default(cuid())
+  clusterId String
+  cluster   TrendCluster      @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  listingId String
+  listing   CompetitorListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  userId    String
+  addedAt   DateTime          @default(now())
+
+  @@unique([clusterId, listingId])
+  @@index([listingId])
+  @@index([userId, clusterId])
+  @@index([userId, listingId])
 }
