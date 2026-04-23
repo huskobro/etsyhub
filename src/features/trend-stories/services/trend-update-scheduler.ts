@@ -4,11 +4,23 @@ import { enqueue } from "@/server/queue";
 import { logger } from "@/lib/logger";
 import { DEBOUNCE_WINDOW_MS } from "@/features/trend-stories/constants";
 
+/**
+ * @todo TREND_CLUSTER_UPDATE worker'ı Task 7'de
+ * src/server/workers/bootstrap.ts'e kayıt edilecek.
+ * O ana kadar enqueue edilen job'lar QUEUED kalır.
+ */
+
 export type EnqueueResult =
   | { status: "enqueued"; jobId: string }
   | { status: "skipped"; reason: "active_job" | "debounced" };
 
 /**
+ * NOT: Bu fonksiyon check-then-act pattern kullanır — iki paralel çağrı aynı
+ * userId için iki QUEUED job oluşturabilir (DB-level unique constraint yok).
+ * MVP için kabul edilen risk; tek kullanıcılı localhost senaryosunda pratik
+ * çakışma olası değil. Gerekirse ileride Job tablosuna partial unique index
+ * veya advisory lock eklenebilir.
+ *
  * Kullanıcı için TREND_CLUSTER_UPDATE job'ını kuyruğa alır.
  *
  * Debounce kuralları:

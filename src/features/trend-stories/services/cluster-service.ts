@@ -9,7 +9,7 @@ import {
   type WindowDays,
 } from "@/features/trend-stories/constants";
 import { db } from "@/server/db";
-import { TrendClusterStatus } from "@prisma/client";
+import { TrendClusterStatus, CompetitorListingStatus } from "@prisma/client";
 
 export type CompetitorListingForCluster = {
   id: string;
@@ -184,7 +184,7 @@ export async function recomputeTrendClustersForUser(
       where: {
         competitorStoreId: { in: userCompetitorStoreIds },
         firstSeenAt: { gte: since },
-        status: "ACTIVE",
+        status: CompetitorListingStatus.ACTIVE,
       },
       select: {
         id: true,
@@ -219,78 +219,80 @@ export async function recomputeTrendClustersForUser(
     const activeSignatures = new Set<string>();
     for (const c of candidates) {
       activeSignatures.add(c.signature);
-      const cluster = await db.trendCluster.upsert({
-        where: {
-          userId_signature_windowDays: {
+      await db.$transaction(async (tx) => {
+        const cluster = await tx.trendCluster.upsert({
+          where: {
+            userId_signature_windowDays: {
+              userId,
+              signature: c.signature,
+              windowDays,
+            },
+          },
+          create: {
             userId,
             signature: c.signature,
+            label: c.label,
+            productTypeId: c.productTypeKey
+              ? (keyToId.get(c.productTypeKey) ?? null)
+              : null,
+            productTypeSource: c.productTypeSource,
+            productTypeConfidence: c.productTypeConfidence,
             windowDays,
+            memberCount: c.memberCount,
+            storeCount: c.storeCount,
+            totalReviewCount: c.totalReviewCount,
+            latestMemberSeenAt: c.latestMemberSeenAt,
+            heroListingId: c.heroListingId,
+            seasonalTag: c.seasonalTag,
+            status: TrendClusterStatus.ACTIVE,
+            clusterScore: c.clusterScore,
+            computedAt: now,
           },
-        },
-        create: {
-          userId,
-          signature: c.signature,
-          label: c.label,
-          productTypeId: c.productTypeKey
-            ? (keyToId.get(c.productTypeKey) ?? null)
-            : null,
-          productTypeSource: c.productTypeSource,
-          productTypeConfidence: c.productTypeConfidence,
-          windowDays,
-          memberCount: c.memberCount,
-          storeCount: c.storeCount,
-          totalReviewCount: c.totalReviewCount,
-          latestMemberSeenAt: c.latestMemberSeenAt,
-          heroListingId: c.heroListingId,
-          seasonalTag: c.seasonalTag,
-          status: TrendClusterStatus.ACTIVE,
-          clusterScore: c.clusterScore,
-          computedAt: now,
-        },
-        update: {
-          label: c.label,
-          productTypeId: c.productTypeKey
-            ? (keyToId.get(c.productTypeKey) ?? null)
-            : null,
-          productTypeSource: c.productTypeSource,
-          productTypeConfidence: c.productTypeConfidence,
-          memberCount: c.memberCount,
-          storeCount: c.storeCount,
-          totalReviewCount: c.totalReviewCount,
-          latestMemberSeenAt: c.latestMemberSeenAt,
-          heroListingId: c.heroListingId,
-          seasonalTag: c.seasonalTag,
-          status: TrendClusterStatus.ACTIVE,
-          clusterScore: c.clusterScore,
-          computedAt: now,
-        },
-      });
-
-      // Member diff (set fark)
-      const existing = await db.trendClusterMember.findMany({
-        where: { clusterId: cluster.id },
-        select: { listingId: true },
-      });
-      const existingIds = new Set(existing.map((e) => e.listingId));
-      const newIds = new Set(c.memberListingIds);
-      const toAdd = [...newIds].filter((id) => !existingIds.has(id));
-      const toRemove = [...existingIds].filter((id) => !newIds.has(id));
-
-      if (toAdd.length) {
-        await db.trendClusterMember.createMany({
-          data: toAdd.map((listingId) => ({
-            clusterId: cluster.id,
-            listingId,
-            userId,
-          })),
-          skipDuplicates: true,
+          update: {
+            label: c.label,
+            productTypeId: c.productTypeKey
+              ? (keyToId.get(c.productTypeKey) ?? null)
+              : null,
+            productTypeSource: c.productTypeSource,
+            productTypeConfidence: c.productTypeConfidence,
+            memberCount: c.memberCount,
+            storeCount: c.storeCount,
+            totalReviewCount: c.totalReviewCount,
+            latestMemberSeenAt: c.latestMemberSeenAt,
+            heroListingId: c.heroListingId,
+            seasonalTag: c.seasonalTag,
+            status: TrendClusterStatus.ACTIVE,
+            clusterScore: c.clusterScore,
+            computedAt: now,
+          },
         });
-      }
-      if (toRemove.length) {
-        await db.trendClusterMember.deleteMany({
-          where: { clusterId: cluster.id, listingId: { in: toRemove } },
+
+        // Member diff (set fark)
+        const existing = await tx.trendClusterMember.findMany({
+          where: { clusterId: cluster.id },
+          select: { listingId: true },
         });
-      }
+        const existingIds = new Set(existing.map((e) => e.listingId));
+        const newIds = new Set(c.memberListingIds);
+        const toAdd = [...newIds].filter((id) => !existingIds.has(id));
+        const toRemove = [...existingIds].filter((id) => !newIds.has(id));
+
+        if (toAdd.length) {
+          await tx.trendClusterMember.createMany({
+            data: toAdd.map((listingId) => ({
+              clusterId: cluster.id,
+              listingId,
+              userId,
+            })),
+            skipDuplicates: true,
+          });
+        }
+        if (toRemove.length) {
+          await tx.trendClusterMember.deleteMany({
+            where: { clusterId: cluster.id, listingId: { in: toRemove } },
+          });
+        }
+      });
     }
 
     // Eşik altına düşen cluster'ları STALE işaretle (window-scoped)
