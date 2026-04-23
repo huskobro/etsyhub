@@ -1,0 +1,88 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ThemeStatus } from "@prisma/client";
+
+type ThemeRow = {
+  id: string;
+  name: string;
+  status: ThemeStatus;
+  isSystem: boolean;
+  tokens: unknown;
+  createdAt: string;
+};
+
+async function fetchThemes(): Promise<ThemeRow[]> {
+  const res = await fetch("/api/admin/themes", { cache: "no-store" });
+  if (!res.ok) throw new Error("Tema listesi alınamadı");
+  const data = (await res.json()) as { themes: ThemeRow[] };
+  return data.themes;
+}
+
+async function activateTheme(themeId: string) {
+  const res = await fetch("/api/admin/themes", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ themeId }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error ?? "Aktifleştirme başarısız");
+  return res.json();
+}
+
+export function ThemesList() {
+  const qc = useQueryClient();
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["admin", "themes"],
+    queryFn: fetchThemes,
+  });
+  const mutation = useMutation({
+    mutationFn: activateTheme,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "themes"] }),
+  });
+
+  if (isLoading) return <p className="text-sm text-text-muted">Yükleniyor…</p>;
+  if (error) return <p className="text-sm text-danger">{(error as Error).message}</p>;
+  if (!data) return null;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-xs text-text-muted">
+        Token editörü Phase 10&apos;da eklenecek; şu an sadece aktif tema seçimi yapılabilir.
+      </p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {data.map((t) => (
+          <div
+            key={t.id}
+            className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4 shadow-card"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="font-medium text-text">{t.name}</span>
+                <span className="text-xs text-text-muted">
+                  {t.isSystem ? "Sistem" : "Özel"} · {t.status}
+                </span>
+              </div>
+              {t.status === "ACTIVE" ? (
+                <span className="rounded-md bg-success/15 px-2 py-1 text-xs text-success">
+                  AKTİF
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  disabled={mutation.isPending}
+                  onClick={() => mutation.mutate(t.id)}
+                  className="rounded-md border border-border px-3 py-1 text-xs hover:bg-surface-muted"
+                >
+                  Aktifleştir
+                </button>
+              )}
+            </div>
+            <pre className="max-h-48 overflow-auto rounded-md bg-bg p-3 text-xs text-text-muted">
+              {JSON.stringify(t.tokens, null, 2)}
+            </pre>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
