@@ -83,18 +83,18 @@ describe("AssetImage", () => {
   });
 
   describe("frame mode", () => {
-    it("default → root element has aspect-card Frame class", () => {
-      const { container } = wrapper(<AssetImage assetId={null} alt="x" />);
+    it("default → root has data-slot=\"asset-image-frame\"", () => {
+      const { container } = wrapper(<AssetImage assetId="a1" alt="x" />);
       const root = container.firstElementChild as HTMLElement;
-      expect(root.className).toContain("aspect-card");
+      expect(root.getAttribute("data-slot")).toBe("asset-image-frame");
     });
 
-    it("unstyled → root element does NOT have aspect-card Frame class", () => {
+    it("frame={false} → root does NOT have data-slot=\"asset-image-frame\"", () => {
       const { container } = wrapper(
-        <AssetImage assetId={null} alt="x" unstyled />,
+        <AssetImage assetId="a1" alt="x" frame={false} />,
       );
       const root = container.firstElementChild as HTMLElement;
-      expect(root.className).not.toContain("aspect-card");
+      expect(root.getAttribute("data-slot")).not.toBe("asset-image-frame");
     });
   });
 });

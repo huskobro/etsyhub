@@ -53,8 +53,9 @@ export function CollectionThumb({
           "aspect-video overflow-hidden rounded-md",
           className,
         )}
+        aria-label={alt}
       >
-        <AssetImage assetId={first} alt={alt ?? ""} unstyled />
+        <AssetImage assetId={first} alt={alt ?? ""} frame={false} />
       </div>
     );
   }
@@ -70,7 +71,7 @@ export function CollectionThumb({
       aria-label={alt}
     >
       {slots.map((id) => (
-        <AssetImage key={id} assetId={id} alt="" unstyled />
+        <AssetImage key={id} assetId={id} alt="" frame={false} />
       ))}
     </div>
   );

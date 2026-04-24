@@ -6,15 +6,16 @@ export type AssetImageProps = {
   assetId: string | null | undefined;
   alt: string;
   /**
-   * Varsayılan (false) → aspect-card (4/3) Frame wrapper uygulanır; mevcut
-   * tüketiciler (BookmarkCard, ReferenceCard vb.) için backward-compatible.
+   * Varsayılan (true) → aspect-card (4/3) Frame wrapper uygulanır; mevcut
+   * tüketiciler (BookmarkCard, ReferenceCard vb.) için backward-compatible
+   * (prop geçirmeyen çağırıcılar aynı davranışı görür).
    *
-   * true → Frame wrapper atlanır; sadece inner content (loading skeleton /
+   * false → Frame wrapper atlanır; sadece inner content (loading skeleton /
    * empty state / <img>) `h-full w-full` olarak render edilir. Outer aspect
    * ratio kontrolü çağıran bileşenin sorumluluğundadır (örn. CollectionThumb
    * `aspect-video` container'ı).
    */
-  unstyled?: boolean;
+  frame?: boolean;
 };
 
 async function fetchSignedUrl(assetId: string): Promise<string> {
@@ -33,7 +34,11 @@ async function fetchSignedUrl(assetId: string): Promise<string> {
 const frameClass = "aspect-card w-full overflow-hidden rounded-md bg-surface-muted";
 
 function Frame({ children }: { children: React.ReactNode }) {
-  return <div className={frameClass}>{children}</div>;
+  return (
+    <div data-slot="asset-image-frame" className={frameClass}>
+      {children}
+    </div>
+  );
 }
 
 function EmptyContent({ label = "Görsel yok" }: { label?: string }) {
@@ -62,7 +67,7 @@ function LoadingContent() {
 export function AssetImage({
   assetId,
   alt,
-  unstyled = false,
+  frame = true,
 }: AssetImageProps): JSX.Element {
   const query = useQuery({
     queryKey: ["asset-signed-url", assetId],
@@ -99,5 +104,5 @@ export function AssetImage({
     <EmptyContent />
   );
 
-  return unstyled ? content : <Frame>{content}</Frame>;
+  return frame ? <Frame>{content}</Frame> : content;
 }
