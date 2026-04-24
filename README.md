@@ -58,8 +58,23 @@ Admin girişi için `.env.local` dosyasındaki `ADMIN_EMAIL` / `ADMIN_PASSWORD` 
 - **Auth:** NextAuth v5 Credentials + JWT + bcryptjs
 - **Test:** Vitest (unit + integration) + Playwright (e2e)
 
-## Kaynaklar ve Notlar
+## Phase Durumu
 
-Matesy/Listybox referansları ve video/screenshot arşivi için `CLAUDE.md` ve `docs/references/` klasörüne bak.
+| Phase | Kapsam | Durum |
+|-------|--------|-------|
+| 1 | App iskelet: auth, user/admin rolleri, theme token, app shell, dashboard | ✅ |
+| 2 | Bookmark Inbox, Reference Board, Collections, Tags, Asset upload/URL import, data isolation | ✅ |
+| 3 | Competitor Analysis: scraper abstraction, review-based ranking, Etsy/Amazon parser, daily cron | ✅ |
+| 4 | Trend Stories: n-gram cluster + rail/feed/drawer + window tabs + feature gate | ✅ |
+| 5 | Variation Generation (AI provider) | ⏳ Sıradaki |
+| 6 | AI Quality Review | ⏳ |
+| 7 | Selection Studio | ⏳ |
+| 8 | Mockup Studio | ⏳ |
+| 9 | Listing Builder + Etsy draft push | ⏳ |
+| 10 | Admin hardening (prompt versioning, theme editor, cost usage, negative library) | ⏳ |
 
-Phase 1+2 kapsamı: iskelet + auth + admin baz + Bookmark/Reference/Collections/Assets. Sonraki phase'ler kendi planlarında ele alınacak.
+Phase dokümanları: [`docs/plans/`](docs/plans/). Matesy/Listybox referansları için `CLAUDE.md`'ye bak.
+
+## Lisans
+
+Şu an lisans belirtilmemiştir; tüm haklar saklıdır.
