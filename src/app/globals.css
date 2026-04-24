@@ -70,8 +70,9 @@
     --radius-lg: 10px;  /* dialog, large surface */
 
     /* ——— Shadow ———————————————————————————————————————— */
-    --shadow-card:    0 1px 2px rgba(26, 23, 21, 0.04), 0 1px 1px rgba(26, 23, 21, 0.03);
-    --shadow-popover: 0 12px 32px rgba(26, 23, 21, 0.12), 0 2px 6px rgba(26, 23, 21, 0.06);
+    --shadow-card:       0 1px 2px rgba(26, 23, 21, 0.04), 0 1px 1px rgba(26, 23, 21, 0.03);
+    --shadow-card-hover: 0 4px 12px rgba(26, 23, 21, 0.07), 0 1px 2px rgba(26, 23, 21, 0.04);
+    --shadow-popover:    0 12px 32px rgba(26, 23, 21, 0.12), 0 2px 6px rgba(26, 23, 21, 0.06);
 
     /* ——— Typography ———————————————————————————————————— */
     --font-sans: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -154,3 +155,18 @@
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.55; }
 }
+
+/* ——— Thumb fallback preset'leri ————————————————————————
+ * Canvas `primitives.jsx` → `Thumb({kind})` dokusunu taşır. 9 kind; raw
+ * hex değerler bilinçli — globals.css tokens whitelist'inde. İleride bu
+ * preset'ler spec'e göre güncellenirse yine aynı kind alias'ı korunur.
+ */
+.thumb-bg-boho       { background: linear-gradient(180deg, #E8DBC5 0%, #C9A87A 100%); }
+.thumb-bg-christmas  { background: linear-gradient(180deg, #1E3A2E 0%, #0F2019 100%); }
+.thumb-bg-nursery    { background: linear-gradient(180deg, #F5E8DC 0%, #E8D0B8 100%); }
+.thumb-bg-poster     { background: #F3EDE3; }
+.thumb-bg-clipart    { background: repeating-conic-gradient(#F3F2EC 0 25%, #FFFFFF 0 50%) 0 0 / 16px 16px; }
+.thumb-bg-sticker    { background: #FBF8F2; }
+.thumb-bg-abstract   { background: radial-gradient(ellipse at 30% 20%, #F2C9A3 0%, #E89B5B 35%, #C1582C 70%, #5E2819 100%); }
+.thumb-bg-landscape  { background: linear-gradient(180deg, #C5D8E0 0%, #E8D4B8 55%, #8B6F4E 100%); }
+.thumb-bg-neutral    { background: repeating-linear-gradient(45deg, hsl(var(--color-surface-muted)) 0 8px, hsl(var(--color-surface-3)) 8px 16px); }

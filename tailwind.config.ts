@@ -51,6 +51,7 @@ export default {
       },
       boxShadow: {
         card: "var(--shadow-card)",
+        "card-hover": "var(--shadow-card-hover)",
         popover: "var(--shadow-popover)",
       },
       fontFamily: {

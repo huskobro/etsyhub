@@ -6,6 +6,8 @@ import { Badge, Tag, type BadgeTone } from "@/components/ui/Badge";
 import { ChipFilterDemo, ChipRemovableDemo } from "./ChipDemo";
 import { Skeleton, SkeletonCardGrid, SkeletonTable } from "@/components/ui/Skeleton";
 import { StateMessage } from "@/components/ui/StateMessage";
+import { Thumb, type ThumbKind } from "@/components/ui/Thumb";
+import { Card, StatCardBody, AssetCardMeta } from "@/components/ui/Card";
 
 /**
  * Primitives showcase — spec "Primitives showcase" artboard karşılığı.
@@ -14,6 +16,17 @@ import { StateMessage } from "@/components/ui/StateMessage";
 
 const VARIANTS = ["primary", "secondary", "ghost", "destructive"] as const;
 const SIZES = ["sm", "md", "lg"] as const;
+const THUMB_KINDS: ThumbKind[] = [
+  "boho",
+  "christmas",
+  "nursery",
+  "poster",
+  "clipart",
+  "sticker",
+  "abstract",
+  "landscape",
+  "neutral",
+];
 const BADGE_TONES: BadgeTone[] = ["neutral", "accent", "success", "warning", "danger", "info"];
 const BADGE_LABELS: Record<BadgeTone, string> = {
   neutral: "Clipart",
@@ -339,6 +352,167 @@ export default function PrimitivesShowcasePage() {
               action={<Button variant="secondary" size="sm">Yeniden bağla</Button>}
             />
           </div>
+        </div>
+      </Section>
+
+      <header className="space-y-1 pt-4">
+        <h1 className="text-2xl font-semibold">Thumb / AssetSurface</h1>
+        <p className="text-text-muted">
+          Spec A.2.9 — 9 kind fallback, 3 aspect, hover scale-subtle (sadece yüzey), selected accent outer ring.
+        </p>
+      </header>
+
+      <Section title="Thumb · 9 kind (aspect card 4/3)">
+        <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+          {THUMB_KINDS.map((kind) => (
+            <div key={kind} className="space-y-1">
+              <Thumb kind={kind} aspect="card" />
+              <p className="font-mono text-xs tracking-wide text-text-subtle text-center">
+                {kind}
+              </p>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Thumb · aspect (card / portrait / square)">
+        <div className="grid grid-cols-3 gap-3 max-w-2xl">
+          <div className="space-y-1">
+            <Thumb kind="abstract" aspect="card" />
+            <p className="font-mono text-xs tracking-wide text-text-subtle text-center">card 4/3</p>
+          </div>
+          <div className="space-y-1">
+            <Thumb kind="nursery" aspect="portrait" />
+            <p className="font-mono text-xs tracking-wide text-text-subtle text-center">portrait 2/3</p>
+          </div>
+          <div className="space-y-1">
+            <Thumb kind="clipart" aspect="square" />
+            <p className="font-mono text-xs tracking-wide text-text-subtle text-center">square 1/1</p>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Thumb · selected + overlay slot">
+        <div className="grid grid-cols-3 gap-3 max-w-xl">
+          <Thumb kind="poster" selected />
+          <Thumb kind="sticker" overlay={<Badge tone="accent">Seçili</Badge>} />
+          <Thumb kind="neutral" label="Önizleme yok" />
+        </div>
+      </Section>
+
+      <header className="space-y-1 pt-4">
+        <h1 className="text-2xl font-semibold">Card</h1>
+        <p className="text-text-muted">
+          Spec A.2.3 — stat / asset / list; hover border-strong + shadow-card-hover; kart kutusu scale etmez.
+        </p>
+      </header>
+
+      <Section title="Card · Stat (mono label + 3xl numeral + trend badge)">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card variant="stat">
+            <StatCardBody
+              label="Yayındaki listing"
+              value="248"
+              trend={<Badge tone="success" dot>+12</Badge>}
+            />
+          </Card>
+          <Card variant="stat">
+            <StatCardBody
+              label="Review bekleyen"
+              value="17"
+              trend={<Badge tone="warning">Review</Badge>}
+            />
+          </Card>
+          <Card variant="stat" selected>
+            <StatCardBody
+              label="Aylık gelir"
+              value="$4.280"
+              trend={<Badge tone="accent" dot>Seçili</Badge>}
+            />
+          </Card>
+        </div>
+      </Section>
+
+      <Section title="Card · Asset (p-0 · aspect-card full-bleed · 12px meta pad)">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card variant="asset" interactive>
+            <Thumb kind="boho" hoverable />
+            <AssetCardMeta>
+              <h3 className="text-sm font-medium truncate">Boho Sun Wall Art</h3>
+              <div className="flex items-center gap-2">
+                <Tag>Wall art</Tag>
+                <span className="font-mono text-xs text-text-subtle truncate">etsy.com/...</span>
+              </div>
+            </AssetCardMeta>
+          </Card>
+          <Card variant="asset" interactive selected>
+            <Thumb kind="christmas" hoverable selected />
+            <AssetCardMeta>
+              <h3 className="text-sm font-medium truncate">Christmas Joy Poster</h3>
+              <div className="flex items-center gap-2">
+                <Tag>Poster</Tag>
+                <span className="font-mono text-xs text-text-subtle truncate">etsy.com/...</span>
+              </div>
+            </AssetCardMeta>
+          </Card>
+          <Card variant="asset" interactive>
+            <Thumb kind="clipart" hoverable />
+            <AssetCardMeta>
+              <h3 className="text-sm font-medium truncate">Clipart Bundle 25 PNG</h3>
+              <div className="flex items-center gap-2">
+                <Tag>Clipart</Tag>
+                <span className="font-mono text-xs text-text-subtle truncate">etsy.com/...</span>
+              </div>
+            </AssetCardMeta>
+          </Card>
+          <Card variant="asset" interactive>
+            <Thumb kind="nursery" hoverable />
+            <AssetCardMeta>
+              <h3 className="text-sm font-medium truncate">Nursery Little One</h3>
+              <div className="flex items-center gap-2">
+                <Tag>Printable</Tag>
+                <span className="font-mono text-xs text-text-subtle truncate">etsy.com/...</span>
+              </div>
+            </AssetCardMeta>
+          </Card>
+        </div>
+        <p className="mt-3 font-mono text-xs tracking-wide text-text-subtle">
+          Hover: kart border-strong + shadow-card-hover · thumbnail scale-subtle (1.015×) · kart kutusu scale etmez
+        </p>
+      </Section>
+
+      <Section title="Card · List (sol thumb + sağ meta, selected = accent-soft)">
+        <div className="space-y-2 max-w-2xl">
+          <Card variant="list" interactive>
+            <div className="w-12 shrink-0">
+              <Thumb kind="abstract" aspect="square" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">Abstract Warm Tones</div>
+              <div className="font-mono text-xs text-text-subtle">etsy.com/listing/8421</div>
+            </div>
+            <Badge tone="success">Yayında</Badge>
+          </Card>
+          <Card variant="list" interactive selected>
+            <div className="w-12 shrink-0">
+              <Thumb kind="sticker" aspect="square" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">Good Vibes Sticker</div>
+              <div className="font-mono text-xs text-text-subtle">etsy.com/listing/7712</div>
+            </div>
+            <Badge tone="accent">Seçili</Badge>
+          </Card>
+          <Card variant="list" interactive>
+            <div className="w-12 shrink-0">
+              <Thumb kind="landscape" aspect="square" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">Mountain Landscape Print</div>
+              <div className="font-mono text-xs text-text-subtle">etsy.com/listing/9904</div>
+            </div>
+            <Badge tone="warning">Review</Badge>
+          </Card>
         </div>
       </Section>
     </main>
