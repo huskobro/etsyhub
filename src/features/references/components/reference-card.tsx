@@ -1,9 +1,11 @@
 "use client";
 
+import { Check } from "lucide-react";
+import { Card, AssetCardMeta } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { AssetImage } from "@/components/ui/asset-image";
-import { tagColorClass } from "@/features/tags/color-map";
-import { CollectionPicker } from "@/features/collections/components/collection-picker";
-import { TagPicker } from "@/features/tags/components/tag-picker";
+import { cn } from "@/lib/cn";
 
 type ReferenceLite = {
   id: string;
@@ -18,106 +20,89 @@ type ReferenceLite = {
 
 export function ReferenceCard({
   reference,
-  onOpen,
+  selected,
+  onToggleSelect,
   onArchive,
-  onSetCollection,
-  onSetTags,
-  updating,
 }: {
   reference: ReferenceLite;
-  onOpen?: (id: string) => void;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
   onArchive?: (id: string) => void;
-  onSetCollection?: (id: string, collectionId: string | null) => void;
-  onSetTags?: (id: string, tagIds: string[]) => void;
-  updating?: boolean;
 }) {
   const title =
-    reference.bookmark?.title ??
-    reference.bookmark?.sourceUrl ??
-    reference.productType?.displayName ??
-    "Referans";
+    reference.bookmark?.title ?? reference.bookmark?.sourceUrl ?? "Referans";
+  const createdLabel = new Date(reference.createdAt).toLocaleDateString("tr-TR");
+  const source = (() => {
+    if (!reference.bookmark?.sourceUrl) return "—";
+    try {
+      return new URL(reference.bookmark.sourceUrl).hostname.replace(/^www\./, "");
+    } catch {
+      return reference.bookmark.sourceUrl;
+    }
+  })();
 
   return (
-    <article className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4 shadow-card">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col">
-          <h3 className="truncate text-sm font-medium text-text">{title}</h3>
-          <span className="text-xs text-text-muted">
-            {new Date(reference.createdAt).toLocaleString("tr-TR")}
-          </span>
-        </div>
-        {reference.productType ? (
-          <span className="rounded-md bg-accent/15 px-2 py-0.5 text-xs text-accent">
-            {reference.productType.displayName}
-          </span>
+    <Card variant="asset" interactive selected={selected}>
+      <div className="relative">
+        {reference.asset ? (
+          <AssetImage assetId={reference.asset.id} alt={title} />
+        ) : (
+          <div className="flex aspect-square items-center justify-center bg-surface-muted text-xs text-text-subtle">
+            Görsel yok
+          </div>
+        )}
+        {onToggleSelect ? (
+          <button
+            type="button"
+            aria-label="Seç"
+            aria-pressed={selected}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect(reference.id);
+            }}
+            className={cn(
+              "absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-sm border",
+              selected
+                ? "border-accent bg-accent text-accent-foreground"
+                : "border-border bg-surface/80 text-text-subtle hover:text-text",
+            )}
+          >
+            {selected ? <Check className="h-4 w-4" aria-hidden /> : null}
+          </button>
         ) : null}
       </div>
-
-      <AssetImage assetId={reference.asset?.id ?? null} alt={title} />
-
-      {onSetTags ? (
-        <TagPicker
-          selected={reference.tags.map((t) => t.tag.id)}
-          onChange={(tagIds) => onSetTags(reference.id, tagIds)}
-          disabled={updating}
-        />
-      ) : reference.tags.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
-          {reference.tags.map((t) => (
-            <span
-              key={t.tag.id}
-              className={`rounded-md px-2 py-0.5 text-xs ${tagColorClass(t.tag.color)}`}
-            >
-              {t.tag.name}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      {onSetCollection ? (
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-text-muted">Koleksiyon</span>
-          <CollectionPicker
-            value={reference.collection?.id ?? null}
-            onChange={(id) => onSetCollection(reference.id, id)}
-            disabled={updating}
-          />
-        </div>
-      ) : null}
-
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-xs text-text-muted">
-          {onSetCollection
-            ? reference.notes
-              ? ""
-              : "Not yok"
-            : reference.collection?.name ?? "Koleksiyon yok"}
-        </span>
-        <div className="flex gap-2">
-          {onOpen ? (
-            <button
-              type="button"
-              onClick={() => onOpen(reference.id)}
-              className="rounded-md border border-border px-2 py-1 text-xs text-text hover:bg-surface-muted"
-            >
-              Aç
-            </button>
-          ) : null}
-          {onArchive ? (
-            <button
-              type="button"
-              onClick={() => onArchive(reference.id)}
-              className="rounded-md border border-border px-2 py-1 text-xs text-text-muted hover:bg-surface-muted"
-            >
-              Arşivle
-            </button>
+      <AssetCardMeta>
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-text">
+            {title}
+          </h3>
+          {reference.productType ? (
+            <Badge tone="accent">{reference.productType.displayName}</Badge>
           ) : null}
         </div>
-      </div>
-
-      {reference.notes ? (
-        <p className="line-clamp-2 text-xs text-text-muted">{reference.notes}</p>
-      ) : null}
-    </article>
+        <div className="text-xs text-text-subtle">
+          {source} · {createdLabel}
+        </div>
+        <div className="flex items-center justify-between pt-1">
+          <span className="truncate text-xs text-text-subtle">
+            {reference.collection?.name ?? "Koleksiyon yok"}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button variant="secondary" size="sm" disabled>
+              Benzerini yap
+            </Button>
+            {onArchive ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onArchive(reference.id)}
+              >
+                Arşivle
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </AssetCardMeta>
+    </Card>
   );
 }

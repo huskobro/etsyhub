@@ -37,6 +37,14 @@ export const confirmPresets = {
     tone: "destructive",
   }),
 
+  archiveReferencesBulk: (count: number): ConfirmPresetValue => ({
+    title: "Seçili referansları arşivle",
+    description: `${count} referans arşivlenecek. Reference Board'dan kaldırılırlar; üretime dahil olmazlar.`,
+    confirmLabel: "Arşivle",
+    cancelLabel: "Vazgeç",
+    tone: "destructive",
+  }),
+
   archiveCollection: (name?: string | null): ConfirmPresetValue => ({
     title: "Koleksiyonu arşivle",
     description: name

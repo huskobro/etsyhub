@@ -105,6 +105,17 @@ describe("confirmPresets", () => {
     });
   });
 
+  describe("archiveReferencesBulk", () => {
+    it("count'u description'a koyar", () => {
+      const p = confirmPresets.archiveReferencesBulk(3);
+      expect(p.title).toBe("Seçili referansları arşivle");
+      expect(p.description).toMatch(/3 referans arşivlenecek/);
+      expect(p.confirmLabel).toBe("Arşivle");
+      expect(p.cancelLabel).toBe("Vazgeç");
+      expect(p.tone).toBe("destructive");
+    });
+  });
+
   describe("Türkçe karakter bütünlüğü", () => {
     it("archiveBookmark Türkçe karakterleri bozmuyor", () => {
       const p = confirmPresets.archiveBookmark("Ürün");
