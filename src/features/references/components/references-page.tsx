@@ -7,6 +7,9 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { ReferenceCard } from "./reference-card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { confirmPresets } from "@/components/ui/confirm-presets";
 
 type ReferenceLite = {
   id: string;
@@ -33,6 +36,7 @@ export function ReferencesPage({
   productTypes: ProductTypeOption[];
 }) {
   const qc = useQueryClient();
+  const { confirm, close, state } = useConfirm();
   const [productTypeId, setProductTypeId] = useState<string>("");
   const [q, setQ] = useState("");
 
@@ -122,7 +126,15 @@ export function ReferencesPage({
             <ReferenceCard
               key={ref.id}
               reference={ref}
-              onArchive={(id) => archiveMutation.mutate(id)}
+              onArchive={(id) => {
+                const item = query.data.items.find((r) => r.id === id);
+                confirm(
+                  confirmPresets.archiveReference(
+                    item?.bookmark?.title ?? item?.bookmark?.sourceUrl,
+                  ),
+                  () => archiveMutation.mutate(id),
+                );
+              }}
               onSetCollection={(id, collectionId) =>
                 updateMutation.mutate({ id, input: { collectionId } })
               }
@@ -134,6 +146,20 @@ export function ReferencesPage({
           ))}
         </div>
       )}
+      {state.preset ? (
+        <ConfirmDialog
+          open={state.open}
+          onOpenChange={(o) => {
+            if (!o) close();
+          }}
+          {...state.preset}
+          onConfirm={async () => {
+            await state.onConfirm?.();
+            close();
+          }}
+          busy={archiveMutation.isPending}
+        />
+      ) : null}
     </div>
   );
 }

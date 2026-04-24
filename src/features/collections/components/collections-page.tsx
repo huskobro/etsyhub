@@ -8,6 +8,9 @@ import {
 } from "@tanstack/react-query";
 import { CollectionCard } from "./collection-card";
 import { CollectionCreateDialog } from "./collection-create-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { confirmPresets } from "@/components/ui/confirm-presets";
 
 type CollectionLite = {
   id: string;
@@ -25,6 +28,7 @@ type KindFilter = "" | "BOOKMARK" | "REFERENCE" | "MIXED";
 
 export function CollectionsPage() {
   const qc = useQueryClient();
+  const { confirm, close, state } = useConfirm();
   const [kind, setKind] = useState<KindFilter>("");
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
@@ -133,7 +137,13 @@ export function CollectionsPage() {
             <CollectionCard
               key={c.id}
               collection={c}
-              onArchive={(id) => archiveMutation.mutate(id)}
+              onArchive={(id) => {
+                const item = query.data.items.find((col) => col.id === id);
+                confirm(
+                  confirmPresets.archiveCollection(item?.name),
+                  () => archiveMutation.mutate(id),
+                );
+              }}
             />
           ))}
         </div>
@@ -148,6 +158,21 @@ export function CollectionsPage() {
             setCreateError(null);
           }}
           onSubmit={(input) => createMutation.mutate(input)}
+        />
+      ) : null}
+
+      {state.preset ? (
+        <ConfirmDialog
+          open={state.open}
+          onOpenChange={(o) => {
+            if (!o) close();
+          }}
+          {...state.preset}
+          onConfirm={async () => {
+            await state.onConfirm?.();
+            close();
+          }}
+          busy={archiveMutation.isPending}
         />
       ) : null}
     </div>

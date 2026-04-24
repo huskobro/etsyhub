@@ -9,6 +9,9 @@ import {
 import type { BookmarkStatus, RiskLevel } from "@prisma/client";
 import { BookmarkCard } from "./bookmark-card";
 import { ImportUrlDialog } from "./import-url-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { confirmPresets } from "@/components/ui/confirm-presets";
 
 type BookmarkLite = {
   id: string;
@@ -45,6 +48,7 @@ export function BookmarksPage({
   productTypes: ProductTypeOption[];
 }) {
   const qc = useQueryClient();
+  const { confirm, close, state } = useConfirm();
   const [status, setStatus] = useState<BookmarkStatus | "ALL">("INBOX");
   const [q, setQ] = useState("");
   const [importOpen, setImportOpen] = useState(false);
@@ -163,7 +167,14 @@ export function BookmarksPage({
             <BookmarkCard
               key={bm.id}
               bookmark={bm}
-              onArchive={(id) => archiveMutation.mutate(id)}
+              onArchive={(id) =>
+                confirm(
+                  confirmPresets.archiveBookmark(
+                    query.data.items.find((b) => b.id === id)?.title,
+                  ),
+                  () => archiveMutation.mutate(id),
+                )
+              }
               onPromote={(id) => setPromoteId(id)}
               onSetCollection={(id, collectionId) =>
                 updateMutation.mutate({ id, input: { collectionId } })
@@ -183,6 +194,21 @@ export function BookmarksPage({
             setImportOpen(false);
             qc.invalidateQueries({ queryKey: ["bookmarks"] });
           }}
+        />
+      ) : null}
+
+      {state.preset ? (
+        <ConfirmDialog
+          open={state.open}
+          onOpenChange={(o) => {
+            if (!o) close();
+          }}
+          {...state.preset}
+          onConfirm={async () => {
+            await state.onConfirm?.();
+            close();
+          }}
+          busy={archiveMutation.isPending}
         />
       ) : null}
 
