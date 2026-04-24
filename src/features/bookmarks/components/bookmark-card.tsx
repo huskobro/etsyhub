@@ -1,6 +1,7 @@
 "use client";
 
 import type { BookmarkStatus, RiskLevel } from "@prisma/client";
+import { AssetImage } from "@/components/ui/asset-image";
 import { tagColorClass } from "@/features/tags/color-map";
 import { CollectionPicker } from "@/features/collections/components/collection-picker";
 import { TagPicker } from "@/features/tags/components/tag-picker";
@@ -63,17 +64,10 @@ export function BookmarkCard({
         </span>
       </div>
 
-      {bookmark.asset ? (
-        <div className="aspect-[4/3] overflow-hidden rounded-md bg-surface-muted text-xs text-text-muted">
-          <span className="flex h-full items-center justify-center">
-            Asset: {bookmark.asset.id.slice(0, 8)}…
-          </span>
-        </div>
-      ) : (
-        <div className="flex aspect-[4/3] items-center justify-center rounded-md bg-surface-muted text-xs text-text-muted">
-          Görsel yok
-        </div>
-      )}
+      <AssetImage
+        assetId={bookmark.asset?.id ?? null}
+        alt={bookmark.title ?? bookmark.sourceUrl ?? "Bookmark görseli"}
+      />
 
       {onSetTags ? (
         <TagPicker

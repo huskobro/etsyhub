@@ -1,5 +1,6 @@
 "use client";
 
+import { AssetImage } from "@/components/ui/asset-image";
 import { tagColorClass } from "@/features/tags/color-map";
 import { CollectionPicker } from "@/features/collections/components/collection-picker";
 import { TagPicker } from "@/features/tags/components/tag-picker";
@@ -52,17 +53,7 @@ export function ReferenceCard({
         ) : null}
       </div>
 
-      {reference.asset ? (
-        <div className="aspect-[4/3] overflow-hidden rounded-md bg-surface-muted text-xs text-text-muted">
-          <span className="flex h-full items-center justify-center">
-            Asset: {reference.asset.id.slice(0, 8)}…
-          </span>
-        </div>
-      ) : (
-        <div className="flex aspect-[4/3] items-center justify-center rounded-md bg-surface-muted text-xs text-text-muted">
-          Görsel yok
-        </div>
-      )}
+      <AssetImage assetId={reference.asset?.id ?? null} alt={title} />
 
       {onSetTags ? (
         <TagPicker
