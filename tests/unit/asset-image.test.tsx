@@ -64,7 +64,7 @@ describe("AssetImage", () => {
     ).toBeInTheDocument();
   });
 
-  it("fetch 500 dönerse başlangıçta loading state gösterir", async () => {
+  it("assetId varsa fetch başlatılırken loading state görünür (500 mock'lu)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -74,7 +74,8 @@ describe("AssetImage", () => {
       }),
     );
 
-    // 500 için retry var; ilk render loading state'te olmalı
+    // wrapper'ın retry:false override'ı 500'ü hemen error'a taşır ama
+    // ilk render senkron olduğundan component pending state'te başlar.
     wrapper(<AssetImage assetId="asset-500" alt="test" />);
 
     expect(screen.getByRole("status")).toBeInTheDocument();

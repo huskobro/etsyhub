@@ -5,6 +5,9 @@ import { NotFoundError } from "@/lib/errors";
 import { db } from "@/server/db";
 import { getStorage } from "@/providers/storage";
 
+const SIGNED_URL_TTL_SECONDS = 300;
+const BROWSER_CACHE_SECONDS = 240;
+
 type Ctx = { params: { id: string } };
 
 export const GET = withErrorHandling(async (_req: Request, ctx: Ctx) => {
@@ -17,11 +20,11 @@ export const GET = withErrorHandling(async (_req: Request, ctx: Ctx) => {
   });
   if (!asset) throw new NotFoundError("Asset bulunamadı");
 
-  const url = await getStorage().signedUrl(asset.storageKey, 300);
-  const expiresAt = new Date(Date.now() + 300 * 1000).toISOString();
+  const url = await getStorage().signedUrl(asset.storageKey, SIGNED_URL_TTL_SECONDS);
+  const expiresAt = new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString();
 
   return NextResponse.json(
     { url, expiresAt },
-    { headers: { "Cache-Control": "private, max-age=240" } },
+    { headers: { "Cache-Control": `private, max-age=${BROWSER_CACHE_SECONDS}` } },
   );
 });

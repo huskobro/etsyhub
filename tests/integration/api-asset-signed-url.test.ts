@@ -25,6 +25,7 @@ import {
 import bcrypt from "bcryptjs";
 import { SourcePlatform, UserRole, UserStatus } from "@prisma/client";
 import { db } from "@/server/db";
+import { getStorage } from "@/providers/storage";
 
 // Storage provider mock — signedUrl gerçek MinIO'ya bağlanmasın
 vi.mock("@/providers/storage", () => ({
@@ -125,6 +126,7 @@ describe("GET /api/assets/[id]/signed-url", () => {
   beforeEach(() => {
     currentUser.id = null;
     currentUser.role = UserRole.USER;
+    vi.clearAllMocks();
   });
 
   // 1. Auth yok → 401
@@ -163,6 +165,9 @@ describe("GET /api/assets/[id]/signed-url", () => {
     const expiresMs = new Date(body.expiresAt).getTime();
     expect(expiresMs).toBeGreaterThan(before + 299_000);
     expect(expiresMs).toBeLessThan(after + 301_000);
+
+    // storage provider 300 sn TTL ile çağrıldı mı
+    expect(getStorage().signedUrl).toHaveBeenCalledWith(asset.storageKey, 300);
   });
 
   // 3. Başka user'ın asset'i → 404 (data isolation)
