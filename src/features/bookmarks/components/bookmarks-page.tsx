@@ -1,17 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import type { BookmarkStatus, RiskLevel } from "@prisma/client";
+import { Bookmark as BookmarkIcon, Search, Plus } from "lucide-react";
 import { BookmarkCard } from "./bookmark-card";
 import { ImportUrlDialog } from "./import-url-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { confirmPresets } from "@/components/ui/confirm-presets";
+import { Toolbar } from "@/components/ui/Toolbar";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { BulkActionBar } from "@/components/ui/BulkActionBar";
+import { Chip } from "@/components/ui/Chip";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { StateMessage } from "@/components/ui/StateMessage";
+import { SkeletonCardGrid } from "@/components/ui/Skeleton";
 
 type BookmarkLite = {
   id: string;
@@ -32,7 +41,7 @@ type ListResponse = {
   nextCursor: string | null;
 };
 
-const STATUS_OPTIONS: { value: BookmarkStatus | "ALL"; label: string }[] = [
+const STATUS_FILTERS: { value: BookmarkStatus | "ALL"; label: string }[] = [
   { value: "ALL", label: "Tümü" },
   { value: "INBOX", label: "Inbox" },
   { value: "REFERENCED", label: "Referans" },
@@ -53,6 +62,7 @@ export function BookmarksPage({
   const [q, setQ] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [promoteId, setPromoteId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const query = useQuery<ListResponse>({
     queryKey: ["bookmarks", status, q],
@@ -112,65 +122,154 @@ export function BookmarksPage({
     },
   });
 
+  const items = useMemo(() => query.data?.items ?? [], [query.data]);
+  const visibleIds = useMemo(() => new Set(items.map((i) => i.id)), [items]);
+  const selectedCount = useMemo(
+    () => items.filter((i) => selectedIds.has(i.id)).length,
+    [items, selectedIds],
+  );
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const bulkArchive = () => {
+    const targets = items.filter((i) => selectedIds.has(i.id)).map((i) => i.id);
+    if (targets.length === 0) return;
+    confirm(confirmPresets.archiveBookmarksBulk(targets.length), async () => {
+      for (const id of targets) {
+        await archiveMutation.mutateAsync(id);
+      }
+      clearSelection();
+    });
+  };
+
+  // Liste değiştiğinde görünmeyen id'leri seçimden düşür (stale seçim olmasın).
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = new Set<string>();
+      for (const id of prev) if (visibleIds.has(id)) next.add(id);
+      return next;
+    });
+  }, [visibleIds]);
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Bookmark Inbox</h1>
-          <p className="text-sm text-text-muted">
-            URL&apos;den veya görsel yükleyerek fikirlerini buraya topla.
+          <h1 className="text-2xl font-semibold text-text">Bookmark Inbox</h1>
+          <p className="text-xs text-text-muted">
+            {items.length > 0
+              ? `${items.length} kayıt · URL veya görsel ekleyerek fikir topla`
+              : "URL veya görsel ekleyerek fikir topla"}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
+        <div className="flex items-center gap-2">
+          <Button
+            variant="primary"
+            icon={<Plus className="h-4 w-4" aria-hidden />}
             onClick={() => setImportOpen(true)}
-            className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-foreground"
           >
             URL&apos;den ekle
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as BookmarkStatus | "ALL")}
-          className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-text"
-        >
-          {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
+      <Toolbar
+        leading={
+          <div className="w-60">
+            <Input
+              type="search"
+              placeholder="Başlık, kaynak veya not ara"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              prefix={<Search className="h-4 w-4" aria-hidden />}
+            />
+          </div>
+        }
+      >
+        <FilterBar>
+          {STATUS_FILTERS.map((f) => (
+            <Chip
+              key={f.value}
+              active={status === f.value}
+              onToggle={() => setStatus(f.value)}
+            >
+              {f.label}
+            </Chip>
           ))}
-        </select>
-        <input
-          type="search"
-          placeholder="Ara (title/notes/url)"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          className="h-9 min-w-60 flex-1 rounded-md border border-border bg-surface px-3 text-sm text-text"
-        />
-      </div>
+        </FilterBar>
+      </Toolbar>
+
+      <BulkActionBar
+        selectedCount={selectedCount}
+        label={
+          selectedCount > 0 ? `${selectedCount} bookmark seçildi` : undefined
+        }
+        actions={
+          <>
+            <Button variant="ghost" size="sm" disabled>
+              Referansa ekle
+            </Button>
+            <Button variant="ghost" size="sm" disabled>
+              Koleksiyona
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={bulkArchive}
+              disabled={archiveMutation.isPending}
+            >
+              Arşivle
+            </Button>
+          </>
+        }
+        onDismiss={clearSelection}
+      />
 
       {query.isLoading ? (
-        <p className="text-sm text-text-muted">Yükleniyor…</p>
+        <SkeletonCardGrid count={6} />
       ) : query.error ? (
-        <p className="text-sm text-danger">{(query.error as Error).message}</p>
-      ) : !query.data || query.data.items.length === 0 ? (
-        <div className="rounded-md border border-border bg-surface p-6 text-center text-sm text-text-muted">
-          Henüz bookmark yok. Yukarıdaki &quot;URL&apos;den ekle&quot; ile başla.
-        </div>
+        <StateMessage
+          tone="error"
+          title="Liste yüklenemedi"
+          body={(query.error as Error).message}
+        />
+      ) : items.length === 0 ? (
+        <StateMessage
+          tone="neutral"
+          icon={<BookmarkIcon className="h-5 w-5" aria-hidden />}
+          title="Henüz bookmark yok"
+          body="Etsy, Pinterest, Amazon veya herhangi bir URL'yi yapıştırarak fikir toplamaya başla. Bookmark'ları sonradan referans havuzuna taşıyabilirsin."
+          action={
+            <Button
+              variant="primary"
+              icon={<Plus className="h-4 w-4" aria-hidden />}
+              onClick={() => setImportOpen(true)}
+            >
+              İlk bookmark&apos;ını ekle
+            </Button>
+          }
+        />
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {query.data.items.map((bm) => (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+          {items.map((bm) => (
             <BookmarkCard
               key={bm.id}
               bookmark={bm}
+              selected={selectedIds.has(bm.id)}
+              onToggleSelect={toggleSelect}
               onArchive={(id) =>
                 confirm(
                   confirmPresets.archiveBookmark(
-                    query.data.items.find((b) => b.id === id)?.title,
+                    items.find((b) => b.id === id)?.title,
                   ),
                   async () => {
                     await archiveMutation.mutateAsync(id);
@@ -280,14 +379,14 @@ function PromoteDialog({
           <p className="mt-3 text-xs text-danger">{error}</p>
         ) : null}
         <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="sm"
             disabled={isPending || !productTypeId}
             onClick={() => onSubmit(productTypeId)}
-            className="rounded-md bg-accent px-3 py-2 text-sm text-accent-foreground disabled:opacity-50"
           >
             {isPending ? "Taşınıyor…" : "Referansa Taşı"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

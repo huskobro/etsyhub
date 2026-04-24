@@ -19,6 +19,14 @@ export const confirmPresets = {
     tone: "destructive",
   }),
 
+  archiveBookmarksBulk: (count: number): ConfirmPresetValue => ({
+    title: "Seçili bookmark'ları arşivle",
+    description: `${count} bookmark arşivlenecek. Bookmark İnbox'tan kaldırılırlar; istediğinde arşivden geri getirebilirsin.`,
+    confirmLabel: "Arşivle",
+    cancelLabel: "Vazgeç",
+    tone: "destructive",
+  }),
+
   archiveReference: (title?: string | null): ConfirmPresetValue => ({
     title: "Referansı arşivle",
     description: title
