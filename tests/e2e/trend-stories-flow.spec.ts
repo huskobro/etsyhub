@@ -15,6 +15,11 @@ import { login, ADMIN_EMAIL } from "./helpers";
 const db = new PrismaClient();
 const runId = Date.now().toString(36);
 
+// Fixture string sabitleri — fixture seed ve assertion'lar her zaman senkron kalır.
+const LISTING_TITLE_PREFIX = "E2E Trend Listing";
+const CLUSTER_LABEL_PREFIX = "E2E Trend Kümesi";
+const CLUSTER_WINDOW_DAYS = 7;
+
 // Fixture verileri afterAll'da silinmek üzere modül kapsamında tutulur.
 let adminId: string;
 let competitorStoreId: string;
@@ -51,7 +56,7 @@ test.beforeAll(async () => {
           externalId: `e2e-trend-listing-${runId}-${i}`,
           platform: SourcePlatform.ETSY,
           sourceUrl: `https://www.etsy.com/listing/e2e-trend-${runId}-${i}`,
-          title: `E2E Trend Listing ${i}`,
+          title: `${LISTING_TITLE_PREFIX} ${i}`,
           reviewCount: 20,
           firstSeenAt: new Date(baseTime - i * 60_000),
           lastSeenAt: new Date(baseTime - i * 60_000),
@@ -66,8 +71,8 @@ test.beforeAll(async () => {
     data: {
       userId: adminId,
       signature: `e2e-trend-${runId}`,
-      label: `E2E Trend Kümesi ${runId}`,
-      windowDays: 7,
+      label: `${CLUSTER_LABEL_PREFIX} ${runId}`,
+      windowDays: CLUSTER_WINDOW_DAYS,
       memberCount: created.length,
       storeCount: 1,
       status: TrendClusterStatus.ACTIVE,
@@ -87,25 +92,27 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   try {
-    // Bookmark temizliği (bookmark flow testi oluşturmuş olabilir)
-    await db.bookmark.deleteMany({
-      where: { userId: adminId, trendClusterId: clusterId },
-    });
-    // Kayıt olmayabilir; hata vermesin
-  } catch {
-    // yoksay
-  }
+    // Eğer beforeAll erken çöktüyse cleanup çalıştırmaya gerek yok.
+    if (!competitorStoreId) return;
 
-  try {
+    // Bookmark temizliği (bookmark flow testi oluşturmuş olabilir)
+    try {
+      await db.bookmark.deleteMany({
+        where: { userId: adminId, trendClusterId: clusterId },
+      });
+    } catch (err) {
+      console.error("[trend-stories e2e] afterAll bookmark cleanup hatası:", err);
+    }
+
     await db.trendClusterMember.deleteMany({ where: { clusterId } });
     await db.trendCluster.deleteMany({ where: { id: clusterId } });
     await db.competitorListing.deleteMany({ where: { id: { in: listingIds } } });
     await db.competitorStore.deleteMany({ where: { id: competitorStoreId } });
-  } catch {
-    // yoksay
+  } catch (err) {
+    console.error("[trend-stories e2e] afterAll cleanup hatası:", err);
+  } finally {
+    await db.$disconnect();
   }
-
-  await db.$disconnect();
 });
 
 // -----------------------------------------------------------------------
@@ -156,7 +163,7 @@ test.describe("trend stories flow", () => {
 
     // Cluster kartı aria-label üzerinden bulunur: "Trend kümesi: <label>"
     const clusterCard = page.getByRole("button", {
-      name: new RegExp(`Trend kümesi: E2E Trend Kümesi ${runId}`, "i"),
+      name: new RegExp(`Trend kümesi: ${CLUSTER_LABEL_PREFIX} ${runId}`, "i"),
     });
     await expect(clusterCard).toBeVisible({ timeout: 15_000 });
 
@@ -171,7 +178,7 @@ test.describe("trend stories flow", () => {
 
     // Drawer içinde en az bir üye listing başlığı görünmeli
     await expect(
-      drawer.getByText(/E2E Trend Listing 0/i),
+      drawer.getByText(new RegExp(`${LISTING_TITLE_PREFIX} 0`, "i")),
     ).toBeVisible({ timeout: 15_000 });
 
     // Kapatma butonuna tıkla → drawer kaybolmalı
@@ -199,7 +206,7 @@ test.describe("trend stories flow", () => {
 
     // Feed'in yüklenmesini bekle; listing kartı başlığıyla bulunur.
     // Kart <article> içinde h3 başlığı "E2E Trend Listing 0"
-    const listingTitle = `E2E Trend Listing 0`;
+    const listingTitle = `${LISTING_TITLE_PREFIX} 0`;
     const feedCard = page
       .getByRole("article")
       .filter({ hasText: listingTitle })
@@ -232,9 +239,9 @@ test.describe("trend stories flow", () => {
     });
     expect(persisted).not.toBeNull();
     expect(persisted?.trendClusterLabelSnapshot).toBe(
-      `E2E Trend Kümesi ${runId}`,
+      `${CLUSTER_LABEL_PREFIX} ${runId}`,
     );
-    expect(persisted?.trendWindowDaysSnapshot).toBe(7);
+    expect(persisted?.trendWindowDaysSnapshot).toBe(CLUSTER_WINDOW_DAYS);
 
     // /bookmarks sayfasına git ve yeni oluşturulan bookmark'ı doğrula.
     // BookmarkCard başlık veya sourceUrl olarak listing başlığını ya da
@@ -249,7 +256,7 @@ test.describe("trend stories flow", () => {
     // BookmarkCard h3'de title ya da sourceUrl'yi gösterir.
     const bookmarkCard = page
       .getByRole("article")
-      .filter({ hasText: new RegExp(`E2E Trend Listing 0|e2e-trend-${runId}-0`, "i") })
+      .filter({ hasText: new RegExp(`${LISTING_TITLE_PREFIX} 0|e2e-trend-${runId}-0`, "i") })
       .first();
 
     await expect(bookmarkCard).toBeVisible({ timeout: 15_000 });
@@ -288,6 +295,9 @@ test.describe("trend stories flow", () => {
   // Test 5: Feature flag kapalıyken /trend-stories → Next.js 404
   // -----------------------------------------------------------------------
   test("flag kapalıyken /trend-stories → 404", async ({ page }) => {
+    // login ile flag flip birbirinden bağımsız; login hatası flag'i disabled'da bırakmasın
+    await login(page);
+
     // Feature flag'i kapat
     await db.featureFlag.update({
       where: { key: "trend_stories.enabled" },
@@ -295,7 +305,6 @@ test.describe("trend stories flow", () => {
     });
 
     try {
-      await login(page);
       await page.goto("/trend-stories");
 
       // Next.js 14 varsayılan 404 sayfası hem h1 "404" hem h2
