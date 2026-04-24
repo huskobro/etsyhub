@@ -2,41 +2,144 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * EtsyHub — Design Tokens
+ * Onaylı tasarım dili: docs/design/EtsyHub/EtsyHub Design Spec.md
+ * Yön: Editoryal Kokpit — warm off-white #FAFAF7, accent #E85D25, Inter + IBM Plex Mono.
+ * HSL-tuple formatı korundu (Tailwind `hsl(var(--...) / <alpha-value>)` opacity sistemi).
+ */
+
 @layer base {
   :root {
-    --color-bg: 0 0% 100%;
-    --color-surface: 0 0% 98%;
-    --color-surface-muted: 0 0% 96%;
-    --color-text: 0 0% 7%;
-    --color-text-muted: 0 0% 45%;
-    --color-border: 0 0% 90%;
-    --color-accent: 14 100% 57%;
-    --color-accent-foreground: 0 0% 100%;
-    --color-success: 142 71% 45%;
-    --color-warning: 38 92% 50%;
-    --color-danger: 0 84% 60%;
-    --color-sidebar: 0 0% 98%;
-    --color-sidebar-foreground: 0 0% 20%;
-    --color-sidebar-accent: 14 100% 57%;
+    /* ——— Color · Surfaces ————————————————————————————— */
+    --color-bg:           60 23% 97%;   /* warm off-white #FAFAF7 */
+    --color-surface:      0 0% 100%;    /* #FFFFFF */
+    --color-surface-muted: 51 23% 94%;  /* #F3F2EC — sidebar, subtle panel, toolbar */
+    --color-surface-2:    51 23% 94%;   /* alias for design spec naming */
+    --color-surface-3:    47 18% 90%;   /* #EBE9E2 — hover row, disabled fill */
 
-    --radius-sm: 4px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
+    /* ——— Color · Text —————————————————————————————————— */
+    --color-text:         24 11% 9%;    /* near-black warm #1A1715 */
+    --color-text-muted:   30 6% 40%;    /* #6B655F — secondary, meta */
+    --color-text-subtle:  32 6% 58%;    /* #9A948D — placeholder, breadcrumb */
 
-    --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
-    --shadow-popover: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+    /* ——— Color · Borders ——————————————————————————————— */
+    --color-border:        45 14% 89%;  /* #E7E5DF — default card/input */
+    --color-border-strong: 45 13% 82%;  /* #D6D3CA — focused/hovered */
+    --color-border-subtle: 51 18% 92%;  /* #EFEEE8 — tablo satır ayırıcı */
 
-    --layout-sidebar-width: 240px;
-    --layout-header-height: 56px;
+    /* ——— Color · Accent ———————————————————————————————— */
+    --color-accent:           17 81% 53%;  /* #E85D25 — CTA, selected, focus */
+    --color-accent-hover:     17 78% 46%;  /* #D14E1A */
+    --color-accent-soft:      24 78% 93%;  /* #FBEADF — selected row bg, chip bg */
+    --color-accent-text:      18 77% 39%;  /* #B04517 — chip text on accent-soft */
+    --color-accent-foreground: 0 0% 100%;  /* accent bg üstü text */
+
+    /* ——— Color · Status ———————————————————————————————— */
+    --color-success:       142 44% 33%;   /* #2F7A4B */
+    --color-success-soft:  143 32% 92%;   /* #E4F1E9 */
+    --color-warning:       36 79% 39%;    /* #B47415 */
+    --color-warning-soft:  41 64% 90%;    /* #F6ECD6 */
+    --color-danger:        8 63% 43%;     /* #B13A28 */
+    --color-danger-soft:   12 60% 90%;    /* #F5DDD7 */
+    --color-info:          209 52% 37%;  /* #2D5F8F */
+    --color-info-soft:     207 55% 92%;  /* #E0ECF6 */
+
+    /* ——— Color · Sidebar (legacy alias — ThemeProvider uyumu) ——— */
+    --color-sidebar:              51 23% 94%;
+    --color-sidebar-foreground:   24 11% 9%;
+    --color-sidebar-accent:       17 81% 53%;
+
+    /* ——— Spacing ——————————————————————————————————————— */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-7: 28px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+    --space-16: 64px;
+    --space-20: 80px;
+
+    /* ——— Radius ———————————————————————————————————————— */
+    --radius-sm: 4px;   /* chip, small button, badge */
+    --radius-md: 6px;   /* input, button, card default */
+    --radius-lg: 10px;  /* dialog, large surface */
+
+    /* ——— Shadow ———————————————————————————————————————— */
+    --shadow-card:    0 1px 2px rgba(26, 23, 21, 0.04), 0 1px 1px rgba(26, 23, 21, 0.03);
+    --shadow-popover: 0 12px 32px rgba(26, 23, 21, 0.12), 0 2px 6px rgba(26, 23, 21, 0.06);
+
+    /* ——— Typography ———————————————————————————————————— */
+    --font-sans: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+    --text-xs:   11px;
+    --text-sm:   13px;
+    --text-base: 14px;
+    --text-md:   15px;
+    --text-lg:   17px;
+    --text-xl:   20px;
+    --text-2xl:  24px;
+    --text-3xl:  32px;
+
+    --leading-tight:  1.25;
+    --leading-normal: 1.5;
+
+    /* ——— Motion ———————————————————————————————————————— */
+    --scale-subtle: 1.015;
+    --ease-out: cubic-bezier(.2,.7,.3,1);
+    --dur-fast: 120ms;
+    --dur: 180ms;
+
+    /* ——— Layout ——————————————————————————————————————— */
+    --layout-sidebar-width:    232px;
+    --layout-header-height:    56px;
     --layout-content-max-width: 1440px;
+    --page-pad-user:  var(--space-6);  /* 24 */
+    --page-pad-admin: var(--space-4);  /* 16 */
+    --gap-grid-user:  var(--space-4);  /* 16 */
+    --gap-grid-admin: var(--space-3);  /* 12 */
 
-    --font-sans: Inter, system-ui, -apple-system, sans-serif;
-    --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    /* ——— Named min-heights ———————————————————————————— */
+    --min-h-textarea: var(--space-20);  /* 80 */
+  }
+
+  /* Density variant — user/admin ortak aile, farklı sıkılık */
+  [data-density="admin"] {
+    --page-pad: var(--page-pad-admin);
+    --gap-grid: var(--gap-grid-admin);
+    --text-body: var(--text-sm);
+    --row-h: 48px;
+  }
+  [data-density="user"] {
+    --page-pad: var(--page-pad-user);
+    --gap-grid: var(--gap-grid-user);
+    --text-body: var(--text-base);
+    --row-h: 52px;
   }
 
   body {
     font-family: var(--font-sans);
     background: hsl(var(--color-bg));
     color: hsl(var(--color-text));
+    font-size: var(--text-body, var(--text-base));
+    line-height: var(--leading-normal);
+    letter-spacing: 0;
+    -webkit-font-smoothing: antialiased;
   }
+
+  *::selection {
+    background: hsl(var(--color-accent-soft));
+    color: hsl(var(--color-accent-text));
+  }
+}
+
+/* ——— Keyframes ————————————————————————————————————— */
+@keyframes ehPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
 }

@@ -6,7 +6,7 @@ const patterns: Pattern[] = [
   { label: "Raw hex renk", regex: "#[0-9a-fA-F]{3,8}\\b" },
   {
     label: "Tailwind arbitrary value",
-    regex: "\\b(bg|text|border|w|h|p|m|gap|rounded|shadow)-\\[[^\\]]+\\]",
+    regex: "\\b(bg|text|border|w|h|p|m|gap|rounded|shadow|aspect|min-h|scale)-\\[[^\\]]+\\]",
   },
   { label: "Inline style attribute", regex: "style=\\{\\{" },
   { label: "hsl/rgb sabit", regex: "\\b(hsl|rgb)a?\\(" },

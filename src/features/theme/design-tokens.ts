@@ -1,25 +1,49 @@
 export const defaultTokens = {
   colors: {
-    bg: "0 0% 100%",
-    surface: "0 0% 98%",
-    surfaceMuted: "0 0% 96%",
-    text: "0 0% 7%",
-    textMuted: "0 0% 45%",
-    border: "0 0% 90%",
-    accent: "14 100% 57%",
+    // Surfaces — warm off-white family
+    bg: "60 23% 97%",
+    surface: "0 0% 100%",
+    surfaceMuted: "51 23% 94%",
+    surface2: "51 23% 94%",
+    surface3: "47 18% 90%",
+
+    // Text
+    text: "24 11% 9%",
+    textMuted: "30 6% 40%",
+    textSubtle: "32 6% 58%",
+
+    // Borders
+    border: "45 14% 89%",
+    borderStrong: "45 13% 82%",
+    borderSubtle: "51 18% 92%",
+
+    // Accent — #E85D25 family
+    accent: "17 81% 53%",
+    accentHover: "17 78% 46%",
+    accentSoft: "24 78% 93%",
+    accentText: "18 77% 39%",
     accentForeground: "0 0% 100%",
-    success: "142 71% 45%",
-    warning: "38 92% 50%",
-    danger: "0 84% 60%",
-    sidebar: "0 0% 98%",
-    sidebarForeground: "0 0% 20%",
-    sidebarAccent: "14 100% 57%",
+
+    // Status
+    success: "142 44% 33%",
+    successSoft: "143 32% 92%",
+    warning: "36 79% 39%",
+    warningSoft: "41 64% 90%",
+    danger: "8 63% 43%",
+    dangerSoft: "12 60% 90%",
+    info: "209 52% 37%",
+    infoSoft: "207 55% 92%",
+
+    // Sidebar legacy aliases (ThemeProvider uyumu)
+    sidebar: "51 23% 94%",
+    sidebarForeground: "24 11% 9%",
+    sidebarAccent: "17 81% 53%",
   },
-  radius: { sm: "4px", md: "8px", lg: "12px", full: "9999px" },
+  radius: { sm: "4px", md: "6px", lg: "10px", full: "9999px" },
   shadow: {
-    card: "0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06)",
+    card: "0 1px 2px rgba(26, 23, 21, 0.04), 0 1px 1px rgba(26, 23, 21, 0.03)",
     popover:
-      "0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05)",
+      "0 12px 32px rgba(26, 23, 21, 0.12), 0 2px 6px rgba(26, 23, 21, 0.06)",
   },
   spacing: {
     "1": "4px",
@@ -28,17 +52,19 @@ export const defaultTokens = {
     "4": "16px",
     "5": "20px",
     "6": "24px",
+    "7": "28px",
     "8": "32px",
     "10": "40px",
     "12": "48px",
     "16": "64px",
+    "20": "80px",
   },
   font: {
-    sans: "Inter, system-ui, -apple-system, sans-serif",
-    mono: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    sans: 'var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    mono: 'var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace',
   },
   layout: {
-    sidebarWidth: "240px",
+    sidebarWidth: "232px",
     headerHeight: "56px",
     contentMaxWidth: "1440px",
   },
