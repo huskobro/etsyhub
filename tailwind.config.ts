@@ -68,8 +68,18 @@ export default {
         "3xl": "var(--text-3xl)",
       },
       maxWidth: { content: "var(--layout-content-max-width)" },
-      width: { sidebar: "var(--layout-sidebar-width)" },
-      height: { header: "var(--layout-header-height)" },
+      width: {
+        sidebar: "var(--layout-sidebar-width)",
+        "control-sm": "var(--control-h-sm)",
+        "control-md": "var(--control-h-md)",
+        "control-lg": "var(--control-h-lg)",
+      },
+      height: {
+        header: "var(--layout-header-height)",
+        "control-sm": "var(--control-h-sm)",
+        "control-md": "var(--control-h-md)",
+        "control-lg": "var(--control-h-lg)",
+      },
       aspectRatio: {
         card: "4 / 3",
         portrait: "2 / 3",
