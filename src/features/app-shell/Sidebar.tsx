@@ -1,47 +1,84 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 import type { UserRole } from "@prisma/client";
-import { navForRole } from "@/features/app-shell/nav-config";
+import {
+  Sidebar as SidebarPrimitive,
+  SidebarBrand,
+  SidebarGroup,
+} from "@/components/ui/Sidebar";
+import { NavItem } from "@/components/ui/NavItem";
+import { navForRole, USER_NAV, ADMIN_NAV } from "@/features/app-shell/nav-config";
 
-export function Sidebar({ role }: { role: UserRole }) {
+export function Sidebar({
+  role,
+  email,
+}: {
+  role: UserRole;
+  email: string;
+}) {
   const pathname = usePathname();
   const items = navForRole(role);
+  const userItems = items.filter((i) => USER_NAV.some((u) => u.href === i.href));
+  const adminItems = items.filter((i) => ADMIN_NAV.some((a) => a.href === i.href));
+
+  const isActive = (href: string) =>
+    pathname === href || pathname?.startsWith(`${href}/`) || false;
 
   return (
-    <aside className="flex h-screen w-sidebar flex-col border-r border-border bg-sidebar text-sidebar-foreground">
-      <div className="flex h-header items-center border-b border-border px-5">
-        <span className="text-base font-semibold">EtsyHub</span>
-      </div>
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {items.map((item) => {
+    <SidebarPrimitive
+      brand={<SidebarBrand name="EtsyHub" scope={role === "ADMIN" ? "admin" : "user"} />}
+      footer={
+        <div className="flex w-full items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm text-text">{email}</div>
+            <div className="font-mono text-xs text-text-subtle">{role.toLowerCase()}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="rounded-sm border border-border-subtle px-2 py-1 font-mono text-xs text-text-muted transition-colors ease-out duration-fast hover:bg-surface hover:text-text"
+          >
+            Çıkış
+          </button>
+        </div>
+      }
+    >
+      <SidebarGroup>
+        {userItems.map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
-          const base = "flex items-center gap-3 rounded-md px-3 py-2 text-sm";
-          const state = active
-            ? "bg-sidebar-accent/15 text-sidebar-accent font-medium"
-            : item.enabled
-              ? "hover:bg-surface-muted"
-              : "cursor-not-allowed opacity-40";
-          return item.enabled ? (
-            <Link key={item.href} href={item.href} className={`${base} ${state}`}>
-              <Icon className="h-4 w-4" aria-hidden />
-              <span>{item.label}</span>
-            </Link>
-          ) : (
-            <span
+          return (
+            <NavItem
               key={item.href}
-              className={`${base} ${state}`}
-              title={`Phase ${item.phase} kapsamında aktif olacak`}
-            >
-              <Icon className="h-4 w-4" aria-hidden />
-              <span>{item.label}</span>
-              <span className="ml-auto text-xs text-text-muted">P{item.phase}</span>
-            </span>
+              href={item.enabled ? item.href : undefined}
+              icon={<Icon className="h-4 w-4" aria-hidden />}
+              label={item.label}
+              active={isActive(item.href)}
+              disabled={!item.enabled}
+              meta={item.enabled ? undefined : `P${item.phase}`}
+            />
           );
         })}
-      </nav>
-    </aside>
+      </SidebarGroup>
+      {adminItems.length > 0 ? (
+        <SidebarGroup title="Admin">
+          {adminItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavItem
+                key={item.href}
+                href={item.enabled ? item.href : undefined}
+                icon={<Icon className="h-4 w-4" aria-hidden />}
+                label={item.label}
+                active={isActive(item.href)}
+                disabled={!item.enabled}
+                meta={item.enabled ? undefined : `P${item.phase}`}
+              />
+            );
+          })}
+        </SidebarGroup>
+      ) : null}
+    </SidebarPrimitive>
   );
 }
