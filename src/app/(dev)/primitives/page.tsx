@@ -4,6 +4,8 @@ import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
 import { Badge, Tag, type BadgeTone } from "@/components/ui/Badge";
 import { ChipFilterDemo, ChipRemovableDemo } from "./ChipDemo";
+import { Skeleton, SkeletonCardGrid, SkeletonTable } from "@/components/ui/Skeleton";
+import { StateMessage } from "@/components/ui/StateMessage";
 
 /**
  * Primitives showcase — spec "Primitives showcase" artboard karşılığı.
@@ -53,6 +55,30 @@ function DotsIcon({ size = 14 }: { size?: number }) {
       <circle cx="3" cy="8" r="1.5" fill="currentColor" />
       <circle cx="8" cy="8" r="1.5" fill="currentColor" />
       <circle cx="13" cy="8" r="1.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function BookmarkIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M7 3h10v18l-5-4-5 4V3z" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AlertIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M12 9v4M12 17h.01M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6A2 2 0 0 0 22 18L13.7 3.9a2 2 0 0 0-3.4 0z" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function UnplugIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M8 2v6M16 2v6M12 10v6M12 16a4 4 0 0 1-4-4V8h8v4a4 4 0 0 1-4 4zM12 22v-6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -246,6 +272,74 @@ export default function PrimitivesShowcasePage() {
 
       <Section title="Chip · removable (aktif + kaldır slotu)">
         <ChipRemovableDemo />
+      </Section>
+
+      <header className="space-y-1 pt-4">
+        <h1 className="text-2xl font-semibold">Skeleton</h1>
+        <p className="text-text-muted">
+          Spec A.2.7 — surface-3 + ehPulse. Shimmer YOK. User grid 6 kart · admin tablo 5 satır sabit.
+        </p>
+      </header>
+
+      <Section title="Skeleton · atomic (line / text / rect / circle)">
+        <div className="max-w-md space-y-3">
+          <Skeleton shape="line" />
+          <Skeleton shape="text" />
+          <div className="flex items-center gap-3">
+            <Skeleton shape="circle" />
+            <div className="flex-1 space-y-2">
+              <Skeleton shape="text" />
+              <Skeleton shape="line" className="w-1/2" />
+            </div>
+          </div>
+          <Skeleton shape="rect" />
+        </div>
+      </Section>
+
+      <Section title="SkeletonCardGrid · user density (6 sabit kart)">
+        <SkeletonCardGrid />
+      </Section>
+
+      <Section title="SkeletonTable · admin density (5 sabit satır)">
+        <SkeletonTable />
+      </Section>
+
+      <header className="space-y-1 pt-4">
+        <h1 className="text-2xl font-semibold">StateMessage</h1>
+        <p className="text-text-muted">
+          Spec A.2.8 — 3 tone (neutral/warning/error), 40×40 tone-soft ikon kutusu, 15/600 title, 13 muted body (max-w 360), opsiyonel CTA.
+        </p>
+      </header>
+
+      <Section title="StateMessage · 3 tone (empty catalog)">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-md border border-border bg-surface">
+            <StateMessage
+              tone="neutral"
+              icon={<BookmarkIcon />}
+              title="Henüz bookmark yok"
+              body="Gezinirken beğendiğin listingleri buraya ekle; ileride referansa taşıyabilirsin."
+              action={<Button variant="primary" size="sm">{"İlk bookmark'ı ekle"}</Button>}
+            />
+          </div>
+          <div className="rounded-md border border-border bg-surface">
+            <StateMessage
+              tone="warning"
+              icon={<AlertIcon />}
+              title="Review kuyruğu temiz"
+              body="Şu an incelenecek tasarım yok. Yeni üretim başlayınca burada gösterilir."
+            />
+          </div>
+          <div className="rounded-md border border-border bg-surface">
+            <StateMessage
+              tone="error"
+              icon={<UnplugIcon />}
+              title="Etsy bağlantısı kurulamadı"
+              body="Token süresi dolmuş olabilir. Ayarlar → Mağazalar sayfasından yeniden bağla."
+              action={<Button variant="secondary" size="sm">Yeniden bağla</Button>}
+            />
+          </div>
+        </div>
       </Section>
     </main>
   );

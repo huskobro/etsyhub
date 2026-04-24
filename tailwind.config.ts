@@ -67,7 +67,10 @@ export default {
         "2xl": "var(--text-2xl)",
         "3xl": "var(--text-3xl)",
       },
-      maxWidth: { content: "var(--layout-content-max-width)" },
+      maxWidth: {
+        content: "var(--layout-content-max-width)",
+        "state-body": "var(--max-w-state-body)",
+      },
       width: {
         sidebar: "var(--layout-sidebar-width)",
         "control-sm": "var(--control-h-sm)",

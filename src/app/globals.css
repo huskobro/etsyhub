@@ -107,6 +107,9 @@
     /* ——— Named min-heights ———————————————————————————— */
     --min-h-textarea: var(--space-20);  /* 80 */
 
+    /* ——— Named max-widths (StateMessage body vs.) ————— */
+    --max-w-state-body: 360px;  /* spec A.2.8: body max-w 360 */
+
     /* ——— Control heights (Button / Input / Chip) ————— */
     --control-h-sm: 28px;
     --control-h-md: 34px;
