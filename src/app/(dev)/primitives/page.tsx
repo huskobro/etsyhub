@@ -8,6 +8,13 @@ import { Skeleton, SkeletonCardGrid, SkeletonTable } from "@/components/ui/Skele
 import { StateMessage } from "@/components/ui/StateMessage";
 import { Thumb, type ThumbKind } from "@/components/ui/Thumb";
 import { Card, StatCardBody, AssetCardMeta } from "@/components/ui/Card";
+import { NavItem } from "@/components/ui/NavItem";
+import {
+  Sidebar,
+  SidebarGroup,
+  SidebarBrand,
+} from "@/components/ui/Sidebar";
+import { PageShell } from "@/components/ui/PageShell";
 
 /**
  * Primitives showcase — spec "Primitives showcase" artboard karşılığı.
@@ -513,6 +520,120 @@ export default function PrimitivesShowcasePage() {
             </div>
             <Badge tone="warning">Review</Badge>
           </Card>
+        </div>
+      </Section>
+
+      <Section title="NavItem — state matrix (inactive / active / disabled)">
+        <div className="max-w-xs space-y-0.5 bg-surface-2 p-2 rounded-md">
+          <NavItem href="#dashboard" label="Panel" icon={<BookmarkIcon size={14} />} />
+          <NavItem href="#bookmarks" label="Bookmark" icon={<BookmarkIcon size={14} />} badge="84" active />
+          <NavItem href="#references" label="Referanslar" icon={<BookmarkIcon size={14} />} badge="27" />
+          <NavItem href="#variations" label="Üret" icon={<BookmarkIcon size={14} />} disabled meta="P5" />
+        </div>
+      </Section>
+
+      <Section title="PageShell — user density · mini preview">
+        <div className="h-96 overflow-hidden rounded-md border border-border">
+          <PageShell
+            className="h-full"
+            density="user"
+            sidebar={
+              <Sidebar
+                className="h-full"
+                brand={<SidebarBrand name="EtsyHub" />}
+                footer={
+                  <>
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-3 font-mono text-xs font-semibold">
+                      HC
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-medium truncate">Hüseyin Coşkun</div>
+                      <div className="font-mono text-xs text-text-subtle">Üretici</div>
+                    </div>
+                  </>
+                }
+              >
+                <SidebarGroup title="Üretim">
+                  <NavItem href="#dash" label="Panel" icon={<BookmarkIcon size={14} />} active />
+                  <NavItem href="#trend" label="Trend Akışı" icon={<BookmarkIcon size={14} />} badge="12" />
+                  <NavItem href="#comp" label="Rakipler" icon={<BookmarkIcon size={14} />} />
+                </SidebarGroup>
+                <SidebarGroup title="Kütüphane">
+                  <NavItem href="#book" label="Bookmark" icon={<BookmarkIcon size={14} />} badge="84" />
+                  <NavItem href="#ref" label="Referanslar" icon={<BookmarkIcon size={14} />} badge="27" />
+                </SidebarGroup>
+                <SidebarGroup>
+                  <NavItem href="#set" label="Ayarlar" icon={<BookmarkIcon size={14} />} />
+                </SidebarGroup>
+              </Sidebar>
+            }
+            title="Bookmark"
+            subtitle="84 kayıt · 12 koleksiyon"
+            actions={
+              <>
+                <Button variant="ghost" size="sm" icon={<SearchIcon />}>Ara</Button>
+                <Button variant="primary" size="sm" icon={<PlusIcon />}>Yeni bookmark</Button>
+              </>
+            }
+            toolbar={
+              <div className="flex items-center gap-2">
+                <Tag>Wall art</Tag>
+                <Tag>Clipart</Tag>
+                <Tag>Nursery</Tag>
+              </div>
+            }
+          >
+            <div className="grid grid-cols-3 gap-4">
+              <Card variant="asset" interactive>
+                <Thumb kind="boho" />
+                <AssetCardMeta>
+                  <div className="text-sm font-medium truncate">Boho wall art set</div>
+                </AssetCardMeta>
+              </Card>
+              <Card variant="asset" interactive>
+                <Thumb kind="clipart" />
+                <AssetCardMeta>
+                  <div className="text-sm font-medium truncate">Clipart bundle</div>
+                </AssetCardMeta>
+              </Card>
+              <Card variant="asset" interactive>
+                <Thumb kind="sticker" />
+                <AssetCardMeta>
+                  <div className="text-sm font-medium truncate">Sticker sheet</div>
+                </AssetCardMeta>
+              </Card>
+            </div>
+          </PageShell>
+        </div>
+      </Section>
+
+      <Section title="PageShell — admin density (sidebar scope=admin)">
+        <div className="h-64 overflow-hidden rounded-md border border-border">
+          <PageShell
+            className="h-full"
+            density="admin"
+            sidebar={
+              <Sidebar
+                className="h-full"
+                brand={<SidebarBrand name="EtsyHub" scope="admin" />}
+              >
+                <SidebarGroup title="İzleme">
+                  <NavItem href="#over" label="Overview" icon={<BookmarkIcon size={14} />} active />
+                  <NavItem href="#jobs" label="Job Monitor" icon={<BookmarkIcon size={14} />} badge="42" />
+                </SidebarGroup>
+                <SidebarGroup title="Sistem">
+                  <NavItem href="#prov" label="Providers" icon={<BookmarkIcon size={14} />} />
+                </SidebarGroup>
+              </Sidebar>
+            }
+            title="Job Monitor"
+            subtitle="42 aktif iş"
+            actions={<Button variant="ghost" size="sm">CSV export</Button>}
+          >
+            <div className="text-sm text-text-muted">
+              Admin density: p-4 · body 13 · row 48. Content scroll bu kutuda kısıtlıdır.
+            </div>
+          </PageShell>
         </div>
       </Section>
     </main>
