@@ -2,6 +2,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
+import { Badge, Tag, type BadgeTone } from "@/components/ui/Badge";
+import { ChipFilterDemo, ChipRemovableDemo } from "./ChipDemo";
 
 /**
  * Primitives showcase — spec "Primitives showcase" artboard karşılığı.
@@ -10,6 +12,15 @@ import { FormField } from "@/components/ui/FormField";
 
 const VARIANTS = ["primary", "secondary", "ghost", "destructive"] as const;
 const SIZES = ["sm", "md", "lg"] as const;
+const BADGE_TONES: BadgeTone[] = ["neutral", "accent", "success", "warning", "danger", "info"];
+const BADGE_LABELS: Record<BadgeTone, string> = {
+  neutral: "Clipart",
+  accent: "Seçili",
+  success: "Yayında",
+  warning: "Review",
+  danger: "Reddedildi",
+  info: "Taslak",
+};
 
 function PlusIcon({ size = 14 }: { size?: number }) {
   return (
@@ -177,6 +188,64 @@ export default function PrimitivesShowcasePage() {
             <Textarea defaultValue="" />
           </FormField>
         </div>
+      </Section>
+
+      <header className="space-y-1 pt-4">
+        <h1 className="text-2xl font-semibold">Badge / Chip / Tag</h1>
+        <p className="text-text-muted">
+          Spec A.2.5 — Badge 20h mono tracking-meta, title-case kilidi; Chip 28h filter/toggle; Tag = neutral badge alias.
+        </p>
+      </header>
+
+      <Section title="Badge · tone matrisi (6)">
+        <div className="flex flex-wrap items-center gap-2">
+          {BADGE_TONES.map((tone) => (
+            <Badge key={tone} tone={tone}>
+              {BADGE_LABELS[tone]}
+            </Badge>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Badge · dot slot">
+        <div className="flex flex-wrap items-center gap-2">
+          {BADGE_TONES.map((tone) => (
+            <Badge key={tone} tone={tone} dot>
+              {BADGE_LABELS[tone]}
+            </Badge>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Badge · title-case kilidi (uppercase YOK)">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="success">Published</Badge>
+          <Badge tone="warning">Needs Review</Badge>
+          <Badge tone="danger">Rejected</Badge>
+          <Badge tone="info">Draft</Badge>
+          <Badge tone="accent">iPhone case</Badge>
+        </div>
+        <p className="mt-3 font-mono text-xs tracking-wide text-text-subtle">
+          children render edildiği gibi gösterilir · normal-case sabit · tracking-meta 0.6px
+        </p>
+      </Section>
+
+      <Section title="Tag · thumbnail altı neutral badge">
+        <div className="flex flex-wrap items-center gap-2">
+          <Tag>Clipart</Tag>
+          <Tag>Wall art</Tag>
+          <Tag>Sticker</Tag>
+          <Tag>Printable</Tag>
+          <Tag dot>SVG</Tag>
+        </div>
+      </Section>
+
+      <Section title="Chip · filter toggle (active → accent-soft)">
+        <ChipFilterDemo />
+      </Section>
+
+      <Section title="Chip · removable (aktif + kaldır slotu)">
+        <ChipRemovableDemo />
       </Section>
     </main>
   );

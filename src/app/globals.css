@@ -111,6 +111,9 @@
     --control-h-sm: 28px;
     --control-h-md: 34px;
     --control-h-lg: 40px;
+
+    /* ——— Named letter-spacing (mono title-case meta) —— */
+    --tracking-meta: 0.6px;
   }
 
   /* Density variant — user/admin ortak aile, farklı sıkılık */

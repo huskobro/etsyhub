@@ -91,6 +91,9 @@ export default {
       scale: {
         subtle: "1.015",
       },
+      letterSpacing: {
+        meta: "var(--tracking-meta)",
+      },
       transitionTimingFunction: {
         out: "var(--ease-out)",
       },
