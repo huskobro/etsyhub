@@ -36,7 +36,7 @@ export function ReferencesPage({
   productTypes: ProductTypeOption[];
 }) {
   const qc = useQueryClient();
-  const { confirm, close, state } = useConfirm();
+  const { confirm, close, run, state } = useConfirm();
   const [productTypeId, setProductTypeId] = useState<string>("");
   const [q, setQ] = useState("");
 
@@ -132,7 +132,9 @@ export function ReferencesPage({
                   confirmPresets.archiveReference(
                     item?.bookmark?.title ?? item?.bookmark?.sourceUrl,
                   ),
-                  () => archiveMutation.mutate(id),
+                  async () => {
+                    await archiveMutation.mutateAsync(id);
+                  },
                 );
               }}
               onSetCollection={(id, collectionId) =>
@@ -153,11 +155,9 @@ export function ReferencesPage({
             if (!o) close();
           }}
           {...state.preset}
-          onConfirm={async () => {
-            await state.onConfirm?.();
-            close();
-          }}
-          busy={archiveMutation.isPending}
+          onConfirm={run}
+          busy={state.busy}
+          errorMessage={state.errorMessage}
         />
       ) : null}
     </div>

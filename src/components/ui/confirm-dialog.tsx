@@ -15,6 +15,11 @@ export type ConfirmDialogProps = {
   tone?: ConfirmTone;
   onConfirm: () => void | Promise<void>;
   busy?: boolean;
+  /**
+   * Handler hata fırlattığında dialog içinde gösterilecek mesaj. Değer set
+   * edildiğinde dialog açık kalır ve kullanıcıya retry / vazgeç seçimi verir.
+   */
+  errorMessage?: string | null;
 };
 
 const CONFIRM_TONE_CLASSES: Record<ConfirmTone, string> = {
@@ -36,6 +41,7 @@ export function ConfirmDialog({
   tone = "destructive",
   onConfirm,
   busy = false,
+  errorMessage = null,
 }: ConfirmDialogProps) {
   function handleOpenChange(next: boolean) {
     if (busy) return;
@@ -76,12 +82,22 @@ export function ConfirmDialog({
             {description}
           </Dialog.Description>
 
+          {errorMessage ? (
+            <p
+              role="alert"
+              className="mt-4 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+            >
+              {errorMessage}
+            </p>
+          ) : null}
+
           <div className="mt-6 flex justify-end gap-3">
             <button
               type="button"
               autoFocus
               onClick={handleCancel}
-              className={`${BASE_BTN} border border-border bg-surface-muted text-text hover:bg-surface`}
+              disabled={busy}
+              className={`${BASE_BTN} border border-border bg-surface-muted text-text hover:bg-surface disabled:opacity-70`}
             >
               {cancelLabel}
             </button>
@@ -91,7 +107,7 @@ export function ConfirmDialog({
               disabled={busy}
               className={`${BASE_BTN} ${toneClass} disabled:opacity-70`}
             >
-              {busy ? "Çalışıyor…" : confirmLabel}
+              {busy ? "Çalışıyor…" : errorMessage ? "Tekrar dene" : confirmLabel}
             </button>
           </div>
         </Dialog.Content>

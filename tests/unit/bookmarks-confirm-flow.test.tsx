@@ -1,18 +1,22 @@
 /**
  * bookmarks-confirm-flow.test.tsx
  *
- * Bookmark arşivleme işleminin ConfirmDialog üzerinden geçtiğini doğrular.
- * Senaryo:
+ * Bookmark arşivleme işleminin ConfirmDialog + useConfirm akışından geçtiğini
+ * doğrular. Fixture gerçek useConfirm hook'unu kullanır — böylece hook API'si
+ * değişirse test suite kırılır.
+ *
+ * Senaryolar:
  *   1. Arşivle butonuna tıkla → mutate ÇAĞRILMAMALI, dialog açılmalı
  *   2. Dialog'da "Arşivle" butonuna tıkla → mutate ÇAĞRILMALI
  *   3. Dialog'da "Vazgeç" butonuna tıkla → mutate ÇAĞRILMAMALI
+ *   4. mutation hata fırlatırsa → dialog açık kalır, errorMessage görünür,
+ *      buton label "Tekrar dene" olur
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act, within } from "@testing-library/react";
-import { useState, useCallback } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { confirmPresets } from "@/components/ui/confirm-presets";
-import type { ConfirmPresetValue } from "@/components/ui/confirm-presets";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 // --- matchMedia mock (Radix Portal / dialog için gerekli) ---
 beforeEach(() => {
@@ -31,48 +35,26 @@ beforeEach(() => {
   });
 });
 
-type ConfirmState = {
-  open: boolean;
-  preset: ConfirmPresetValue | null;
-  onConfirm: (() => void | Promise<void>) | null;
-};
-
 /**
  * Test fixture: Bookmark kartı rolünü oynayan minimal component.
- * Gerçek BookmarksPage'deki useConfirm pattern'ini birebir taklit eder.
+ * Gerçek useConfirm hook'unu birebir kullanır — production pattern ile aynı.
  */
 function BookmarkArchiveFixture({
   onMutate,
   bookmarkTitle = "Test Bookmark",
 }: {
-  onMutate: () => void;
+  onMutate: () => void | Promise<void>;
   bookmarkTitle?: string;
 }) {
-  const [state, setState] = useState<ConfirmState>({
-    open: false,
-    preset: null,
-    onConfirm: null,
-  });
-
-  const confirm = useCallback(
-    (preset: ConfirmPresetValue, cb: () => void | Promise<void>) => {
-      setState({ open: true, preset, onConfirm: cb });
-    },
-    [],
-  );
-
-  const close = useCallback(() => {
-    setState((s) => ({ ...s, open: false }));
-  }, []);
+  const { confirm, close, run, state } = useConfirm();
 
   return (
     <>
       <button
         type="button"
         onClick={() =>
-          confirm(
-            confirmPresets.archiveBookmark(bookmarkTitle || null),
-            () => onMutate(),
+          confirm(confirmPresets.archiveBookmark(bookmarkTitle || null), () =>
+            onMutate(),
           )
         }
         data-testid="archive-btn"
@@ -87,11 +69,9 @@ function BookmarkArchiveFixture({
             if (!o) close();
           }}
           {...state.preset}
-          onConfirm={async () => {
-            await state.onConfirm?.();
-            close();
-          }}
-          busy={false}
+          onConfirm={run}
+          busy={state.busy}
+          errorMessage={state.errorMessage}
         />
       ) : null}
     </>
@@ -160,5 +140,35 @@ describe("BookmarkArchiveFixture — confirm flow", () => {
     expect(
       screen.getByText(/Bu bookmark arşivlenecek/),
     ).toBeInTheDocument();
+  });
+
+  it("mutate hata fırlatırsa → dialog açık kalır, errorMessage + 'Tekrar dene' görünür", async () => {
+    const mutate = vi.fn().mockRejectedValueOnce(new Error("Sunucu 500 verdi"));
+    render(<BookmarkArchiveFixture onMutate={mutate} bookmarkTitle="Hatalı Kart" />);
+
+    // Dialog'u aç
+    act(() => {
+      fireEvent.click(screen.getByTestId("archive-btn"));
+    });
+
+    let dialog = screen.getByRole("dialog");
+    // Confirm — mutation throw edecek
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Arşivle" }));
+    });
+
+    // Dialog hâlâ açık olmalı
+    dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+
+    // Hata mesajı görünür olmalı (role="alert")
+    const alert = within(dialog).getByRole("alert");
+    expect(alert).toHaveTextContent("Sunucu 500 verdi");
+
+    // Confirm butonu "Tekrar dene" etiketine dönmeli
+    expect(within(dialog).getByRole("button", { name: "Tekrar dene" })).toBeInTheDocument();
+
+    // mutate bir kez çağrılmış olmalı
+    expect(mutate).toHaveBeenCalledTimes(1);
   });
 });

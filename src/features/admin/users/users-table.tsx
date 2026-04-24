@@ -34,7 +34,7 @@ async function patchUser(input: { userId: string; role?: UserRole; status?: User
 
 export function UsersTable() {
   const qc = useQueryClient();
-  const { confirm, close, state } = useConfirm();
+  const { confirm, close, run, state } = useConfirm();
   const { data, isLoading, error } = useQuery({
     queryKey: ["admin", "users"],
     queryFn: fetchUsers,
@@ -74,7 +74,12 @@ export function UsersTable() {
                       const nextRole = e.target.value as UserRole;
                       confirm(
                         confirmPresets.changeUserRole(u.email, nextRole),
-                        () => mutation.mutate({ userId: u.id, role: nextRole }),
+                        async () => {
+                          await mutation.mutateAsync({
+                            userId: u.id,
+                            role: nextRole,
+                          });
+                        },
                       );
                     }}
                     className="rounded-md border border-border bg-bg px-2 py-1 text-sm"
@@ -112,11 +117,9 @@ export function UsersTable() {
             if (!o) close();
           }}
           {...state.preset}
-          onConfirm={async () => {
-            await state.onConfirm?.();
-            close();
-          }}
-          busy={mutation.isPending}
+          onConfirm={run}
+          busy={state.busy}
+          errorMessage={state.errorMessage}
         />
       ) : null}
     </>

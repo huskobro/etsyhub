@@ -127,4 +127,24 @@ describe("ConfirmDialog", () => {
     const btn = screen.getByRole("button", { name: "Güncelle" });
     expect(btn.className).toContain("bg-accent");
   });
+
+  it("errorMessage dolu iken role=alert banner ve 'Tekrar dene' label render eder", () => {
+    render(
+      <ConfirmDialog
+        {...defaultProps}
+        errorMessage="Sunucu 500 verdi"
+      />,
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Sunucu 500 verdi");
+    // confirmLabel yerine "Tekrar dene" görünmeli
+    expect(screen.getByRole("button", { name: "Tekrar dene" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sil" })).not.toBeInTheDocument();
+  });
+
+  it("errorMessage=null iken alert banner DOM'da yok, orijinal confirmLabel görünür", () => {
+    render(<ConfirmDialog {...defaultProps} errorMessage={null} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sil" })).toBeInTheDocument();
+  });
 });

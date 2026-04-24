@@ -34,7 +34,7 @@ async function activateTheme(themeId: string) {
 
 export function ThemesList() {
   const qc = useQueryClient();
-  const { confirm, close, state } = useConfirm();
+  const { confirm, close, run, state } = useConfirm();
   const { data, isLoading, error } = useQuery({
     queryKey: ["admin", "themes"],
     queryFn: fetchThemes,
@@ -77,7 +77,9 @@ export function ThemesList() {
                   onClick={() =>
                     confirm(
                       confirmPresets.activateTheme(t.name),
-                      () => mutation.mutate(t.id),
+                      async () => {
+                        await mutation.mutateAsync(t.id);
+                      },
                     )
                   }
                   className="rounded-md border border-border px-3 py-1 text-xs hover:bg-surface-muted"
@@ -99,11 +101,9 @@ export function ThemesList() {
             if (!o) close();
           }}
           {...state.preset}
-          onConfirm={async () => {
-            await state.onConfirm?.();
-            close();
-          }}
-          busy={mutation.isPending}
+          onConfirm={run}
+          busy={state.busy}
+          errorMessage={state.errorMessage}
         />
       ) : null}
     </div>

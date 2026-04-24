@@ -48,7 +48,7 @@ export function BookmarksPage({
   productTypes: ProductTypeOption[];
 }) {
   const qc = useQueryClient();
-  const { confirm, close, state } = useConfirm();
+  const { confirm, close, run, state } = useConfirm();
   const [status, setStatus] = useState<BookmarkStatus | "ALL">("INBOX");
   const [q, setQ] = useState("");
   const [importOpen, setImportOpen] = useState(false);
@@ -172,7 +172,9 @@ export function BookmarksPage({
                   confirmPresets.archiveBookmark(
                     query.data.items.find((b) => b.id === id)?.title,
                   ),
-                  () => archiveMutation.mutate(id),
+                  async () => {
+                    await archiveMutation.mutateAsync(id);
+                  },
                 )
               }
               onPromote={(id) => setPromoteId(id)}
@@ -204,11 +206,9 @@ export function BookmarksPage({
             if (!o) close();
           }}
           {...state.preset}
-          onConfirm={async () => {
-            await state.onConfirm?.();
-            close();
-          }}
-          busy={archiveMutation.isPending}
+          onConfirm={run}
+          busy={state.busy}
+          errorMessage={state.errorMessage}
         />
       ) : null}
 

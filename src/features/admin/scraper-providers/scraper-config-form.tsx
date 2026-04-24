@@ -63,7 +63,7 @@ const PROVIDER_HINTS: Record<ScraperProviderName, string> = {
 
 export function ScraperConfigForm() {
   const qc = useQueryClient();
-  const { confirm, close, state } = useConfirm();
+  const { confirm, close, run, state } = useConfirm();
   const { data, isLoading, error } = useQuery({
     queryKey: ["admin", "scraper-config"],
     queryFn: fetchConfig,
@@ -188,7 +188,9 @@ export function ScraperConfigForm() {
           onDelete={() =>
             confirm(
               confirmPresets.deleteApiKey("Apify"),
-              () => mutation.mutate({ apiKeys: { apify: null } }),
+              async () => {
+                await mutation.mutateAsync({ apiKeys: { apify: null } });
+              },
             )
           }
         />
@@ -212,7 +214,9 @@ export function ScraperConfigForm() {
           onDelete={() =>
             confirm(
               confirmPresets.deleteApiKey("Firecrawl"),
-              () => mutation.mutate({ apiKeys: { firecrawl: null } }),
+              async () => {
+                await mutation.mutateAsync({ apiKeys: { firecrawl: null } });
+              },
             )
           }
         />
@@ -225,11 +229,9 @@ export function ScraperConfigForm() {
             if (!o) close();
           }}
           {...state.preset}
-          onConfirm={async () => {
-            await state.onConfirm?.();
-            close();
-          }}
-          busy={mutation.isPending}
+          onConfirm={run}
+          busy={state.busy}
+          errorMessage={state.errorMessage}
         />
       ) : null}
     </div>

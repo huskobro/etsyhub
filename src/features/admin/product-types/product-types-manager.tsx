@@ -49,7 +49,7 @@ async function deleteItem(id: string) {
 
 export function ProductTypesManager() {
   const qc = useQueryClient();
-  const { confirm, close, state } = useConfirm();
+  const { confirm, close, run, state } = useConfirm();
   const { data, isLoading, error } = useQuery({
     queryKey: ["admin", "product-types"],
     queryFn: fetchItems,
@@ -164,7 +164,9 @@ export function ProductTypesManager() {
                       onClick={() =>
                         confirm(
                           confirmPresets.deleteProductType(p.displayName),
-                          () => deleteMutation.mutate(p.id),
+                          async () => {
+                            await deleteMutation.mutateAsync(p.id);
+                          },
                         )
                       }
                       className="rounded-md border border-border px-3 py-1 text-xs text-danger hover:bg-surface-muted"
@@ -185,11 +187,9 @@ export function ProductTypesManager() {
             if (!o) close();
           }}
           {...state.preset}
-          onConfirm={async () => {
-            await state.onConfirm?.();
-            close();
-          }}
-          busy={deleteMutation.isPending}
+          onConfirm={run}
+          busy={state.busy}
+          errorMessage={state.errorMessage}
         />
       ) : null}
     </div>

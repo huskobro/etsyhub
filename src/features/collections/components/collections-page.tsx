@@ -28,7 +28,7 @@ type KindFilter = "" | "BOOKMARK" | "REFERENCE" | "MIXED";
 
 export function CollectionsPage() {
   const qc = useQueryClient();
-  const { confirm, close, state } = useConfirm();
+  const { confirm, close, run, state } = useConfirm();
   const [kind, setKind] = useState<KindFilter>("");
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
@@ -141,7 +141,9 @@ export function CollectionsPage() {
                 const item = query.data.items.find((col) => col.id === id);
                 confirm(
                   confirmPresets.archiveCollection(item?.name),
-                  () => archiveMutation.mutate(id),
+                  async () => {
+                    await archiveMutation.mutateAsync(id);
+                  },
                 );
               }}
             />
@@ -168,11 +170,9 @@ export function CollectionsPage() {
             if (!o) close();
           }}
           {...state.preset}
-          onConfirm={async () => {
-            await state.onConfirm?.();
-            close();
-          }}
-          busy={archiveMutation.isPending}
+          onConfirm={run}
+          busy={state.busy}
+          errorMessage={state.errorMessage}
         />
       ) : null}
     </div>
