@@ -1,6 +1,6 @@
 # EtsyHub
 
-Localhost-first Etsy / POD productivity web app. Matesy / Listybox'tan ilham alan bağımsız bir ürün.
+Localhost-first Etsy / POD productivity web app. Farklı ürünlerden ilham alan bağımsız bir ürün.
 
 ## Gereksinimler
 
