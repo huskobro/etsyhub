@@ -2,6 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ThemeStatus } from "@prisma/client";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { confirmPresets } from "@/components/ui/confirm-presets";
 
 type ThemeRow = {
   id: string;
@@ -31,6 +34,7 @@ async function activateTheme(themeId: string) {
 
 export function ThemesList() {
   const qc = useQueryClient();
+  const { confirm, close, state } = useConfirm();
   const { data, isLoading, error } = useQuery({
     queryKey: ["admin", "themes"],
     queryFn: fetchThemes,
@@ -70,7 +74,12 @@ export function ThemesList() {
                 <button
                   type="button"
                   disabled={mutation.isPending}
-                  onClick={() => mutation.mutate(t.id)}
+                  onClick={() =>
+                    confirm(
+                      confirmPresets.activateTheme(t.name),
+                      () => mutation.mutate(t.id),
+                    )
+                  }
                   className="rounded-md border border-border px-3 py-1 text-xs hover:bg-surface-muted"
                 >
                   Aktifleştir
@@ -83,6 +92,20 @@ export function ThemesList() {
           </div>
         ))}
       </div>
+      {state.preset ? (
+        <ConfirmDialog
+          open={state.open}
+          onOpenChange={(o) => {
+            if (!o) close();
+          }}
+          {...state.preset}
+          onConfirm={async () => {
+            await state.onConfirm?.();
+            close();
+          }}
+          busy={mutation.isPending}
+        />
+      ) : null}
     </div>
   );
 }

@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { confirmPresets } from "@/components/ui/confirm-presets";
 
 /**
  * Scraper provider adları — provider-config abstraction ile hizalı.
@@ -60,6 +63,7 @@ const PROVIDER_HINTS: Record<ScraperProviderName, string> = {
 
 export function ScraperConfigForm() {
   const qc = useQueryClient();
+  const { confirm, close, state } = useConfirm();
   const { data, isLoading, error } = useQuery({
     queryKey: ["admin", "scraper-config"],
     queryFn: fetchConfig,
@@ -181,7 +185,12 @@ export function ScraperConfigForm() {
             }
             mutation.mutate({ apiKeys: { apify: apifyInput } });
           }}
-          onDelete={() => mutation.mutate({ apiKeys: { apify: null } })}
+          onDelete={() =>
+            confirm(
+              confirmPresets.deleteApiKey("Apify"),
+              () => mutation.mutate({ apiKeys: { apify: null } }),
+            )
+          }
         />
 
         <ApiKeyRow
@@ -200,9 +209,29 @@ export function ScraperConfigForm() {
             }
             mutation.mutate({ apiKeys: { firecrawl: firecrawlInput } });
           }}
-          onDelete={() => mutation.mutate({ apiKeys: { firecrawl: null } })}
+          onDelete={() =>
+            confirm(
+              confirmPresets.deleteApiKey("Firecrawl"),
+              () => mutation.mutate({ apiKeys: { firecrawl: null } }),
+            )
+          }
         />
       </section>
+
+      {state.preset ? (
+        <ConfirmDialog
+          open={state.open}
+          onOpenChange={(o) => {
+            if (!o) close();
+          }}
+          {...state.preset}
+          onConfirm={async () => {
+            await state.onConfirm?.();
+            close();
+          }}
+          busy={mutation.isPending}
+        />
+      ) : null}
     </div>
   );
 }

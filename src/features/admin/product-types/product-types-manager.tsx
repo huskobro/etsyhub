@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { confirmPresets } from "@/components/ui/confirm-presets";
 
 type ProductTypeRow = {
   id: string;
@@ -46,6 +49,7 @@ async function deleteItem(id: string) {
 
 export function ProductTypesManager() {
   const qc = useQueryClient();
+  const { confirm, close, state } = useConfirm();
   const { data, isLoading, error } = useQuery({
     queryKey: ["admin", "product-types"],
     queryFn: fetchItems,
@@ -157,7 +161,12 @@ export function ProductTypesManager() {
                     <button
                       type="button"
                       disabled={deleteMutation.isPending}
-                      onClick={() => deleteMutation.mutate(p.id)}
+                      onClick={() =>
+                        confirm(
+                          confirmPresets.deleteProductType(p.displayName),
+                          () => deleteMutation.mutate(p.id),
+                        )
+                      }
                       className="rounded-md border border-border px-3 py-1 text-xs text-danger hover:bg-surface-muted"
                     >
                       Sil
@@ -169,6 +178,20 @@ export function ProductTypesManager() {
           </tbody>
         </table>
       </div>
+      {state.preset ? (
+        <ConfirmDialog
+          open={state.open}
+          onOpenChange={(o) => {
+            if (!o) close();
+          }}
+          {...state.preset}
+          onConfirm={async () => {
+            await state.onConfirm?.();
+            close();
+          }}
+          busy={deleteMutation.isPending}
+        />
+      ) : null}
     </div>
   );
 }
