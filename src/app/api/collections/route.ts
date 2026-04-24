@@ -8,7 +8,7 @@ import {
 } from "@/features/collections/schemas";
 import {
   createCollection,
-  listCollections,
+  listCollectionsWithStats,
 } from "@/features/collections/services/collection-service";
 
 export const GET = withErrorHandling(async (req: Request) => {
@@ -20,8 +20,11 @@ export const GET = withErrorHandling(async (req: Request) => {
   if (!parsed.success) {
     throw new ValidationError("Geçersiz sorgu", parsed.error.flatten());
   }
-  const items = await listCollections({ userId: user.id, query: parsed.data });
-  return NextResponse.json({ items });
+  const result = await listCollectionsWithStats({
+    userId: user.id,
+    query: parsed.data,
+  });
+  return NextResponse.json(result);
 });
 
 export const POST = withErrorHandling(async (req: Request) => {

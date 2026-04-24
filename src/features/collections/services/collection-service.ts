@@ -138,3 +138,29 @@ export async function softDeleteCollection(args: {
     data: { deletedAt: new Date() },
   });
 }
+
+export async function listCollectionsWithStats(args: {
+  userId: string;
+  query: ListCollectionsQuery;
+}) {
+  const items = await listCollections(args);
+
+  const uncategorizedReferenceCount = await db.reference.count({
+    where: {
+      userId: args.userId,
+      deletedAt: null,
+      collectionId: null,
+    },
+  });
+
+  const orphanedReferenceCount = await db.reference.count({
+    where: {
+      userId: args.userId,
+      deletedAt: null,
+      collectionId: { not: null },
+      collection: { deletedAt: { not: null } },
+    },
+  });
+
+  return { items, uncategorizedReferenceCount, orphanedReferenceCount };
+}

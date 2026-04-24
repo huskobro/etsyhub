@@ -28,7 +28,9 @@ export type PromoteBookmarkInput = z.infer<typeof promoteBookmarkInput>;
 
 export const listReferencesQuery = z.object({
   productTypeId: z.string().optional(),
-  collectionId: z.string().optional(),
+  collectionId: z
+    .union([z.literal("uncategorized"), z.string().cuid()])
+    .optional(),
   q: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(60),
   cursor: z.string().optional(),

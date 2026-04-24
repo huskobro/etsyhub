@@ -20,7 +20,11 @@ export async function listReferences(args: {
     userId,
     deletedAt: null,
     ...(productTypeId ? { productTypeId } : {}),
-    ...(collectionId ? { collectionId } : {}),
+    ...(collectionId === "uncategorized"
+      ? { collectionId: null }
+      : collectionId
+        ? { collectionId }
+        : {}),
     ...(q
       ? {
           OR: [
