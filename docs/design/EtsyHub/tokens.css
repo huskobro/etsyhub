@@ -1,0 +1,137 @@
+/* EtsyHub — Design Tokens
+ * Editorial kokpit yönü. Warm off-white, #E85D25 aksan, Inter + IBM Plex Mono.
+ * CSS custom properties bazlı — kullanıcı paneli (gevşek) + admin (sıkı) ortak aile.
+ */
+
+:root {
+  /* ——— Color · Surfaces ——————————————————————————— */
+  --color-bg:          #FAFAF7;   /* uygulama arkaplanı — warm off-white */
+  --color-surface:     #FFFFFF;   /* kart, panel, input yüzeyi */
+  --color-surface-2:   #F3F2EC;   /* sidebar, subtle panel, toolbar */
+  --color-surface-3:   #EBE9E2;   /* hover row, disabled fill */
+
+  /* ——— Color · Text ————————————————————————————————— */
+  --color-text:        #1A1715;   /* ana metin — near-black warm */
+  --color-text-muted:  #6B655F;   /* secondary, meta, help */
+  --color-text-subtle: #9A948D;   /* placeholder, breadcrumb sep */
+  --color-text-invert: #FFFFFF;
+
+  /* ——— Color · Borders —————————————————————————————— */
+  --color-border:         #E7E5DF; /* default card/input kenar */
+  --color-border-strong:  #D6D3CA; /* focused/hovered kenar */
+  --color-border-subtle:  #EFEEE8; /* tablo satır ayırıcı */
+
+  /* ——— Color · Accent —————————————————————————————— */
+  --color-accent:         #E85D25; /* CTA, selected, focus ring */
+  --color-accent-hover:   #D14E1A;
+  --color-accent-soft:    #FBEADF; /* selected row bg, chip bg */
+  --color-accent-text:    #B04517; /* chip text on accent-soft */
+
+  /* ——— Color · Status ————————————————————————————— */
+  --color-success:        #2F7A4B;
+  --color-success-soft:   #E4F1E9;
+  --color-warning:        #B47415;
+  --color-warning-soft:   #F6ECD6;
+  --color-danger:         #B13A28;
+  --color-danger-soft:    #F5DDD7;
+  --color-info:           #2D5F8F;
+  --color-info-soft:      #E0ECF6;
+
+  /* ——— Spacing ————————————————————————————————————— */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-7:  28px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* ——— Radius ——————————————————————————————————————— */
+  --radius-sm: 4px;   /* chip, small button */
+  --radius-md: 6px;   /* input, button, card default */
+  --radius-lg: 10px;  /* dialog, large surface */
+
+  /* ——— Shadow ——————————————————————————————————————— */
+  --shadow-card:   0 1px 2px rgba(26, 23, 21, 0.04), 0 1px 1px rgba(26, 23, 21, 0.03);
+  --shadow-popover: 0 12px 32px rgba(26, 23, 21, 0.12), 0 2px 6px rgba(26, 23, 21, 0.06);
+
+  /* ——— Typography ——————————————————————————————————— */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+  --text-xs:   11px;  /* mono meta, admin row */
+  --text-sm:   13px;  /* body sm, admin default */
+  --text-base: 14px;  /* user default body */
+  --text-md:   15px;  /* emphasized body */
+  --text-lg:   17px;  /* card title */
+  --text-xl:   20px;  /* section title */
+  --text-2xl:  24px;  /* page title */
+  --text-3xl:  32px;  /* dashboard hero numeral */
+
+  --leading-tight:  1.25;
+  --leading-normal: 1.5;
+
+  /* ——— Motion ——————————————————————————————————————— */
+  --scale-subtle: 1.015;       /* hover scale — asset yüzeyi */
+  --ease-out: cubic-bezier(.2,.7,.3,1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+
+  /* ——— Layout ——————————————————————————————————————— */
+  --sidebar-w: 232px;
+  --page-pad-user:  var(--space-6);  /* 24 */
+  --page-pad-admin: var(--space-4);  /* 16 */
+  --gap-grid-user:  var(--space-4);  /* 16 */
+  --gap-grid-admin: var(--space-3);  /* 12 */
+
+  /* ——— Aspect ratios (named) ——————————————————————— */
+  --aspect-card: 4 / 3;        /* bookmark default */
+  --aspect-portrait: 2 / 3;    /* wall art, canvas */
+  --aspect-square: 1 / 1;      /* clipart */
+
+  /* ——— Named min-heights —————————————————————————— */
+  --min-h-textarea: var(--space-20);  /* 80 */
+}
+
+/* Density variant — admin paneli için sıkı ton */
+[data-density="admin"] {
+  --page-pad: var(--page-pad-admin);
+  --gap-grid: var(--gap-grid-admin);
+  --text-body: var(--text-sm);
+  --row-h: 40px;
+}
+[data-density="user"] {
+  --page-pad: var(--page-pad-user);
+  --gap-grid: var(--gap-grid-user);
+  --text-body: var(--text-base);
+  --row-h: 52px;
+}
+
+/* Reset baseline for app chrome */
+.eh-app, .eh-app * {
+  box-sizing: border-box;
+}
+.eh-app {
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: var(--color-bg);
+  font-size: var(--text-body, var(--text-base));
+  line-height: var(--leading-normal);
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+}
+.eh-app *::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+/* Utility */
+.eh-mono { font-family: var(--font-mono); font-feature-settings: "tnum"; }
+.eh-muted { color: var(--color-text-muted); }
+.eh-subtle { color: var(--color-text-subtle); }
