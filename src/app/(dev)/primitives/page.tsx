@@ -15,6 +15,11 @@ import {
   SidebarBrand,
 } from "@/components/ui/Sidebar";
 import { PageShell } from "@/components/ui/PageShell";
+import { Toolbar } from "@/components/ui/Toolbar";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { BulkActionBar } from "@/components/ui/BulkActionBar";
+import { BulkBarDemo } from "./BulkBarDemo";
+import { Chip } from "@/components/ui/Chip";
 
 /**
  * Primitives showcase — spec "Primitives showcase" artboard karşılığı.
@@ -602,6 +607,175 @@ export default function PrimitivesShowcasePage() {
                   <div className="text-sm font-medium truncate">Sticker sheet</div>
                 </AssetCardMeta>
               </Card>
+            </div>
+          </PageShell>
+        </div>
+      </Section>
+
+      <Section title="Toolbar — standalone (leading + children + trailing + divider)">
+        <Toolbar
+          standalone
+          leading={
+            <div className="w-64">
+              <Input placeholder="Başlık, tag veya kaynakta ara" />
+            </div>
+          }
+          trailing={
+            <>
+              <Button variant="ghost" size="sm">
+                Filtre
+              </Button>
+              <Button variant="secondary" size="sm">
+                Grid
+              </Button>
+            </>
+          }
+        >
+          <FilterBar>
+            <Chip active>Tümü · 84</Chip>
+            <Chip>Wall art · 31</Chip>
+            <Chip>Clipart · 22</Chip>
+            <Chip>Printable · 18</Chip>
+          </FilterBar>
+        </Toolbar>
+      </Section>
+
+      <Section title="FilterBar — clear all davranışı">
+        <div className="space-y-3">
+          <FilterBar clearLabel="Temizle" onClearAll={() => {}}>
+            <Chip active>Wall art</Chip>
+            <Chip active>Nursery</Chip>
+            <Chip>Clipart</Chip>
+            <Chip>Sticker</Chip>
+          </FilterBar>
+          <div className="font-mono text-xs text-text-subtle">
+            clearLabel + onClearAll verilmişse sağda mono Temizle butonu
+            otomatik yerleşir.
+          </div>
+        </div>
+      </Section>
+
+      <Section title="BulkActionBar — canlı görünürlük + dismiss (selectedCount > 0 iken render eder)">
+        <BulkBarDemo />
+      </Section>
+
+      <Section title="BulkActionBar — sticky=true (uzun scroll içinde yukarıda kalır)">
+        <div className="h-48 overflow-auto rounded-md border border-border bg-surface p-3">
+          <BulkActionBar
+            sticky
+            selectedCount={2}
+            label="2 öğe seçildi"
+            actions={
+              <>
+                <Button variant="ghost" size="sm">
+                  Referansa ekle
+                </Button>
+                <Button variant="ghost" size="sm">
+                  Arşivle
+                </Button>
+              </>
+            }
+            onDismiss={() => {}}
+          />
+          <div className="mt-3 space-y-2">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-sm border border-border-subtle bg-surface-muted px-3 py-2 text-sm text-text-muted"
+              >
+                Örnek satır {i + 1} · sticky bar yukarıda kalır
+              </div>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      <Section title="PageShell + Toolbar + FilterBar + BulkActionBar — bütünleşik preview">
+        <div className="h-96 overflow-hidden rounded-md border border-border">
+          <PageShell
+            className="h-full"
+            density="user"
+            sidebar={
+              <Sidebar
+                className="h-full"
+                brand={<SidebarBrand name="EtsyHub" />}
+              >
+                <SidebarGroup title="Kütüphane">
+                  <NavItem
+                    href="#book"
+                    label="Bookmark"
+                    icon={<BookmarkIcon size={14} />}
+                    badge="84"
+                    active
+                  />
+                  <NavItem
+                    href="#ref"
+                    label="Referanslar"
+                    icon={<BookmarkIcon size={14} />}
+                    badge="27"
+                  />
+                </SidebarGroup>
+              </Sidebar>
+            }
+            title="Bookmark"
+            subtitle="84 kayıt · son eklenen 2 dakika önce"
+            actions={
+              <Button variant="primary" size="sm" icon={<PlusIcon />}>
+                URL ekle
+              </Button>
+            }
+            toolbar={
+              <Toolbar
+                leading={
+                  <div className="w-64">
+                    <Input placeholder="Ara" />
+                  </div>
+                }
+                trailing={
+                  <Button variant="ghost" size="sm">
+                    Filtre
+                  </Button>
+                }
+              >
+                <FilterBar>
+                  <Chip active>Tümü · 84</Chip>
+                  <Chip>Wall art · 31</Chip>
+                  <Chip>Clipart · 22</Chip>
+                </FilterBar>
+              </Toolbar>
+            }
+          >
+            <div className="space-y-4">
+              <BulkActionBar
+                selectedCount={3}
+                label="3 bookmark seçildi"
+                actions={
+                  <>
+                    <Button variant="ghost" size="sm">
+                      Referansa ekle
+                    </Button>
+                    <Button variant="ghost" size="sm">
+                      Arşivle
+                    </Button>
+                  </>
+                }
+                onDismiss={() => {}}
+              />
+              <div className="grid grid-cols-3 gap-4">
+                {(["boho", "clipart", "sticker"] as const).map((k) => (
+                  <Card key={k} variant="asset" interactive>
+                    <Thumb kind={k} />
+                    <AssetCardMeta>
+                      <div className="text-sm font-medium truncate">
+                        {k} örnek kart
+                      </div>
+                      <div className="font-mono text-xs text-text-subtle">
+                        etsy.com/listing
+                      </div>
+                    </AssetCardMeta>
+                  </Card>
+                ))}
+              </div>
             </div>
           </PageShell>
         </div>
