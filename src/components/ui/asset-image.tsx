@@ -5,6 +5,16 @@ import { useQuery } from "@tanstack/react-query";
 export type AssetImageProps = {
   assetId: string | null | undefined;
   alt: string;
+  /**
+   * Varsayılan (false) → aspect-card (4/3) Frame wrapper uygulanır; mevcut
+   * tüketiciler (BookmarkCard, ReferenceCard vb.) için backward-compatible.
+   *
+   * true → Frame wrapper atlanır; sadece inner content (loading skeleton /
+   * empty state / <img>) `h-full w-full` olarak render edilir. Outer aspect
+   * ratio kontrolü çağıran bileşenin sorumluluğundadır (örn. CollectionThumb
+   * `aspect-video` container'ı).
+   */
+  unstyled?: boolean;
 };
 
 async function fetchSignedUrl(assetId: string): Promise<string> {
@@ -49,7 +59,11 @@ function LoadingContent() {
   );
 }
 
-export function AssetImage({ assetId, alt }: AssetImageProps): JSX.Element {
+export function AssetImage({
+  assetId,
+  alt,
+  unstyled = false,
+}: AssetImageProps): JSX.Element {
   const query = useQuery({
     queryKey: ["asset-signed-url", assetId],
     queryFn: () => fetchSignedUrl(assetId!),
@@ -67,25 +81,23 @@ export function AssetImage({ assetId, alt }: AssetImageProps): JSX.Element {
     enabled: Boolean(assetId),
   });
 
-  return (
-    <Frame>
-      {!assetId ? (
-        <EmptyContent />
-      ) : query.isError ? (
-        <EmptyContent label="Görsel yüklenemedi" />
-      ) : query.isPending ? (
-        <LoadingContent />
-      ) : query.data ? (
-        // eslint-disable-next-line @next/next/no-img-element -- signed URL'ler dinamik; next/image remotePatterns genişletmesi scope dışı
-        <img
-          src={query.data}
-          alt={alt}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
-      ) : (
-        <EmptyContent />
-      )}
-    </Frame>
+  const content = !assetId ? (
+    <EmptyContent />
+  ) : query.isError ? (
+    <EmptyContent label="Görsel yüklenemedi" />
+  ) : query.isPending ? (
+    <LoadingContent />
+  ) : query.data ? (
+    // eslint-disable-next-line @next/next/no-img-element -- signed URL'ler dinamik; next/image remotePatterns genişletmesi scope dışı
+    <img
+      src={query.data}
+      alt={alt}
+      className="h-full w-full object-cover"
+      loading="lazy"
+    />
+  ) : (
+    <EmptyContent />
   );
+
+  return unstyled ? content : <Frame>{content}</Frame>;
 }

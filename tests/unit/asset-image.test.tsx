@@ -81,4 +81,20 @@ describe("AssetImage", () => {
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
   });
+
+  describe("frame mode", () => {
+    it("default → root element has aspect-card Frame class", () => {
+      const { container } = wrapper(<AssetImage assetId={null} alt="x" />);
+      const root = container.firstElementChild as HTMLElement;
+      expect(root.className).toContain("aspect-card");
+    });
+
+    it("unstyled → root element does NOT have aspect-card Frame class", () => {
+      const { container } = wrapper(
+        <AssetImage assetId={null} alt="x" unstyled />,
+      );
+      const root = container.firstElementChild as HTMLElement;
+      expect(root.className).not.toContain("aspect-card");
+    });
+  });
 });

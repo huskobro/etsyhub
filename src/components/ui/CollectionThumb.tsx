@@ -48,8 +48,13 @@ export function CollectionThumb({
   if (assetIds.length < 4) {
     const first = assetIds[0]!;
     return (
-      <div className={className}>
-        <AssetImage assetId={first} alt={alt ?? ""} />
+      <div
+        className={cn(
+          "aspect-video overflow-hidden rounded-md",
+          className,
+        )}
+      >
+        <AssetImage assetId={first} alt={alt ?? ""} unstyled />
       </div>
     );
   }
@@ -65,7 +70,7 @@ export function CollectionThumb({
       aria-label={alt}
     >
       {slots.map((id) => (
-        <AssetImage key={id} assetId={id} alt="" />
+        <AssetImage key={id} assetId={id} alt="" unstyled />
       ))}
     </div>
   );
