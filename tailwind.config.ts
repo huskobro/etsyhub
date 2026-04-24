@@ -36,6 +36,7 @@ export default {
       maxWidth: { content: "var(--layout-content-max-width)" },
       width: { sidebar: "var(--layout-sidebar-width)" },
       height: { header: "var(--layout-header-height)" },
+      aspectRatio: { card: "4 / 3" },
     },
   },
   plugins: [],
