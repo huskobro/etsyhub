@@ -181,6 +181,17 @@ test.describe("trend stories flow", () => {
 
   // -----------------------------------------------------------------------
   // Test 3: Feed listing kartından "Bookmark'a ekle" → toast → /bookmarks'ta görünür
+  //
+  // UI/Spec uzlaşması notu:
+  // Orijinal spec "modal trendClusterId dolu" gibi bir doğrulama bekliyordu.
+  // Ancak mevcut implementasyonda modal yok — "Bookmark'a ekle" butonuna
+  // tıklandığında useCreateTrendBookmark mutation'ı doğrudan POST /api/bookmarks
+  // isteği yapar ve trendClusterId'yi body'e ekler. Ekvivalent iki doğrulama:
+  //   (A) Butona tıklamadan önce TrendMembershipBadge'in kart üzerinde görünür
+  //       olduğu doğrulanır — bu listing'in cluster üyesi olduğunu UI seviyesinde kanıtlar.
+  //   (B) Toast sonrasında DB'den bulunan bookmark kaydında trendClusterId,
+  //       trendClusterLabelSnapshot ve trendWindowDaysSnapshot snapshot alanları
+  //       doğrulanır — mutation'ın backend'e doğru veriyi ilettiğini kanıtlar.
   // -----------------------------------------------------------------------
   test("feed listing kartından Bookmark akışı", async ({ page }) => {
     await login(page);
@@ -196,12 +207,34 @@ test.describe("trend stories flow", () => {
 
     await expect(feedCard).toBeVisible({ timeout: 15_000 });
 
+    // (A) TrendMembershipBadge kart üzerinde görünür olmalı.
+    // Badge, TrendMembershipBadge bileşeni tarafından <button> olarak render edilir;
+    // içinde "Trend: <cluster label>" metni bulunur. Bu listing'in cluster üyesi
+    // olduğunu ve trendClusterId'nin mutation'a geçirileceğini UI seviyesinde kanıtlar.
+    await expect(
+      feedCard.getByRole("button", { name: /Trend:/ }),
+    ).toBeVisible({ timeout: 15_000 });
+
     // "Bookmark'a ekle" butonuna tıkla
     await feedCard.getByRole("button", { name: /Bookmark'a ekle/i }).click();
 
     // Başarı toast'ı görünmeli: role="status" içinde "eklendi" geçmeli
     const toast = page.getByRole("status").filter({ hasText: /eklendi/i });
     await expect(toast).toBeVisible({ timeout: 15_000 });
+
+    // (B) DB'de oluşturulan bookmark kaydında snapshot alanlarını doğrula.
+    // Spec "modal trendClusterId dolu" demekteydi; modal olmadığı için ekvivalent
+    // doğrulama: mutation'ın backend'e ilettiği trendClusterId backend tarafından
+    // cluster snapshot'ıyla birlikte persist edilmiş olmalı.
+    const persisted = await db.bookmark.findFirst({
+      where: { userId: adminId, trendClusterId: clusterId },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(persisted).not.toBeNull();
+    expect(persisted?.trendClusterLabelSnapshot).toBe(
+      `E2E Trend Kümesi ${runId}`,
+    );
+    expect(persisted?.trendWindowDaysSnapshot).toBe(7);
 
     // /bookmarks sayfasına git ve yeni oluşturulan bookmark'ı doğrula.
     // BookmarkCard başlık veya sourceUrl olarak listing başlığını ya da
