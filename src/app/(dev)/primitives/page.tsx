@@ -1,4 +1,7 @@
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { FormField } from "@/components/ui/FormField";
 
 /**
  * Primitives showcase — spec "Primitives showcase" artboard karşılığı.
@@ -20,6 +23,15 @@ function ArrowRightIcon({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
       <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SearchIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <circle cx="7" cy="7" r="4.25" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M13 13l-2.8-2.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -115,6 +127,55 @@ export default function PrimitivesShowcasePage() {
           <Button variant="secondary">Secondary</Button>
           <Button variant="ghost">Ghost</Button>
           <Button variant="destructive">Destructive</Button>
+        </div>
+      </Section>
+
+      <header className="space-y-1 pt-4">
+        <h1 className="text-2xl font-semibold">Input / Textarea</h1>
+        <p className="text-text-muted">Spec A.2.3 — 34h, radius md, prefix/suffix. Focus: accent border (ring yok).</p>
+      </header>
+
+      <Section title="Input · default / prefix / suffix / icon-only prefix">
+        <div className="grid grid-cols-2 gap-4 max-w-3xl">
+          <Input placeholder="Başlık" />
+          <Input prefix="@" placeholder="kullanici-adi" />
+          <Input prefix={<SearchIcon />} placeholder="Ara" />
+          <Input placeholder="0,00" suffix={<span className="font-mono text-sm text-text-muted">USD</span>} />
+        </div>
+      </Section>
+
+      <Section title="Input · state (default / error / disabled)">
+        <div className="grid grid-cols-2 gap-4 max-w-3xl">
+          <Input placeholder="Default" defaultValue="Ayşe Yılmaz" />
+          <Input state="error" defaultValue="geçersiz@mail" />
+          <Input disabled defaultValue="Salt okunur değer" />
+          <Input disabled placeholder="Boş disabled" />
+        </div>
+      </Section>
+
+      <Section title="Textarea · default / min-h-textarea / error / disabled">
+        <div className="grid grid-cols-2 gap-4 max-w-3xl">
+          <Textarea placeholder="Açıklama yazın..." />
+          <Textarea state="error" defaultValue="Çok kısa bir değer" />
+          <Textarea disabled defaultValue="Disabled textarea içeriği" />
+          <Textarea placeholder="Uzun içerik için vertical resize kullanılabilir" />
+        </div>
+      </Section>
+
+      <Section title="FormField composition (label + description + error)">
+        <div className="grid grid-cols-2 gap-4 max-w-3xl">
+          <FormField label="Mağaza adı" description="Etsy mağazanızın açık adı." required>
+            <Input placeholder="WarmWallArtCo" />
+          </FormField>
+          <FormField label="E-posta" error="Geçerli bir e-posta giriniz.">
+            <Input type="email" defaultValue="bozuk@mail" />
+          </FormField>
+          <FormField label="Liste açıklaması" description="Etsy listing açıklaması; markdown yok.">
+            <Textarea placeholder="Açıklama..." />
+          </FormField>
+          <FormField label="Not" error="Not boş bırakılamaz.">
+            <Textarea defaultValue="" />
+          </FormField>
         </div>
       </Section>
     </main>
