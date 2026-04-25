@@ -1,7 +1,22 @@
 "use client";
 
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import type { CompetitorListing } from "../queries/use-competitor";
 
+/**
+ * ListingRankCard — T-34 primitive consumption.
+ *
+ * Sözleşme: docs/design/implementation-notes/competitors-screens.md
+ * - Card primitive (`as="article"`) sarması; manuel <article> yok.
+ * - Rank pill → Badge tone="accent". Review count pill → Badge tone="neutral".
+ * - Footer: Kaynağı Aç anchor styled (Button asChild yok; T-33 Detay link
+ *   paterni ile minimal anchor) / Referans'a Taşı `Button variant="ghost"
+ *   size="sm"` / Bookmark Ekle `Button variant="primary" size="sm"`.
+ * - Thumb/AssetImage primitive scope dışı; mevcut <img>/placeholder div
+ *   token-bound (bg-surface-muted) korunur.
+ */
 type Props = {
   listing: CompetitorListing;
   rank: number;
@@ -35,14 +50,10 @@ export function ListingRankCard({
   const priceLabel = formatPrice(listing.priceCents, listing.currency);
 
   return (
-    <article className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4 shadow-card">
+    <Card as="article" className="flex flex-col gap-3 p-4">
       <header className="flex items-start justify-between gap-2">
-        <span className="rounded-md bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
-          #{rank}
-        </span>
-        <span className="rounded-md bg-surface-muted px-2 py-0.5 text-xs text-text-muted">
-          {listing.reviewCount} yorum
-        </span>
+        <Badge tone="accent">#{rank}</Badge>
+        <Badge tone="neutral">{listing.reviewCount} yorum</Badge>
       </header>
 
       {listing.thumbnailUrl ? (
@@ -78,27 +89,27 @@ export function ListingRankCard({
           href={listing.sourceUrl}
           target="_blank"
           rel="noreferrer noopener"
-          className="rounded-md border border-border px-2 py-1 text-xs text-text hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="inline-flex h-control-sm items-center rounded-md border border-border px-2.5 text-sm text-text hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
           Kaynağı Aç
         </a>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => onPromote(listing)}
           disabled={bookmarking}
-          className="rounded-md border border-border px-2 py-1 text-xs text-text hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
         >
           Referans&apos;a Taşı
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
           onClick={() => onBookmark(listing)}
           disabled={bookmarking}
-          className="rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
         >
           {bookmarking ? "Ekleniyor…" : "Bookmark Ekle"}
-        </button>
+        </Button>
       </div>
-    </article>
+    </Card>
   );
 }
