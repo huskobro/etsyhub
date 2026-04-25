@@ -5,6 +5,8 @@ import type { WindowDays } from "@/features/trend-stories/constants";
 import { useFeed, type FeedListing } from "../queries/use-feed";
 import { useCreateTrendBookmark } from "../mutations/use-create-trend-bookmark";
 import { FeedListingCard } from "./feed-listing-card";
+import { StateMessage } from "@/components/ui/StateMessage";
+import { Button } from "@/components/ui/Button";
 
 type Props = {
   windowDays: WindowDays;
@@ -14,6 +16,12 @@ type Props = {
 
 /**
  * Feed grid — pencere + cursor bazlı sayfalama.
+ *
+ * T-36 spec — docs/design/implementation-notes/trend-stories-screens.md
+ * - Loading / empty / error → StateMessage primitive.
+ * - "Daha fazla yükle" → Button variant="ghost".
+ * - Manuel skeleton grid kaldırıldı; section başlığı (`<h2>Feed</h2>`) korunur.
+ *
  * Her kart "Bookmark'a ekle" butonu içerir; `trendMembershipHint` varsa
  * cluster id otomatik bookmark isteğine enjekte edilir.
  */
@@ -92,28 +100,16 @@ function FeedPage({
   const query = useFeed(windowDays, cursor);
 
   if (query.isLoading) {
-    return (
-      <div
-        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-        role="status"
-        aria-label="Feed yükleniyor"
-      >
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-72 animate-pulse rounded-md border border-border bg-surface-muted"
-            aria-hidden
-          />
-        ))}
-      </div>
-    );
+    return <StateMessage tone="neutral" title="Yükleniyor…" />;
   }
 
   if (query.isError) {
     return (
-      <p className="text-sm text-danger" role="alert">
-        {(query.error as Error).message}
-      </p>
+      <StateMessage
+        tone="error"
+        title="Feed yüklenemedi"
+        body={(query.error as Error).message}
+      />
     );
   }
 
@@ -123,9 +119,11 @@ function FeedPage({
   const isFirstPageEmpty = cursor === null && data.items.length === 0;
   if (isFirstPageEmpty) {
     return (
-      <div className="rounded-md border border-border bg-surface p-6 text-center text-sm text-text-muted">
-        Bu pencerede listing yok.
-      </div>
+      <StateMessage
+        tone="neutral"
+        title="Bu pencerede listing yok"
+        body="Yukarıdaki pencere tab'larından farklı bir aralık dene."
+      />
     );
   }
 
@@ -147,13 +145,13 @@ function FeedPage({
 
       {isLastPage && nextCursor ? (
         <div className="flex justify-center">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => onLoadMore(nextCursor)}
-            className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-text hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Daha fazla yükle
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

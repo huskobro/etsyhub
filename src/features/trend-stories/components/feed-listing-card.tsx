@@ -2,6 +2,8 @@
 
 import type { FeedListing } from "../queries/use-feed";
 import { TrendMembershipBadge } from "./trend-membership-badge";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 
 type Props = {
   listing: FeedListing;
@@ -11,9 +13,17 @@ type Props = {
 };
 
 /**
- * Feed akışındaki tek listing kartı. `trendMembershipHint` varsa badge ile
- * gösterilir ve "Bookmark'a ekle" tıklamasında `trendClusterId` otomatik
- * doldurulur.
+ * Feed akışındaki tek listing kartı.
+ *
+ * T-36 spec — docs/design/implementation-notes/trend-stories-screens.md
+ * - Manuel `<article>` Card primitive (`as="article"`) ile değiştirildi.
+ * - Bookmark butonu Button variant="primary" size="sm".
+ * - Kaynağı Aç anchor styled KORUNUR (T-33 paterni).
+ * - TrendMembershipBadge dokunulmadı — Badge primitive `onClick` slot'u
+ *   yok, yerel pill korunur (carry-forward).
+ *
+ * `trendMembershipHint` varsa badge ile gösterilir ve "Bookmark'a ekle"
+ * tıklamasında `trendClusterId` otomatik doldurulur.
  */
 export function FeedListingCard({
   listing,
@@ -24,7 +34,7 @@ export function FeedListingCard({
   const dateLabel = new Date(listing.firstSeenAt).toLocaleDateString("tr-TR");
 
   return (
-    <article className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4 shadow-card">
+    <Card as="article" className="flex flex-col gap-3 p-4">
       {listing.thumbnailUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -69,15 +79,16 @@ export function FeedListingCard({
         >
           Kaynağı Aç
         </a>
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="sm"
           onClick={() => onBookmark(listing)}
           disabled={bookmarking}
-          className="rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
+          loading={bookmarking}
         >
           {bookmarking ? "Ekleniyor…" : "Bookmark'a ekle"}
-        </button>
+        </Button>
       </div>
-    </article>
+    </Card>
   );
 }
