@@ -3,10 +3,10 @@
 /**
  * AuthShell — T-29
  *
- * Login + Register tek sayfa, tab switch kabuğu (canvas SCREEN 4).
+ * Login + Register tek sayfa, route bazlı segmented control kabuğu (canvas SCREEN 4).
  * PageShell `variant="auth"` ile iki kolonlu split layout:
  *   - sol: brand panel (lockup + eyebrow + h1 + paragraf + version footer)
- *   - sağ: form panel (tab switch + login/register form + disabled CTA'lar)
+ *   - sağ: form panel (segmented nav + login/register form + disabled CTA'lar)
  *
  * Backend (/api/auth/register) DOKUNULMADI — alan listesi
  * docs/design/implementation-notes/register-fields.md kararına UYUMLU
@@ -14,11 +14,21 @@
  * davet kodu yok, terms checkbox yok).
  *
  * "Şifrenizi mi unuttunuz?" + "Google ile devam et" disabled (title="Yakında").
- * registrationEnabled=false ise register tab disabled, form yerine
+ * registrationEnabled=false ise register link aria-disabled, form yerine
  * "Kayıt şu an kapalı" mesajı.
+ *
+ * A11y notları (T-28+T-29 review fix):
+ *   - Tab kabuğu route navigation olduğu için <nav> + <Link aria-current="page">
+ *     semantiğiyle yeniden işaretlendi (önceki role="tablist"/tab kaldırıldı).
+ *   - Form network throw path try/catch/finally ile kapatıldı; "Bağlantı hatası"
+ *     mesajı gösterilir, busy=false döner.
+ *   - "Şifrenizi mi unuttunuz?" disabled <button> oldu (klavye odak + a11y).
+ *   - Hata <p> id taşır, required input'lara aria-invalid + aria-describedby
+ *     hata varken bağlanır.
  */
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type MouseEvent } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { PageShell } from "@/components/ui/PageShell";
@@ -32,35 +42,26 @@ export interface AuthShellProps {
 }
 
 export function AuthShell({ mode, registrationEnabled }: AuthShellProps) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   // ?mode= override (paylaşılabilir link), ama route bazlı çalışsın.
   const queryMode = searchParams.get("mode");
   const effectiveMode: "login" | "register" =
     queryMode === "register" || queryMode === "login" ? queryMode : mode;
 
-  function goToTab(target: "login" | "register") {
-    if (target === effectiveMode) return;
-    router.push(target === "login" ? "/login" : "/register");
-  }
-
   return (
     <PageShell variant="auth" brand={<BrandPanel />}>
-      <div role="tablist" aria-label="Giriş veya kayıt" className="flex gap-1 rounded-md bg-surface-2 p-1">
-        <TabButton
-          active={effectiveMode === "login"}
-          onClick={() => goToTab("login")}
-        >
+      <nav aria-label="Kimlik doğrulama" className="flex gap-1 rounded-md bg-surface-2 p-1">
+        <SegmentLink href="/login" active={effectiveMode === "login"}>
           Giriş
-        </TabButton>
-        <TabButton
+        </SegmentLink>
+        <SegmentLink
+          href="/register"
           active={effectiveMode === "register"}
-          onClick={() => goToTab("register")}
           disabled={!registrationEnabled}
         >
           Kayıt
-        </TabButton>
-      </div>
+        </SegmentLink>
+      </nav>
 
       {effectiveMode === "login" ? (
         <LoginPanel />
@@ -111,36 +112,43 @@ function BrandPanel() {
   );
 }
 
-/* ─────────────────────────── Tab button ─────────────────────────── */
+/* ─────────────────────────── Segment link ─────────────────────────── */
 
-function TabButton({
+function SegmentLink({
+  href,
   active,
   disabled,
-  onClick,
   children,
 }: {
+  href: string;
   active: boolean;
   disabled?: boolean;
-  onClick: () => void;
   children: React.ReactNode;
 }) {
+  function handleClick(e: MouseEvent<HTMLAnchorElement>) {
+    if (disabled) {
+      e.preventDefault();
+    }
+  }
+
   return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      disabled={disabled}
-      onClick={onClick}
+    <Link
+      href={href}
+      prefetch
+      aria-current={active ? "page" : undefined}
+      aria-disabled={disabled || undefined}
+      tabIndex={disabled ? -1 : undefined}
+      onClick={handleClick}
       className={cn(
-        "flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors duration-fast ease-out",
-        "disabled:cursor-not-allowed disabled:opacity-50",
+        "flex-1 rounded-sm px-3 py-1.5 text-center text-sm font-medium transition-colors duration-fast ease-out",
         active
           ? "bg-surface text-text shadow-card"
           : "bg-transparent text-text-muted hover:text-text",
+        disabled && "pointer-events-none cursor-not-allowed opacity-50",
       )}
     >
       {children}
-    </button>
+    </Link>
   );
 }
 
@@ -153,19 +161,29 @@ function LoginPanel() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const errorId = "auth-error-login";
+
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const res = await signIn("credentials", { email, password, redirect: false });
-    setBusy(false);
-    if (!res || (res as { error?: string | null }).error) {
-      setError("E-posta veya parola hatalı.");
-      return;
+    try {
+      const res = await signIn("credentials", { email, password, redirect: false });
+      if (!res || (res as { error?: string | null }).error) {
+        setError("E-posta veya parola hatalı.");
+        return;
+      }
+      router.push("/dashboard");
+      router.refresh?.();
+    } catch {
+      setError("Bağlantı hatası, lütfen tekrar deneyin.");
+    } finally {
+      setBusy(false);
     }
-    router.push("/dashboard");
-    router.refresh?.();
   }
+
+  const describedBy = error ? errorId : undefined;
+  const invalid = Boolean(error);
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
@@ -178,6 +196,8 @@ function LoginPanel() {
           type="email"
           autoComplete="email"
           required
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="sen@magazan.co"
@@ -189,20 +209,23 @@ function LoginPanel() {
           <label htmlFor="auth-password" className="text-sm font-medium text-text">
             Parola
           </label>
-          <span
+          <button
+            type="button"
+            disabled
             aria-disabled="true"
             title="Yakında"
-            onClick={(e) => e.preventDefault()}
-            className="cursor-not-allowed text-xs text-text-subtle"
+            className="cursor-not-allowed bg-transparent p-0 text-xs text-text-subtle disabled:cursor-not-allowed"
           >
             Şifrenizi mi unuttunuz?
-          </span>
+          </button>
         </div>
         <Input
           id="auth-password"
           type="password"
           autoComplete="current-password"
           required
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="••••••••"
@@ -210,7 +233,7 @@ function LoginPanel() {
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p id={errorId} role="alert" className="text-sm text-danger">
           {error}
         </p>
       ) : null}
@@ -232,6 +255,8 @@ function RegisterPanel() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const errorId = "auth-error-register";
+
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
@@ -242,19 +267,27 @@ function RegisterPanel() {
     };
     if (name.trim()) payload.name = name.trim();
 
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    setBusy(false);
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    if (!res.ok) {
-      setError(mapRegisterError(res.status));
-      return;
+      if (!res.ok) {
+        setError(mapRegisterError(res.status));
+        return;
+      }
+      router.push("/login");
+    } catch {
+      setError("Bağlantı hatası, lütfen tekrar deneyin.");
+    } finally {
+      setBusy(false);
     }
-    router.push("/login");
   }
+
+  const describedBy = error ? errorId : undefined;
+  const invalid = Boolean(error);
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
@@ -282,6 +315,8 @@ function RegisterPanel() {
           type="email"
           autoComplete="email"
           required
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="sen@magazan.co"
@@ -298,6 +333,8 @@ function RegisterPanel() {
           autoComplete="new-password"
           minLength={8}
           required
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="En az 8 karakter"
@@ -305,7 +342,7 @@ function RegisterPanel() {
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p id={errorId} role="alert" className="text-sm text-danger">
           {error}
         </p>
       ) : null}
