@@ -23,6 +23,12 @@ import { cn } from "@/lib/cn";
  *   bottom subtle.
  * - `density`: "user" | "admin" — content pad ve row-h farkı için root'a
  *   `data-density` yazar. Default "user".
+ * - `variant`: "default" | "auth" (default: "default"). "auth" varyantı iki
+ *   kolonlu split layout render eder (sol: brand panel, sağ: form panel).
+ *   "auth" modunda sidebar/toolbar/density yok sayılır — auth ekranı sade.
+ *   Geriye uyumluluk: variant verilmezse mevcut davranış birebir korunur.
+ * - `brand`: yalnızca `variant="auth"` tüketir; sol panelin içeriği. Diğer
+ *   variant'larda DOM'a render edilmez.
  */
 
 export interface PageShellProps
@@ -33,6 +39,8 @@ export interface PageShellProps
   actions?: ReactNode;
   toolbar?: ReactNode;
   density?: "user" | "admin";
+  variant?: "default" | "auth";
+  brand?: ReactNode;
 }
 
 export const PageShell = forwardRef<HTMLDivElement, PageShellProps>(
@@ -44,12 +52,57 @@ export const PageShell = forwardRef<HTMLDivElement, PageShellProps>(
       actions,
       toolbar,
       density = "user",
+      variant = "default",
+      brand,
       className,
       children,
       ...rest
     },
     ref,
   ) {
+    if (variant === "auth") {
+      return (
+        <div
+          ref={ref}
+          data-density={density}
+          data-variant="auth"
+          className={cn(
+            "grid min-h-screen w-full grid-cols-1 bg-bg text-text md:grid-cols-2",
+            className,
+          )}
+          {...rest}
+        >
+          <aside
+            data-pageshell-brand
+            className={cn(
+              "hidden flex-col border-r border-border bg-surface-2 p-10",
+              "md:flex",
+            )}
+          >
+            {brand}
+          </aside>
+          <main className="flex min-h-screen flex-col items-center justify-center p-6">
+            <div className="flex w-full max-w-sm flex-col gap-6">
+              {title ? (
+                <div className="flex flex-col gap-1">
+                  <div className="text-2xl font-semibold leading-tight text-text">
+                    {title}
+                  </div>
+                  {subtitle ? (
+                    <div className="text-xs text-text-muted">{subtitle}</div>
+                  ) : null}
+                </div>
+              ) : null}
+              {children}
+              {actions ? (
+                <div className="flex items-center gap-2">{actions}</div>
+              ) : null}
+            </div>
+          </main>
+        </div>
+      );
+    }
+
     const hasTopbar = title != null || actions != null;
     return (
       <div

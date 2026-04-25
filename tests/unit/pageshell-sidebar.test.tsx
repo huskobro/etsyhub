@@ -301,3 +301,70 @@ describe("PageShell primitive", () => {
     expect(sb.nextElementSibling?.tagName).toBe("MAIN");
   });
 });
+
+describe("PageShell variant=auth (T-28)", () => {
+  it("variant='auth' + brand → brand içeriği render olur", () => {
+    render(
+      <PageShell variant="auth" brand={<span data-testid="brand-slot">B</span>}>
+        <div data-testid="auth-content">F</div>
+      </PageShell>,
+    );
+    expect(screen.getByTestId("brand-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("auth-content")).toBeInTheDocument();
+  });
+
+  it("variant='auth' → md+ split layout (md:grid-cols-2) + min-h-screen + bg-bg", () => {
+    const { container } = render(
+      <PageShell variant="auth" brand={<span>B</span>}>
+        <div>F</div>
+      </PageShell>,
+    );
+    const root = container.firstChild as HTMLElement;
+    expect(root.className).toMatch(/min-h-screen/);
+    expect(root.className).toMatch(/bg-bg\b/);
+    expect(root.className).toMatch(/grid/);
+    expect(root.className).toMatch(/md:grid-cols-2/);
+  });
+
+  it("variant='auth' → brand panel md altında gizli (hidden md:flex)", () => {
+    render(
+      <PageShell variant="auth" brand={<span data-testid="brand-slot">B</span>}>
+        <div>F</div>
+      </PageShell>,
+    );
+    // brand slot'unun parent'ı responsive class taşımalı
+    const brand = screen.getByTestId("brand-slot");
+    const brandHost = brand.closest("[data-pageshell-brand]") as HTMLElement;
+    expect(brandHost).toBeInTheDocument();
+    expect(brandHost.className).toMatch(/hidden/);
+    expect(brandHost.className).toMatch(/md:flex/);
+  });
+
+  it("variant olmadan → mevcut davranış (sidebar/title/toolbar render edilir)", () => {
+    const { container } = render(
+      <PageShell
+        sidebar={<aside data-testid="sb-default" />}
+        title="Dashboard"
+        toolbar={<span data-testid="tb-default" />}
+      >
+        x
+      </PageShell>,
+    );
+    // Default davranış: flex + h-screen, sidebar/title/toolbar hepsi var
+    const root = container.firstChild as HTMLElement;
+    expect(root.className).toMatch(/h-screen/);
+    expect(root.className).not.toMatch(/min-h-screen/);
+    expect(screen.getByTestId("sb-default")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByTestId("tb-default")).toBeInTheDocument();
+  });
+
+  it("variant='default' + brand → brand IGNORE edilir (DOM'da yok)", () => {
+    render(
+      <PageShell variant="default" brand={<span data-testid="ghost-brand">B</span>}>
+        x
+      </PageShell>,
+    );
+    expect(screen.queryByTestId("ghost-brand")).toBeNull();
+  });
+});
