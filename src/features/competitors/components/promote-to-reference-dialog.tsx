@@ -40,12 +40,12 @@ export function PromoteToReferenceDialog({
     };
   }, [onClose]);
 
-  // T-40 a11y: Tab boundary. Hook ilk focusable'ı odaklasa da spec gereği
-  // initial focus ürün tipi select'i (varsa) ya da Vazgeç butonudur.
-  useFocusTrap(dialogRef, true);
-  useEffect(() => {
-    initialFocusRef.current?.focus();
-  }, []);
+  // T-40 a11y: Tab boundary + initial focus tek hook ile yönetilir.
+  // Dinamik fallback (productTypes varsa select, yoksa Vazgeç) tüketici
+  // tarafında ref-callback ile atanır; hook initialFocusRef.current'i okuyup
+  // explicit element'e focus verir. İkinci useEffect (manuel .focus())
+  // effect-sıralama race condition'ı doğurur — kaldırıldı.
+  useFocusTrap(dialogRef, true, initialFocusRef);
 
   // T-40 a11y: Backdrop tıklamasında onClose (TrendClusterDrawer paterni).
   const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {

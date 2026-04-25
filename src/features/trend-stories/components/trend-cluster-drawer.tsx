@@ -60,16 +60,11 @@ export function TrendClusterDrawer({ clusterId, onClose }: Props) {
     };
   }, [onClose]);
 
-  // a11y: Drawer açıldığında "Kapat" butonu initial focus alır.
-  // Hook initial focus default'u ilk focusable element olduğundan, "Kapat"
-  // butonu zaten Drawer'ın ilk focusable'ı; ama spec gereği T-37 paterninde
-  // explicit "Kapat" odaklaması korunur. Hook Tab boundary'i sağlar.
-  useEffect(() => {
-    closeButtonRef.current?.focus();
-  }, []);
-
-  // T-40: Tab boundary — Tab/Shift+Tab modal dışına kaçamaz.
-  useFocusTrap(dialogRef, true);
+  // T-40: Tab boundary + initial focus tek hook ile yönetilir.
+  // initialFocusRef parametresi explicit "Kapat" butonu odaklamasını
+  // hook'un kendi effect'i içinde garanti eder; ikinci useEffect (manuel
+  // .focus()) effect-sıralama race condition'ı doğurur — kaldırıldı.
+  useFocusTrap(dialogRef, true, closeButtonRef);
 
   // a11y: Backdrop (overlay) tıklamasında onClose. Dialog içi tıklama
   // event bubbling ile buraya gelse de target !== currentTarget olduğu için

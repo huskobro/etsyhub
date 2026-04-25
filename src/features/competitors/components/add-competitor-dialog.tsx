@@ -34,13 +34,11 @@ export function AddCompetitorDialog({
     };
   }, [onClose]);
 
-  // T-40 a11y: Tab boundary. Hook initial focus default'u dialog'un ilk
-  // focusable'ı (Kapat butonu) olur; spec gereği explicit olarak ilk input
-  // (mağaza adı/URL) odaklanır.
-  useFocusTrap(dialogRef, true);
-  useEffect(() => {
-    initialInputRef.current?.focus();
-  }, []);
+  // T-40 a11y: Tab boundary + initial focus tek hook ile yönetilir.
+  // initialFocusRef parametresi explicit ilk input (mağaza adı/URL)
+  // odaklamasını hook effect'inde garanti eder; ikinci useEffect (manuel
+  // .focus()) effect-sıralama race condition'ı doğurur — kaldırıldı.
+  useFocusTrap(dialogRef, true, initialInputRef);
 
   // T-40 a11y: Backdrop (overlay) tıklamasında onClose. Dialog içi tıklama
   // event bubbling ile buraya gelse de target !== currentTarget olduğu için

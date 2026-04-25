@@ -130,6 +130,39 @@ describe("useFocusTrap — isOpen=false deaktif", () => {
   });
 });
 
+function TrapHarnessWithInitialFocusRef({ isOpen }: { isOpen: boolean }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const initialFocusRef = useRef<HTMLInputElement | null>(null);
+  useFocusTrap(ref, isOpen, initialFocusRef);
+  return (
+    <div>
+      <div ref={ref} data-testid="trap">
+        <button data-testid="first" type="button">
+          first
+        </button>
+        <input
+          ref={initialFocusRef}
+          data-testid="initial-target"
+          type="text"
+        />
+        <button data-testid="last" type="button">
+          last
+        </button>
+      </div>
+    </div>
+  );
+}
+
+describe("useFocusTrap — initialFocusRef", () => {
+  it("initialFocusRef verilirse o element ilk focus alır (ilk focusable yerine)", () => {
+    const { getByTestId } = render(
+      <TrapHarnessWithInitialFocusRef isOpen={true} />,
+    );
+    expect(document.activeElement).toBe(getByTestId("initial-target"));
+    expect(document.activeElement).not.toBe(getByTestId("first"));
+  });
+});
+
 describe("useFocusTrap — filtreleme", () => {
   it("disabled element focusable listesine girmez (Tab son element wrap'inde atlanır)", () => {
     // disabled middle butonu var: first → input → last (disabled atlanır).

@@ -3,12 +3,14 @@
 import { useEffect, type RefObject } from "react";
 
 /**
- * EtsyHub useFocusTrap — T-40 spec.
+ * EtsyHub useFocusTrap — T-40 spec (T-40 fix: initialFocusRef parametresi).
  *
  * Klavye-only kullanıcı için dialog/drawer içinde focus boundary kurar.
  *
  * Davranış:
- * - `isOpen=true` mount → ref içindeki ilk focusable element focus alır
+ * - `isOpen=true` mount → initial focus uygulanır:
+ *     · `initialFocusRef.current` mevcutsa → o element focus alır
+ *     · yoksa → ref içindeki ilk focusable element focus alır
  * - Tab → focusable elementler arasında dolaşır, son element'ten sonra ilk
  *   element'e wrap
  * - Shift+Tab → ters yön, ilk element'ten önce son element'e wrap
@@ -18,6 +20,11 @@ import { useEffect, type RefObject } from "react";
  * - Hook YALNIZCA Tab boundary + initial focus üstlenir.
  * - Escape, backdrop click, role="dialog" gibi davranışlar tüketici taraf
  *   sorumluluğundadır (T-37 paterni; bkz. trend-cluster-drawer.tsx).
+ *
+ * `initialFocusRef` parametresi tek-doğru-kaynak ilkesini sağlar: tüketici
+ * tarafta ikinci bir `useEffect(() => ref.current?.focus(), [])` çağrısı
+ * yapılmamalıdır. Aksi halde effect sıralama race condition'ı oluşur ve
+ * hook çağrısının yeri değiştiğinde initial focus kırılır.
  *
  * Yasaklar (kilitli — docs/design/implementation-notes/cp9-stabilization-wave.md):
  * - focus-trap-react veya benzeri library import YASAK.
@@ -40,15 +47,23 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
 export function useFocusTrap(
   ref: RefObject<HTMLElement | null>,
   isOpen: boolean,
+  initialFocusRef?: RefObject<HTMLElement | null>,
 ): void {
-  // Initial focus: isOpen true olduğunda ilk focusable elemente odakla.
+  // Initial focus: isOpen true olduğunda
+  // - initialFocusRef.current varsa o element odaklanır,
+  // - yoksa ref içindeki ilk focusable element odaklanır.
   useEffect(() => {
     if (!isOpen) return;
+    const explicit = initialFocusRef?.current ?? null;
+    if (explicit) {
+      explicit.focus();
+      return;
+    }
     const container = ref.current;
     if (!container) return;
     const focusable = getFocusable(container);
     focusable[0]?.focus();
-  }, [isOpen, ref]);
+  }, [isOpen, ref, initialFocusRef]);
 
   // Tab boundary: isOpen iken Tab/Shift+Tab focusable list içinde wraps.
   // Tarayıcı/jsdom paritesi için her Tab event'inde manuel ilerleme: bu
