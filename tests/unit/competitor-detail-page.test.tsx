@@ -552,8 +552,9 @@ describe("CompetitorDetailPage — promote retry idempotency (I-2)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Referans'a Taşı/i }));
     fireEvent.click(screen.getByRole("button", { name: /promote-submit/ }));
 
-    const status = screen.getByRole("status");
-    expect(status.textContent).toMatch(
+    // T-38: error tone Toast primitive role="alert" verir (aria-live=assertive).
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toMatch(
       /Bookmark eklendi ancak referans atanamadı: validation: productType invalid/,
     );
   });

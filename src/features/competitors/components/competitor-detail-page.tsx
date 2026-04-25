@@ -17,6 +17,7 @@ import { PromoteToReferenceDialog } from "./promote-to-reference-dialog";
 import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/Button";
 import { StateMessage } from "@/components/ui/StateMessage";
+import { Toast } from "@/components/ui/Toast";
 
 /**
  * CompetitorDetailPage — T-34 primitive migrasyonu.
@@ -33,9 +34,10 @@ import { StateMessage } from "@/components/ui/StateMessage";
  * - ListingRankCard primitive consume (Card + Badge + Button).
  * - ReviewCountDisclaimer + PromoteToReferenceDialog dokunulmadı.
  *
- * GEÇİCİ: Toast primitive 3+ ekran tüketimi olunca terfi edilir. Mevcut inline
- * role="status" div KORUNUR (T-33 paterni).
- * carry-forward: docs/design/implementation-notes/competitors-screens.md
+ * T-38: Toast primitive terfisi tamamlandı — manuel role="status" div yerine
+ * `<Toast tone={...} />` tüketilir. kind→tone mapping: success→success,
+ * error→error. Toast state mantığı (T-34 + I-2 retry idempotency) dokunulmaz;
+ * yalnızca render katmanı primitive'e taşındı.
  */
 
 type ProductTypeOption = { id: string; displayName: string };
@@ -303,23 +305,19 @@ export function CompetitorDetailPage({
 
         <ReviewCountDisclaimer />
 
-        {/* GEÇİCİ: Toast primitive 3+ ekran tüketimi olunca terfi edilir.
-            CP-8 wave kuralı: yeni primitive YASAK. carry-forward:
-            docs/design/implementation-notes/competitors-screens.md */}
+        {/* T-38: Toast primitive tüketildi. Kapat trigger'ı primitive scope
+            dışındadır; primitive yalnızca tone + message + aria-live taşır. */}
         {toast ? (
-          <div
-            role="status"
-            className={
-              toast.kind === "success"
-                ? "rounded-md border border-border bg-success-soft px-3 py-2 text-xs text-success"
-                : "rounded-md border border-border bg-danger-soft px-3 py-2 text-xs text-danger"
-            }
-          >
-            {toast.message}
+          <div className="flex items-start gap-2">
+            <Toast
+              tone={toast.kind === "success" ? "success" : "error"}
+              message={toast.message}
+              className="flex-1"
+            />
             <button
               type="button"
               onClick={() => setToast(null)}
-              className="ml-2 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-text underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               Kapat
             </button>

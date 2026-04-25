@@ -7,6 +7,7 @@ import { TrendClusterRail } from "./trend-cluster-rail";
 import { TrendFeed } from "./trend-feed";
 import { TrendClusterDrawer } from "./trend-cluster-drawer";
 import { PageShell } from "@/components/ui/PageShell";
+import { Toast } from "@/components/ui/Toast";
 
 type ToastState = { kind: "success" | "error"; message: string } | null;
 
@@ -19,10 +20,12 @@ type ToastState = { kind: "success" | "error"; message: string } | null;
  * - WindowTabs: tabIds + panelIds prop'ları ile aria-controls + aria-labelledby
  *   bağı kurulur. Rail + feed birlikte tek `role="tabpanel"` içine alınır
  *   (T-35 doc: "rail + feed birlikte panel içeriği oluşturur").
- * - Bookmark mutation toast'u feed'den buraya bubble eder; aria-live ton
- *   ayrımı: success → role=status + polite, error → role=alert + assertive.
  * - Drawer hem cluster rail kartından hem de feed membership badge'inden
  *   açılabilir (tek kaynak `openClusterId`).
+ *
+ * T-38: Toast primitive terfisi tamamlandı — T-36'da kısmen kurulan
+ * aria-live ton ayrımı (success/info → role=status + polite; error →
+ * role=alert + assertive) primitive içine kilitlendi.
  */
 export function TrendStoriesPage() {
   const [windowDays, setWindowDays] = useState<WindowDays>(7);
@@ -65,41 +68,23 @@ export function TrendStoriesPage() {
       }
     >
       <div className="flex flex-col gap-6">
-        {/* GEÇİCİ: Toast primitive 3+ ekran tüketimi olunca terfi edilir.
-            CP-8 wave kuralı: yeni primitive YASAK. carry-forward:
-            docs/design/implementation-notes/trend-stories-screens.md */}
+        {/* T-38: Toast primitive tüketildi. aria-live ton ayrımı primitive
+            içinde sabit; Kapat trigger'ı dış wrapper'da kalır. */}
         {toast ? (
-          toast.kind === "success" ? (
-            <div
-              role="status"
-              aria-live="polite"
-              className="rounded-md border border-border bg-success-soft px-3 py-2 text-xs text-success"
+          <div className="flex items-start gap-2">
+            <Toast
+              tone={toast.kind === "success" ? "success" : "error"}
+              message={toast.message}
+              className="flex-1"
+            />
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-text underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              {toast.message}
-              <button
-                type="button"
-                onClick={() => setToast(null)}
-                className="ml-2 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                Kapat
-              </button>
-            </div>
-          ) : (
-            <div
-              role="alert"
-              aria-live="assertive"
-              className="rounded-md border border-border bg-danger-soft px-3 py-2 text-xs text-danger"
-            >
-              {toast.message}
-              <button
-                type="button"
-                onClick={() => setToast(null)}
-                className="ml-2 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                Kapat
-              </button>
-            </div>
-          )
+              Kapat
+            </button>
+          </div>
         ) : null}
 
         <div
