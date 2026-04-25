@@ -6,6 +6,9 @@ import {
   type ClusterMember,
 } from "../queries/use-cluster-detail";
 import { SeasonalBadge } from "./seasonal-badge";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { StateMessage } from "@/components/ui/StateMessage";
 
 type Props = {
   clusterId: string;
@@ -18,6 +21,23 @@ type Props = {
  * - Üye listesi (thumbnail + başlık + mağaza + yorum + firstSeenAt)
  * - "Daha fazla yükle" ile cursor bazlı sayfalama (backend 30/sayfa)
  * - Silinmiş üyeler gri placeholder + "Kaynak artık mevcut değil" pill
+ *
+ * T-37 spec — docs/design/implementation-notes/trend-stories-screens.md
+ *
+ * KORUNUR (dokunulmaz):
+ * - role="dialog" + aria-modal + aria-label="Trend kümesi detayı"
+ * - DrawerContent + DrawerPages + DrawerPage cursor sayfalama yapısı
+ * - ClusterHeader yapısı (label + SeasonalBadge + 3 stat grid)
+ * - StatCard inline yapı (3 kolon grid; primitive granularity uymaz)
+ * - MemberRow yapısı (thumb + title + meta)
+ * - SeasonalBadge yerel pill (carry-forward)
+ *
+ * Sınırlı dokunuşlar:
+ * - Kapat / "Daha fazla yükle" → Button variant=ghost
+ * - Loading / error → StateMessage primitive
+ * - ClusterHeader productType pill → Badge tone=accent
+ * - MemberRow "Kaynak artık mevcut değil" → Badge tone=danger
+ * - "Kaynağı Aç" anchor styled korunur (T-33 paterni)
  */
 export function TrendClusterDrawer({ clusterId, onClose }: Props) {
   // Sayfa zincirleme cursor'ları: her "Daha fazla yükle" tıklamasıyla
@@ -58,13 +78,9 @@ function DrawerContent({
     <>
       <div className="flex items-start justify-between gap-3 border-b border-border p-5">
         <h2 className="text-lg font-semibold text-text">Trend Kümesi</h2>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md border border-border px-2 py-1 text-xs text-text hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
+        <Button variant="ghost" size="sm" onClick={onClose}>
           Kapat
-        </button>
+        </Button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
@@ -116,17 +132,15 @@ function DrawerPage({
   const query = useClusterDetail(clusterId, cursor);
 
   if (query.isLoading) {
-    return (
-      <p className="text-sm text-text-muted" role="status">
-        Küme yükleniyor…
-      </p>
-    );
+    return <StateMessage tone="neutral" title="Küme yükleniyor…" />;
   }
   if (query.isError) {
     return (
-      <p className="text-sm text-danger" role="alert">
-        {(query.error as Error).message}
-      </p>
+      <StateMessage
+        tone="error"
+        title="Küme yüklenemedi"
+        body={(query.error as Error).message}
+      />
     );
   }
   if (!query.data) return null;
@@ -149,13 +163,13 @@ function DrawerPage({
 
       {isLastPage && nextCursor ? (
         <div className="flex justify-center">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => onLoadMore(nextCursor)}
-            className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-text hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Daha fazla yükle
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>
@@ -177,9 +191,7 @@ function ClusterHeader({
           <div className="flex flex-wrap items-center gap-1.5">
             <SeasonalBadge seasonalTag={cluster.seasonalTag} />
             {cluster.productType ? (
-              <span className="rounded-md bg-accent/10 px-2 py-0.5 text-xs text-accent">
-                {cluster.productType.displayName}
-              </span>
+              <Badge tone="accent">{cluster.productType.displayName}</Badge>
             ) : null}
           </div>
         </div>
@@ -196,7 +208,7 @@ function ClusterHeader({
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex flex-col gap-1 rounded-md border border-border bg-surface-muted p-3">
+    <div className="flex flex-col gap-1 rounded-md border border-border bg-surface-2 p-3">
       <span className="text-xs text-text-muted">{label}</span>
       <span className="text-lg font-semibold text-text">{value}</span>
     </div>
@@ -214,10 +226,10 @@ function MemberRow({ member }: { member: ClusterMember }) {
           src={member.thumbnailUrl}
           alt={member.title}
           loading="lazy"
-          className="h-16 w-16 shrink-0 rounded-md bg-surface-muted object-cover"
+          className="h-16 w-16 shrink-0 rounded-md bg-surface-2 object-cover"
         />
       ) : (
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-surface-muted text-xs text-text-muted">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-surface-2 text-xs text-text-muted">
           Görsel yok
         </div>
       )}
@@ -235,15 +247,13 @@ function MemberRow({ member }: { member: ClusterMember }) {
 
         <div className="flex flex-wrap items-center gap-1.5">
           {member.deleted ? (
-            <span className="rounded-md bg-danger/10 px-2 py-0.5 text-xs text-danger">
-              Kaynak artık mevcut değil
-            </span>
+            <Badge tone="danger">Kaynak artık mevcut değil</Badge>
           ) : (
             <a
               href={member.sourceUrl}
               target="_blank"
               rel="noreferrer noopener"
-              className="rounded-md border border-border px-2 py-0.5 text-xs text-text hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="rounded-md border border-border px-2 py-0.5 text-xs text-text hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               Kaynağı Aç
             </a>

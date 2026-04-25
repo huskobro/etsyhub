@@ -3,6 +3,7 @@
 import { useClusters } from "../queries/use-clusters";
 import type { WindowDays } from "@/features/trend-stories/constants";
 import { TrendClusterCard } from "./trend-cluster-card";
+import { StateMessage } from "@/components/ui/StateMessage";
 
 type Props = {
   windowDays: WindowDays;
@@ -11,8 +12,11 @@ type Props = {
 
 /**
  * Seçili pencere için yatay-scroll cluster rail'i.
- * States: loading skeleton, error, empty ("Bu pencerede trend kümesi henüz yok."),
- * ve dolu grid.
+ *
+ * T-37 spec — docs/design/implementation-notes/trend-stories-screens.md
+ * - Loading / error / empty → StateMessage primitive (manuel 4'lü skeleton kaldırıldı).
+ * - Header (`<h2>Trend Kümeleri</h2>` + "{N} küme" mono muted) korunur.
+ * - Grid: `flex gap-3 overflow-x-auto pb-2` (yatay scroll) korunur.
  */
 export function TrendClusterRail({ windowDays, onOpenCluster }: Props) {
   const query = useClusters(windowDays);
@@ -22,34 +26,26 @@ export function TrendClusterRail({ windowDays, onOpenCluster }: Props) {
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-lg font-semibold text-text">Trend Kümeleri</h2>
         {query.data ? (
-          <p className="text-xs text-text-muted">
+          <p className="font-mono text-xs tracking-meta text-text-muted">
             {query.data.clusters.length} küme
           </p>
         ) : null}
       </div>
 
       {query.isLoading ? (
-        <div
-          className="flex gap-3 overflow-x-auto pb-2"
-          aria-label="Trend kümeleri yükleniyor"
-          role="status"
-        >
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-64 w-56 shrink-0 animate-pulse rounded-md border border-border bg-surface-muted"
-              aria-hidden
-            />
-          ))}
-        </div>
+        <StateMessage tone="neutral" title="Kümeler yükleniyor…" />
       ) : query.isError ? (
-        <p className="text-sm text-danger" role="alert">
-          {(query.error as Error).message}
-        </p>
+        <StateMessage
+          tone="error"
+          title="Kümeler yüklenemedi"
+          body={(query.error as Error).message}
+        />
       ) : !query.data || query.data.clusters.length === 0 ? (
-        <div className="rounded-md border border-border bg-surface p-6 text-center text-sm text-text-muted">
-          Bu pencerede trend kümesi henüz yok.
-        </div>
+        <StateMessage
+          tone="neutral"
+          title="Bu pencerede trend kümesi henüz yok"
+          body="Pencere tab'larından farklı bir aralık deneyebilirsin."
+        />
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2">
           {query.data.clusters.map((cluster) => (
