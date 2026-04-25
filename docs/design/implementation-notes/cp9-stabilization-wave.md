@@ -143,29 +143,84 @@ erişim engeli; en yüksek kullanıcı değeri.
 - TrendClusterDrawer test: Tab boundary senaryosu eklenir (Escape +
   initial focus zaten T-37'de)
 
-### T-39 — Bookmarks promote dialog → ConfirmDialog migrasyonu
+### T-39 — Bookmarks promote dialog → standart disclosure pattern + a11y alignment
+
+**Yeniden çerçeveleme (2026-04-25):**
+Audit'in ilk metni "ConfirmDialog migrasyonu" diyordu, fakat
+ConfirmDialog'un mevcut sözleşmesi sade yes/no confirmation:
+`title` + `description` + `confirmLabel/cancelLabel` + `onConfirm`,
+**children slot YOK**, autoFocus `Vazgeç` üstünde, tone
+destructive/warning/neutral. Bookmarks promote akışı ise
+**disclosure-style**: kullanıcıdan productType seçimi alır,
+confirmation değildir. ConfirmDialog'a children slot eklemek
+primitive sözleşmesini bozar (CP-5 lock'una ters; "yeni primitive
+keşfi YASAK" kuralının bilinçsiz ihlali).
+
+T-39 yeniden çerçevelendi: promote dialog **AddCompetitorDialog
++ PromoteToReferenceDialog** ile aynı manuel disclosure pattern'ine
+hizalanır. ConfirmDialog primitive'e dokunulmaz.
 
 **Scope (kilitli):**
-- [bookmarks-page.tsx:352](../../../src/features/bookmarks/components/bookmarks-page.tsx)
-  manuel overlay div + manuel kart kaldırılır
-- [ConfirmDialog](../../../src/components/ui/ConfirmDialog.tsx)
-  primitive tüketilir
-- T-40'ta kurulan `useFocusTrap` ConfirmDialog primitive'i içinde mi
-  tüketiliyor? **Doğrulama gerekli:** ConfirmDialog mevcut implementasyonu
-  okunur, focus trap yoksa T-40'ta hook ConfirmDialog'a da eklenir
-  (T-39'un kendisi yalnızca migrasyon — primitive davranışı T-40
-  kapsamında)
+- [bookmarks-page.tsx:334-394](../../../src/features/bookmarks/components/bookmarks-page.tsx)
+  `PromoteDialog` mevcut manuel overlay yapısı korunur ama
+  AddCompetitorDialog imza setine hizalanır:
+  - `dialogRef = useRef<HTMLDivElement | null>(null)`
+  - Initial focus ref: productTypes varsa `<select>`, yoksa close butonu
+  - `useFocusTrap(dialogRef, true, initialFocusRef)` — T-40 hook tüketimi
+    (3. ekran)
+  - Escape handler → `onClose()` (busy / `isPending` iken iptal edilmez)
+  - Backdrop click handler → `event.target === event.currentTarget`
+    guard ile `onClose` (T-37 paterni); `isPending` iken iptal edilmez
+  - `role="dialog"` + `aria-modal="true"` + `aria-labelledby`
+    (mevcut başlığa `id="promote-dialog-title"` eklenir)
+  - `focus-visible:ring-accent` sınıfları close button + select +
+    submit + Vazgeç butonlarına eklenir (AddCompetitor paterni)
+- Mevcut productType select + submit + error mesajı + isPending
+  davranışı **dokunulmaz** (kullanıcıya görünen davranış değişmez)
+- Vazgeç butonu eklenir (AddCompetitor paterni — submit + cancel
+  ikilisi). Mevcut "Kapat" link-text close button da korunur
+  (header sağında); kullanıcı her iki yoldan kapatabilir.
+
+**T-40 hook tüketim doğrulaması:**
+- T-40 commit'i 3 yer kapsıyordu: trend-cluster-drawer +
+  add-competitor-dialog + promote-to-reference-dialog
+- T-39 ile bookmarks promote 4. tüketim olur — Toggle kuralı
+  (3+ ekran tüketim sinyali) hook için **fazlasıyla karşılanır**.
+  ConfirmDialog primitive'ine focus trap eklemek bu wave'de
+  GEREKMİYOR (ConfirmDialog Radix Dialog kullanıyor, kendi
+  modal trap'ı var; Radix `Dialog.Content` focus management
+  davranışı standart — gözlem [confirm-dialog.tsx:62-77](../../../src/components/ui/confirm-dialog.tsx)).
 
 **Yasaklar:**
-- ConfirmDialog API genişletmesi YASAK
-- Yeni varyant YASAK
-- Backend mutation davranışı (promote API) DOKUNULMAZ
+- **ConfirmDialog primitive'i KULLANMA** (yanlış soyutlama —
+  promote confirmation değil disclosure)
+- **ConfirmDialog API genişletmesi YASAK** (children slot eklemek
+  primitive sözleşmesini bozar)
+- Yeni primitive yazma YASAK (manuel disclosure pattern AddCompetitor
+  ile aynı satır seviyesinde kalır)
+- Backend mutation davranışı (`promote` API, productType validation)
+  DOKUNULMAZ
+- Kullanıcı görünen akış değişmez (productType select → submit →
+  mutation; iptal → close)
+- AddCompetitorDialog'ı **referans olarak okuma**, ortak helper
+  çıkarma YASAK (3 disclosure dialog ortak pattern'i tutar; helper
+  terfisi 4. dialog ihtiyacı doğduğunda gündeme gelir)
 
 **Test sözleşmesi:**
-- `tests/unit/bookmarks-page.test.tsx` mevcut promote senaryolarını
-  güncelle: manuel overlay yerine ConfirmDialog primitive query
-- Kullanıcı görünen davranış (onay → mutation, iptal → kapanır)
-  davranışsal kalır
+- `tests/unit/bookmarks-page.test.tsx` mevcut promote senaryoları
+  güncellenir:
+  - Promote butonu click → dialog açılır (`role="dialog"` query)
+  - Dialog `aria-modal="true"` + `aria-labelledby` ile başlık bağı
+  - ProductType select render edilir (productTypes prop'undan)
+  - Submit → `promote` mutation çağrılır + dialog kapanır
+  - Escape → dialog kapanır
+  - Backdrop click → dialog kapanır
+  - isPending true iken Escape + backdrop → iptal edilmez
+  - Tab boundary: dialog içinde focus döner (en azından focus-trap
+    kütüphanesi yerine kendi hook'umuzun çağrıldığı doğrulanır;
+    AddCompetitor testindeki paterne uygun)
+- Mevcut "Referansa Taşı" davranışsal akışı korunur (kullanıcıya
+  görünen davranış değişmez)
 
 ### T-41 — Competitor detail tab ArrowLeft/Right
 
@@ -250,7 +305,7 @@ T-36 paterni — onKeyDown handler + index hesaplama + focus().
 
 1. **T-38** — Toast primitive terfisi (hak edilmiş, 3 tüketim eşzamanlı migrasyon)
 2. **T-40** — Focus trap hook + dialog/drawer Escape/initial focus (CRITICAL a11y)
-3. **T-39** — Bookmarks promote dialog → ConfirmDialog
+3. **T-39** — Bookmarks promote dialog → standart disclosure pattern + a11y alignment
 4. **T-41** — Competitor detail tab ArrowLeft/Right
 5. **T-42** — Admin Audit Logs + Jobs Table primitive
 6. **T-43** — Themes + Sidebar Logout + Settings polish (wave sonunda enerji düşerse ilk kesilecek)
