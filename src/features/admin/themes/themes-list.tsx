@@ -5,6 +5,9 @@ import type { ThemeStatus } from "@prisma/client";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { confirmPresets } from "@/components/ui/confirm-presets";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 
 type ThemeRow = {
   id: string;
@@ -55,9 +58,10 @@ export function ThemesList() {
       </p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {data.map((t) => (
-          <div
+          <Card
             key={t.id}
-            className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4 shadow-card"
+            variant="stat"
+            className="flex flex-col gap-3"
           >
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
@@ -67,12 +71,11 @@ export function ThemesList() {
                 </span>
               </div>
               {t.status === "ACTIVE" ? (
-                <span className="rounded-md bg-success/15 px-2 py-1 text-xs text-success">
-                  AKTİF
-                </span>
+                <Badge tone="success">AKTİF</Badge>
               ) : (
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
                   disabled={mutation.isPending}
                   onClick={() =>
                     confirm(
@@ -82,16 +85,15 @@ export function ThemesList() {
                       },
                     )
                   }
-                  className="rounded-md border border-border px-3 py-1 text-xs hover:bg-surface-muted"
                 >
                   Aktifleştir
-                </button>
+                </Button>
               )}
             </div>
             <pre className="max-h-48 overflow-auto rounded-md bg-bg p-3 text-xs text-text-muted">
               {JSON.stringify(t.tokens, null, 2)}
             </pre>
-          </div>
+          </Card>
         ))}
       </div>
       {state.preset ? (

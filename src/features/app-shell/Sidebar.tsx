@@ -9,6 +9,7 @@ import {
   SidebarGroup,
 } from "@/components/ui/Sidebar";
 import { NavItem } from "@/components/ui/NavItem";
+import { Button } from "@/components/ui/Button";
 import { navForRole, USER_NAV, ADMIN_NAV } from "@/features/app-shell/nav-config";
 
 export function Sidebar({
@@ -35,13 +36,14 @@ export function Sidebar({
             <div className="truncate text-sm text-text">{email}</div>
             <div className="font-mono text-xs text-text-subtle">{role.toLowerCase()}</div>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => signOut({ callbackUrl: "/login" })}
-            className="rounded-sm border border-border-subtle px-2 py-1 font-mono text-xs text-text-muted transition-colors ease-out duration-fast hover:bg-surface hover:text-text"
+            className="font-mono text-xs"
           >
             Çıkış
-          </button>
+          </Button>
         </div>
       }
     >
