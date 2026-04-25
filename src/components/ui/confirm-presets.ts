@@ -48,8 +48,8 @@ export const confirmPresets = {
   archiveCollection: (name?: string | null): ConfirmPresetValue => ({
     title: "Koleksiyonu arşivle",
     description: name
-      ? `"${name}" koleksiyonu arşivlenecek. İçindeki bookmark ve referansların koleksiyon bağlantısı kopar.`
-      : "Bu koleksiyon arşivlenecek. İçindeki bookmark ve referansların koleksiyon bağlantısı kopar.",
+      ? `"${name}" koleksiyonu arşivlenecek. İçindeki bookmark ve referanslar silinmez; ama bu koleksiyon filtresi altında artık görünmez.`
+      : "Bu koleksiyon arşivlenecek. İçindeki bookmark ve referanslar silinmez; ama bu koleksiyon filtresi altında artık görünmez.",
     confirmLabel: "Arşivle",
     cancelLabel: "Vazgeç",
     tone: "destructive",

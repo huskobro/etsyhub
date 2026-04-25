@@ -1,50 +1,76 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { Search, Plus, FolderIcon } from "lucide-react";
 import { CollectionCard } from "./collection-card";
 import { CollectionCreateDialog } from "./collection-create-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { confirmPresets } from "@/components/ui/confirm-presets";
+import { Toolbar } from "@/components/ui/Toolbar";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { Chip } from "@/components/ui/Chip";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { StateMessage } from "@/components/ui/StateMessage";
+import { SkeletonCardGrid } from "@/components/ui/Skeleton";
+
+type CollectionKind = "BOOKMARK" | "REFERENCE" | "MIXED";
+type KindFilter = "ALL" | "BOOKMARK" | "REFERENCE";
 
 type CollectionLite = {
   id: string;
   name: string;
   slug: string;
   description: string | null;
-  kind: "BOOKMARK" | "REFERENCE" | "MIXED";
+  kind: CollectionKind;
   createdAt: string;
+  updatedAt?: string;
   _count: { bookmarks: number; references: number };
+  thumbnailAssetIds?: string[];
 };
 
-type ListResponse = { items: CollectionLite[] };
-
-type KindFilter = "" | "BOOKMARK" | "REFERENCE" | "MIXED";
+type ListResponse = {
+  items: CollectionLite[];
+  uncategorizedReferenceCount: number;
+  orphanedReferenceCount: number;
+};
 
 export function CollectionsPage() {
   const qc = useQueryClient();
+  const router = useRouter();
   const { confirm, close, run, state } = useConfirm();
-  const [kind, setKind] = useState<KindFilter>("");
+  const [kind, setKind] = useState<KindFilter>("ALL");
   const [q, setQ] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("intent") === "create") {
+      setCreateOpen(true);
+      router.replace("/collections");
+    }
+  }, [router]);
+
   const query = useQuery<ListResponse>({
-    queryKey: ["collections", kind, q],
+    queryKey: ["collections-all", kind, q],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (kind) params.set("kind", kind);
+      if (kind !== "ALL") params.set("kind", kind);
       if (q.trim()) params.set("q", q.trim());
       params.set("limit", "60");
       const res = await fetch(`/api/collections?${params.toString()}`, {
         cache: "no-store",
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Liste alınamadı");
+      if (!res.ok) throw new Error("Koleksiyonlar alınamadı");
       return res.json();
     },
   });
@@ -53,21 +79,22 @@ export function CollectionsPage() {
     mutationFn: async (input: {
       name: string;
       description?: string;
-      kind: "BOOKMARK" | "REFERENCE" | "MIXED";
+      kind: CollectionKind;
     }) => {
       const res = await fetch("/api/collections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
-      if (!res.ok) {
+      if (!res.ok)
         throw new Error((await res.json()).error ?? "Koleksiyon oluşturulamadı");
-      }
       return res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["collections"] });
-      setCreating(false);
+      qc.invalidateQueries({ queryKey: ["collections-all"] });
+      qc.invalidateQueries({ queryKey: ["collections", { kind: "REFERENCE" }] });
+      qc.invalidateQueries({ queryKey: ["collections", { kind: "BOOKMARK" }] });
+      setCreateOpen(false);
       setCreateError(null);
     },
     onError: (err: Error) => setCreateError(err.message),
@@ -76,69 +103,115 @@ export function CollectionsPage() {
   const archiveMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/collections/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Arşivleme başarısız");
+      if (!res.ok) throw new Error("Arşivleme başarısız");
       return res.json();
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["collections"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["collections-all"] });
+      qc.invalidateQueries({ queryKey: ["collections", { kind: "REFERENCE" }] });
+      qc.invalidateQueries({ queryKey: ["collections", { kind: "BOOKMARK" }] });
+    },
   });
+
+  const items = query.data?.items ?? [];
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Koleksiyonlar</h1>
-          <p className="text-sm text-text-muted">
+          <h1 className="text-2xl font-semibold text-text">Koleksiyonlar</h1>
+          <p className="text-xs text-text-muted">
             Bookmark ve referansları tema/konu bazında grupla.
           </p>
         </div>
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          icon={<Plus className="h-4 w-4" aria-hidden />}
           onClick={() => {
             setCreateError(null);
-            setCreating(true);
+            setCreateOpen(true);
           }}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm text-accent-foreground"
         >
-          Yeni Koleksiyon
-        </button>
+          Yeni koleksiyon
+        </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={kind}
-          onChange={(e) => setKind(e.target.value as KindFilter)}
-          className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-text"
-        >
-          <option value="">Tüm tipler</option>
-          <option value="MIXED">Karma</option>
-          <option value="BOOKMARK">Bookmark</option>
-          <option value="REFERENCE">Reference</option>
-        </select>
-        <input
-          type="search"
-          placeholder="İsim veya açıklamada ara"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          className="h-9 min-w-60 flex-1 rounded-md border border-border bg-surface px-3 text-sm text-text"
-        />
-      </div>
+      <Toolbar
+        leading={
+          <div className="w-60">
+            <Input
+              type="search"
+              placeholder="Koleksiyon ara"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              prefix={<Search className="h-4 w-4" aria-hidden />}
+            />
+          </div>
+        }
+      >
+        <FilterBar>
+          <Chip active={kind === "ALL"} onToggle={() => setKind("ALL")}>
+            Tümü
+          </Chip>
+          <Chip
+            active={kind === "BOOKMARK"}
+            onToggle={() => setKind("BOOKMARK")}
+          >
+            Bookmark
+          </Chip>
+          <Chip
+            active={kind === "REFERENCE"}
+            onToggle={() => setKind("REFERENCE")}
+          >
+            Referans
+          </Chip>
+        </FilterBar>
+      </Toolbar>
 
       {query.isLoading ? (
-        <p className="text-sm text-text-muted">Yükleniyor…</p>
+        <SkeletonCardGrid count={6} />
       ) : query.error ? (
-        <p className="text-sm text-danger">{(query.error as Error).message}</p>
-      ) : !query.data || query.data.items.length === 0 ? (
-        <div className="rounded-md border border-border bg-surface p-6 text-center text-sm text-text-muted">
-          Henüz koleksiyon yok. &quot;Yeni Koleksiyon&quot; ile başla.
-        </div>
+        <StateMessage
+          tone="error"
+          title="Liste yüklenemedi"
+          body={(query.error as Error).message}
+        />
+      ) : items.length === 0 ? (
+        q.trim() ? (
+          <StateMessage
+            tone="neutral"
+            icon={<FolderIcon className="h-5 w-5" aria-hidden />}
+            title="Eşleşen koleksiyon yok"
+            body="Farklı bir arama terimi dene ya da yeni bir koleksiyon oluştur."
+          />
+        ) : (
+          <StateMessage
+            tone="neutral"
+            icon={<FolderIcon className="h-5 w-5" aria-hidden />}
+            title="Henüz koleksiyon yok"
+            body="Bookmark ve referansları tema bazında grupla. İlk koleksiyonunu oluşturarak başla."
+            action={
+              <Button
+                variant="primary"
+                icon={<Plus className="h-4 w-4" aria-hidden />}
+                onClick={() => {
+                  setCreateError(null);
+                  setCreateOpen(true);
+                }}
+              >
+                İlk koleksiyonunu oluştur
+              </Button>
+            }
+          />
+        )
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {query.data.items.map((c) => (
+          {items.map((c) => (
             <CollectionCard
               key={c.id}
               collection={c}
               onArchive={(id) => {
-                const item = query.data.items.find((col) => col.id === id);
+                const item = items.find((col) => col.id === id);
                 confirm(
                   confirmPresets.archiveCollection(item?.name),
                   async () => {
@@ -151,12 +224,12 @@ export function CollectionsPage() {
         </div>
       )}
 
-      {creating ? (
+      {createOpen ? (
         <CollectionCreateDialog
           busy={createMutation.isPending}
           error={createError}
           onClose={() => {
-            setCreating(false);
+            setCreateOpen(false);
             setCreateError(null);
           }}
           onSubmit={(input) => createMutation.mutate(input)}

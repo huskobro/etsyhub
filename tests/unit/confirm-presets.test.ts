@@ -116,6 +116,26 @@ describe("confirmPresets", () => {
     });
   });
 
+  describe("archiveCollection — body doğruluğu", () => {
+    it("name ile: 'silinmez' ve 'bu koleksiyon filtresi altında artık görünmez' geçer", () => {
+      const p = confirmPresets.archiveCollection("Nursery");
+      expect(p.description).toMatch(/"Nursery"/);
+      expect(p.description).toMatch(/silinmez/);
+      expect(p.description).toMatch(/bu koleksiyon filtresi altında artık görünmez/);
+    });
+
+    it("name olmadan: default metin 'silinmez' + 'artık görünmez' içerir", () => {
+      const p = confirmPresets.archiveCollection();
+      expect(p.description).toMatch(/silinmez/);
+      expect(p.description).toMatch(/artık görünmez/);
+    });
+
+    it("eski 'koleksiyon bağlantısı kopar' ifadesi KALMADI", () => {
+      const p = confirmPresets.archiveCollection("X");
+      expect(p.description).not.toMatch(/bağlantısı kopar/);
+    });
+  });
+
   describe("Türkçe karakter bütünlüğü", () => {
     it("archiveBookmark Türkçe karakterleri bozmuyor", () => {
       const p = confirmPresets.archiveBookmark("Ürün");
@@ -123,9 +143,9 @@ describe("confirmPresets", () => {
       expect(p.description).toContain("İnbox");
     });
 
-    it("archiveCollection koleksiyon bağlantısı ifadesi doğru", () => {
+    it("archiveCollection soft-delete davranışını yansıtıyor", () => {
       const p = confirmPresets.archiveCollection("Test");
-      expect(p.description).toContain("bağlantısı");
+      expect(p.description).toContain("silinmez");
     });
 
     it("changeUserRole Türkçe karakter tam", () => {

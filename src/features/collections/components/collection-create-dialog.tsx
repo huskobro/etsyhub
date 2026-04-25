@@ -25,8 +25,8 @@ export function CollectionCreateDialog({
 
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-text/40 p-4">
-      <div className="w-full max-w-md rounded-md border border-border bg-surface p-6 shadow-popover">
-        <h2 className="text-lg font-semibold text-text">Yeni Koleksiyon</h2>
+      <div role="dialog" aria-modal="true" aria-labelledby="create-collection-title" className="w-full max-w-md rounded-md border border-border bg-surface p-6 shadow-popover">
+        <h2 id="create-collection-title" className="text-lg font-semibold text-text">Yeni Koleksiyon</h2>
         <form
           className="mt-4 flex flex-col gap-3"
           onSubmit={(e) => {
