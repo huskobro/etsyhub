@@ -259,6 +259,40 @@ describe("TrendClusterDrawer — load more", () => {
   });
 });
 
+describe("TrendClusterDrawer — a11y davranışları (Escape + backdrop + initial focus)", () => {
+  it("Escape tuşu basıldığında onClose çağrılır", () => {
+    setDetailMock({ data: makeDetail() });
+    const onClose = vi.fn();
+    wrapper(<TrendClusterDrawer clusterId="c-1" onClose={onClose} />);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("backdrop (dialog dışı overlay) tıklamasında onClose çağrılır; dialog içi tıklamada çağrılmaz", () => {
+    setDetailMock({ data: makeDetail() });
+    const onClose = vi.fn();
+    wrapper(<TrendClusterDrawer clusterId="c-1" onClose={onClose} />);
+    const dialog = screen.getByRole("dialog", {
+      name: "Trend kümesi detayı",
+    });
+    // Dialog içi tıklama → onClose ÇAĞRILMAZ
+    const heading = within(dialog).getByText("Trend Kümesi");
+    fireEvent.click(heading);
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Backdrop (overlay) tıklama → onClose çağrılır
+    fireEvent.click(dialog);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("drawer açıldığında 'Kapat' butonu document.activeElement olur (initial focus)", () => {
+    setDetailMock({ data: makeDetail() });
+    wrapper(<TrendClusterDrawer clusterId="c-1" onClose={vi.fn()} />);
+    const btn = screen.getByRole("button", { name: /Kapat/i });
+    expect(document.activeElement).toBe(btn);
+  });
+});
+
 describe("TrendClusterDrawer — SeasonalBadge (KORUNDU, carry-forward)", () => {
   it("seasonalTag varsa SeasonalBadge yerel pill olarak render edilmeye devam eder", () => {
     setDetailMock({

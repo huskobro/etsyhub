@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useClusterDetail,
   type ClusterMember,
@@ -43,6 +43,34 @@ export function TrendClusterDrawer({ clusterId, onClose }: Props) {
   // Sayfa zincirleme cursor'ları: her "Daha fazla yükle" tıklamasıyla
   // yeni bir sayfa çekilir ve liste accumulate edilir.
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  // a11y: Escape tuşu → onClose. aria-modal taahhüdü ile davranış uyumlandı.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  // a11y: Drawer açıldığında "Kapat" butonu initial focus alır.
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
+
+  // a11y: Backdrop (overlay) tıklamasında onClose. Dialog içi tıklama
+  // event bubbling ile buraya gelse de target !== currentTarget olduğu için
+  // tetiklenmez (yalnızca overlay'in kendisine tıklandığında onClose çağrılır).
+  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  };
 
   return (
     <div
@@ -50,6 +78,7 @@ export function TrendClusterDrawer({ clusterId, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label="Trend kümesi detayı"
+      onClick={handleOverlayClick}
     >
       <div className="my-auto flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-md border border-border bg-surface shadow-popover">
         <DrawerContent
@@ -57,6 +86,7 @@ export function TrendClusterDrawer({ clusterId, onClose }: Props) {
           cursors={cursors}
           onLoadMore={(next) => setCursors((prev) => [...prev, next])}
           onClose={onClose}
+          closeButtonRef={closeButtonRef}
         />
       </div>
     </div>
@@ -68,17 +98,19 @@ function DrawerContent({
   cursors,
   onLoadMore,
   onClose,
+  closeButtonRef,
 }: {
   clusterId: string;
   cursors: (string | null)[];
   onLoadMore: (cursor: string) => void;
   onClose: () => void;
+  closeButtonRef: React.MutableRefObject<HTMLButtonElement | null>;
 }) {
   return (
     <>
       <div className="flex items-start justify-between gap-3 border-b border-border p-5">
         <h2 className="text-lg font-semibold text-text">Trend Kümesi</h2>
-        <Button variant="ghost" size="sm" onClick={onClose}>
+        <Button ref={closeButtonRef} variant="ghost" size="sm" onClick={onClose}>
           Kapat
         </Button>
       </div>
