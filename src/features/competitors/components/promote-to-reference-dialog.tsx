@@ -27,10 +27,12 @@ export function PromoteToReferenceDialog({
     null,
   );
 
-  // T-40 a11y: Escape → onClose. aria-modal="true" taahhüdü ile uyumlandı.
+  // T-40 a11y + C3: Escape → onClose. isPending guard'lı; mutation
+  // uçuyorken kullanıcı kazara iptal etmesin. aria-modal="true"
+  // taahhüdü ile uyumlandı.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !isPending) {
         onClose();
       }
     };
@@ -38,7 +40,7 @@ export function PromoteToReferenceDialog({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, isPending]);
 
   // T-40 a11y: Tab boundary + initial focus tek hook ile yönetilir.
   // Dinamik fallback (productTypes varsa select, yoksa Vazgeç) tüketici

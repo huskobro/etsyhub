@@ -88,6 +88,21 @@ describe("PromoteToReferenceDialog — T-40 a11y davranışları", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("isPending=true iken Escape onClose çağırmaz", () => {
+    const onClose = vi.fn();
+    render(
+      <PromoteToReferenceDialog
+        listing={makeListing()}
+        productTypes={productTypes}
+        isPending={true}
+        onClose={onClose}
+        onSubmit={vi.fn()}
+      />,
+    );
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("dialog açıldığında initial focus ürün tipi select'i olur", () => {
     render(
       <PromoteToReferenceDialog
