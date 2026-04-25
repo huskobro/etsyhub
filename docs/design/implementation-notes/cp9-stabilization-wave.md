@@ -300,6 +300,12 @@ T-36 paterni — onKeyDown handler + index hesaplama + focus().
 | Bookmarks/References checkbox aria-label | Runtime test | E2E |
 | ConfirmDialog focus trap entegrasyonu | T-40'ta tüketilir, primitive değişimi gerekirse ayrı doğrulama | T-40 sırasında |
 | AdminThemes davranış (form) | T-43 yalnızca chrome migrasyonu | Theme editor refactor |
+| collection-create-dialog a11y hizalama | Wave audit'inde kaçırılmış 5. dialog: Escape + backdrop + initialFocus + Tab boundary yok; useFocusTrap 5. tüketim noktası olarak eklenmeli | Sonraki a11y dalgası (öncelikli) |
+| T-42 admin sayfaları smoke test | Server component test altyapısı yok (Next 14 RSC adapter); audit-logs + jobs için header render + en az bir satır | Test altyapısı kurulumu |
+| api-competitors integration test isolation | Full-suite paralelizmde tag-service DB state çakışması; izole 14/14 yeşil | Test parallelism / DB isolation görevi |
+| Lint baseline temizliği | `auth-shell.tsx:103` unescaped entity + `competitor-list-page.tsx:65` exhaustive-deps; CP-9 öncesi mevcut | Lint hijyen sweep |
+| Opacity-syntax kalıntıları sweep | `tags/color-map.ts`, `seasonal-badge.tsx`, `trend-membership-badge.tsx`, `scraper-config-form.tsx`, `BulkActionBar.tsx`, `confirm-dialog.tsx` — Badge tone migrasyonu veya semantic-soft token'a geçiş | Token discipline polish dalgası |
+| PromoteToReferenceDialog Escape isPending guard | Bookmarks PromoteDialog'da var, PromoteToReference'ta yok; davranış kıran değil, kozmetik tutarsızlık | Disclosure pattern hizalama |
 
 ## Sıralama (kilitli)
 
