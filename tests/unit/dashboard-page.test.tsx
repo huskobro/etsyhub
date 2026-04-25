@@ -100,6 +100,23 @@ describe("DashboardStatRow", () => {
     ).not.toMatch(/text-accent/);
   });
 
+  it("stat kart Link className'inde focus-visible ring tokenları (klavye a11y)", () => {
+    render(
+      <DashboardStatRow
+        bookmarkCount={0}
+        referenceCount={0}
+        collectionCount={0}
+        activeJobCount={0}
+      />,
+    );
+    const link = screen.getByTestId("stat-card-Bookmark");
+    // Token disiplini: focus-visible:ring-accent + ring-offset-bg.
+    expect(link.className).toMatch(/focus-visible:ring-2/);
+    expect(link.className).toMatch(/focus-visible:ring-accent/);
+    expect(link.className).toMatch(/focus-visible:ring-offset-2/);
+    expect(link.className).toMatch(/focus-visible:ring-offset-bg/);
+  });
+
   it("4 kart grid layout (sm:grid-cols-2 lg:grid-cols-4) ve mikro grafik yok", () => {
     const { container } = render(
       <DashboardStatRow
@@ -148,6 +165,14 @@ describe("RecentJobsCard", () => {
     render(<RecentJobsCard jobs={[]} />);
     expect(screen.getByText("Henüz job çalışmadı.")).toBeInTheDocument();
     expect(screen.queryAllByTestId("recent-jobs-row")).toHaveLength(0);
+  });
+
+  it("header etiketi 'son 5 iş' (sözleşme: take:5, zaman filtresi yok)", () => {
+    render(<RecentJobsCard jobs={makeJobs()} />);
+    // Etiket "son 24 saat" yanıltıcıydı; sorgu zaman filtresi yapmıyor,
+    // sadece take:5. Etiket take:5 ile birebir uyumlu olmalı.
+    expect(screen.getByText("son 5 iş")).toBeInTheDocument();
+    expect(screen.queryByText("son 24 saat")).toBeNull();
   });
 });
 

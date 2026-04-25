@@ -51,7 +51,7 @@ export function RecentJobsCard({ jobs }: { jobs: DashboardJob[] }) {
     >
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-text">Son işler</h2>
-        <span className="font-mono text-xs text-text-muted">son 24 saat</span>
+        <span className="font-mono text-xs text-text-muted">son 5 iş</span>
       </div>
       {jobs.length === 0 ? (
         <p className="text-sm text-text-muted">Henüz job çalışmadı.</p>

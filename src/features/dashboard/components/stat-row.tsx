@@ -64,7 +64,7 @@ export function DashboardStatRow({
           <Link
             key={item.label}
             href={item.href}
-            className="block focus-visible:outline-none"
+            className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             data-testid={`stat-card-${item.label}`}
           >
             <Card interactive className="flex flex-col gap-3">
