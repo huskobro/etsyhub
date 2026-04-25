@@ -13,10 +13,10 @@ export function isTagColorKey(value: string): value is TagColorKey {
 }
 
 const COLOR_CLASSNAMES: Record<TagColorKey, string> = {
-  accent: "bg-accent/15 text-accent",
-  success: "bg-success/15 text-success",
-  warning: "bg-warning/15 text-warning",
-  danger: "bg-danger/15 text-danger",
+  accent: "bg-accent-soft text-accent",
+  success: "bg-success-soft text-success",
+  warning: "bg-warning-soft text-warning",
+  danger: "bg-danger-soft text-danger",
   muted: "bg-surface-muted text-text-muted",
 };
 

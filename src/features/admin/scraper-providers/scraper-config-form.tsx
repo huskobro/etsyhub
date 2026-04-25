@@ -255,7 +255,7 @@ function ApiKeyRow(props: {
           {label} API Anahtarı
         </span>
         {hasKey ? (
-          <span className="rounded-md bg-success/15 px-2 py-1 text-xs text-success">
+          <span className="rounded-md bg-success-soft px-2 py-1 text-xs text-success">
             Mevcut
           </span>
         ) : (

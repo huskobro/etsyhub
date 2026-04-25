@@ -24,7 +24,7 @@ export function TrendMembershipBadge({
         e.stopPropagation();
         onOpenCluster(clusterId);
       }}
-      className="inline-flex items-center gap-1 rounded-md bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent hover:bg-accent/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      className="inline-flex items-center gap-1 rounded-md bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent hover:bg-accent/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       title="Trend kümesini aç"
     >
       <span aria-hidden>✦</span>
