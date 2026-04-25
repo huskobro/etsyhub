@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useFocusTrap } from "@/components/ui/use-focus-trap";
 import type { CompetitorListing } from "../queries/use-competitor";
 
 type ProductTypeOption = { id: string; displayName: string };
@@ -21,13 +22,46 @@ export function PromoteToReferenceDialog({
   const firstId = productTypes[0]?.id ?? "";
   const [productTypeId, setProductTypeId] = useState(firstId);
   const hasProductTypes = productTypes.length > 0;
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const initialFocusRef = useRef<HTMLSelectElement | HTMLButtonElement | null>(
+    null,
+  );
+
+  // T-40 a11y: Escape → onClose. aria-modal="true" taahhüdü ile uyumlandı.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  // T-40 a11y: Tab boundary. Hook ilk focusable'ı odaklasa da spec gereği
+  // initial focus ürün tipi select'i (varsa) ya da Vazgeç butonudur.
+  useFocusTrap(dialogRef, true);
+  useEffect(() => {
+    initialFocusRef.current?.focus();
+  }, []);
+
+  // T-40 a11y: Backdrop tıklamasında onClose (TrendClusterDrawer paterni).
+  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  };
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="promote-listing-title"
+      onClick={handleOverlayClick}
     >
       <div className="w-full max-w-md rounded-md border border-border bg-surface p-5 shadow-popover">
         <div className="mb-3 flex items-center justify-between">
@@ -58,6 +92,9 @@ export function PromoteToReferenceDialog({
           >
             Ürün tipi
             <select
+              ref={(el) => {
+                initialFocusRef.current = el;
+              }}
               id="promote-producttype"
               value={productTypeId}
               onChange={(e) => setProductTypeId(e.target.value)}
@@ -79,6 +116,12 @@ export function PromoteToReferenceDialog({
 
         <div className="mt-4 flex justify-end gap-2">
           <button
+            ref={(el) => {
+              // Ürün tipi yoksa initial focus Vazgeç butonuna düşer.
+              if (!hasProductTypes) {
+                initialFocusRef.current = el;
+              }
+            }}
             type="button"
             onClick={onClose}
             disabled={isPending}

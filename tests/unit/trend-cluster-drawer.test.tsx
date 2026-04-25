@@ -291,6 +291,37 @@ describe("TrendClusterDrawer — a11y davranışları (Escape + backdrop + initi
     const btn = screen.getByRole("button", { name: /Kapat/i });
     expect(document.activeElement).toBe(btn);
   });
+
+  it("T-40: Tab boundary — son focusable element'te Tab basınca ilk focusable'a wrap eder", () => {
+    setDetailMock({
+      data: makeDetail({ nextCursor: "cursor-2" }),
+    });
+    wrapper(<TrendClusterDrawer clusterId="c-1" onClose={vi.fn()} />);
+    const closeBtn = screen.getByRole("button", { name: /Kapat/i });
+    const loadMoreBtn = screen.getByRole("button", {
+      name: /Daha fazla yükle/i,
+    });
+    // Modal içindeki son focusable → loadMoreBtn (veya sonraki). Onu odakla
+    // ve Tab basıldığında ilk focusable olan Kapat butonuna wrap eder.
+    loadMoreBtn.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(closeBtn);
+  });
+
+  it("T-40: Tab boundary — ilk focusable element'te Shift+Tab son focusable'a wrap eder", () => {
+    setDetailMock({
+      data: makeDetail({ nextCursor: "cursor-2" }),
+    });
+    wrapper(<TrendClusterDrawer clusterId="c-1" onClose={vi.fn()} />);
+    const closeBtn = screen.getByRole("button", { name: /Kapat/i });
+    const loadMoreBtn = screen.getByRole("button", {
+      name: /Daha fazla yükle/i,
+    });
+    // Initial focus zaten Kapat butonunda.
+    expect(document.activeElement).toBe(closeBtn);
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(loadMoreBtn);
+  });
 });
 
 describe("TrendClusterDrawer — SeasonalBadge (KORUNDU, carry-forward)", () => {

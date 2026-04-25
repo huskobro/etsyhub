@@ -9,6 +9,7 @@ import { SeasonalBadge } from "./seasonal-badge";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { StateMessage } from "@/components/ui/StateMessage";
+import { useFocusTrap } from "@/components/ui/use-focus-trap";
 
 type Props = {
   clusterId: string;
@@ -44,6 +45,7 @@ export function TrendClusterDrawer({ clusterId, onClose }: Props) {
   // yeni bir sayfa çekilir ve liste accumulate edilir.
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
 
   // a11y: Escape tuşu → onClose. aria-modal taahhüdü ile davranış uyumlandı.
   useEffect(() => {
@@ -59,9 +61,15 @@ export function TrendClusterDrawer({ clusterId, onClose }: Props) {
   }, [onClose]);
 
   // a11y: Drawer açıldığında "Kapat" butonu initial focus alır.
+  // Hook initial focus default'u ilk focusable element olduğundan, "Kapat"
+  // butonu zaten Drawer'ın ilk focusable'ı; ama spec gereği T-37 paterninde
+  // explicit "Kapat" odaklaması korunur. Hook Tab boundary'i sağlar.
   useEffect(() => {
     closeButtonRef.current?.focus();
   }, []);
+
+  // T-40: Tab boundary — Tab/Shift+Tab modal dışına kaçamaz.
+  useFocusTrap(dialogRef, true);
 
   // a11y: Backdrop (overlay) tıklamasında onClose. Dialog içi tıklama
   // event bubbling ile buraya gelse de target !== currentTarget olduğu için
@@ -74,6 +82,7 @@ export function TrendClusterDrawer({ clusterId, onClose }: Props) {
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-stretch justify-center bg-bg/80 p-4"
       role="dialog"
       aria-modal="true"

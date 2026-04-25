@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCreateCompetitor } from "../mutations/use-create-competitor";
+import { useFocusTrap } from "@/components/ui/use-focus-trap";
 import type { AddCompetitorInput } from "../schemas";
 
 type Platform = AddCompetitorInput["platform"];
@@ -17,6 +18,38 @@ export function AddCompetitorDialog({
   const [platform, setPlatform] = useState<Platform>("ETSY");
   const [autoScanEnabled, setAutoScanEnabled] = useState(false);
   const createMutation = useCreateCompetitor();
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const initialInputRef = useRef<HTMLInputElement | null>(null);
+
+  // T-40 a11y: Escape → onClose. aria-modal="true" taahhüdü ile uyumlandı.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  // T-40 a11y: Tab boundary. Hook initial focus default'u dialog'un ilk
+  // focusable'ı (Kapat butonu) olur; spec gereği explicit olarak ilk input
+  // (mağaza adı/URL) odaklanır.
+  useFocusTrap(dialogRef, true);
+  useEffect(() => {
+    initialInputRef.current?.focus();
+  }, []);
+
+  // T-40 a11y: Backdrop (overlay) tıklamasında onClose. Dialog içi tıklama
+  // event bubbling ile buraya gelse de target !== currentTarget olduğu için
+  // tetiklenmez (TrendClusterDrawer paterni).
+  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  };
 
   const canSubmit =
     !createMutation.isPending && shopIdentifier.trim().length >= 2;
@@ -41,10 +74,12 @@ export function AddCompetitorDialog({
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-competitor-title"
+      onClick={handleOverlayClick}
     >
       <form
         onSubmit={onSubmit}
@@ -73,6 +108,7 @@ export function AddCompetitorDialog({
           >
             Mağaza adı veya URL
             <input
+              ref={initialInputRef}
               id="shopIdentifier"
               type="text"
               required
