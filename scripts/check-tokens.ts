@@ -17,6 +17,11 @@ const whitelist = [
   "src/app/globals.css",
   "src/features/tags/color-map.ts",
   "tailwind.config.ts",
+  // T-26: RolloutBar dinamik genişliği için kasıtlı inline style escape hatch
+  // (Tailwind arbitrary value `w-[X%]` yasak olduğu için). 2. tüketici
+  // sprintinde terfi edilen `src/components/ui/progress-bar.tsx` path'ine
+  // taşınır. Bkz. docs/plans/admin-feature-flags-data-model.md.
+  "src/features/admin/feature-flags/_shared/rollout-bar.tsx",
 ];
 
 let hadError = false;
