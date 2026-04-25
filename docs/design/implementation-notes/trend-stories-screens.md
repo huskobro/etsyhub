@@ -329,6 +329,40 @@ Mevcut testleri korurken eklemeler:
 8. StatCard inline yapısı KORUNDU (dokunulmadı)
 9. SeasonalBadge KORUNDU
 
+## Onay sonrası carry-forward notları (kullanıcı, T-35 onay)
+
+1. **`Card as="button"` genişlemesini zorlamayın.** Önce wrapper
+   `<button>` + iç Card çözümünü tercih edin. Yeni primitive / API
+   genişlemesi son seçenek. T-37 implementer Card primitive'i mevcut
+   API'siyle değerlendirir; `as="button"` desteği yoksa wrapper
+   button paterni uygulanır, primitive API genişletilmez.
+
+2. **Manuel `role="status"` feedback semantik olarak da doğru
+   kalsın.**
+   - Başarı/bilgi tonu → `aria-live="polite"` (mevcut `role="status"`
+     zaten polite ima eder; explicit `aria-live="polite"` eklenir)
+   - Hata tonu → `role="alert"` / `aria-live="assertive"` (toast
+     `kind === "error"` durumunda role/aria-live ayarlanır)
+   - Mevcut tek `role="status"` div'i ton'a göre değişir; T-33/T-34
+     toast div'leri de bu sözleşmeye taşınır (small carry-forward
+     fix; T-36 tarafında uygulanır, T-33/T-34 commit'lerine
+     dokunulmaz — gelecek wave'de fix ya da T-36 implementer aynı
+     paterni hem TrendStoriesPage hem de carry-forward T-33/T-34
+     toast'larına uygular).
+   - **T-36 implementer için karar:** TrendStoriesPage toast'ında
+     aria-live ton ayrımı **uygulanır**. T-33/T-34 toast'larına
+     dokunmak T-36 scope'u dışı; ayrı bir review carry-forward
+     fix'i olarak işaretlenir.
+
+3. **"Uyarlama" yeni estetik keşif anlamına gelmesin.**
+   - Mevcut kart dili korunur (Card primitive default styling)
+   - Mevcut overlay / readability kararları korunur (drawer
+     `bg-bg/80` overlay, mevcut shadow-popover)
+   - Yeni dekoratif gradient / hero keşfi YASAK
+   - Renk / spacing / radius / shadow yalnızca mevcut token'lardan
+     gelir; "trend kartı için özel hover gradient" gibi keşifler
+     açılmaz
+
 ## Tetikleyici (kararı revize etmek için)
 
 Aşağıdaki sinyallerden **ikisi** birleşince trend ekranları
