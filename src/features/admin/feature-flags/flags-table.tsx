@@ -102,9 +102,26 @@ export function FlagsTable() {
     queryKey: ["admin", "feature-flags"],
     queryFn: fetchFlags,
   });
+
+  // Satır bazlı hata geri bildirimi (CLAUDE.md: "Hatalar kullanıcıya
+  // anlaşılır Türkçe mesajlarla gösterilecek."). Toast primitive
+  // yok; inline satır içi span kullanıyoruz.
+  const [errorByKey, setErrorByKey] = useState<Record<string, string>>({});
+
   const mutation = useMutation({
     mutationFn: toggleFlag,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "feature-flags"] }),
+    onSuccess: (_data, variables) => {
+      setErrorByKey((prev) => {
+        if (!(variables.key in prev)) return prev;
+        const next = { ...prev };
+        delete next[variables.key];
+        return next;
+      });
+      return qc.invalidateQueries({ queryKey: ["admin", "feature-flags"] });
+    },
+    onError: (err: Error, variables) => {
+      setErrorByKey((prev) => ({ ...prev, [variables.key]: err.message }));
+    },
   });
 
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -218,6 +235,9 @@ export function FlagsTable() {
             const name = displayName(f);
             const desc = description(f);
             const rolloutPercent = f.enabled ? 100 : 0;
+            const isRowPending =
+              mutation.isPending && mutation.variables?.key === f.key;
+            const rowError = errorByKey[f.key];
             return (
               <TR key={f.id}>
                 <TD>
@@ -253,14 +273,25 @@ export function FlagsTable() {
                   </div>
                 </TD>
                 <TD>
-                  <Toggle
-                    on={f.enabled}
-                    onChange={(next) =>
-                      mutation.mutate({ key: f.key, enabled: next })
-                    }
-                    size="sm"
-                    aria-label={`${name} flag'ini aç/kapat`}
-                  />
+                  <div className="flex flex-col gap-1">
+                    <Toggle
+                      on={f.enabled}
+                      onChange={(next) =>
+                        mutation.mutate({ key: f.key, enabled: next })
+                      }
+                      size="sm"
+                      disabled={isRowPending}
+                      aria-label={`${name} flag'ini aç/kapat`}
+                    />
+                    {rowError ? (
+                      <span
+                        role="alert"
+                        className="text-xs text-danger"
+                      >
+                        {rowError}
+                      </span>
+                    ) : null}
+                  </div>
                 </TD>
                 <TD align="right">
                   <Button

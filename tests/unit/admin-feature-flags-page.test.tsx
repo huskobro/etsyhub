@@ -234,4 +234,96 @@ describe("FlagsTable (admin)", () => {
     expect(cta).toBeDisabled();
     expect(cta).toHaveAttribute("title", "Yakında");
   });
+
+  it("toggle pending sırasında ilgili satırın switch'i disabled olur", async () => {
+    // Deferred PATCH: promise'i elimizde tutup pending state'i gözleyeceğiz.
+    let resolvePatch: ((value: { ok: boolean; json: () => Promise<unknown> }) => void) | null = null;
+    const pendingPromise = new Promise<{ ok: boolean; json: () => Promise<unknown> }>((r) => {
+      resolvePatch = r;
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.startsWith("/api/admin/feature-flags")) {
+          if (init?.method === "PATCH") {
+            return pendingPromise;
+          }
+          return Promise.resolve({ ok: true, json: async () => ({ flags: sample }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }),
+    );
+
+    wrapper(<FlagsTable />);
+    await screen.findByText("wall_art_variations");
+
+    const switches = screen.getAllByRole("switch");
+    act(() => {
+      fireEvent.click(switches[0]!);
+    });
+
+    // Tıklanan satır disabled olmalı, diğerleri olmamalı.
+    await waitFor(() => {
+      expect(screen.getAllByRole("switch")[0]).toBeDisabled();
+    });
+    expect(screen.getAllByRole("switch")[1]).not.toBeDisabled();
+    expect(screen.getAllByRole("switch")[4]).not.toBeDisabled();
+
+    // Pending'i bitir ki test temiz kapansın.
+    act(() => {
+      resolvePatch!({ ok: true, json: async () => ({ flag: { ...sample[0], enabled: false } }) });
+    });
+  });
+
+  it("PATCH 500 dönerse hata satır içinde görünür; sonraki başarılı toggle hatayı temizler", async () => {
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.startsWith("/api/admin/feature-flags")) {
+          if (init?.method === "PATCH") {
+            callCount += 1;
+            if (callCount === 1) {
+              return Promise.resolve({
+                ok: false,
+                json: async () => ({ error: "Sunucu hatası: flag güncellenemedi" }),
+              });
+            }
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({ flag: { ...sample[0], enabled: false } }),
+            });
+          }
+          return Promise.resolve({ ok: true, json: async () => ({ flags: sample }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }),
+    );
+
+    wrapper(<FlagsTable />);
+    await screen.findByText("wall_art_variations");
+
+    const switches = screen.getAllByRole("switch");
+    act(() => {
+      fireEvent.click(switches[0]!);
+    });
+
+    // 1. çağrı fail → Türkçe hata mesajı satır içinde görünsün.
+    const errorNode = await screen.findByText(/Sunucu hatası: flag güncellenemedi/);
+    expect(errorNode).toBeInTheDocument();
+
+    // 2. çağrı success → hata temizlensin.
+    act(() => {
+      fireEvent.click(screen.getAllByRole("switch")[0]!);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/Sunucu hatası: flag güncellenemedi/),
+      ).not.toBeInTheDocument();
+    });
+  });
 });
