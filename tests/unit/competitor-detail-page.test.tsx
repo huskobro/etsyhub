@@ -44,13 +44,23 @@ vi.mock("@/features/competitors/mutations/use-promote-listing-to-reference", () 
 vi.mock("@/features/competitors/components/promote-to-reference-dialog", () => ({
   PromoteToReferenceDialog: ({
     listing,
+    productTypes,
     onClose,
+    onSubmit,
   }: {
     listing: { title: string };
+    productTypes: { id: string; displayName: string }[];
     onClose: () => void;
+    onSubmit: (productTypeId: string) => void;
   }) => (
     <div data-testid="promote-dialog">
       <span>promote:{listing.title}</span>
+      <button
+        type="button"
+        onClick={() => onSubmit(productTypes[0]?.id ?? "")}
+      >
+        promote-submit
+      </button>
       <button type="button" onClick={onClose}>
         promote-close
       </button>
@@ -448,5 +458,144 @@ describe("CompetitorDetailPage — actions", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Referans'a Taşı/i }));
     expect(screen.getByTestId("promote-dialog")).toBeInTheDocument();
+  });
+});
+
+/**
+ * I-2 fix: Promote retry idempotency.
+ *
+ * `handlePromote` artık `pendingPromoteBookmarkId` state'i tutar.
+ * - bookmark.mutate başarılı → setPendingPromoteBookmarkId(bookmarkId)
+ * - promote.mutate fail → state korunur, kullanıcı tekrar submit ederse
+ *   bookmark.mutate ÇAĞRILMAZ; doğrudan promote.mutate çağrılır.
+ * - promote.mutate fail toast: "Bookmark eklendi ancak referans atanamadı: …"
+ * - dialog onClose veya promote.mutate success → state temizlenir.
+ */
+describe("CompetitorDetailPage — promote retry idempotency (I-2)", () => {
+  it("Promote: bookmark başarılı + promote fail → ikinci submit'te bookmark.mutate çağrılmaz, promote.mutate doğrudan çağrılır", () => {
+    const bookmarkMutate = vi.fn(
+      (
+        _vars: unknown,
+        opts: { onSuccess: (data: { bookmarkId: string }) => void },
+      ) => {
+        opts.onSuccess({ bookmarkId: "bm-42" });
+      },
+    );
+    const promoteMutate = vi.fn(
+      (
+        _vars: unknown,
+        opts: {
+          onError: (err: Error) => void;
+          onSettled: () => void;
+        },
+      ) => {
+        opts.onError(new Error("network down"));
+        opts.onSettled();
+      },
+    );
+    setBookmarkMock({ mutate: bookmarkMutate });
+    setPromoteMock({ mutate: promoteMutate });
+
+    wrapper(
+      <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
+    );
+
+    // Dialog'u aç.
+    fireEvent.click(screen.getByRole("button", { name: /Referans'a Taşı/i }));
+    // İlk submit: bookmark + promote(fail)
+    fireEvent.click(screen.getByRole("button", { name: /promote-submit/ }));
+    expect(bookmarkMutate).toHaveBeenCalledTimes(1);
+    expect(promoteMutate).toHaveBeenCalledTimes(1);
+    expect(promoteMutate.mock.calls[0]?.[0]).toMatchObject({
+      bookmarkId: "bm-42",
+      productTypeId: "pt-1",
+    });
+
+    // İkinci submit: pendingPromoteBookmarkId set, bookmark TEKRAR ÇAĞRILMAZ.
+    fireEvent.click(screen.getByRole("button", { name: /promote-submit/ }));
+    expect(bookmarkMutate).toHaveBeenCalledTimes(1);
+    expect(promoteMutate).toHaveBeenCalledTimes(2);
+    expect(promoteMutate.mock.calls[1]?.[0]).toMatchObject({
+      bookmarkId: "bm-42",
+      productTypeId: "pt-1",
+    });
+  });
+
+  it("Promote fail → toast mesajı 'Bookmark eklendi ancak referans atanamadı:' içerir", () => {
+    const bookmarkMutate = vi.fn(
+      (
+        _vars: unknown,
+        opts: { onSuccess: (data: { bookmarkId: string }) => void },
+      ) => {
+        opts.onSuccess({ bookmarkId: "bm-42" });
+      },
+    );
+    const promoteMutate = vi.fn(
+      (
+        _vars: unknown,
+        opts: {
+          onError: (err: Error) => void;
+          onSettled: () => void;
+        },
+      ) => {
+        opts.onError(new Error("validation: productType invalid"));
+        opts.onSettled();
+      },
+    );
+    setBookmarkMock({ mutate: bookmarkMutate });
+    setPromoteMock({ mutate: promoteMutate });
+
+    wrapper(
+      <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Referans'a Taşı/i }));
+    fireEvent.click(screen.getByRole("button", { name: /promote-submit/ }));
+
+    const status = screen.getByRole("status");
+    expect(status.textContent).toMatch(
+      /Bookmark eklendi ancak referans atanamadı: validation: productType invalid/,
+    );
+  });
+
+  it("Dialog onClose → pendingPromoteBookmarkId temizlenir (yeni promote bookmark.mutate'i tekrar çağırır)", () => {
+    const bookmarkMutate = vi.fn(
+      (
+        _vars: unknown,
+        opts: { onSuccess: (data: { bookmarkId: string }) => void },
+      ) => {
+        opts.onSuccess({ bookmarkId: "bm-42" });
+      },
+    );
+    const promoteMutate = vi.fn(
+      (
+        _vars: unknown,
+        opts: {
+          onError: (err: Error) => void;
+          onSettled: () => void;
+        },
+      ) => {
+        opts.onError(new Error("temporary"));
+        opts.onSettled();
+      },
+    );
+    setBookmarkMock({ mutate: bookmarkMutate });
+    setPromoteMock({ mutate: promoteMutate });
+
+    wrapper(
+      <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Referans'a Taşı/i }));
+    fireEvent.click(screen.getByRole("button", { name: /promote-submit/ }));
+    expect(bookmarkMutate).toHaveBeenCalledTimes(1);
+
+    // Dialog'u kapat → state temizlenir.
+    fireEvent.click(screen.getByRole("button", { name: /promote-close/ }));
+
+    // Tekrar dialog aç + submit → bookmark.mutate yeniden çağrılır.
+    fireEvent.click(screen.getByRole("button", { name: /Referans'a Taşı/i }));
+    fireEvent.click(screen.getByRole("button", { name: /promote-submit/ }));
+    expect(bookmarkMutate).toHaveBeenCalledTimes(2);
   });
 });

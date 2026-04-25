@@ -61,6 +61,12 @@ export function CompetitorDetailPage({
   const [bookmarkingId, setBookmarkingId] = useState<string | null>(null);
   const [promoteListing, setPromoteListing] =
     useState<CompetitorListing | null>(null);
+  // I-2 fix: ilk başarılı bookmark + ikinci fail promote durumunda
+  // bookmark'ın tekrar oluşturulmasını engellemek için pending bookmarkId tutulur.
+  // Promote başarılı veya dialog kapatıldığında temizlenir.
+  const [pendingPromoteBookmarkId, setPendingPromoteBookmarkId] = useState<
+    string | null
+  >(null);
 
   const detail = useCompetitor(competitorId);
   const listings = useCompetitorListings(competitorId, window);
@@ -121,6 +127,34 @@ export function CompetitorDetailPage({
     const target = promoteListing;
     if (!target) return;
     setBookmarkingId(target.id);
+
+    // I-2 fix: Bookmark başarılı + promote fail olduğunda ikinci submit'te
+    // bookmark.mutate baştan çağrılırsa backend "duplicate bookmark" hatası
+    // verebilir. pendingPromoteBookmarkId set ise doğrudan promote.mutate
+    // çağırılır (retry idempotency).
+    if (pendingPromoteBookmarkId) {
+      promote.mutate(
+        { bookmarkId: pendingPromoteBookmarkId, productTypeId },
+        {
+          onSuccess: () => {
+            setPendingPromoteBookmarkId(null);
+            setPromoteListing(null);
+            setToast({
+              kind: "success",
+              message: "Referans oluşturuldu.",
+            });
+          },
+          onError: (err) =>
+            setToast({
+              kind: "error",
+              message: `Bookmark eklendi ancak referans atanamadı: ${err.message}`,
+            }),
+          onSettled: () => setBookmarkingId(null),
+        },
+      );
+      return;
+    }
+
     // Önce bookmark + asset oluştur; ardından productType ile promote et.
     bookmark.mutate(
       {
@@ -130,10 +164,13 @@ export function CompetitorDetailPage({
       },
       {
         onSuccess: ({ bookmarkId }) => {
+          // Bookmark oluşturuldu — promote fail olursa retry için sakla.
+          setPendingPromoteBookmarkId(bookmarkId);
           promote.mutate(
             { bookmarkId, productTypeId },
             {
               onSuccess: () => {
+                setPendingPromoteBookmarkId(null);
                 setPromoteListing(null);
                 setToast({
                   kind: "success",
@@ -141,7 +178,10 @@ export function CompetitorDetailPage({
                 });
               },
               onError: (err) =>
-                setToast({ kind: "error", message: err.message }),
+                setToast({
+                  kind: "error",
+                  message: `Bookmark eklendi ancak referans atanamadı: ${err.message}`,
+                }),
               onSettled: () => setBookmarkingId(null),
             },
           );
@@ -330,7 +370,10 @@ export function CompetitorDetailPage({
             listing={promoteListing}
             productTypes={productTypes}
             isPending={bookmarkingId === promoteListing.id}
-            onClose={() => setPromoteListing(null)}
+            onClose={() => {
+              setPromoteListing(null);
+              setPendingPromoteBookmarkId(null);
+            }}
             onSubmit={handlePromote}
           />
         ) : null}
