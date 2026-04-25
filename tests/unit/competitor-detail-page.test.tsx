@@ -325,6 +325,97 @@ describe("CompetitorDetailPage — date-range tabs ARIA", () => {
   });
 });
 
+/**
+ * T-41: Date-range tabs klavye gez (WAI-ARIA roving tabIndex pattern).
+ * - ArrowLeft / ArrowRight: önceki / sonraki tab focus + select (wrap)
+ * - Home / End: ilk / son tab focus + select
+ * - preventDefault: native scroll/nav sızmaz (test edilmez; davranış odaklı)
+ *
+ * Mevcut roving tabIndex (T-34) ve aria-controls / role yapısı dokunulmaz.
+ * Default window="all" → ilk render'da Tümü tab aktif. Senaryolar setup için
+ * uygun tab'a fireEvent.click ile geçer, sonra ok tuşunu fire eder.
+ */
+describe("CompetitorDetailPage — date-range tabs klavye gez (T-41)", () => {
+  it("ArrowRight → sonraki tab aria-selected=true ve focus aktarılır", () => {
+    wrapper(
+      <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
+    );
+    const tab30d = screen.getByRole("tab", { name: /Son 30 gün/i });
+    fireEvent.click(tab30d);
+    fireEvent.keyDown(tab30d, { key: "ArrowRight" });
+    const tab90d = screen.getByRole("tab", { name: /Son 90 gün/i });
+    expect(tab90d).toHaveAttribute("aria-selected", "true");
+    expect(tab90d).toHaveFocus();
+  });
+
+  it("ArrowLeft (ilk tab 30d) → son tab Tümü'ye wrap", () => {
+    wrapper(
+      <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
+    );
+    const tab30d = screen.getByRole("tab", { name: /Son 30 gün/i });
+    fireEvent.click(tab30d);
+    fireEvent.keyDown(tab30d, { key: "ArrowLeft" });
+    const tabAll = screen.getByRole("tab", { name: /^Tümü$/i });
+    expect(tabAll).toHaveAttribute("aria-selected", "true");
+    expect(tabAll).toHaveFocus();
+  });
+
+  it("ArrowRight (son tab Tümü) → ilk tab 30d'ye wrap", () => {
+    wrapper(
+      <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
+    );
+    // Default window="all" — Tümü tab aktif.
+    const tabAll = screen.getByRole("tab", { name: /^Tümü$/i });
+    // Focus geçişi için önce click (focus + aria-selected garanti).
+    fireEvent.click(tabAll);
+    fireEvent.keyDown(tabAll, { key: "ArrowRight" });
+    const tab30d = screen.getByRole("tab", { name: /Son 30 gün/i });
+    expect(tab30d).toHaveAttribute("aria-selected", "true");
+    expect(tab30d).toHaveFocus();
+  });
+
+  it("Home → ilk tab 30d, End → son tab Tümü", () => {
+    wrapper(
+      <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
+    );
+    const tab90d = screen.getByRole("tab", { name: /Son 90 gün/i });
+    fireEvent.click(tab90d);
+    fireEvent.keyDown(tab90d, { key: "Home" });
+    const tab30d = screen.getByRole("tab", { name: /Son 30 gün/i });
+    expect(tab30d).toHaveAttribute("aria-selected", "true");
+    expect(tab30d).toHaveFocus();
+
+    fireEvent.keyDown(tab30d, { key: "End" });
+    const tabAll = screen.getByRole("tab", { name: /^Tümü$/i });
+    expect(tabAll).toHaveAttribute("aria-selected", "true");
+    expect(tabAll).toHaveFocus();
+  });
+
+  it("ArrowLeft (sondan bir önceki) → bir önceki tab focus", () => {
+    wrapper(
+      <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
+    );
+    const tab365d = screen.getByRole("tab", { name: /Son 365 gün/i });
+    fireEvent.click(tab365d);
+    fireEvent.keyDown(tab365d, { key: "ArrowLeft" });
+    const tab90d = screen.getByRole("tab", { name: /Son 90 gün/i });
+    expect(tab90d).toHaveAttribute("aria-selected", "true");
+    expect(tab90d).toHaveFocus();
+  });
+
+  it("ilgisiz tuş (Tab/Enter/Space) keydown handler tarafından yutulmaz — aktif tab değişmez", () => {
+    wrapper(
+      <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
+    );
+    const tab30d = screen.getByRole("tab", { name: /Son 30 gün/i });
+    fireEvent.click(tab30d);
+    fireEvent.keyDown(tab30d, { key: "Tab" });
+    expect(tab30d).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(tab30d, { key: "a" });
+    expect(tab30d).toHaveAttribute("aria-selected", "true");
+  });
+});
+
 describe("CompetitorDetailPage — ReviewCountDisclaimer + states", () => {
   it("ReviewCountDisclaimer render eder", () => {
     wrapper(

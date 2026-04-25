@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   useCompetitor,
   useCompetitorListings,
@@ -29,7 +29,10 @@ import { Toast } from "@/components/ui/Toast";
  *   (PageShell'de breadcrumb slot YOK; "çok minimal kalsın" kullanıcı talimatı).
  * - Date-range tabs gerçek client tab — `role="tablist"` + her tab `aria-controls`
  *   + `id`. Tek aktif `role="tabpanel"` + `aria-labelledby={activeTabId}`.
- *   Klavye Arrow gez Phase 2 carry-forward.
+ *   T-41: WAI-ARIA tablist klavye gez — ArrowLeft/Right wrap, Home/End uç tab.
+ *   Roving tabIndex (T-34) korunur; aktif tab tabIndex=0, diğerleri -1.
+ *   WindowTabs (trend-stories) bu turda kapsam dışı; 3+ ekran tüketim sinyali
+ *   oluşursa hook terfisi gündemine alınır (Toggle kuralı).
  * - StateMessage loading / empty / error.
  * - ListingRankCard primitive consume (Card + Badge + Button).
  * - ReviewCountDisclaimer + PromoteToReferenceDialog dokunulmadı.
@@ -90,6 +93,49 @@ export function CompetitorDetailPage({
     };
     return map;
   }, [tabIdBase]);
+
+  // T-41: tab DOM ref'leri — klavye gez sonrası focus aktarımı için.
+  const tabRefs = useRef<Record<ReviewWindow, HTMLButtonElement | null>>({
+    "30d": null,
+    "90d": null,
+    "365d": null,
+    all: null,
+  });
+
+  // T-41: WAI-ARIA tablist klavye davranışı.
+  // - ArrowLeft / ArrowRight: önceki / sonraki tab (wrap)
+  // - Home / End: ilk / son tab
+  // - preventDefault: native scroll/nav sızmasın.
+  // Focus + select beraber: setWindow state'i tetiklenir, ardından ref üzerinden
+  // doğrudan focus aktarılır (button DOM'da kalmaya devam ettiği için referans
+  // hala geçerlidir).
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    const order: ReviewWindow[] = WINDOW_OPTIONS.map((o) => o.value);
+    const currentIndex = order.indexOf(window);
+    let nextIndex: number | null = null;
+
+    switch (event.key) {
+      case "ArrowRight":
+        nextIndex = (currentIndex + 1) % order.length;
+        break;
+      case "ArrowLeft":
+        nextIndex = (currentIndex - 1 + order.length) % order.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = order.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    const nextWindow = order[nextIndex]!;
+    setWindow(nextWindow);
+    tabRefs.current[nextWindow]?.focus();
+  }
 
   const competitor = detail.data?.competitor;
   const lastScan = detail.data?.lastScan;
@@ -284,6 +330,9 @@ export function CompetitorDetailPage({
             return (
               <button
                 key={opt.value}
+                ref={(el) => {
+                  tabRefs.current[opt.value] = el;
+                }}
                 role="tab"
                 type="button"
                 id={ids.tabId}
@@ -291,6 +340,7 @@ export function CompetitorDetailPage({
                 aria-controls={ids.panelId}
                 tabIndex={active ? 0 : -1}
                 onClick={() => setWindow(opt.value)}
+                onKeyDown={handleTabKeyDown}
                 className={
                   active
                     ? "rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
