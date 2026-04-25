@@ -100,7 +100,7 @@ function BrandPanel() {
           Tek tıkla binlerce Etsy ürün fikri
         </h1>
         <p className="text-sm leading-relaxed text-text-muted">
-          Bookmark topla, referans havuzu kur, varyasyon ürettir, AI review'dan
+          Bookmark topla, referans havuzu kur, varyasyon ürettir, AI review&apos;dan
           geçir, mockup hazırla, listing yaz. Tek akış, karmaşa yok.
         </p>
       </div>

@@ -62,13 +62,13 @@ export function CompetitorListPage() {
     });
   }
 
-  const rawItems = list.data?.items ?? [];
   const items = useMemo(() => {
+    const rawItems = list.data?.items ?? [];
     if (autoFilter === "ALL") return rawItems;
     if (autoFilter === "AUTO")
       return rawItems.filter((c) => c.autoScanEnabled === true);
     return rawItems.filter((c) => c.autoScanEnabled === false);
-  }, [rawItems, autoFilter]);
+  }, [list.data?.items, autoFilter]);
 
   const toolbar = (
     <Toolbar
