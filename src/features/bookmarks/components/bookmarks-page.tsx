@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useMutation,
   useQuery,
@@ -13,6 +13,7 @@ import { ImportUrlDialog } from "./import-url-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { confirmPresets } from "@/components/ui/confirm-presets";
+import { useFocusTrap } from "@/components/ui/use-focus-trap";
 import { Toolbar } from "@/components/ui/Toolbar";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { BulkActionBar } from "@/components/ui/BulkActionBar";
@@ -331,6 +332,23 @@ export function BookmarksPage({
   );
 }
 
+/**
+ * PromoteDialog — bookmark'i referansa taşırken productType seçtiren disclosure.
+ *
+ * T-39 hizalaması (CP-9 stabilization wave): AddCompetitorDialog +
+ * PromoteToReferenceDialog ile aynı manuel disclosure pattern'ine taşındı.
+ *
+ * a11y davranışları:
+ * - role="dialog" + aria-modal="true" + aria-labelledby="promote-dialog-title"
+ * - useFocusTrap → Tab boundary + initial focus (productType select)
+ * - Escape → onClose (isPending iken iptal edilmez; mutation in-flight koruması)
+ * - Backdrop click → onClose (target === currentTarget guard + isPending guard)
+ * - Header "Kapat" + footer "Vazgeç" iki ayrı kapatma yolu
+ *
+ * NOT: ConfirmDialog primitive KULLANILMADI. Bu akış confirmation değil,
+ * productType picker içeren bir disclosure. Karar gerekçeleri için
+ * docs/design/implementation-notes/cp9-stabilization-wave.md (T-39) bölümü.
+ */
 function PromoteDialog({
   bookmarkId,
   productTypes,
@@ -348,15 +366,59 @@ function PromoteDialog({
 }) {
   const firstId = productTypes[0]?.id ?? "";
   const [productTypeId, setProductTypeId] = useState(firstId);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const initialFocusRef = useRef<HTMLSelectElement | null>(null);
+
+  // T-39 a11y: Tab boundary + initial focus tek hook ile yönetilir.
+  // Initial focus productType select'e — productTypes boşsa bile select
+  // render edilir (boş seçenekle) ve kullanıcı en azından dialog içine girer.
+  useFocusTrap(dialogRef, true, initialFocusRef);
+
+  // T-39 a11y: Escape → onClose. isPending iken iptal edilmez (mutation
+  // in-flight; ConfirmDialog'un busy guard paterni).
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (isPending) return;
+      onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isPending, onClose]);
+
+  // T-39 a11y: Backdrop tıklamasında onClose. Dialog içi tıklama event
+  // bubbling ile buraya gelse de target !== currentTarget olduğu için
+  // tetiklenmez. isPending iken iptal edilmez.
+  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (isPending) return;
+    onClose();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 p-4">
+    <div
+      ref={dialogRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="promote-dialog-title"
+      onClick={handleOverlayClick}
+    >
       <div className="w-full max-w-md rounded-md border border-border bg-surface p-5 shadow-popover">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Referansa taşı</h2>
+          <h2
+            id="promote-dialog-title"
+            className="text-lg font-semibold text-text"
+          >
+            Referansa taşı
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-sm text-text-muted hover:text-text"
+            disabled={isPending}
+            className="text-sm text-text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
           >
             Kapat
           </button>
@@ -365,9 +427,11 @@ function PromoteDialog({
           Bookmark {bookmarkId.slice(0, 10)}… için ürün tipi seç:
         </p>
         <select
+          ref={initialFocusRef}
           value={productTypeId}
           onChange={(e) => setProductTypeId(e.target.value)}
-          className="h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-text"
+          disabled={isPending}
+          className="h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
         >
           {productTypes.map((pt) => (
             <option key={pt.id} value={pt.id}>
@@ -379,11 +443,20 @@ function PromoteDialog({
           <p className="mt-3 text-xs text-danger">{error}</p>
         ) : null}
         <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isPending}
+            className="rounded-md border border-border px-3 py-2 text-sm text-text hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
+          >
+            Vazgeç
+          </button>
           <Button
             variant="primary"
             size="sm"
             disabled={isPending || !productTypeId}
             onClick={() => onSubmit(productTypeId)}
+            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             {isPending ? "Taşınıyor…" : "Referansa Taşı"}
           </Button>

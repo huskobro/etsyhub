@@ -1,19 +1,27 @@
 /**
  * bookmarks-page.test.tsx
  *
- * BookmarksPage primitive entegrasyonu — T-15 spec doğrulaması.
+ * BookmarksPage primitive entegrasyonu — T-15 + T-39 spec doğrulaması.
  *
  * Testler primitive kompozisyonun üç temel durumunu (loading / empty / default)
  * ve multi-select + bulk archive akışını doğrular. Gerçek useQuery / fetch
  * akışı kullanılır — BookmarkCard ve ConfirmDialog alt çağrıları mock'lanmaz.
  *
- * Senaryolar:
+ * Senaryolar (T-15):
  *   1. loading → SkeletonCardGrid (role="status") render olur
  *   2. empty → StateMessage ("Henüz bookmark yok") + CTA buton
  *   3. default → 4-col grid + BookmarkCard listesi
  *   4. seçim yap → BulkActionBar sayaç + Arşivle butonu görünür
  *   5. bulk arşivle → confirmPresets.archiveBookmarksBulk preset'i dialog'a düşer
  *   6. dismiss → selection temizlenir, BulkActionBar gizlenir
+ *
+ * Senaryolar (T-39 — PromoteDialog disclosure pattern + a11y):
+ *   7. promote butonu → role="dialog" + aria-modal + aria-labelledby render
+ *   8. submit → mutation çağrılır, dialog kapanır
+ *   9. Escape → dialog kapanır
+ *  10. backdrop click → dialog kapanır
+ *  11. dialog içi click → dialog kapanmaz
+ *  12. Vazgeç butonu → dialog kapanır
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ReactElement } from "react";
@@ -239,6 +247,195 @@ describe("BookmarksPage", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    });
+  });
+});
+
+/**
+ * T-39 — PromoteDialog disclosure pattern + a11y alignment
+ *
+ * AddCompetitorDialog + PromoteToReferenceDialog ile aynı manuel disclosure
+ * pattern'ine hizalama doğrulaması. ConfirmDialog primitive KULLANILMAZ;
+ * promote akışı confirmation değil productType picker disclosure'ıdır.
+ *
+ * Karar dokümanı: docs/design/implementation-notes/cp9-stabilization-wave.md
+ * (T-39 bölümü, 2026-04-25 yeniden çerçeveleme).
+ */
+describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
+  /**
+   * "Referansa taşı" akışını tetikleyen yardımcı: bir bookmark üret, kart
+   * üzerindeki "Taşı" butonuna basıp dialog'u aç.
+   */
+  async function openPromoteDialog() {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch([sampleBookmark("bm1", "Boho Poster")]),
+    );
+
+    wrapper(<BookmarksPage productTypes={productTypes} />);
+
+    await screen.findByText("Boho Poster");
+
+    // BookmarkCard içinde "Referansa taşı" / "Taşı" aksiyonu — kart bileşeni
+    // butonu görünür olarak render eder (ya hover-gated bir overlay'de ya da
+    // doğrudan); button name'i regex ile yakalanır.
+    const promoteBtn = screen.getByRole("button", {
+      name: /^Referansa Taşı$/i,
+    });
+    act(() => {
+      fireEvent.click(promoteBtn);
+    });
+
+    return await screen.findByRole("dialog", {
+      name: /Referansa taşı/i,
+    });
+  }
+
+  it("promote butonu → role=dialog + aria-modal=true + aria-labelledby render eder", async () => {
+    const dialog = await openPromoteDialog();
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAttribute("aria-labelledby", "promote-dialog-title");
+    const titleId = dialog.getAttribute("aria-labelledby")!;
+    // labelledby hedefi gerçekten dialog içinde var ve "Referansa taşı" başlığı
+    const labelEl = document.getElementById(titleId);
+    expect(labelEl).not.toBeNull();
+    expect(labelEl).toHaveTextContent(/Referansa taşı/i);
+  });
+
+  it("ProductType select dialog içinde render edilir", async () => {
+    const dialog = await openPromoteDialog();
+    // productTypes prop'u: Canvas + Printable
+    const select = within(dialog).getByRole("combobox");
+    expect(select).toBeInTheDocument();
+    expect(within(dialog).getByRole("option", { name: "Canvas" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("option", { name: "Printable" })).toBeInTheDocument();
+  });
+
+  it("Escape tuşu basıldığında dialog kapanır", async () => {
+    await openPromoteDialog();
+    act(() => {
+      fireEvent.keyDown(document, { key: "Escape" });
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /Referansa taşı/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("backdrop (overlay) tıklamasında dialog kapanır", async () => {
+    const dialog = await openPromoteDialog();
+    act(() => {
+      // Overlay = dialog elementinin kendisi (target === currentTarget)
+      fireEvent.click(dialog);
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /Referansa taşı/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("dialog içi (başlık) tıklaması dialog'u kapatmaz", async () => {
+    const dialog = await openPromoteDialog();
+    const heading = within(dialog).getByText("Referansa taşı");
+    act(() => {
+      fireEvent.click(heading);
+    });
+    // Dialog hâlâ açık olmalı
+    expect(
+      screen.getByRole("dialog", { name: /Referansa taşı/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("Vazgeç butonu → dialog kapanır", async () => {
+    const dialog = await openPromoteDialog();
+    const cancelBtn = within(dialog).getByRole("button", { name: /^Vazgeç$/i });
+    act(() => {
+      fireEvent.click(cancelBtn);
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /Referansa taşı/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("Kapat (header) butonu → dialog kapanır", async () => {
+    const dialog = await openPromoteDialog();
+    const closeBtn = within(dialog).getByRole("button", { name: /^Kapat$/i });
+    act(() => {
+      fireEvent.click(closeBtn);
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /Referansa taşı/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("submit (Referansa Taşı) → /api/references/promote POST tetiklenir", async () => {
+    // Dedicated fetch spy: hem listeyi karşılar hem de promote POST'u sayar.
+    const fetchSpy = vi.fn(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/references/promote" && init?.method === "POST") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ ok: true }),
+          });
+        }
+        if (url.startsWith("/api/bookmarks")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              items: [sampleBookmark("bm1", "Boho Poster")],
+              nextCursor: null,
+            }),
+          });
+        }
+        if (url.includes("/api/assets/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ url: "https://example.com/img.jpg" }),
+          });
+        }
+        if (url.startsWith("/api/tags") || url.startsWith("/api/collections")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ items: [] }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      },
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    wrapper(<BookmarksPage productTypes={productTypes} />);
+    await screen.findByText("Boho Poster");
+
+    const promoteBtn = screen.getByRole("button", {
+      name: /^Referansa Taşı$/i,
+    });
+    act(() => {
+      fireEvent.click(promoteBtn);
+    });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: /Referansa taşı/i,
+    });
+    const submitBtn = within(dialog).getByRole("button", {
+      name: /Referansa Taşı/i,
+    });
+    act(() => {
+      fireEvent.click(submitBtn);
+    });
+
+    await waitFor(() => {
+      const promoteCall = fetchSpy.mock.calls.find(
+        ([u]) => typeof u === "string" && u === "/api/references/promote",
+      );
+      expect(promoteCall).toBeDefined();
     });
   });
 });
