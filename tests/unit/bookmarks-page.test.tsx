@@ -22,6 +22,8 @@
  *  10. backdrop click → dialog kapanır
  *  11. dialog içi click → dialog kapanmaz
  *  12. Vazgeç butonu → dialog kapanır
+ *  13. isPending=true iken Escape → dialog kapanmaz (busy guard)
+ *  14. isPending=true iken backdrop click → dialog kapanmaz (busy guard)
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ReactElement } from "react";
@@ -437,5 +439,117 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
       );
       expect(promoteCall).toBeDefined();
     });
+
+    // Spec sat. 215: "Submit → mutation çağrılır + dialog kapanır".
+    // Mutation onSuccess setPromoteId(null) çağırır → dialog unmount olur.
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /Referansa taşı/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Spec sat. 218 (cp9-stabilization-wave.md T-39): "isPending true iken
+   * Escape + backdrop → iptal edilmez."
+   *
+   * isPending state'i, promote mutation in-flight olduğunda true olur.
+   * Test stratejisi: /api/references/promote endpoint'ini never-resolving
+   * promise döndürecek şekilde mock'la → submit sonrası mutation pending
+   * kalır → "Taşınıyor…" buton metni görünür → Escape/backdrop dispatch et
+   * → dialog hâlâ açık olduğu doğrulanır.
+   *
+   * Kod davranışı (bookmarks-page.tsx:382-385 ve 396-400) zaten doğru;
+   * burada sadece sözleşmeyi test koşumuyla pinliyoruz.
+   */
+  async function openDialogWithPendingPromote() {
+    // /api/references/promote → never resolves; diğer endpoint'ler normal.
+    const fetchSpy = vi.fn(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/references/promote" && init?.method === "POST") {
+          return new Promise(() => {
+            /* never resolves — mutation in-flight kalır */
+          });
+        }
+        if (url.startsWith("/api/bookmarks")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              items: [sampleBookmark("bm1", "Boho Poster")],
+              nextCursor: null,
+            }),
+          });
+        }
+        if (url.includes("/api/assets/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ url: "https://example.com/img.jpg" }),
+          });
+        }
+        if (url.startsWith("/api/tags") || url.startsWith("/api/collections")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ items: [] }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      },
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    wrapper(<BookmarksPage productTypes={productTypes} />);
+    await screen.findByText("Boho Poster");
+
+    const promoteBtn = screen.getByRole("button", {
+      name: /^Referansa Taşı$/i,
+    });
+    act(() => {
+      fireEvent.click(promoteBtn);
+    });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: /Referansa taşı/i,
+    });
+    const submitBtn = within(dialog).getByRole("button", {
+      name: /Referansa Taşı/i,
+    });
+    act(() => {
+      fireEvent.click(submitBtn);
+    });
+
+    // Mutation in-flight'a girdi → submit butonu "Taşınıyor…" oldu.
+    await within(dialog).findByRole("button", { name: /Taşınıyor…/i });
+
+    return dialog;
+  }
+
+  it("isPending true iken Escape → dialog kapanmaz", async () => {
+    const dialog = await openDialogWithPendingPromote();
+
+    act(() => {
+      fireEvent.keyDown(document, { key: "Escape" });
+    });
+
+    // isPending guard (bookmarks-page.tsx:382-385) Escape'i swallow eder.
+    expect(dialog).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: /Referansa taşı/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("isPending true iken backdrop click → dialog kapanmaz", async () => {
+    const dialog = await openDialogWithPendingPromote();
+
+    act(() => {
+      // Overlay = dialog elementinin kendisi (target === currentTarget)
+      fireEvent.click(dialog);
+    });
+
+    // isPending guard (bookmarks-page.tsx:396-400) overlay click'i swallow eder.
+    expect(dialog).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: /Referansa taşı/i }),
+    ).toBeInTheDocument();
   });
 });
