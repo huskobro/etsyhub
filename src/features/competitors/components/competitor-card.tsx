@@ -1,8 +1,22 @@
 "use client";
 
 import Link from "next/link";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import type { CompetitorListItem } from "../queries/use-competitors";
 
+/**
+ * CompetitorCard — T-33 primitive consumption.
+ *
+ * Sözleşme: docs/design/implementation-notes/competitors-screens.md
+ * - Card primitive (stat varianti default → list grid'de doğrudan padlenmiş kart)
+ *   sarması; manuel <article> yok
+ * - Auto/Manual pill → Badge (success / neutral tone)
+ * - Tara butonu → Button variant="ghost" size="sm"
+ * - Detay link → next/link, Button-style sınıfları primitive değil; mevcut accent
+ *   stili korunur (Button asChild yok, Link styled minimal kalır)
+ */
 export function CompetitorCard({
   competitor,
   onTriggerScan,
@@ -20,7 +34,7 @@ export function CompetitorCard({
     : "Henüz taranmadı";
 
   return (
-    <article className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4 shadow-card">
+    <Card as="article" className="flex flex-col gap-3">
       <header className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col">
           <h3 className="truncate text-sm font-medium text-text">
@@ -31,13 +45,9 @@ export function CompetitorCard({
           </span>
         </div>
         {competitor.autoScanEnabled ? (
-          <span className="rounded-md bg-success/15 px-2 py-0.5 text-xs text-success">
-            Oto-tarama
-          </span>
+          <Badge tone="success">Oto-tarama</Badge>
         ) : (
-          <span className="rounded-md bg-surface-muted px-2 py-0.5 text-xs text-text-muted">
-            Manuel
-          </span>
+          <Badge tone="neutral">Manuel</Badge>
         )}
       </header>
 
@@ -55,21 +65,21 @@ export function CompetitorCard({
       </dl>
 
       <div className="flex items-center justify-end gap-2">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => onTriggerScan(competitor.id)}
           disabled={scanning}
-          className="rounded-md border border-border px-2 py-1 text-xs text-text hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
         >
           {scanning ? "Başlatılıyor…" : "Tara"}
-        </button>
+        </Button>
         <Link
           href={`/competitors/${competitor.id}`}
-          className="rounded-md bg-accent/15 px-2 py-1 text-xs text-accent hover:bg-accent/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="inline-flex h-control-sm items-center rounded-md bg-accent-soft px-2.5 text-sm font-medium text-accent-text hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
           Detay
         </Link>
       </div>
-    </article>
+    </Card>
   );
 }
