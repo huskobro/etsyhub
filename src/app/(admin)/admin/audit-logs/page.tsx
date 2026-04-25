@@ -1,4 +1,5 @@
 import { db } from "@/server/db";
+import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 
 export default async function AdminAuditLogsPage() {
   const logs = await db.auditLog.findMany({
@@ -14,48 +15,46 @@ export default async function AdminAuditLogsPage() {
           Son 200 kayıt. Filtreli API: /api/admin/audit-logs?action=...&actor=...
         </p>
       </div>
-      <div className="overflow-hidden rounded-md border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead className="bg-surface-muted text-text-muted">
-            <tr>
-              <th className="px-4 py-2 text-left font-medium">Tarih</th>
-              <th className="px-4 py-2 text-left font-medium">Aktör</th>
-              <th className="px-4 py-2 text-left font-medium">Eylem</th>
-              <th className="px-4 py-2 text-left font-medium">Hedef</th>
-              <th className="px-4 py-2 text-left font-medium">Metadata</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-text-muted">
-                  Henüz kayıt yok.
-                </td>
-              </tr>
-            ) : (
-              logs.map((l) => (
-                <tr key={l.id} className="border-t border-border align-top">
-                  <td className="whitespace-nowrap px-4 py-2 text-text-muted">
-                    {l.createdAt.toLocaleString("tr-TR")}
-                  </td>
-                  <td className="px-4 py-2 text-text">{l.actor}</td>
-                  <td className="px-4 py-2 font-mono text-xs text-text">{l.action}</td>
-                  <td className="px-4 py-2 text-text-muted">
-                    {l.targetType ? `${l.targetType}:${l.targetId ?? "-"}` : "—"}
-                  </td>
-                  <td className="max-w-md px-4 py-2 text-xs text-text-muted">
-                    {l.metadata ? (
-                      <pre className="overflow-x-auto">{JSON.stringify(l.metadata, null, 0)}</pre>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <Table density="admin">
+        <THead>
+          <TR>
+            <TH>Tarih</TH>
+            <TH>Aktör</TH>
+            <TH>Eylem</TH>
+            <TH>Hedef</TH>
+            <TH>Metadata</TH>
+          </TR>
+        </THead>
+        <TBody>
+          {logs.length === 0 ? (
+            <TR>
+              <TD colSpan={5} align="center" muted>
+                Henüz kayıt yok.
+              </TD>
+            </TR>
+          ) : (
+            logs.map((l) => (
+              <TR key={l.id} className="align-top">
+                <TD muted className="whitespace-nowrap">
+                  {l.createdAt.toLocaleString("tr-TR")}
+                </TD>
+                <TD>{l.actor}</TD>
+                <TD className="font-mono text-xs">{l.action}</TD>
+                <TD muted>
+                  {l.targetType ? `${l.targetType}:${l.targetId ?? "-"}` : "—"}
+                </TD>
+                <TD muted className="max-w-md text-xs">
+                  {l.metadata ? (
+                    <pre className="overflow-x-auto">{JSON.stringify(l.metadata, null, 0)}</pre>
+                  ) : (
+                    "—"
+                  )}
+                </TD>
+              </TR>
+            ))
+          )}
+        </TBody>
+      </Table>
     </div>
   );
 }
