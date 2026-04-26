@@ -8,10 +8,11 @@ describe("image provider registry", () => {
     expect(p.capabilities).toContain("image-to-image");
   });
 
-  it("returns kie-z-image as shell with text-to-image capability", () => {
+  it("returns kie-z-image with text-to-image-only capability (Task 4 real integration)", () => {
     const p = getImageProvider("kie-z-image");
     expect(p.id).toBe("kie-z-image");
-    expect(p.capabilities).toContain("text-to-image");
+    // Task 4 sözleşmesi: TEK capability (i2i değil).
+    expect(p.capabilities).toEqual(["text-to-image"]);
   });
 
   it("listImageProviders returns both registered providers", () => {
@@ -35,12 +36,5 @@ describe("image provider registry", () => {
       "text-to-image",
     ]);
     expect(map.get("kie-z-image")).toEqual(["text-to-image"]);
-  });
-
-  it("kie-z-image: generate throws carry-forward error", async () => {
-    const p = getImageProvider("kie-z-image");
-    await expect(
-      p.generate({ prompt: "x", aspectRatio: "1:1" }),
-    ).rejects.toThrow(/carry-forward.*kie-z-image-integration/);
   });
 });
