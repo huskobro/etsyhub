@@ -1,0 +1,52 @@
+import { describe, it, expect } from "vitest";
+import { buildImagePrompt } from "@/features/variation-generation/prompt-builder";
+
+describe("buildImagePrompt", () => {
+  it("includes system prompt + Avoid: <NEGATIVE_LIBRARY>", () => {
+    const out = buildImagePrompt({
+      systemPrompt: "wall art, pastel",
+      capability: "image-to-image",
+    });
+    expect(out).toContain("wall art, pastel");
+    expect(out).toContain("Avoid:");
+    expect(out).toContain("Disney");
+    expect(out).toContain("Marvel");
+    expect(out).toContain("Nike");
+    expect(out).toContain("celebrity names");
+    expect(out).toContain("watermark");
+    expect(out).toContain("signature");
+    expect(out).toContain("logo");
+  });
+
+  it("appends brief as 'Style note from user' (R18 — APPEND, not replace)", () => {
+    const out = buildImagePrompt({
+      systemPrompt: "wall art base",
+      brief: "soft watercolor",
+      capability: "image-to-image",
+    });
+    // System korunur (replace edilmez)
+    expect(out).toContain("wall art base");
+    // Brief append edilir, "Style note from user:" prefiks ile
+    expect(out).toContain("Style note from user: soft watercolor");
+    // Avoid satırı hala mevcut
+    expect(out).toContain("Avoid:");
+  });
+
+  it("omits brief section when brief whitespace-only", () => {
+    const out = buildImagePrompt({
+      systemPrompt: "base",
+      brief: "   ",
+      capability: "image-to-image",
+    });
+    expect(out).not.toContain("Style note from user");
+  });
+
+  it("Avoid: line always present even without brief", () => {
+    const out = buildImagePrompt({
+      systemPrompt: "base prompt",
+      capability: "image-to-image",
+    });
+    // Avoid satırı her zaman var; NEGATIVE_LIBRARY virgülle join edilmiş
+    expect(out).toMatch(/Avoid: .*Disney.*watermark.*logo/s);
+  });
+});
