@@ -35,7 +35,7 @@ describe("KieGptImageProvider.generate (createTask)", () => {
     });
 
     expect(out.providerTaskId).toBe("task_abc");
-    expect(out.state).toBe("PROVIDER_PENDING");
+    expect(out.state).toBe(VariationState.PROVIDER_PENDING);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const call = fetchMock.mock.calls[0] as [string, RequestInit];
