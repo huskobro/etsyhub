@@ -32,4 +32,18 @@ describe("image provider registry", () => {
     expect(map.get("kie-gpt-image-1.5")).toEqual(["image-to-image"]);
     expect(map.get("kie-z-image")).toEqual(["text-to-image"]);
   });
+
+  it("kie-gpt-image-1.5: generate throws Task 2 shell error", async () => {
+    const p = getImageProvider("kie-gpt-image-1.5");
+    await expect(
+      p.generate({ prompt: "x", aspectRatio: "1:1" }),
+    ).rejects.toThrow(/Task 3/i);
+  });
+
+  it("kie-z-image: generate throws carry-forward error", async () => {
+    const p = getImageProvider("kie-z-image");
+    await expect(
+      p.generate({ prompt: "x", aspectRatio: "1:1" }),
+    ).rejects.toThrow(/carry-forward.*kie-z-image-integration/);
+  });
 });
