@@ -83,6 +83,11 @@ enum VariationState {
   FAIL
 }
 
+enum VariationCapability {
+  IMAGE_TO_IMAGE
+  TEXT_TO_IMAGE
+}
+
 enum ReviewStatus {
   PENDING
   APPROVED
@@ -562,7 +567,7 @@ model GeneratedDesign {
   // Phase 5 — Variation Generation
   providerId     String?
   providerTaskId String?
-  capabilityUsed String? // "image-to-image" | "text-to-image"
+  capabilityUsed VariationCapability?
   promptSnapshot String?         @db.Text
   briefSnapshot  String?         @db.Text
   resultUrl      String?
@@ -790,14 +795,21 @@ model LocalLibraryAsset {
   qualityReasons Json?
   isNegative     Boolean   @default(false)
   negativeReason String?
+  // R7 dual-flag soft-delete:
+  //   isUserDeleted = true  -> kullanıcı UI'dan açık "sil" dedi (manuel)
+  //   deletedAt     != null -> kayıt artık aktif değil; auto-silme (örn. scan
+  //                            worker dosyayı diskte bulamadığında) veya user
+  //                            silmesinin timestamp'i. Aktif listing query'leri
+  //                            iki koşulu da kontrol etmeli.
   isUserDeleted  Boolean   @default(false)
   deletedAt      DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@unique([userId, hash])
   @@index([userId, folderName])
   @@index([userId, isNegative])
+  @@index([userId, isUserDeleted, deletedAt])
 }
