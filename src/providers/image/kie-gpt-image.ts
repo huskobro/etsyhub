@@ -34,8 +34,12 @@ import {
 const KIE_MODEL_I2I = "gpt-image/1.5-image-to-image";
 const PROVIDER_ID = "kie-gpt-image-1.5";
 
-// Test backwards-compat: kie-gpt-image-provider testleri `mapKieState`'i bu
-// modülden import ediyor. kie-shared'a taşıdıktan sonra burada re-export.
+/**
+ * @deprecated kie-shared modülünden import edin: `import { mapKieState } from "./kie-shared"`.
+ * Bu re-export sadece test backwards-compat için tutuluyor; yeni kod
+ * doğrudan `./kie-shared` üzerinden almalı. Otoritatif kapsama
+ * `tests/unit/kie-shared.test.ts` içinde.
+ */
 export { mapKieState };
 
 export class KieGptImageProvider implements ImageProvider {

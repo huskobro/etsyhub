@@ -54,24 +54,12 @@ describe("KieGptImageProvider.generate (createTask)", () => {
   });
 });
 
-describe("mapKieState", () => {
-  it("waiting → PROVIDER_PENDING", () => {
-    expect(mapKieState("waiting")).toBe(VariationState.PROVIDER_PENDING);
-  });
-  it("queuing → PROVIDER_PENDING", () => {
-    expect(mapKieState("queuing")).toBe(VariationState.PROVIDER_PENDING);
-  });
-  it("generating → PROVIDER_RUNNING", () => {
-    expect(mapKieState("generating")).toBe(VariationState.PROVIDER_RUNNING);
-  });
-  it("success → SUCCESS", () => {
+// mapKieState exhaustive testleri kie-shared.test.ts'te tek truth.
+// Burada yalnız re-export integration smoke testi: dosya kontratının
+// kırılmadığını doğrular (otoritatif davranış kapsama kie-shared'da).
+describe("mapKieState (re-export smoke)", () => {
+  it("kie-gpt-image dosyasından çağrılabilir ve enum üyesi döndürür", () => {
     expect(mapKieState("success")).toBe(VariationState.SUCCESS);
-  });
-  it("fail → FAIL", () => {
-    expect(mapKieState("fail")).toBe(VariationState.FAIL);
-  });
-  it("unknown state throws (R17.1 — silent fallback YOK)", () => {
-    expect(() => mapKieState("foobar")).toThrow(/Unknown kie\.ai state/);
   });
 });
 
