@@ -38,14 +38,15 @@ describe("KieGptImageProvider.generate (createTask)", () => {
     expect(out.state).toBe("PROVIDER_PENDING");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
+    const call = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = call;
     expect(url).toBe("https://api.kie.ai/api/v1/jobs/createTask");
     expect(init.method).toBe("POST");
     expect(init.headers).toMatchObject({
       Authorization: "Bearer test-key",
       "Content-Type": "application/json",
     });
-    const body = JSON.parse(init.body);
+    const body = JSON.parse(init.body as string);
     expect(body.model).toBe("gpt-image/1.5-image-to-image");
     expect(body.input.prompt).toBe("pastel anemone");
     expect(body.input.aspect_ratio).toBe("1:1");
@@ -90,7 +91,8 @@ describe("KieGptImageProvider.poll (recordInfo)", () => {
     expect(out.imageUrls).toBeUndefined();
     expect(out.error).toBeUndefined();
 
-    const [url, init] = fetchMock.mock.calls[0];
+    const call = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = call;
     expect(url).toBe(
       "https://api.kie.ai/api/v1/jobs/recordInfo?taskId=task_1",
     );
