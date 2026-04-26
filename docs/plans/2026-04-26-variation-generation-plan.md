@@ -388,208 +388,100 @@ EOF
 
 ---
 
-### Task 3: kie.ai gpt-image-1.5 entegrasyonu
+### Task 3: kie.ai gpt-image-1.5 entegrasyonu  ✅ COMPLETED
 
 **Files:**
 - Modify: `src/providers/image/kie-gpt-image.ts`
 - Test: `tests/unit/kie-gpt-image-provider.test.ts`
+- Cleanup: `tests/unit/image-provider-registry.test.ts` (Task 2 shell throw testi silindi)
 
-**Bağlam:** Spec §4.5. `createTask` + `recordInfo` polling. State mapping: `waiting/queuing → PROVIDER_PENDING`, `generating → PROVIDER_RUNNING`, `success → SUCCESS`, `fail → FAIL`.
+**Bağlam:** Spec §4.5. `createTask` + `recordInfo` polling.
 
-- [ ] **Step 1: Failing test yaz**
+**Sözleşmeler (kullanıcı kararı, resmi kie.ai docs ile teyit):**
+- Endpoints:
+  - `POST https://api.kie.ai/api/v1/jobs/createTask`
+  - `GET  https://api.kie.ai/api/v1/jobs/recordInfo?taskId=…`
+- Auth: `KIE_AI_API_KEY` env (call-time fail-fast; module-load DEĞİL — test runner env-isolation güvenli).
+- Body input field isimleri: `prompt`, `aspect_ratio`, `image_urls` (kie.ai resmi şema).
+- Capabilities: `["image-to-image", "text-to-image"]` (kullanıcı kararı: i2i + t2i her ikisi).
+- `referenceUrls` guard (R17.2 — local→AI bridge YOK): yalnız `http://`/`https://`. `file://`, `data:`, relative path → throw.
+- State mapping helper `mapKieState` (named export, doğrudan test edilir):
+  - `waiting`, `queuing` → `PROVIDER_PENDING`
+  - `generating` → `PROVIDER_RUNNING`
+  - `success` → `SUCCESS`
+  - `fail` → `FAIL`
+  - Bilinmeyen → `throw` (R17.1 — silent fallback YOK).
+- `generate()` çıktısı: `{ providerTaskId, state: PROVIDER_PENDING }` (kie createTask senkron sonuç vermez; optimistik PENDING).
+- `poll()` çıktısı:
+  - SUCCESS: `resultJson` defensif parse → `imageUrls` array. Parse fail veya `resultUrls` array değil → `state: FAIL, error: "Result parse failure: …"` (throw etmez; runtime durumu).
+  - FAIL: `error = failMsg || failCode || "Unknown kie.ai failure"` (kie.ai resmi field isimleri).
+  - PENDING/RUNNING: `imageUrls` undefined.
+- HTTP error handling:
+  - `!res.ok` → `throw new Error(\`kie.ai HTTP \${status}: \${statusText}\`)`
+  - `data.code !== 200` → `throw new Error(\`kie.ai API error: \${msg}\`)`
+  - createTask için `data.taskId` eksik → throw.
+- Dependency: yalnız global `fetch` + `VariationState` from `@prisma/client` + `./types`. Axios YASAK; başka import yok.
 
-`tests/unit/kie-gpt-image-provider.test.ts`:
+**TDD adımları (frequent commits):**
 
-```ts
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { kieGptImageProvider } from "@/providers/image/kie-gpt-image";
+1. createTask happy path testi → fail → minimal `generate()` → pass.
+   Commit: `feat(providers): kie-gpt-image-1.5 createTask HTTP integration`
+2. `mapKieState` testleri (waiting / queuing / generating / success / fail / unknown→throw) → pass.
+   Commit: `feat(providers): mapKieState helper for kie.ai polling`
+3. `poll()` testleri (waiting, queuing, generating, success, fail+failMsg, fail+failCode fallback, success+bozuk-resultJson, success+resultUrls-not-array, unknown-state-throw) → pass.
+   Commit: `feat(providers): kie-gpt-image-1.5 recordInfo polling`
+4. `referenceUrls` guard testleri (relative / file:// / data:) + `KIE_AI_API_KEY` fail-fast (generate + poll) + registry test cleanup (Task 2 throw silindi, capability assertion `["image-to-image", "text-to-image"]` olarak güncellendi).
+   Commit: `feat(providers): R17.2 referenceUrls guard + env fail-fast + cleanup registry test`
+5. Type narrowing: `vi.fn().mock.calls[0]` destructuring TS2488 → `[string, RequestInit]` cast.
+   Commit: `chore(tests): type-narrow vi.fn() mock.calls destructuring`
 
-const fetchMock = vi.fn();
-vi.stubGlobal("fetch", fetchMock);
+**Test özeti:**
+- `tests/unit/kie-gpt-image-provider.test.ts`: 21 PASS
+- `tests/unit/image-provider-registry.test.ts`: 6 PASS
+- `npm run typecheck`: PASS
 
-beforeEach(() => {
-  fetchMock.mockReset();
-  process.env.KIE_API_KEY = "test-key";
-});
+**Implementation (referans, gerçek kod `src/providers/image/kie-gpt-image.ts` içinde):**
 
-describe("kieGptImageProvider.generate", () => {
-  it("posts createTask with bearer + body, returns providerTaskId", async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { taskId: "task-abc" } }),
-    });
-    const out = await kieGptImageProvider.generate({
-      prompt: "pastel anemone",
-      referenceUrls: ["https://example.com/a.jpg"],
-      aspectRatio: "2:3",
-      quality: "medium",
-    });
-    expect(out.providerTaskId).toBe("task-abc");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.kie.ai/api/v1/jobs/createTask",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          Authorization: "Bearer test-key",
-          "Content-Type": "application/json",
-        }),
-      }),
-    );
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.model).toBe("gpt-image/1.5-image-to-image");
-    expect(body.input.input_urls).toEqual(["https://example.com/a.jpg"]);
-    expect(body.input.aspect_ratio).toBe("2:3");
-  });
-});
-
-describe("kieGptImageProvider.poll", () => {
-  it("maps waiting → PROVIDER_PENDING", async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { state: "waiting" } }),
-    });
-    const out = await kieGptImageProvider.poll("task-1");
-    expect(out.state).toBe("PROVIDER_PENDING");
-    expect(out.imageUrls).toBeUndefined();
-  });
-
-  it("maps generating → PROVIDER_RUNNING", async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { state: "generating" } }),
-    });
-    const out = await kieGptImageProvider.poll("task-1");
-    expect(out.state).toBe("PROVIDER_RUNNING");
-  });
-
-  it("maps success → SUCCESS with imageUrls", async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        data: {
-          state: "success",
-          resultJson: JSON.stringify({ resultUrls: ["https://r/1.png"] }),
-        },
-      }),
-    });
-    const out = await kieGptImageProvider.poll("task-1");
-    expect(out.state).toBe("SUCCESS");
-    expect(out.imageUrls).toEqual(["https://r/1.png"]);
-  });
-
-  it("maps fail → FAIL with error message", async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        data: { state: "fail", errorMessage: "rate limited" },
-      }),
-    });
-    const out = await kieGptImageProvider.poll("task-1");
-    expect(out.state).toBe("FAIL");
-    expect(out.error).toBe("rate limited");
-  });
-});
-```
-
-- [ ] **Step 2: Run test — verify FAIL**
-
-Run: `pnpm test tests/unit/kie-gpt-image-provider.test.ts`
-Expected: FAIL — `Not implemented yet`.
-
-- [ ] **Step 3: Implementation yaz**
-
-`src/providers/image/kie-gpt-image.ts`:
+Class form korundu (registry `new KieGptImageProvider()` ile instantiate ediyor — Task 2 sözleşmesi). `mapKieState` named export (helper test edilebilir). Aşağıdaki snippet kanonik kontratları gösterir; full kod dosyada.
 
 ```ts
-import type { VariationState } from "@prisma/client";
-import type { ImageProvider, ImagePollOutput } from "./types";
+import { VariationState } from "@prisma/client";
 
 const KIE_BASE = "https://api.kie.ai/api/v1";
+const KIE_MODEL_I2I = "gpt-image/1.5-image-to-image";
 
-function mapKieState(s: string): VariationState {
-  switch (s) {
+export function mapKieState(state: string): VariationState {
+  switch (state) {
     case "waiting":
     case "queuing":
-      return "PROVIDER_PENDING";
+      return VariationState.PROVIDER_PENDING;
     case "generating":
-      return "PROVIDER_RUNNING";
+      return VariationState.PROVIDER_RUNNING;
     case "success":
-      return "SUCCESS";
+      return VariationState.SUCCESS;
     case "fail":
+      return VariationState.FAIL;
     default:
-      return "FAIL";
+      throw new Error(`Unknown kie.ai state: ${state}`);
   }
 }
 
-export const kieGptImageProvider: ImageProvider = {
-  id: "kie-gpt-image-1.5",
-  capabilities: ["image-to-image"],
+export class KieGptImageProvider implements ImageProvider {
+  readonly id = "kie-gpt-image-1.5";
+  readonly capabilities = ["image-to-image", "text-to-image"] as const;
 
   async generate(input) {
-    const apiKey = process.env.KIE_API_KEY;
-    if (!apiKey) throw new Error("KIE_API_KEY missing");
-    const res = await fetch(`${KIE_BASE}/jobs/createTask`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-image/1.5-image-to-image",
-        input: {
-          input_urls: input.referenceUrls,
-          prompt: input.prompt,
-          aspect_ratio: input.aspectRatio,
-          quality: input.quality ?? "medium",
-        },
-      }),
-    });
-    if (!res.ok) throw new Error(`kie createTask ${res.status}`);
-    const json = await res.json();
-    return { providerTaskId: json.data.taskId as string, state: "PROVIDER_PENDING" };
-  },
+    requireApiKey();                         // KIE_AI_API_KEY fail-fast
+    assertPublicHttpUrls(input.referenceUrls); // R17.2 guard
+    // POST /api/v1/jobs/createTask, body {model, input:{prompt, aspect_ratio, image_urls}}
+    // → { providerTaskId, state: PROVIDER_PENDING }
+  }
 
   async poll(providerTaskId) {
-    const apiKey = process.env.KIE_API_KEY;
-    if (!apiKey) throw new Error("KIE_API_KEY missing");
-    const res = await fetch(
-      `${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(providerTaskId)}`,
-      { headers: { Authorization: `Bearer ${apiKey}` } },
-    );
-    if (!res.ok) throw new Error(`kie recordInfo ${res.status}`);
-    const json = await res.json();
-    const state = mapKieState(json.data.state);
-    const out: ImagePollOutput = { state };
-    if (json.data.state === "success" && json.data.resultJson) {
-      out.imageUrls = JSON.parse(json.data.resultJson).resultUrls;
-    }
-    if (json.data.errorMessage) out.error = json.data.errorMessage;
-    return out;
-  },
-};
-```
-
-- [ ] **Step 4: Run test — verify PASS**
-
-Run: `pnpm test tests/unit/kie-gpt-image-provider.test.ts`
-Expected: PASS — 5/5.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/providers/image/kie-gpt-image.ts tests/unit/kie-gpt-image-provider.test.ts
-git commit -m "$(cat <<'EOF'
-feat(phase5): integrate kie.ai gpt-image-1.5 (image-to-image)
-
-- createTask + recordInfo polling
-- State mapping: waiting/queuing → PENDING, generating → RUNNING, success → SUCCESS, fail → FAIL
-- Bearer auth via KIE_API_KEY env
-
-Spec: §4.5
-
-Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
-EOF
-)"
+    // GET /api/v1/jobs/recordInfo?taskId=…
+    // mapKieState + defensif resultJson parse + failMsg/failCode fallback
+  }
+}
 ```
 
 ---
