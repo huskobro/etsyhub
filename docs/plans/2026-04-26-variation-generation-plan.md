@@ -10,6 +10,12 @@
 
 **Spec:** [`docs/plans/2026-04-25-variation-generation-design.md`](./2026-04-25-variation-generation-design.md) — R0–R21, Q1–Q6 kararları.
 
+> **Execution-order note (2026-04-27):** Task 16 (kie-z-image shell + capability
+> mismatch) erkene alındı; plan'ın orijinal Task 4'ü (NEGATIVE_LIBRARY +
+> prompt-builder) bu sıçramadan SONRA tamamlandı. Plan task identity
+> korunuyor — execution sırası birebir lineer değil. Commit mesajları plan
+> task numarasına sadık (örn. "phase5 ... — plan task 4").
+
 ---
 
 ## File Structure
