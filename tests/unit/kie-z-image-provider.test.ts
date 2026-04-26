@@ -146,12 +146,15 @@ describe("KieZImageProvider — referenceUrls capability guard (text-to-image on
 });
 
 describe("KieZImageProvider — aspectRatio validation (R17.1 silent fallback YOK)", () => {
+  // TS ImageAspectRatio "2:3" ve "3:2" değerlerini içerir (gpt-image bu
+  // ratio'ları destekliyor); z-image RUNTIME'da daraltır. Bu yüzden TS
+  // hatası beklemiyoruz — sadece runtime throw test ediyoruz.
+
   it("rejects '2:3' (z-image does not support); fetch NOT called", async () => {
     const p = new KieZImageProvider();
     await expect(
       p.generate({
         prompt: "x",
-        // @ts-expect-error — runtime guard test (TS tipi 7 değer içerir; z-image 5'e daraltır)
         aspectRatio: "2:3",
       }),
     ).rejects.toThrow(/does not support aspect ratio.*2:3/i);
@@ -163,7 +166,6 @@ describe("KieZImageProvider — aspectRatio validation (R17.1 silent fallback YO
     await expect(
       p.generate({
         prompt: "x",
-        // @ts-expect-error
         aspectRatio: "3:2",
       }),
     ).rejects.toThrow(/does not support aspect ratio.*3:2/i);
@@ -175,14 +177,12 @@ describe("KieZImageProvider — aspectRatio validation (R17.1 silent fallback YO
     await expect(
       p.generate({
         prompt: "x",
-        // @ts-expect-error
         aspectRatio: "2:3",
       }),
     ).rejects.toThrow(/1:1.*4:3.*3:4.*16:9.*9:16/);
     await expect(
       p.generate({
         prompt: "x",
-        // @ts-expect-error
         aspectRatio: "2:3",
       }),
     ).rejects.toThrow(/silent fallback/i);
