@@ -29,15 +29,12 @@ describe("image provider registry", () => {
   it("listImageProviders surfaces capability info per provider", () => {
     const all = listImageProviders();
     const map = new Map(all.map((p) => [p.id, p.capabilities] as const));
-    expect(map.get("kie-gpt-image-1.5")).toEqual(["image-to-image"]);
+    // kie-gpt-image-1.5: real provider — i2i + t2i both supported (Task 3)
+    expect(map.get("kie-gpt-image-1.5")).toEqual([
+      "image-to-image",
+      "text-to-image",
+    ]);
     expect(map.get("kie-z-image")).toEqual(["text-to-image"]);
-  });
-
-  it("kie-gpt-image-1.5: generate throws Task 2 shell error", async () => {
-    const p = getImageProvider("kie-gpt-image-1.5");
-    await expect(
-      p.generate({ prompt: "x", aspectRatio: "1:1" }),
-    ).rejects.toThrow(/Task 3/i);
   });
 
   it("kie-z-image: generate throws carry-forward error", async () => {

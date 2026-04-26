@@ -182,3 +182,59 @@ describe("KieGptImageProvider.poll (recordInfo)", () => {
     );
   });
 });
+
+describe("KieGptImageProvider — referenceUrls guard (R17.2)", () => {
+  it("rejects relative/local path", async () => {
+    const p = new KieGptImageProvider();
+    await expect(
+      p.generate({
+        prompt: "x",
+        aspectRatio: "1:1",
+        referenceUrls: ["/Users/foo/img.png"],
+      }),
+    ).rejects.toThrow(/public HTTP\(S\) URLs/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects file:// URI", async () => {
+    const p = new KieGptImageProvider();
+    await expect(
+      p.generate({
+        prompt: "x",
+        aspectRatio: "1:1",
+        referenceUrls: ["file:///foo/img.png"],
+      }),
+    ).rejects.toThrow(/public HTTP\(S\) URLs/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects data: URI / base64", async () => {
+    const p = new KieGptImageProvider();
+    await expect(
+      p.generate({
+        prompt: "x",
+        aspectRatio: "1:1",
+        referenceUrls: ["data:image/png;base64,iVBORw0KGgo="],
+      }),
+    ).rejects.toThrow(/public HTTP\(S\) URLs/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("KieGptImageProvider — KIE_AI_API_KEY env fail-fast", () => {
+  it("generate() throws when env missing", async () => {
+    delete process.env.KIE_AI_API_KEY;
+    const p = new KieGptImageProvider();
+    await expect(
+      p.generate({ prompt: "x", aspectRatio: "1:1" }),
+    ).rejects.toThrow(/KIE_AI_API_KEY/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("poll() throws when env missing", async () => {
+    delete process.env.KIE_AI_API_KEY;
+    const p = new KieGptImageProvider();
+    await expect(p.poll("task_x")).rejects.toThrow(/KIE_AI_API_KEY/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
