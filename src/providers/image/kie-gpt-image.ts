@@ -8,9 +8,12 @@
 //   - Auth: KIE_AI_API_KEY env (call-time fail-fast, module-load DEĞİL)
 //   - Capability: image-to-image + text-to-image (kullanıcı kararı)
 //   - referenceUrls: yalnız public HTTP(S) — R17.2 (local→AI bridge YOK)
-//   - State mapping: mapKieState helper (R17.1 — bilinmeyen state THROW)
+//   - State mapping: kie-shared.mapKieState (R17.1 — bilinmeyen state THROW)
 //   - generate() optimistik PROVIDER_PENDING döndürür (kie createTask sync sonuç vermez)
 //   - poll() success'te resultJson defensif parse; parse fail → state: FAIL
+//
+// Davranış değiştirmeyen refactor: ortak helper'lar `./kie-shared` modülüne
+// taşındı; bu dosya artık sadece gpt-image-spesifik HTTP iskeletini taşır.
 import { VariationState } from "@prisma/client";
 import type {
   ImageGenerateInput,
@@ -19,62 +22,31 @@ import type {
   ImageProvider,
   ImageCapability,
 } from "./types";
+import {
+  KIE_BASE,
+  assertPublicHttpUrls,
+  mapKieState,
+  parseKieEnvelope,
+  parsePollResponse,
+  requireApiKey,
+} from "./kie-shared";
 
-const KIE_BASE = "https://api.kie.ai/api/v1";
 const KIE_MODEL_I2I = "gpt-image/1.5-image-to-image";
+const PROVIDER_ID = "kie-gpt-image-1.5";
 
-/**
- * kie.ai task state → Prisma VariationState dönüşümü.
- *
- * R17.1: bilinmeyen state için silent fallback YOK; throw eder.
- * Test edilebilirlik için named export.
- */
-export function mapKieState(state: string): VariationState {
-  switch (state) {
-    case "waiting":
-    case "queuing":
-      return VariationState.PROVIDER_PENDING;
-    case "generating":
-      return VariationState.PROVIDER_RUNNING;
-    case "success":
-      return VariationState.SUCCESS;
-    case "fail":
-      return VariationState.FAIL;
-    default:
-      throw new Error(`Unknown kie.ai state: ${state}`);
-  }
-}
-
-function requireApiKey(): string {
-  const key = process.env.KIE_AI_API_KEY;
-  if (!key) {
-    throw new Error(
-      "KIE_AI_API_KEY env var is required for kie-gpt-image-1.5 provider",
-    );
-  }
-  return key;
-}
-
-function assertPublicHttpUrls(urls: ReadonlyArray<string> | undefined): void {
-  if (!urls || urls.length === 0) return;
-  for (const u of urls) {
-    if (!/^https?:\/\//i.test(u)) {
-      throw new Error(
-        "referenceUrls only accepts public HTTP(S) URLs (R17.2)",
-      );
-    }
-  }
-}
+// Test backwards-compat: kie-gpt-image-provider testleri `mapKieState`'i bu
+// modülden import ediyor. kie-shared'a taşıdıktan sonra burada re-export.
+export { mapKieState };
 
 export class KieGptImageProvider implements ImageProvider {
-  readonly id = "kie-gpt-image-1.5";
+  readonly id = PROVIDER_ID;
   readonly capabilities: ReadonlyArray<ImageCapability> = [
     "image-to-image",
     "text-to-image",
   ];
 
   async generate(input: ImageGenerateInput): Promise<ImageGenerateOutput> {
-    const apiKey = requireApiKey();
+    const apiKey = requireApiKey(PROVIDER_ID);
     assertPublicHttpUrls(input.referenceUrls);
 
     const body = {
@@ -99,10 +71,8 @@ export class KieGptImageProvider implements ImageProvider {
       throw new Error(`kie.ai HTTP ${res.status}: ${res.statusText}`);
     }
     const json = await res.json();
-    if (json?.code !== 200) {
-      throw new Error(`kie.ai API error: ${json?.msg ?? "unknown"}`);
-    }
-    const taskId = json?.data?.taskId;
+    const data = parseKieEnvelope<{ taskId?: string }>(json);
+    const taskId = data?.taskId;
     if (typeof taskId !== "string" || taskId.length === 0) {
       throw new Error("kie.ai createTask: missing taskId in response");
     }
@@ -113,7 +83,7 @@ export class KieGptImageProvider implements ImageProvider {
   }
 
   async poll(providerTaskId: string): Promise<ImagePollOutput> {
-    const apiKey = requireApiKey();
+    const apiKey = requireApiKey(PROVIDER_ID);
     const url = `${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(
       providerTaskId,
     )}`;
@@ -124,46 +94,7 @@ export class KieGptImageProvider implements ImageProvider {
       throw new Error(`kie.ai HTTP ${res.status}: ${res.statusText}`);
     }
     const json = await res.json();
-    if (json?.code !== 200) {
-      throw new Error(`kie.ai API error: ${json?.msg ?? "unknown"}`);
-    }
-    const data = json?.data ?? {};
-    const rawState: string | undefined = data.state;
-    if (typeof rawState !== "string") {
-      throw new Error("kie.ai recordInfo: missing state field");
-    }
-    const state = mapKieState(rawState);
-
-    if (state === VariationState.SUCCESS) {
-      try {
-        const parsed =
-          typeof data.resultJson === "string"
-            ? JSON.parse(data.resultJson)
-            : data.resultJson;
-        const urls = parsed?.resultUrls;
-        if (!Array.isArray(urls)) {
-          return {
-            state: VariationState.FAIL,
-            error: "Result parse failure: resultUrls is not an array",
-          };
-        }
-        return { state: VariationState.SUCCESS, imageUrls: urls };
-      } catch (err) {
-        return {
-          state: VariationState.FAIL,
-          error: `Result parse failure: ${(err as Error).message}`,
-        };
-      }
-    }
-
-    if (state === VariationState.FAIL) {
-      const error =
-        (typeof data.failMsg === "string" && data.failMsg) ||
-        (typeof data.failCode === "string" && data.failCode) ||
-        "Unknown kie.ai failure";
-      return { state: VariationState.FAIL, error };
-    }
-
-    return { state };
+    const data = parseKieEnvelope<unknown>(json);
+    return parsePollResponse(data);
   }
 }
