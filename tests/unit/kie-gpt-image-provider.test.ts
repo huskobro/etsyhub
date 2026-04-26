@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { KieGptImageProvider } from "@/providers/image/kie-gpt-image";
+import { KieGptImageProvider, mapKieState } from "@/providers/image/kie-gpt-image";
+import { VariationState } from "@prisma/client";
 
 // Global fetch mock — Node 20+ fetch'i Vitest stubGlobal ile değiştirilebilir.
 const fetchMock = vi.fn();
@@ -49,5 +50,26 @@ describe("KieGptImageProvider.generate (createTask)", () => {
     expect(body.input.prompt).toBe("pastel anemone");
     expect(body.input.aspect_ratio).toBe("1:1");
     expect(body.input.image_urls).toEqual(["https://example.com/a.jpg"]);
+  });
+});
+
+describe("mapKieState", () => {
+  it("waiting → PROVIDER_PENDING", () => {
+    expect(mapKieState("waiting")).toBe(VariationState.PROVIDER_PENDING);
+  });
+  it("queuing → PROVIDER_PENDING", () => {
+    expect(mapKieState("queuing")).toBe(VariationState.PROVIDER_PENDING);
+  });
+  it("generating → PROVIDER_RUNNING", () => {
+    expect(mapKieState("generating")).toBe(VariationState.PROVIDER_RUNNING);
+  });
+  it("success → SUCCESS", () => {
+    expect(mapKieState("success")).toBe(VariationState.SUCCESS);
+  });
+  it("fail → FAIL", () => {
+    expect(mapKieState("fail")).toBe(VariationState.FAIL);
+  });
+  it("unknown state throws (R17.1 — silent fallback YOK)", () => {
+    expect(() => mapKieState("foobar")).toThrow(/Unknown kie\.ai state/);
   });
 });
