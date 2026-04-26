@@ -49,4 +49,20 @@ describe("buildImagePrompt", () => {
     // Avoid satırı her zaman var; NEGATIVE_LIBRARY virgülle join edilmiş
     expect(out).toMatch(/Avoid: .*Disney.*watermark.*logo/s);
   });
+
+  it("capability param does not affect output (S1 — Task 10/12 future use)", () => {
+    // Regression guard: capability imzanın parçası ama şu an output'u
+    // ETKİLEMİYOR. Task 10/12'de (üretim akışı + capability mismatch) bu
+    // davranış kasıtlı olarak değişecek. O zamana kadar i2i ve t2i identical
+    // string üretmeli — bu test sessiz drift'i yakalar.
+    const i2i = buildImagePrompt({
+      systemPrompt: "wall art",
+      capability: "image-to-image",
+    });
+    const t2i = buildImagePrompt({
+      systemPrompt: "wall art",
+      capability: "text-to-image",
+    });
+    expect(i2i).toBe(t2i);
+  });
 });
