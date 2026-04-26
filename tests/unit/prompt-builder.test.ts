@@ -50,6 +50,23 @@ describe("buildImagePrompt", () => {
     expect(out).toMatch(/Avoid: .*Disney.*watermark.*logo/s);
   });
 
+  it("throws when systemPrompt is empty string (S2 — fail-fast)", () => {
+    // Plan'daki .filter(Boolean) davranışı bilinçli olarak override edildi:
+    // empty systemPrompt sessizce drop edilmez; config error olarak fail-fast.
+    expect(() =>
+      buildImagePrompt({ systemPrompt: "", capability: "image-to-image" }),
+    ).toThrow(/systemPrompt empty/i);
+  });
+
+  it("throws when systemPrompt is whitespace only (S2 — fail-fast)", () => {
+    expect(() =>
+      buildImagePrompt({
+        systemPrompt: "   \t\n  ",
+        capability: "image-to-image",
+      }),
+    ).toThrow(/systemPrompt empty/i);
+  });
+
   it("capability param does not affect output (S1 — Task 10/12 future use)", () => {
     // Regression guard: capability imzanın parçası ama şu an output'u
     // ETKİLEMİYOR. Task 10/12'de (üretim akışı + capability mismatch) bu

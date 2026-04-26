@@ -26,6 +26,16 @@ export type ImagePromptInput = {
 };
 
 export function buildImagePrompt(input: ImagePromptInput): string {
+  // S2 — fail-fast: systemPrompt boş/whitespace-only ise config error.
+  // Plan'daki .filter(Boolean) sessiz davranışı bilinçli olarak değiştirildi.
+  // Empty systemPrompt sessizce drop edilirse buildImagePrompt yalnızca
+  // "Avoid: …" üretir; bu bir bug değil config error olarak fail-fast.
+  if (input.systemPrompt.trim().length === 0) {
+    throw new Error(
+      "buildImagePrompt: systemPrompt empty (config error — fail-fast)",
+    );
+  }
+
   const negative = NEGATIVE_LIBRARY.join(", ");
   const brief = input.brief?.trim() ?? "";
   return [
