@@ -65,11 +65,12 @@ export function AiModePanel({ referenceId }: { referenceId: string }) {
               Erişilebilir
             </span>
           ) : (
-            <span
-              className="rounded-md bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger"
-              title={urlCheck.data?.reason ?? ""}
-            >
-              Erişilemiyor
+            // Task 15 (Parça 3) — status code ve reason artık görünür; sadece
+            // title attribute'üne gizlenmiyor. network fail tarzı status undefined
+            // ise "—" göster.
+            <span className="rounded-md bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger">
+              Erişilemiyor · HTTP {urlCheck.data?.status ?? "—"}
+              {urlCheck.data?.reason ? ` · ${urlCheck.data.reason}` : ""}
             </span>
           )}
         </div>

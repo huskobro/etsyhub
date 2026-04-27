@@ -5,14 +5,19 @@ import type { LocalLibraryAsset } from "@prisma/client";
 import { NegativeMarkMenu } from "./negative-mark-menu";
 import { DeleteAssetConfirm } from "./delete-asset-confirm";
 import { useMarkNegative } from "../mutations/use-mark-negative";
+import { useLocalLibrarySettings } from "../queries/use-local-library-settings";
 import { cn } from "@/lib/cn";
 
 type ScoreTone = "neutral" | "ok" | "warn" | "bad";
 
-function scoreTone(s: number | null): ScoreTone {
+// Task 15 — operator-facing: eşikler Settings Registry'den (hardcoded yasak).
+// Settings yüklenmediği veya yüklenemediği anlık fallback için var.
+const DEFAULT_THRESHOLDS = { ok: 75, warn: 40 } as const;
+
+function scoreTone(s: number | null, thresholds: { ok: number; warn: number }): ScoreTone {
   if (s == null) return "neutral";
-  if (s >= 75) return "ok";
-  if (s >= 40) return "warn";
+  if (s >= thresholds.ok) return "ok";
+  if (s >= thresholds.warn) return "warn";
   return "bad";
 }
 
@@ -26,7 +31,9 @@ const TONE_BADGE: Record<ScoreTone, string> = {
 export function LocalAssetCard({ asset }: { asset: LocalLibraryAsset }) {
   const mark = useMarkNegative();
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const tone = scoreTone(asset.qualityScore);
+  const settings = useLocalLibrarySettings();
+  const thresholds = settings.data?.settings.qualityThresholds ?? DEFAULT_THRESHOLDS;
+  const tone = scoreTone(asset.qualityScore, thresholds);
 
   return (
     <article className="overflow-hidden rounded-md border border-border bg-surface">
