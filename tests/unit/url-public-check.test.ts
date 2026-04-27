@@ -61,3 +61,58 @@ describe("checkUrlPublic (Q5)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("url-public-check cache bound (Task 11)", () => {
+  beforeEach(() => {
+    _resetCache();
+    // Bu blok timer'a güvenmiyor; gerçek time kullanılsın ki TTL kontrolleri
+    // (Date.now) bize karışmasın.
+    vi.useRealTimers();
+  });
+
+  it("cache 1000 entry sınırını aşmaz; en eski entry evict edilir", async () => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue({ ok: true, status: 200 });
+
+    // 1001 farklı URL
+    for (let i = 0; i < 1001; i++) {
+      await checkUrlPublic(`https://e.com/${i}.jpg`);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1001);
+
+    // İlk URL evict edilmiş olmalı; tekrar çağrı yeni fetch
+    await checkUrlPublic("https://e.com/0.jpg");
+    expect(fetchMock).toHaveBeenCalledTimes(1002);
+
+    // Son URL hala cache'te → tekrar fetch çağırmıyor
+    await checkUrlPublic("https://e.com/1000.jpg");
+    expect(fetchMock).toHaveBeenCalledTimes(1002);
+  });
+
+  it("cache hit aynı entry'i en sona taşır (LRU recency)", async () => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue({ ok: true, status: 200 });
+
+    // 1000 entry doldur
+    for (let i = 0; i < 1000; i++) {
+      await checkUrlPublic(`https://e.com/${i}.jpg`);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1000);
+
+    // İlk URL'e tekrar dokun → recency güncellensin (cache hit)
+    await checkUrlPublic("https://e.com/0.jpg");
+    expect(fetchMock).toHaveBeenCalledTimes(1000);
+
+    // Yeni URL → şimdi en eski "1.jpg" evict edilmeli, "0.jpg" değil
+    await checkUrlPublic("https://e.com/new.jpg");
+    expect(fetchMock).toHaveBeenCalledTimes(1001);
+
+    // 0.jpg hala cache'te (recency güncellendi)
+    await checkUrlPublic("https://e.com/0.jpg");
+    expect(fetchMock).toHaveBeenCalledTimes(1001);
+
+    // 1.jpg evict edildi, refetch
+    await checkUrlPublic("https://e.com/1.jpg");
+    expect(fetchMock).toHaveBeenCalledTimes(1002);
+  });
+});
