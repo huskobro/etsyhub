@@ -1,0 +1,102 @@
+"use client";
+
+import { useState } from "react";
+import type { LocalLibraryAsset } from "@prisma/client";
+import { NegativeMarkMenu } from "./negative-mark-menu";
+import { DeleteAssetConfirm } from "./delete-asset-confirm";
+import { useMarkNegative } from "../mutations/use-mark-negative";
+import { cn } from "@/lib/cn";
+
+type ScoreTone = "neutral" | "ok" | "warn" | "bad";
+
+function scoreTone(s: number | null): ScoreTone {
+  if (s == null) return "neutral";
+  if (s >= 75) return "ok";
+  if (s >= 40) return "warn";
+  return "bad";
+}
+
+const TONE_BADGE: Record<ScoreTone, string> = {
+  ok: "bg-success-soft text-success",
+  warn: "bg-warning-soft text-warning",
+  bad: "bg-danger-soft text-danger",
+  neutral: "bg-surface-2 text-text-muted",
+};
+
+export function LocalAssetCard({ asset }: { asset: LocalLibraryAsset }) {
+  const mark = useMarkNegative();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const tone = scoreTone(asset.qualityScore);
+
+  return (
+    <article className="overflow-hidden rounded-md border border-border bg-surface">
+      <div className="relative aspect-square bg-surface-2">
+        {asset.thumbnailPath ? (
+          // Phase 5 Gap B — owner-only thumbnail stream; cross-user 404.
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={`/api/local-library/thumbnail?hash=${encodeURIComponent(asset.hash)}`}
+            alt={asset.fileName}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-xs text-text-muted">
+            Önizleme yok
+          </div>
+        )}
+        <span
+          aria-label={`Kalite skoru: ${asset.qualityScore ?? "bilinmiyor"}`}
+          className={cn(
+            "absolute right-2 top-2 rounded-md px-2 py-0.5 text-xs font-medium",
+            TONE_BADGE[tone],
+          )}
+        >
+          {asset.qualityScore ?? "—"}
+        </span>
+        {asset.isNegative ? (
+          <span
+            className="absolute bottom-2 left-2 rounded-md bg-danger px-2 py-0.5 text-xs font-medium text-white"
+            title={asset.negativeReason ?? "Negatif"}
+          >
+            Negatif
+          </span>
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-1 p-3 text-xs">
+        <div className="truncate font-medium text-text">{asset.fileName}</div>
+        <div className="text-text-muted">
+          {asset.width}×{asset.height} · {asset.dpi ?? "?"}dpi
+        </div>
+        {asset.isNegative && asset.negativeReason ? (
+          <div className="truncate text-text-subtle" title={asset.negativeReason}>
+            Sebep: {asset.negativeReason}
+          </div>
+        ) : null}
+        <div className="mt-2 flex items-center justify-between">
+          <NegativeMarkMenu
+            asset={asset}
+            onMark={(reason) =>
+              mark.mutate({
+                id: asset.id,
+                isNegative: !asset.isNegative,
+                reason,
+              })
+            }
+          />
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            className="text-xs text-danger underline hover:text-danger"
+          >
+            Sil
+          </button>
+        </div>
+      </div>
+      <DeleteAssetConfirm
+        asset={asset}
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+      />
+    </article>
+  );
+}

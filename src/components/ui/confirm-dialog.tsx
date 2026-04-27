@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import type { ConfirmTone } from "./confirm-presets";
 
@@ -9,7 +10,10 @@ export type ConfirmDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  description: string;
+  // Phase 5 Task 13/14 — DeleteAssetConfirm ve CostConfirmDialog yapılandırılmış
+  // metin (liste, dl, vurgular) gönderiyor. ReactNode geriye uyumlu (string
+  // assignable).
+  description: ReactNode;
   confirmLabel: string;
   cancelLabel: string;
   tone?: ConfirmTone;

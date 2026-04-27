@@ -1,19 +1,37 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/server/session";
+import { db } from "@/server/db";
 import { withErrorHandling } from "@/lib/http";
 import { ValidationError } from "@/lib/errors";
 import { updateReferenceInput } from "@/features/references/schemas";
 import {
-  getReference,
   softDeleteReference,
   updateReference,
 } from "@/features/references/services/reference-service";
 
 type Ctx = { params: { id: string } };
 
+// GET /api/references/[id] — varlık sızıntısı yok: cross-user durum 404.
+// Doğrudan `findFirst({ id, userId, deletedAt: null })` kullanılır; service'in
+// 403 atan `getReference`'i diğer akışlarda kalır (Phase 5 Gap A sözleşmesi).
+//
+// Payload: AI mode UI (Task 14) `reference.asset.sourceUrl` ve
+// `reference.productType.key` okur; bu alanlar zorunlu include.
 export const GET = withErrorHandling(async (_req: Request, ctx: Ctx) => {
   const user = await requireUser();
-  const reference = await getReference({ userId: user.id, id: ctx.params.id });
+  const reference = await db.reference.findFirst({
+    where: { id: ctx.params.id, userId: user.id, deletedAt: null },
+    include: {
+      asset: true,
+      productType: true,
+      collection: true,
+      bookmark: true,
+      tags: { include: { tag: true } },
+    },
+  });
+  if (!reference) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
   return NextResponse.json({ reference });
 });
 

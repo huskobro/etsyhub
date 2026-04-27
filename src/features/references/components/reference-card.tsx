@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Check } from "lucide-react";
 import { Card, AssetCardMeta } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -88,9 +89,17 @@ export function ReferenceCard({
             {reference.collection?.name ?? "Koleksiyon yok"}
           </span>
           <div className="flex items-center gap-1">
-            <Button variant="secondary" size="sm" disabled>
+            <Link
+              href={`/references/${reference.id}/variations`}
+              className={cn(
+                "inline-flex h-control-sm items-center justify-center gap-1.5",
+                "rounded-md border border-border bg-surface px-2.5 text-sm font-medium text-text",
+                "transition-colors duration-fast ease-out hover:border-border-strong",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+              )}
+            >
               Benzerini yap
-            </Button>
+            </Link>
             {onArchive ? (
               <Button
                 variant="ghost"
