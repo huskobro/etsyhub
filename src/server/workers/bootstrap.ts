@@ -9,6 +9,7 @@ import { handleScrapeCompetitor } from "./scrape-competitor.worker";
 import { handleFetchNewListings } from "./fetch-new-listings.worker";
 import { handleTrendClusterUpdate } from "./trend-cluster-update.worker";
 import { handleScanLocalFolder } from "./scan-local-folder.worker";
+import { handleGenerateVariations } from "./generate-variations.worker";
 
 /** Günlük FETCH_NEW_LISTINGS repeat için sabit scheduler ID. */
 export const FETCH_NEW_LISTINGS_SCHEDULE_ID = "fetch-new-listings-daily";
@@ -24,12 +25,22 @@ export async function startWorkers() {
     { name: JobType.FETCH_NEW_LISTINGS, handler: handleFetchNewListings },
     { name: JobType.TREND_CLUSTER_UPDATE, handler: handleTrendClusterUpdate },
     { name: JobType.SCAN_LOCAL_FOLDER, handler: handleScanLocalFolder },
+    { name: JobType.GENERATE_VARIATIONS, handler: handleGenerateVariations },
   ] as const;
 
   for (const s of specs) {
+    // Concurrency: GENERATE_VARIATIONS provider HTTP I/O bound — kullanıcı 6 görsele
+    // kadar paralel kuyruk açabilir (R17.4); FETCH_NEW_LISTINGS daily repeat,
+    // serileştirilir; geri kalan default 2.
+    const concurrency =
+      s.name === JobType.FETCH_NEW_LISTINGS
+        ? 1
+        : s.name === JobType.GENERATE_VARIATIONS
+          ? 4
+          : 2;
     const worker = new Worker(s.name, s.handler as unknown as (job: unknown) => Promise<unknown>, {
       connection,
-      concurrency: s.name === JobType.FETCH_NEW_LISTINGS ? 1 : 2,
+      concurrency,
     });
     worker.on("failed", (job, err) => {
       logger.error({ job: job?.id, name: s.name, err: err?.message }, "job failed");
