@@ -751,7 +751,7 @@ CLAUDE.md "Testing Strategy" minimum kapsam çerçevesi içinde:
 |---|---|
 | R0 | Local mode default + AI mode bilinçli seçim |
 | R1 | Text/image provider AYRI abstraction (text katmanı kabuk olarak kurulur, kullanım yok) |
-| R2 | Image provider registry; **kie-gpt-image-1.5 entegre**; kie-z-image registry kabuğu (NotImplementedError) |
+| R2 | Image provider registry; **kie-gpt-image-1.5 entegre (i2i)**; **kie-z-image entegre (t2i)** — Task 4'te kabuk yerine gerçek `generate`/`poll` implementasyonu yapıldı |
 | R3 | Local mode'da AI üretim YOK |
 | R4 | Browse-first folder list + ilk seviye recursion |
 | R5 | Klasör adı korunur, Q parse opsiyonel |
@@ -767,23 +767,28 @@ CLAUDE.md "Testing Strategy" minimum kapsam çerçevesi içinde:
 | R16 | Tarama: initial index + manuel refresh; thumbnail 512×512 webp Q80 |
 | R17.1 | Capability mimaride var; sessiz fallback YOK |
 | R17.2 | Phase 5'te local → AI köprüsü YOK; AI yalnız URL-kaynaklı |
-| R17.3 | Tek modele kilitlenme yok (registry); 2. model entegrasyonu carry-forward |
+| R17.3 | Tek modele kilitlenme yok (registry); 2. model (z-image t2i) Phase 5'te entegre |
 | R17.4 | Görsel sayısı default 3, max 6 |
 | R18 | Brief / ek değer alanı (sistem prompt'una eklenir) |
 | R19 | Negative library hardcoded sabit |
 
 ### 10.2 Carry-Forward (named, unutulmayacak)
 
+> **Düzeltme (2026-04-27):** İlk yazımda `kie-z-image-integration` carry-forward
+> olarak listelenmişti. Task 4'te z-image gerçek t2i provider olarak entegre edildi
+> (`src/providers/image/kie-z-image.ts`); carry-forward listesinden kaldırıldı.
+> `caption-then-prompt-flow` provider entegrasyonu değil, **üstüne kurulacak UI
+> akışı** olarak revize edildi.
+
 | ID | Carry-forward isim | Sebep |
 |---|---|---|
-| **R2-followup / Q6** | `kie-z-image-integration` | 2. model gerçek entegrasyonu — kabuk Phase 5'te, `generate` impl carry-forward |
 | **R9-followup** | `local-asset-resolution-fix-actions` | Çözünürlük uymayan görsel için upscale/crop aksiyonları |
 | **R10-followup** | `auto-quality-detection-ocr-bg` | Arka plan + yazı/imza/logo otomatik tespiti — Phase 6 (AI Quality Review) ile gelir |
 | **R12-followup** | `bulk-delete-local-assets` | Toplu silme (tek tek silme Phase 5'te) |
 | **Q4-followup** | `destructive-typing-confirmation` | Bulk delete + diğer riskli toplu işlemler için typing confirmation (`DELETE yaz`) |
 | **R14** | `export-zip-split-20mb` | ZIP paketleme + 20 MB sıralı bölme — Selection/Export ekranıyla |
 | **R15-followup** | `cost-guardrails-daily-limit` | Daily/monthly limit, admin Cost Usage ekranı |
-| **R17.1-followup** | `caption-then-prompt-flow` | z-image entegrasyonu sonrası t2i-with-caption akışı UI'ı |
+| **R17.1-followup** | `caption-then-prompt-flow` | t2i-with-caption UI akışı — z-image provider entegre, ama "reference görseli LLM ile betimle → caption ile t2i" akışı UI'da yok |
 | **R19-followup** | `negative-library-admin-screen` | Admin paneli ekranı — hardcoded liste yönetimi UI'a gelir |
 | **R20** | `local-to-ai-reference-bridge` | Storage bridge / public URL bridge — local diskten AI'ye reference taşıma |
 | **R21** | `external-source-connector-midjourney` | Midjourney / browser extension / import bridge / source connector |
