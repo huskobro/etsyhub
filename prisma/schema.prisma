@@ -574,6 +574,12 @@ model GeneratedDesign {
   resultUrl      String?
   state          VariationState?
   errorMessage   String?         @db.Text
+  // R17.4 — kullanıcı seçimi snapshot olarak persist edilir.
+  // Phase 5 öncesi rows için NULL; retry path'inde NULL gelirse 500 fail-fast
+  // (sessiz default fallback YASAK). Yeni create'lerde her zaman set edilir.
+  aspectRatio    String?
+  // "medium" | "high"; provider opsiyonel field — null ise undefined geçer.
+  quality        String?
 
   review   DesignReview?
   mockups  Mockup[]
