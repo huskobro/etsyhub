@@ -10,7 +10,11 @@
 
 import { db } from "@/server/db";
 import { encryptSecret, decryptSecret } from "@/lib/secrets";
-import { AiModeSettingsSchema, type AiModeSettings } from "./schemas";
+import {
+  AiModeSettingsSchema,
+  StoredAiModeSettingsSchema,
+  type AiModeSettings,
+} from "./schemas";
 
 const SETTING_KEY = "aiMode";
 
@@ -19,7 +23,9 @@ export async function getUserAiModeSettings(userId: string): Promise<AiModeSetti
     where: { userId_key: { userId, key: SETTING_KEY } },
   });
   if (!row) return { kieApiKey: null, geminiApiKey: null };
-  const raw = row.value as { kieApiKey?: string | null; geminiApiKey?: string | null };
+  // Task 12: parse asimetri kapatılıyor — `as` cast yerine zod parse.
+  // Bozuk persist (yanlış tip / bilinmeyen alan) → fail-fast throw.
+  const raw = StoredAiModeSettingsSchema.parse(row.value);
   return {
     kieApiKey: raw.kieApiKey ? decryptSecret(raw.kieApiKey) : null,
     geminiApiKey: raw.geminiApiKey ? decryptSecret(raw.geminiApiKey) : null,

@@ -47,4 +47,17 @@ describe("ai-mode settings", () => {
     expect(typeof raw.kieApiKey).toBe("string");
     expect(raw.kieApiKey!.length).toBeGreaterThan(0);
   });
+
+  // Task 12 — parse asimetri kapatma: bozuk persist edilmiş value
+  // `as` cast ile sessizce geçemez; zod parse FAIL → throw.
+  it("getUserAiModeSettings throws on malformed stored value (parse hardening)", async () => {
+    await db.userSetting.create({
+      data: {
+        userId: TEST_USER_ID,
+        key: "aiMode",
+        value: { not_a_valid_field: 123 },
+      },
+    });
+    await expect(getUserAiModeSettings(TEST_USER_ID)).rejects.toThrow();
+  });
 });
