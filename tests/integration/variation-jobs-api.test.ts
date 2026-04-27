@@ -509,4 +509,180 @@ describe("POST /api/variation-jobs/[id]/retry", () => {
     expect(body.error).toMatch(/aspectRatio|missing/i);
     expect(enqueue).not.toHaveBeenCalled();
   });
+
+  it("providerId null olan eski FAIL row → 500 fail-fast (snapshot eksik)", async () => {
+    const { ptId, assetWithUrlId } = await setupFixtures();
+    const oldFailed = await db.generatedDesign.create({
+      data: {
+        userId: USER_A,
+        referenceId: REF_I2I,
+        assetId: assetWithUrlId,
+        productTypeId: ptId,
+        // providerId: NULL — Phase 5 öncesi row simulation
+        capabilityUsed: VariationCapability.IMAGE_TO_IMAGE,
+        promptSnapshot: "p",
+        state: VariationState.FAIL,
+        aspectRatio: "1:1",
+      },
+    });
+    (requireUser as any).mockResolvedValue({ id: USER_A });
+    const res = await retryPost(new Request("http://localhost/", { method: "POST" }), {
+      params: { id: oldFailed.id },
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/snapshot|providerId|promptSnapshot/i);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("promptSnapshot null olan eski FAIL row → 500 fail-fast (snapshot eksik)", async () => {
+    const { ptId, assetWithUrlId } = await setupFixtures();
+    const oldFailed = await db.generatedDesign.create({
+      data: {
+        userId: USER_A,
+        referenceId: REF_I2I,
+        assetId: assetWithUrlId,
+        productTypeId: ptId,
+        providerId: "kie-gpt-image-1.5",
+        capabilityUsed: VariationCapability.IMAGE_TO_IMAGE,
+        // promptSnapshot: NULL — Phase 5 öncesi row simulation
+        state: VariationState.FAIL,
+        aspectRatio: "1:1",
+      },
+    });
+    (requireUser as any).mockResolvedValue({ id: USER_A });
+    const res = await retryPost(new Request("http://localhost/", { method: "POST" }), {
+      params: { id: oldFailed.id },
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/snapshot|providerId|promptSnapshot/i);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("aspectRatio invalid format ('9:16-foo') → 500 fail-fast (runtime enum guard)", async () => {
+    // Senaryo: legacy/manuel DB edit ile aspectRatio'ya geçersiz string
+    // sızdırılmış. `as` cast tipi yalan söylerdi; runtime enum guard
+    // bunu yakalar.
+    const { ptId, assetWithUrlId } = await setupFixtures();
+    const oldFailed = await db.generatedDesign.create({
+      data: {
+        userId: USER_A,
+        referenceId: REF_I2I,
+        assetId: assetWithUrlId,
+        productTypeId: ptId,
+        providerId: "kie-gpt-image-1.5",
+        capabilityUsed: VariationCapability.IMAGE_TO_IMAGE,
+        promptSnapshot: "p",
+        state: VariationState.FAIL,
+        aspectRatio: "9:16-foo",
+      },
+    });
+    (requireUser as any).mockResolvedValue({ id: USER_A });
+    const res = await retryPost(new Request("http://localhost/", { method: "POST" }), {
+      params: { id: oldFailed.id },
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/aspectRatio/i);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("retry: enqueue fail → 500 + design FAIL + job FAILED (cleanup)", async () => {
+    const { ptId, assetWithUrlId } = await setupFixtures();
+    const failed = await makeFailedDesign(ptId, assetWithUrlId);
+    (requireUser as any).mockResolvedValue({ id: USER_A });
+    (enqueue as any).mockRejectedValueOnce(new Error("redis down"));
+
+    const res = await retryPost(new Request("http://localhost/", { method: "POST" }), {
+      params: { id: failed.id },
+    });
+    expect(res.status).toBe(500);
+
+    // Yeni design oluştu ama enqueue patladı → FAIL'a düşürülmeli
+    const fresh = await db.generatedDesign.findFirst({
+      where: { userId: USER_A, referenceId: REF_I2I, id: { not: failed.id } },
+    });
+    expect(fresh?.state).toBe(VariationState.FAIL);
+    expect(fresh?.errorMessage).toMatch(/enqueue/i);
+
+    // Yeni job FAILED'a düşürülmeli (silent stuck QUEUED YOK)
+    const newJob = await db.job.findFirst({
+      where: { userId: USER_A, type: JobType.GENERATE_VARIATIONS },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(newJob?.status).toBe(JobStatus.FAILED);
+    expect(newJob?.error).toMatch(/enqueue/i);
+  });
+});
+
+describe("POST /api/variation-jobs — atomicity & enqueue rollback", () => {
+  it("enqueue fail (tek call) → o design FAIL + diğer 2 success (kısmi başarı meşru)", async () => {
+    await setupFixtures();
+    (requireUser as any).mockResolvedValue({ id: USER_A });
+    // 3 enqueue: 1. başarılı, 2. fail, 3. başarılı
+    (enqueue as any)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("redis hiccup"))
+      .mockResolvedValueOnce(undefined);
+
+    const req = new Request("http://localhost/api/variation-jobs", {
+      method: "POST",
+      body: JSON.stringify({
+        referenceId: REF_I2I,
+        providerId: "kie-gpt-image-1.5",
+        aspectRatio: "1:1",
+        count: 3,
+      }),
+    });
+    const res = await createPost(req);
+    expect(res.status).toBe(200);
+
+    const designs = await db.generatedDesign.findMany({
+      where: { userId: USER_A, referenceId: REF_I2I },
+    });
+    expect(designs).toHaveLength(3);
+    const queued = designs.filter((d) => d.state === VariationState.QUEUED);
+    const failed = designs.filter((d) => d.state === VariationState.FAIL);
+    expect(queued).toHaveLength(2);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.errorMessage).toMatch(/enqueue/i);
+
+    const jobs = await db.job.findMany({
+      where: { userId: USER_A, type: JobType.GENERATE_VARIATIONS },
+    });
+    expect(jobs.filter((j) => j.status === JobStatus.QUEUED)).toHaveLength(2);
+    expect(jobs.filter((j) => j.status === JobStatus.FAILED)).toHaveLength(1);
+  });
+
+  it("tüm enqueue'lar fail → 500 + tüm design FAIL + tüm job FAILED", async () => {
+    await setupFixtures();
+    (requireUser as any).mockResolvedValue({ id: USER_A });
+    (enqueue as any).mockRejectedValue(new Error("redis down"));
+
+    const req = new Request("http://localhost/api/variation-jobs", {
+      method: "POST",
+      body: JSON.stringify({
+        referenceId: REF_I2I,
+        providerId: "kie-gpt-image-1.5",
+        aspectRatio: "1:1",
+        count: 3,
+      }),
+    });
+    const res = await createPost(req);
+    expect(res.status).toBe(500);
+
+    const designs = await db.generatedDesign.findMany({
+      where: { userId: USER_A, referenceId: REF_I2I },
+    });
+    expect(designs).toHaveLength(3);
+    expect(designs.every((d) => d.state === VariationState.FAIL)).toBe(true);
+    expect(designs.every((d) => d.errorMessage && /enqueue/i.test(d.errorMessage))).toBe(true);
+
+    const jobs = await db.job.findMany({
+      where: { userId: USER_A, type: JobType.GENERATE_VARIATIONS },
+    });
+    expect(jobs).toHaveLength(3);
+    expect(jobs.every((j) => j.status === JobStatus.FAILED)).toBe(true);
+  });
 });

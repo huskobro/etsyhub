@@ -7,10 +7,16 @@
 //     promptSnapshot, briefSnapshot, aspectRatio, quality, promptVersionId
 //   - providerTaskId / resultUrl / errorMessage NULL (yeni hayat)
 //   - Yeni Job + enqueue; metadata.retryOf = eski design id
+//   - Design + Job DB writes tek transaction (atomicity)
+//   - Enqueue dış kaynak — fail durumunda design + job FAIL'a düşürülür
+//     (silent stuck QUEUED YASAK)
 //
 // R17.4 sessiz default fallback YOK:
-//   - Eski row aspectRatio NULL ise (Phase 5 öncesi) → 500 fail-fast
-//     "bu kayıt retry desteklenmiyor". Sessizce default'a düşmek YASAK.
+//   - Eski row aspectRatio NULL → 500 fail-fast
+//   - Eski row aspectRatio geçersiz format ("9:16-foo") → 500 fail-fast
+//     (runtime zod enum guard, `as` cast YOK)
+//   - Eski row providerId / promptSnapshot NULL → 500 fail-fast
+//     (downstream tip yalan söyleyemez)
 import { NextResponse } from "next/server";
 import {
   JobStatus,
@@ -21,7 +27,8 @@ import {
 import { requireUser } from "@/server/session";
 import { db } from "@/server/db";
 import { enqueue } from "@/server/queue";
-import type { ImageGenerateInput } from "@/providers/image/types";
+import { AspectRatioSchema, QualitySchema } from "@/features/variation-generation/schemas";
+import { failDesignAndJob } from "@/features/variation-generation/services/ai-generation.service";
 
 type Ctx = { params: { id: string } };
 
@@ -56,33 +63,81 @@ export async function POST(_req: Request, ctx: Ctx) {
     );
   }
 
-  // R15 — yeni design birebir snapshot kopyası. Eski row dokunulmaz.
-  const fresh = await db.generatedDesign.create({
-    data: {
-      userId: user.id,
-      referenceId: failed.referenceId,
-      assetId: failed.assetId,
-      productTypeId: failed.productTypeId,
-      providerId: failed.providerId,
-      capabilityUsed: failed.capabilityUsed,
-      promptSnapshot: failed.promptSnapshot,
-      briefSnapshot: failed.briefSnapshot,
-      promptVersionId: failed.promptVersionId,
-      state: VariationState.QUEUED,
-      aspectRatio: failed.aspectRatio,
-      quality: failed.quality,
-      // providerTaskId / resultUrl / errorMessage default null — yeni hayat.
-    },
-  });
+  // Simetrik snapshot guard — providerId + promptSnapshot da nullable.
+  // Eski FAIL row bu alanları taşımıyorsa downstream tip yalan söylemesin.
+  if (!failed.providerId || !failed.promptSnapshot) {
+    return NextResponse.json(
+      {
+        error:
+          "Eski FAIL row eksik snapshot (providerId/promptSnapshot) — retry desteklenmiyor.",
+      },
+      { status: 500 },
+    );
+  }
 
-  const job = await db.job.create({
-    data: {
-      type: JobType.GENERATE_VARIATIONS,
-      status: JobStatus.QUEUED,
-      userId: user.id,
-      progress: 0,
-      metadata: { designId: fresh.id, retryOf: failed.id },
-    },
+  // Runtime enum guard — DB'de aspectRatio free `String?`. `as` cast tipi
+  // yalan söylerdi; legacy/manuel edit ile geçersiz değer ("9:16-foo")
+  // sızdırılmışsa burada yakalarız.
+  const aspectRatioParsed = AspectRatioSchema.safeParse(failed.aspectRatio);
+  if (!aspectRatioParsed.success) {
+    return NextResponse.json(
+      {
+        error: `Eski FAIL row aspectRatio geçersiz: ${failed.aspectRatio} — retry desteklenmiyor.`,
+      },
+      { status: 500 },
+    );
+  }
+  const aspectRatio = aspectRatioParsed.data;
+
+  // Quality opsiyonel — null ise undefined geçer; set ise enum guard.
+  let quality: "medium" | "high" | undefined;
+  if (failed.quality !== null && failed.quality !== undefined) {
+    const qParsed = QualitySchema.safeParse(failed.quality);
+    if (!qParsed.success) {
+      return NextResponse.json(
+        {
+          error: `Eski FAIL row quality geçersiz: ${failed.quality} — retry desteklenmiyor.`,
+        },
+        { status: 500 },
+      );
+    }
+    quality = qParsed.data;
+  }
+
+  // Bu noktadan sonra TS narrowing: providerId + promptSnapshot non-null.
+  const providerId = failed.providerId;
+  const promptSnapshot = failed.promptSnapshot;
+
+  // R15 — yeni design + job birebir snapshot kopyası, atomik commit.
+  // Eski row dokunulmaz. Transaction kısmi DB tutarsızlığını engeller.
+  const { fresh, job } = await db.$transaction(async (tx) => {
+    const fresh = await tx.generatedDesign.create({
+      data: {
+        userId: user.id,
+        referenceId: failed.referenceId,
+        assetId: failed.assetId,
+        productTypeId: failed.productTypeId,
+        providerId,
+        capabilityUsed: failed.capabilityUsed,
+        promptSnapshot,
+        briefSnapshot: failed.briefSnapshot,
+        promptVersionId: failed.promptVersionId,
+        state: VariationState.QUEUED,
+        aspectRatio: failed.aspectRatio,
+        quality: failed.quality,
+        // providerTaskId / resultUrl / errorMessage default null — yeni hayat.
+      },
+    });
+    const job = await tx.job.create({
+      data: {
+        type: JobType.GENERATE_VARIATIONS,
+        status: JobStatus.QUEUED,
+        userId: user.id,
+        progress: 0,
+        metadata: { designId: fresh.id, retryOf: failed.id },
+      },
+    });
+    return { fresh, job };
   });
 
   // Worker payload: i2i ise asset.sourceUrl referenceUrls olarak geçer.
@@ -93,18 +148,27 @@ export async function POST(_req: Request, ctx: Ctx) {
       ? [failed.reference.asset.sourceUrl]
       : undefined;
 
-  await enqueue(JobType.GENERATE_VARIATIONS, {
-    jobId: job.id,
-    userId: user.id,
-    designId: fresh.id,
-    providerId: failed.providerId!,
-    prompt: failed.promptSnapshot!,
-    referenceUrls,
-    aspectRatio: failed.aspectRatio as ImageGenerateInput["aspectRatio"],
-    quality: (failed.quality ?? undefined) as
-      | ImageGenerateInput["quality"]
-      | undefined,
-  });
+  // Enqueue dış kaynak — fail olursa design + job FAIL'a düşürülür ve
+  // 500 propagate edilir (silent stuck QUEUED YASAK).
+  try {
+    await enqueue(JobType.GENERATE_VARIATIONS, {
+      jobId: job.id,
+      userId: user.id,
+      designId: fresh.id,
+      providerId,
+      prompt: promptSnapshot,
+      referenceUrls,
+      aspectRatio,
+      quality,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "enqueue failed";
+    await failDesignAndJob(fresh.id, job.id, `enqueue failed: ${msg}`);
+    return NextResponse.json(
+      { error: `enqueue failed: ${msg}`, designId: fresh.id },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({ designId: fresh.id });
 }

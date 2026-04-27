@@ -18,15 +18,27 @@ import { db } from "@/server/db";
 import { getImageProvider } from "@/providers/image/registry";
 import { checkUrlPublic } from "@/features/variation-generation/url-public-check";
 import { createVariationJobs } from "@/features/variation-generation/services/ai-generation.service";
+import {
+  AspectRatioSchema,
+  QualitySchema,
+  VARIATION_COUNT_DEFAULT,
+  VARIATION_COUNT_MAX,
+  VARIATION_COUNT_MIN,
+} from "@/features/variation-generation/schemas";
 import type { ImageCapability } from "@/providers/image/types";
 
 const CreateBody = z.object({
   referenceId: z.string(),
   providerId: z.string(),
-  aspectRatio: z.enum(["1:1", "2:3", "3:2", "4:3", "3:4", "16:9", "9:16"]),
-  quality: z.enum(["medium", "high"]).optional(),
+  aspectRatio: AspectRatioSchema,
+  quality: QualitySchema.optional(),
   brief: z.string().max(500).optional(),
-  count: z.number().int().min(1).max(6).default(3),
+  count: z
+    .number()
+    .int()
+    .min(VARIATION_COUNT_MIN)
+    .max(VARIATION_COUNT_MAX)
+    .default(VARIATION_COUNT_DEFAULT),
 });
 
 export async function POST(req: Request) {
@@ -111,8 +123,9 @@ export async function POST(req: Request) {
   }
 
   // Master prompt resolution — productType.key + ACTIVE PromptVersion.
-  const systemPrompt = await resolveSystemPrompt(reference.productTypeId);
-  const promptVersionId = await resolveActivePromptVersionId(
+  // Tek resolver: snapshot tutarlılığı için systemPrompt + promptVersionId
+  // aynı findFirst'ten okunur (R15 — ACTIVE→ARCHIVED race kapandı).
+  const { systemPrompt, promptVersionId } = await resolveActivePrompt(
     reference.productTypeId,
   );
 
@@ -129,6 +142,18 @@ export async function POST(req: Request) {
     systemPrompt,
     promptVersionId,
   });
+
+  // R17.1 — tüm enqueue'lar fail olduysa silent stuck QUEUED YOK; kullanıcıya
+  // 500 propagate et. Kısmi başarı (en az biri OK) → 200 + partial response.
+  if (out.designIds.length === 0 && out.failedDesignIds.length > 0) {
+    return NextResponse.json(
+      {
+        error: "Tüm enqueue çağrıları başarısız oldu; iş kuyruğa alınamadı.",
+        failedDesignIds: out.failedDesignIds,
+      },
+      { status: 500 },
+    );
+  }
   return NextResponse.json(out);
 }
 
@@ -157,27 +182,18 @@ export async function GET(req: Request) {
 
 // PromptTemplate.activeVersion ilişkisi YOK (schema gerçeği). status field
 // PromptVersion'da; templateId üzerinden ACTIVE version filtrelenir.
-async function resolveSystemPrompt(productTypeId: string): Promise<string> {
-  const pt = await db.productType.findUnique({ where: { id: productTypeId } });
-  if (!pt) return "variation, high quality";
-  const tpl = await db.promptTemplate.findFirst({
-    where: { productTypeKey: pt.key, taskType: "image-variation" },
-    include: {
-      versions: {
-        where: { status: PromptStatus.ACTIVE },
-        orderBy: { version: "desc" },
-        take: 1,
-      },
-    },
-  });
-  return tpl?.versions[0]?.systemPrompt ?? `${pt.key} variation, high quality`;
-}
-
-async function resolveActivePromptVersionId(
+//
+// Tek resolver — eski iki ayrı (resolveSystemPrompt + resolveActivePromptVersionId)
+// fonksiyon kaldırıldı: ikisi ayrı findFirst yapınca ACTIVE→ARCHIVED window'da
+// snapshot tutarsızlığı oluşabiliyordu (systemPrompt v1, promptVersionId v2
+// gibi). Artık tek query'den her iki değer alınır → snapshot atomik.
+async function resolveActivePrompt(
   productTypeId: string,
-): Promise<string | null> {
+): Promise<{ systemPrompt: string; promptVersionId: string | null }> {
   const pt = await db.productType.findUnique({ where: { id: productTypeId } });
-  if (!pt) return null;
+  if (!pt) {
+    return { systemPrompt: "variation, high quality", promptVersionId: null };
+  }
   const tpl = await db.promptTemplate.findFirst({
     where: { productTypeKey: pt.key, taskType: "image-variation" },
     include: {
@@ -188,5 +204,9 @@ async function resolveActivePromptVersionId(
       },
     },
   });
-  return tpl?.versions[0]?.id ?? null;
+  const active = tpl?.versions[0];
+  return {
+    systemPrompt: active?.systemPrompt ?? `${pt.key} variation, high quality`,
+    promptVersionId: active?.id ?? null,
+  };
 }
