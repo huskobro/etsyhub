@@ -10,6 +10,13 @@
  * Sessiz fallback YASAK: invalid format ⇒ explicit throw.
  */
 
+/**
+ * Sözleşme:
+ * - Model id: lowercase, sadece [a-z0-9.-] (provider üreticisi sözleşmesi).
+ * - Tarih: YYYY-MM-DD format kontrolü; semantic validation YAPILMAZ
+ *   (örn. 2026-13-45 regex'ten geçer; downstream caller validate eder).
+ * - UTC günü kullanılır (`toISOString().slice(0, 10)`).
+ */
 const SNAPSHOT_FORMAT = /^([a-z0-9.-]+)@(\d{4}-\d{2}-\d{2})$/;
 
 export function buildProviderSnapshot(model: string, settingsDate: Date): string {

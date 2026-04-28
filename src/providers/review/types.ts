@@ -66,9 +66,9 @@ export type ReviewOutput = {
  */
 export type ReviewProviderKind = "vision";
 
-export type ReviewProvider = {
+export interface ReviewProvider {
   /** Snapshot string'inde model parçası olarak görünür, örn. "gemini-2-5-flash". */
   id: string;
   kind: ReviewProviderKind;
   review: (input: ReviewInput) => Promise<ReviewOutput>;
-};
+}
