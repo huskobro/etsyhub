@@ -123,8 +123,8 @@ describe("imageToInlineData — remote-url", () => {
     expect(result.mimeType).toBe("image/png");
   });
 
-  it("18 MB üstü buffer ⇒ throw (boyut sınırı fail-fast)", async () => {
-    const huge = Buffer.alloc(19 * 1024 * 1024);
+  it("14 MB üstü buffer ⇒ throw (boyut sınırı fail-fast, base64 inflation marjı)", async () => {
+    const huge = Buffer.alloc(15 * 1024 * 1024); // 15MB ham → base64 ~20MB → Gemini limit aşımı
     const ab = huge.buffer.slice(huge.byteOffset, huge.byteOffset + huge.byteLength);
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,

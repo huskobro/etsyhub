@@ -73,6 +73,7 @@ export const geminiFlashReviewProvider: ReviewProvider = {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45_000), // 45sn — provider-level inner contract; worker outer guard
     });
 
     if (!res.ok) {

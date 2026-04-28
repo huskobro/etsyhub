@@ -30,6 +30,9 @@ Sabit risk flag type'ları (yalnız bu listeden seç):
 - text_detected: görselde yazı var (info amaçlı, risk olmayabilir)
 - gibberish_text_detected: görseldeki yazı anlamsız/bozuk
 
+KESİN KURAL: JSON anahtarlarını ASLA Türkçeleştirme. Anahtar isimleri tam olarak şu olmalı:
+"score", "textDetected", "gibberishDetected", "riskFlags", "type", "confidence", "reason", "summary".
+Sadece "reason" ve "summary" değerleri Türkçe yazılabilir; her şey İngilizce kalır.
 KURAL: Hiçbir risk yoksa riskFlags = []. JSON dışında metin yazma.`;
 
 export function buildReviewUserPrompt(productType: string, isTransparentTarget: boolean): string {

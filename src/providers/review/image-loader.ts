@@ -12,10 +12,17 @@ export type InlineImageData = {
 };
 
 /**
- * Maksimum görsel boyutu — Gemini API toplam request 20MB; metin/header marjı için 18MB.
- * Aşılırsa fail-fast (sessiz crop yok).
+ * Maksimum görsel boyutu — Gemini API request body limit: 20MB.
+ *
+ * KRİTİK: Base64 encoding ham bayt'ı ~%33 şişirir. Yani ham byte sınırı
+ * direkt 20MB değil; base64 sonrası 20MB'ı geçmemeli.
+ *
+ * Hesap: (20MB - ~100KB prompt+header marjı) / 1.33 ≈ 14MB ham byte
+ *
+ * Aşılırsa fail-fast (sessiz crop yok). 14MB üstü asset'ler için ileride
+ * Files API yolu (multi-provider-review carry-forward) değerlendirilebilir.
  */
-const MAX_IMAGE_BYTES = 18 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 14 * 1024 * 1024;
 
 /**
  * MIME type fallback — header yoksa veya local file uzantısı bilinmiyorsa.
@@ -62,7 +69,9 @@ export async function imageToInlineData(input: ImageInput): Promise<InlineImageD
   }
 
   // remote-url
-  const res = await fetch(input.url);
+  const res = await fetch(input.url, {
+    signal: AbortSignal.timeout(45_000), // 45sn — hang prevention
+  });
   if (!res.ok) {
     throw new Error(`image fetch failed: ${res.status} ${res.statusText} (${input.url})`);
   }
