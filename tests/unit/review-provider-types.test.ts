@@ -46,11 +46,14 @@ describe("ReviewProvider interface — conformance", () => {
         summary: "ok",
       }),
     };
-    const out = await stub.review({
-      imageUrl: "https://example.com/x.png",
-      productType: "wall_art",
-      isTransparentTarget: false,
-    });
+    const out = await stub.review(
+      {
+        image: { kind: "remote-url", url: "https://example.com/x.png" },
+        productType: "wall_art",
+        isTransparentTarget: false,
+      },
+      { apiKey: "test-key" },
+    );
     expect(out.score).toBe(80);
     expect(out.riskFlags).toEqual([]);
   });

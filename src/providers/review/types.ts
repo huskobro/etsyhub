@@ -41,12 +41,35 @@ export type ReviewRiskFlag = {
   reason: string;
 };
 
+/**
+ * Görsel kaynağı — tek code path için discriminated union.
+ *
+ * Local mode (LocalLibraryAsset): kind: "local-path", filePath: "/Users/.../file.png"
+ * AI mode (cloud R2/S3 asset): kind: "remote-url", url: "https://..."
+ *
+ * Her iki durumda image-loader.ts inlineData base64'e çevirir.
+ * Files API / fileData.fileUri kullanılmıyor (Phase 6 kararı).
+ */
+export type ImageInput =
+  | { kind: "local-path"; filePath: string }
+  | { kind: "remote-url"; url: string };
+
 export type ReviewInput = {
-  imageUrl: string;
+  image: ImageInput;
   /** Ürün tipi slug, örn. "clipart" | "wall_art". */
   productType: string;
   /** Transparent ürün hedefi mi (clipart/sticker/transparent_png). Alpha checks bu flag'e bağlı. */
   isTransparentTarget: boolean;
+};
+
+/**
+ * Provider çağrı opsiyonları. Provider stateless tutulur; caller (Task 8 worker)
+ * api key'i per-user settings'ten resolve eder ve buradan geçer.
+ *
+ * İleride eklenebilir: modelOverride, timeoutMs, traceId.
+ */
+export type ReviewProviderRunOptions = {
+  apiKey: string;
 };
 
 export type ReviewOutput = {
@@ -70,5 +93,5 @@ export interface ReviewProvider {
   /** Snapshot string'inde model parçası olarak görünür, örn. "gemini-2-5-flash". */
   id: string;
   kind: ReviewProviderKind;
-  review: (input: ReviewInput) => Promise<ReviewOutput>;
+  review: (input: ReviewInput, options: ReviewProviderRunOptions) => Promise<ReviewOutput>;
 }

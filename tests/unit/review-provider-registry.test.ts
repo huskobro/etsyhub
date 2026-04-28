@@ -24,14 +24,17 @@ describe("Review provider registry — R17.3", () => {
     expect(typeof gemini!.review).toBe("function");
   });
 
-  it("stub provider review() çağrılırsa Task 4 işaretli açıklayıcı hata fırlatır", async () => {
+  it("registry'den dönen provider api key olmadan çağrılırsa explicit throw (sessiz fallback yok)", async () => {
     const provider = getReviewProvider("gemini-2-5-flash");
     await expect(
-      provider.review({
-        imageUrl: "https://example.com/x.png",
-        productType: "wall_art",
-        isTransparentTarget: false,
-      }),
-    ).rejects.toThrow(/gemini-2-5-flash review provider not implemented yet \(Task 4\)/);
+      provider.review(
+        {
+          image: { kind: "remote-url", url: "https://example.com/x.png" },
+          productType: "wall_art",
+          isTransparentTarget: false,
+        },
+        { apiKey: "" },
+      ),
+    ).rejects.toThrow(/api key/i);
   });
 });
