@@ -18,7 +18,7 @@ const byId = new Map<string, ReviewProvider>();
 
 function register(provider: ReviewProvider): void {
   if (byId.has(provider.id)) {
-    throw new Error(`review provider already registered: ${provider.id}`);
+    throw new Error(`Review provider already registered: "${provider.id}"`);
   }
   byId.set(provider.id, provider);
 }
@@ -28,11 +28,11 @@ register(geminiFlashReviewProvider);
 export function getReviewProvider(id: string): ReviewProvider {
   const provider = byId.get(id);
   if (!provider) {
-    throw new Error(`unknown review provider: ${id}`);
+    throw new Error(`Unknown review provider: "${id}"`);
   }
   return provider;
 }
 
-export function listReviewProviders(): ReviewProvider[] {
+export function listReviewProviders(): ReadonlyArray<ReviewProvider> {
   return Array.from(byId.values());
 }

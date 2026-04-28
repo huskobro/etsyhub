@@ -10,7 +10,7 @@ describe("Review provider registry — R17.3", () => {
 
   it("bilinmeyen id'de explicit throw (sessiz fallback yok)", () => {
     expect(() => getReviewProvider("nonexistent-id")).toThrow(
-      /unknown review provider: nonexistent-id/i,
+      /unknown review provider: "nonexistent-id"/i,
     );
     expect(() => getReviewProvider("")).toThrow(/unknown review provider/i);
   });
