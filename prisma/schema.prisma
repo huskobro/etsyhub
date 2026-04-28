@@ -95,6 +95,11 @@ enum ReviewStatus {
   REJECTED
 }
 
+enum ReviewStatusSource {
+  SYSTEM
+  USER
+}
+
 enum ListingStatus {
   DRAFT
   SCHEDULED
@@ -559,21 +564,31 @@ model GeneratedDesign {
   reviewSummary     String?
   textDetected      Boolean        @default(false)
   gibberishDetected Boolean        @default(false)
+  // @deprecated Phase 6'da reviewRiskFlags (Json) kullanılır.
+  // Legacy rowlar için tutuldu; migration'da silinmiyor. Yeni kod bu alanı yazmıyor.
   riskFlags         String[]       @default([])
   reviewedAt        DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  deletedAt         DateTime?
+
+  // Phase 6 — Review pipeline (additive)
+  reviewStatusSource     ReviewStatusSource @default(SYSTEM)
+  reviewScore            Int?
+  reviewProviderSnapshot String?
+  reviewPromptSnapshot   String?            @db.Text
+  reviewRiskFlags        Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   // Phase 5 — Variation Generation
   providerId     String?
   providerTaskId String?
   capabilityUsed VariationCapability?
-  promptSnapshot String?         @db.Text
-  briefSnapshot  String?         @db.Text
+  promptSnapshot String?              @db.Text
+  briefSnapshot  String?              @db.Text
   resultUrl      String?
   state          VariationState?
-  errorMessage   String?         @db.Text
+  errorMessage   String?              @db.Text
   // R17.4 — kullanıcı seçimi snapshot olarak persist edilir.
   // Phase 5 öncesi rows için NULL; retry path'inde NULL gelirse 500 fail-fast
   // (sessiz default fallback YASAK). Yeni create'lerde her zaman set edilir.
@@ -598,6 +613,12 @@ model DesignReview {
   issues            Json?
   decision          ReviewStatus
   createdAt         DateTime        @default(now())
+
+  // Phase 6 — Audit
+  provider         String?
+  model            String?
+  promptSnapshot   String? @db.Text
+  responseSnapshot Json?
 }
 
 model Mockup {
@@ -785,7 +806,7 @@ model TrendClusterMember {
 // ============= LOCAL LIBRARY (Phase 5) =============
 
 model LocalLibraryAsset {
-  id             String    @id @default(cuid())
+  id             String  @id @default(cuid())
   userId         String
   folderName     String
   folderPath     String
@@ -800,6 +821,18 @@ model LocalLibraryAsset {
   thumbnailPath  String?
   qualityScore   Int?
   qualityReasons Json?
+
+  // Phase 6 — Review pipeline
+  reviewStatus           ReviewStatus       @default(PENDING)
+  reviewStatusSource     ReviewStatusSource @default(SYSTEM)
+  reviewScore            Int?
+  reviewSummary          String?            @db.Text
+  reviewIssues           Json?
+  reviewRiskFlags        Json?
+  reviewedAt             DateTime?
+  reviewProviderSnapshot String?
+  reviewPromptSnapshot   String?            @db.Text
+
   isNegative     Boolean   @default(false)
   negativeReason String?
   // R7 dual-flag soft-delete:
