@@ -70,7 +70,10 @@ export async function runAlphaChecks(
     }
   }
 
-  // Edge case: width veya height 1 ise edgePixels 0 olabilir; bu durumda flag üretmiyoruz.
+  // Defensive guard: pratikte edgePixels = 0 olmaz (1x1 görselde bile aynı piksel
+  // çift sayılır), ama 0-genişlik/yükseklik veya beklenmeyen sharp davranışına karşı
+  // sıfıra bölme korunması. Tetiklenirse boş array döner — sessiz fallback değil,
+  // doğal "değerlendirilemez" sonucu.
   if (edgePixels === 0) return [];
 
   const ratio = dirtyEdgePixels / edgePixels;
