@@ -10,6 +10,7 @@ import { handleFetchNewListings } from "./fetch-new-listings.worker";
 import { handleTrendClusterUpdate } from "./trend-cluster-update.worker";
 import { handleScanLocalFolder } from "./scan-local-folder.worker";
 import { handleGenerateVariations } from "./generate-variations.worker";
+import { handleReviewDesign } from "./review-design.worker";
 
 /** Günlük FETCH_NEW_LISTINGS repeat için sabit scheduler ID. */
 export const FETCH_NEW_LISTINGS_SCHEDULE_ID = "fetch-new-listings-daily";
@@ -26,18 +27,26 @@ export async function startWorkers() {
     { name: JobType.TREND_CLUSTER_UPDATE, handler: handleTrendClusterUpdate },
     { name: JobType.SCAN_LOCAL_FOLDER, handler: handleScanLocalFolder },
     { name: JobType.GENERATE_VARIATIONS, handler: handleGenerateVariations },
+    { name: JobType.REVIEW_DESIGN, handler: handleReviewDesign },
   ] as const;
 
   for (const s of specs) {
     // Concurrency: GENERATE_VARIATIONS provider HTTP I/O bound — kullanıcı 6 görsele
-    // kadar paralel kuyruk açabilir (R17.4); FETCH_NEW_LISTINGS daily repeat,
-    // serileştirilir; geri kalan default 2.
+    // kadar paralel kuyruk açabilir (R17.4); REVIEW_DESIGN paralel Gemini HTTP
+    // çağrıları için 4; FETCH_NEW_LISTINGS daily repeat, serileştirilir;
+    // geri kalan default 2.
+    //
+    // BullMQ retry: blanket retry policy YOK (Worker default 1 attempt).
+    // Permanent error'lar (api key yok, image too large, Zod fail) tek seferde
+    // fail; transient retry (429/503) ayrı follow-up'a bırakıldı.
     const concurrency =
       s.name === JobType.FETCH_NEW_LISTINGS
         ? 1
         : s.name === JobType.GENERATE_VARIATIONS
           ? 4
-          : 2;
+          : s.name === JobType.REVIEW_DESIGN
+            ? 4
+            : 2;
     const worker = new Worker(s.name, s.handler as unknown as (job: unknown) => Promise<unknown>, {
       connection,
       concurrency,

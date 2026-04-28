@@ -1,0 +1,310 @@
+import type { Job } from "bullmq";
+import { Prisma, ReviewStatus, ReviewStatusSource } from "@prisma/client";
+import { db } from "@/server/db";
+import { logger } from "@/lib/logger";
+import { getReviewProvider } from "@/providers/review/registry";
+import { runAlphaChecks } from "@/server/services/review/alpha-checks";
+import { decideReviewStatus } from "@/server/services/review/decision";
+import { applyReviewDecisionWithSticky } from "@/server/services/review/sticky";
+import { buildProviderSnapshot } from "@/providers/review/snapshot";
+import {
+  REVIEW_PROMPT_VERSION,
+  REVIEW_SYSTEM_PROMPT,
+} from "@/providers/review/prompt";
+import type { ReviewRiskFlag, ImageInput } from "@/providers/review/types";
+import { getStorage } from "@/providers/storage";
+import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
+
+/**
+ * REVIEW_DESIGN worker — Phase 6 review pipeline orkestrasyon.
+ *
+ * Tek worker, iki kaynak: AI generated designs (cloud asset) ve local
+ * library assets (disk'te dosya). Discriminated union payload `scope`
+ * field'ı ile ayrılır; tek `JobType.REVIEW_DESIGN` enum'ı kullanılır.
+ *
+ * Pipeline:
+ *   1. Job al → kayıt fetch + ownership doğrula
+ *   2. Sticky check (USER source ⇒ skip + log "user_sticky")
+ *   3. API key resolve (per-user geminiApiKey, encrypted at rest)
+ *   4. Image input hazırla (remote signed URL veya local file path)
+ *   5. Product-type gate (TRANSPARENT_TARGET_TYPES)
+ *   6. Alpha checks (sadece local + transparent — AI mode'da ATLA)
+ *   7. Gemini review (Task 4 provider)
+ *   8. Merge alpha + LLM flags
+ *   9. Decision (Task 6 deterministic kural)
+ *  10. Persist (transaction): scope'a göre design veya local asset
+ *
+ * Kararlar:
+ * - AI mode'da alpha-checks atlanır: cloud asset'in lokal path'i yok ve
+ *   LLM zaten alpha kalitesini değerlendirir.
+ * - DesignReview audit trail SADECE scope=design'da yazılır.
+ *   LocalLibraryAsset için audit trail yok; review alanları satırın
+ *   üstünde tutulur.
+ * - reviewIssues legacy alanı YAZILMAZ — canonical alan reviewRiskFlags.
+ *
+ * BullMQ retry: bootstrap'ta blanket retry YOK (default 1 attempt).
+ * Permanent error'lar (api key yok, image too large, Zod fail) tek seferde
+ * fail; transient retry policy ayrı follow-up'a bırakıldı.
+ */
+
+const TRANSPARENT_TARGET_TYPES = new Set(["clipart", "sticker", "transparent_png"]);
+const PROVIDER_ID = "gemini-2-5-flash";
+
+/** Signed URL TTL (saniye): provider tek seferlik fetch yapar; 1 saat fazlasıyla yeter. */
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+/**
+ * Local mode default product type — Task 10 batch endpoint'inde payload'a
+ * `productType` eklenecek; o zaman bu varsayım kalkacak. Şu an "wall_art"
+ * (transparent değil) ⇒ alpha gate kapalı kalır, kullanıcı transparent
+ * ürün için review batch'i Task 10 sonrası tetikleyecek.
+ */
+const LOCAL_DEFAULT_PRODUCT_TYPE = "wall_art";
+
+export type ReviewDesignJobPayload = {
+  scope: "design";
+  generatedDesignId: string;
+  userId: string;
+};
+
+export type ReviewLocalAssetJobPayload = {
+  scope: "local";
+  localAssetId: string;
+  userId: string;
+};
+
+export type ReviewJobPayload = ReviewDesignJobPayload | ReviewLocalAssetJobPayload;
+
+export type ReviewJobResult = {
+  skipped: boolean;
+  reason?: string;
+  status?: ReviewStatus;
+  score?: number;
+};
+
+export async function handleReviewDesign(
+  job: Job<ReviewJobPayload>,
+): Promise<ReviewJobResult> {
+  const payload = job.data;
+  if (payload.scope === "design") {
+    return await handleDesignReview(job, payload);
+  }
+  return await handleLocalAssetReview(job, payload);
+}
+
+async function handleDesignReview(
+  job: Job<ReviewJobPayload>,
+  payload: ReviewDesignJobPayload,
+): Promise<ReviewJobResult> {
+  const design = await db.generatedDesign.findUnique({
+    where: { id: payload.generatedDesignId },
+    include: { asset: true, productType: true },
+  });
+  if (!design) {
+    throw new Error(`generatedDesign not found: ${payload.generatedDesignId}`);
+  }
+  if (design.userId !== payload.userId) {
+    throw new Error(
+      `ownership mismatch for generatedDesign ${payload.generatedDesignId}`,
+    );
+  }
+
+  // Sticky check (R12): USER yazdıysa SYSTEM dokunamaz.
+  // systemDecision burada placeholder; gerçek karar aşağıda decision'dan gelir.
+  // Helper sadece "yazma izni" sinyali için kullanılıyor.
+  const stickyGate = applyReviewDecisionWithSticky({
+    current: { status: design.reviewStatus, source: design.reviewStatusSource },
+    systemDecision: ReviewStatus.PENDING,
+  });
+  if (!stickyGate.shouldUpdate) {
+    logger.info(
+      { jobId: job.id, designId: design.id, scope: "design" },
+      "review skipped — user_sticky",
+    );
+    return { skipped: true, reason: "user_sticky" };
+  }
+
+  // API key resolve — Phase 5 helper decrypt iş yapıyor.
+  const apiKey = await resolveGeminiApiKey(payload.userId);
+
+  // Image input — AI mode: cloud asset; signed URL üret.
+  const signedUrl = await getStorage().signedUrl(
+    design.asset.storageKey,
+    SIGNED_URL_TTL_SECONDS,
+  );
+  const image: ImageInput = { kind: "remote-url", url: signedUrl };
+
+  // Product type gate — AI mode'da alpha-checks ATLA (cloud asset, LLM yeterli).
+  const productKey = design.productType.key;
+  const isTransparent = TRANSPARENT_TARGET_TYPES.has(productKey);
+  const alphaFlags: ReviewRiskFlag[] = []; // AI mode: skip
+
+  // Gemini review
+  const provider = getReviewProvider(PROVIDER_ID);
+  const llm = await provider.review(
+    { image, productType: productKey, isTransparentTarget: isTransparent },
+    { apiKey },
+  );
+
+  // Merge alpha + LLM flags
+  const allFlags: ReviewRiskFlag[] = [...alphaFlags, ...llm.riskFlags];
+
+  // Decision (Task 6 deterministic)
+  const decision = decideReviewStatus({ score: llm.score, riskFlags: allFlags });
+
+  // Snapshot — CLAUDE.md kuralı: provider+prompt her review yazımında persist.
+  const providerSnapshot = buildProviderSnapshot(PROVIDER_ID, new Date());
+  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\n${REVIEW_SYSTEM_PROMPT}`;
+
+  // Persist (atomic transaction):
+  //  - GeneratedDesign update: review alanları + snapshot
+  //  - DesignReview create: audit trail (scope=design'a özel)
+  await db.$transaction([
+    db.generatedDesign.update({
+      where: { id: design.id },
+      data: {
+        reviewStatus: decision,
+        reviewStatusSource: ReviewStatusSource.SYSTEM,
+        reviewScore: llm.score,
+        reviewSummary: llm.summary,
+        reviewRiskFlags: allFlags as unknown as Prisma.InputJsonValue,
+        textDetected: llm.textDetected,
+        gibberishDetected: llm.gibberishDetected,
+        reviewedAt: new Date(),
+        reviewProviderSnapshot: providerSnapshot,
+        reviewPromptSnapshot: promptSnapshot,
+        // reviewIssues legacy alanı YAZILMIYOR (canonical: reviewRiskFlags)
+      },
+    }),
+    db.designReview.create({
+      data: {
+        generatedDesignId: design.id,
+        reviewer: "system",
+        score: llm.score,
+        decision,
+        provider: PROVIDER_ID,
+        // model alanı şu an provider id ile aynı; provider id ↔ model id
+        // ayrımı follow-up.
+        model: PROVIDER_ID,
+        promptSnapshot: REVIEW_SYSTEM_PROMPT,
+        responseSnapshot: llm as unknown as Prisma.InputJsonValue,
+      },
+    }),
+  ]);
+
+  logger.info(
+    {
+      jobId: job.id,
+      designId: design.id,
+      status: decision,
+      score: llm.score,
+      flagCount: allFlags.length,
+    },
+    "review_design completed",
+  );
+  return { skipped: false, status: decision, score: llm.score };
+}
+
+async function handleLocalAssetReview(
+  job: Job<ReviewJobPayload>,
+  payload: ReviewLocalAssetJobPayload,
+): Promise<ReviewJobResult> {
+  const asset = await db.localLibraryAsset.findUnique({
+    where: { id: payload.localAssetId },
+  });
+  if (!asset) {
+    throw new Error(`localLibraryAsset not found: ${payload.localAssetId}`);
+  }
+  if (asset.userId !== payload.userId) {
+    throw new Error(
+      `ownership mismatch for localLibraryAsset ${payload.localAssetId}`,
+    );
+  }
+
+  // Sticky check
+  const stickyGate = applyReviewDecisionWithSticky({
+    current: { status: asset.reviewStatus, source: asset.reviewStatusSource },
+    systemDecision: ReviewStatus.PENDING,
+  });
+  if (!stickyGate.shouldUpdate) {
+    logger.info(
+      { jobId: job.id, assetId: asset.id, scope: "local" },
+      "review skipped — user_sticky",
+    );
+    return { skipped: true, reason: "user_sticky" };
+  }
+
+  // API key resolve
+  const apiKey = await resolveGeminiApiKey(payload.userId);
+
+  // Image input — Local mode: disk path
+  const image: ImageInput = { kind: "local-path", filePath: asset.filePath };
+
+  // Product type — Task 10 batch endpoint payload'a productType ekleyene
+  // kadar default "wall_art". Transparent gate kapalı.
+  const productKey = LOCAL_DEFAULT_PRODUCT_TYPE;
+  const isTransparent = TRANSPARENT_TARGET_TYPES.has(productKey);
+
+  // Local mode + transparent ⇒ alpha-checks ÇALIŞTIR; aksi halde skip.
+  const alphaFlags: ReviewRiskFlag[] = isTransparent
+    ? await runAlphaChecks(asset.filePath)
+    : [];
+
+  // Gemini review
+  const provider = getReviewProvider(PROVIDER_ID);
+  const llm = await provider.review(
+    { image, productType: productKey, isTransparentTarget: isTransparent },
+    { apiKey },
+  );
+
+  const allFlags: ReviewRiskFlag[] = [...alphaFlags, ...llm.riskFlags];
+  const decision = decideReviewStatus({ score: llm.score, riskFlags: allFlags });
+
+  const providerSnapshot = buildProviderSnapshot(PROVIDER_ID, new Date());
+  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\n${REVIEW_SYSTEM_PROMPT}`;
+
+  // Persist — LocalLibraryAsset; audit trail YOK (DesignReview yalnız scope=design).
+  await db.localLibraryAsset.update({
+    where: { id: asset.id },
+    data: {
+      reviewStatus: decision,
+      reviewStatusSource: ReviewStatusSource.SYSTEM,
+      reviewScore: llm.score,
+      reviewSummary: llm.summary,
+      reviewRiskFlags: allFlags as unknown as Prisma.InputJsonValue,
+      reviewedAt: new Date(),
+      reviewProviderSnapshot: providerSnapshot,
+      reviewPromptSnapshot: promptSnapshot,
+      // reviewIssues legacy alanı YAZILMIYOR
+    },
+  });
+
+  logger.info(
+    {
+      jobId: job.id,
+      assetId: asset.id,
+      status: decision,
+      score: llm.score,
+      flagCount: allFlags.length,
+    },
+    "review_local_asset completed",
+  );
+  return { skipped: false, status: decision, score: llm.score };
+}
+
+/**
+ * Per-user Gemini API key resolve. Phase 5'te kurulan
+ * `userSetting.aiMode.geminiApiKey` (encrypted at rest) Phase 5 helper
+ * üzerinden decrypt edilir.
+ *
+ * Yoksa explicit throw — sessiz fallback yok, kullanıcı UI'da
+ * "Settings'te Gemini key ekleyin" mesajı görür.
+ */
+async function resolveGeminiApiKey(userId: string): Promise<string> {
+  const settings = await getUserAiModeSettings(userId);
+  const key = settings.geminiApiKey;
+  if (!key || key.trim() === "") {
+    throw new Error(`no gemini api key configured for user: ${userId}`);
+  }
+  return key;
+}
