@@ -235,9 +235,17 @@ smoke'undan SONRA manuel probe ile test edilecek:
 - `quality-review-thresholds` — threshold settings UI (60/90 hardcoded)
 - `review-queue-default-tab-setting` — user prefs: default tab AI vs Local
 - `review-prompt-admin-screen` — admin/master prompt yönetimi (Phase 10)
-- `fix-with-ai-actions` — Phase 7 Selection Studio entegrasyonu
+- `fix-with-ai-actions` — Phase 7 Selection Studio entegrasyonu.
+  **Phase 7+ tasarım kaynağı:** `docs/design/EtsyHub_mockups/`
+  (birincil yerel referans — `design-canvas.jsx`, `tweaks-panel.jsx`
+  Selection Studio için yön verir). Ayrıntı için
+  [`phase7-mockup-studio-prep.md`](./phase7-mockup-studio-prep.md).
 - `admin-review-cost-override` — admin per-user override UI
-- `multi-provider-review` — alternatif vision provider'lar (Claude / GPT-4V)
+- `multi-provider-review` — alternatif vision provider'lar (Claude / GPT-4V).
+  **Alt-madde (2026-04-30 değerlendirmesi):** `Qwen3.5-4B` aday — Apache 2.0,
+  native multimodal, OpenAI-uyumlu `image_url`. KIE host etmiyor; DeepInfra
+  vision desteği belirsiz; lokal MLX self-host + HTTP wrapper gerekli.
+  Phase 7+ hardening turunda probe + prototip.
 
 ### Aşama 1 Mimari Düzeltmesinden — Yeni
 
@@ -315,19 +323,74 @@ smoke'undan SONRA manuel probe ile test edilecek:
 
 ## Bilinen Sınırlar (Dürüstlük)
 
-**Aşama 2A canlı smoke kısmi sonuç (2026-04-30):**
-- Variation generation `kie-z-image` text-to-image ile canlı doğrulandı
-  (state: SUCCESS, KIE'den resultUrl döndü). Phase 5 KIE GPT Image
-  provider model id'si KIE'de tanınmıyor (drift #3, ayrı follow-up);
-  smoke geçici olarak z-image t2i ile unblock.
-- Review pipeline canlı smoke KIE Gemini endpoint bakımı nedeniyle
-  tamamlanamadı. KIE chat/completions HTTP 200 + `{code:500, msg:"The
-  server is currently being maintained..."}` döndü. Bakım sonrası
-  retry kullanıcı tarafında.
-- Drift #4 (envelope-aware) bu commit'te kapatıldı: provider artık
-  HTTP 200 + KIE envelope `{code, msg, data}` shape'ini doğru parse
-  eder; `code !== 200` durumunda gerçek envelope mesajıyla throw.
-  Yanıltıcı "empty content" hatası kayboldu.
+**Aşama 2A canlı smoke durumu (2026-04-30 itibarıyla):**
+
+| Bileşen | Durum |
+|---------|-------|
+| Variation generation (z-image t2i) | ✅ Canlı doğrulandı (`state: SUCCESS`, KIE'den `resultUrl` döndü) |
+| Review provider envelope drift (#4) | ✅ Düzeltildi (commit `1367b7c`); yanıltıcı "empty content" hatası kayboldu |
+| Phase 5 KIE provider env-var bağımlılığı (drift #2) | ✅ Hotfix `f2ca19c` ile çözüldü (settings-aware refactor) |
+| Review pipeline canlı smoke | ⏳ KIE Gemini endpoint bakımda; `chat/completions` HTTP 200 + `{code:500, msg:"The server is currently being maintained..."}`. Bakım sonrası retry bekliyor |
+| Phase 6 status | 🟡 (Aşama 2A mimari tamam + variation üretimi canlı; review tarafı maintenance bekliyor) |
+
+**Açık drift / blocker listesi (sırasıyla):**
+
+1. **Phase 5 drift #1 — `/variations` UI route eksikliği:** Sayfa kodu yok
+   (`src/app/(app)/variations/` klasörü yok), feature flag `false`. Smoke
+   şu an `scripts/smoke-trigger-variation.ts` CLI tetiklemesiyle yapılıyor.
+   Ayrı Phase 5 closeout fix gerek; Phase 6 closeout'una dahil değil.
+2. **Phase 5 drift #3 — KIE GPT image model id mismatch:** Phase 5 KIE
+   GPT Image provider hardcoded `model: "gpt-image/1.5-image-to-image"`
+   KIE'de tanınmıyor (canlı curl probe ile doğrulandı: 422 "model not
+   supported"). Smoke `kie-z-image` text-to-image ile geçici unblock;
+   gerçek model id'leri kullanıcı tarafından KIE docs'tan getirilip
+   provider güncellenecek. Ayrı follow-up.
+3. **Phase 6 / Aşama 2A — KIE bakım bitince smoke retry:** Bakım
+   bittiğinde curl probe ile teyit + ya mevcut design (`cmoklo1hi...`)
+   için manuel `REVIEW_DESIGN` enqueue ya da yeni z-image trigger.
+   `/review` UI + drawer + USER override + reset + CostUsage + local
+   2B throw doğrulanır.
+4. **Aşama 2B — Local mode için data URL probe sonucu bekleniyor:**
+   KIE Gemini `image_url` content-part'ında `data:image/...;base64,...`
+   destekli mi (curl probe smoke retry sırasında veya öncesinde
+   yapılır):
+   - 200 ⇒ küçük patch (`image-loader.ts` local-path için data URL inline)
+   - 400/415 ⇒ orta patch (MinIO temp upload bridge + signed URL)
+   Probe sonucuna göre Aşama 2B impl yönü belirlenir.
+
+**Drift #4 (envelope-aware) detay (commit `1367b7c`):**
+Provider artık HTTP 200 + KIE envelope `{code, msg, data}` shape'ini doğru
+parse eder; `code !== 200` durumunda gerçek envelope mesajıyla throw.
+Defansif: envelope yoksa (KIE ileride flat OpenAI dönerse) flat body
+fallback. Production'da her gerçek KIE hata mesajı (rate limit, auth,
+validation) artık doğru yansır.
+
+**Qwen3.5-4B değerlendirmesi (2026-04-30 — implement EDİLMEYECEK):**
+
+KIE bakımı sırasında alternatif review provider olarak araştırıldı.
+**Sonuç: Phase 6'da implement edilmeyecek**, sadece `multi-provider-review`
+carry-forward'una alt-madde olarak kayıt. Sebepler:
+
+- **KIE.ai bu modeli host etmiyor** — KIE Qwen *Image* (text-to-image
+  generation) sunuyor, Qwen3.5-4B (LLM/VLM) değil. Mevcut KIE
+  entegrasyonumuzla uyumlu yol yok.
+- **DeepInfra vision input desteği kanıtlanmamış** — Artificial Analysis
+  sayfasında belirtilmemiş; production öncesi probe gerek.
+- **Lokal MLX self-host ek altyapı istiyor** — `mlx-lm.server` veya custom
+  HTTP wrapper, supervisor (PM2/launchd), kaynak rekabeti. 2-3 saatlik
+  prototip işi.
+- **JSON schema compliance canlı probe gerektiriyor** — 4B sınıfında
+  strict JSON + Türkçe/İngilizce karışık prompt invariant'ı kanıt-validated
+  değil; Gemini'de KESİN KURAL ile zorlamak gerekti.
+- **Vision quality 4B sınıfında 9B/27B'nin gerisinde** (MMMU-Pro 66.3
+  makul ama image-based risk flag tespiti için yeterli olup olmayacağı
+  kanıtlanmadı).
+
+Olumlu yanlar (gelecek değerlendirme için): Apache 2.0 lisans, native
+multimodal, OpenAI-uyumlu `image_url` content-part, function calling +
+JSON mode + MCP destekli, M-series'te MLX 4-bit (~3-4GB RAM) interaktif
+hız. **Ana neden ertelenme:** KIE bakımı geçici; Phase 6 ana yol Gemini
+ile kapanır; multi-provider hardening Phase 7+'da.
 
 0. **Phase 5 KIE image provider settings-aware hotfix uygulandı (2026-04-29 — Aşama 2A smoke öncesi):**
    Phase 6 Aşama 2A canlı smoke'unda Phase 5 KIE image provider'ının

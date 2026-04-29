@@ -29,7 +29,12 @@ import { createVariationJobs } from "@/features/variation-generation/services/ai
 
 const ADMIN_EMAIL = "admin@etsyhub.local";
 const PRODUCT_TYPE_KEY = "wall_art";
-const PROVIDER_ID = "kie-gpt-image-1.5"; // i2i capable
+// Aşama 2A canlı smoke geçici çözümü (2026-04-30): kie-gpt-image-1.5
+// model id'si KIE'de tanınmıyor (Phase 5 closeout drift #3 — ayrı follow-up).
+// Smoke şimdilik kie-z-image text-to-image ile unblock; Phase 6 review
+// pipeline'ı canlıda doğrulanır. Reference image input KIE'ye ulaşmıyor;
+// pure t2i prompt — review'a giden image variation'ın kendi çıktısı olacak.
+const PROVIDER_ID = "kie-z-image"; // text-to-image only
 
 async function main() {
   const db = new PrismaClient();
@@ -81,18 +86,20 @@ async function main() {
     // i2i için public URL — asset'in signed URL'i (1 saat).
     const referenceImageUrl = await storage.signedUrl(asset.storageKey, 3600);
 
+    // Aşama 2A geçici: z-image text-to-image — referenceImageUrl kullanılmıyor.
+    // Aspect ratio z-image'ın desteklediği tek değer "1:1" — wall_art (2:3)
+    // burada uyumsuz; smoke için sabit "1:1" override.
     const result = await createVariationJobs({
       userId: admin.id,
       reference,
-      referenceImageUrl,
       providerId: PROVIDER_ID,
-      capability: "image-to-image",
-      aspectRatio: productType.aspectRatio as "1:1" | "2:3" | "3:2",
+      capability: "text-to-image",
+      aspectRatio: "1:1",
       quality: "medium",
-      brief: "Smoke test variation — keep design close to reference.",
+      brief: "Minimalist abstract wall art with soft pastel colors.",
       count: 1,
       systemPrompt:
-        "You are a professional Etsy print-on-demand designer. Generate a high-quality wall art design close in style to the reference image. No watermarks, no signatures, no logos.",
+        "You are a professional Etsy print-on-demand designer. Generate a high-quality minimalist abstract wall art design with soft pastel colors. No watermarks, no signatures, no logos.",
     });
 
     console.log(`\n✓ Variation jobs created:`);
