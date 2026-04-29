@@ -602,6 +602,8 @@ model GeneratedDesign {
 
   @@index([userId])
   @@index([referenceId])
+  // Phase 6 Task 14 — review queue endpoint için (userId, reviewStatus) full-scan'i önler.
+  @@index([userId, reviewStatus])
 }
 
 model DesignReview {
@@ -852,6 +854,8 @@ model LocalLibraryAsset {
   @@index([userId, folderName])
   @@index([userId, isNegative])
   @@index([userId, isUserDeleted, deletedAt])
+  // Phase 6 Task 14 — review queue endpoint için (userId, reviewStatus) full-scan'i önler.
+  @@index([userId, reviewStatus])
 }
 
 // ============= USER SETTINGS (Phase 5 §8) =============
