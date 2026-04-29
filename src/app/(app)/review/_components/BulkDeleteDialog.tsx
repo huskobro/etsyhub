@@ -86,9 +86,16 @@ export function BulkDeleteDialog({ ids, open, onClose, onSuccess }: Props) {
           </Dialog.Description>
 
           <div className="mt-4">
+            {/*
+              message prop verilmiyor: TypingConfirmation kendi typing
+              yönergesini ("Onaylamak için aşağıya `SİL` yazın:") render
+              ediyor. Yıkıcı uyarı zaten Dialog.Description'da.
+              Daha önce message="Onaylamak için aşağıya yazın:" geçiyordu,
+              component cümlesiyle çakışıp iki ardışık cümle olarak
+              gözüküyordu (Dalga B polish — UX bug fix).
+            */}
             <TypingConfirmation
               phrase="SİL"
-              message={`Onaylamak için aşağıya yazın:`}
               buttonLabel={`${ids.length} asseti sil`}
               isLoading={mutation.isPending}
               onConfirm={() => mutation.mutate()}

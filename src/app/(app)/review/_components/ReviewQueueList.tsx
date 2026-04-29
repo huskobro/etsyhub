@@ -49,6 +49,16 @@ export function ReviewQueueList({ scope }: Props) {
     setScope(scope);
   }, [scope, setScope]);
 
+  // Selection store page sync: pageNum URL'den geldikçe store'u güncelle.
+  // Farklı sayfaya geçişte selectedIds auto-clear olur — BulkApproveDialog
+  // skip-on-risk hint'inin pagination boundary edge case'inde (sayfa 1'de
+  // seç → sayfa 2'ye geç → cache miss → yanlış riskyCount=0) yanıltıcı
+  // davranmasını engeller. Server yine doğru kararı verir.
+  const setPage = useReviewSelection((s) => s.setPage);
+  useEffect(() => {
+    setPage(pageNum);
+  }, [pageNum, setPage]);
+
   if (isLoading) {
     return <StateMessage tone="neutral" title="Yükleniyor…" />;
   }

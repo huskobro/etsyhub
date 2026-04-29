@@ -12,6 +12,15 @@
 //   - Eşleşme TAM string compare — case-sensitive, trim YOK
 //     ("sıl" / "SIL" / " SİL " kabul edilmez).
 //
+// `message` prop semantiği (Dalga B polish):
+//   - OPSİYONEL ek bağlam/uyarı satırı (örn. "Bu işlem geri alınamaz").
+//   - Typing yönergesi component'in kendi cümlesidir ("Onaylamak için
+//     aşağıya `phrase` yazın:") — caller bunu tekrar göndermesin
+//     (önceden BulkDeleteDialog aynı cümleyi message ile geçiyordu →
+//     iki ardışık cümle render oluyordu, UX bug).
+//   - Caller dialog body'sinde uyarısını zaten gösteriyorsa message
+//     hiç verilmez (default: undefined → satır gizli).
+//
 // A11y:
 //   - Input aria-label phrase'i içerir
 //   - Confirm butonu aria-disabled mantığını native disabled ile sağlar
@@ -21,7 +30,13 @@ import { useState } from "react";
 
 type Props = {
   phrase: string;
-  message: string;
+  /**
+   * Opsiyonel ek bağlam/uyarı satırı. Typing yönergesi component
+   * tarafından render edilir; bu prop AYRI bir uyarı içindir
+   * ("Bu işlem geri alınamaz" gibi). Caller uyarısını dialog body'sinde
+   * gösteriyorsa boş bırakılır.
+   */
+  message?: string;
   buttonLabel?: string;
   isLoading?: boolean;
   onConfirm: () => void;
@@ -39,7 +54,7 @@ export function TypingConfirmation({
 
   return (
     <div className="flex flex-col gap-3" data-testid="typing-confirmation">
-      <p className="text-sm text-text">{message}</p>
+      {message ? <p className="text-sm text-text">{message}</p> : null}
       <p className="text-sm text-text-muted">
         Onaylamak için aşağıya{" "}
         <code
