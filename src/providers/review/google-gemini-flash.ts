@@ -33,10 +33,16 @@ const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models
 const REVIEW_ESTIMATED_COST_CENTS = 1;
 
 /**
- * Gemini 2.5 Flash review provider.
+ * Google Gemini 2.5 Flash review provider — DIRECT Google API yolu.
  *
- * Phase 6 — multimodal vision review. Per-user `geminiApiKey` settings'ten gelir;
- * options.apiKey caller responsibility (Task 8 worker resolve eder).
+ * Phase 6 — multimodal vision review. Per-user `geminiApiKey` settings'ten
+ * gelir; options.apiKey caller responsibility (worker resolve eder).
+ *
+ * **Doğrulama durumu (Aşama 1):** Mock testlerle (vitest) entegre edildi;
+ * canlı `geminiApiKey` ile smoke YAPILMADI. Bugünkü ürün kullanımı KIE.ai
+ * üzerinden Gemini 2.5 Flash — `kie-gemini-flash` provider'a bak. Provider
+ * seçimi runtime `settings.reviewProvider` üzerinden yapılır
+ * (`"kie"` | `"google-gemini"`).
  *
  * Hata davranışı (sessiz fallback YASAK):
  * - apiKey boş/whitespace ⇒ throw
@@ -46,18 +52,18 @@ const REVIEW_ESTIMATED_COST_CENTS = 1;
  * - JSON.parse fail ⇒ throw
  * - Zod schema fail (bilinmeyen risk flag, score >100, confidence >1) ⇒ throw
  *
- * Snapshot (Task 8'de worker yazacak):
- * - reviewProviderSnapshot: "gemini-2-5-flash@<settingsDate>"
+ * Snapshot (worker yazar):
+ * - reviewProviderSnapshot: "google-gemini-flash@<settingsDate>"
  * - reviewPromptSnapshot: REVIEW_PROMPT_VERSION + REVIEW_SYSTEM_PROMPT
  *
  * Versiyon takip: REVIEW_PROMPT_VERSION = "v1.0".
  */
-export const geminiFlashReviewProvider: ReviewProvider = {
-  id: "gemini-2-5-flash",
+export const googleGeminiFlashReviewProvider: ReviewProvider = {
+  id: "google-gemini-flash",
   kind: "vision",
   review: async (input, options) => {
     if (!options.apiKey || options.apiKey.trim() === "") {
-      throw new Error("api key missing for gemini-2-5-flash review provider");
+      throw new Error("api key missing for google-gemini-flash review provider");
     }
 
     const inline = await imageToInlineData(input.image);

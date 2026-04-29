@@ -1,9 +1,75 @@
 # Phase 6 — AI Quality Review Closeout
 
 > **Tarih:** 2026-04-29
-> **Status:** Backend pipeline + UI vitrin + UX kapanış + cost tracking tamam.
-> Conservative cost estimate (gerçek faturalama değil) ve real Gemini smoke
-> kullanıcı handoff ile doğrulanacak.
+> **Status:** Backend pipeline + UI vitrin + UX kapanış + cost tracking + selectable
+> review provider mimarisi tamam (Aşama 1). KIE review provider implementasyonu
+> Aşama 2'de yapılacak (KIE.ai Gemini endpoint kontratı bekleniyor); default
+> kullanıcıda review job FAIL durumda — bu bilinen bir sınırdır, dürüstçe
+> dokümante edildi.
+
+## Aşama 1: Mimari Düzeltme (2026-04-29)
+
+Phase 6'nın ilk implementasyonu (Task 1–19) direct Google Gemini API
+varsayımıyla kuruldu. Smoke öncesi tespit: ürün gerçekliği farklı — KIE.ai
+üzerinden Gemini 2.5 Flash kullanılıyor (kullanıcının canlı Google
+`geminiApiKey`'i yok). Mimari selectable provider modeline çevrildi.
+
+**Yapılan değişiklikler:**
+
+- **Settings shape genişletildi:** `reviewProvider: "kie" | "google-gemini"`
+  default `"kie"`. **Migration YOK** — `aiMode` Json field; mevcut row'larda
+  alan eksikse Zod parse default `"kie"` döndürür (backwards compat).
+- **UI:** Settings → AI Mode'da "Review sağlayıcısı" select alanı
+  ("KIE (önerilen)" / "Google Gemini (ileri seviye)") + helper "Bugün
+  kullandığınız akış KIE ise bunu seçin." Kullanıcı diline net.
+- **Provider rename:** `gemini-2-5-flash` ⇒ `google-gemini-flash`
+  (`src/providers/review/google-gemini-flash.ts`). Doğrulama notu eklendi:
+  mock-tested, canlı doğrulanmadı.
+- **Yeni STUB:** `kie-gemini-flash` (`src/providers/review/kie-gemini-flash.ts`).
+  `review()` çağrılırsa yön mesajıyla throw (Aşama 2 bekleniyor;
+  `google-gemini` alternatifi).
+- **Worker:** `PROVIDER_ID` hardcoded constant SİLİNDİ;
+  `resolveReviewProviderConfig(userId)` runtime'da `{providerId, apiKey}` döner.
+  Eksik key durumunda explicit throw (sessiz fallback YASAK).
+- **DesignReview audit + CostUsage `providerKey`** runtime providerId yazar;
+  log'larda `providerId` alanı debug için eklendi.
+
+**Aşama 1 sonrası canlı durum:**
+
+- Default user (`reviewProvider: "kie"`) ⇒ review job FAIL (KIE STUB throw)
+- `"google-gemini"` seçeneği ⇒ mock-tested direct Google API (canlı
+  doğrulanmadı; kullanıcı canlı Google key'i girerse çalışabilir)
+- Review pipeline'ın TAMAMI (sticky, decision, persist, cost tracking, UI)
+  mimari olarak doğru; sadece review inference adımı (KIE) Aşama 2'yi bekliyor
+
+**Aşama 2 için bekleyen dış kontrat bilgileri (KIE.ai dashboard/docs'tan):**
+
+1. KIE endpoint URL (review için)
+2. Auth header formatı
+3. Sync vs async pattern (createTask + polling pattern'ı kullanılacak mı)
+4. Request body: image input format (inlineData base64 / URL / file upload)
+5. Response body: envelope shape (`{code,msg,data}` mı, native passthrough mı)
+6. Model id string KIE'de nasıl iletiliyor
+
+**Aşama 1 test sonuçları (2026-04-29):**
+
+| Komut | Sonuç |
+|---|---|
+| `npx tsc --noEmit` | ✅ 0 hata |
+| `npx next lint` | ✅ `No ESLint warnings or errors` |
+| `npm run check:tokens` | ✅ Token ihlali yok |
+| `npx vitest run` (server) | ✅ 81 dosya / 606 test PASS |
+| `npx vitest run --config vitest.config.ui.ts` | ✅ 41 dosya / 479 test PASS |
+
+**Yeni testler:**
+
+- `tests/unit/google-gemini-flash-provider.test.ts` (rename, 11 test)
+- `tests/unit/kie-gemini-flash-provider.test.ts` (yeni STUB canary, 3 test)
+- `tests/unit/review-provider-registry.test.ts` (güncel, 7 test — 2 provider,
+  eski `gemini-2-5-flash` id reddedilir)
+- `tests/integration/review-design-worker.test.ts` (+3 yeni Aşama 1 test:
+  KIE stub throw, key-yok varyantları)
+- `tests/integration/settings-ai-mode.test.ts` (+1 backwards compat test)
 
 ## Phase 6 Özet
 
@@ -42,9 +108,10 @@
   (best-effort; fail durumunda variation SUCCESS korunur)
 - **Local batch review:** `POST /api/review/local-batch` ile 100 asset/sayfa,
   per-row enqueue
-- **Hibrit pipeline:** Sharp deterministic alpha kontrolleri (sadece transparent
-  ürün tipleri: `clipart` / `sticker` / `transparent_png`) + Gemini 2.5 Flash
-  multimodal vision review
+- **Hibrit pipeline mimarisi:** Sharp deterministic alpha kontrolleri (sadece
+  transparent ürün tipleri: `clipart` / `sticker` / `transparent_png`) +
+  provider-selectable LLM (KIE veya Google Gemini direct). Aşama 1: KIE STUB,
+  google-gemini direct mock-tested.
 - **8 sabit risk flag türü** (drift koruması, Zod enforce):
   `watermark_detected`, `signature_detected`, `visible_logo_detected`,
   `celebrity_face_detected`, `no_alpha_channel`, `transparent_edge_artifact`,
@@ -64,9 +131,9 @@
 - **Conservative cost tracking (Task 18):** Her review çağrısı `CostUsage`
   tablosuna 1 cent estimate olarak yazılır; daily limit $10/gün/user
 - **Snapshot zorunluluğu** (CLAUDE.md kuralı): provider snapshot
-  (`gemini-2-5-flash@YYYY-MM-DD`) + prompt snapshot (`v1.0` + system prompt)
-  her review yazımında persist; runtime config değişiklikleri eski review'ı
-  bozmaz
+  (`<providerId>@YYYY-MM-DD`, runtime providerId) + prompt snapshot
+  (`v1.0` + system prompt) her review yazımında persist; runtime config
+  değişiklikleri eski review'ı bozmaz
 
 ## Phase 5'ten Kapatılan Carry-Forward
 
@@ -86,6 +153,17 @@
 - `fix-with-ai-actions` — Phase 7 Selection Studio entegrasyonu
 - `admin-review-cost-override` — admin per-user override UI
 - `multi-provider-review` — alternatif vision provider'lar (Claude / GPT-4V)
+
+### Aşama 1 Mimari Düzeltmesinden — Yeni
+
+- **`phase6-asama2-kie-review-provider`** — KIE.ai Gemini endpoint
+  implementasyonu (`kie-gemini-flash.ts` STUB → real). KIE.ai dashboard/docs'tan
+  bekleniyor: endpoint URL, auth header, sync/async pattern, request body
+  image input format, response envelope, model id string. Phase 5
+  `kie-shared.ts` paterni reuse edilebilir.
+- **`direct-google-gemini-live-validation`** (opsiyonel) — kullanıcının canlı
+  Google `geminiApiKey`'iyle `google-gemini-flash` provider'ı doğrulaması.
+  Ürün önceliği KIE; bu yol bypass için bırakıldı.
 
 ### Dalga C (Cost Tracking) — Yeni
 
@@ -146,38 +224,55 @@
 
 ## Bilinen Sınırlar (Dürüstlük)
 
-1. **Conservative cost estimate, gerçek faturalama değil:**
+1. **KIE review provider STUB durumda (Aşama 2 bekleniyor):**
+   `kie-gemini-flash` provider registry'ye kayıtlı ama `review()` çağrılırsa
+   yön mesajıyla throw atar. Default user (`reviewProvider: "kie"`) için
+   review job FAIL. Kullanıcı `"google-gemini"`'ye geçebilir (mock-tested
+   direct Google API) veya Aşama 2 implementasyonunu bekleyebilir. KIE.ai
+   Gemini endpoint kontratı netleştikten sonra impl edilecek.
+
+2. **Direct Google Gemini provider canlı doğrulanmadı:**
+   `google-gemini-flash` provider mock testlerle entegre; canlı
+   `geminiApiKey` ile smoke YAPILMADI. Kullanıcı canlı Google key'i girerse
+   çalışabilir, ancak ürün önceliği KIE — pratikte bu yol seçilmiyor.
+   Carry-forward: `direct-google-gemini-live-validation` (opsiyonel).
+
+3. **Conservative cost estimate, gerçek faturalama değil:**
    `REVIEW_ESTIMATED_COST_CENTS = 1` sabit; Gemini'nin real-time fiyatı
    farklı olabilir (~$0.001/çağrı). Minimum hesap birimi $0.01 (Int alan)
    olduğu için fractional fiyatlar yuvarlanmıştır. Real-time pricing
-   carry-forward: `cost-real-time-pricing`.
+   carry-forward: `cost-real-time-pricing`. Aşama 1 sonrası review pipeline
+   canlı çalışmadığı için CostUsage tablosu henüz dolmuyor.
 
-2. **Real Gemini smoke kullanıcı handoff ile doğrulanacak:**
-   Implementer tüm test'leri mock fetch ile yazdı. Türkçe sistem promptu +
-   İngilizce JSON anahtar varsayımı, multimodal `inlineData` base64 yolu,
-   Zod schema'nın gerçek Gemini response'una uyumu — hepsi canlı testle
-   doğrulanmadı. Aşağıdaki smoke checklist kullanıcı tarafından uygulanır.
-
-3. **Detail panel server-side 404 endpoint yok:**
+4. **Detail panel server-side 404 endpoint yok:**
    Drawer queue cache'inden okur. URL `?detail=invalid_cuid` durumunda
    "bulunamadı" fallback gösterir; sunucuya gidilmez. Carry-forward C6.
 
-4. **Single provider:** Sadece Gemini 2.5 Flash. `multi-provider-review`
-   carry-forward.
+5. **Tek aktif vision provider (KIE STUB hariç):** `google-gemini-flash`
+   tek mock-tested vision provider; `kie-gemini-flash` Aşama 2'de aynı kind
+   altında implemente edilecek. Alternatif provider (Claude / GPT-4V) için
+   `multi-provider-review` carry-forward.
 
-5. **TOCTOU race penceresi (cost budget):**
+6. **TOCTOU race penceresi (cost budget):**
    Hızlı ardışık review'larda iki worker aynı anda budget check geçebilir
    ⇒ limit minimal aşılabilir. USER sticky koruması atomik (`updateMany`
    guard) ama cost budget atomik değil. `cost-budget-atomic` carry-forward.
 
-6. **DRY ihlali (handleDesignReview / handleLocalAssetReview):**
-   Cost tracking + budget check iki branch'te paralel eklendi (Task 7+8
-   reviewer Ö1 carry-forward'da DRY refactor ileri ertelendi). Bu dalgada
-   yeni ihlal eklenmedi; mevcut paterne uyuldu.
+7. **DRY ihlali (handleDesignReview / handleLocalAssetReview):**
+   Cost tracking + budget check + provider resolve iki branch'te paralel
+   eklendi (Task 7+8 reviewer Ö1 carry-forward'da DRY refactor ileri
+   ertelendi). Aşama 1'de yeni ihlal eklenmedi; mevcut paterne uyuldu.
 
 ## Real Gemini Smoke Checklist (Kullanıcı Handoff)
 
-> **Önkoşul:** `/settings` → AI Mode → Gemini API Key ekle (encrypted at rest).
+> **Aşama 1 sonrası bu checklist UYGULANMAZ.** Aşama 2 KIE provider
+> implementasyonu sonrası kullanılacak (KIE varyantı için adımlar adapte
+> edilir). Mevcut adımlar Google direct yolu için referans olarak korunuyor;
+> kullanıcı opsiyonel olarak `direct-google-gemini-live-validation`
+> carry-forward kapsamında çalıştırabilir.
+
+> **Önkoşul:** `/settings` → AI Mode → Gemini API Key ekle + provider
+> "Google Gemini (ileri seviye)" seç (encrypted at rest).
 
 ### 1. AI Mode auto-review
 
@@ -231,7 +326,12 @@ Aşağıdaki sözleşmeler Phase 6'nın **bağlayıcı** çıktısıdır:
   "vision"` tek tipi, Phase 7+'da deterministic kind eklenebilir
   (discriminated union genişletilir)
 - **Provider registry** (`src/providers/review/registry.ts`) — hardcoded
-  lookup YASAK, sessiz fallback YASAK (Phase 5'ten devam)
+  lookup YASAK, sessiz fallback YASAK (Phase 5'ten devam). Aşama 1'de iki
+  provider register: `google-gemini-flash` + `kie-gemini-flash` (STUB).
+- **Selectable review provider settings** (Aşama 1) — `reviewProvider:
+  "kie" | "google-gemini"` settings alanı + worker
+  `resolveReviewProviderConfig` helper. Yeni provider eklerken bu enum
+  genişletilir; settings UI ve worker resolve eşit güncellenir.
 - **`REVIEW_RISK_FLAG_TYPES`** — 8 sabit tür, Zod enforced. Yeni tür
   eklenmeden önce prompt + decision rule + UI badge mapping güncellenmeli
 - **Decision rule** (`decideReviewStatus`) — deterministic, hardcoded

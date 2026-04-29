@@ -10,10 +10,13 @@ import { encryptSecret } from "@/lib/secrets";
 import { dailyPeriodKey } from "@/server/services/cost/period-key";
 
 // Provider registry'yi mock'la — gerçek Gemini HTTP'ye gitmesin.
+// Phase 6 Aşama 1: registry id-aware mock; worker hangi provider id'yi
+// resolve ederse o id'yi geri döner (kie-gemini-flash veya
+// google-gemini-flash). KIE STUB testlerde gerçek throw için ayrı mock yapılır.
 const reviewMock = vi.fn();
 vi.mock("@/providers/review/registry", () => ({
-  getReviewProvider: () => ({
-    id: "gemini-2-5-flash",
+  getReviewProvider: (id: string) => ({
+    id,
     kind: "vision" as const,
     review: (...args: unknown[]) => reviewMock(...args),
   }),
@@ -47,6 +50,15 @@ type SeedOptions = {
   reviewStatusSource?: ReviewStatusSource;
   /** Eğer true ise UserSetting kaydı YARATILMAZ (api key yok senaryosu). */
   skipApiKey?: boolean;
+  /**
+   * Phase 6 Aşama 1: per-test setting overrides. Default `"google-gemini"` +
+   * geminiApiKey set (mevcut regression mock provider Google direct path'ine
+   * gidiyor). Yeni testler `"kie"` set edip STUB throw veya key-yok varyantları
+   * kontrol eder.
+   */
+  reviewProvider?: "kie" | "google-gemini";
+  kieApiKey?: string | null;
+  geminiApiKey?: string | null;
 };
 
 async function seedDesign(opts: SeedOptions = {}): Promise<SeedResult> {
@@ -58,22 +70,22 @@ async function seedDesign(opts: SeedOptions = {}): Promise<SeedResult> {
 
   if (!opts.skipApiKey) {
     // Phase 5 service.ts encryptSecret kullanıyor; biz de aynı şekilde yazıyoruz.
+    // Phase 6 Aşama 1: default reviewProvider "google-gemini" + geminiApiKey
+    // set — mevcut regression Google direct mock pattern'ı korunur.
+    const reviewProvider = opts.reviewProvider ?? "google-gemini";
+    const kieApiKeyRaw =
+      opts.kieApiKey === undefined ? null : opts.kieApiKey;
+    const geminiApiKeyRaw =
+      opts.geminiApiKey === undefined ? "AIza-test-fake-key-123" : opts.geminiApiKey;
+    const value = {
+      kieApiKey: kieApiKeyRaw ? encryptSecret(kieApiKeyRaw) : null,
+      geminiApiKey: geminiApiKeyRaw ? encryptSecret(geminiApiKeyRaw) : null,
+      reviewProvider,
+    };
     await db.userSetting.upsert({
       where: { userId_key: { userId: USER_ID, key: "aiMode" } },
-      update: {
-        value: {
-          kieApiKey: null,
-          geminiApiKey: encryptSecret("AIza-test-fake-key-123"),
-        },
-      },
-      create: {
-        userId: USER_ID,
-        key: "aiMode",
-        value: {
-          kieApiKey: null,
-          geminiApiKey: encryptSecret("AIza-test-fake-key-123"),
-        },
-      },
+      update: { value },
+      create: { userId: USER_ID, key: "aiMode", value },
     });
   }
 
@@ -191,7 +203,7 @@ describe("handleReviewDesign — scope=design", () => {
     expect(updated?.reviewSummary).toBe("clean illustration");
     expect(updated?.textDetected).toBe(false);
     expect(updated?.gibberishDetected).toBe(false);
-    expect(updated?.reviewProviderSnapshot).toMatch(/^gemini-2-5-flash@\d{4}-\d{2}-\d{2}$/);
+    expect(updated?.reviewProviderSnapshot).toMatch(/^google-gemini-flash@\d{4}-\d{2}-\d{2}$/);
     expect(updated?.reviewPromptSnapshot).toContain("v1.0");
     expect(updated?.reviewPromptSnapshot).toContain("Etsy print-on-demand");
     expect(updated?.reviewedAt).not.toBeNull();
@@ -202,8 +214,8 @@ describe("handleReviewDesign — scope=design", () => {
       where: { generatedDesignId: designId },
     });
     expect(audit).toBeTruthy();
-    expect(audit?.provider).toBe("gemini-2-5-flash");
-    expect(audit?.model).toBe("gemini-2-5-flash");
+    expect(audit?.provider).toBe("google-gemini-flash");
+    expect(audit?.model).toBe("google-gemini-flash");
     expect(audit?.score).toBe(95);
     expect(audit?.decision).toBe(ReviewStatus.APPROVED);
     expect(audit?.reviewer).toBe("system");
@@ -263,14 +275,16 @@ describe("handleReviewDesign — scope=design", () => {
     expect(audit).toBeNull();
   });
 
-  it("API key yok: explicit throw", async () => {
+  it("API key yok (UserSetting row yok): default reviewProvider 'kie' ⇒ kieApiKey ayarlanmamış throw", async () => {
+    // Aşama 1: UserSetting kaydı YOK ⇒ getUserAiModeSettings default
+    // {reviewProvider:"kie", kieApiKey:null} döner ⇒ kie branch + key-yok throw.
     const { designId } = await seedDesign({ skipApiKey: true });
 
     await expect(
       handleReviewDesign(
         makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
       ),
-    ).rejects.toThrow(/no gemini api key/i);
+    ).rejects.toThrow(/kieApiKey ayarlanmamış/i);
 
     expect(reviewMock).not.toHaveBeenCalled();
   });
@@ -431,8 +445,8 @@ describe("handleReviewDesign — Task 18 cost tracking + budget", () => {
     expect(row.costCents).toBe(1);
     expect(row.units).toBe(1);
     expect(row.providerKind).toBe(ProviderKind.AI);
-    expect(row.providerKey).toBe("gemini-2-5-flash");
-    expect(row.model).toBe("gemini-2-5-flash");
+    expect(row.providerKey).toBe("google-gemini-flash");
+    expect(row.model).toBe("google-gemini-flash");
     expect(row.periodKey).toBe(dailyPeriodKey());
   });
 
@@ -444,8 +458,8 @@ describe("handleReviewDesign — Task 18 cost tracking + budget", () => {
       data: {
         userId: USER_ID,
         providerKind: ProviderKind.AI,
-        providerKey: "gemini-2-5-flash",
-        model: "gemini-2-5-flash",
+        providerKey: "google-gemini-flash",
+        model: "google-gemini-flash",
         units: 1000,
         costCents: 1000,
         periodKey: dailyPeriodKey(),
@@ -478,5 +492,70 @@ describe("handleReviewDesign — Task 18 cost tracking + budget", () => {
     // Sticky early-return ⇒ budget check de yapılmadı, cost insert de yok.
     const usage = await db.costUsage.findMany({ where: { userId: USER_ID } });
     expect(usage).toHaveLength(0);
+  });
+});
+
+describe("handleReviewDesign — Phase 6 Aşama 1 review provider seçimi", () => {
+  it("default reviewProvider='kie' + kieApiKey set: STUB provider throw ⇒ review FAIL, cost insert YOK", async () => {
+    const { designId } = await seedDesign({
+      reviewProvider: "kie",
+      kieApiKey: "kie-test-key-aaa",
+      geminiApiKey: null,
+    });
+
+    // KIE STUB davranışını mock üzerinden simüle et — registry mock id-aware
+    // çağrı yapıyor, ama review() fonksiyonu shared reviewMock'a düşüyor.
+    // Worker `getReviewProvider("kie-gemini-flash")` çağıracak; reviewMock
+    // burada gerçek STUB'ın yön mesajını taklit eder.
+    reviewMock.mockRejectedValueOnce(
+      new Error(
+        "kie-gemini-flash review provider not implemented yet (Aşama 2). " +
+          "KIE.ai Gemini endpoint kontratı bekleniyor — settings'ten 'google-gemini' " +
+          "provider'a geçebilir veya Aşama 2 implementasyonunu bekleyebilirsiniz.",
+      ),
+    );
+
+    await expect(
+      handleReviewDesign(
+        makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
+      ),
+    ).rejects.toThrow(/kie-gemini-flash.*Aşama 2/i);
+
+    // Provider review() throw ettiği için sonrası kod (persist + cost insert)
+    // çalışmadı. CostUsage tablosu boş kalır.
+    const usage = await db.costUsage.findMany({ where: { userId: USER_ID } });
+    expect(usage).toHaveLength(0);
+  });
+
+  it("reviewProvider='google-gemini' + geminiApiKey YOK ⇒ explicit throw (yön mesajı)", async () => {
+    const { designId } = await seedDesign({
+      reviewProvider: "google-gemini",
+      kieApiKey: "kie-test-key-bbb",
+      geminiApiKey: null,
+    });
+
+    await expect(
+      handleReviewDesign(
+        makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
+      ),
+    ).rejects.toThrow(/geminiApiKey ayarlanmamış/i);
+
+    expect(reviewMock).not.toHaveBeenCalled();
+  });
+
+  it("reviewProvider='kie' + kieApiKey YOK ⇒ explicit throw (yön mesajı)", async () => {
+    const { designId } = await seedDesign({
+      reviewProvider: "kie",
+      kieApiKey: null,
+      geminiApiKey: "AIza-test-key-ccc",
+    });
+
+    await expect(
+      handleReviewDesign(
+        makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
+      ),
+    ).rejects.toThrow(/kieApiKey ayarlanmamış/i);
+
+    expect(reviewMock).not.toHaveBeenCalled();
   });
 });

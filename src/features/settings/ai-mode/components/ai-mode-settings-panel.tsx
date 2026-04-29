@@ -4,6 +4,10 @@
 // kieApiKey + geminiApiKey password input. GET masked değerleri çeker (plain
 // asla gelmez). PUT'ta boş string preserve sentinel — kullanıcı "değiştirmeden
 // geç" davranışını boş bırakarak yapar.
+//
+// Phase 6 Aşama 1: `reviewProvider` runtime seçimi (KIE vs Google direct).
+// UI label'ları kullanıcı diline net: teknik jargon değil. Default "kie" —
+// bugünkü ürün gerçeği.
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,14 +16,18 @@ import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
+type ReviewProviderChoice = "kie" | "google-gemini";
+
 type MaskedSettings = {
   kieApiKey: string | null;
   geminiApiKey: string | null;
+  reviewProvider: ReviewProviderChoice;
 };
 
 type FormState = {
   kieApiKey: string;
   geminiApiKey: string;
+  reviewProvider: ReviewProviderChoice;
 };
 
 const QUERY_KEY = ["settings", "ai-mode"] as const;
@@ -35,17 +43,27 @@ export function AiModeSettingsPanel() {
     },
   });
 
-  // Form her zaman boş başlar — masked değer ("•••••") form'a yansıtılmaz;
+  // Form anahtarları boş başlar — masked değer ("•••••") form'a yansıtılmaz;
   // boş string PUT'ta preserve sinyali olduğu için bu doğru davranış.
+  // reviewProvider ise her zaman güncel sunucu değeri ile senkronize tutulur
+  // (preserve sentinel YOK; her PUT'ta açıkça gönderilir).
   const [form, setForm] = useState<FormState>({
     kieApiKey: "",
     geminiApiKey: "",
+    reviewProvider: "kie",
   });
   const initialMask = useMemo(() => query.data?.settings, [query.data]);
   // WHY: query yenilendikçe (mutation onSuccess) form'u sıfırla — kullanıcı
-  // tekrar girmeden submit etmesin diye.
+  // tekrar girmeden submit etmesin diye. reviewProvider sunucu değerine eşlenir
+  // ki kullanıcı seçimi UI'da kalıcı görünsün.
   useEffect(() => {
-    if (initialMask) setForm({ kieApiKey: "", geminiApiKey: "" });
+    if (initialMask) {
+      setForm({
+        kieApiKey: "",
+        geminiApiKey: "",
+        reviewProvider: initialMask.reviewProvider,
+      });
+    }
   }, [initialMask]);
 
   const mutation = useMutation({
@@ -137,6 +155,39 @@ export function AiModeSettingsPanel() {
             placeholder={masked.geminiApiKey ? "•••••" : "AIza..."}
           />
         </FormField>
+
+        {/* Phase 6 Aşama 1 — Review provider seçimi.
+            Native <select> kullanılıyor (proje dahilinde Select primitive yok).
+            Stil token alias'larıyla (border-border, bg-surface, text-text) —
+            check:tokens hardcoded renk yasaklıyor. */}
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="reviewProvider"
+            className="text-sm font-medium text-text"
+          >
+            Review sağlayıcısı
+          </label>
+          <select
+            id="reviewProvider"
+            value={form.reviewProvider}
+            onChange={(e) =>
+              setForm((cur) => ({
+                ...cur,
+                reviewProvider: e.target.value as ReviewProviderChoice,
+              }))
+            }
+            className="h-control-md rounded-md border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-fast ease-out focus:border-accent"
+          >
+            <option value="kie">KIE (önerilen)</option>
+            <option value="google-gemini">Google Gemini (ileri seviye)</option>
+          </select>
+          <p
+            id="reviewProvider-desc"
+            className="text-xs text-text-muted"
+          >
+            Bugün kullandığınız akış KIE ise bunu seçin.
+          </p>
+        </div>
 
         {mutation.isError ? (
           <p className="text-sm text-danger" role="alert">

@@ -1,5 +1,6 @@
 import type { ReviewProvider } from "./types";
-import { geminiFlashReviewProvider } from "./gemini-2-5-flash";
+import { googleGeminiFlashReviewProvider } from "./google-gemini-flash";
+import { kieGeminiFlashReviewProvider } from "./kie-gemini-flash";
 
 /**
  * Review provider registry — R17.3 paterni.
@@ -7,6 +8,13 @@ import { geminiFlashReviewProvider } from "./gemini-2-5-flash";
  * Hardcoded id lookup YASAK; tüm review provider erişimi `getReviewProvider`
  * üzerinden olur. Bilinmeyen id ⇒ explicit throw (sessiz fallback yok).
  * Duplicate register denemesi ⇒ explicit throw (fail-fast).
+ *
+ * Phase 6 Aşama 1: iki provider register edilir:
+ *   - `google-gemini-flash` — direct Google Gemini API (mock-tested,
+ *     canlı doğrulanmadı)
+ *   - `kie-gemini-flash` — KIE.ai üzerinden Gemini (STUB; Aşama 2'de impl)
+ *
+ * Runtime seçim: `settings.reviewProvider` ("kie" default | "google-gemini").
  *
  * Yeni provider eklemek için:
  *   1. `src/providers/review/<id>.ts` altında `ReviewProvider` impl yaz
@@ -23,7 +31,8 @@ function register(provider: ReviewProvider): void {
   byId.set(provider.id, provider);
 }
 
-register(geminiFlashReviewProvider);
+register(googleGeminiFlashReviewProvider);
+register(kieGeminiFlashReviewProvider);
 
 export function getReviewProvider(id: string): ReviewProvider {
   const provider = byId.get(id);

@@ -4,12 +4,13 @@ Localhost-first Etsy / POD productivity web app. Farklı ürünlerden ilham alan
 
 ## Mevcut Durum (2026-04-29)
 
-Phase 1–6 production-ready (auth, references, competitor analysis, trend stories, variation generation, AI quality review).
+Phase 1–5 production-ready. **Phase 6 (AI Quality Review)** mimari + UI tamam ama runtime canlı doğrulanmadı; KIE review provider kontratı bekleniyor (Aşama 2).
 
 **Önemli dürüstlük notları:**
 
-- Phase 6 cost tracking **conservative estimate** kullanır (1 cent/review, daily $10/user); gerçek Gemini faturalama değildir.
-- Real Gemini smoke testi user handoff ile doğrulanacak — implementer tüm test'leri mock fetch ile yazdı. Closeout doc'taki checklist'i (`docs/design/implementation-notes/phase6-quality-review.md`) uyguladıktan sonra Phase 6 canlı doğrulanmış olur.
+- Phase 6 review provider mimarisi hazır (`kie` ve `google-gemini` seçilebilir, default `kie`); KIE review endpoint kontratı henüz netleşmediği için `kie-gemini-flash` provider STUB durumda — review job FAIL olur. Aşama 2'de KIE.ai Gemini endpoint kontratı belirlenince implemente edilecek.
+- `google-gemini-flash` provider Google API direct yolu; mock testlerle doğrulandı, canlı `geminiApiKey` ile smoke yapılmadı (kullanıcının canlı Google key'i yok; pratikte KIE üzerinden gidiliyor).
+- Phase 6 cost tracking **conservative estimate** kullanır (1 cent/review, daily $10/user); gerçek Gemini faturalama değildir. Review pipeline canlı çalışmadığı için CostUsage tablosu henüz dolmuyor.
 
 **Bugün gerçekten ne yapıyor:**
 
@@ -17,10 +18,11 @@ Phase 1–6 production-ready (auth, references, competitor analysis, trend stori
 - Bookmark → Reference → Collection iş akışı, multi-user veri izolasyonu
 - **AI Mode variation generation:** Reference görselden 6–12 varyasyon, KIE GPT Image 1.5 + Z-Image provider'ları üzerinden, per-user `kieApiKey` ile
 - **Local Mode variation generation:** Disk'teki PNG/JPG asset'lerini reference olarak işaretleme + alpha/DPI/boyut tabanlı kalite skoru
-- **AI Quality Review (Phase 6):**
+- **AI Quality Review (Phase 6, Aşama 1 — mimari + UI tamam; KIE provider Aşama 2 bekleniyor):**
+  - Review provider seçimi (`/settings` → AI Mode): `kie` (önerilen, default) veya `google-gemini` (ileri seviye)
   - AI tasarımları için `GENERATE_VARIATIONS` SUCCESS sonrası otomatik review job tetiklenir
   - Local asset'ler için `POST /api/review/local-batch` ile manuel batch
-  - Hibrit pipeline: Sharp deterministic alpha kontrolleri (sadece transparent ürünlerde) + Gemini 2.5 Flash multimodal vision review
+  - Hibrit pipeline mimarisi: Sharp deterministic alpha kontrolleri (sadece transparent ürünlerde) + provider-selectable LLM (KIE STUB veya Google Gemini direct mock-tested)
   - 8 sabit risk flag türü (watermark, signature, logo, celebrity face, alpha, edge artifact, text, gibberish text)
   - Karar kuralı: `risk_flags > 0` veya `score < 60` ⇒ NEEDS_REVIEW; `score ≥ 90` + risk yok ⇒ APPROVED; aksi NEEDS_REVIEW (güvenli varsayılan)
   - USER override sticky (R12): "Approve anyway" sonrası SYSTEM yazımı race-safe `updateMany` ile engellenir
@@ -31,7 +33,8 @@ Phase 1–6 production-ready (auth, references, competitor analysis, trend stori
 
 **Henüz çalışmayan / eksik (dürüstlük):**
 
-- Real Gemini smoke testi henüz user handoff ile doğrulanmadı (Phase 5 paterni — kullanıcı kendi `geminiApiKey`'iyle manuel doğrulama yapacak)
+- **KIE review provider implementasyonu (Aşama 2; KIE.ai Gemini endpoint kontratı bekleniyor) — default `reviewProvider: "kie"` durumunda review job FAIL** (yön mesajıyla; kullanıcı `"google-gemini"`'ye geçebilir veya bekleyebilir)
+- Direct Google Gemini provider canlı doğrulanmadı (`google-gemini` seçeneği mock testleriyle çalışır; kullanıcı canlı Google `geminiApiKey` girerse çalışabilir ama smoke yapılmadı)
 - Real-time cost pricing yok (conservative 1 cent estimate; carry-forward `cost-real-time-pricing`)
 - Admin cost-usage UI yok (carry-forward `cost-budget-settings-ui`)
 - Generate-variations cost tracking yok (Phase 5 KIE provider için; carry-forward `generate-variations-cost-tracking`)
@@ -62,12 +65,12 @@ Phase 1–6 production-ready (auth, references, competitor analysis, trend stori
 
 **Provider abstraction (`src/providers/`):**
 - `image/` — KIE GPT Image 1.5, KIE Z-Image (Phase 5)
-- `review/` — Gemini 2.5 Flash (Phase 6, Zod-validated JSON output, raw fetch + AbortSignal timeout)
+- `review/` — selectable provider (Phase 6 Aşama 1): `google-gemini-flash` (Google direct, Zod-validated JSON output, raw fetch + AbortSignal timeout, mock-tested) + `kie-gemini-flash` (STUB, Aşama 2'de impl). Runtime seçim `settings.reviewProvider`.
 - `scraper/`, `storage/`, `mockup/`, `ocr/` — Phase 3-5
 - Registry paterni (R17.3): Hardcoded provider lookup yasak, sessiz fallback yasak.
 
 **Settings (`src/features/settings/`):**
-- `aiMode` — per-user encrypted `kieApiKey` + `geminiApiKey` (Phase 5'te kuruldu, Phase 6'da review provider tüketir)
+- `aiMode` — per-user encrypted `kieApiKey` + `geminiApiKey` (Phase 5'te kuruldu, Phase 6'da review provider tüketir) + plain `reviewProvider: "kie"|"google-gemini"` runtime seçimi (Aşama 1)
 - `localLibrary` — kök klasör yolu, hedef çözünürlük/DPI
 
 **Review pipeline (`src/server/services/review/`):**
@@ -84,7 +87,7 @@ Phase 1–6 production-ready (auth, references, competitor analysis, trend stori
 
 | Adım | Kapsam |
 |------|--------|
-| Phase 6 user smoke | Real Gemini smoke checklist'i kullanıcı tarafından uygula (`docs/design/implementation-notes/phase6-quality-review.md`) |
+| Phase 6 Aşama 2 | KIE review provider implementasyonu (KIE.ai Gemini endpoint kontratı netleştikten sonra) + canlı smoke. Bekleyen dış kontrat: endpoint URL, auth header, sync/async pattern, request body image input format, response envelope, model id string. |
 | Phase 7 | Selection Studio (background removal, color editor, crop, upscale, transparent PNG kontrolü) |
 | Phase 8 | Mockup Studio (canvas/wall art, clipart bundle cover, sticker sheet) |
 | Phase 9 | Listing Builder + Etsy draft push (direct active publish YOK; human approval gate'i) |
@@ -157,7 +160,7 @@ Admin girişi için `.env.local` dosyasındaki `ADMIN_EMAIL` / `ADMIN_PASSWORD` 
 | 3 | Competitor Analysis: scraper abstraction, review-based ranking, Etsy/Amazon parser, daily cron | ✅ |
 | 4 | Trend Stories: n-gram cluster + rail/feed/drawer + window tabs + feature gate | ✅ |
 | 5 | Variation Generation: KIE provider abstraction, AI Mode + Local Mode, quality scoring | ✅ |
-| 6 | AI Quality Review: hibrit pipeline (Sharp + Gemini), USER sticky, queue UI, bulk actions, conservative cost tracking | ✅ (conservative cost estimate; real Gemini smoke kullanıcı handoff ile doğrulanacak) |
+| 6 | AI Quality Review: hibrit pipeline (Sharp + selectable LLM), USER sticky, queue UI, bulk actions, conservative cost tracking | 🟡 (Aşama 1 mimari + selection ✅; Aşama 2 KIE review provider impl ⏳ — KIE.ai Gemini endpoint kontratı bekleniyor) |
 | 7 | Selection Studio | ⏳ |
 | 8 | Mockup Studio | ⏳ |
 | 9 | Listing Builder + Etsy draft push | ⏳ |

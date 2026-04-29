@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { geminiFlashReviewProvider } from "@/providers/review/gemini-2-5-flash";
+import { googleGeminiFlashReviewProvider } from "@/providers/review/google-gemini-flash";
 
 // image-loader'ı mockla — gemini logic'ini izole edelim
 vi.mock("@/providers/review/image-loader", () => ({
@@ -38,12 +38,12 @@ beforeEach(() => {
   global.fetch = vi.fn() as unknown as typeof fetch;
 });
 
-describe("Gemini review provider — başarılı senaryolar", () => {
+describe("Google Gemini Flash review provider — başarılı senaryolar", () => {
   it("valid JSON output → ReviewOutput parse edilir + costCents 1 (conservative estimate)", async () => {
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       mockGeminiResponse(JSON.stringify(validOutput)),
     );
-    const result = await geminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" });
+    const result = await googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" });
     expect(result.score).toBe(85);
     expect(result.riskFlags).toEqual([]);
     // Phase 6 Task 18 — conservative cost estimate (gerçek faturalama değil).
@@ -59,22 +59,22 @@ describe("Gemini review provider — başarılı senaryolar", () => {
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       mockGeminiResponse(JSON.stringify(withFlags)),
     );
-    const result = await geminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" });
+    const result = await googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" });
     expect(result.riskFlags).toHaveLength(1);
     expect(result.riskFlags[0]!.type).toBe("watermark_detected");
   });
 });
 
-describe("Gemini review provider — hata senaryoları (sessiz fallback yok)", () => {
+describe("Google Gemini Flash review provider — hata senaryoları (sessiz fallback yok)", () => {
   it("apiKey boş ⇒ throw", async () => {
     await expect(
-      geminiFlashReviewProvider.review(baseInput, { apiKey: "" }),
+      googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "" }),
     ).rejects.toThrow(/api key missing/i);
   });
 
   it("apiKey sadece whitespace ⇒ throw", async () => {
     await expect(
-      geminiFlashReviewProvider.review(baseInput, { apiKey: "   " }),
+      googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "   " }),
     ).rejects.toThrow(/api key missing/i);
   });
 
@@ -86,7 +86,7 @@ describe("Gemini review provider — hata senaryoları (sessiz fallback yok)", (
       json: async () => ({}),
     });
     await expect(
-      geminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
+      googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
     ).rejects.toThrow(/gemini review failed: 500/);
   });
 
@@ -98,7 +98,7 @@ describe("Gemini review provider — hata senaryoları (sessiz fallback yok)", (
       json: async () => ({ candidates: [] }),
     });
     await expect(
-      geminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
+      googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
     ).rejects.toThrow(/empty candidates/);
   });
 
@@ -110,7 +110,7 @@ describe("Gemini review provider — hata senaryoları (sessiz fallback yok)", (
       json: async () => ({ candidates: [{ content: { parts: [{ text: "" }] } }] }),
     });
     await expect(
-      geminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
+      googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
     ).rejects.toThrow(/empty response text/);
   });
 
@@ -119,7 +119,7 @@ describe("Gemini review provider — hata senaryoları (sessiz fallback yok)", (
       mockGeminiResponse("not json at all"),
     );
     await expect(
-      geminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
+      googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
     ).rejects.toThrow(/non-JSON output/);
   });
 
@@ -129,7 +129,7 @@ describe("Gemini review provider — hata senaryoları (sessiz fallback yok)", (
       mockGeminiResponse(JSON.stringify(bad)),
     );
     await expect(
-      geminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
+      googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
     ).rejects.toThrow(/invalid output schema/i);
   });
 
@@ -142,7 +142,7 @@ describe("Gemini review provider — hata senaryoları (sessiz fallback yok)", (
       mockGeminiResponse(JSON.stringify(bad)),
     );
     await expect(
-      geminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
+      googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
     ).rejects.toThrow(/invalid output schema/i);
   });
 
@@ -152,7 +152,7 @@ describe("Gemini review provider — hata senaryoları (sessiz fallback yok)", (
       mockGeminiResponse(JSON.stringify(bad)),
     );
     await expect(
-      geminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
+      googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" }),
     ).rejects.toThrow(/invalid output schema/i);
   });
 });

@@ -1,11 +1,25 @@
 import { describe, it, expect } from "vitest";
 import { getReviewProvider, listReviewProviders } from "@/providers/review/registry";
 
-describe("Review provider registry — R17.3", () => {
-  it("bilinen id ile provider döner", () => {
-    const provider = getReviewProvider("gemini-2-5-flash");
-    expect(provider.id).toBe("gemini-2-5-flash");
+describe("Review provider registry — R17.3 + Phase 6 Aşama 1", () => {
+  it("'google-gemini-flash' provider döner (mock-tested direct Google API)", () => {
+    const provider = getReviewProvider("google-gemini-flash");
+    expect(provider.id).toBe("google-gemini-flash");
     expect(provider.kind).toBe("vision");
+    expect(typeof provider.review).toBe("function");
+  });
+
+  it("'kie-gemini-flash' provider döner (Aşama 2 STUB)", () => {
+    const provider = getReviewProvider("kie-gemini-flash");
+    expect(provider.id).toBe("kie-gemini-flash");
+    expect(provider.kind).toBe("vision");
+    expect(typeof provider.review).toBe("function");
+  });
+
+  it("eski 'gemini-2-5-flash' id'si artık reddedilir (rename sonrası)", () => {
+    expect(() => getReviewProvider("gemini-2-5-flash")).toThrow(
+      /unknown review provider: "gemini-2-5-flash"/i,
+    );
   });
 
   it("bilinmeyen id'de explicit throw (sessiz fallback yok)", () => {
@@ -15,17 +29,19 @@ describe("Review provider registry — R17.3", () => {
     expect(() => getReviewProvider("")).toThrow(/unknown review provider/i);
   });
 
-  it("listReviewProviders provider nesnelerini döndürür (sadece id değil)", () => {
+  it("listReviewProviders 2 provider döndürür (google-gemini-flash + kie-gemini-flash)", () => {
     const providers = listReviewProviders();
-    expect(providers.length).toBeGreaterThanOrEqual(1);
-    const gemini = providers.find((p) => p.id === "gemini-2-5-flash");
-    expect(gemini).toBeDefined();
-    expect(gemini!.kind).toBe("vision");
-    expect(typeof gemini!.review).toBe("function");
+    expect(providers).toHaveLength(2);
+    const ids = providers.map((p) => p.id).sort();
+    expect(ids).toEqual(["google-gemini-flash", "kie-gemini-flash"]);
+    for (const p of providers) {
+      expect(p.kind).toBe("vision");
+      expect(typeof p.review).toBe("function");
+    }
   });
 
-  it("registry'den dönen provider api key olmadan çağrılırsa explicit throw (sessiz fallback yok)", async () => {
-    const provider = getReviewProvider("gemini-2-5-flash");
+  it("google-gemini-flash api key olmadan çağrılırsa explicit throw", async () => {
+    const provider = getReviewProvider("google-gemini-flash");
     await expect(
       provider.review(
         {
@@ -36,5 +52,19 @@ describe("Review provider registry — R17.3", () => {
         { apiKey: "" },
       ),
     ).rejects.toThrow(/api key/i);
+  });
+
+  it("kie-gemini-flash STUB: çağrılırsa Aşama 2 yönlendirici throw (apiKey'e bakmaz)", async () => {
+    const provider = getReviewProvider("kie-gemini-flash");
+    await expect(
+      provider.review(
+        {
+          image: { kind: "remote-url", url: "https://example.com/x.png" },
+          productType: "wall_art",
+          isTransparentTarget: false,
+        },
+        { apiKey: "valid-key" },
+      ),
+    ).rejects.toThrow(/Aşama 2/);
   });
 });

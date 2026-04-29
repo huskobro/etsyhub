@@ -27,11 +27,11 @@ import { recordCostUsage } from "@/server/services/cost/track-usage";
  * Pipeline:
  *   1. Job al → kayıt fetch + ownership doğrula
  *   2. Sticky check (USER source ⇒ skip + log "user_sticky")
- *   3. API key resolve (per-user geminiApiKey, encrypted at rest)
+ *   3. Provider + apiKey resolve (per-user settings, encrypted at rest)
  *   4. Image input hazırla (remote signed URL veya local file path)
  *   5. Product-type gate (TRANSPARENT_TARGET_TYPES)
  *   6. Alpha checks (sadece local + transparent — AI mode'da ATLA)
- *   7. Gemini review (Task 4 provider)
+ *   7. LLM review (selectable: kie-gemini-flash | google-gemini-flash)
  *   8. Merge alpha + LLM flags
  *   9. Decision (Task 6 deterministic kural)
  *  10. Persist (transaction): scope'a göre design veya local asset
@@ -44,13 +44,20 @@ import { recordCostUsage } from "@/server/services/cost/track-usage";
  *   üstünde tutulur.
  * - reviewIssues legacy alanı YAZILMAZ — canonical alan reviewRiskFlags.
  *
+ * Phase 6 Aşama 1 — Provider seçimi:
+ * - settings.reviewProvider ("kie" default | "google-gemini") runtime'da
+ *   resolve edilir; hardcoded provider id YASAK.
+ * - "kie" ⇒ kieApiKey + provider id "kie-gemini-flash" (STUB; Aşama 2)
+ * - "google-gemini" ⇒ geminiApiKey + provider id "google-gemini-flash"
+ *   (mock-tested direct Google API)
+ * - DesignReview audit + CostUsage `providerKey` runtime providerId yazar.
+ *
  * BullMQ retry: bootstrap'ta blanket retry YOK (default 1 attempt).
  * Permanent error'lar (api key yok, image too large, Zod fail) tek seferde
  * fail; transient retry policy ayrı follow-up'a bırakıldı.
  */
 
 const TRANSPARENT_TARGET_TYPES = new Set(["clipart", "sticker", "transparent_png"]);
-const PROVIDER_ID = "gemini-2-5-flash";
 
 /** Signed URL TTL (saniye): provider tek seferlik fetch yapar; 1 saat fazlasıyla yeter. */
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
@@ -134,14 +141,16 @@ async function handleDesignReview(
     return { skipped: true, reason: "user_sticky" };
   }
 
-  // Daily budget guardrail (Task 18) — sticky'den sonra, API key/provider
-  // çağrısından önce. USER sticky early-return üstte yer aldığı için override
-  // edilmiş kayıtlar budget tüketmez. Limit aşılırsa explicit throw (sessiz
-  // skip YASAK); kullanıcı UI'da error görür.
+  // Daily budget guardrail (Task 18) — sticky'den sonra, provider resolve'dan
+  // önce. USER sticky early-return üstte yer aldığı için override edilmiş
+  // kayıtlar budget tüketmez. Limit aşılırsa explicit throw (sessiz skip YASAK);
+  // kullanıcı UI'da error görür.
   await assertWithinDailyBudget(payload.userId, ProviderKind.AI);
 
-  // API key resolve — Phase 5 helper decrypt iş yapıyor.
-  const apiKey = await resolveGeminiApiKey(payload.userId);
+  // Phase 6 Aşama 1 — Provider + apiKey resolve (settings.reviewProvider).
+  // "kie" ⇒ kie-gemini-flash + kieApiKey (STUB throw); "google-gemini" ⇒
+  // google-gemini-flash + geminiApiKey (mock-tested).
+  const { providerId, apiKey } = await resolveReviewProviderConfig(payload.userId);
 
   // Image input — AI mode: cloud asset; signed URL üret.
   const signedUrl = await getStorage().signedUrl(
@@ -155,8 +164,8 @@ async function handleDesignReview(
   const isTransparent = TRANSPARENT_TARGET_TYPES.has(productKey);
   const alphaFlags: ReviewRiskFlag[] = []; // AI mode: skip
 
-  // Gemini review
-  const provider = getReviewProvider(PROVIDER_ID);
+  // LLM review (selectable provider)
+  const provider = getReviewProvider(providerId);
   const llm = await provider.review(
     { image, productType: productKey, isTransparentTarget: isTransparent },
     { apiKey },
@@ -169,7 +178,7 @@ async function handleDesignReview(
   const decision = decideReviewStatus({ score: llm.score, riskFlags: allFlags });
 
   // Snapshot — CLAUDE.md kuralı: provider+prompt her review yazımında persist.
-  const providerSnapshot = buildProviderSnapshot(PROVIDER_ID, new Date());
+  const providerSnapshot = buildProviderSnapshot(providerId, new Date());
   const promptSnapshot = `${REVIEW_PROMPT_VERSION}\n${REVIEW_SYSTEM_PROMPT}`;
 
   // Persist (K2 — sticky TOCTOU race fix):
@@ -223,10 +232,10 @@ async function handleDesignReview(
     reviewer: "system",
     score: llm.score,
     decision,
-    provider: PROVIDER_ID,
+    provider: providerId,
     // model alanı şu an provider id ile aynı; provider id ↔ model id
     // ayrımı follow-up.
-    model: PROVIDER_ID,
+    model: providerId,
     promptSnapshot: REVIEW_SYSTEM_PROMPT,
     responseSnapshot: llm as unknown as Prisma.InputJsonValue,
   };
@@ -243,8 +252,8 @@ async function handleDesignReview(
     await recordCostUsage({
       userId: payload.userId,
       providerKind: ProviderKind.AI,
-      providerKey: PROVIDER_ID,
-      model: PROVIDER_ID,
+      providerKey: providerId,
+      model: providerId,
       units: 1,
       costCents: llm.costCents ?? REVIEW_ESTIMATED_COST_CENTS_FALLBACK,
     });
@@ -264,6 +273,7 @@ async function handleDesignReview(
     {
       jobId: job.id,
       designId: design.id,
+      providerId,
       status: decision,
       score: llm.score,
       flagCount: allFlags.length,
@@ -306,8 +316,8 @@ async function handleLocalAssetReview(
   // Dalga B reviewer Ö1 carry-forward, bu dalgada paralel implementasyon.
   await assertWithinDailyBudget(payload.userId, ProviderKind.AI);
 
-  // API key resolve
-  const apiKey = await resolveGeminiApiKey(payload.userId);
+  // Phase 6 Aşama 1 — Provider + apiKey resolve (settings.reviewProvider).
+  const { providerId, apiKey } = await resolveReviewProviderConfig(payload.userId);
 
   // Image input — Local mode: disk path
   const image: ImageInput = { kind: "local-path", filePath: asset.filePath };
@@ -322,8 +332,8 @@ async function handleLocalAssetReview(
     ? await runAlphaChecks(asset.filePath)
     : [];
 
-  // Gemini review
-  const provider = getReviewProvider(PROVIDER_ID);
+  // LLM review (selectable provider)
+  const provider = getReviewProvider(providerId);
   const llm = await provider.review(
     { image, productType: productKey, isTransparentTarget: isTransparent },
     { apiKey },
@@ -332,7 +342,7 @@ async function handleLocalAssetReview(
   const allFlags: ReviewRiskFlag[] = [...alphaFlags, ...llm.riskFlags];
   const decision = decideReviewStatus({ score: llm.score, riskFlags: allFlags });
 
-  const providerSnapshot = buildProviderSnapshot(PROVIDER_ID, new Date());
+  const providerSnapshot = buildProviderSnapshot(providerId, new Date());
   const promptSnapshot = `${REVIEW_PROMPT_VERSION}\n${REVIEW_SYSTEM_PROMPT}`;
 
   // Persist — LocalLibraryAsset; audit trail YOK (DesignReview yalnız scope=design).
@@ -370,8 +380,8 @@ async function handleLocalAssetReview(
     await recordCostUsage({
       userId: payload.userId,
       providerKind: ProviderKind.AI,
-      providerKey: PROVIDER_ID,
-      model: PROVIDER_ID,
+      providerKey: providerId,
+      model: providerId,
       units: 1,
       costCents: llm.costCents ?? REVIEW_ESTIMATED_COST_CENTS_FALLBACK,
     });
@@ -391,6 +401,7 @@ async function handleLocalAssetReview(
     {
       jobId: job.id,
       assetId: asset.id,
+      providerId,
       status: decision,
       score: llm.score,
       flagCount: allFlags.length,
@@ -401,18 +412,38 @@ async function handleLocalAssetReview(
 }
 
 /**
- * Per-user Gemini API key resolve. Phase 5'te kurulan
- * `userSetting.aiMode.geminiApiKey` (encrypted at rest) Phase 5 helper
- * üzerinden decrypt edilir.
+ * Per-user review provider + apiKey resolve. Phase 6 Aşama 1.
  *
- * Yoksa explicit throw — sessiz fallback yok, kullanıcı UI'da
- * "Settings'te Gemini key ekleyin" mesajı görür.
+ * `settings.reviewProvider` ("kie" default | "google-gemini") runtime'da
+ * provider id ve ilgili apiKey'i döner. Eksik key durumunda explicit throw
+ * (sessiz fallback YASAK); kullanıcı UI'da "Settings → AI Mode" yön mesajı görür.
+ *
+ * - "kie" ⇒ kieApiKey + provider id "kie-gemini-flash" (Aşama 2'de impl)
+ * - "google-gemini" ⇒ geminiApiKey + provider id "google-gemini-flash"
+ *   (mock-tested direct Google API)
  */
-async function resolveGeminiApiKey(userId: string): Promise<string> {
+async function resolveReviewProviderConfig(
+  userId: string,
+): Promise<{ providerId: string; apiKey: string }> {
   const settings = await getUserAiModeSettings(userId);
+  const choice = settings.reviewProvider;
+
+  if (choice === "kie") {
+    const key = settings.kieApiKey;
+    if (!key || key.trim() === "") {
+      throw new Error(
+        `kie review provider seçili ama kieApiKey ayarlanmamış (Settings → AI Mode); userId=${userId}`,
+      );
+    }
+    return { providerId: "kie-gemini-flash", apiKey: key };
+  }
+
+  // choice === "google-gemini"
   const key = settings.geminiApiKey;
   if (!key || key.trim() === "") {
-    throw new Error(`no gemini api key configured for user: ${userId}`);
+    throw new Error(
+      `google-gemini review provider seçili ama geminiApiKey ayarlanmamış (Settings → AI Mode); userId=${userId}`,
+    );
   }
-  return key;
+  return { providerId: "google-gemini-flash", apiKey: key };
 }

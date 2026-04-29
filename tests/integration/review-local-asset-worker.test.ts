@@ -10,10 +10,12 @@ import {
 import { encryptSecret } from "@/lib/secrets";
 import { dailyPeriodKey } from "@/server/services/cost/period-key";
 
+// Phase 6 Aşama 1: registry id-aware mock; worker hangi provider id'yi
+// resolve ederse o id'yi geri döner.
 const reviewMock = vi.fn();
 vi.mock("@/providers/review/registry", () => ({
-  getReviewProvider: () => ({
-    id: "gemini-2-5-flash",
+  getReviewProvider: (id: string) => ({
+    id,
     kind: "vision" as const,
     review: (...args: unknown[]) => reviewMock(...args),
   }),
@@ -53,22 +55,17 @@ async function seedLocalAsset(opts: SeedOptions = {}): Promise<SeedResult> {
     create: { id: USER_ID, email: "rev-local@test.local", passwordHash: "x" },
   });
 
+  // Phase 6 Aşama 1: reviewProvider "google-gemini" set — mevcut local
+  // worker testleri Google direct mock pattern'ı ile çalışır.
+  const value = {
+    kieApiKey: null,
+    geminiApiKey: encryptSecret("AIza-test-fake-key-456"),
+    reviewProvider: "google-gemini" as const,
+  };
   await db.userSetting.upsert({
     where: { userId_key: { userId: USER_ID, key: "aiMode" } },
-    update: {
-      value: {
-        kieApiKey: null,
-        geminiApiKey: encryptSecret("AIza-test-fake-key-456"),
-      },
-    },
-    create: {
-      userId: USER_ID,
-      key: "aiMode",
-      value: {
-        kieApiKey: null,
-        geminiApiKey: encryptSecret("AIza-test-fake-key-456"),
-      },
-    },
+    update: { value },
+    create: { userId: USER_ID, key: "aiMode", value },
   });
 
   const uniq = `${Date.now()}-${Math.random()}`;
@@ -136,7 +133,7 @@ describe("handleReviewDesign — scope=local", () => {
     expect(updated?.reviewStatusSource).toBe(ReviewStatusSource.SYSTEM);
     expect(updated?.reviewScore).toBe(92);
     expect(updated?.reviewSummary).toBe("minimalist wall art");
-    expect(updated?.reviewProviderSnapshot).toMatch(/^gemini-2-5-flash@\d{4}-\d{2}-\d{2}$/);
+    expect(updated?.reviewProviderSnapshot).toMatch(/^google-gemini-flash@\d{4}-\d{2}-\d{2}$/);
     expect(updated?.reviewPromptSnapshot).toContain("v1.0");
     expect(updated?.reviewedAt).not.toBeNull();
     // Legacy reviewIssues yazılmıyor.
@@ -293,7 +290,7 @@ describe("handleReviewDesign — scope=local — Task 18 cost tracking + budget"
     expect(row.costCents).toBe(1);
     expect(row.units).toBe(1);
     expect(row.providerKind).toBe(ProviderKind.AI);
-    expect(row.providerKey).toBe("gemini-2-5-flash");
+    expect(row.providerKey).toBe("google-gemini-flash");
     expect(row.periodKey).toBe(dailyPeriodKey());
   });
 
@@ -304,8 +301,8 @@ describe("handleReviewDesign — scope=local — Task 18 cost tracking + budget"
       data: {
         userId: USER_ID,
         providerKind: ProviderKind.AI,
-        providerKey: "gemini-2-5-flash",
-        model: "gemini-2-5-flash",
+        providerKey: "google-gemini-flash",
+        model: "google-gemini-flash",
         units: 1000,
         costCents: 1000,
         periodKey: dailyPeriodKey(),
