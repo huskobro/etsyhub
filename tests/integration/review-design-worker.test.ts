@@ -308,4 +308,99 @@ describe("handleReviewDesign — scope=design", () => {
 
     expect(alphaMock).not.toHaveBeenCalled();
   });
+
+  it("K1 idempotent rerun: aynı design 2 kez review ⇒ ikinci PASS, audit row override (1 row)", async () => {
+    const { designId } = await seedDesign();
+
+    reviewMock.mockResolvedValueOnce({
+      score: 95,
+      textDetected: false,
+      gibberishDetected: false,
+      riskFlags: [],
+      summary: "first review",
+    });
+    const result1 = await handleReviewDesign(
+      makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
+    );
+    expect(result1.skipped).toBe(false);
+    expect(result1.score).toBe(95);
+
+    // İkinci run — yeni provider çıktısı; eski impl P2002 ile crash ediyordu.
+    reviewMock.mockResolvedValueOnce({
+      score: 80,
+      textDetected: false,
+      gibberishDetected: false,
+      riskFlags: [],
+      summary: "second review",
+    });
+    const result2 = await handleReviewDesign(
+      makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
+    );
+    expect(result2.skipped).toBe(false);
+    expect(result2.score).toBe(80);
+
+    // Audit row 1 adet (upsert override) — son review snapshot'ı.
+    const audits = await db.designReview.findMany({
+      where: { generatedDesignId: designId },
+    });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.score).toBe(80);
+
+    // Design row da güncel (son review).
+    const updated = await db.generatedDesign.findUnique({
+      where: { id: designId },
+    });
+    expect(updated?.reviewScore).toBe(80);
+    expect(updated?.reviewSummary).toBe("second review");
+  });
+
+  it("K2 sticky race: Gemini fetch sırasında USER yazarsa SYSTEM override etmez", async () => {
+    const { designId } = await seedDesign();
+
+    // Provider mock: Gemini fetch'i simüle ediyoruz; mid-call'da USER endpoint
+    // yazısını taklit etmek için DB'yi update ediyoruz. Worker T2 sonrası
+    // updateMany WHERE'inde reviewStatusSource ≠ USER guard'a yakalanmalı.
+    reviewMock.mockImplementationOnce(async () => {
+      await db.generatedDesign.update({
+        where: { id: designId },
+        data: {
+          reviewStatus: ReviewStatus.APPROVED,
+          reviewStatusSource: ReviewStatusSource.USER,
+          reviewedAt: new Date(),
+        },
+      });
+      return {
+        score: 50,
+        textDetected: false,
+        gibberishDetected: false,
+        riskFlags: [],
+        summary: "system would say needs review",
+      };
+    });
+
+    const result = await handleReviewDesign(
+      makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
+    );
+
+    // Worker race detect ediyor.
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toBe("user_sticky_race");
+
+    // USER yazısı korundu.
+    const updated = await db.generatedDesign.findUnique({
+      where: { id: designId },
+    });
+    expect(updated?.reviewStatus).toBe(ReviewStatus.APPROVED);
+    expect(updated?.reviewStatusSource).toBe(ReviewStatusSource.USER);
+    // SYSTEM yazmadı: review alanları null kaldı.
+    expect(updated?.reviewScore).toBeNull();
+    expect(updated?.reviewSummary).toBeNull();
+    expect(updated?.reviewProviderSnapshot).toBeNull();
+
+    // Audit insert YAPILMADI (race detect ⇒ audit upsert atlandı).
+    const audits = await db.designReview.findMany({
+      where: { generatedDesignId: designId },
+    });
+    expect(audits).toHaveLength(0);
+  });
 });

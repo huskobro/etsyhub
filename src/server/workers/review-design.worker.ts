@@ -156,41 +156,69 @@ async function handleDesignReview(
   const providerSnapshot = buildProviderSnapshot(PROVIDER_ID, new Date());
   const promptSnapshot = `${REVIEW_PROMPT_VERSION}\n${REVIEW_SYSTEM_PROMPT}`;
 
-  // Persist (atomic transaction):
-  //  - GeneratedDesign update: review alanları + snapshot
-  //  - DesignReview create: audit trail (scope=design'a özel)
-  await db.$transaction([
-    db.generatedDesign.update({
-      where: { id: design.id },
-      data: {
-        reviewStatus: decision,
-        reviewStatusSource: ReviewStatusSource.SYSTEM,
-        reviewScore: llm.score,
-        reviewSummary: llm.summary,
-        reviewRiskFlags: allFlags as unknown as Prisma.InputJsonValue,
-        textDetected: llm.textDetected,
-        gibberishDetected: llm.gibberishDetected,
-        reviewedAt: new Date(),
-        reviewProviderSnapshot: providerSnapshot,
-        reviewPromptSnapshot: promptSnapshot,
-        // reviewIssues legacy alanı YAZILMIYOR (canonical: reviewRiskFlags)
-      },
-    }),
-    db.designReview.create({
-      data: {
-        generatedDesignId: design.id,
-        reviewer: "system",
-        score: llm.score,
-        decision,
-        provider: PROVIDER_ID,
-        // model alanı şu an provider id ile aynı; provider id ↔ model id
-        // ayrımı follow-up.
-        model: PROVIDER_ID,
-        promptSnapshot: REVIEW_SYSTEM_PROMPT,
-        responseSnapshot: llm as unknown as Prisma.InputJsonValue,
-      },
-    }),
-  ]);
+  // Persist (K2 — sticky TOCTOU race fix):
+  //   T1 sticky read + T2 Gemini fetch (1-30sn) arasında USER "Approve anyway"
+  //   yazabilir. updateMany + conditional WHERE (`reviewStatusSource ≠ USER`)
+  //   atomik bir last-write guard sağlar. count===0 ⇒ USER araya girdi,
+  //   audit insert YAPMA, skip log + return.
+  //
+  //   K1 — DesignReview rerun crash fix:
+  //   `generatedDesignId @unique` nedeniyle ikinci başarılı SYSTEM run'unda
+  //   create P2002 atıyordu (Task 9 auto-enqueue / Task 11 reset rerun).
+  //   upsert ile create dalı ilk review'da, update dalı sonraki review'larda
+  //   son review snapshot ile audit row'u override eder.
+  //
+  //   updateMany ve audit upsert artık **iki ayrı çağrı** — atomik tek
+  //   transaction içinde count check + conditional yapamıyoruz (Prisma fluent
+  //   $transaction array bağlantı kuramaz). Pratikte mini-pencere
+  //   (MS-aralığı) kabul edilebilir; design kaydında zaten tüm review state
+  //   var (reviewProviderSnapshot/reviewPromptSnapshot) — audit "best effort".
+  const updateResult = await db.generatedDesign.updateMany({
+    where: {
+      id: design.id,
+      reviewStatusSource: { not: ReviewStatusSource.USER },
+    },
+    data: {
+      reviewStatus: decision,
+      reviewStatusSource: ReviewStatusSource.SYSTEM,
+      reviewScore: llm.score,
+      reviewSummary: llm.summary,
+      reviewRiskFlags: allFlags as unknown as Prisma.InputJsonValue,
+      textDetected: llm.textDetected,
+      gibberishDetected: llm.gibberishDetected,
+      reviewedAt: new Date(),
+      reviewProviderSnapshot: providerSnapshot,
+      reviewPromptSnapshot: promptSnapshot,
+      // reviewIssues legacy alanı YAZILMIYOR (canonical: reviewRiskFlags)
+    },
+  });
+
+  if (updateResult.count === 0) {
+    logger.warn(
+      { jobId: job.id, designId: design.id, scope: "design" },
+      "review skipped — user_sticky_race (USER wrote during Gemini call)",
+    );
+    return { skipped: true, reason: "user_sticky_race" };
+  }
+
+  // K1 — upsert: ikinci başarılı review'da DesignReview row override edilir.
+  // Audit semantik "son review snapshot'ı" — zaman serisi audit Phase 7+ follow-up.
+  const auditData = {
+    reviewer: "system",
+    score: llm.score,
+    decision,
+    provider: PROVIDER_ID,
+    // model alanı şu an provider id ile aynı; provider id ↔ model id
+    // ayrımı follow-up.
+    model: PROVIDER_ID,
+    promptSnapshot: REVIEW_SYSTEM_PROMPT,
+    responseSnapshot: llm as unknown as Prisma.InputJsonValue,
+  };
+  await db.designReview.upsert({
+    where: { generatedDesignId: design.id },
+    create: { generatedDesignId: design.id, ...auditData },
+    update: auditData,
+  });
 
   logger.info(
     {
@@ -264,8 +292,13 @@ async function handleLocalAssetReview(
   const promptSnapshot = `${REVIEW_PROMPT_VERSION}\n${REVIEW_SYSTEM_PROMPT}`;
 
   // Persist — LocalLibraryAsset; audit trail YOK (DesignReview yalnız scope=design).
-  await db.localLibraryAsset.update({
-    where: { id: asset.id },
+  // K2 — sticky TOCTOU race guard: updateMany + conditional WHERE.
+  // count===0 ⇒ USER araya girdi (Gemini fetch sırasında) ⇒ skip + log.
+  const updateResult = await db.localLibraryAsset.updateMany({
+    where: {
+      id: asset.id,
+      reviewStatusSource: { not: ReviewStatusSource.USER },
+    },
     data: {
       reviewStatus: decision,
       reviewStatusSource: ReviewStatusSource.SYSTEM,
@@ -278,6 +311,14 @@ async function handleLocalAssetReview(
       // reviewIssues legacy alanı YAZILMIYOR
     },
   });
+
+  if (updateResult.count === 0) {
+    logger.warn(
+      { jobId: job.id, assetId: asset.id, scope: "local" },
+      "review skipped — user_sticky_race (USER wrote during Gemini call)",
+    );
+    return { skipped: true, reason: "user_sticky_race" };
+  }
 
   logger.info(
     {

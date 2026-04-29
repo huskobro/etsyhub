@@ -182,4 +182,42 @@ describe("handleReviewDesign — scope=local", () => {
     expect(updated?.reviewProviderSnapshot).toBeNull();
     expect(updated?.reviewedAt).toBeNull();
   });
+
+  it("K2 sticky race: Gemini fetch sırasında USER yazarsa SYSTEM override etmez", async () => {
+    const { assetId } = await seedLocalAsset();
+
+    reviewMock.mockImplementationOnce(async () => {
+      // Mid-call: USER endpoint'inin yaptığı yazıyı simüle et.
+      await db.localLibraryAsset.update({
+        where: { id: assetId },
+        data: {
+          reviewStatus: ReviewStatus.APPROVED,
+          reviewStatusSource: ReviewStatusSource.USER,
+          reviewedAt: new Date(),
+        },
+      });
+      return {
+        score: 40,
+        textDetected: false,
+        gibberishDetected: false,
+        riskFlags: [],
+        summary: "system would say rejected",
+      };
+    });
+
+    const result = await handleReviewDesign(
+      makeJob({ scope: "local", localAssetId: assetId, userId: USER_ID }),
+    );
+
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toBe("user_sticky_race");
+
+    // USER yazısı korundu.
+    const updated = await db.localLibraryAsset.findUnique({ where: { id: assetId } });
+    expect(updated?.reviewStatus).toBe(ReviewStatus.APPROVED);
+    expect(updated?.reviewStatusSource).toBe(ReviewStatusSource.USER);
+    // SYSTEM yazmadı.
+    expect(updated?.reviewScore).toBeNull();
+    expect(updated?.reviewProviderSnapshot).toBeNull();
+  });
 });
