@@ -101,6 +101,13 @@ export type ReviewProviderKind = "vision";
 export interface ReviewProvider {
   /** Snapshot string'inde model parçası olarak görünür, örn. "gemini-2-5-flash". */
   id: string;
+  /**
+   * Provider'ın altta tükettiği gerçek model string'i (örn. "gemini-2.5-flash").
+   * Provider id ile aynı olmak zorunda değil — KIE id "kie-gemini-flash" iken
+   * modelId "gemini-2.5-flash" olur. Audit/log/CostUsage için kanonik kaynak;
+   * aynı model birden fazla transport (KIE / direct Google) altında çalışabilir.
+   */
+  modelId: string;
   kind: ReviewProviderKind;
   review: (input: ReviewInput, options: ReviewProviderRunOptions) => Promise<ReviewOutput>;
 }

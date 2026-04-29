@@ -1,22 +1,7 @@
-import { z } from "zod";
 import type { ReviewProvider, ReviewOutput } from "./types";
-import { REVIEW_RISK_FLAG_TYPES } from "./types";
+import { ReviewOutputSchema } from "./output-schema";
 import { REVIEW_SYSTEM_PROMPT, buildReviewUserPrompt, REVIEW_PROMPT_VERSION } from "./prompt";
 import { imageToInlineData } from "./image-loader";
-
-const RiskFlagSchema = z.object({
-  type: z.enum(REVIEW_RISK_FLAG_TYPES),
-  confidence: z.number().min(0).max(1),
-  reason: z.string().min(1),
-});
-
-const OutputSchema = z.object({
-  score: z.number().int().min(0).max(100),
-  textDetected: z.boolean(),
-  gibberishDetected: z.boolean(),
-  riskFlags: z.array(RiskFlagSchema),
-  summary: z.string(),
-});
 
 const GEMINI_MODEL = "gemini-2-5-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -60,6 +45,11 @@ const REVIEW_ESTIMATED_COST_CENTS = 1;
  */
 export const googleGeminiFlashReviewProvider: ReviewProvider = {
   id: "google-gemini-flash",
+  // Direct Google API'nin URL formatı hyphen kullanır
+  // (`/v1beta/models/gemini-2-5-flash`). KIE'de aynı model dot formatıyla
+  // ("gemini-2.5-flash") iletilir — iki farklı string, provider'ın kendi
+  // gerçeğini yansıtır. Audit/CostUsage row'u için kanonik kaynak.
+  modelId: "gemini-2-5-flash",
   kind: "vision",
   review: async (input, options) => {
     if (!options.apiKey || options.apiKey.trim() === "") {
@@ -117,7 +107,7 @@ export const googleGeminiFlashReviewProvider: ReviewProvider = {
       throw new Error(`gemini review failed: non-JSON output: ${text.slice(0, 200)}`);
     }
 
-    const result = OutputSchema.safeParse(parsed);
+    const result = ReviewOutputSchema.safeParse(parsed);
     if (!result.success) {
       throw new Error(`gemini review failed: invalid output schema: ${result.error.message}`);
     }

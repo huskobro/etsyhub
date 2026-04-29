@@ -12,11 +12,19 @@ import { dailyPeriodKey } from "@/server/services/cost/period-key";
 // Provider registry'yi mock'la — gerçek Gemini HTTP'ye gitmesin.
 // Phase 6 Aşama 1: registry id-aware mock; worker hangi provider id'yi
 // resolve ederse o id'yi geri döner (kie-gemini-flash veya
-// google-gemini-flash). KIE STUB testlerde gerçek throw için ayrı mock yapılır.
+// google-gemini-flash). Aşama 2A: modelId field provider interface'e eklendi
+// (audit.model = provider.modelId), id-aware mapping ile gerçek provider
+// modelId'sini taklit ediyoruz.
 const reviewMock = vi.fn();
+function modelIdForId(id: string): string {
+  if (id === "kie-gemini-flash") return "gemini-2.5-flash";
+  // google-gemini-flash veya diğer
+  return "gemini-2-5-flash";
+}
 vi.mock("@/providers/review/registry", () => ({
   getReviewProvider: (id: string) => ({
     id,
+    modelId: modelIdForId(id),
     kind: "vision" as const,
     review: (...args: unknown[]) => reviewMock(...args),
   }),
@@ -215,7 +223,8 @@ describe("handleReviewDesign — scope=design", () => {
     });
     expect(audit).toBeTruthy();
     expect(audit?.provider).toBe("google-gemini-flash");
-    expect(audit?.model).toBe("google-gemini-flash");
+    // Aşama 2A: audit.model = provider.modelId (gerçek model string).
+    expect(audit?.model).toBe("gemini-2-5-flash");
     expect(audit?.score).toBe(95);
     expect(audit?.decision).toBe(ReviewStatus.APPROVED);
     expect(audit?.reviewer).toBe("system");
@@ -446,7 +455,8 @@ describe("handleReviewDesign — Task 18 cost tracking + budget", () => {
     expect(row.units).toBe(1);
     expect(row.providerKind).toBe(ProviderKind.AI);
     expect(row.providerKey).toBe("google-gemini-flash");
-    expect(row.model).toBe("google-gemini-flash");
+    // Aşama 2A: CostUsage.model = provider.modelId.
+    expect(row.model).toBe("gemini-2-5-flash");
     expect(row.periodKey).toBe(dailyPeriodKey());
   });
 
@@ -495,36 +505,47 @@ describe("handleReviewDesign — Task 18 cost tracking + budget", () => {
   });
 });
 
-describe("handleReviewDesign — Phase 6 Aşama 1 review provider seçimi", () => {
-  it("default reviewProvider='kie' + kieApiKey set: STUB provider throw ⇒ review FAIL, cost insert YOK", async () => {
+describe("handleReviewDesign — Phase 6 Aşama 2A review provider seçimi", () => {
+  it("KIE provider: AI mode (remote-url) çalışır + audit.model = provider.modelId 'gemini-2.5-flash'", async () => {
     const { designId } = await seedDesign({
       reviewProvider: "kie",
       kieApiKey: "kie-test-key-aaa",
       geminiApiKey: null,
     });
 
-    // KIE STUB davranışını mock üzerinden simüle et — registry mock id-aware
-    // çağrı yapıyor, ama review() fonksiyonu shared reviewMock'a düşüyor.
-    // Worker `getReviewProvider("kie-gemini-flash")` çağıracak; reviewMock
-    // burada gerçek STUB'ın yön mesajını taklit eder.
-    reviewMock.mockRejectedValueOnce(
-      new Error(
-        "kie-gemini-flash review provider not implemented yet (Aşama 2). " +
-          "KIE.ai Gemini endpoint kontratı bekleniyor — settings'ten 'google-gemini' " +
-          "provider'a geçebilir veya Aşama 2 implementasyonunu bekleyebilirsiniz.",
-      ),
+    // KIE provider review başarılı — Aşama 2A AI mode canlı.
+    reviewMock.mockResolvedValueOnce({
+      score: 92,
+      textDetected: false,
+      gibberishDetected: false,
+      riskFlags: [],
+      summary: "kie review ok",
+      costCents: 1,
+    });
+
+    const result = await handleReviewDesign(
+      makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
     );
+    expect(result.skipped).toBe(false);
+    expect(result.score).toBe(92);
 
-    await expect(
-      handleReviewDesign(
-        makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
-      ),
-    ).rejects.toThrow(/kie-gemini-flash.*Aşama 2/i);
+    // Audit row: provider id = "kie-gemini-flash", model = modelId
+    // ("gemini-2.5-flash") — provider id ↔ model id ayrımı (Ö4 carry-forward).
+    const audit = await db.designReview.findUnique({
+      where: { generatedDesignId: designId },
+    });
+    expect(audit?.provider).toBe("kie-gemini-flash");
+    expect(audit?.model).toBe("gemini-2.5-flash");
 
-    // Provider review() throw ettiği için sonrası kod (persist + cost insert)
-    // çalışmadı. CostUsage tablosu boş kalır.
+    // CostUsage: providerKey = id, model = modelId.
     const usage = await db.costUsage.findMany({ where: { userId: USER_ID } });
-    expect(usage).toHaveLength(0);
+    expect(usage).toHaveLength(1);
+    expect(usage[0]!.providerKey).toBe("kie-gemini-flash");
+    expect(usage[0]!.model).toBe("gemini-2.5-flash");
+
+    // Provider snapshot KIE id'sini içerir.
+    const updated = await db.generatedDesign.findUnique({ where: { id: designId } });
+    expect(updated?.reviewProviderSnapshot).toMatch(/^kie-gemini-flash@\d{4}-\d{2}-\d{2}$/);
   });
 
   it("reviewProvider='google-gemini' + geminiApiKey YOK ⇒ explicit throw (yön mesajı)", async () => {

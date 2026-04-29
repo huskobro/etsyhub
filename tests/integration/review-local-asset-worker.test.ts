@@ -11,11 +11,16 @@ import { encryptSecret } from "@/lib/secrets";
 import { dailyPeriodKey } from "@/server/services/cost/period-key";
 
 // Phase 6 Aşama 1: registry id-aware mock; worker hangi provider id'yi
-// resolve ederse o id'yi geri döner.
+// resolve ederse o id'yi geri döner. Aşama 2A: modelId field eklendi.
 const reviewMock = vi.fn();
+function modelIdForId(id: string): string {
+  if (id === "kie-gemini-flash") return "gemini-2.5-flash";
+  return "gemini-2-5-flash";
+}
 vi.mock("@/providers/review/registry", () => ({
   getReviewProvider: (id: string) => ({
     id,
+    modelId: modelIdForId(id),
     kind: "vision" as const,
     review: (...args: unknown[]) => reviewMock(...args),
   }),
@@ -46,6 +51,10 @@ type SeedResult = { assetId: string };
 type SeedOptions = {
   reviewStatus?: ReviewStatus;
   reviewStatusSource?: ReviewStatusSource;
+  /** Aşama 2A: local + KIE varyasyonunu test etmek için. Default "google-gemini". */
+  reviewProvider?: "kie" | "google-gemini";
+  kieApiKey?: string | null;
+  geminiApiKey?: string | null;
 };
 
 async function seedLocalAsset(opts: SeedOptions = {}): Promise<SeedResult> {
@@ -55,12 +64,17 @@ async function seedLocalAsset(opts: SeedOptions = {}): Promise<SeedResult> {
     create: { id: USER_ID, email: "rev-local@test.local", passwordHash: "x" },
   });
 
-  // Phase 6 Aşama 1: reviewProvider "google-gemini" set — mevcut local
+  // Phase 6 Aşama 1: reviewProvider "google-gemini" default — mevcut local
   // worker testleri Google direct mock pattern'ı ile çalışır.
+  // Aşama 2A: opts.reviewProvider ile KIE varyantı seçilebilir.
+  const reviewProvider = opts.reviewProvider ?? "google-gemini";
+  const kieApiKeyRaw = opts.kieApiKey === undefined ? null : opts.kieApiKey;
+  const geminiApiKeyRaw =
+    opts.geminiApiKey === undefined ? "AIza-test-fake-key-456" : opts.geminiApiKey;
   const value = {
-    kieApiKey: null,
-    geminiApiKey: encryptSecret("AIza-test-fake-key-456"),
-    reviewProvider: "google-gemini" as const,
+    kieApiKey: kieApiKeyRaw ? encryptSecret(kieApiKeyRaw) : null,
+    geminiApiKey: geminiApiKeyRaw ? encryptSecret(geminiApiKeyRaw) : null,
+    reviewProvider,
   };
   await db.userSetting.upsert({
     where: { userId_key: { userId: USER_ID, key: "aiMode" } },
@@ -291,6 +305,8 @@ describe("handleReviewDesign — scope=local — Task 18 cost tracking + budget"
     expect(row.units).toBe(1);
     expect(row.providerKind).toBe(ProviderKind.AI);
     expect(row.providerKey).toBe("google-gemini-flash");
+    // Aşama 2A: CostUsage.model = provider.modelId.
+    expect(row.model).toBe("gemini-2-5-flash");
     expect(row.periodKey).toBe(dailyPeriodKey());
   });
 
@@ -321,5 +337,38 @@ describe("handleReviewDesign — scope=local — Task 18 cost tracking + budget"
     ).rejects.toThrow(/daily review budget exceeded/i);
 
     expect(reviewMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleReviewDesign — scope=local — Phase 6 Aşama 2A KIE local kapalı", () => {
+  it("local mode + reviewProvider 'kie' ⇒ provider 'KIE local review henüz etkin değil; Aşama 2B bekleniyor' throw + cost insert YOK", async () => {
+    const { assetId } = await seedLocalAsset({
+      reviewProvider: "kie",
+      kieApiKey: "kie-test-key-zzz",
+      geminiApiKey: null,
+    });
+
+    // KIE provider gerçek davranışını mock üzerinden taklit et:
+    // local-path image input'unda "Aşama 2B bekleniyor" yön mesajı throw.
+    // Mock registry id-aware; review() shared reviewMock'a düşer — yön
+    // mesajını mock'la ver.
+    reviewMock.mockRejectedValueOnce(
+      new Error("KIE local review henüz etkin değil; Aşama 2B bekleniyor."),
+    );
+
+    await expect(
+      handleReviewDesign(
+        makeJob({
+          scope: "local",
+          localAssetId: assetId,
+          userId: USER_ID,
+          productTypeKey: "wall_art",
+        }),
+      ),
+    ).rejects.toThrow(/KIE local review henüz etkin değil; Aşama 2B bekleniyor/);
+
+    // Provider throw ettiği için sonrası kod (persist + cost insert) çalışmadı.
+    const usage = await db.costUsage.findMany({ where: { userId: USER_ID } });
+    expect(usage).toHaveLength(0);
   });
 });

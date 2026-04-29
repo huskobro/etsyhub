@@ -37,6 +37,7 @@ describe("ReviewProvider interface — conformance", () => {
   it("minimal stub provider compile eder ve çağrılabilir", async () => {
     const stub: ReviewProvider = {
       id: "stub-test",
+      modelId: "stub-model-1",
       kind: "vision",
       review: async () => ({
         score: 80,

@@ -2,10 +2,11 @@
 
 > **Tarih:** 2026-04-29
 > **Status:** Backend pipeline + UI vitrin + UX kapanış + cost tracking + selectable
-> review provider mimarisi tamam (Aşama 1). KIE review provider implementasyonu
-> Aşama 2'de yapılacak (KIE.ai Gemini endpoint kontratı bekleniyor); default
-> kullanıcıda review job FAIL durumda — bu bilinen bir sınırdır, dürüstçe
-> dokümante edildi.
+> review provider mimarisi tamam. **Aşama 2A (2026-04-29):** KIE provider AI mode
+> için canlı çalışır durumda (kontrat KIE.ai docs'tan onaylı). Local mode
+> (`scope: "local"`) **Aşama 2B bekliyor** — canlı smoke sırasında manuel data URL
+> probe sonrası kapsam (küçük data URL patch / orta MinIO upload bridge)
+> netleşecek. Phase 6 full ✅ Aşama 2B sonrası.
 
 ## Aşama 1: Mimari Düzeltme (2026-04-29)
 
@@ -70,6 +71,90 @@ varsayımıyla kuruldu. Smoke öncesi tespit: ürün gerçekliği farklı — KI
 - `tests/integration/review-design-worker.test.ts` (+3 yeni Aşama 1 test:
   KIE stub throw, key-yok varyantları)
 - `tests/integration/settings-ai-mode.test.ts` (+1 backwards compat test)
+
+## Aşama 2A: KIE Provider Implementasyonu — AI Mode (2026-04-29)
+
+KIE.ai docs'tan onaylı kontrat:
+
+- Endpoint: `POST https://api.kie.ai/gemini-2.5-flash/v1/chat/completions`
+- Auth: `Authorization: Bearer <kieApiKey>`
+- Sync (non-streaming); OpenAI-compatible chat/completions; multimodal `image_url`
+  (dış erişilebilir HTTP/HTTPS URL)
+- `response_format` strict JSON schema → fail durumunda `json_object` fallback
+  (heuristic: 400/422 + body'de `response_format|json_schema|strict` geçerse)
+- Response: `choices[0].message.content` (JSON string), `usage.total_tokens`,
+  `model: "gemini-2.5-flash"`
+
+**Aşama 2A kapsamı:**
+
+- KIE provider `kie-gemini-flash` gerçek implementasyon (STUB silindi)
+- AI mode (`scope: "design"`, `image.kind: "remote-url"`) — signed URL üzerinden
+  KIE'ye gider, **canlı çalışır**
+- Local mode (`scope: "local"`, `image.kind: "local-path"`) — explicit throw
+  `"KIE local review henüz etkin değil; Aşama 2B bekleniyor."` (kullanıcıya UI
+  yön mesajı)
+- `ReviewProvider` interface'e `modelId: string` field eklendi
+- `audit.model = provider.modelId` + `CostUsage.model = provider.modelId`
+  (Phase 6 reviewer Ö4 carry-forward kapanışı; geriye dönük backfill YOK —
+  cosmetic, production'da CostUsage hâlâ boş olduğu için pratik etki yok)
+- `output-schema.ts` extract — `ReviewOutputSchema` (Zod) +
+  `REVIEW_OUTPUT_JSON_SCHEMA` (KIE strict mode için OpenAI-compatible JSON
+  schema) iki provider tarafından paylaşılır
+
+**Karar matrisi (5 onaylı + 2 uygulama notu):**
+
+1. Aşama 2A + 2B bölünmesi ✅ (bu kapanış 2A)
+2. Local mode 2A'da explicit throw "2B bekliyor" ✅
+3. Data URL probe 2A smoke'undan SONRA ✅ (bu kapanışta probe YAPILMADI)
+4. `modelId` field provider interface'e eklenir + `audit.model = provider.modelId`;
+   backfill YOK ✅
+5. `response_format` strict JSON schema dene; fail ⇒ `json_object` fallback ✅
+6. (Uygulama Notu 1) Local mode throw mesajı tam olarak: `"KIE local review
+   henüz etkin değil; Aşama 2B bekleniyor."` ✅
+7. (Uygulama Notu 2) Smoke checklist'te 3 spesifik gözlem maddesi: strict vs
+   fallback / `usage.total_tokens` / CostUsage row ✅
+
+**Bekleyen Aşama 2B kararı:**
+
+KIE'nin data URL (`data:image/png;base64,...`) image input desteği AI mode
+smoke'undan SONRA manuel probe ile test edilecek:
+
+- Kabul ederse → küçük patch (`image-loader.ts` local-path için data URL inline)
+- Etmezse → orta patch (MinIO temp upload bridge — local asset'i kısa TTL'le
+  upload + signed URL ile KIE'ye gönder)
+
+**Aşama 2A test sonuçları (2026-04-29):**
+
+| Komut | Sonuç |
+|---|---|
+| `npx tsc --noEmit` | ✅ 0 hata |
+| `npx next lint` | ✅ `No ESLint warnings or errors` |
+| `npm run check:tokens` | ✅ Token ihlali yok |
+| `npx vitest run` (server) | ✅ 82 dosya / 621 test PASS |
+| `npx vitest run --config vitest.config.ui.ts` | ✅ 42 dosya / 483 test PASS |
+
+**Aşama 2A yeni / değişen testler:**
+
+- `tests/unit/kie-gemini-flash-provider.test.ts` — STUB canary 3 test silindi,
+  yerine 13 gerçek davranış testi (strict + fallback + local 2B + auth + http +
+  json + zod + provider id/modelId/kind)
+- `tests/unit/review-output-schema.test.ts` (yeni, 3 test) — DRY extract
+  doğrulama: bilinmeyen risk flag, score>100, confidence>1 reddedilir
+- `tests/unit/review-provider-registry.test.ts` — KIE STUB testi silindi;
+  modelId field doğrulama + KIE local 2B throw + KIE auth-missing throw eklendi
+  (8 test)
+- `tests/unit/google-gemini-flash-provider.test.ts` — DRY refactor:
+  `OutputSchema` import değişimi (test path aynı, `ReviewOutputSchema`'ya geçti);
+  davranış aynı (11 test)
+- `tests/unit/review-provider-types.test.ts` — minimal stub provider'a `modelId`
+  field eklendi (5 test)
+- `tests/integration/review-design-worker.test.ts` — KIE STUB throw testi
+  silindi; yerine "KIE provider AI mode canlı + audit.model = modelId" testi
+  (14 test); mevcut audit/CostUsage `model` beklentileri provider id'den modelId'e
+  güncellendi (`google-gemini-flash` → `gemini-2-5-flash`)
+- `tests/integration/review-local-asset-worker.test.ts` — Aşama 2A "local + KIE
+  ⇒ '2B bekleniyor' throw, cost insert YOK" testi eklendi (8 test); CostUsage
+  `model` provider id'den modelId'e güncellendi
 
 ## Phase 6 Özet
 
@@ -156,14 +241,20 @@ varsayımıyla kuruldu. Smoke öncesi tespit: ürün gerçekliği farklı — KI
 
 ### Aşama 1 Mimari Düzeltmesinden — Yeni
 
-- **`phase6-asama2-kie-review-provider`** — KIE.ai Gemini endpoint
-  implementasyonu (`kie-gemini-flash.ts` STUB → real). KIE.ai dashboard/docs'tan
-  bekleniyor: endpoint URL, auth header, sync/async pattern, request body
-  image input format, response envelope, model id string. Phase 5
-  `kie-shared.ts` paterni reuse edilebilir.
+- **`phase6-asama2a-kie-review-provider`** ✅ Aşama 2A'da kapatıldı
+  (2026-04-29) — `kie-gemini-flash.ts` STUB → real impl; AI mode canlı.
+- **`phase6-asama2b-kie-local-review`** — local mode KIE review (data URL
+  probe sonrası kapsam netleşir): küçük patch (`image-loader.ts` local-path
+  data URL inline) veya orta patch (MinIO temp upload bridge — local asset'i
+  kısa TTL'le upload + signed URL). Smoke'ta manuel curl probe ile karar
+  verilir.
 - **`direct-google-gemini-live-validation`** (opsiyonel) — kullanıcının canlı
   Google `geminiApiKey`'iyle `google-gemini-flash` provider'ı doğrulaması.
   Ürün önceliği KIE; bu yol bypass için bırakıldı.
+- **`kie-raw-response-snapshot`** — Aşama 2A worker `responseSnapshot` olarak
+  parsed `ReviewOutput` yazıyor; KIE ham response'u (`usage`, `model`, raw
+  message) saklanmıyor. Phase 7+ follow-up: ham KIE response object'i de
+  audit'e ekle (debug + token tracking için).
 
 ### Dalga C (Cost Tracking) — Yeni
 
@@ -224,12 +315,14 @@ varsayımıyla kuruldu. Smoke öncesi tespit: ürün gerçekliği farklı — KI
 
 ## Bilinen Sınırlar (Dürüstlük)
 
-1. **KIE review provider STUB durumda (Aşama 2 bekleniyor):**
-   `kie-gemini-flash` provider registry'ye kayıtlı ama `review()` çağrılırsa
-   yön mesajıyla throw atar. Default user (`reviewProvider: "kie"`) için
-   review job FAIL. Kullanıcı `"google-gemini"`'ye geçebilir (mock-tested
-   direct Google API) veya Aşama 2 implementasyonunu bekleyebilir. KIE.ai
-   Gemini endpoint kontratı netleştikten sonra impl edilecek.
+1. **KIE review provider AI mode canlı; local mode Aşama 2B bekliyor:**
+   `kie-gemini-flash` provider AI mode (`scope: "design"`, signed URL) için
+   gerçek impl tamam — KIE.ai Gemini 2.5 Flash chat/completions ile çalışır.
+   Local mode (`scope: "local"`, `local-path`) explicit throw `"KIE local
+   review henüz etkin değil; Aşama 2B bekleniyor."`. Aşama 2B'de KIE'nin data
+   URL desteği canlı smoke'da probe edilecek; sonuca göre küçük patch
+   (`image-loader.ts` data URL inline) veya orta patch (MinIO temp upload
+   bridge) seçilecek.
 
 2. **Direct Google Gemini provider canlı doğrulanmadı:**
    `google-gemini-flash` provider mock testlerle entegre; canlı
@@ -263,59 +356,99 @@ varsayımıyla kuruldu. Smoke öncesi tespit: ürün gerçekliği farklı — KI
    eklendi (Task 7+8 reviewer Ö1 carry-forward'da DRY refactor ileri
    ertelendi). Aşama 1'de yeni ihlal eklenmedi; mevcut paterne uyuldu.
 
-## Real Gemini Smoke Checklist (Kullanıcı Handoff)
+## Aşama 2A Smoke Checklist (Kullanıcı Handoff)
 
-> **Aşama 1 sonrası bu checklist UYGULANMAZ.** Aşama 2 KIE provider
-> implementasyonu sonrası kullanılacak (KIE varyantı için adımlar adapte
-> edilir). Mevcut adımlar Google direct yolu için referans olarak korunuyor;
-> kullanıcı opsiyonel olarak `direct-google-gemini-live-validation`
-> carry-forward kapsamında çalıştırabilir.
-
-> **Önkoşul:** `/settings` → AI Mode → Gemini API Key ekle + provider
-> "Google Gemini (ileri seviye)" seç (encrypted at rest).
+> **Önkoşul:** `/settings` → AI Mode → KIE API Key girilmiş, `reviewProvider:
+> "kie"` (default). Encrypted at rest.
 
 ### 1. AI Mode auto-review
 
-- Reference promote + `/references/[id]/variations` sayfasından AI Mode'da
-  1 variation üret
+- Bookmark → Reference promote → `/references/[id]/variations` sayfasından
+  AI Mode'da 1 variation üret
 - `/review` → "AI Tasarımları" sekmesi → yeni kayıt PENDING (1–2 sn içinde)
 - Birkaç saniye sonra refresh → status `APPROVED` veya `NEEDS_REVIEW`
 - Karta tıkla → drawer açıldı, `riskFlags` listesi + provider snapshot
-  (`gemini-2-5-flash@2026-04-29`) görünür
+  `kie-gemini-flash@YYYY-MM-DD` görünür
 
-### 2. USER Override + Reset
+### 2. Strict JSON schema vs json_object fallback gözlemi (RAPOR ET)
+
+- Worker log'larında (terminal `npm run worker`) review sırasında
+  `"kie review failed: 400 ... response_format"` veya benzeri görünüyor mu?
+- Görünüyorsa → strict mode reddedildi, fallback aktif
+- Görünmüyorsa → strict mode çalıştı (KIE strict destekliyor)
+- **RAPOR ET:** strict mı fallback mı kullanıldı
+
+### 3. `usage.total_tokens` gözlemi (RAPOR ET)
+
+- DesignReview tablosu `responseSnapshot` alanında KIE response full JSON saklı
+- `npx prisma studio` → `DesignReview` row → `responseSnapshot` JSON içinde
+  `usage.total_tokens` field'ı var mı?
+- **NOT:** Şu an worker `responseSnapshot` olarak `llm` (parsed `ReviewOutput`)
+  yazıyor — KIE'nin ham response'u (usage dahil) saklanmıyor. Smoke'ta
+  total_tokens'ı KIE'nin direct API call log'undan veya KIE dashboard'dan
+  doğrulayın. Phase 7+ follow-up: ham response snapshot (`llm` + raw KIE
+  response object).
+- **RAPOR ET:** total_tokens geldi mi (response içinde), hangi aralıkta
+  (~100? ~500? ~1500?)
+
+### 4. CostUsage row doğrulama (RAPOR ET)
+
+- `npx prisma studio` → `CostUsage` tablosu
+- Yeni row: `providerKey: "kie-gemini-flash"`, `model: "gemini-2.5-flash"`,
+  `costCents: 1`, `units: 1`, `periodKey: YYYY-MM-DD` (UTC)
+- **RAPOR ET:** row yazıldı mı, model field gerçek model id mi
+  (provider id değil)
+
+### 5. Local Mode "Aşama 2B bekliyor" kontrolü
+
+- Local Library → 1 asset seç → `POST /api/review/local-batch` ile batch
+  review tetikle
+- Job FAIL olmalı, error message:
+  `"KIE local review henüz etkin değil; Aşama 2B bekleniyor."`
+- `/review` → "Local Library" sekmesinde kart hâlâ PENDING (job error)
+
+### 6. USER Override + Reset (Aşama 2A'dan etkilenmedi, regression)
 
 - `NEEDS_REVIEW` kaydında "Approve anyway" → status `APPROVED` + USER rozeti
 - "Reset to system" → SYSTEM `PENDING`'e döner + yeni review job tetiklenir
-- Birkaç saniye sonra refresh → SYSTEM yeniden değerlendirme yazdı
+- KIE provider tekrar çalışır (AI mode ⇒ remote URL)
 
-### 3. Local Batch
+### Aşama 2B Karar Girdisi — Manuel Data URL Probe
 
-- Local Library'den 5 asset seç → batch review tetikle
-  (`POST /api/review/local-batch`)
-- `/review` → "Local Library" sekmesi → kayıtlar gelir (productTypeKey ile)
+Smoke sırasında (1. adımdan sonra, ekstra adım) KIE'nin data URL desteğini
+manuel test edin:
 
-### 4. Bulk Actions
+```bash
+# Küçük PNG'i base64+data URL formatına çevir
+PNG_B64=$(base64 -i /Users/huseyincoskun/Downloads/AntigravityProje/EtsyHub/tests/fixtures/review/transparent-clean.png | tr -d '\n')
+DATA_URL="data:image/png;base64,${PNG_B64}"
 
-- 10 kart seç (bazı risk flag'li, bazı temiz)
-- Bulk Onayla → confirm dialog skip-on-risk hint görünür
-- Onayla → toast "X onaylandı, Y atlandı"
-- Local'da 3 asset seç → Bulk Sil → "SİL" yazana kadar disabled → SİL → soft-delete
+# KIE'ye doğrudan gönder
+curl -X POST https://api.kie.ai/gemini-2.5-flash/v1/chat/completions \
+  -H "Authorization: Bearer <KIE_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": [
+      {"type": "text", "text": "What is in this image?"},
+      {"type": "image_url", "image_url": {"url": "'"${DATA_URL}"'"}}
+    ]}]
+  }'
+```
 
-### 5. Cost Tracking (Task 18)
-
-- `npx prisma studio` → `CostUsage` tablosu
-- Yapılan review sayısı kadar row mevcut (her biri 1 cent, periodKey YYYY-MM-DD)
-- Daily limit test (opsiyonel, vakti varsa): 1000+ row insert et + 1001.
-  review tetikle → worker explicit throw `daily review budget exceeded`
+- 200 + sensible response ⇒ data URL kabul ediliyor → Aşama 2B küçük patch
+  (`image-loader.ts` local-path data URL inline)
+- 4xx + "invalid url" / "must be http" benzeri ⇒ Aşama 2B orta patch (MinIO
+  temp upload bridge — local asset'i kısa TTL'le upload + signed URL)
 
 ### Smoke Sonucu Bu Doc'a Eklenmeli (Kullanıcı)
 
-`## Real Gemini Smoke Sonuçları (YYYY-MM-DD)` başlığı altında:
+`## Real KIE Smoke Sonuçları (YYYY-MM-DD)` başlığı altında:
 
+- 3 spesifik gözlem maddesi (strict/fallback, total_tokens, CostUsage row)
 - Hangi adımlar geçti / hangileri sürpriz çıkardı
 - Türkçe prompt + İngilizce JSON anahtar varsayımı doğrulandı mı
 - Beklenmedik error / edge case
+- Aşama 2B data URL probe sonucu (200 mı 4xx mı)
 - 8 risk flag türünün tetiklenebildiği gerçek görseller (varsa)
 
 ## Kontrat — Sonraki Phase'ler İçin Kilitli

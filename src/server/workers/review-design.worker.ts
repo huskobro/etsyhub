@@ -228,14 +228,14 @@ async function handleDesignReview(
 
   // K1 — upsert: ikinci başarılı review'da DesignReview row override edilir.
   // Audit semantik "son review snapshot'ı" — zaman serisi audit Phase 7+ follow-up.
+  // Phase 6 Aşama 2A: audit.model = provider.modelId (gerçek model string;
+  // provider id ↔ model id ayrımı reviewer Ö4 carry-forward kapanışı).
   const auditData = {
     reviewer: "system",
     score: llm.score,
     decision,
     provider: providerId,
-    // model alanı şu an provider id ile aynı; provider id ↔ model id
-    // ayrımı follow-up.
-    model: providerId,
+    model: provider.modelId,
     promptSnapshot: REVIEW_SYSTEM_PROMPT,
     responseSnapshot: llm as unknown as Prisma.InputJsonValue,
   };
@@ -253,7 +253,7 @@ async function handleDesignReview(
       userId: payload.userId,
       providerKind: ProviderKind.AI,
       providerKey: providerId,
-      model: providerId,
+      model: provider.modelId,
       units: 1,
       costCents: llm.costCents ?? REVIEW_ESTIMATED_COST_CENTS_FALLBACK,
     });
@@ -376,12 +376,13 @@ async function handleLocalAssetReview(
 
   // Best-effort cost insert (Task 18). Aynı pattern — cost tracking fail
   // local asset review state'i bozmaz.
+  // Phase 6 Aşama 2A: model = provider.modelId (gerçek model string).
   try {
     await recordCostUsage({
       userId: payload.userId,
       providerKind: ProviderKind.AI,
       providerKey: providerId,
-      model: providerId,
+      model: provider.modelId,
       units: 1,
       costCents: llm.costCents ?? REVIEW_ESTIMATED_COST_CENTS_FALLBACK,
     });
