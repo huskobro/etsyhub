@@ -39,13 +39,15 @@ beforeEach(() => {
 });
 
 describe("Gemini review provider — başarılı senaryolar", () => {
-  it("valid JSON output → ReviewOutput parse edilir", async () => {
+  it("valid JSON output → ReviewOutput parse edilir + costCents 1 (conservative estimate)", async () => {
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       mockGeminiResponse(JSON.stringify(validOutput)),
     );
     const result = await geminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" });
     expect(result.score).toBe(85);
     expect(result.riskFlags).toEqual([]);
+    // Phase 6 Task 18 — conservative cost estimate (gerçek faturalama değil).
+    expect(result.costCents).toBe(1);
   });
 
   it("riskFlags dolu valid output → parse + döner", async () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import path from "node:path";
-import { ReviewStatus, ReviewStatusSource } from "@prisma/client";
+import { ProviderKind, ReviewStatus, ReviewStatusSource } from "@prisma/client";
 import type { Job } from "bullmq";
 import { db } from "@/server/db";
 import {
@@ -8,6 +8,7 @@ import {
   type ReviewJobPayload,
 } from "@/server/workers/review-design.worker";
 import { encryptSecret } from "@/lib/secrets";
+import { dailyPeriodKey } from "@/server/services/cost/period-key";
 
 const reviewMock = vi.fn();
 vi.mock("@/providers/review/registry", () => ({
@@ -99,6 +100,7 @@ beforeEach(async () => {
   reviewMock.mockReset();
   alphaMock.mockReset();
   await db.localLibraryAsset.deleteMany({ where: { userId: USER_ID } });
+  await db.costUsage.deleteMany({ where: { userId: USER_ID } });
   await db.userSetting.deleteMany({ where: { userId: USER_ID } });
 });
 
@@ -261,5 +263,66 @@ describe("handleReviewDesign — scope=local", () => {
     // SYSTEM yazmadı.
     expect(updated?.reviewScore).toBeNull();
     expect(updated?.reviewProviderSnapshot).toBeNull();
+  });
+});
+
+describe("handleReviewDesign — scope=local — Task 18 cost tracking + budget", () => {
+  it("local happy path sonrası CostUsage 1 cent insert (paralel design pattern)", async () => {
+    const { assetId } = await seedLocalAsset();
+    reviewMock.mockResolvedValueOnce({
+      score: 92,
+      textDetected: false,
+      gibberishDetected: false,
+      riskFlags: [],
+      summary: "ok",
+      costCents: 1,
+    });
+
+    await handleReviewDesign(
+      makeJob({
+        scope: "local",
+        localAssetId: assetId,
+        userId: USER_ID,
+        productTypeKey: "wall_art",
+      }),
+    );
+
+    const usage = await db.costUsage.findMany({ where: { userId: USER_ID } });
+    expect(usage).toHaveLength(1);
+    const row = usage[0]!;
+    expect(row.costCents).toBe(1);
+    expect(row.units).toBe(1);
+    expect(row.providerKind).toBe(ProviderKind.AI);
+    expect(row.providerKey).toBe("gemini-2-5-flash");
+    expect(row.periodKey).toBe(dailyPeriodKey());
+  });
+
+  it("local mode budget aşıldıysa explicit throw, provider çağrılmaz", async () => {
+    const { assetId } = await seedLocalAsset();
+
+    await db.costUsage.create({
+      data: {
+        userId: USER_ID,
+        providerKind: ProviderKind.AI,
+        providerKey: "gemini-2-5-flash",
+        model: "gemini-2-5-flash",
+        units: 1000,
+        costCents: 1000,
+        periodKey: dailyPeriodKey(),
+      },
+    });
+
+    await expect(
+      handleReviewDesign(
+        makeJob({
+          scope: "local",
+          localAssetId: assetId,
+          userId: USER_ID,
+          productTypeKey: "wall_art",
+        }),
+      ),
+    ).rejects.toThrow(/daily review budget exceeded/i);
+
+    expect(reviewMock).not.toHaveBeenCalled();
   });
 });

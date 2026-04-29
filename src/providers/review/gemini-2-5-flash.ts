@@ -22,6 +22,17 @@ const GEMINI_MODEL = "gemini-2-5-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 /**
+ * Phase 6 cost tracking — CONSERVATIVE ESTIMATE.
+ *
+ * Bu sabit gerçek Gemini API faturalama DEĞİLDİR; minimum hesap birimi 1 cent
+ * (CostUsage Int alan) olduğu için fractional fiyatları (örn. ~$0.001/çağrı)
+ * yuvarlamak yerine sabit defansif estimate kullanılır.
+ *
+ * Real-time pricing carry-forward: `cost-real-time-pricing` (Phase 7+).
+ */
+const REVIEW_ESTIMATED_COST_CENTS = 1;
+
+/**
  * Gemini 2.5 Flash review provider.
  *
  * Phase 6 — multimodal vision review. Per-user `geminiApiKey` settings'ten gelir;
@@ -104,7 +115,12 @@ export const geminiFlashReviewProvider: ReviewProvider = {
     if (!result.success) {
       throw new Error(`gemini review failed: invalid output schema: ${result.error.message}`);
     }
-    return result.data satisfies ReviewOutput;
+    const validated = result.data;
+    const output: ReviewOutput = {
+      ...validated,
+      costCents: REVIEW_ESTIMATED_COST_CENTS,
+    };
+    return output;
   },
 };
 

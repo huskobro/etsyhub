@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { ReviewStatus, ReviewStatusSource } from "@prisma/client";
+import { ProviderKind, ReviewStatus, ReviewStatusSource } from "@prisma/client";
 import type { Job } from "bullmq";
 import { db } from "@/server/db";
 import {
@@ -7,6 +7,7 @@ import {
   type ReviewJobPayload,
 } from "@/server/workers/review-design.worker";
 import { encryptSecret } from "@/lib/secrets";
+import { dailyPeriodKey } from "@/server/services/cost/period-key";
 
 // Provider registry'yi mock'la — gerçek Gemini HTTP'ye gitmesin.
 const reviewMock = vi.fn();
@@ -150,6 +151,9 @@ beforeEach(async () => {
     where: { userId: { in: [USER_ID, OTHER_USER_ID] } },
   });
   await db.asset.deleteMany({
+    where: { userId: { in: [USER_ID, OTHER_USER_ID] } },
+  });
+  await db.costUsage.deleteMany({
     where: { userId: { in: [USER_ID, OTHER_USER_ID] } },
   });
   await db.userSetting.deleteMany({
@@ -402,5 +406,77 @@ describe("handleReviewDesign — scope=design", () => {
       where: { generatedDesignId: designId },
     });
     expect(audits).toHaveLength(0);
+  });
+});
+
+describe("handleReviewDesign — Task 18 cost tracking + budget", () => {
+  it("happy path sonrası CostUsage tablosuna 1 cent insert (Karar 3 conservative estimate)", async () => {
+    const { designId } = await seedDesign();
+    reviewMock.mockResolvedValueOnce({
+      score: 95,
+      textDetected: false,
+      gibberishDetected: false,
+      riskFlags: [],
+      summary: "clean",
+      costCents: 1,
+    });
+
+    await handleReviewDesign(
+      makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
+    );
+
+    const usage = await db.costUsage.findMany({ where: { userId: USER_ID } });
+    expect(usage).toHaveLength(1);
+    const row = usage[0]!;
+    expect(row.costCents).toBe(1);
+    expect(row.units).toBe(1);
+    expect(row.providerKind).toBe(ProviderKind.AI);
+    expect(row.providerKey).toBe("gemini-2-5-flash");
+    expect(row.model).toBe("gemini-2-5-flash");
+    expect(row.periodKey).toBe(dailyPeriodKey());
+  });
+
+  it("daily budget aşıldıysa worker explicit throw (limit guard, sessiz skip yok)", async () => {
+    const { designId } = await seedDesign();
+
+    // Limit dolmuş: 1000 cent kayıt seed'le.
+    await db.costUsage.create({
+      data: {
+        userId: USER_ID,
+        providerKind: ProviderKind.AI,
+        providerKey: "gemini-2-5-flash",
+        model: "gemini-2-5-flash",
+        units: 1000,
+        costCents: 1000,
+        periodKey: dailyPeriodKey(),
+      },
+    });
+
+    await expect(
+      handleReviewDesign(
+        makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
+      ),
+    ).rejects.toThrow(/daily review budget exceeded/i);
+
+    // Provider çağrılmadı (budget check API key resolve'dan da önce).
+    expect(reviewMock).not.toHaveBeenCalled();
+  });
+
+  it("sticky USER ⇒ cost insert YOK (provider çağrılmadı, budget tüketilmedi)", async () => {
+    const { designId } = await seedDesign({
+      reviewStatus: ReviewStatus.APPROVED,
+      reviewStatusSource: ReviewStatusSource.USER,
+    });
+
+    const result = await handleReviewDesign(
+      makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
+    );
+
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toBe("user_sticky");
+
+    // Sticky early-return ⇒ budget check de yapılmadı, cost insert de yok.
+    const usage = await db.costUsage.findMany({ where: { userId: USER_ID } });
+    expect(usage).toHaveLength(0);
   });
 });

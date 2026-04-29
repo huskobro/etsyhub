@@ -81,6 +81,15 @@ export type ReviewOutput = {
   riskFlags: ReviewRiskFlag[];
   /** Kısa özet, detay panel ve audit için. */
   summary: string;
+  /**
+   * Conservative estimate (Phase 6). Minimum hesap birimi 1 cent (CostUsage
+   * Int alan). Fractional fiyatlar (örn. ~$0.001/Gemini çağrısı) yuvarlanır;
+   * gerçek faturalama DEĞİLDİR. Real-time pricing carry-forward:
+   * `cost-real-time-pricing` (Phase 7+).
+   *
+   * Provider doldurmazsa caller (worker) defansif fallback kullanır.
+   */
+  costCents?: number;
 };
 
 /**

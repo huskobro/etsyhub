@@ -4,7 +4,12 @@ Localhost-first Etsy / POD productivity web app. Farklı ürünlerden ilham alan
 
 ## Mevcut Durum (2026-04-29)
 
-Phase 1–4 production-ready (auth, references, competitor analysis, trend stories). **Phase 5 (Variation Generation)** ve **Phase 6 (AI Quality Review)** uygulamaya alındı; ikisi de uçtan uca çalışıyor ama henüz hardening tamamlanmadı.
+Phase 1–6 production-ready (auth, references, competitor analysis, trend stories, variation generation, AI quality review).
+
+**Önemli dürüstlük notları:**
+
+- Phase 6 cost tracking **conservative estimate** kullanır (1 cent/review, daily $10/user); gerçek Gemini faturalama değildir.
+- Real Gemini smoke testi user handoff ile doğrulanacak — implementer tüm test'leri mock fetch ile yazdı. Closeout doc'taki checklist'i (`docs/design/implementation-notes/phase6-quality-review.md`) uyguladıktan sonra Phase 6 canlı doğrulanmış olur.
 
 **Bugün gerçekten ne yapıyor:**
 
@@ -19,16 +24,17 @@ Phase 1–4 production-ready (auth, references, competitor analysis, trend stori
   - 8 sabit risk flag türü (watermark, signature, logo, celebrity face, alpha, edge artifact, text, gibberish text)
   - Karar kuralı: `risk_flags > 0` veya `score < 60` ⇒ NEEDS_REVIEW; `score ≥ 90` + risk yok ⇒ APPROVED; aksi NEEDS_REVIEW (güvenli varsayılan)
   - USER override sticky (R12): "Approve anyway" sonrası SYSTEM yazımı race-safe `updateMany` ile engellenir
-  - `/review` queue UI: iki sekme (AI Tasarımları / Local Library), kart grid, status badge, USER/SYSTEM görünür rozet
+  - `/review` queue UI: iki sekme (AI Tasarımları / Local Library), kart grid, status badge, USER/SYSTEM görünür rozet, detay drawer, bulk approve (skip-on-risk) + bulk reject + bulk delete (typing confirmation "SİL")
+- **Conservative cost tracking (Phase 6 Task 18):** Her review çağrısı `CostUsage` tablosuna 1 cent estimate olarak yazılır (gerçek Gemini faturalama değil — minimum hesap birimi $0.01 nedeniyle yuvarlanmış sabit). Daily limit: $10/gün/kullanıcı; aşımda explicit throw, sessiz skip yok. Real-time pricing + admin settings carry-forward.
 - Provider snapshot + prompt snapshot her review yazımında persist edilir (CLAUDE.md kuralı)
 - Admin paneli: prompt versioning, AI/scraper provider config, cost usage, audit logs, feature flags
 
 **Henüz çalışmayan / eksik (dürüstlük):**
 
-- Detay paneli (kart tıklama → side panel) ve `Approve anyway` / `Reject` / `Reset to system` butonları **UI'da yok** (backend hazır, Dalga B'de gelecek)
-- Bulk approve / bulk reject / bulk delete UI'da yok
-- Cost guardrail Phase 6 için entegre değil (Task 18 backlog)
-- Real Gemini smoke testi henüz yapılmadı — provider testleri mock fetch üzerinden geçti
+- Real Gemini smoke testi henüz user handoff ile doğrulanmadı (Phase 5 paterni — kullanıcı kendi `geminiApiKey`'iyle manuel doğrulama yapacak)
+- Real-time cost pricing yok (conservative 1 cent estimate; carry-forward `cost-real-time-pricing`)
+- Admin cost-usage UI yok (carry-forward `cost-budget-settings-ui`)
+- Generate-variations cost tracking yok (Phase 5 KIE provider için; carry-forward `generate-variations-cost-tracking`)
 - Selection Studio, Mockup Studio, Listing Builder, Etsy draft push: **Phase 7+ scope dışı**
 
 ## Local Mode vs AI Mode
@@ -78,13 +84,11 @@ Phase 1–4 production-ready (auth, references, competitor analysis, trend stori
 
 | Adım | Kapsam |
 |------|--------|
-| Dalga B (Task 15-17) | Detay paneli + Approve/Reject/Reset butonları + bulk approve (skip-on-risk) + bulk reject + bulk delete + typing confirmation primitive |
-| Task 18 | Cost guardrail entegrasyonu — Phase 5 cost tracking altyapısı keşfi sonrası kapsam belirlenecek |
-| Task 19 | Phase 6 closeout: real Gemini smoke testi, dokümantasyon kapanışı, carry-forward listesi |
+| Phase 6 user smoke | Real Gemini smoke checklist'i kullanıcı tarafından uygula (`docs/design/implementation-notes/phase6-quality-review.md`) |
 | Phase 7 | Selection Studio (background removal, color editor, crop, upscale, transparent PNG kontrolü) |
 | Phase 8 | Mockup Studio (canvas/wall art, clipart bundle cover, sticker sheet) |
 | Phase 9 | Listing Builder + Etsy draft push (direct active publish YOK; human approval gate'i) |
-| Phase 10 | Admin hardening (prompt versioning UI, theme editor, cost dashboard, negative library) |
+| Phase 10 | Admin hardening (prompt versioning UI, theme editor, cost dashboard, real-time pricing, negative library) |
 
 Phase dokümanları: [`docs/plans/`](docs/plans/). Phase 6 design + plan: `docs/plans/2026-04-28-phase6-quality-review-{design,plan}.md`.
 
@@ -153,7 +157,7 @@ Admin girişi için `.env.local` dosyasındaki `ADMIN_EMAIL` / `ADMIN_PASSWORD` 
 | 3 | Competitor Analysis: scraper abstraction, review-based ranking, Etsy/Amazon parser, daily cron | ✅ |
 | 4 | Trend Stories: n-gram cluster + rail/feed/drawer + window tabs + feature gate | ✅ |
 | 5 | Variation Generation: KIE provider abstraction, AI Mode + Local Mode, quality scoring | ✅ |
-| 6 | AI Quality Review: hibrit pipeline (Sharp + Gemini), USER sticky, queue UI | 🟡 ~%74 (Dalga A bitti; Dalga B + cost guardrail + closeout kaldı) |
+| 6 | AI Quality Review: hibrit pipeline (Sharp + Gemini), USER sticky, queue UI, bulk actions, conservative cost tracking | ✅ (conservative cost estimate; real Gemini smoke kullanıcı handoff ile doğrulanacak) |
 | 7 | Selection Studio | ⏳ |
 | 8 | Mockup Studio | ⏳ |
 | 9 | Listing Builder + Etsy draft push | ⏳ |

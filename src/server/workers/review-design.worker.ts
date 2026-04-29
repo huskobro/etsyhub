@@ -1,5 +1,5 @@
 import type { Job } from "bullmq";
-import { Prisma, ReviewStatus, ReviewStatusSource } from "@prisma/client";
+import { Prisma, ProviderKind, ReviewStatus, ReviewStatusSource } from "@prisma/client";
 import { db } from "@/server/db";
 import { logger } from "@/lib/logger";
 import { getReviewProvider } from "@/providers/review/registry";
@@ -14,6 +14,8 @@ import {
 import type { ReviewRiskFlag, ImageInput } from "@/providers/review/types";
 import { getStorage } from "@/providers/storage";
 import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
+import { assertWithinDailyBudget } from "@/server/services/cost/budget";
+import { recordCostUsage } from "@/server/services/cost/track-usage";
 
 /**
  * REVIEW_DESIGN worker — Phase 6 review pipeline orkestrasyon.
@@ -52,6 +54,13 @@ const PROVIDER_ID = "gemini-2-5-flash";
 
 /** Signed URL TTL (saniye): provider tek seferlik fetch yapar; 1 saat fazlasıyla yeter. */
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+/**
+ * Provider response `costCents` taşımıyorsa (örn. mock test) defansif fallback.
+ * Conservative estimate: 1 cent. Gerçek faturalama değil; real-time pricing
+ * carry-forward (`cost-real-time-pricing` Phase 7+).
+ */
+const REVIEW_ESTIMATED_COST_CENTS_FALLBACK = 1;
 
 export type ReviewDesignJobPayload = {
   scope: "design";
@@ -124,6 +133,12 @@ async function handleDesignReview(
     );
     return { skipped: true, reason: "user_sticky" };
   }
+
+  // Daily budget guardrail (Task 18) — sticky'den sonra, API key/provider
+  // çağrısından önce. USER sticky early-return üstte yer aldığı için override
+  // edilmiş kayıtlar budget tüketmez. Limit aşılırsa explicit throw (sessiz
+  // skip YASAK); kullanıcı UI'da error görür.
+  await assertWithinDailyBudget(payload.userId, ProviderKind.AI);
 
   // API key resolve — Phase 5 helper decrypt iş yapıyor.
   const apiKey = await resolveGeminiApiKey(payload.userId);
@@ -221,6 +236,30 @@ async function handleDesignReview(
     update: auditData,
   });
 
+  // Best-effort cost insert (Task 18). Review state primary truth — cost
+  // tracking fail review state'i bozmamalı; cross-job rollback YOK. Fail
+  // durumunda log + devam.
+  try {
+    await recordCostUsage({
+      userId: payload.userId,
+      providerKind: ProviderKind.AI,
+      providerKey: PROVIDER_ID,
+      model: PROVIDER_ID,
+      units: 1,
+      costCents: llm.costCents ?? REVIEW_ESTIMATED_COST_CENTS_FALLBACK,
+    });
+  } catch (costErr) {
+    logger.error(
+      {
+        jobId: job.id,
+        designId: design.id,
+        userId: payload.userId,
+        err: costErr instanceof Error ? costErr.message : String(costErr),
+      },
+      "cost tracking failed; review state committed",
+    );
+  }
+
   logger.info(
     {
       jobId: job.id,
@@ -262,6 +301,10 @@ async function handleLocalAssetReview(
     );
     return { skipped: true, reason: "user_sticky" };
   }
+
+  // Daily budget guardrail (Task 18) — design branch ile aynı sıra; DRY refactor
+  // Dalga B reviewer Ö1 carry-forward, bu dalgada paralel implementasyon.
+  await assertWithinDailyBudget(payload.userId, ProviderKind.AI);
 
   // API key resolve
   const apiKey = await resolveGeminiApiKey(payload.userId);
@@ -319,6 +362,29 @@ async function handleLocalAssetReview(
       "review skipped — user_sticky_race (USER wrote during Gemini call)",
     );
     return { skipped: true, reason: "user_sticky_race" };
+  }
+
+  // Best-effort cost insert (Task 18). Aynı pattern — cost tracking fail
+  // local asset review state'i bozmaz.
+  try {
+    await recordCostUsage({
+      userId: payload.userId,
+      providerKind: ProviderKind.AI,
+      providerKey: PROVIDER_ID,
+      model: PROVIDER_ID,
+      units: 1,
+      costCents: llm.costCents ?? REVIEW_ESTIMATED_COST_CENTS_FALLBACK,
+    });
+  } catch (costErr) {
+    logger.error(
+      {
+        jobId: job.id,
+        assetId: asset.id,
+        userId: payload.userId,
+        err: costErr instanceof Error ? costErr.message : String(costErr),
+      },
+      "cost tracking failed; review state committed",
+    );
   }
 
   logger.info(
