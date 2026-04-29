@@ -82,4 +82,16 @@ describe("ReviewCard", () => {
     render(<ReviewCard item={{ ...baseItem, thumbnailUrl: null }} />);
     expect(screen.getByText(/Önizleme yok/)).toBeInTheDocument();
   });
+
+  // a11y — Ö-4: thumbnail informative alt metin (decorative değil).
+  it("img alt='Tasarım önizlemesi' (a11y)", () => {
+    render(<ReviewCard item={baseItem} />);
+    expect(screen.getByAltText("Tasarım önizlemesi")).toBeInTheDocument();
+  });
+
+  // a11y — Ö-4: score chip semantik etiket.
+  it("score chip aria-label='Kalite skoru: X' (a11y)", () => {
+    render(<ReviewCard item={{ ...baseItem, reviewScore: 87 }} />);
+    expect(screen.getByLabelText("Kalite skoru: 87")).toBeInTheDocument();
+  });
 });

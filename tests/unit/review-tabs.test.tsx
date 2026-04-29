@@ -67,4 +67,40 @@ describe("ReviewTabs", () => {
     render(<ReviewTabs activeTab="local" />);
     expect(screen.getByTestId("queue-list")).toHaveTextContent("scope=local");
   });
+
+  // a11y — Ö-1: WAI-ARIA tablist klavye + roving tabIndex.
+  it("ArrowRight tuşu sonraki tab'a geçirir (?tab=local)", () => {
+    render(<ReviewTabs activeTab="ai" />);
+    const aiTab = screen.getByRole("tab", { name: /AI Tasarımları/ });
+    aiTab.focus();
+    fireEvent.keyDown(aiTab, { key: "ArrowRight" });
+    expect(mockPush).toHaveBeenCalledWith("/review?tab=local");
+  });
+
+  it("ArrowLeft tuşu önceki tab'a wrap eder (ai->local)", () => {
+    render(<ReviewTabs activeTab="ai" />);
+    const aiTab = screen.getByRole("tab", { name: /AI Tasarımları/ });
+    aiTab.focus();
+    fireEvent.keyDown(aiTab, { key: "ArrowLeft" });
+    // 2 tab var; ai'dan sola wrap => local.
+    expect(mockPush).toHaveBeenCalledWith("/review?tab=local");
+  });
+
+  it("Home tuşu ilk tab'a (ai) götürür", () => {
+    render(<ReviewTabs activeTab="local" />);
+    const localTab = screen.getByRole("tab", { name: /Local Library/ });
+    localTab.focus();
+    fireEvent.keyDown(localTab, { key: "Home" });
+    expect(mockPush).toHaveBeenCalledWith("/review?tab=ai");
+  });
+
+  it("Roving tabIndex: aktif tab=0, pasif tab=-1", () => {
+    render(<ReviewTabs activeTab="ai" />);
+    expect(
+      screen.getByRole("tab", { name: /AI Tasarımları/ }),
+    ).toHaveAttribute("tabIndex", "0");
+    expect(
+      screen.getByRole("tab", { name: /Local Library/ }),
+    ).toHaveAttribute("tabIndex", "-1");
+  });
 });

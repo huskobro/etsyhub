@@ -39,7 +39,9 @@ export function ReviewCard({ item }: Props) {
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={item.thumbnailUrl}
-            alt=""
+            // a11y (Ö-4): tasarım önizlemesi içerik niteliğinde — kart başlığı
+            // ayrı text yok, ekran okuyucu için informative alt metin gerekli.
+            alt="Tasarım önizlemesi"
             className="h-full w-full object-cover"
             loading="lazy"
           />
@@ -51,6 +53,9 @@ export function ReviewCard({ item }: Props) {
         {item.reviewScore !== null ? (
           <span
             data-testid="score-chip"
+            // a11y (Ö-4): "87" tek başına anlamsız; ekran okuyucu için
+            // semantik etiket. Görsel olarak chip rakamı korunuyor.
+            aria-label={`Kalite skoru: ${item.reviewScore}`}
             className="absolute right-2 top-2 rounded-sm bg-text px-2 py-0.5 font-mono text-xs text-bg"
           >
             {item.reviewScore}
