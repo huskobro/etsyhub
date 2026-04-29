@@ -118,7 +118,12 @@ describe("handleReviewDesign — scope=local", () => {
     });
 
     const result = await handleReviewDesign(
-      makeJob({ scope: "local", localAssetId: assetId, userId: USER_ID }),
+      makeJob({
+        scope: "local",
+        localAssetId: assetId,
+        userId: USER_ID,
+        productTypeKey: "wall_art",
+      }),
     );
 
     expect(result.skipped).toBe(false);
@@ -139,7 +144,7 @@ describe("handleReviewDesign — scope=local", () => {
     // (DesignReview tablosu zaten generatedDesignId zorunlu — çağrı yapılmadı.)
   });
 
-  it("local mode + non-transparent product (default wall_art) ⇒ runAlphaChecks ÇAĞRILMADI", async () => {
+  it("local mode + non-transparent productTypeKey 'wall_art' ⇒ runAlphaChecks ÇAĞRILMADI", async () => {
     const { assetId } = await seedLocalAsset();
     reviewMock.mockResolvedValueOnce({
       score: 95,
@@ -150,14 +155,41 @@ describe("handleReviewDesign — scope=local", () => {
     });
 
     await handleReviewDesign(
-      makeJob({ scope: "local", localAssetId: assetId, userId: USER_ID }),
+      makeJob({
+        scope: "local",
+        localAssetId: assetId,
+        userId: USER_ID,
+        productTypeKey: "wall_art",
+      }),
     );
 
-    // Worker default product type "wall_art" ⇒ transparent gate kapalı.
-    // (Task 10 batch endpoint payload'a productType eklediğinde davranış
-    // genişler; o zaman bu test transparent product input'u kabul edecek
-    // ve alpha çağrısını tetikleyecek.)
+    // wall_art TRANSPARENT_TARGET_TYPES'da değil ⇒ alpha gate kapalı.
     expect(alphaMock).not.toHaveBeenCalled();
+  });
+
+  it("local mode + transparent productTypeKey 'clipart' ⇒ runAlphaChecks ÇAĞRILDI", async () => {
+    const { assetId } = await seedLocalAsset();
+    alphaMock.mockResolvedValueOnce([]);
+    reviewMock.mockResolvedValueOnce({
+      score: 95,
+      textDetected: false,
+      gibberishDetected: false,
+      riskFlags: [],
+      summary: "clean transparent clipart",
+    });
+
+    await handleReviewDesign(
+      makeJob({
+        scope: "local",
+        localAssetId: assetId,
+        userId: USER_ID,
+        productTypeKey: "clipart",
+      }),
+    );
+
+    // clipart TRANSPARENT_TARGET_TYPES'da ⇒ alpha gate AÇIK.
+    expect(alphaMock).toHaveBeenCalledTimes(1);
+    expect(alphaMock).toHaveBeenCalledWith(FIXTURE_PNG);
   });
 
   it("sticky USER: rerun status değişmez, hiçbir alan yazılmaz", async () => {
@@ -167,7 +199,12 @@ describe("handleReviewDesign — scope=local", () => {
     });
 
     const result = await handleReviewDesign(
-      makeJob({ scope: "local", localAssetId: assetId, userId: USER_ID }),
+      makeJob({
+        scope: "local",
+        localAssetId: assetId,
+        userId: USER_ID,
+        productTypeKey: "wall_art",
+      }),
     );
 
     expect(result.skipped).toBe(true);
@@ -206,7 +243,12 @@ describe("handleReviewDesign — scope=local", () => {
     });
 
     const result = await handleReviewDesign(
-      makeJob({ scope: "local", localAssetId: assetId, userId: USER_ID }),
+      makeJob({
+        scope: "local",
+        localAssetId: assetId,
+        userId: USER_ID,
+        productTypeKey: "wall_art",
+      }),
     );
 
     expect(result.skipped).toBe(true);

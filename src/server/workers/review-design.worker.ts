@@ -53,24 +53,25 @@ const PROVIDER_ID = "gemini-2-5-flash";
 /** Signed URL TTL (saniye): provider tek seferlik fetch yapar; 1 saat fazlasıyla yeter. */
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
-/**
- * Local mode default product type — Task 10 batch endpoint'inde payload'a
- * `productType` eklenecek; o zaman bu varsayım kalkacak. Şu an "wall_art"
- * (transparent değil) ⇒ alpha gate kapalı kalır, kullanıcı transparent
- * ürün için review batch'i Task 10 sonrası tetikleyecek.
- */
-const LOCAL_DEFAULT_PRODUCT_TYPE = "wall_art";
-
 export type ReviewDesignJobPayload = {
   scope: "design";
   generatedDesignId: string;
   userId: string;
 };
 
+/**
+ * Task 10 — local batch endpoint payload'ında `productTypeKey` ZORUNLU.
+ * Sessiz default YASAK: çağrı tarafı (örn. POST /api/review/local-batch) Zod
+ * ile required field olarak validate eder; gelmezse 400 döner. Worker burada
+ * fallback yapmaz — payload'da yoksa TypeScript zaten compile time'da
+ * yakalar; runtime'da herhangi bir caller bypass ederse ilk `productKey`
+ * kullanımında crash olur (beklenen davranış: kontrolsüz default yok).
+ */
 export type ReviewLocalAssetJobPayload = {
   scope: "local";
   localAssetId: string;
   userId: string;
+  productTypeKey: string;
 };
 
 export type ReviewJobPayload = ReviewDesignJobPayload | ReviewLocalAssetJobPayload;
@@ -268,9 +269,9 @@ async function handleLocalAssetReview(
   // Image input — Local mode: disk path
   const image: ImageInput = { kind: "local-path", filePath: asset.filePath };
 
-  // Product type — Task 10 batch endpoint payload'a productType ekleyene
-  // kadar default "wall_art". Transparent gate kapalı.
-  const productKey = LOCAL_DEFAULT_PRODUCT_TYPE;
+  // Product type — Task 10 kararı: payload'dan ZORUNLU okunur, sessiz default
+  // yok. Caller (batch endpoint) Zod ile validate ediyor; gelmezse 400.
+  const productKey = payload.productTypeKey;
   const isTransparent = TRANSPARENT_TARGET_TYPES.has(productKey);
 
   // Local mode + transparent ⇒ alpha-checks ÇALIŞTIR; aksi halde skip.

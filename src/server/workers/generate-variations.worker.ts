@@ -16,8 +16,10 @@
 //   - Provider trace metadata (poll attempt count, latency)
 //   - Cost tracking integration
 import type { Job } from "bullmq";
-import { JobStatus, VariationState } from "@prisma/client";
+import { JobStatus, JobType, VariationState } from "@prisma/client";
 import { db } from "@/server/db";
+import { logger } from "@/lib/logger";
+import { enqueue } from "@/server/queue";
 import { getImageProvider } from "@/providers/image/registry";
 import type { ImageGenerateInput } from "@/providers/image/types";
 
@@ -86,6 +88,34 @@ export async function handleGenerateVariations(
           finishedAt: new Date(),
         },
       });
+
+      // Phase 6 Task 9 — auto-enqueue REVIEW_DESIGN.
+      //
+      // Cross-job rollback YASAK (kullanıcı kararı): variation generation
+      // SUCCESS olarak commit'lendi; review enqueue hatası variation'ı geri
+      // almaz. Hata olursa design.reviewStatus PENDING/SYSTEM (default)
+      // olarak kalır. Carry-forward: review-enqueue-recovery /
+      // missing-review-job-backfill (Task 19+).
+      try {
+        await enqueue(JobType.REVIEW_DESIGN, {
+          scope: "design" as const,
+          generatedDesignId: designId,
+          userId: job.data.userId,
+        });
+      } catch (enqueueErr) {
+        logger.error(
+          {
+            designId,
+            jobId,
+            err:
+              enqueueErr instanceof Error
+                ? enqueueErr.message
+                : String(enqueueErr),
+          },
+          "review auto-enqueue failed; design stays PENDING/SYSTEM",
+        );
+        // Variation generation SUCCESS olarak kalır — throw YOK.
+      }
       return;
     }
     if (r.state === VariationState.FAIL) {
