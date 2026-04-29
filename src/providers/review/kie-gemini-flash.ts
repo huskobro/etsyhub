@@ -127,12 +127,35 @@ export const kieGeminiFlashReviewProvider: ReviewProvider = {
       throw new Error(`kie review failed: ${res.status} ${errText.slice(0, 500)}`);
     }
 
-    const json = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-      model?: string;
-    };
-    const content = json?.choices?.[0]?.message?.content;
+    const json = (await res.json()) as Record<string, unknown>;
+
+    // KIE envelope detection (drift #4 — 2026-04-30):
+    // KIE chat/completions endpoint'i HTTP 200 ile { code, msg, data }
+    // envelope sarabilir (Phase 5 KIE image endpoint pattern'ıyla aynı).
+    // Canlı bakımda gözlemlenen shape: HTTP 200 + body:
+    //   { "code": 500, "msg": "The server is currently being maintained..." }
+    // Defansif: envelope yoksa (flat OpenAI-compatible), eski yol korunur.
+    const envelopeCode = typeof json.code === "number" ? json.code : null;
+    const envelopeMsg = typeof json.msg === "string" ? json.msg : null;
+    const hasEnvelope = envelopeCode !== null && envelopeMsg !== null;
+
+    if (hasEnvelope && envelopeCode !== 200) {
+      throw new Error(
+        `kie review failed: ${envelopeCode} ${(envelopeMsg ?? "<no msg>").slice(0, 500)}`,
+      );
+    }
+
+    // Envelope success ⇒ data'dan body extract; yoksa flat body.
+    const body: Record<string, unknown> | undefined = hasEnvelope
+      ? (json.data as Record<string, unknown> | undefined)
+      : json;
+
+    const choices = (body as { choices?: Array<{ message?: { content?: string } }> } | undefined)
+      ?.choices;
+    const content =
+      Array.isArray(choices) && choices.length > 0
+        ? choices[0]?.message?.content
+        : undefined;
     if (typeof content !== "string" || content.trim() === "") {
       throw new Error("kie review failed: empty content");
     }

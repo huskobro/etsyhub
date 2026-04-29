@@ -15,19 +15,36 @@ const validOutput = {
   summary: "clean illustration",
 };
 
+/**
+ * Mock KIE chat/completions response.
+ *
+ * Default: gerçek KIE shape (HTTP 200 + envelope `{code:200, msg, data}`)
+ * — drift #4 (2026-04-30) sonrası provider envelope-aware.
+ *
+ * `flat: true` ⇒ envelope'suz flat OpenAI-compatible body
+ * (defansif tolerans path'ini test etmek için).
+ */
 function mockKieResponse(
   content: string,
-  options: { ok?: boolean; status?: number; usage?: object } = {},
+  options: { ok?: boolean; status?: number; usage?: object; flat?: boolean } = {},
 ) {
+  const innerBody = {
+    choices: [{ message: { content } }],
+    usage: options.usage ?? { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+    model: "gemini-2.5-flash",
+  };
   return {
     ok: options.ok ?? true,
     status: options.status ?? 200,
     text: async () => "raw error body",
-    json: async () => ({
-      choices: [{ message: { content } }],
-      usage: options.usage ?? { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
-      model: "gemini-2.5-flash",
-    }),
+    json: async () =>
+      options.flat
+        ? innerBody
+        : {
+            code: 200,
+            msg: "success",
+            data: innerBody,
+          },
   };
 }
 
@@ -182,5 +199,90 @@ describe("KIE Gemini Flash review provider — hata senaryoları (sessiz fallbac
     expect(kieGeminiFlashReviewProvider.id).toBe("kie-gemini-flash");
     expect(kieGeminiFlashReviewProvider.modelId).toBe("gemini-2.5-flash");
     expect(kieGeminiFlashReviewProvider.kind).toBe("vision");
+  });
+});
+
+describe("KIE Gemini Flash review provider — envelope handling (drift #4)", () => {
+  it("HTTP 200 + KIE envelope code:500 ⇒ throw with envelope msg (drift #4 kapanış)", async () => {
+    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => "",
+      json: async () => ({
+        code: 500,
+        msg: "The server is currently being maintained, please try again later~",
+      }),
+    });
+
+    await expect(
+      kieGeminiFlashReviewProvider.review(baseInput, { apiKey: "kie-key" }),
+    ).rejects.toThrow(/kie review failed: 500.*server.*maintained/i);
+  });
+
+  it("HTTP 200 + KIE envelope code:200 + data.choices ⇒ parse success", async () => {
+    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => "",
+      json: async () => ({
+        code: 200,
+        msg: "success",
+        data: {
+          choices: [{ message: { content: JSON.stringify(validOutput) } }],
+          usage: { total_tokens: 150 },
+        },
+      }),
+    });
+
+    const result = await kieGeminiFlashReviewProvider.review(baseInput, {
+      apiKey: "kie-key",
+    });
+    expect(result.score).toBe(85);
+    expect(result.costCents).toBe(1);
+  });
+
+  it("HTTP 200 + envelope success ama content boş ⇒ empty content throw", async () => {
+    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => "",
+      json: async () => ({
+        code: 200,
+        msg: "success",
+        data: { choices: [{ message: { content: "" } }] },
+      }),
+    });
+
+    await expect(
+      kieGeminiFlashReviewProvider.review(baseInput, { apiKey: "kie-key" }),
+    ).rejects.toThrow(/empty content/);
+  });
+
+  it("HTTP 200 + envelope code:401 ⇒ throw with envelope auth msg", async () => {
+    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => "",
+      json: async () => ({
+        code: 401,
+        msg: "invalid api key",
+      }),
+    });
+
+    await expect(
+      kieGeminiFlashReviewProvider.review(baseInput, { apiKey: "kie-key" }),
+    ).rejects.toThrow(/kie review failed: 401.*invalid api key/i);
+  });
+
+  it("HTTP 200 + flat OpenAI-compatible body (envelope yok) ⇒ defansif parse success", async () => {
+    // KIE ileride envelope kaldırırsa flat path'in hâlâ çalıştığını doğrular.
+    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      mockKieResponse(JSON.stringify(validOutput), { flat: true }),
+    );
+
+    const result = await kieGeminiFlashReviewProvider.review(baseInput, {
+      apiKey: "kie-key",
+    });
+    expect(result.score).toBe(85);
   });
 });

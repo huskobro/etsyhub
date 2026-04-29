@@ -315,6 +315,20 @@ smoke'undan SONRA manuel probe ile test edilecek:
 
 ## Bilinen Sınırlar (Dürüstlük)
 
+**Aşama 2A canlı smoke kısmi sonuç (2026-04-30):**
+- Variation generation `kie-z-image` text-to-image ile canlı doğrulandı
+  (state: SUCCESS, KIE'den resultUrl döndü). Phase 5 KIE GPT Image
+  provider model id'si KIE'de tanınmıyor (drift #3, ayrı follow-up);
+  smoke geçici olarak z-image t2i ile unblock.
+- Review pipeline canlı smoke KIE Gemini endpoint bakımı nedeniyle
+  tamamlanamadı. KIE chat/completions HTTP 200 + `{code:500, msg:"The
+  server is currently being maintained..."}` döndü. Bakım sonrası
+  retry kullanıcı tarafında.
+- Drift #4 (envelope-aware) bu commit'te kapatıldı: provider artık
+  HTTP 200 + KIE envelope `{code, msg, data}` shape'ini doğru parse
+  eder; `code !== 200` durumunda gerçek envelope mesajıyla throw.
+  Yanıltıcı "empty content" hatası kayboldu.
+
 0. **Phase 5 KIE image provider settings-aware hotfix uygulandı (2026-04-29 — Aşama 2A smoke öncesi):**
    Phase 6 Aşama 2A canlı smoke'unda Phase 5 KIE image provider'ının
    `process.env.KIE_AI_API_KEY` beklediği tespit edildi (Phase 5 closeout
