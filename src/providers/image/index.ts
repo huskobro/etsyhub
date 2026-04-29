@@ -5,5 +5,7 @@ export type {
   ImageGenerateInput,
   ImageGenerateOutput,
   ImagePollOutput,
+  ImageGenerateOptions,
+  ImagePollOptions,
   ImageProvider,
 } from "./types";

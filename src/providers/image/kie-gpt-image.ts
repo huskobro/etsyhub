@@ -5,7 +5,10 @@
 //
 // Sözleşmeler:
 //   - Endpoints: POST /api/v1/jobs/createTask + GET /api/v1/jobs/recordInfo
-//   - Auth: KIE_AI_API_KEY env (call-time fail-fast, module-load DEĞİL)
+//   - Auth: caller-resolved per-user `apiKey` (Phase 5 closeout hotfix
+//     2026-04-29). KIE_AI_API_KEY env okuma YASAK; settings.aiMode.kieApiKey
+//     decrypt'lenip ImageGenerateOptions/ImagePollOptions üzerinden geçer.
+//     Phase 6 review provider (`ReviewProviderRunOptions`) ile simetrik.
 //   - Capability: image-to-image + text-to-image (kullanıcı kararı)
 //   - referenceUrls: yalnız public HTTP(S) — R17.2 (local→AI bridge YOK)
 //   - State mapping: kie-shared.mapKieState (R17.1 — bilinmeyen state THROW)
@@ -21,14 +24,16 @@ import type {
   ImagePollOutput,
   ImageProvider,
   ImageCapability,
+  ImageGenerateOptions,
+  ImagePollOptions,
 } from "./types";
 import {
   KIE_BASE,
+  assertApiKey,
   assertPublicHttpUrls,
   mapKieState,
   parseKieEnvelope,
   parsePollResponse,
-  requireApiKey,
 } from "./kie-shared";
 
 const KIE_MODEL_I2I = "gpt-image/1.5-image-to-image";
@@ -49,8 +54,11 @@ export class KieGptImageProvider implements ImageProvider {
     "text-to-image",
   ];
 
-  async generate(input: ImageGenerateInput): Promise<ImageGenerateOutput> {
-    const apiKey = requireApiKey(PROVIDER_ID);
+  async generate(
+    input: ImageGenerateInput,
+    options: ImageGenerateOptions,
+  ): Promise<ImageGenerateOutput> {
+    assertApiKey(PROVIDER_ID, options.apiKey);
     assertPublicHttpUrls(input.referenceUrls);
 
     const body = {
@@ -65,7 +73,7 @@ export class KieGptImageProvider implements ImageProvider {
     const res = await fetch(`${KIE_BASE}/jobs/createTask`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${options.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -86,13 +94,16 @@ export class KieGptImageProvider implements ImageProvider {
     };
   }
 
-  async poll(providerTaskId: string): Promise<ImagePollOutput> {
-    const apiKey = requireApiKey(PROVIDER_ID);
+  async poll(
+    providerTaskId: string,
+    options: ImagePollOptions,
+  ): Promise<ImagePollOutput> {
+    assertApiKey(PROVIDER_ID, options.apiKey);
     const url = `${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(
       providerTaskId,
     )}`;
     const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: { Authorization: `Bearer ${options.apiKey}` },
     });
     if (!res.ok) {
       throw new Error(`kie.ai HTTP ${res.status}: ${res.statusText}`);

@@ -29,6 +29,7 @@ import { db } from "@/server/db";
 import { enqueue } from "@/server/queue";
 import { AspectRatioSchema, QualitySchema } from "@/features/variation-generation/schemas";
 import { failDesignAndJob } from "@/features/variation-generation/services/ai-generation.service";
+import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
 
 type Ctx = { params: { id: string } };
 
@@ -108,6 +109,21 @@ export async function POST(_req: Request, ctx: Ctx) {
   const providerId = failed.providerId;
   const promptSnapshot = failed.promptSnapshot;
 
+  // Phase 5 closeout hotfix (2026-04-29) — per-user kieApiKey resolve.
+  // Eksik key durumunda enqueue ÖNCE explicit throw; transaction ÖNCE bail
+  // edilir, fresh row yaratılmaz. Phase 6 review provider'ıyla simetrik.
+  const aiModeSettings = await getUserAiModeSettings(user.id);
+  const kieApiKey = aiModeSettings.kieApiKey;
+  if (!kieApiKey || kieApiKey.trim() === "") {
+    return NextResponse.json(
+      {
+        error:
+          "kieApiKey ayarlanmamış (Settings → AI Mode'dan KIE anahtarı girin)",
+      },
+      { status: 400 },
+    );
+  }
+
   // R15 — yeni design + job birebir snapshot kopyası, atomik commit.
   // Eski row dokunulmaz. Transaction kısmi DB tutarsızlığını engeller.
   const { fresh, job } = await db.$transaction(async (tx) => {
@@ -160,6 +176,8 @@ export async function POST(_req: Request, ctx: Ctx) {
       referenceUrls,
       aspectRatio,
       quality,
+      // Phase 5 closeout hotfix: per-user kieApiKey worker'a iletilir.
+      kieApiKey,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "enqueue failed";

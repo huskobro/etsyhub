@@ -9,23 +9,23 @@
 //     z-image runtime'da daraltır)
 //   - Body shape: { model: "z-image", input: { prompt, aspect_ratio } }
 //     image_urls ALAN OLARAK YOK (negatif assertion)
-//   - KIE_AI_API_KEY: call-time fail-fast
+//   - apiKey: caller-resolved per-user key (Phase 5 closeout hotfix
+//     2026-04-29). Eski env-okuma kalktı; boş key ⇒ explicit throw.
 //   - Defensif resultJson parse: bozuk → state:FAIL + error (throw değil)
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { KieZImageProvider } from "@/providers/image/kie-z-image";
 import { VariationState } from "@prisma/client";
 
 const fetchMock = vi.fn();
+const TEST_API_KEY = "test-key";
 
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
-  process.env.KIE_AI_API_KEY = "test-key";
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  delete process.env.KIE_AI_API_KEY;
 });
 
 describe("KieZImageProvider.generate (createTask, text-to-image)", () => {
@@ -40,10 +40,13 @@ describe("KieZImageProvider.generate (createTask, text-to-image)", () => {
     });
 
     const provider = new KieZImageProvider();
-    const out = await provider.generate({
-      prompt: "boho mandala",
-      aspectRatio: "1:1",
-    });
+    const out = await provider.generate(
+      {
+        prompt: "boho mandala",
+        aspectRatio: "1:1",
+      },
+      { apiKey: TEST_API_KEY },
+    );
 
     expect(out.providerTaskId).toBe("task_z_xxx");
     expect(out.state).toBe(VariationState.PROVIDER_PENDING);
@@ -70,10 +73,13 @@ describe("KieZImageProvider.generate (createTask, text-to-image)", () => {
       ok: true,
       json: async () => ({ code: 200, msg: "ok", data: { taskId: "t_169" } }),
     });
-    const out = await new KieZImageProvider().generate({
-      prompt: "abstract",
-      aspectRatio: "16:9",
-    });
+    const out = await new KieZImageProvider().generate(
+      {
+        prompt: "abstract",
+        aspectRatio: "16:9",
+      },
+      { apiKey: TEST_API_KEY },
+    );
     expect(out.providerTaskId).toBe("t_169");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -83,11 +89,14 @@ describe("KieZImageProvider — referenceUrls capability guard (text-to-image on
   it("rejects non-empty referenceUrls with capability + product policy message; fetch NOT called", async () => {
     const p = new KieZImageProvider();
     await expect(
-      p.generate({
-        prompt: "x",
-        aspectRatio: "1:1",
-        referenceUrls: ["https://example.com/img.png"],
-      }),
+      p.generate(
+        {
+          prompt: "x",
+          aspectRatio: "1:1",
+          referenceUrls: ["https://example.com/img.png"],
+        },
+        { apiKey: TEST_API_KEY },
+      ),
     ).rejects.toThrow(/text-to-image only/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -95,11 +104,14 @@ describe("KieZImageProvider — referenceUrls capability guard (text-to-image on
   it("rejection message also surfaces 'image-to-image desteklenmiyor' product policy", async () => {
     const p = new KieZImageProvider();
     await expect(
-      p.generate({
-        prompt: "x",
-        aspectRatio: "1:1",
-        referenceUrls: ["https://example.com/img.png"],
-      }),
+      p.generate(
+        {
+          prompt: "x",
+          aspectRatio: "1:1",
+          referenceUrls: ["https://example.com/img.png"],
+        },
+        { apiKey: TEST_API_KEY },
+      ),
     ).rejects.toThrow(/image-to-image desteklenmiyor/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -107,11 +119,14 @@ describe("KieZImageProvider — referenceUrls capability guard (text-to-image on
   it("rejection message also explicitly says 'sessiz fallback yapılmadı' (R17.1)", async () => {
     const p = new KieZImageProvider();
     await expect(
-      p.generate({
-        prompt: "x",
-        aspectRatio: "1:1",
-        referenceUrls: ["https://example.com/img.png"],
-      }),
+      p.generate(
+        {
+          prompt: "x",
+          aspectRatio: "1:1",
+          referenceUrls: ["https://example.com/img.png"],
+        },
+        { apiKey: TEST_API_KEY },
+      ),
     ).rejects.toThrow(/sessiz fallback yapılmadı/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -121,11 +136,14 @@ describe("KieZImageProvider — referenceUrls capability guard (text-to-image on
       ok: true,
       json: async () => ({ code: 200, msg: "ok", data: { taskId: "t_empty" } }),
     });
-    const out = await new KieZImageProvider().generate({
-      prompt: "x",
-      aspectRatio: "1:1",
-      referenceUrls: [],
-    });
+    const out = await new KieZImageProvider().generate(
+      {
+        prompt: "x",
+        aspectRatio: "1:1",
+        referenceUrls: [],
+      },
+      { apiKey: TEST_API_KEY },
+    );
     expect(out.providerTaskId).toBe("t_empty");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -135,11 +153,14 @@ describe("KieZImageProvider — referenceUrls capability guard (text-to-image on
       ok: true,
       json: async () => ({ code: 200, msg: "ok", data: { taskId: "t_undef" } }),
     });
-    const out = await new KieZImageProvider().generate({
-      prompt: "x",
-      aspectRatio: "1:1",
-      referenceUrls: undefined,
-    });
+    const out = await new KieZImageProvider().generate(
+      {
+        prompt: "x",
+        aspectRatio: "1:1",
+        referenceUrls: undefined,
+      },
+      { apiKey: TEST_API_KEY },
+    );
     expect(out.providerTaskId).toBe("t_undef");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -153,10 +174,13 @@ describe("KieZImageProvider — aspectRatio validation (R17.1 silent fallback YO
   it("rejects '2:3' (z-image does not support); fetch NOT called", async () => {
     const p = new KieZImageProvider();
     await expect(
-      p.generate({
-        prompt: "x",
-        aspectRatio: "2:3",
-      }),
+      p.generate(
+        {
+          prompt: "x",
+          aspectRatio: "2:3",
+        },
+        { apiKey: TEST_API_KEY },
+      ),
     ).rejects.toThrow(/does not support aspect ratio.*2:3/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -164,10 +188,13 @@ describe("KieZImageProvider — aspectRatio validation (R17.1 silent fallback YO
   it("rejects '3:2' (z-image does not support); fetch NOT called", async () => {
     const p = new KieZImageProvider();
     await expect(
-      p.generate({
-        prompt: "x",
-        aspectRatio: "3:2",
-      }),
+      p.generate(
+        {
+          prompt: "x",
+          aspectRatio: "3:2",
+        },
+        { apiKey: TEST_API_KEY },
+      ),
     ).rejects.toThrow(/does not support aspect ratio.*3:2/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -175,16 +202,22 @@ describe("KieZImageProvider — aspectRatio validation (R17.1 silent fallback YO
   it("rejection message lists all 5 supported values + R17.1 note", async () => {
     const p = new KieZImageProvider();
     await expect(
-      p.generate({
-        prompt: "x",
-        aspectRatio: "2:3",
-      }),
+      p.generate(
+        {
+          prompt: "x",
+          aspectRatio: "2:3",
+        },
+        { apiKey: TEST_API_KEY },
+      ),
     ).rejects.toThrow(/1:1.*4:3.*3:4.*16:9.*9:16/);
     await expect(
-      p.generate({
-        prompt: "x",
-        aspectRatio: "2:3",
-      }),
+      p.generate(
+        {
+          prompt: "x",
+          aspectRatio: "2:3",
+        },
+        { apiKey: TEST_API_KEY },
+      ),
     ).rejects.toThrow(/silent fallback/i);
   });
 });
@@ -199,7 +232,9 @@ describe("KieZImageProvider.poll (recordInfo)", () => {
 
   it("waiting → PROVIDER_PENDING", async () => {
     mockRecordInfoResponse({ taskId: "t_w", state: "waiting" });
-    const out = await new KieZImageProvider().poll("t_w");
+    const out = await new KieZImageProvider().poll("t_w", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.PROVIDER_PENDING);
     expect(out.imageUrls).toBeUndefined();
 
@@ -213,13 +248,17 @@ describe("KieZImageProvider.poll (recordInfo)", () => {
 
   it("queuing → PROVIDER_PENDING", async () => {
     mockRecordInfoResponse({ taskId: "t_q", state: "queuing" });
-    const out = await new KieZImageProvider().poll("t_q");
+    const out = await new KieZImageProvider().poll("t_q", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.PROVIDER_PENDING);
   });
 
   it("generating → PROVIDER_RUNNING", async () => {
     mockRecordInfoResponse({ taskId: "t_g", state: "generating" });
-    const out = await new KieZImageProvider().poll("t_g");
+    const out = await new KieZImageProvider().poll("t_g", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.PROVIDER_RUNNING);
   });
 
@@ -231,7 +270,9 @@ describe("KieZImageProvider.poll (recordInfo)", () => {
         resultUrls: ["https://r.kie.ai/z1.png"],
       }),
     });
-    const out = await new KieZImageProvider().poll("t_s");
+    const out = await new KieZImageProvider().poll("t_s", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.SUCCESS);
     expect(out.imageUrls).toEqual(["https://r.kie.ai/z1.png"]);
   });
@@ -243,7 +284,9 @@ describe("KieZImageProvider.poll (recordInfo)", () => {
       failCode: "RATE_LIMIT",
       failMsg: "rate limited",
     });
-    const out = await new KieZImageProvider().poll("t_f");
+    const out = await new KieZImageProvider().poll("t_f", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.FAIL);
     expect(out.error).toBe("rate limited");
   });
@@ -255,7 +298,9 @@ describe("KieZImageProvider.poll (recordInfo)", () => {
       failCode: "RATE_LIMIT",
       failMsg: "",
     });
-    const out = await new KieZImageProvider().poll("t_fc");
+    const out = await new KieZImageProvider().poll("t_fc", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.FAIL);
     expect(out.error).toBe("RATE_LIMIT");
   });
@@ -266,7 +311,9 @@ describe("KieZImageProvider.poll (recordInfo)", () => {
       state: "success",
       resultJson: "{not-json}",
     });
-    const out = await new KieZImageProvider().poll("t_p");
+    const out = await new KieZImageProvider().poll("t_p", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.FAIL);
     expect(out.error).toMatch(/Result parse failure/);
   });
@@ -277,33 +324,43 @@ describe("KieZImageProvider.poll (recordInfo)", () => {
       state: "success",
       resultJson: JSON.stringify({ resultUrls: "not-an-array" }),
     });
-    const out = await new KieZImageProvider().poll("t_na");
+    const out = await new KieZImageProvider().poll("t_na", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.FAIL);
     expect(out.error).toMatch(/Result parse failure/);
   });
 
   it("unknown state → poll throws (R17.1)", async () => {
     mockRecordInfoResponse({ taskId: "t_u", state: "exploded" });
-    await expect(new KieZImageProvider().poll("t_u")).rejects.toThrow(
-      /Unknown kie\.ai state/,
-    );
+    await expect(
+      new KieZImageProvider().poll("t_u", { apiKey: TEST_API_KEY }),
+    ).rejects.toThrow(/Unknown kie\.ai state/);
   });
 });
 
-describe("KieZImageProvider — KIE_AI_API_KEY env fail-fast", () => {
-  it("generate() throws when env missing; fetch NOT called", async () => {
-    delete process.env.KIE_AI_API_KEY;
+describe("KieZImageProvider — apiKey validation (Phase 5 closeout hotfix)", () => {
+  it("generate() throws when apiKey is empty; fetch NOT called", async () => {
     const p = new KieZImageProvider();
     await expect(
-      p.generate({ prompt: "x", aspectRatio: "1:1" }),
-    ).rejects.toThrow(/KIE_AI_API_KEY/);
+      p.generate({ prompt: "x", aspectRatio: "1:1" }, { apiKey: "" }),
+    ).rejects.toThrow(/Settings → AI Mode'dan KIE anahtarı girin/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("poll() throws when env missing; fetch NOT called", async () => {
-    delete process.env.KIE_AI_API_KEY;
+  it("generate() throws when apiKey is whitespace-only", async () => {
     const p = new KieZImageProvider();
-    await expect(p.poll("t_x")).rejects.toThrow(/KIE_AI_API_KEY/);
+    await expect(
+      p.generate({ prompt: "x", aspectRatio: "1:1" }, { apiKey: "   " }),
+    ).rejects.toThrow(/api key missing for kie-z-image/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("poll() throws when apiKey is empty; fetch NOT called", async () => {
+    const p = new KieZImageProvider();
+    await expect(p.poll("t_x", { apiKey: "" })).rejects.toThrow(
+      /Settings → AI Mode'dan KIE anahtarı girin/,
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

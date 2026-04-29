@@ -8,9 +8,11 @@
 // Phase 6 Aşama 1: `reviewProvider` plain string yazılır (encryption gereksiz
 // — sır değil, runtime tercih). Default "kie" — Zod parse fallback.
 //
-// NOT: requireApiKey() (kie-shared) hâlâ process.env.KIE_AI_API_KEY okuyor —
-// runtime provider env→setting geçişi sonraki task'te. Bu modül yalnız
-// persistence zemini.
+// Phase 5 closeout hotfix (2026-04-29): KIE image provider artık
+// settings-aware — `kie-shared.requireApiKey()` env helper'ı SİLİNDİ ve
+// `createVariationJobs` (+ retry route) bu modülden `kieApiKey` resolve
+// edip enqueue payload'una koyar. Phase 6 review provider'ıyla simetrik;
+// artık AI mode variation generation per-user key kullanır.
 
 import { db } from "@/server/db";
 import { encryptSecret, decryptSecret } from "@/lib/secrets";

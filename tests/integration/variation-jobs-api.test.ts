@@ -38,6 +38,7 @@ import { POST as retryPost } from "@/app/api/variation-jobs/[id]/retry/route";
 import { requireUser } from "@/server/session";
 import { enqueue } from "@/server/queue";
 import { checkUrlPublic } from "@/features/variation-generation/url-public-check";
+import { updateUserAiModeSettings } from "@/features/settings/ai-mode/service";
 
 // Asset zorunlu alanları (schema): storageProvider, storageKey, bucket,
 // mimeType, sizeBytes, hash. Reference: assetId + productTypeId zorunlu.
@@ -51,6 +52,16 @@ async function setupFixtures() {
     where: { id: USER_B },
     update: {},
     create: { id: USER_B, email: "b@vj.local", passwordHash: "x" },
+  });
+
+  // Phase 5 closeout hotfix: createVariationJobs + retry route per-user
+  // kieApiKey settings'ten resolve eder. USER_A'ya test key seed'liyoruz.
+  // USER_B kasıtlı boş bırakılıyor — "başka user → 404" zaten ownership
+  // gate'i (settings resolve'a hiç ulaşmaz) öncesinde fail eder.
+  await updateUserAiModeSettings(USER_A, {
+    kieApiKey: "test-kie-key",
+    geminiApiKey: null,
+    reviewProvider: "kie",
   });
 
   const pt = await db.productType.upsert({
@@ -153,6 +164,11 @@ beforeEach(async () => {
     where: { userId: { in: [USER_A, USER_B] } },
   });
   await db.job.deleteMany({ where: { userId: { in: [USER_A, USER_B] } } });
+  // Phase 5 closeout hotfix: per-user kieApiKey settings'i her test'te
+  // setupFixtures içinde yeniden seed'leniyor; eski row'u temizle.
+  await db.userSetting.deleteMany({
+    where: { userId: { in: [USER_A, USER_B] } },
+  });
   (requireUser as any).mockReset();
   (enqueue as any).mockReset();
   (enqueue as any).mockResolvedValue(undefined);
@@ -193,6 +209,33 @@ describe("POST /api/variation-jobs — createN", () => {
       // R19 — negative library prompt'a enjekte edildi
       expect(d.promptSnapshot).toContain("Avoid:");
     }
+    // Phase 5 closeout hotfix — her enqueue payload'unda per-user kieApiKey
+    // (decrypt'lenmiş plain) iletilmeli.
+    for (const call of (enqueue as any).mock.calls) {
+      expect(call[1].kieApiKey).toBe("test-kie-key");
+    }
+  });
+
+  it("kieApiKey ayarlanmamış kullanıcı → 500 explicit throw (Phase 5 closeout hotfix)", async () => {
+    await setupFixtures();
+    // USER_A'nın kieApiKey'i null'a çekiliyor — settings-aware throw bekliyoruz.
+    await updateUserAiModeSettings(USER_A, {
+      kieApiKey: null,
+      geminiApiKey: null,
+      reviewProvider: "kie",
+    });
+    (requireUser as any).mockResolvedValue({ id: USER_A });
+    const req = new Request("http://localhost/api/variation-jobs", {
+      method: "POST",
+      body: JSON.stringify({
+        referenceId: REF_I2I,
+        providerId: "kie-gpt-image-1.5",
+        aspectRatio: "1:1",
+        count: 1,
+      }),
+    });
+    await expect(createPost(req)).rejects.toThrow(/kieApiKey ayarlanmamış/);
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("count=7 → 400 (R17.4 max 6)", async () => {
@@ -586,6 +629,63 @@ describe("POST /api/variation-jobs/[id]/retry", () => {
     const body = await res.json();
     expect(body.error).toMatch(/aspectRatio/i);
     expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("retry: kieApiKey ayarlanmamış kullanıcı → 400 explicit reject (Phase 5 closeout hotfix)", async () => {
+    const { ptId, assetWithUrlId } = await setupFixtures();
+    const failed = await db.generatedDesign.create({
+      data: {
+        userId: USER_A,
+        referenceId: REF_I2I,
+        assetId: assetWithUrlId,
+        productTypeId: ptId,
+        providerId: "kie-gpt-image-1.5",
+        capabilityUsed: VariationCapability.IMAGE_TO_IMAGE,
+        promptSnapshot: "p",
+        state: VariationState.FAIL,
+        aspectRatio: "1:1",
+      },
+    });
+    await updateUserAiModeSettings(USER_A, {
+      kieApiKey: null,
+      geminiApiKey: null,
+      reviewProvider: "kie",
+    });
+    (requireUser as any).mockResolvedValue({ id: USER_A });
+    const res = await retryPost(
+      new Request("http://localhost/", { method: "POST" }),
+      { params: { id: failed.id } },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/kieApiKey ayarlanmamış/);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("retry: enqueue payload'unda per-user kieApiKey iletilir", async () => {
+    const { ptId, assetWithUrlId } = await setupFixtures();
+    const failed = await db.generatedDesign.create({
+      data: {
+        userId: USER_A,
+        referenceId: REF_I2I,
+        assetId: assetWithUrlId,
+        productTypeId: ptId,
+        providerId: "kie-gpt-image-1.5",
+        capabilityUsed: VariationCapability.IMAGE_TO_IMAGE,
+        promptSnapshot: "p",
+        state: VariationState.FAIL,
+        aspectRatio: "1:1",
+      },
+    });
+    (requireUser as any).mockResolvedValue({ id: USER_A });
+    const res = await retryPost(
+      new Request("http://localhost/", { method: "POST" }),
+      { params: { id: failed.id } },
+    );
+    expect(res.status).toBe(200);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    const enqueueCall = (enqueue as any).mock.calls[0];
+    expect(enqueueCall[1].kieApiKey).toBe("test-kie-key");
   });
 
   it("retry: enqueue fail → 500 + design FAIL + job FAILED (cleanup)", async () => {

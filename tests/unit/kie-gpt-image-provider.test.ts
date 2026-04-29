@@ -1,3 +1,6 @@
+// Phase 5 closeout hotfix (2026-04-29): provider settings-aware refactor.
+// `vi.stubEnv("KIE_AI_API_KEY", ...)` çağrıları SİLİNDİ; provider çağrıları
+// `{ apiKey: "test-key" }` ile yapılır (per-user resolved key simulation).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { KieGptImageProvider, mapKieState } from "@/providers/image/kie-gpt-image";
 import { VariationState } from "@prisma/client";
@@ -5,15 +8,17 @@ import { VariationState } from "@prisma/client";
 // Global fetch mock — Node 20+ fetch'i Vitest stubGlobal ile değiştirilebilir.
 const fetchMock = vi.fn();
 
+// Sabit test key — caller (worker) per-user encrypted'dan decrypt'leyip
+// options.apiKey olarak geçer. Burada simüle ediyoruz.
+const TEST_API_KEY = "test-key";
+
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
-  process.env.KIE_AI_API_KEY = "test-key";
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  delete process.env.KIE_AI_API_KEY;
 });
 
 describe("KieGptImageProvider.generate (createTask)", () => {
@@ -28,11 +33,14 @@ describe("KieGptImageProvider.generate (createTask)", () => {
     });
 
     const provider = new KieGptImageProvider();
-    const out = await provider.generate({
-      prompt: "pastel anemone",
-      referenceUrls: ["https://example.com/a.jpg"],
-      aspectRatio: "1:1",
-    });
+    const out = await provider.generate(
+      {
+        prompt: "pastel anemone",
+        referenceUrls: ["https://example.com/a.jpg"],
+        aspectRatio: "1:1",
+      },
+      { apiKey: TEST_API_KEY },
+    );
 
     expect(out.providerTaskId).toBe("task_abc");
     expect(out.state).toBe(VariationState.PROVIDER_PENDING);
@@ -74,7 +82,7 @@ describe("KieGptImageProvider.poll (recordInfo)", () => {
   it("waiting → PROVIDER_PENDING, imageUrls undefined", async () => {
     mockRecordInfoResponse({ taskId: "task_1", state: "waiting" });
     const provider = new KieGptImageProvider();
-    const out = await provider.poll("task_1");
+    const out = await provider.poll("task_1", { apiKey: TEST_API_KEY });
     expect(out.state).toBe(VariationState.PROVIDER_PENDING);
     expect(out.imageUrls).toBeUndefined();
     expect(out.error).toBeUndefined();
@@ -89,14 +97,18 @@ describe("KieGptImageProvider.poll (recordInfo)", () => {
 
   it("queuing → PROVIDER_PENDING", async () => {
     mockRecordInfoResponse({ taskId: "task_2", state: "queuing" });
-    const out = await new KieGptImageProvider().poll("task_2");
+    const out = await new KieGptImageProvider().poll("task_2", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.PROVIDER_PENDING);
     expect(out.imageUrls).toBeUndefined();
   });
 
   it("generating → PROVIDER_RUNNING, imageUrls undefined", async () => {
     mockRecordInfoResponse({ taskId: "task_3", state: "generating" });
-    const out = await new KieGptImageProvider().poll("task_3");
+    const out = await new KieGptImageProvider().poll("task_3", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.PROVIDER_RUNNING);
     expect(out.imageUrls).toBeUndefined();
   });
@@ -109,7 +121,9 @@ describe("KieGptImageProvider.poll (recordInfo)", () => {
         resultUrls: ["https://r.kie.ai/1.png", "https://r.kie.ai/2.png"],
       }),
     });
-    const out = await new KieGptImageProvider().poll("task_4");
+    const out = await new KieGptImageProvider().poll("task_4", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.SUCCESS);
     expect(out.imageUrls).toEqual([
       "https://r.kie.ai/1.png",
@@ -125,7 +139,9 @@ describe("KieGptImageProvider.poll (recordInfo)", () => {
       failCode: "RATE_LIMIT",
       failMsg: "rate limited",
     });
-    const out = await new KieGptImageProvider().poll("task_5");
+    const out = await new KieGptImageProvider().poll("task_5", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.FAIL);
     expect(out.error).toBe("rate limited");
     expect(out.imageUrls).toBeUndefined();
@@ -138,7 +154,9 @@ describe("KieGptImageProvider.poll (recordInfo)", () => {
       failCode: "RATE_LIMIT",
       failMsg: "",
     });
-    const out = await new KieGptImageProvider().poll("task_6");
+    const out = await new KieGptImageProvider().poll("task_6", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.FAIL);
     expect(out.error).toBe("RATE_LIMIT");
   });
@@ -149,7 +167,9 @@ describe("KieGptImageProvider.poll (recordInfo)", () => {
       state: "success",
       resultJson: "{not-json}",
     });
-    const out = await new KieGptImageProvider().poll("task_7");
+    const out = await new KieGptImageProvider().poll("task_7", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.FAIL);
     expect(out.error).toMatch(/Result parse failure/);
   });
@@ -160,16 +180,18 @@ describe("KieGptImageProvider.poll (recordInfo)", () => {
       state: "success",
       resultJson: JSON.stringify({ resultUrls: "not-an-array" }),
     });
-    const out = await new KieGptImageProvider().poll("task_8");
+    const out = await new KieGptImageProvider().poll("task_8", {
+      apiKey: TEST_API_KEY,
+    });
     expect(out.state).toBe(VariationState.FAIL);
     expect(out.error).toMatch(/Result parse failure/);
   });
 
   it("unknown state from kie.ai → poll throws", async () => {
     mockRecordInfoResponse({ taskId: "task_9", state: "exploded" });
-    await expect(new KieGptImageProvider().poll("task_9")).rejects.toThrow(
-      /Unknown kie\.ai state/,
-    );
+    await expect(
+      new KieGptImageProvider().poll("task_9", { apiKey: TEST_API_KEY }),
+    ).rejects.toThrow(/Unknown kie\.ai state/);
   });
 });
 
@@ -177,11 +199,14 @@ describe("KieGptImageProvider — referenceUrls guard (R17.2)", () => {
   it("rejects relative/local path", async () => {
     const p = new KieGptImageProvider();
     await expect(
-      p.generate({
-        prompt: "x",
-        aspectRatio: "1:1",
-        referenceUrls: ["/Users/foo/img.png"],
-      }),
+      p.generate(
+        {
+          prompt: "x",
+          aspectRatio: "1:1",
+          referenceUrls: ["/Users/foo/img.png"],
+        },
+        { apiKey: TEST_API_KEY },
+      ),
     ).rejects.toThrow(/public HTTP\(S\) URLs/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -189,11 +214,14 @@ describe("KieGptImageProvider — referenceUrls guard (R17.2)", () => {
   it("rejects file:// URI", async () => {
     const p = new KieGptImageProvider();
     await expect(
-      p.generate({
-        prompt: "x",
-        aspectRatio: "1:1",
-        referenceUrls: ["file:///foo/img.png"],
-      }),
+      p.generate(
+        {
+          prompt: "x",
+          aspectRatio: "1:1",
+          referenceUrls: ["file:///foo/img.png"],
+        },
+        { apiKey: TEST_API_KEY },
+      ),
     ).rejects.toThrow(/public HTTP\(S\) URLs/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -201,30 +229,43 @@ describe("KieGptImageProvider — referenceUrls guard (R17.2)", () => {
   it("rejects data: URI / base64", async () => {
     const p = new KieGptImageProvider();
     await expect(
-      p.generate({
-        prompt: "x",
-        aspectRatio: "1:1",
-        referenceUrls: ["data:image/png;base64,iVBORw0KGgo="],
-      }),
+      p.generate(
+        {
+          prompt: "x",
+          aspectRatio: "1:1",
+          referenceUrls: ["data:image/png;base64,iVBORw0KGgo="],
+        },
+        { apiKey: TEST_API_KEY },
+      ),
     ).rejects.toThrow(/public HTTP\(S\) URLs/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
-describe("KieGptImageProvider — KIE_AI_API_KEY env fail-fast", () => {
-  it("generate() throws when env missing", async () => {
-    delete process.env.KIE_AI_API_KEY;
+describe("KieGptImageProvider — apiKey validation (Phase 5 closeout hotfix)", () => {
+  // Phase 5 closeout hotfix: env okuma kalktı; key boş ise explicit throw
+  // (Settings → AI Mode yön mesajı).
+  it("generate() throws when apiKey is empty string; fetch NOT called", async () => {
     const p = new KieGptImageProvider();
     await expect(
-      p.generate({ prompt: "x", aspectRatio: "1:1" }),
-    ).rejects.toThrow(/KIE_AI_API_KEY/);
+      p.generate({ prompt: "x", aspectRatio: "1:1" }, { apiKey: "" }),
+    ).rejects.toThrow(/Settings → AI Mode'dan KIE anahtarı girin/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("poll() throws when env missing", async () => {
-    delete process.env.KIE_AI_API_KEY;
+  it("generate() throws when apiKey is whitespace-only", async () => {
     const p = new KieGptImageProvider();
-    await expect(p.poll("task_x")).rejects.toThrow(/KIE_AI_API_KEY/);
+    await expect(
+      p.generate({ prompt: "x", aspectRatio: "1:1" }, { apiKey: "   " }),
+    ).rejects.toThrow(/api key missing for kie-gpt-image-1\.5/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("poll() throws when apiKey is empty; fetch NOT called", async () => {
+    const p = new KieGptImageProvider();
+    await expect(p.poll("task_x", { apiKey: "" })).rejects.toThrow(
+      /Settings → AI Mode'dan KIE anahtarı girin/,
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

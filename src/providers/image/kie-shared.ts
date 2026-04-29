@@ -15,9 +15,29 @@
 // R17.2: local→AI bridge yok; URL guard provider seviyesinde uygulanır
 //        (assertPublicHttpUrls helper'ı burada export edilir, gpt-image kullanır,
 //        z-image text-to-image olduğu için referenceUrls'ü guard'dan ÖNCE reddeder).
+//
+// Phase 5 closeout hotfix (2026-04-29): `requireApiKey` env helper SİLİNDİ.
+// Provider'lar artık caller-resolved per-user `apiKey`'i `ImageGenerateOptions`
+// üzerinden alır (Phase 6 review provider simetrisi). Boş/whitespace key
+// durumunda explicit throw provider içinde yapılır — env'den okuma YASAK.
 import { VariationState } from "@prisma/client";
 
 export const KIE_BASE = "https://api.kie.ai/api/v1";
+
+/**
+ * Caller-resolved per-user API key validasyonu (Phase 5 closeout hotfix).
+ *
+ * `ImageGenerateOptions.apiKey` boş / yalnız whitespace ise explicit throw.
+ * Mesaj kullanıcıya yön gösterir: "Settings → AI Mode'dan KIE anahtarı girin".
+ * Sessiz fallback YASAK (R17.1).
+ */
+export function assertApiKey(providerId: string, apiKey: string): void {
+  if (!apiKey || apiKey.trim() === "") {
+    throw new Error(
+      `api key missing for ${providerId} provider — Settings → AI Mode'dan KIE anahtarı girin`,
+    );
+  }
+}
 
 /**
  * kie.ai task state → Prisma VariationState dönüşümü.
@@ -38,22 +58,6 @@ export function mapKieState(state: string): VariationState {
     default:
       throw new Error(`Unknown kie.ai state: ${state}`);
   }
-}
-
-/**
- * KIE_AI_API_KEY env var'ı call-time'da okur (module-load DEĞİL).
- *
- * Provider id parametresi mesaj netliği için alınır; iki provider da aynı
- * key'i paylaşır.
- */
-export function requireApiKey(providerId: string): string {
-  const key = process.env.KIE_AI_API_KEY;
-  if (!key) {
-    throw new Error(
-      `KIE_AI_API_KEY env var is required for ${providerId} provider`,
-    );
-  }
-  return key;
 }
 
 /**

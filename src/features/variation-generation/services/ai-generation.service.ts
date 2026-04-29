@@ -17,6 +17,10 @@
 //
 // Reference.asset.sourceUrl → i2i için public URL kaynağı (schema cross-check
 // not: Reference'ta imageUrl alanı YOK; truth Asset.sourceUrl).
+//
+// Phase 5 closeout hotfix (2026-04-29): per-user `kieApiKey` settings'ten
+// resolve edilir ve enqueue payload'una eklenir. Eksik key durumunda explicit
+// throw — sessiz fallback YASAK. Phase 6 review provider ile simetrik pattern.
 import { db } from "@/server/db";
 import {
   JobType,
@@ -28,6 +32,7 @@ import {
 import { enqueue } from "@/server/queue";
 import { buildImagePrompt } from "@/features/variation-generation/prompt-builder";
 import type { ImageGenerateInput, ImageCapability } from "@/providers/image/types";
+import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
 
 export type CreateVariationJobsInput = {
   userId: string;
@@ -55,6 +60,18 @@ export type CreateVariationJobsOutput = {
 export async function createVariationJobs(
   input: CreateVariationJobsInput,
 ): Promise<CreateVariationJobsOutput> {
+  // Phase 5 closeout hotfix: per-user `kieApiKey` resolve. Eksik key
+  // durumunda enqueue ÖNCE explicit throw — sessiz fallback YASAK; kullanıcı
+  // UI'da "Settings → AI Mode" yön mesajı görür. Phase 6 review provider'ıyla
+  // simetrik (`resolveReviewProviderConfig` patterni).
+  const settings = await getUserAiModeSettings(input.userId);
+  const kieApiKey = settings.kieApiKey;
+  if (!kieApiKey || kieApiKey.trim() === "") {
+    throw new Error(
+      `kieApiKey ayarlanmamış (Settings → AI Mode'dan KIE anahtarı girin); userId=${input.userId}`,
+    );
+  }
+
   const prompt = buildImagePrompt({
     systemPrompt: input.systemPrompt,
     brief: input.brief,
@@ -129,6 +146,10 @@ export async function createVariationJobs(
               : undefined,
           aspectRatio: input.aspectRatio,
           quality: input.quality,
+          // Phase 5 closeout hotfix: per-user kieApiKey worker'a iletilir.
+          // BullMQ Redis'e plain text yazılır (Phase 6 review patterniyle aynı);
+          // queue payload encryption Phase 7+ hardening carry-forward.
+          kieApiKey,
         });
         designIds.push(design.id);
       } catch (err) {

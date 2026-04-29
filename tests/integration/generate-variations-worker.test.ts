@@ -121,6 +121,9 @@ function makeFakeJob(designId: string, jobId: string): Job {
       referenceUrls: ["https://example.com/a.jpg"],
       aspectRatio: "2:3",
       quality: "medium",
+      // Phase 5 closeout hotfix: per-user kieApiKey payload field. Worker
+      // provider'a `{ apiKey: payload.kieApiKey }` olarak iletir.
+      kieApiKey: "test-key",
     },
   } as unknown as Job;
 }
@@ -175,6 +178,14 @@ describe("GENERATE_VARIATIONS worker", () => {
     expect(updatedJob?.status).toBe(JobStatus.SUCCESS);
     expect(updatedJob?.progress).toBe(100);
     expect(updatedJob?.finishedAt).not.toBeNull();
+
+    // Phase 5 closeout hotfix: provider çağrılarına per-user apiKey iletilmeli.
+    expect(generateMock).toHaveBeenCalledTimes(1);
+    const generateCall = generateMock.mock.calls[0]!;
+    expect(generateCall[1]).toEqual({ apiKey: "test-key" });
+    expect(pollMock).toHaveBeenCalledTimes(1);
+    const pollCall = pollMock.mock.calls[0]!;
+    expect(pollCall[1]).toEqual({ apiKey: "test-key" });
   });
 
   it("strict state sequence: providerTaskId yazılmadan PROVIDER_RUNNING görünmez (atomic update)", async () => {

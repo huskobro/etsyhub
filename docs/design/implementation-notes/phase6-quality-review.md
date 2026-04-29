@@ -315,6 +315,21 @@ smoke'undan SONRA manuel probe ile test edilecek:
 
 ## Bilinen Sınırlar (Dürüstlük)
 
+0. **Phase 5 KIE image provider settings-aware hotfix uygulandı (2026-04-29 — Aşama 2A smoke öncesi):**
+   Phase 6 Aşama 2A canlı smoke'unda Phase 5 KIE image provider'ının
+   `process.env.KIE_AI_API_KEY` beklediği tespit edildi (Phase 5 closeout
+   drift). Hotfix: image provider settings-aware refactor — per-user
+   encrypted `kieApiKey` setting'inden okur, env var bağımlılığı kalktı.
+   Phase 6 review provider'ıyla simetrik pattern (`ImageGenerateOptions
+   { apiKey: string }` ↔ `ReviewProviderRunOptions { apiKey: string }`).
+   `kie-shared.requireApiKey()` env helper SİLİNDİ; yerine
+   `assertApiKey(providerId, apiKey)` validasyon helper'ı geldi.
+
+   **Phase 5 closeout drift hâlâ açık:** `/variations` UI route'u eksik
+   (sayfa kodu yok, feature flag `false`). Ayrı task gerekli; bu hotfix'e
+   dahil DEĞİL. Smoke şu an CLI tetiklemeyle yapılıyor
+   (`scripts/smoke-trigger-variation.ts`).
+
 1. **KIE review provider AI mode canlı; local mode Aşama 2B bekliyor:**
    `kie-gemini-flash` provider AI mode (`scope: "design"`, signed URL) için
    gerçek impl tamam — KIE.ai Gemini 2.5 Flash chat/completions ile çalışır.

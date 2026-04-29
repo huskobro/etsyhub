@@ -49,9 +49,33 @@ export type ImagePollOutput = {
   error?: string;
 };
 
+/**
+ * Provider çağrı opsiyonları (Phase 5 closeout settings-aware hotfix —
+ * 2026-04-29). Provider stateless tutulur; caller (worker) per-user
+ * `kieApiKey` setting'ini decrypt'leyip buradan geçer.
+ *
+ * Phase 6 review provider'ı (`ReviewProviderRunOptions`) ile simetrik
+ * pattern: env var bağımlılığı YASAK; multi-tenant izolasyon korunur.
+ */
+export type ImageGenerateOptions = {
+  /** Per-user encrypted KIE API key — settings.aiMode.kieApiKey decrypt'lenmiş hali. */
+  apiKey: string;
+};
+
+export type ImagePollOptions = {
+  /** Per-user encrypted KIE API key — settings.aiMode.kieApiKey decrypt'lenmiş hali. */
+  apiKey: string;
+};
+
 export interface ImageProvider {
   readonly id: string;
   readonly capabilities: ReadonlyArray<ImageCapability>;
-  generate(input: ImageGenerateInput): Promise<ImageGenerateOutput>;
-  poll(providerTaskId: string): Promise<ImagePollOutput>;
+  generate(
+    input: ImageGenerateInput,
+    options: ImageGenerateOptions,
+  ): Promise<ImageGenerateOutput>;
+  poll(
+    providerTaskId: string,
+    options: ImagePollOptions,
+  ): Promise<ImagePollOutput>;
 }

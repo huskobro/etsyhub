@@ -139,6 +139,8 @@ function makeFakeJob(designId: string, jobId: string): Job {
       referenceUrls: ["https://example.com/a.jpg"],
       aspectRatio: "2:3",
       quality: "medium",
+      // Phase 5 closeout hotfix: per-user kieApiKey payload field.
+      kieApiKey: "test-key",
     },
   } as unknown as Job;
 }

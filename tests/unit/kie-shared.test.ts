@@ -4,14 +4,15 @@
 // omurgasını paylaşır; bu test paketi paylaşılan kontratları sabitler:
 //   - mapKieState: 5 mapping + unknown throw (R17.1)
 //   - parsePollResponse: success / fail / pending+running / parse-fail / non-array
-//   - requireApiKey: env var/yok (call-time fail-fast)
+//   - assertApiKey: caller-resolved per-user key validasyonu (Phase 5
+//     closeout hotfix; eski env-okuyan `requireApiKey` SİLİNDİ).
 //
 // parseKieEnvelope ve assertPublicHttpUrls provider testlerinde dolaylı kapsanır.
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   mapKieState,
   parsePollResponse,
-  requireApiKey,
+  assertApiKey,
 } from "@/providers/image/kie-shared";
 import { VariationState } from "@prisma/client";
 
@@ -91,18 +92,26 @@ describe("kie-shared.parsePollResponse", () => {
   });
 });
 
-describe("kie-shared.requireApiKey", () => {
-  afterEach(() => {
-    delete process.env.KIE_AI_API_KEY;
+describe("kie-shared.assertApiKey (Phase 5 closeout hotfix — settings-aware)", () => {
+  it("caller-provided key non-empty ⇒ no throw", () => {
+    expect(() => assertApiKey("kie-z-image", "secret-123")).not.toThrow();
   });
 
-  it("returns key when env var is set", () => {
-    process.env.KIE_AI_API_KEY = "secret-123";
-    expect(requireApiKey("kie-z-image")).toBe("secret-123");
+  it("empty string ⇒ explicit throw with Settings → AI Mode yön mesajı", () => {
+    expect(() => assertApiKey("kie-z-image", "")).toThrow(
+      /Settings → AI Mode'dan KIE anahtarı girin/,
+    );
   });
 
-  it("throws when env var missing (call-time fail-fast)", () => {
-    delete process.env.KIE_AI_API_KEY;
-    expect(() => requireApiKey("kie-z-image")).toThrow(/KIE_AI_API_KEY/);
+  it("whitespace-only ⇒ explicit throw", () => {
+    expect(() => assertApiKey("kie-gpt-image-1.5", "   ")).toThrow(
+      /api key missing for kie-gpt-image-1\.5/,
+    );
+  });
+
+  it("error message includes provider id for clarity", () => {
+    expect(() => assertApiKey("kie-z-image", "")).toThrow(
+      /api key missing for kie-z-image/,
+    );
   });
 });

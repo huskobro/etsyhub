@@ -11,10 +11,15 @@
 //   - Job.error ve design.errorMessage üç fail dalında AYNI string taşır
 //     (debugging için tek truth)
 //
-// Phase 6 carry-forward:
-//   - User-level aiMode setting'inden API key okuma (şu an env)
+// Phase 5 closeout hotfix (2026-04-29):
+//   - Per-user `kieApiKey` payload'a eklendi (settings-aware).
+//   - Provider çağrıları `{ apiKey: payload.kieApiKey }` ile yapılır;
+//     env var bağımlılığı kalktı.
+//   - Phase 6 review provider ile simetrik pattern.
+//
+// Phase 6+ carry-forward:
 //   - Provider trace metadata (poll attempt count, latency)
-//   - Cost tracking integration
+//   - Queue payload encryption (BullMQ Redis plain text — Phase 7+ hardening)
 import type { Job } from "bullmq";
 import { JobStatus, JobType, VariationState } from "@prisma/client";
 import { db } from "@/server/db";
@@ -32,6 +37,13 @@ export type GenerateVariationsPayload = {
   referenceUrls?: string[];
   aspectRatio: ImageGenerateInput["aspectRatio"];
   quality?: "medium" | "high";
+  /**
+   * Per-user encrypted KIE API key — service katmanı `getUserAiModeSettings`
+   * üzerinden decrypt'leyip payload'a koyar (Phase 5 closeout hotfix). Worker
+   * provider'a `{ apiKey }` olarak geçer. Boş string YASAK; service tarafı
+   * eksik key durumunda enqueue ÖNCE explicit throw eder.
+   */
+  kieApiKey: string;
 };
 
 const POLL_INTERVAL_MS = 3000;
@@ -40,7 +52,16 @@ const POLL_MAX = 120; // 6 dakika
 export async function handleGenerateVariations(
   job: Job<GenerateVariationsPayload>,
 ): Promise<void> {
-  const { jobId, designId, providerId, prompt, referenceUrls, aspectRatio, quality } = job.data;
+  const {
+    jobId,
+    designId,
+    providerId,
+    prompt,
+    referenceUrls,
+    aspectRatio,
+    quality,
+    kieApiKey,
+  } = job.data;
   const provider = getImageProvider(providerId);
 
   await db.job.update({
@@ -54,7 +75,10 @@ export async function handleGenerateVariations(
 
   let providerTaskId: string;
   try {
-    const out = await provider.generate({ prompt, referenceUrls, aspectRatio, quality });
+    const out = await provider.generate(
+      { prompt, referenceUrls, aspectRatio, quality },
+      { apiKey: kieApiKey },
+    );
     providerTaskId = out.providerTaskId;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "provider generate failed";
@@ -71,7 +95,7 @@ export async function handleGenerateVariations(
 
   for (let i = 0; i < POLL_MAX; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-    const r = await provider.poll(providerTaskId);
+    const r = await provider.poll(providerTaskId, { apiKey: kieApiKey });
     if (r.state === VariationState.SUCCESS) {
       await db.generatedDesign.update({
         where: { id: designId },

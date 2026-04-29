@@ -6,7 +6,9 @@
 // Sözleşmeler:
 //   - Endpoints: POST /api/v1/jobs/createTask + GET /api/v1/jobs/recordInfo
 //     (gpt-image ile aynı omurga; kie-shared modülü paylaşılır).
-//   - Auth: KIE_AI_API_KEY env (call-time fail-fast).
+//   - Auth: caller-resolved per-user `apiKey` (Phase 5 closeout hotfix
+//     2026-04-29). KIE_AI_API_KEY env okuma YASAK; settings.aiMode.kieApiKey
+//     decrypt'lenip ImageGenerateOptions/ImagePollOptions üzerinden geçer.
 //   - Model: "z-image" (KESİN — "z-image/text-to-image" YANLIŞ).
 //   - Capability: ["text-to-image"] (TEK; i2i değil).
 //   - referenceUrls: boş/undefined OK; uzunluk > 0 ise THROW.
@@ -28,12 +30,14 @@ import type {
   ImagePollOutput,
   ImageProvider,
   ImageCapability,
+  ImageGenerateOptions,
+  ImagePollOptions,
 } from "./types";
 import {
   KIE_BASE,
+  assertApiKey,
   parseKieEnvelope,
   parsePollResponse,
-  requireApiKey,
 } from "./kie-shared";
 
 const PROVIDER_ID = "kie-z-image";
@@ -73,14 +77,18 @@ export class KieZImageProvider implements ImageProvider {
   readonly id = PROVIDER_ID;
   readonly capabilities: ReadonlyArray<ImageCapability> = ["text-to-image"];
 
-  async generate(input: ImageGenerateInput): Promise<ImageGenerateOutput> {
+  async generate(
+    input: ImageGenerateInput,
+    options: ImageGenerateOptions,
+  ): Promise<ImageGenerateOutput> {
     // 1) Capability guard ÖNCE — fetch çağrısından önce hata.
     assertNoReferenceUrls(input.referenceUrls);
     // 2) aspectRatio runtime guard (TS ImageAspectRatio 7 değer içerir;
     //    z-image 5'e daraltır — runtime'da yakalanır).
     assertSupportedAspectRatio(input.aspectRatio);
-    // 3) Env fail-fast (call-time).
-    const apiKey = requireApiKey(PROVIDER_ID);
+    // 3) API key validasyonu (caller-resolved per-user key — Phase 5
+    //    closeout hotfix; env okuma YASAK).
+    assertApiKey(PROVIDER_ID, options.apiKey);
 
     const body = {
       model: KIE_MODEL_Z,
@@ -94,7 +102,7 @@ export class KieZImageProvider implements ImageProvider {
     const res = await fetch(`${KIE_BASE}/jobs/createTask`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${options.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -115,13 +123,16 @@ export class KieZImageProvider implements ImageProvider {
     };
   }
 
-  async poll(providerTaskId: string): Promise<ImagePollOutput> {
-    const apiKey = requireApiKey(PROVIDER_ID);
+  async poll(
+    providerTaskId: string,
+    options: ImagePollOptions,
+  ): Promise<ImagePollOutput> {
+    assertApiKey(PROVIDER_ID, options.apiKey);
     const url = `${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(
       providerTaskId,
     )}`;
     const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: { Authorization: `Bearer ${options.apiKey}` },
     });
     if (!res.ok) {
       throw new Error(`kie.ai HTTP ${res.status}: ${res.statusText}`);
