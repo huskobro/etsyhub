@@ -17,9 +17,10 @@
 //   - focus-visible:ring-2 ring-accent (klavye fokusu görünür, WCAG 2.4.7)
 // WCAG 2.1.1 Keyboard ve 4.1.2 Name/Role/Value uyumluluğu.
 
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useRef, type KeyboardEvent } from "react";
 import { ReviewQueueList } from "@/app/(app)/review/_components/ReviewQueueList";
+import { buildReviewUrl } from "@/features/review/lib/search-params";
 
 type TabValue = "ai" | "local";
 type Props = { activeTab: TabValue };
@@ -35,12 +36,20 @@ const tabId = (value: TabValue) => `review-tab-${value}`;
 export function ReviewTabs({ activeTab }: Props) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const tabRefs = useRef<Map<TabValue, HTMLButtonElement | null>>(new Map());
 
+  // Ö-3: Tab değişimi mevcut diğer query param'ları korumalı; ancak page ve
+  // detail tab-specific olduğu için sıfırlanır (yeni tab'da o page/detail
+  // anlamsız).
   const switchTab = (tab: TabValue) => {
-    const params = new URLSearchParams();
-    params.set("tab", tab);
-    router.push(`${pathname}?${params.toString()}`);
+    router.push(
+      buildReviewUrl(pathname, searchParams, {
+        tab,
+        page: undefined,
+        detail: undefined,
+      }),
+    );
   };
 
   // Klavye gezinmesi (WAI-ARIA tablist paterni — wrap'li):

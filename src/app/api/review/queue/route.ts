@@ -55,6 +55,14 @@ function riskFlagCount(raw: unknown): number {
   return 0;
 }
 
+// Phase 6 Dalga B (Task 15): detail panel queue cache'inden okur — ek detail
+// fetch gereksiz. Json? alanları olduğu gibi UI'a iletmek için array olarak
+// normalize ediyoruz; Json olmayan / boş durumda [] döner. Drift koruması
+// için type literal'ı `unknown[]`; UI ReviewRiskFlag tipine cast eder.
+function normalizeRiskFlags(raw: unknown): unknown[] {
+  return Array.isArray(raw) ? raw : [];
+}
+
 export const GET = withErrorHandling(async (req: Request) => {
   const user = await requireUser();
   const url = new URL(req.url);
@@ -85,8 +93,10 @@ export const GET = withErrorHandling(async (req: Request) => {
           reviewStatus: true,
           reviewStatusSource: true,
           reviewScore: true,
+          reviewSummary: true,
           reviewRiskFlags: true,
           reviewedAt: true,
+          reviewProviderSnapshot: true,
           asset: { select: { storageKey: true } },
         },
         orderBy: { createdAt: "desc" },
@@ -121,8 +131,11 @@ export const GET = withErrorHandling(async (req: Request) => {
           reviewStatus: it.reviewStatus,
           reviewStatusSource: it.reviewStatusSource,
           reviewScore: it.reviewScore,
+          reviewSummary: it.reviewSummary,
           riskFlagCount: riskFlagCount(it.reviewRiskFlags),
+          riskFlags: normalizeRiskFlags(it.reviewRiskFlags),
           reviewedAt: it.reviewedAt?.toISOString() ?? null,
+          reviewProviderSnapshot: it.reviewProviderSnapshot,
         };
       }),
     );
@@ -151,8 +164,10 @@ export const GET = withErrorHandling(async (req: Request) => {
         reviewStatus: true,
         reviewStatusSource: true,
         reviewScore: true,
+        reviewSummary: true,
         reviewRiskFlags: true,
         reviewedAt: true,
+        reviewProviderSnapshot: true,
         thumbnailPath: true,
       },
       orderBy: { createdAt: "desc" },
@@ -173,8 +188,11 @@ export const GET = withErrorHandling(async (req: Request) => {
     reviewStatus: it.reviewStatus,
     reviewStatusSource: it.reviewStatusSource,
     reviewScore: it.reviewScore,
+    reviewSummary: it.reviewSummary,
     riskFlagCount: riskFlagCount(it.reviewRiskFlags),
+    riskFlags: normalizeRiskFlags(it.reviewRiskFlags),
     reviewedAt: it.reviewedAt?.toISOString() ?? null,
+    reviewProviderSnapshot: it.reviewProviderSnapshot,
   }));
 
   return NextResponse.json({

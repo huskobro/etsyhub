@@ -13,6 +13,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+// Phase 6 Dalga B: ReviewQueueList artık pagination URL state için
+// useRouter/useSearchParams kullanıyor + ReviewCard içeriyor (BulkActionsBar
+// da). Bu yüzden next/navigation mock'u zorunlu.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => "/review",
+  useSearchParams: () => new URLSearchParams(""),
+}));
+
 const mockUseReviewQueue = vi.fn();
 vi.mock("@/features/review/queries", () => ({
   useReviewQueue: (params: { scope: "design" | "local" }) =>

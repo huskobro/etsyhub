@@ -7,8 +7,18 @@
 //   - riskFlagCount === 0 => risk satırı gizli.
 //   - thumbnailUrl null => "Önizleme yok" fallback metni görünür.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+
+// Phase 6 Dalga B: ReviewCard artık useRouter / useSearchParams kullanıyor
+// (kart click → drawer URL'e ?detail=cuid yazar). next/navigation mock'u
+// olmadan invariant hatası alır.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => "/review",
+  useSearchParams: () => new URLSearchParams(""),
+}));
+
 import { ReviewCard } from "@/app/(app)/review/_components/ReviewCard";
 import type { ReviewQueueItem } from "@/features/review/queries";
 
@@ -18,8 +28,11 @@ const baseItem: ReviewQueueItem = {
   reviewStatus: "APPROVED",
   reviewStatusSource: "SYSTEM",
   reviewScore: 95,
+  reviewSummary: null,
   riskFlagCount: 0,
+  riskFlags: [],
   reviewedAt: "2026-04-29T00:00:00Z",
+  reviewProviderSnapshot: null,
 };
 
 describe("ReviewCard", () => {

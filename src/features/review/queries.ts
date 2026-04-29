@@ -9,6 +9,7 @@
 // burada userId yollamaz.
 
 import { useQuery } from "@tanstack/react-query";
+import type { ReviewRiskFlag } from "@/providers/review/types";
 
 export type ReviewStatusEnum =
   | "PENDING"
@@ -16,14 +17,23 @@ export type ReviewStatusEnum =
   | "NEEDS_REVIEW"
   | "REJECTED";
 
+// Phase 6 Dalga B (Task 15): detail panel queue cache'inden okur (yeni
+// endpoint açmadık) — bu yüzden tip tüm detail alanlarını içerir.
+//   - riskFlagCount: grid kart için (hızlı sayı)
+//   - riskFlags: detail panel ReviewRiskFlagList için (full array)
+//   - reviewSummary: detail panel "Özet" bölümü
+//   - reviewProviderSnapshot: detail panel snapshot satırı (audit trail)
 export type ReviewQueueItem = {
   id: string;
   thumbnailUrl: string | null;
   reviewStatus: ReviewStatusEnum;
   reviewStatusSource: "SYSTEM" | "USER";
   reviewScore: number | null;
+  reviewSummary: string | null;
   riskFlagCount: number;
+  riskFlags: ReviewRiskFlag[];
   reviewedAt: string | null;
+  reviewProviderSnapshot: string | null;
 };
 
 export type ReviewQueueResponse = {

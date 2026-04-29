@@ -413,4 +413,84 @@ describe("GET /api/review/queue", () => {
     };
     expect(body.items[0]!.thumbnailUrl).toBeNull();
   });
+
+  // Phase 6 Dalga B (Ö-6): pagination doğrulaması.
+  // PAGE_SIZE = 24 sabit; 25 design + page=1 ⇒ 24 item, page=2 ⇒ 1 item.
+  it("pagination: 25 design + page=1 ⇒ 24 item + total=25", async () => {
+    currentUser.id = userAId;
+    for (let i = 0; i < 25; i++) {
+      await createDesign(userAId, productTypeId, {
+        reviewStatus: ReviewStatus.APPROVED,
+      });
+    }
+    const res = await GET(makeRequest("scope=design&page=1"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: unknown[];
+      total: number;
+      page: number;
+    };
+    expect(body.total).toBe(25);
+    expect(body.items).toHaveLength(24);
+    expect(body.page).toBe(1);
+  });
+
+  it("pagination: 25 design + page=2 ⇒ 1 item", async () => {
+    currentUser.id = userAId;
+    for (let i = 0; i < 25; i++) {
+      await createDesign(userAId, productTypeId, {
+        reviewStatus: ReviewStatus.APPROVED,
+      });
+    }
+    const res = await GET(makeRequest("scope=design&page=2"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: unknown[];
+      total: number;
+      page: number;
+    };
+    expect(body.total).toBe(25);
+    expect(body.items).toHaveLength(1);
+    expect(body.page).toBe(2);
+  });
+
+  // Phase 6 Dalga B (Task 15): detail panel için endpoint genişlemesi —
+  // riskFlags (full JSON), reviewSummary, reviewProviderSnapshot response'ta.
+  it("detail alanları response'a dahil (design): riskFlags + reviewSummary + reviewProviderSnapshot", async () => {
+    currentUser.id = userAId;
+    const designId = await createDesign(userAId, productTypeId, {
+      reviewStatus: ReviewStatus.NEEDS_REVIEW,
+      score: 65,
+      riskFlags: [
+        {
+          type: "watermark_detected",
+          confidence: 0.9,
+          reason: "Köşe watermark",
+        },
+      ],
+    });
+    // SYSTEM bir review yazsın (summary + snapshot)
+    await db.generatedDesign.update({
+      where: { id: designId },
+      data: {
+        reviewSummary: "watermark + low contrast",
+        reviewProviderSnapshot: "gemini-2-5-flash@2026-04-28",
+      },
+    });
+
+    const res = await GET(makeRequest("scope=design"));
+    const body = (await res.json()) as {
+      items: Array<{
+        riskFlags: unknown[];
+        reviewSummary: string | null;
+        reviewProviderSnapshot: string | null;
+        riskFlagCount: number;
+      }>;
+    };
+    const item = body.items[0]!;
+    expect(item.riskFlagCount).toBe(1);
+    expect(item.riskFlags).toHaveLength(1);
+    expect(item.reviewSummary).toBe("watermark + low contrast");
+    expect(item.reviewProviderSnapshot).toBe("gemini-2-5-flash@2026-04-28");
+  });
 });
