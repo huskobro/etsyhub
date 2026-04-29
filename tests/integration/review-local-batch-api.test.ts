@@ -138,7 +138,7 @@ describe("POST /api/review/local-batch", () => {
     expect(enqueueMock).not.toHaveBeenCalled();
   });
 
-  it("happy path: 3 unique owned asset ⇒ 3 REVIEW_DESIGN enqueue + accepted=3", async () => {
+  it("happy path: 3 unique owned asset ⇒ 3 REVIEW_DESIGN enqueue + enqueueSucceeded=3", async () => {
     (requireUser as ReturnType<typeof vi.fn>).mockResolvedValue({ id: USER_A });
     const ids = await Promise.all([
       makeAsset(USER_A),
@@ -152,7 +152,7 @@ describe("POST /api/review/local-batch", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.requested).toBe(3);
-    expect(data.accepted).toBe(3);
+    expect(data.enqueueSucceeded).toBe(3);
     expect(data.skippedDuplicates).toBe(0);
     expect(data.skippedNotFound).toBe(0);
     expect(data.enqueueErrors).toBe(0);
@@ -178,7 +178,7 @@ describe("POST /api/review/local-batch", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.requested).toBe(3);
-    expect(data.accepted).toBe(2);
+    expect(data.enqueueSucceeded).toBe(2);
     expect(data.skippedDuplicates).toBe(1);
     expect(data.skippedNotFound).toBe(0);
     expect(enqueueMock).toHaveBeenCalledTimes(2);
@@ -199,7 +199,7 @@ describe("POST /api/review/local-batch", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.requested).toBe(2);
-    expect(data.accepted).toBe(0);
+    expect(data.enqueueSucceeded).toBe(0);
     expect(data.skippedNotFound).toBe(2);
     expect(enqueueMock).not.toHaveBeenCalled();
   });
@@ -216,7 +216,7 @@ describe("POST /api/review/local-batch", () => {
     );
     const data = await res.json();
     expect(data.requested).toBe(2);
-    expect(data.accepted).toBe(1);
+    expect(data.enqueueSucceeded).toBe(1);
     expect(data.skippedNotFound).toBe(1);
     expect(enqueueMock).toHaveBeenCalledTimes(1);
   });
@@ -232,7 +232,7 @@ describe("POST /api/review/local-batch", () => {
       }),
     );
     const data = await res.json();
-    expect(data.accepted).toBe(1);
+    expect(data.enqueueSucceeded).toBe(1);
     expect(data.skippedNotFound).toBe(1);
     expect(enqueueMock).toHaveBeenCalledTimes(1);
   });
@@ -276,7 +276,7 @@ describe("POST /api/review/local-batch", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.requested).toBe(3);
-    expect(data.accepted).toBe(2);
+    expect(data.enqueueSucceeded).toBe(2);
     expect(data.enqueueErrors).toBe(1);
     expect(data.skippedNotFound).toBe(0);
     expect(enqueueMock).toHaveBeenCalledTimes(3); // hepsi dene-dendi

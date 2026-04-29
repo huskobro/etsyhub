@@ -106,6 +106,7 @@ export async function handleGenerateVariations(
         logger.error(
           {
             designId,
+            userId: job.data.userId, // multi-tenant log filtresi (CLAUDE.md ilkesi)
             jobId,
             err:
               enqueueErr instanceof Error

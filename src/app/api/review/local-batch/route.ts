@@ -3,6 +3,16 @@
 // Local mode toplu review tetikleme endpoint'i. Kullanıcı bir veya birkaç
 // LocalLibraryAsset için Gemini review'i kuyruğa atar.
 //
+// Response invariant:
+//   requested = enqueueSucceeded + skippedDuplicates + skippedNotFound + enqueueErrors
+//
+// Field anlamları:
+//   - requested: body'deki ham assetIds sayısı (dedup öncesi)
+//   - enqueueSucceeded: ownership PASS + enqueue PASS olan asset sayısı
+//   - skippedDuplicates: body'de tekrar eden id'ler
+//   - skippedNotFound: ownership FAIL (başka user, deletedAt, isUserDeleted)
+//   - enqueueErrors: ownership PASS olup enqueue çağrısında throw alan asset sayısı
+//
 // Sözleşme:
 //   - Auth: requireUser (Phase 5).
 //   - Body: { assetIds: cuid[], productTypeKey: string }.
@@ -10,8 +20,8 @@
 //   - Sadece kullanıcıya ait + soft-delete edilmemiş asset'ler kabul edilir.
 //   - productTypeKey ZORUNLU (Karar 1) — sessiz default YOK; gelmezse 400.
 //   - Per-asset enqueue try/catch: bir asset'in fail'i diğerlerini durdurmaz.
-//   - Response: { requested, accepted, skippedDuplicates, skippedNotFound,
-//     enqueueErrors }.
+//   - Enqueue paralel (Promise.all + map) — Phase 5 ai-generation.service.ts
+//     paterniyle hizalı. Race-safe: per-task try/catch + immutable filter sayım.
 //
 // Kararlar:
 //   - REVIEW_DESIGN payload'ında scope:"local" + productTypeKey her asset için
@@ -64,32 +74,37 @@ export const POST = withErrorHandling(async (req: Request) => {
   const acceptedIds = uniqueIds.filter((id) => ownedIdSet.has(id));
   const skippedNotFound = uniqueIds.length - acceptedIds.length;
 
-  // Per-asset enqueue: bir asset'in fail'i diğerlerini durdurmaz.
-  let enqueueErrors = 0;
-  for (const assetId of acceptedIds) {
-    try {
-      await enqueue(JobType.REVIEW_DESIGN, {
-        scope: "local" as const,
-        localAssetId: assetId,
-        userId: user.id,
-        productTypeKey: parsed.data.productTypeKey,
-      });
-    } catch (err) {
-      enqueueErrors += 1;
-      logger.error(
-        {
-          assetId,
+  // Per-asset enqueue paralel: Phase 5 ai-generation.service.ts paterni.
+  // Race-safe: her async fn kendi try/catch'ini taşıyor; counter mutation yok,
+  // immutable filter sayım. 100 asset × Redis RTT (~5-10ms) = ~1s tasarruf.
+  const enqueueResults = await Promise.all(
+    acceptedIds.map(async (assetId) => {
+      try {
+        await enqueue(JobType.REVIEW_DESIGN, {
+          scope: "local" as const,
+          localAssetId: assetId,
           userId: user.id,
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "local batch review enqueue failed for asset",
-      );
-    }
-  }
+          productTypeKey: parsed.data.productTypeKey,
+        });
+        return { ok: true as const };
+      } catch (err) {
+        logger.error(
+          {
+            assetId,
+            userId: user.id,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "local batch review enqueue failed for asset",
+        );
+        return { ok: false as const };
+      }
+    }),
+  );
+  const enqueueErrors = enqueueResults.filter((r) => !r.ok).length;
 
   return NextResponse.json({
     requested: parsed.data.assetIds.length,
-    accepted: acceptedIds.length - enqueueErrors,
+    enqueueSucceeded: acceptedIds.length - enqueueErrors,
     skippedDuplicates,
     skippedNotFound,
     enqueueErrors,
