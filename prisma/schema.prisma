@@ -936,6 +936,10 @@ model SelectionItem {
   lastUndoableAsset   Asset?              @relation("SelectionItemUndoableAsset", fields: [lastUndoableAssetId], references: [id], onDelete: SetNull)
   /// Edit op records: array of { op, params?, at }. Audit/info; replay değil.
   editHistoryJson     Json                @default("[]")
+  /// Aktif heavy edit job (bg-remove). Phase 7 Task 10 paralel heavy yasağı:
+  /// non-null iken applyEditAsync ikinci kez girerse ConcurrentEditError.
+  /// Worker tamamlandığında (success/fail) null'a düşer.
+  activeHeavyJobId    String?
   status              SelectionItemStatus @default(pending)
   position            Int
   createdAt           DateTime            @default(now())

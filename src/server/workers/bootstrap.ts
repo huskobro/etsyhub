@@ -11,6 +11,7 @@ import { handleTrendClusterUpdate } from "./trend-cluster-update.worker";
 import { handleScanLocalFolder } from "./scan-local-folder.worker";
 import { handleGenerateVariations } from "./generate-variations.worker";
 import { handleReviewDesign } from "./review-design.worker";
+import { handleSelectionEditRemoveBackground } from "./selection-edit.worker";
 
 /** Günlük FETCH_NEW_LISTINGS repeat için sabit scheduler ID. */
 export const FETCH_NEW_LISTINGS_SCHEDULE_ID = "fetch-new-listings-daily";
@@ -28,6 +29,10 @@ export async function startWorkers() {
     { name: JobType.SCAN_LOCAL_FOLDER, handler: handleScanLocalFolder },
     { name: JobType.GENERATE_VARIATIONS, handler: handleGenerateVariations },
     { name: JobType.REVIEW_DESIGN, handler: handleReviewDesign },
+    // Phase 7 Task 10 — selection edit heavy op (bg-remove). Concurrency 2:
+    // bg-remove imgly model inference CPU-heavy, item-level DB lock paralel
+    // güvenliği sağlar.
+    { name: JobType.REMOVE_BACKGROUND, handler: handleSelectionEditRemoveBackground },
   ] as const;
 
   for (const s of specs) {

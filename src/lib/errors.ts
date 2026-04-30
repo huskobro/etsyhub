@@ -106,3 +106,23 @@ export class AssetTooLargeError extends AppError {
     super(message, "ASSET_TOO_LARGE", 413);
   }
 }
+
+// ────────────────────────────────────────────────────────────
+// Phase 7 Task 10 — Heavy edit concurrency guard
+//
+// Aynı SelectionItem üzerinde aktif heavy edit job varken yeni enqueue
+// reddedilir (design Section 5.1: "paralel heavy yasak"). DB-side state
+// (`SelectionItem.activeHeavyJobId`) interactive transaction içinde
+// kontrol edilir; race-condition'a kapalı gerçek lock.
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Aynı item üzerinde zaten aktif heavy edit job varken ikinci enqueue
+ * denemesi. 409 Conflict — istemci kullanıcıya "İşlem sürüyor" feedback'i
+ * verir; mevcut job tamamlanana kadar yeni enqueue reddedilir.
+ */
+export class ConcurrentEditError extends AppError {
+  constructor(message = "Aynı item üzerinde aktif heavy edit var") {
+    super(message, "CONCURRENT_EDIT", 409);
+  }
+}

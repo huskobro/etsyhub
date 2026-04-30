@@ -37,21 +37,30 @@
 //   - Asset cleanup YAPMAZ — orphan asset'ler `asset-orphan-cleanup`
 //     carry-forward kapsamı.
 //
-// applyEditAsync paralel heavy yasağı:
-//   - Bu task'te STUB — yalnız jobId döner.
-//   - Task 10'da BullMQ + DB-side `activeHeavyJobId` veya queue inspection
-//     ile gerçek lock.
-//   - İlgili invariant: aynı itemId üzerinde aktif heavy job varken yeni
-//     enqueue reddedilir.
+// applyEditAsync paralel heavy yasağı (Task 10 — gerçek lock):
+//   - DB-side state: `SelectionItem.activeHeavyJobId` (Phase 7 migration
+//     `phase7_selection_active_heavy_job_id`).
+//   - Lock acquire interactive transaction içinde:
+//       1. Item fetch
+//       2. activeHeavyJobId !== null → ConcurrentEditError throw (tx rollback)
+//       3. BullMQ enqueue
+//       4. activeHeavyJobId = job.id update
+//   - Lock release: worker handler tamamlandığında (success/fail) yapılır
+//     (`selection-edit.worker.ts`).
+//   - Carry-forward: `selection-studio-orphan-lock-cleanup` — process restart
+//     sonrası DB'de activeHeavyJobId var ama BullMQ'da gerçek job yoksa lock
+//     leak. Worker startup'ında defensive `updateMany` cleanup hook eklenmeli.
 
-import crypto from "node:crypto";
 import { db } from "@/server/db";
-import { Prisma, type SelectionItem } from "@prisma/client";
+import { JobType, Prisma, type SelectionItem } from "@prisma/client";
+import { ConcurrentEditError } from "@/lib/errors";
+import { enqueue } from "@/server/queue";
 import { requireItemOwnership } from "./authz";
 import { assertSetMutable } from "./state";
 import { cropAsset } from "./edit-ops/crop";
 import { transparentCheck } from "./edit-ops/transparent-check";
 import type { CropRatio } from "./edit-ops/crop";
+import type { RemoveBackgroundJobPayload } from "@/server/workers/selection-edit.worker";
 
 // ────────────────────────────────────────────────────────────
 // Op input tipleri
@@ -265,17 +274,28 @@ export async function resetItem(
 }
 
 // ────────────────────────────────────────────────────────────
-// applyEditAsync — heavy op enqueue (STUB — Task 10'da BullMQ)
+// applyEditAsync — heavy op enqueue (BullMQ + DB-side lock)
 // ────────────────────────────────────────────────────────────
 
 /**
- * Heavy edit op'u BullMQ kuyruğuna ekler ve job id döner.
+ * Heavy edit op'u BullMQ kuyruğuna ekler, item üzerinde DB-side lock acquire
+ * eder ve job id döner. Lock release worker tarafından (success/fail).
  *
- * **STUB** — Task 10'da gerçek `heavyEditQueue.add(...)` çağrısı.
- * Bu task'te yalnız tip sözleşmesi + guard'lar + jobId üretimi.
+ * Akış:
+ *   1. Op type guard: yalnız "background-remove"; instant op → reject.
+ *   2. Ownership + read-only guard.
+ *   3. Lock acquire: item.activeHeavyJobId !== null → ConcurrentEditError.
+ *   4. BullMQ enqueue (REMOVE_BACKGROUND).
+ *   5. activeHeavyJobId = job.id update.
  *
- * Paralel heavy yasağı: Task 10'da DB-side state veya queue inspection ile
- * lock. Şu an stub — test'te yalnız jobId döndüğü doğrulanır.
+ * **Race-condition kapsamı:** `requireItemOwnership` snapshot ile lock-check
+ * tx başlamadan okunur; lock-update aşaması interactive tx içinde yeniden
+ * fetch + conditional check ile atomik. İki paralel enqueue isteği aynı
+ * pencerede gelirse ikincisi tx içinde "lock zaten var" görür ve reject olur.
+ *
+ * **BullMQ jobId garantisi:** `enqueue` helper'ı `Queue.add()` döner;
+ * `job.id` BullMQ tarafından otomatik üretilir (string). Production'da
+ * non-null; defensive `!` assertion uygulanır (BullMQ kontratı).
  */
 export async function applyEditAsync(
   input: ApplyEditAsyncInput,
@@ -297,10 +317,40 @@ export async function applyEditAsync(
   });
   assertSetMutable(set);
 
-  // Stub: gerçek BullMQ enqueue Task 10'da.
-  // const job = await heavyEditQueue.add("background-remove", { ... });
-  // return { jobId: job.id };
-  return { jobId: `stub-${crypto.randomUUID()}` };
+  // Interactive transaction: lock check + enqueue + lock acquire atomik.
+  // Tx içinde re-fetch ile race penceresi kapanır.
+  return db.$transaction(async (tx: Prisma.TransactionClient) => {
+    const item = await tx.selectionItem.findUniqueOrThrow({
+      where: { id: input.itemId },
+    });
+    if (item.activeHeavyJobId !== null) {
+      throw new ConcurrentEditError(
+        "Aynı item üzerinde aktif heavy edit var; mevcut job tamamlanana kadar bekleyin",
+      );
+    }
+
+    const payload: RemoveBackgroundJobPayload = {
+      userId: input.userId,
+      setId: input.setId,
+      itemId: input.itemId,
+      opType: "background-remove",
+    };
+    const job = await enqueue(
+      JobType.REMOVE_BACKGROUND,
+      payload as unknown as Record<string, unknown>,
+    );
+    const jobId = job.id;
+    if (!jobId) {
+      throw new Error("BullMQ job.id null — enqueue başarısız");
+    }
+
+    await tx.selectionItem.update({
+      where: { id: input.itemId },
+      data: { activeHeavyJobId: jobId },
+    });
+
+    return { jobId };
+  });
 }
 
 // ────────────────────────────────────────────────────────────
