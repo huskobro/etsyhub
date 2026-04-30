@@ -79,3 +79,30 @@ export class InvalidStateTransitionError extends AppError {
     super(message, "INVALID_STATE_TRANSITION", 409);
   }
 }
+
+// ────────────────────────────────────────────────────────────
+// Phase 7 Task 9 — Background remove edit-op errors
+//
+// Heavy edit op (`@imgly/background-removal-node`) için input guard hataları.
+// Phase 6 paterniyle additive — mevcut sınıflara dokunulmaz.
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Format guard: edit-op input asset desteklenmeyen mimeType ile geldi
+ * (örn. image/gif, image/svg+xml). 400 — istemci tarafı validasyon ihlali.
+ */
+export class UnsupportedFormatError extends AppError {
+  constructor(message = "Desteklenmeyen format") {
+    super(message, "UNSUPPORTED_FORMAT", 400);
+  }
+}
+
+/**
+ * Memory guard: heavy edit-op için input asset boyutu sınırı aştı (>50MB).
+ * 413 Payload Too Large — OOM riski; worker job kabul etmez.
+ */
+export class AssetTooLargeError extends AppError {
+  constructor(message = "Asset çok büyük") {
+    super(message, "ASSET_TOO_LARGE", 413);
+  }
+}
