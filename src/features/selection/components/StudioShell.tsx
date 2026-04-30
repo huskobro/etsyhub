@@ -34,6 +34,7 @@ import { useSelectionSet } from "@/features/selection/queries";
 import { useStudioStore } from "@/features/selection/stores/studio-store";
 import { PreviewCard } from "./PreviewCard";
 import { Filmstrip } from "./Filmstrip";
+import { RightPanel } from "./RightPanel";
 import type { SelectionSet } from "@prisma/client";
 
 export type StudioShellProps = {
@@ -158,18 +159,10 @@ export function StudioShell({ setId }: StudioShellProps) {
           <Filmstrip items={set.items} setStatus={set.status} />
         </div>
 
-        {/* Sağ panel: header + içerik — Task 27-30 doldurur */}
-        <Card className="flex flex-col overflow-hidden p-0">
-          <div className="border-b border-border-subtle px-4 py-3">
-            <div className="text-md font-semibold text-text">Edit</div>
-            <div className="mt-1 text-xs text-text-muted">
-              Varyant seçilmedi
-            </div>
-          </div>
-          <div className="p-4 text-sm text-text-muted">
-            Sağ panel içeriği (Task 27-30)
-          </div>
-        </Card>
+        {/* Sağ panel: Edit header + AI Kalite + bottom actions (Task 27).
+            Hızlı işlem (Task 28) ve Edit history (Task 30) placeholder
+            tutucular RightPanel içinde. Edit prompt Phase 7'de YOK. */}
+        <RightPanel setId={setId} items={set.items} setStatus={set.status} />
       </div>
     </div>
   );

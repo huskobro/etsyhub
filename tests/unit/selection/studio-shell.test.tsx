@@ -218,8 +218,8 @@ describe("StudioShell — ready / archived (read-only)", () => {
   });
 });
 
-describe("StudioShell — üç bölgeli layout (Task 26: PreviewCard + Filmstrip)", () => {
-  it("sol canvas: PreviewCard + Filmstrip + sağ panel placeholder render", () => {
+describe("StudioShell — üç bölgeli layout (Task 26 + Task 27)", () => {
+  it("sol canvas: PreviewCard + Filmstrip + sağ panel (RightPanel) render", () => {
     mockUseSelectionSet.mockReturnValue({
       data: makeSet(),
       isLoading: false,
@@ -230,8 +230,9 @@ describe("StudioShell — üç bölgeli layout (Task 26: PreviewCard + Filmstrip
     expect(screen.getByText(/Varyant 01 \/ 01/)).toBeInTheDocument();
     // Filmstrip counter
     expect(screen.getByText(/Varyantlar \(1\)/)).toBeInTheDocument();
-    // Sağ panel placeholder (Task 27-30)
-    expect(screen.getByText(/sağ panel içeriği/i)).toBeInTheDocument();
+    // Sağ panel (Task 27 RightPanel) — Edit header + AI Kalite başlığı
+    expect(screen.getByText(/varyant 01 düzenleniyor/i)).toBeInTheDocument();
+    expect(screen.getByText("AI Kalite")).toBeInTheDocument();
   });
 });
 
