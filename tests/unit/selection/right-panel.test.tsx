@@ -135,6 +135,24 @@ describe("RightPanel — aktif item draft set", () => {
       screen.getByRole("button", { name: /^seçime ekle$/i }),
     ).toBeInTheDocument();
   });
+
+  it("UndoResetBar bölümü render edilir (Task 30: 'İşlem geçmişi' başlık + 2 buton)", () => {
+    const items = [makeItem({ id: "i1" })];
+    wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
+    // Placeholder text artık yok.
+    expect(
+      screen.queryByText(/geçmiş ve geri al\/sıfırla task 30/i),
+    ).not.toBeInTheDocument();
+    // Undo + Reset butonları render (UndoResetBar mount'unun kanıtı).
+    expect(
+      screen.getByRole("button", { name: /son işlemi geri al/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /orijinale döndür/i }),
+    ).toBeInTheDocument();
+    // History boş hint (default makeItem editHistoryJson: []).
+    expect(screen.getByText(/henüz düzenleme yok/i)).toBeInTheDocument();
+  });
 });
 
 describe("RightPanel — read-only", () => {

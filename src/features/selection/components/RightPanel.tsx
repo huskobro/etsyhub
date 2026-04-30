@@ -34,6 +34,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { AiQualityPanel } from "./AiQualityPanel";
 import { QuickActions } from "./QuickActions";
+import { UndoResetBar } from "./UndoResetBar";
 
 export type RightPanelProps = {
   setId: string;
@@ -42,9 +43,6 @@ export type RightPanelProps = {
 };
 
 type ItemStatus = SelectionItemView["status"];
-
-const SECTION_LABEL_CLASS =
-  "font-mono text-xs uppercase tracking-meta text-text-muted";
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -159,13 +157,9 @@ export function RightPanel({ setId, items, setStatus }: RightPanelProps) {
       {/* Hızlı işlem (Task 28: QuickActions) */}
       <QuickActions setId={setId} item={activeItem} setStatus={setStatus} />
 
-      {/* Edit history placeholder (Task 30: UndoResetBar + history) */}
-      <div className="flex-1 px-4 py-3">
-        <div className={SECTION_LABEL_CLASS}>İşlem geçmişi</div>
-        <p className="mt-2 text-xs text-text-muted">
-          Geçmiş ve geri al/sıfırla Task 30&apos;da eklenecek.
-        </p>
-      </div>
+      {/* İşlem geçmişi — Undo + Reset + info-only history (Task 30) */}
+      <UndoResetBar setId={setId} item={activeItem} isReadOnly={isReadOnly} />
+
 
       {/* Bottom actions — yalnız draft set'te */}
       {!isReadOnly ? (
