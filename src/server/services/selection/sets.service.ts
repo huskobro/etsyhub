@@ -22,6 +22,7 @@
 
 import type { SelectionItem, SelectionSet } from "@prisma/client";
 import { db } from "@/server/db";
+import { type ActiveExport, getActiveExport } from "./active-export";
 import { requireSetOwnership } from "./authz";
 import { mapReviewToView } from "./review-mapper";
 import { assertCanArchive } from "./state";
@@ -87,7 +88,10 @@ export async function getSet(input: {
   userId: string;
   setId: string;
 }): Promise<
-  SelectionSet & { items: (SelectionItem & { review: ReviewView | null })[] }
+  SelectionSet & {
+    items: (SelectionItem & { review: ReviewView | null })[];
+    activeExport: ActiveExport | null;
+  }
 > {
   const set = await requireSetOwnership(input);
   const rows = await db.selectionItem.findMany({
@@ -108,7 +112,12 @@ export async function getSet(input: {
       designReview: generatedDesign.review,
     }),
   }));
-  return { ...set, items };
+  // Phase 7 Task 14 — activeExport (Set GET payload genişletme, design Section 6.6).
+  // Additive alan: BullMQ queue'dan en son EXPORT_SELECTION_SET job'unun durumu.
+  // Job yoksa null. UI bu objeye bakarak "İndir hazır" / "İşleniyor" /
+  // "Tekrar dene" buton state'ini render eder.
+  const activeExport = await getActiveExport(input);
+  return { ...set, items, activeExport };
 }
 
 /**

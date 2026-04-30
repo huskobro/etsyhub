@@ -397,6 +397,15 @@ describe("Phase 7 sets.service — getSet", () => {
     expect(noReview.review!.score).toBe(88);
   });
 
+  // Task 14 — activeExport alanı (design Section 6.6):
+  //   getSet payload'ında additive alan; job yoksa null. BullMQ queue'da
+  //   bu set için EXPORT_SELECTION_SET job yok → null beklenir.
+  it("activeExport: queue'da export job yok → null", async () => {
+    const set = await createSet({ userId: userAId, name: "ActiveExport Set" });
+    const result = await getSet({ userId: userAId, setId: set.id });
+    expect(result.activeExport).toBeNull();
+  });
+
   it("review yok kanonik shape: design PENDING + DesignReview yok → item.review null", async () => {
     // Yeni izole fixture — base fixture default zaten PENDING/reviewedAt:null,
     // ama önceki testte aynı design APPROVED'a güncellendi. Reset:
