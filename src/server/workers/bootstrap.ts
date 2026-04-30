@@ -12,6 +12,7 @@ import { handleScanLocalFolder } from "./scan-local-folder.worker";
 import { handleGenerateVariations } from "./generate-variations.worker";
 import { handleReviewDesign } from "./review-design.worker";
 import { handleSelectionEditRemoveBackground } from "./selection-edit.worker";
+import { handleSelectionExport } from "./selection-export.worker";
 
 /** Günlük FETCH_NEW_LISTINGS repeat için sabit scheduler ID. */
 export const FETCH_NEW_LISTINGS_SCHEDULE_ID = "fetch-new-listings-daily";
@@ -33,6 +34,12 @@ export async function startWorkers() {
     // bg-remove imgly model inference CPU-heavy, item-level DB lock paralel
     // güvenliği sağlar.
     { name: JobType.REMOVE_BACKGROUND, handler: handleSelectionEditRemoveBackground },
+    // Phase 7 Task 12 — selection ZIP export. Concurrency 2: CPU+I/O karışık
+    // (storage download + archiver + storage upload). Set-level DB update
+    // yalnız completed anında; aynı set için iki paralel job'da son
+    // tamamlanan'ın lastExportedAt'i yazar (race koruması yok — sadece
+    // metadata; veri kaybı yaratmaz).
+    { name: JobType.EXPORT_SELECTION_SET, handler: handleSelectionExport },
   ] as const;
 
   for (const s of specs) {
