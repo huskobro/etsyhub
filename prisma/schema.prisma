@@ -173,6 +173,7 @@ model User {
   trendClusters      TrendCluster[]
   localLibraryAssets LocalLibraryAsset[]
   settings           UserSetting[]
+  selectionSets      SelectionSet[]
 
   @@index([deletedAt])
 }
@@ -351,6 +352,10 @@ model Asset {
   references       Reference[]
   generatedDesigns GeneratedDesign[]
   mockups          Mockup[]
+
+  selectionItemsAsSource   SelectionItem[] @relation("SelectionItemSourceAsset")
+  selectionItemsAsEdited   SelectionItem[] @relation("SelectionItemEditedAsset")
+  selectionItemsAsUndoable SelectionItem[] @relation("SelectionItemUndoableAsset")
 
   @@index([userId])
   @@index([hash])
@@ -596,9 +601,10 @@ model GeneratedDesign {
   // "medium" | "high"; provider opsiyonel field — null ise undefined geçer.
   quality        String?
 
-  review   DesignReview?
-  mockups  Mockup[]
-  listings Listing[]
+  review         DesignReview?
+  mockups        Mockup[]
+  listings       Listing[]
+  selectionItems SelectionItem[]
 
   @@index([userId])
   @@index([referenceId])
@@ -873,4 +879,68 @@ model UserSetting {
 
   @@id([userId, key])
   @@index([userId])
+}
+
+// ============= SELECTION STUDIO (Phase 7) =============
+//
+// SelectionSet: kullanıcının batch sonrası tasarım seçimlerini topladığı kokpit
+// (Phase 8 listing input'u). Quick-start veya manuel olarak yaratılır.
+//
+// SelectionItem: set içindeki her tasarım için bir row. Edit semantiği
+// (sourceAssetId / editedAssetId / lastUndoableAssetId) tek seviye undo'ya izin
+// verir. status (pending/selected/rejected) explicit opt-in akış.
+
+enum SelectionSetStatus {
+  draft
+  ready
+  archived
+}
+
+enum SelectionItemStatus {
+  pending
+  selected
+  rejected
+}
+
+model SelectionSet {
+  id             String             @id @default(cuid())
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  name           String
+  status         SelectionSetStatus @default(draft)
+  /// Quick-start metadata: { kind, referenceId, batchId, productTypeId, batchCreatedAt, originalCount }.
+  /// Manuel create'te null olabilir.
+  sourceMetadata Json?
+  lastExportedAt DateTime?
+  finalizedAt    DateTime?
+  archivedAt     DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  items SelectionItem[]
+
+  @@index([userId, status])
+}
+
+model SelectionItem {
+  id                  String              @id @default(cuid())
+  selectionSetId      String
+  selectionSet        SelectionSet        @relation(fields: [selectionSetId], references: [id], onDelete: Cascade)
+  generatedDesignId   String
+  generatedDesign     GeneratedDesign     @relation(fields: [generatedDesignId], references: [id], onDelete: Restrict)
+  sourceAssetId       String
+  sourceAsset         Asset               @relation("SelectionItemSourceAsset", fields: [sourceAssetId], references: [id], onDelete: Restrict)
+  editedAssetId       String?
+  editedAsset         Asset?              @relation("SelectionItemEditedAsset", fields: [editedAssetId], references: [id], onDelete: SetNull)
+  lastUndoableAssetId String?
+  lastUndoableAsset   Asset?              @relation("SelectionItemUndoableAsset", fields: [lastUndoableAssetId], references: [id], onDelete: SetNull)
+  /// Edit op records: array of { op, params?, at }. Audit/info; replay değil.
+  editHistoryJson     Json                @default("[]")
+  status              SelectionItemStatus @default(pending)
+  position            Int
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([selectionSetId, position])
+  @@index([generatedDesignId])
 }
