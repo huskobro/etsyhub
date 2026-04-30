@@ -1,25 +1,24 @@
 "use client";
 
-// Phase 7 Task 25 — Selection Studio shell.
+// Phase 7 Task 25 + Task 26 — Selection Studio shell.
 //
-// Spec Section 3.2 (Studio canvas — üç bölgeli layout) + plan Task 25:
+// Spec Section 3.2 (Studio canvas — üç bölgeli layout):
 //   - Üst bar: set adı + status badge + "İndir (ZIP)" + "Set'i finalize et"
 //     + kebap menü (Archive). Aksiyonlar bu task'te STUB onClick — Task
 //     35-37'de bağlanır (FinalizeModal, ExportButton, ArchiveAction).
 //   - Layout: grid 1fr 320px (sol canvas + filmstrip; sağ panel).
-//   - Sol bölge: Card preview placeholder + Card filmstrip placeholder
-//     (Task 26 doldurur).
+//   - Sol bölge: PreviewCard + Filmstrip (Task 26).
 //   - Sağ panel: header + içerik placeholder (Task 27-30 doldurur).
 //   - Read-only banner: status !== "draft" → finalize sonrası uyarı banner'ı
 //     ("Phase 8 Mockup Studio'da işlenecek").
 //   - Aksiyon disabled: read-only durumda Finalize ve İndir disabled
 //     (Task 36'da export gerçek logic; v1 stub disabled — placeholder).
 //
-// Store etkileşimi (Task 25 dar kapsam):
+// Store etkileşimi:
 //   - `useEffect` ile `setCurrentSetId(setId)` çağrılır → set değişimi
 //     state reset tetikler.
-//   - Aktif item state'i (Task 26) henüz yok; placeholder "Varyant
-//     seçilmedi" gösterir.
+//   - `activeItemId === null` + items boş değilse ilk item'a senkronize edilir
+//     (Filmstrip border accent + PreviewCard tutarlılığı). Task 26.
 //
 // Phase 6 paterni: page.tsx server component → client component mount;
 // veri TanStack Query üzerinden client'ta (`useSelectionSet`).
@@ -33,6 +32,8 @@ import { StateMessage } from "@/components/ui/StateMessage";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useSelectionSet } from "@/features/selection/queries";
 import { useStudioStore } from "@/features/selection/stores/studio-store";
+import { PreviewCard } from "./PreviewCard";
+import { Filmstrip } from "./Filmstrip";
 import type { SelectionSet } from "@prisma/client";
 
 export type StudioShellProps = {
@@ -55,6 +56,8 @@ const STATUS_TONE: Record<SelectionSet["status"], BadgeTone> = {
 
 export function StudioShell({ setId }: StudioShellProps) {
   const setCurrentSetId = useStudioStore((s) => s.setCurrentSetId);
+  const activeItemId = useStudioStore((s) => s.activeItemId);
+  const setActiveItemId = useStudioStore((s) => s.setActiveItemId);
   const { data: set, isLoading, error } = useSelectionSet(setId);
 
   // Set değişince store reset (yeni setId → activeItemId/multiSelect/filter
@@ -62,6 +65,17 @@ export function StudioShell({ setId }: StudioShellProps) {
   useEffect(() => {
     setCurrentSetId(setId);
   }, [setId, setCurrentSetId]);
+
+  // Default active item: data load sonrası activeItemId hâlâ null ise ilk
+  // item'a senkronize et — Filmstrip border accent ve PreviewCard preview
+  // tutarlılığı için (PreviewCard görsel default veriyor ama store yazımı
+  // burada yapılır ki diğer UI parçaları da aynı state'i görsün).
+  useEffect(() => {
+    if (!set) return;
+    if (activeItemId === null && set.items.length > 0) {
+      setActiveItemId(set.items[0]!.id);
+    }
+  }, [set, activeItemId, setActiveItemId]);
 
   if (isLoading) {
     return <StudioShellLoading />;
@@ -73,6 +87,10 @@ export function StudioShell({ setId }: StudioShellProps) {
   const isReadOnly = set.status !== "draft";
   const statusLabel = STATUS_LABEL[set.status];
   const statusTone = STATUS_TONE[set.status];
+
+  // Selected count: status === "selected" item sayısı (multi-select state'i
+  // değil — multi-select bulk action içindir, "seçili" status'un kendisi).
+  const selectedCount = set.items.filter((i) => i.status === "selected").length;
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -86,7 +104,7 @@ export function StudioShell({ setId }: StudioShellProps) {
             <Badge tone={statusTone}>{statusLabel}</Badge>
           </div>
           <p className="text-sm text-text-muted">
-            {set.items.length} varyant
+            {set.items.length} varyant · {selectedCount} seçili
           </p>
         </div>
 
@@ -134,16 +152,10 @@ export function StudioShell({ setId }: StudioShellProps) {
 
       {/* Üç bölgeli layout */}
       <div className="grid flex-1 gap-4 overflow-hidden lg:grid-cols-[1fr_20rem]">
-        {/* Sol: aktif preview + filmstrip — Task 26 doldurur */}
+        {/* Sol: aktif preview + filmstrip (Task 26) */}
         <div className="flex flex-col gap-3 overflow-hidden">
-          <Card className="flex min-h-0 flex-1 flex-col items-center justify-center p-4">
-            <div className="text-sm text-text-muted">
-              Aktif preview (Task 26)
-            </div>
-          </Card>
-          <Card className="p-3">
-            <div className="text-sm text-text-muted">Filmstrip (Task 26)</div>
-          </Card>
+          <PreviewCard items={set.items} />
+          <Filmstrip items={set.items} setStatus={set.status} />
         </div>
 
         {/* Sağ panel: header + içerik — Task 27-30 doldurur */}

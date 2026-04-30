@@ -27,6 +27,17 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(""),
 }));
 
+// Task 26 — AssetImage signed-url fetch'i şel test'inde de mock'lanır
+// (PreviewCard + Filmstrip child'ları AssetImage çağırır). Test odağı shell
+// yapısı; image fetch'leri jsdom'da gereksiz network trafiği üretmesin.
+vi.mock("@/components/ui/asset-image", () => ({
+  AssetImage: ({ assetId, alt }: { assetId: string | null; alt: string }) => (
+    <div data-testid="asset-image" data-asset-id={assetId ?? ""} aria-label={alt}>
+      asset:{assetId ?? "none"}
+    </div>
+  ),
+}));
+
 const mockUseSelectionSet = vi.fn();
 vi.mock("@/features/selection/queries", async () => {
   const actual = await vi.importActual<
@@ -152,7 +163,7 @@ describe("StudioShell — draft set", () => {
     expect(kebabBtn).not.toBeDisabled();
   });
 
-  it("varyant sayısı gösterilir", () => {
+  it("varyant sayısı + selected count subtitle'da gösterilir", () => {
     mockUseSelectionSet.mockReturnValue({
       data: makeSet({
         items: Array.from({ length: 5 }, (_, i) => ({
@@ -163,7 +174,8 @@ describe("StudioShell — draft set", () => {
           editedAssetId: null,
           lastUndoableAssetId: null,
           editHistoryJson: [],
-          status: "pending",
+          // i=1 ve i=3 selected → 2 seçili
+          status: i === 1 || i === 3 ? "selected" : "pending",
           position: i,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -174,7 +186,7 @@ describe("StudioShell — draft set", () => {
       error: null,
     });
     wrapper(<StudioShell setId="set-1" />);
-    expect(screen.getByText(/5 varyant/i)).toBeInTheDocument();
+    expect(screen.getByText(/5 varyant.*2 seçili/i)).toBeInTheDocument();
   });
 });
 
@@ -206,16 +218,19 @@ describe("StudioShell — ready / archived (read-only)", () => {
   });
 });
 
-describe("StudioShell — üç bölgeli layout placeholders", () => {
-  it("sol canvas + filmstrip + sağ panel placeholders render", () => {
+describe("StudioShell — üç bölgeli layout (Task 26: PreviewCard + Filmstrip)", () => {
+  it("sol canvas: PreviewCard + Filmstrip + sağ panel placeholder render", () => {
     mockUseSelectionSet.mockReturnValue({
       data: makeSet(),
       isLoading: false,
       error: null,
     });
     wrapper(<StudioShell setId="set-1" />);
-    expect(screen.getByText(/aktif preview \(task 26\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/filmstrip \(task 26\)/i)).toBeInTheDocument();
+    // PreviewCard varyant badge'i
+    expect(screen.getByText(/Varyant 01 \/ 01/)).toBeInTheDocument();
+    // Filmstrip counter
+    expect(screen.getByText(/Varyantlar \(1\)/)).toBeInTheDocument();
+    // Sağ panel placeholder (Task 27-30)
     expect(screen.getByText(/sağ panel içeriği/i)).toBeInTheDocument();
   });
 });
