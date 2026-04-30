@@ -3,10 +3,16 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "@/lib/env";
-import type { StorageProvider, StoredObject, UploadMeta } from "./index";
+import type {
+  StorageProvider,
+  StoredObject,
+  StoredObjectMeta,
+  UploadMeta,
+} from "./index";
 
 export class MinioStorage implements StorageProvider {
   protected client = new S3Client({
@@ -57,5 +63,38 @@ export class MinioStorage implements StorageProvider {
       new GetObjectCommand({ Bucket: this.bucket, Key: key }),
       { expiresIn },
     );
+  }
+
+  /**
+   * Phase 7 Task 13 — verilen prefix altındaki tüm object'leri listeler.
+   *
+   * Pagination: ListObjectsV2 1000 object/sayfa limit'i; do/while ile
+   * `NextContinuationToken` boşalana kadar takip edilir. Sonuç tek array'de
+   * birleştirilir (cleanup cron için yeterli; çok büyük bucket'larda streaming
+   * varyantı Phase 8+ refactor'una bırakılır).
+   */
+  async list(prefix: string): Promise<StoredObjectMeta[]> {
+    const result: StoredObjectMeta[] = [];
+    let continuationToken: string | undefined;
+    do {
+      const out = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      for (const obj of out.Contents ?? []) {
+        if (obj.Key && obj.LastModified && typeof obj.Size === "number") {
+          result.push({
+            key: obj.Key,
+            size: obj.Size,
+            lastModified: obj.LastModified,
+          });
+        }
+      }
+      continuationToken = out.NextContinuationToken;
+    } while (continuationToken);
+    return result;
   }
 }

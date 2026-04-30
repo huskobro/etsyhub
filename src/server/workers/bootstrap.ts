@@ -13,11 +13,21 @@ import { handleGenerateVariations } from "./generate-variations.worker";
 import { handleReviewDesign } from "./review-design.worker";
 import { handleSelectionEditRemoveBackground } from "./selection-edit.worker";
 import { handleSelectionExport } from "./selection-export.worker";
+import { handleSelectionExportCleanup } from "./selection-export-cleanup.worker";
 
 /** Günlük FETCH_NEW_LISTINGS repeat için sabit scheduler ID. */
 export const FETCH_NEW_LISTINGS_SCHEDULE_ID = "fetch-new-listings-daily";
 /** Cron: her gün UTC 06:00. */
 export const FETCH_NEW_LISTINGS_CRON = "0 6 * * *";
+
+/** Phase 7 Task 13 — günlük SELECTION_EXPORT_CLEANUP repeat scheduler ID. */
+export const SELECTION_EXPORT_CLEANUP_SCHEDULE_ID =
+  "selection-export-cleanup-daily";
+/**
+ * Cron: her gün UTC 04:00. FETCH_NEW_LISTINGS (UTC 06:00)'den 2 saat önce —
+ * gün başında storage temizliği FETCH'e zarar vermez (bağımsız subsystem).
+ */
+export const SELECTION_EXPORT_CLEANUP_CRON = "0 4 * * *";
 
 export async function startWorkers() {
   const specs = [
@@ -40,6 +50,12 @@ export async function startWorkers() {
     // tamamlanan'ın lastExportedAt'i yazar (race koruması yok — sadece
     // metadata; veri kaybı yaratmaz).
     { name: JobType.EXPORT_SELECTION_SET, handler: handleSelectionExport },
+    // Phase 7 Task 13 — selection export ZIP cleanup. Concurrency 1: cleanup
+    // serileştirilir (paralel iki run race yaratmasın). Daily UTC 04:00 cron.
+    {
+      name: JobType.SELECTION_EXPORT_CLEANUP,
+      handler: handleSelectionExportCleanup,
+    },
   ] as const;
 
   for (const s of specs) {
@@ -54,11 +70,13 @@ export async function startWorkers() {
     const concurrency =
       s.name === JobType.FETCH_NEW_LISTINGS
         ? 1
-        : s.name === JobType.GENERATE_VARIATIONS
-          ? 4
-          : s.name === JobType.REVIEW_DESIGN
+        : s.name === JobType.SELECTION_EXPORT_CLEANUP
+          ? 1
+          : s.name === JobType.GENERATE_VARIATIONS
             ? 4
-            : 2;
+            : s.name === JobType.REVIEW_DESIGN
+              ? 4
+              : 2;
     const worker = new Worker(s.name, s.handler as unknown as (job: unknown) => Promise<unknown>, {
       connection,
       concurrency,
@@ -95,6 +113,32 @@ export async function startWorkers() {
       logger.error(
         { err: message },
         "FETCH_NEW_LISTINGS repeat scheduler kaydedilemedi",
+      );
+    }
+
+    // Phase 7 Task 13 — günlük SELECTION_EXPORT_CLEANUP repeat scheduler.
+    try {
+      const result = await scheduleRepeatJob(
+        JobType.SELECTION_EXPORT_CLEANUP,
+        {},
+        {
+          jobId: SELECTION_EXPORT_CLEANUP_SCHEDULE_ID,
+          pattern: SELECTION_EXPORT_CLEANUP_CRON,
+        },
+      );
+      logger.info(
+        {
+          jobId: SELECTION_EXPORT_CLEANUP_SCHEDULE_ID,
+          pattern: SELECTION_EXPORT_CLEANUP_CRON,
+          alreadyScheduled: result.alreadyScheduled,
+        },
+        "SELECTION_EXPORT_CLEANUP repeat scheduler kaydedildi",
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Bilinmeyen hata";
+      logger.error(
+        { err: message },
+        "SELECTION_EXPORT_CLEANUP repeat scheduler kaydedilemedi",
       );
     }
   }
