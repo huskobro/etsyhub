@@ -23,7 +23,9 @@
 import type { SelectionItem, SelectionSet } from "@prisma/client";
 import { db } from "@/server/db";
 import { requireSetOwnership } from "./authz";
+import { mapReviewToView } from "./review-mapper";
 import { assertCanArchive } from "./state";
+import type { ReviewView } from "./types";
 
 /**
  * Manuel set yarat. status default `draft`.
@@ -76,18 +78,36 @@ export async function listSets(input: {
  * Helper set entity'yi döndüğü için ikinci `findUnique` çekmiyoruz; items
  * ayrı `findMany` (`position asc`).
  *
- * NOT: Mapper layer (Task 16) `review` field'ı bağlayacak; bu task'te raw
- * Prisma items dönüyor — view-shape'e map etme route/mapper sorumluluğu.
+ * Phase 7 Task 16 — Review mapper integration:
+ *   Items fetch'inde `generatedDesign.review` join edilir; her item için
+ *   `mapReviewToView` ile view-model üretilir. Review yok ise `review: null`.
+ *   Mapper Phase 6 entity'lerini SADECE OKUR (read-only köprü).
  */
 export async function getSet(input: {
   userId: string;
   setId: string;
-}): Promise<SelectionSet & { items: SelectionItem[] }> {
+}): Promise<
+  SelectionSet & { items: (SelectionItem & { review: ReviewView | null })[] }
+> {
   const set = await requireSetOwnership(input);
-  const items = await db.selectionItem.findMany({
+  const rows = await db.selectionItem.findMany({
     where: { selectionSetId: input.setId },
     orderBy: { position: "asc" },
+    include: {
+      generatedDesign: {
+        include: { review: true },
+      },
+    },
   });
+  // Mapper sonucu inject; raw `generatedDesign` payload'ı API yanıtında
+  // sızdırılmaz — yalnız `review` (view) eklenir, eklenen include kalkar.
+  const items = rows.map(({ generatedDesign, ...item }) => ({
+    ...item,
+    review: mapReviewToView({
+      generatedDesign,
+      designReview: generatedDesign.review,
+    }),
+  }));
   return { ...set, items };
 }
 

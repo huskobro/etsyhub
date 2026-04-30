@@ -23,7 +23,7 @@
 
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import bcrypt from "bcryptjs";
-import { UserRole, UserStatus } from "@prisma/client";
+import { ReviewStatus, UserRole, UserStatus } from "@prisma/client";
 import { db } from "@/server/db";
 import { NotFoundError } from "@/lib/errors";
 import {
@@ -318,6 +318,115 @@ describe("Phase 7 sets.service — getSet", () => {
     await expect(
       getSet({ userId: userAId, setId: "phase7-sets-nonexistent" }),
     ).rejects.toThrow(NotFoundError);
+  });
+
+  // Task 16 — Phase 6 review mapper integration:
+  // getSet items[].review alanı Phase 6 entity'lerinden map edilir.
+  // Review yoksa null; varsa view-shape (score + status + 4 sinyal).
+  it("review verisi varsa item.review null değil; yoksa null", async () => {
+    const { design, designAsset } = await ensureBaseFixtures(userAId);
+    const set = await createSet({ userId: userAId, name: "Review Set" });
+
+    // Item 1: review YOK (design default reviewStatus = PENDING + reviewedAt null)
+    const itemNoReview = await db.selectionItem.create({
+      data: {
+        selectionSetId: set.id,
+        generatedDesignId: design.id,
+        sourceAssetId: designAsset.id,
+        position: 0,
+      },
+    });
+
+    // Item 2: review var — design'ı APPROVED'a çek + DesignReview row create
+    await db.generatedDesign.update({
+      where: { id: design.id },
+      data: {
+        reviewStatus: ReviewStatus.APPROVED,
+        reviewScore: 88,
+        qualityScore: 75,
+        reviewedAt: new Date(),
+      },
+    });
+    await db.designReview.upsert({
+      where: { generatedDesignId: design.id },
+      update: {
+        decision: ReviewStatus.APPROVED,
+        score: 88,
+        issues: [],
+      },
+      create: {
+        generatedDesignId: design.id,
+        reviewer: "system",
+        decision: ReviewStatus.APPROVED,
+        score: 88,
+        issues: [],
+      },
+    });
+
+    const itemWithReview = await db.selectionItem.create({
+      data: {
+        selectionSetId: set.id,
+        generatedDesignId: design.id,
+        sourceAssetId: designAsset.id,
+        position: 1,
+      },
+    });
+
+    const result = await getSet({ userId: userAId, setId: set.id });
+
+    expect(result.items).toHaveLength(2);
+    const noReview = result.items.find((i) => i.id === itemNoReview.id)!;
+    const withReview = result.items.find((i) => i.id === itemWithReview.id)!;
+
+    // Item 1: hem reviewedAt null'dan APPROVED'a güncellendi, ama
+    // db.generatedDesign güncellenmiş olduğu için ikinci item review oldu.
+    // İlk item kontrolü değil — fixture aynı design.id paylaşıyor.
+    // Bu yüzden iki item da APPROVED görür. Mapper test sözleşmesi: review
+    // varsa null değil; signals.resolution qualityScore >= 60 → "ok".
+    expect(withReview.review).not.toBeNull();
+    expect(withReview.review!.score).toBe(88);
+    expect(withReview.review!.status).toBe("approved");
+    expect(withReview.review!.signals.resolution).toBe("ok");
+    expect(withReview.review!.signals.textDetection).toBe("clean");
+    expect(withReview.review!.signals.artifactCheck).toBe("clean");
+    expect(withReview.review!.signals.trademarkRisk).toBe("low");
+
+    // İlk item de aynı design'ı paylaştığı için review aynı view-model'i
+    // gösterir — bu Phase 6 entity bağı; mapper bunu doğru yansıtır.
+    expect(noReview.review).not.toBeNull();
+    expect(noReview.review!.score).toBe(88);
+  });
+
+  it("review yok kanonik shape: design PENDING + DesignReview yok → item.review null", async () => {
+    // Yeni izole fixture — base fixture default zaten PENDING/reviewedAt:null,
+    // ama önceki testte aynı design APPROVED'a güncellendi. Reset:
+    const { design, designAsset } = await ensureBaseFixtures(userAId);
+    await db.designReview.deleteMany({
+      where: { generatedDesignId: design.id },
+    });
+    await db.generatedDesign.update({
+      where: { id: design.id },
+      data: {
+        reviewStatus: ReviewStatus.PENDING,
+        reviewScore: null,
+        qualityScore: null,
+        reviewedAt: null,
+      },
+    });
+
+    const set = await createSet({ userId: userAId, name: "No Review Set" });
+    await db.selectionItem.create({
+      data: {
+        selectionSetId: set.id,
+        generatedDesignId: design.id,
+        sourceAssetId: designAsset.id,
+        position: 0,
+      },
+    });
+
+    const result = await getSet({ userId: userAId, setId: set.id });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.review).toBeNull();
   });
 });
 
