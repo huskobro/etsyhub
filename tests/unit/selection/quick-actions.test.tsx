@@ -27,6 +27,23 @@ import type { SelectionItemView } from "@/features/selection/queries";
 
 import { QuickActions } from "@/features/selection/components/QuickActions";
 
+// Task 29 — HeavyActionButton ayrı test'te (heavy-action-button.test.tsx).
+// QuickActions test izolasyonu: HeavyActionButton'u mock'la, yalnız
+// "Background remove" label + isReadOnly disable kontratı (placeholder
+// davranışı) doğrula. QuickActions kendi instant edit mutation'ını
+// test eder; heavy mutation kapsam dışı.
+vi.mock("@/features/selection/components/HeavyActionButton", () => ({
+  HeavyActionButton: ({ isReadOnly }: { isReadOnly: boolean }) => (
+    <button
+      type="button"
+      disabled={isReadOnly}
+      aria-label="Background remove"
+    >
+      Background remove
+    </button>
+  ),
+}));
+
 function wrapper(ui: ReactElement) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

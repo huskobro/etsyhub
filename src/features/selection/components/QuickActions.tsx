@@ -4,9 +4,8 @@
 //
 // Spec Section 3.2 + Section 5 (hızlı işlem matrisi):
 //   Sıra (mockup B.13 ile aynı): Background remove, Upscale 2×, Crop, Transparent.
-//   - Background remove → Task 29 ayrı component (HeavyActionButton); bu task'te
-//     **placeholder buton** yerinde duruyor (onClick no-op). Task 29 bağlanınca
-//     placeholder gerçek heavy action component ile değiştirilecek.
+//   - Background remove → Task 29 ayrı component (`<HeavyActionButton>`); BullMQ
+//     heavy lifecycle (idle / pending / processing / error) + DB-side lock UI.
 //   - Upscale 2× → DISABLED ("Yakında") — provider entegrasyonu yok, fake
 //     capability vermez (CLAUDE.md honesty disipline). Section 1.4.
 //   - Crop · oran seçimi → instant edit. 4 ratio (2:3 / 4:5 / 1:1 / 3:4); buton
@@ -40,7 +39,8 @@ import {
   type SelectionItemView,
   type SelectionSetStatus,
 } from "../queries";
-import { Crop, Sparkles, ImageOff, CheckCircle2 } from "lucide-react";
+import { Crop, Sparkles, CheckCircle2 } from "lucide-react";
+import { HeavyActionButton } from "./HeavyActionButton";
 
 type CropRatio = "2:3" | "4:5" | "1:1" | "3:4";
 
@@ -192,8 +192,12 @@ export function QuickActions({ setId, item, setStatus }: QuickActionsProps) {
     <div className="border-b border-border-subtle px-4 py-3">
       <div className={SECTION_LABEL_CLASS}>Hızlı işlem</div>
       <div className="mt-2 flex flex-col gap-1.5">
-        {/* 1. Background remove — Task 29 placeholder (heavy op ayrı buton) */}
-        <BackgroundRemovePlaceholder isReadOnly={isReadOnly || isPending} />
+        {/* 1. Background remove — Task 29 heavy lifecycle (BullMQ + DB lock) */}
+        <HeavyActionButton
+          setId={setId}
+          item={item}
+          isReadOnly={isReadOnly || isPending}
+        />
 
         {/* 2. Upscale 2× — DISABLED (provider yok, honesty: "Yakında") */}
         <UpscaleDisabledButton />
@@ -309,33 +313,6 @@ function ActionButton({
           aria-label="Yükleniyor"
         />
       ) : null}
-    </button>
-  );
-}
-
-// ────────────────────────────────────────────────────────────
-// Task 29 placeholder — Background remove
-// ────────────────────────────────────────────────────────────
-//
-// Heavy op (BullMQ); Task 29 ayrı component (HeavyActionButton) bağlayacak.
-// Bu task'te yalnız buton **yerinde** duruyor (onClick no-op). Read-only set
-// veya pending mutation sırasında disabled olur (Task 29 implementasyonu da
-// aynı disipline uyar).
-
-function BackgroundRemovePlaceholder({ isReadOnly }: { isReadOnly: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        // Task 29 HeavyActionButton bağlanana kadar no-op.
-      }}
-      disabled={isReadOnly}
-      className="flex h-control-md w-full items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm text-text transition-colors hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      <span className="text-text-muted">
-        <ImageOff className="h-3.5 w-3.5" />
-      </span>
-      <span className="flex-1 text-left">Background remove</span>
     </button>
   );
 }
