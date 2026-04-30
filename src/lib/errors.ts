@@ -39,3 +39,43 @@ export class ConflictError extends AppError {
     super(message, "CONFLICT", 409);
   }
 }
+
+// ────────────────────────────────────────────────────────────
+// Phase 7 — Selection Studio state machine errors
+//
+// Hepsi 409 Conflict — istemci geçersiz/uygunsuz state geçişi denedi.
+// Phase 6 NotFoundError pattern'iyle: AppError extend, status + code
+// AppError'a kalıtım yoluyla aktarılır; `errorResponse` helper'ı
+// (src/lib/http.ts) bu sınıfları HTTP'ye otomatik map eder.
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Set `ready` veya `archived` durumundayken mutation girişimi.
+ * Design Section 4.3 — read-only kural: item mutation'lar (status,
+ * edit, reorder, add, delete) kapalı.
+ */
+export class SetReadOnlyError extends AppError {
+  constructor(message = "Set read-only — mutation yasak") {
+    super(message, "SET_READ_ONLY", 409);
+  }
+}
+
+/**
+ * Finalize gate: `selected` status'lu en az 1 item gerekli (pending ve
+ * rejected sayılmaz). Design Section 4.3 — `draft → ready` koşulu.
+ */
+export class FinalizeGateError extends AppError {
+  constructor(message = "Finalize için en az 1 'selected' item gerekli") {
+    super(message, "FINALIZE_GATE", 409);
+  }
+}
+
+/**
+ * Geçersiz state transition (örn. archived → archived; ready → draft).
+ * Design Section 4.3 — explicit state machine; uncontrolled transition yok.
+ */
+export class InvalidStateTransitionError extends AppError {
+  constructor(message = "Geçersiz state transition") {
+    super(message, "INVALID_STATE_TRANSITION", 409);
+  }
+}

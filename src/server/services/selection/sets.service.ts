@@ -23,6 +23,7 @@
 import type { SelectionItem, SelectionSet } from "@prisma/client";
 import { db } from "@/server/db";
 import { requireSetOwnership } from "./authz";
+import { assertCanArchive } from "./state";
 
 /**
  * Manuel set yarat. status default `draft`.
@@ -93,21 +94,22 @@ export async function getSet(input: {
 /**
  * Set'i archive et. draft|ready → archived geçişi.
  *
- * Tam state machine guard (assertCanArchive — finalizedAt vs export job
- * koşulları, vs.) Task 4'te eklenecek. Bu task'te basit guard yeterli:
- *   - cross-user / yok → NotFoundError (helper)
- *   - zaten archived → explicit error
+ * Task 4 (state machine guards):
+ *   - cross-user / yok → NotFoundError (Task 17 `requireSetOwnership`)
+ *   - archived → archived → InvalidStateTransitionError (`assertCanArchive`)
+ *   - draft|ready geçer
  *
  * archivedAt: now() set edilir (audit/UX için).
+ *
+ * Tek public API yüzeyi: tüm archive girişimleri bu fonksiyondan geçer;
+ * state.ts içindeki `assertCanArchive` ortak invariant.
  */
 export async function archiveSet(input: {
   userId: string;
   setId: string;
 }): Promise<SelectionSet> {
   const set = await requireSetOwnership(input);
-  if (set.status === "archived") {
-    throw new Error("Set zaten archived");
-  }
+  assertCanArchive(set);
   return db.selectionSet.update({
     where: { id: input.setId },
     data: {
