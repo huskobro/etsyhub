@@ -35,8 +35,10 @@ import { useStudioStore, type FilmstripFilter } from "../stores/studio-store";
 import { AssetImage } from "@/components/ui/asset-image";
 import type { SelectionItemView } from "@/features/selection/queries";
 import type { SelectionSet } from "@prisma/client";
+import { ReorderMenu } from "./ReorderMenu";
 
 export type FilmstripProps = {
+  setId: string;
   items: SelectionItemView[];
   setStatus: SelectionSet["status"];
 };
@@ -62,7 +64,7 @@ function applyFilter(
   return items.filter((i) => i.status === "rejected");
 }
 
-export function Filmstrip({ items, setStatus }: FilmstripProps) {
+export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
   const filter = useStudioStore((s) => s.filter);
   const setFilter = useStudioStore((s) => s.setFilter);
   const activeItemId = useStudioStore((s) => s.activeItemId);
@@ -171,38 +173,54 @@ export function Filmstrip({ items, setStatus }: FilmstripProps) {
                 ? " (reddedildi)"
                 : "";
 
+            // Wrapping `<div className="relative group">`: checkbox button +
+            // ReorderMenu overlay HTML semantik olarak ayrı (button içinde
+            // başka button yasak). Hover/focus-within ile menu trigger görünür.
             return (
-              <button
-                key={item.id}
-                type="button"
-                role="checkbox"
-                aria-checked={isMulti}
-                aria-label={`Varyant ${pad2(idx + 1)}${ariaSuffix}`}
-                onClick={(e) => handleItemClick(item, idx, e)}
-                className={classes}
-              >
-                <AssetImage
-                  assetId={item.editedAssetId ?? item.sourceAssetId}
-                  alt={`Varyant ${pad2(idx + 1)} thumbnail`}
-                  frame={false}
-                />
-                {isSelected ? (
-                  <div
-                    aria-hidden
-                    className="absolute left-0.5 top-0.5 grid h-3.5 w-3.5 place-items-center rounded-sm bg-accent text-accent-foreground"
-                  >
-                    <Check className="h-2 w-2" />
+              <div key={item.id} className="group relative">
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={isMulti}
+                  aria-label={`Varyant ${pad2(idx + 1)}${ariaSuffix}`}
+                  onClick={(e) => handleItemClick(item, idx, e)}
+                  className={classes}
+                >
+                  <AssetImage
+                    assetId={item.editedAssetId ?? item.sourceAssetId}
+                    alt={`Varyant ${pad2(idx + 1)} thumbnail`}
+                    frame={false}
+                  />
+                  {isSelected ? (
+                    <div
+                      aria-hidden
+                      className="absolute left-0.5 top-0.5 grid h-3.5 w-3.5 place-items-center rounded-sm bg-accent text-accent-foreground"
+                    >
+                      <Check className="h-2 w-2" />
+                    </div>
+                  ) : null}
+                  {isRejected ? (
+                    <div
+                      aria-hidden
+                      className="absolute bottom-0.5 left-0.5 right-0.5 rounded-sm bg-text px-1 py-0.5 text-center font-mono text-xs text-bg"
+                    >
+                      Reddedildi
+                    </div>
+                  ) : null}
+                </button>
+                {/* Reorder menu overlay — full set order ister; filtre yalnız
+                    görsel olduğu için filtrelenmemiş `items` array'i geçilir. */}
+                {!isReadOnly ? (
+                  <div className="absolute right-0.5 top-0.5">
+                    <ReorderMenu
+                      setId={setId}
+                      items={items}
+                      itemId={item.id}
+                      isReadOnly={isReadOnly}
+                    />
                   </div>
                 ) : null}
-                {isRejected ? (
-                  <div
-                    aria-hidden
-                    className="absolute bottom-0.5 left-0.5 right-0.5 rounded-sm bg-text px-1 py-0.5 text-center font-mono text-xs text-bg"
-                  >
-                    Reddedildi
-                  </div>
-                ) : null}
-              </button>
+              </div>
             );
           })}
 

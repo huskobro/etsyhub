@@ -26,6 +26,12 @@ vi.mock("@/components/ui/asset-image", () => ({
   ),
 }));
 
+// Task 31 — ReorderMenu kendi test dosyasında (reorder-menu.test.tsx); burada
+// Filmstrip izolasyonu için no-op mock (render side-effect ve API call yok).
+vi.mock("@/features/selection/components/ReorderMenu", () => ({
+  ReorderMenu: () => null,
+}));
+
 import { Filmstrip } from "@/features/selection/components/Filmstrip";
 import { useStudioStore } from "@/features/selection/stores/studio-store";
 import type { SelectionItemView } from "@/features/selection/queries";
@@ -73,7 +79,7 @@ beforeEach(() => {
 
 describe("Filmstrip — filter dropdown", () => {
   it("'Tümü' (default) → tüm items render edilir", () => {
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     // 4 varyant + "+ ekle" tile
     const buttons = screen.getAllByRole("checkbox");
     expect(buttons).toHaveLength(4);
@@ -81,14 +87,14 @@ describe("Filmstrip — filter dropdown", () => {
 
   it("'Aktif' → pending + selected; rejected gizli", () => {
     useStudioStore.setState({ filter: "active" });
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     const buttons = screen.getAllByRole("checkbox");
     expect(buttons).toHaveLength(3); // i1 pending + i2 selected + i4 pending
   });
 
   it("'Reddedilenler' → yalnız rejected", () => {
     useStudioStore.setState({ filter: "rejected" });
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     const buttons = screen.getAllByRole("checkbox");
     expect(buttons).toHaveLength(1);
   });
@@ -99,24 +105,24 @@ describe("Filmstrip — filter dropdown", () => {
       makeItem({ id: "i1", status: "pending" }),
       makeItem({ id: "i2", status: "selected" }),
     ];
-    wrapper(<Filmstrip items={items} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={items} setStatus="draft" />);
     expect(screen.getByText(/reddedilen varyant yok/i)).toBeInTheDocument();
   });
 
   it("filter sayacı: 'Aktif' → 'Varyantlar (3 / 4)'", () => {
     useStudioStore.setState({ filter: "active" });
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     // "Varyantlar (3 / 4)" — partial filter durumu
     expect(screen.getByText(/Varyantlar \(3 \/ 4\)/i)).toBeInTheDocument();
   });
 
   it("filter 'Tümü' → 'Varyantlar (4)'", () => {
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     expect(screen.getByText(/Varyantlar \(4\)/i)).toBeInTheDocument();
   });
 
   it("dropdown change → store filter güncellenir", () => {
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     const select = screen.getByLabelText(/filtre/i);
     fireEvent.change(select, { target: { value: "active" } });
     expect(useStudioStore.getState().filter).toBe("active");
@@ -128,7 +134,7 @@ describe("Filmstrip — single click", () => {
     useStudioStore.setState({
       multiSelectIds: new Set(["i2", "i4"]),
     });
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
 
     const buttons = screen.getAllByRole("checkbox");
     fireEvent.click(buttons[0]!);
@@ -141,7 +147,7 @@ describe("Filmstrip — single click", () => {
 describe("Filmstrip — Cmd/Ctrl+click", () => {
   it("metaKey+click → toggleMultiSelect (aktif değişmez)", () => {
     useStudioStore.setState({ activeItemId: "i1" });
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
 
     const buttons = screen.getAllByRole("checkbox");
     fireEvent.click(buttons[1]!, { metaKey: true });
@@ -151,7 +157,7 @@ describe("Filmstrip — Cmd/Ctrl+click", () => {
   });
 
   it("ctrlKey+click → toggleMultiSelect (windows/linux)", () => {
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
 
     const buttons = screen.getAllByRole("checkbox");
     fireEvent.click(buttons[1]!, { ctrlKey: true });
@@ -162,7 +168,7 @@ describe("Filmstrip — Cmd/Ctrl+click", () => {
 
 describe("Filmstrip — Shift+click range", () => {
   it("ilk item'a meta+click sonrası shift+click → araya range", () => {
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     const buttons = screen.getAllByRole("checkbox");
 
     // İlk: cmd+click i1 → multi-select [i1] + lastIdx=0
@@ -179,7 +185,7 @@ describe("Filmstrip — Shift+click range", () => {
 
 describe("Filmstrip — visual states", () => {
   it("selected item → checkmark badge görünür", () => {
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     // i2 selected → aria-label içinde "(seçili)"
     const i2 = screen.getByRole("checkbox", { name: /\(seçili\)/i });
     expect(i2).toBeInTheDocument();
@@ -187,13 +193,13 @@ describe("Filmstrip — visual states", () => {
 
   it("active item → aria-checked false (multi değil) + border accent class", () => {
     useStudioStore.setState({ activeItemId: "i1" });
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     const buttons = screen.getAllByRole("checkbox");
     expect(buttons[0]!.className).toMatch(/border-accent/);
   });
 
   it("rejected item → opacity reduced + 'Reddedildi' badge", () => {
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     expect(screen.getByText(/^Reddedildi$/i)).toBeInTheDocument();
     const i3 = screen.getByRole("checkbox", { name: /\(reddedildi\)/i });
     expect(i3.className).toMatch(/opacity-/);
@@ -201,7 +207,7 @@ describe("Filmstrip — visual states", () => {
 
   it("multi-select item → ring class", () => {
     useStudioStore.setState({ multiSelectIds: new Set(["i1"]) });
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     const buttons = screen.getAllByRole("checkbox");
     expect(buttons[0]!.className).toMatch(/ring-/);
     expect(buttons[0]!.getAttribute("aria-checked")).toBe("true");
@@ -210,21 +216,21 @@ describe("Filmstrip — visual states", () => {
 
 describe("Filmstrip — '+ Varyant ekle' tile", () => {
   it("draft set → '+ Varyant ekle' butonu render", () => {
-    wrapper(<Filmstrip items={sampleItems()} setStatus="draft" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
     expect(
       screen.getByRole("button", { name: /varyant ekle/i }),
     ).toBeInTheDocument();
   });
 
   it("ready set (read-only) → '+ Varyant ekle' yok", () => {
-    wrapper(<Filmstrip items={sampleItems()} setStatus="ready" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="ready" />);
     expect(
       screen.queryByRole("button", { name: /varyant ekle/i }),
     ).not.toBeInTheDocument();
   });
 
   it("archived set → '+ Varyant ekle' yok", () => {
-    wrapper(<Filmstrip items={sampleItems()} setStatus="archived" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="archived" />);
     expect(
       screen.queryByRole("button", { name: /varyant ekle/i }),
     ).not.toBeInTheDocument();
@@ -233,7 +239,7 @@ describe("Filmstrip — '+ Varyant ekle' tile", () => {
 
 describe("Filmstrip — read-only set", () => {
   it("read-only set click → yalnız preview değişir, multi-select tetiklenmez", () => {
-    wrapper(<Filmstrip items={sampleItems()} setStatus="ready" />);
+    wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="ready" />);
     const buttons = screen.getAllByRole("checkbox");
 
     // Cmd+click bile multi-select tetiklemez

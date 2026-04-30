@@ -156,7 +156,7 @@ export function StudioShell({ setId }: StudioShellProps) {
         {/* Sol: aktif preview + filmstrip (Task 26) */}
         <div className="flex flex-col gap-3 overflow-hidden">
           <PreviewCard items={set.items} />
-          <Filmstrip items={set.items} setStatus={set.status} />
+          <Filmstrip setId={setId} items={set.items} setStatus={set.status} />
         </div>
 
         {/* Sağ panel: Edit header + AI Kalite + bottom actions (Task 27).
