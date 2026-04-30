@@ -48,6 +48,7 @@
 
 import type { Prisma, SelectionItem } from "@prisma/client";
 import { db } from "@/server/db";
+import { ReorderMismatchError } from "@/lib/errors";
 import { requireItemOwnership, requireSetOwnership } from "./authz";
 import { assertSetMutable } from "./state";
 
@@ -267,18 +268,20 @@ export async function reorderItems(input: {
   const currentIds = new Set(current.map((c) => c.id));
 
   // 2. Validate: duplicate yok, sayı eşit, içerik birebir
+  // Hata durumunda `ReorderMismatchError` (400) atılır — generic Error yerine
+  // typed sınıf, route boundary'de doğru HTTP status için (Task 21).
   if (itemIds.length !== currentIds.size) {
-    throw new Error(
+    throw new ReorderMismatchError(
       "itemIds set'in tüm item'larıyla tam eşleşmek zorunda (sayı uyuşmuyor)",
     );
   }
   const inputSet = new Set(itemIds);
   if (inputSet.size !== itemIds.length) {
-    throw new Error("itemIds duplicate içeriyor");
+    throw new ReorderMismatchError("itemIds duplicate içeriyor");
   }
   for (const id of itemIds) {
     if (!currentIds.has(id)) {
-      throw new Error(
+      throw new ReorderMismatchError(
         `itemIds set'in dışında bir id içeriyor: ${id}`,
       );
     }

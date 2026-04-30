@@ -148,3 +148,25 @@ export class ConcurrentEditError extends AppError {
     super(message, "CONCURRENT_EDIT", 409);
   }
 }
+
+// ────────────────────────────────────────────────────────────
+// Phase 7 Task 21 — Reorder mismatch
+//
+// `reorderItems` (items.service) "tam eşleşme şartı" ihlal edildiğinde
+// (eksik / fazla / duplicate / cross-set itemId) atılan typed error.
+// Generic `Error` yerine 400 Bad Request — istemci input'u geçersiz,
+// server hatası değil. Cross-user erişim hâlâ `requireSetOwnership`
+// üzerinden 404'e map'lenir; bu sınıf yalnız body geçerlilik problemi.
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Reorder bulk position update'inde itemIds set'in tüm item'larıyla tam
+ * eşleşmiyor (eksik/fazla/duplicate/cross-set). 400 Bad Request.
+ */
+export class ReorderMismatchError extends AppError {
+  constructor(
+    message = "Reorder itemIds set'in tüm item'larıyla tam eşleşmek zorunda",
+  ) {
+    super(message, "REORDER_MISMATCH", 400);
+  }
+}
