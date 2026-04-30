@@ -30,13 +30,14 @@ import {
   useSelectionSets,
   type SelectionSetListItem,
 } from "@/features/selection/queries";
+import { CreateSetModal } from "./CreateSetModal";
 
 const READY_LIMIT = 5;
 
 export function SelectionIndexPage() {
-  // Task 24'te CreateSetModal bu state'i tüketecek. Şimdilik sadece
-  // "buton tıklanabilir" hissini canlı tutar.
-  const [, setCreateOpen] = useState(false);
+  // Task 24 — CreateSetModal entegre. Boolean state modal'ın disclosure
+  // kontrolünü taşır; modal kapalıyken DOM'da render edilmez (Radix Portal).
+  const [createOpen, setCreateOpen] = useState(false);
 
   const draftQuery = useSelectionSets("draft");
   const readyQuery = useSelectionSets("ready");
@@ -132,6 +133,8 @@ export function SelectionIndexPage() {
           </ul>
         )}
       </section>
+
+      <CreateSetModal open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );
 }
