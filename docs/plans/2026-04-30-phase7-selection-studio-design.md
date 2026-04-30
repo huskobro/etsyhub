@@ -62,9 +62,14 @@ değildir.
 - Bulk action: multi-select + sticky bar (Seçime ekle / Reddet / Kalıcı çıkar)
 - Soft remove (`rejected`) + hard delete (TypingConfirmation, "SİL" onayı)
 - Filmstrip filter: `Tümü / Aktif / Reddedilenler`
-- User-controlled reorder (a11y stratejisi plan'da netleşir)
+- User-controlled reorder — **menu/button tabanlı** (Sola taşı / Sağa taşı /
+  Başa al / Sona al); a11y default-garantili. DnD Phase 7 v1 dışı
+  (carry-forward `selection-studio-drag-reorder`)
 - Finalize action: `draft → ready` (state machine zorunlu, item status'lar
   donar)
+- Archive action (minimal): `draft|ready → archived` set detail içinde küçük
+  "Set'i arşivle" item-menu aksiyonu (state machine'in bu kapısı doğru
+  kurulur; archived browsing UX yok)
 - Async ZIP export: `EXPORT_SELECTION_SET` job, signed URL 24h, cleanup 7g
 - Inline UI feedback + Phase 6 notification altyapısı reuse (heavy edit +
   export completion/failure)
@@ -78,7 +83,9 @@ değildir.
 - Upscale 2× implementasyonu (UI buton görünür, **disabled placeholder**)
 - Non-destructive edit chain, multi-step undo/redo, op enable/disable,
   reusable edit preset
-- Set rename, archived set yönetimi UX'i, çoklu aktif draft set yönetimi
+- Set rename, archived set browsing/listeleme/geri açma UX'i (archive action
+  in-scope, ama `/selection` index'te archived görünüm yok), çoklu aktif
+  draft set yönetimi
 - `ready → draft` geri dönüş
 - Review tetikleme, re-review, review filtreleme, review-to-selection
   otomasyonu
@@ -96,8 +103,10 @@ değildir.
 
 - **Honesty:** Mockup'ı sahte capability ile göstermiyoruz. Edit prompt
   bölümü komple **gizli** (placeholder bile değil); Upscale 2× **disabled
-  "Yakında"**; review yoksa sade hint. İki farklı "Yakında" yüzeyini
-  istemediğimiz için Edit prompt için gizleme tercih edildi.
+  "Yakında"**; review yok durumunda muted hint + disabled "Review'a gönder"
+  link (tam tarif Section 3.2'de). İki farklı "Yakında" yüzeyini
+  istemediğimiz için Edit prompt için gizleme tercih edildi; "Review'a
+  gönder" disabled link'i Phase 6 smoke gating'inin görünür sözü.
 - **Multi-user izolasyon:** Tüm endpoint'lerde owner-filtered query. Cross-user
   erişim **404** (Phase 6 ile aynı semantik — varlık sızıntısı önlenmesi).
 - **Final ürün:** Set zaman içinde büyüyebilir, item'lar reorder edilebilir,
@@ -163,21 +172,31 @@ kararından ayrı tutulur.
 
 ### 2.4 Reorder
 
-User-controlled reorder Phase 7 v1 in-scope. Erişilebilirlik şart:
-- Drag handle + accessible DnD, **veya**
-- Item menüsünde "Sola taşı / Sağa taşı / Başa al / Sona al" buton tabanlı
-  reorder
+User-controlled reorder Phase 7 v1 in-scope. **Implementasyon: menu/button
+tabanlı** — accessible kontroller default. Item kebap/menü:
+- "Sola taşı" / "Sağa taşı" (tek pozisyon)
+- "Başa al" / "Sona al" (uçlara)
 
-İmplementasyon stratejisi (accessible DnD vs button-based) plan'da netleşir.
-Sonuç her halükarda user-controlled.
+Görsel affordance gerekliyse non-functional drag handle ikonu eklenebilir
+(opsiyonel), ama davranış button/menu tabanlı kalır. DnD için tutarlı keyboard
+desteği + screen reader semantiği maliyeti Phase 7 v1 dışına atılır
+(`selection-studio-drag-reorder` carry-forward).
+
+Final ürün hissi: User favorilerini başa alabilir, hikaye sırası kurabilir,
+Mockup'a gidecek düzeni belirler — capability tam, sadece interaction
+mekanizması v1'de butonla.
 
 ### 2.5 Finalize ve export
 
-1. User "Set'i finalize et" tıklar (en az 1 item gerekli).
+1. User "Set'i finalize et" tıklar. Gate: **`selected` status'lu en az 1
+   item gerekli** (pending/rejected sayılmaz). Gate karşılanmazsa buton
+   disabled (tooltip: "En az 1 'Seçime ekle' yapılmış varyant gerekli").
 2. Confirmation modal: "X varyant Mockup Studio'ya hazırlanıyor olarak
    işaretlenecek. Set sonrasında düzenlenemez. (X selected, Y pending, Z
-   rejected — yalnız selected'lar Phase 8 input'u olur.)"
-3. Onay → `set.status: draft → ready`, UI read-only mode.
+   rejected — yalnız selected'lar Phase 8 input'u olur. Pending'ler manifest
+   içinde yer alır ama Mockup Studio'ya geçmez.)"
+3. Onay → `set.status: draft → ready`, UI read-only mode. Item status'lar
+   donar (pending olanlar pending kalır).
 4. Banner: "Bu set finalize edildi — Phase 8 Mockup Studio'da işlenecek."
 5. **İndir (ZIP)** action set status'tan bağımsız her zaman mevcut (draft veya
    ready iken export edilebilir):
@@ -196,12 +215,14 @@ Sonuç her halükarda user-controlled.
 Layout:
 - **Üstte**: Aktif draft set kartı.
   - Set varsa: isim + item count + status badge + "Aç" primary action.
-  - Set yoksa: empty state + "Yeni set oluştur" CTA (POST /api/selection/sets
-    → redirect).
+  - Set yoksa: empty state + "Yeni set oluştur" CTA — **küçük modal** açar,
+    **zorunlu set adı** input'u, "Oluştur" → POST /api/selection/sets →
+    redirect. Quick start auto-name kullanır; manuel akışta isim user
+    girişiyle zorunludur. Rename Phase 7 v1'de yok.
 - **Altta**: "Son finalize edilen set'ler" (max 5, link
   `/selection/sets/[id]`).
 
-Phase 7 v1'de minimal — set rename / search / archive UX yok
+Phase 7 v1'de minimal — set rename / search / archived browsing UX yok
 (`selection-set-management-expanded` carry-forward).
 
 ### 3.2 `/selection/sets/[setId]` — Studio
@@ -212,6 +233,8 @@ Phase 7 v1'de minimal — set rename / search / archive UX yok
 - Set adı + item count + status badge (`Draft` / `Ready`)
 - Sağda: **İndir (ZIP)** secondary + **Set'i finalize et** primary (set
   draft ise)
+- Set kebap/menü: **Set'i arşivle** (draft veya ready iken; confirmation
+  modal — tek yön, geri alma Phase 7 v1'de yok)
 - Ready set'te: read-only banner
 
 **Sol canvas (1fr)**:
@@ -222,7 +245,8 @@ Phase 7 v1'de minimal — set rename / search / archive UX yok
   - Grid layout (item count'a göre adaptif, mockup'taki sabit 12 değil)
   - Selected'lar checkmark, aktif item border accent
   - Rejected'lar opacity reduced + "Reddedildi" badge
-  - Reorder: drag handle veya item menüsü (a11y plan'da)
+  - Reorder: item kebap/menü ile "Sola taşı / Sağa taşı / Başa al / Sona al"
+    (button/menu tabanlı, a11y default)
   - Sonunda "+ Varyant ekle" butonu
 
 **Sağ panel (320px)**:
@@ -238,7 +262,10 @@ Phase 7 v1'de minimal — set rename / search / archive UX yok
   - Crop · oran seçimi ✅ (default product type'a göre)
   - Transparent PNG kontrolü ✅
 - Heavy edit çalışırken aynı item'da diğer heavy disabled
-- **Edit history** (info-only liste, replay/timeline yok)
+- **Edit history**: Sağ panelde küçük read-only liste — son **N** op
+  (varsayılan max 5 görünür, kalanlar "..." şeklinde toplanır), her satırda
+  op adı + relative timestamp (örn. "Background remove · 3 dk önce").
+  Tıklanmaz, replay yok, timeline yok.
 - **Undo bar**: "Son işlemi geri al" (lastUndoable varsa) + "Orijinale
   döndür"
 - **Bottom**: "Reddet" secondary + "Seçime ekle" primary
@@ -271,7 +298,7 @@ koruması.
 |------|-----|----------|
 | `id` | `String` | cuid |
 | `userId` | `String` | sahibi (multi-user isolation) |
-| `name` | `String` | auto-generated (`{reference/productType} — {date}`); rename Phase 7 v1'de yok |
+| `name` | `String` | Quick start: auto-generated (`{reference/productType} — {date}`); manuel create: user-provided (zorunlu). Rename Phase 7 v1'de yok |
 | `status` | `Enum` | `draft / ready / archived` |
 | `sourceMetadata` | `Json?` | quick-start kaynağı: `{ kind, referenceId, batchId, productTypeId, batchCreatedAt, originalCount }` |
 | `lastExportedAt` | `DateTime?` | son ZIP export zamanı (item-level değil, set-level) |
@@ -297,10 +324,18 @@ koruması.
 ### 4.3 State machine — `SelectionSet.status`
 
 Geçişler:
-- `draft → ready` — finalize action (en az 1 item gerekli)
-- `draft → archived` — explicit archive
+- `draft → ready` — finalize action; **gate: `selected` status'lu en az 1
+  item olmalı** (pending ve rejected sayılmaz). Gate karşılanmazsa endpoint
+  409, UI'da finalize butonu disabled.
+- `draft → archived` — explicit archive (item sayısı sıfır olabilir)
 - `ready → archived` — explicit archive
 - `ready → draft` — **YOK** (carry-forward `selection-set-unfinalize`)
+
+Finalize sırasında item davranışı:
+- `pending` item'lar olduğu gibi donar — status değişmez, otomatik
+  selected/rejected'a çevrilmez. Phase 8 input filtresi `selected` only.
+- ZIP manifest'te tüm item'lar status alanıyla birlikte yer alır (pending
+  dahil) — user lokalde set'in tüm içeriğine erişebilir.
 
 Read-only kuralı:
 - Set `ready` veya `archived` ise tüm item mutasyonları (status değişimi,
@@ -356,10 +391,15 @@ edit preset/template.
 **Crop**: Aspect ratio seçimi UI'da (default product type'a göre — wall art
 2:3, clipart 1:1, vb.); 2:3, 4:5, 1:1, 3:4 minimum set. Sharp `fit: 'cover'`.
 
-**Transparent PNG kontrolü**: Phase 6'daki alpha-check service layer reuse —
-yeni "farklı kural seti" icat etmiyoruz. Aynı motor, aynı eşikler. Phase 6
-servisi Selection Studio için expose edilmesi gerekiyorsa küçük refactor
-(plan'da netleşir).
+**Transparent PNG kontrolü**: **Davranışsal uyum** Phase 6 alpha-check ile —
+aynı eşikler, aynı sinyal kavramı. Ancak **teknik implementasyon Phase 7'de
+local duplicate** olarak başlar (Phase 6 service surface'ına dokunulmaz).
+Phase 6 canlı smoke baseline'ı henüz kapanmadığı için Phase 6 service
+refactor'u smoke risklendirebilir; bu nedenle Selection Studio kendi
+alpha-check fonksiyonunu paralel taşır. Konsolidasyon Phase 6 smoke
+kapandıktan sonra yapılır (`selection-studio-alpha-check-consolidate`
+carry-forward). Honesty: DRY tavizi kasıtlı — gerekçesi smoke baseline
+korunmasıdır, "sonra refactor" gevşekliği değil.
 
 **Background remove**: `@imgly/background-removal` WASM. Risk profili:
 - Model boyutu ~30-80MB → deployment + cold start etkisi
@@ -423,7 +463,7 @@ Set-isimlendirilmiş ek kök klasörü **yok** (gereksiz nesting).
 {
   "schemaVersion": "1",
   "exportedAt": "2026-04-30T...",
-  "exportedBy": { "userEmail": "..." },
+  "exportedBy": { "userId": "..." },
   "set": {
     "id": "...",
     "name": "...",
@@ -462,6 +502,9 @@ Set-isimlendirilmiş ek kök klasörü **yok** (gereksiz nesting).
 - `originalFilename` yalnız edit yapılmış item'da var.
 - `schemaVersion` Phase 8 Mockup Studio handoff için sözleşme alanı —
   **manifest schema sözleşme testiyle korunur**.
+- **PII disiplini**: `exportedBy` yalnız `userId` taşır, `userEmail` yok.
+  ZIP user'ın kendi indirdiği lokal export ama gelecek SaaS yolunu
+  kapatmamak için PII'yi manifest'e koymama tercih edildi.
 
 ### 6.4 README.txt
 
@@ -480,6 +523,32 @@ Sade, Türkçe, 10-15 satır:
 - Tek kod yolu (Phase 7 v1) — sync hibrit fast-path optimizasyonu sonra
   (`selection-studio-export-fast-path`)
 - Set status değiştirmez (draft veya ready'de export edilebilir)
+- **`SelectionSet.lastExportedAt`**: `EXPORT_SELECTION_SET` job `completed`
+  state'e geçtiğinde (worker tarafından) set edilir. Enqueue veya
+  download anı değil — başarılı ZIP üretiminin tamamlanma zamanı.
+
+### 6.6 Aktif export bilgisi retrieval
+
+Set GET payload'unda mevcut/son export'un durumu birlikte döner:
+
+```ts
+GET /api/selection/sets/[setId] → {
+  set: { id, name, status, ..., lastExportedAt },
+  items: [...],
+  activeExport: {
+    jobId: string;
+    status: 'queued' | 'running' | 'completed' | 'failed';
+    downloadUrl?: string;     // status='completed' && expiresAt > now
+    expiresAt?: string;       // signed URL süresi (24h)
+    failedReason?: string;
+  } | null
+}
+```
+
+Ayrı status endpoint'i Phase 7 v1'de yok. Frontend export başlattığında
+notification event'iyle (Phase 6 reuse) refresh tetiklenir; refresh set GET
+ile state'i çeker. Cancel/abort export Phase 7 v1 dışı (carry-forward
+`selection-studio-cancel-export`).
 
 **Neden sync seçilmedi**: Büyük set (50+ variant, edit asset dahil 100+ dosya,
 ~500MB) request timeout + memory riski. Async tek yol → kod yolu basit, test
@@ -505,7 +574,7 @@ Tüm endpoint'ler **owner-filtered** (cross-user 404).
 | Method | Path | Amaç |
 |--------|------|------|
 | `GET` | `/api/selection/sets` | Kullanıcı set'leri (status filtreli) |
-| `POST` | `/api/selection/sets` | Yeni set (manuel, set-first) |
+| `POST` | `/api/selection/sets` | Yeni set manuel (set-first) — body `{ name: string }` (zorunlu, trim sonrası non-empty) |
 | `POST` | `/api/selection/sets/quick-start` | Batch-level auto-create (`{ source: "variation-batch", referenceId, batchId, ... }`) |
 | `GET` | `/api/selection/sets/[setId]` | Set + items + review (mapper layer ile) |
 | `POST` | `/api/selection/sets/[setId]/items` | Drawer ile item ekleme (batch'ten çoklu, duplicate koruma) |
@@ -532,6 +601,13 @@ query'sinde uygular.
 TypingConfirmation server-side enforcement paterni reuse — istemci onay
 sentinel'i (Phase 6 sözleşmesi) yokluğunda 400. Mekanizma plan'da Phase 6'dan
 adapte edilir.
+
+**Bulk-delete method seçimi**: `POST /items/bulk-delete` — `DELETE` HTTP
+metodu request body'yi tutarlı taşımaz (HTTP/RFC ve fetch/XHR
+implementasyonlarında inkonsisten); TypingConfirmation sentinel + itemIds
+listesi body içinde gönderildiği için POST tercih edildi. Status mutation
+için `PATCH /items/bulk` ile semantik olarak ayrı: PATCH = state değişimi,
+POST bulk-delete = idempotent olmayan kalıcı etki.
 
 ### 7.3 Job tipleri (BullMQ)
 
@@ -577,7 +653,7 @@ Yazma / tetikleme / güncelleme / silme **YOK**.
 | BG-remove edge cases (saç, transparent obje) | Düşük kalite çıktı | Manuel QA fixture set, user "yeniden dene" affordance |
 | Manifest schema değişimi | Phase 8 handoff kırılır | `schemaVersion: "1"` discriminator + sözleşme testi |
 | Phase 6 review schema değişimi | Selection Studio AI Kalite paneli kırılır | Mapper layer view-model izolasyonu |
-| Reorder a11y | Klavye kullanıcısı reorder yapamaz | İmplementasyon plan'da accessible DnD veya menu-based seçilir; user-controlled garantili |
+| Reorder a11y | Klavye kullanıcısı reorder yapamaz | **Karar: menu/button tabanlı reorder** (Sola/Sağa/Başa/Sona) — a11y default-garantili, DnD complexity'si v1 dışında |
 | Async export büyük set | Worker memory + ZIP üretim süresi | Streaming archiver, worker-level memory limit |
 | Cross-user erişim | Veri sızıntısı | 404 disiplini + ownership filter unit + integration test |
 
@@ -611,10 +687,13 @@ Yazma / tetikleme / güncelleme / silme **YOK**.
 | `selection-studio-edit-providers` | External edit provider abstraction (bg-remove cloud, upscale cloud) |
 | `selection-studio-upscale` | Upscale 2× implementasyonu (provider + UI aktif) |
 | `selection-studio-export-fast-path` | Küçük set için sync export optimizasyonu (E3 hibrit) |
+| `selection-studio-cancel-export` | Devam eden export job'ı iptal etme |
 | `selection-studio-nondestructive-edit-chain` | Full operation graph + replay + cache |
 | `selection-import-reference-history` | Reference geçmişinin tamamını sete toplama |
 | `selection-quick-start-from-reference-detail` | Reference detay sayfasından Quick start |
 | `selection-quick-start-duplicate-warning` | Aynı batch'ten ikinci set uyarısı |
+| `selection-studio-drag-reorder` | Drag-and-drop reorder (a11y desteği zorunlu) — Phase 7 v1 menu/button tabanlı reorder zaten user-controlled, DnD ek interaction mekanizması |
+| `selection-studio-alpha-check-consolidate` | Phase 7 local alpha-check'i Phase 6 service'i ile birleştirmek (Phase 6 canlı smoke kapandıktan sonra) |
 | `asset-orphan-cleanup` | Orphan asset cleanup (genel scope) |
 
 ---
@@ -670,7 +749,7 @@ testi** ayrı bir doğrulama katmanı:
 - `with-background.png` (bg-remove input)
 - `no-background.png` (bg-remove expected output, mock test)
 - `multi-format/*` (jpg, png, webp coverage)
-- `selection/seed/` (DB seed: SelectionSet + Items + Phase 6 review fixtures)
+- `seed/` (DB seed: SelectionSet + Items + Phase 6 review fixtures)
 
 ### 10.6 Mock stratejisi
 
