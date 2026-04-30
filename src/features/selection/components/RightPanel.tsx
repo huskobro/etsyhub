@@ -33,6 +33,7 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { AiQualityPanel } from "./AiQualityPanel";
+import { QuickActions } from "./QuickActions";
 
 export type RightPanelProps = {
   setId: string;
@@ -155,13 +156,8 @@ export function RightPanel({ setId, items, setStatus }: RightPanelProps) {
       {/* AI Kalite */}
       <AiQualityPanel item={activeItem} />
 
-      {/* Hızlı işlem placeholder (Task 28: QuickActions) */}
-      <div className="border-b border-border-subtle px-4 py-3">
-        <div className={SECTION_LABEL_CLASS}>Hızlı işlem</div>
-        <p className="mt-2 text-xs text-text-muted">
-          Hızlı işlemler Task 28&apos;de eklenecek.
-        </p>
-      </div>
+      {/* Hızlı işlem (Task 28: QuickActions) */}
+      <QuickActions setId={setId} item={activeItem} setStatus={setStatus} />
 
       {/* Edit history placeholder (Task 30: UndoResetBar + history) */}
       <div className="flex-1 px-4 py-3">

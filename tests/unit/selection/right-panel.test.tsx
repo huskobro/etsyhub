@@ -106,6 +106,27 @@ describe("RightPanel — aktif item draft set", () => {
     ).toBeInTheDocument();
   });
 
+  it("QuickActions bölümü render edilir (Task 28: 4 buton + 'Hızlı işlem' başlık)", () => {
+    const items = [makeItem({ id: "i1" })];
+    wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
+    // 'Hızlı işlem' section başlığı (placeholder text artık yok).
+    expect(screen.getByText(/^hızlı işlem$/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/hızlı işlemler task 28'de eklenecek/i),
+    ).not.toBeInTheDocument();
+    // 4 buton (Background remove, Upscale 2×, Crop, Transparent).
+    expect(
+      screen.getByRole("button", { name: /background remove/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /upscale 2/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^crop · oran seçimi$/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /transparent png kontrolü/i }),
+    ).toBeInTheDocument();
+  });
+
   it("draft → bottom action butonları 'Reddet' + 'Seçime ekle' render", () => {
     const items = [makeItem({ id: "i1" })];
     wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
