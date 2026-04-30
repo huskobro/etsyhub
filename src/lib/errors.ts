@@ -81,6 +81,28 @@ export class InvalidStateTransitionError extends AppError {
 }
 
 // ────────────────────────────────────────────────────────────
+// Phase 7 Task 19 — Quick start input guard
+//
+// `quickStartFromBatch` (Task 15) boş batch (variant 0) durumunda atılır.
+// Daha önce generic `Error` atılıyordu; route boundary'sinde HTTP 500'e map
+// olurdu. Typed sınıf üzerinden 400 dönmek istemci tarafı için doğru sinyal:
+// "girdi geçersiz, retry değil; kullanıcıya 'önce variant üret' mesajı".
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Quick start: kaynak batch'inde hiç design/variant yok. Set yaratmak
+ * uyarısız UX kötü olduğu için (design Section 2.1) reject. 400 — istemci
+ * input'u geçersiz, server hatası değil.
+ */
+export class EmptyBatchError extends AppError {
+  constructor(
+    message = "Bu batch'te variant yok; quick start yapılamaz",
+  ) {
+    super(message, "EMPTY_BATCH", 400);
+  }
+}
+
+// ────────────────────────────────────────────────────────────
 // Phase 7 Task 9 — Background remove edit-op errors
 //
 // Heavy edit op (`@imgly/background-removal-node`) için input guard hataları.

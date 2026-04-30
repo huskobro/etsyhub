@@ -27,7 +27,7 @@
 import type { SelectionItem, SelectionSet } from "@prisma/client";
 import { JobType } from "@prisma/client";
 import { db } from "@/server/db";
-import { NotFoundError } from "@/lib/errors";
+import { EmptyBatchError, NotFoundError } from "@/lib/errors";
 import { type ActiveExport, getActiveExport } from "./active-export";
 import { requireSetOwnership } from "./authz";
 import { mapReviewToView } from "./review-mapper";
@@ -277,9 +277,11 @@ export async function quickStartFromBatch(
     orderBy: { createdAt: "asc" },
   });
 
-  // 5) Boş batch reject — uyarısız set kötü UX.
+  // 5) Boş batch reject — uyarısız set kötü UX. Typed `EmptyBatchError`
+  // (Task 19): route boundary'de 400'e map olur. Eski `throw new Error(...)`
+  // generic `Error`'dı, HTTP 500'e düşerdi; istemci için yanlış sinyal.
   if (designs.length === 0) {
-    throw new Error("Bu batch'te variant yok; quick start yapılamaz");
+    throw new EmptyBatchError();
   }
 
   // 6) Auto-name: notes (trim non-empty) > productType.displayName.
