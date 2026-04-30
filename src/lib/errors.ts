@@ -170,3 +170,22 @@ export class ReorderMismatchError extends AppError {
     super(message, "REORDER_MISMATCH", 400);
   }
 }
+
+// ────────────────────────────────────────────────────────────
+// Phase 7 Task 22 — Undo guard
+//
+// `undoEdit` (edit.service) `lastUndoableAssetId === null` durumunda atılan
+// typed error. Generic `Error` olsaydı route boundary'de HTTP 500'e map
+// olurdu; istemci için yanlış sinyal. 409 Conflict — istemci kullanıcıya
+// "geri alacak edit yok" feedback'i verir; server hatası değil, state
+// invariant ihlali (item zaten orijinal halinde).
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Undo girişiminde `lastUndoableAssetId` null. 409 Conflict.
+ */
+export class UndoableNotAvailableError extends AppError {
+  constructor(message = "Undo edilebilecek edit yok") {
+    super(message, "UNDOABLE_NOT_AVAILABLE", 409);
+  }
+}

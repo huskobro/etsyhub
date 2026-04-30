@@ -53,7 +53,7 @@
 
 import { db } from "@/server/db";
 import { JobType, Prisma, type SelectionItem } from "@prisma/client";
-import { ConcurrentEditError } from "@/lib/errors";
+import { ConcurrentEditError, UndoableNotAvailableError } from "@/lib/errors";
 import { enqueue } from "@/server/queue";
 import { requireItemOwnership } from "./authz";
 import { assertSetMutable } from "./state";
@@ -219,7 +219,9 @@ export async function undoEdit(input: UndoEditInput): Promise<SelectionItem> {
   assertSetMutable(set);
 
   if (item.lastUndoableAssetId === null) {
-    throw new Error("Undo edilebilecek edit yok");
+    // Task 22: typed error — route boundary'sinde 409 Conflict olur
+    // (önce generic Error idi, HTTP 500'e düşerdi; yanlış sinyal).
+    throw new UndoableNotAvailableError();
   }
 
   const history = (item.editHistoryJson as HistoryEntry[]) ?? [];
