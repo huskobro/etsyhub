@@ -21,7 +21,6 @@
 
 import type { Job } from "bullmq";
 import { z } from "zod";
-import type { MockupErrorClass } from "@prisma/client";
 import { db } from "@/server/db";
 import { logger } from "@/lib/logger";
 import { getProvider } from "@/providers/mockup";
@@ -32,6 +31,7 @@ import type {
 } from "@/providers/mockup";
 import { recomputeJobStatus } from "@/features/mockups/server/job.service";
 import { recomputePackOnRenderComplete } from "@/features/mockups/server/pack-selection.service";
+import { classifyRenderError } from "@/features/mockups/server/error-classifier.service";
 import type { MockupRenderJobPayload } from "@/jobs/mockup-render.config";
 
 // ────────────────────────────────────────────────────────────
@@ -43,36 +43,17 @@ const PayloadSchema = z.object({
 });
 
 // ────────────────────────────────────────────────────────────
-// Error classifier — Task 7 minimal (Task 11'de tam 5-class)
+// Error classifier — Task 11'de dedicated service'e taşındı
 // ────────────────────────────────────────────────────────────
 
 /**
- * Hata sınıflandırması Task 7 minimum disiplini:
- *   - AbortError / "timeout" → RENDER_TIMEOUT (Spec §7.1)
- *   - "NOT_IMPLEMENTED" / "PROVIDER_NOT_CONFIGURED" → PROVIDER_DOWN
- *     (Task 9-10 öncesi default; Task 11'de tam classifier eklenir)
- *   - ZodError → TEMPLATE_INVALID
- *   - default → PROVIDER_DOWN
- *
- * Task 11'de SOURCE_QUALITY + SAFE_AREA_OVERFLOW eklenir; Task 7'de minimum.
+ * Hata sınıflandırması Task 11'de
+ * `@/features/mockups/server/error-classifier.service`'e taşındı (Spec §7.1
+ * tam 5-class: TEMPLATE_INVALID / RENDER_TIMEOUT / SOURCE_QUALITY /
+ * SAFE_AREA_OVERFLOW / PROVIDER_DOWN). Worker doğrudan service'i import
+ * eder; mevcut worker testleri için backward-compat re-export aşağıda.
  */
-export function classifyRenderError(err: unknown): MockupErrorClass {
-  if (err instanceof Error) {
-    if (err.name === "AbortError" || /timeout/i.test(err.message)) {
-      return "RENDER_TIMEOUT";
-    }
-    if (
-      /NOT_IMPLEMENTED/.test(err.message) ||
-      /PROVIDER_NOT_CONFIGURED/.test(err.message)
-    ) {
-      return "PROVIDER_DOWN";
-    }
-    if (err.name === "ZodError") {
-      return "TEMPLATE_INVALID";
-    }
-  }
-  return "PROVIDER_DOWN";
-}
+export { classifyRenderError };
 
 // ────────────────────────────────────────────────────────────
 // Worker handler
