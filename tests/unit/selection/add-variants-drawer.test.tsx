@@ -144,8 +144,8 @@ describe("AddVariantsDrawer — render & default state", () => {
   });
 });
 
-describe("AddVariantsDrawer — Review Queue tab disabled", () => {
-  it("Review Queue tab disabled (Phase 6 smoke gating) + dürüst metin", () => {
+describe("AddVariantsDrawer — Review Queue tab disabled (Phase 7 v1.0.1 polish)", () => {
+  it("Review Queue tab aria-disabled + title tooltip (Phase 6 smoke gating, dürüst metin)", () => {
     vi.stubGlobal("fetch", makeFetchMock({ references: [] }));
     wrap(
       <AddVariantsDrawer
@@ -156,13 +156,14 @@ describe("AddVariantsDrawer — Review Queue tab disabled", () => {
       />,
     );
     const reviewTab = screen.getByRole("tab", { name: /Review Queue/i });
-    expect(reviewTab).toBeDisabled();
-    // Dürüst metin: aria-describedby veya title attribute üzerinden tooltip.
+    // Polish öncesi `disabled` idi; polish sonrası tab clickable hâle geldi.
+    // Dürüst sinyal: aria-disabled + title tooltip + sr-only hint.
+    expect(reviewTab.getAttribute("aria-disabled")).toBe("true");
     const tooltipText = reviewTab.getAttribute("title") ?? "";
     expect(tooltipText.toLowerCase()).toMatch(/phase 6.*smoke/);
   });
 
-  it("Review Queue tab tıklanmaya çalışılırsa içerik değişmez", () => {
+  it("Review Queue tab tıklanırsa görünür inline notice render edilir (yardımsever, sahte capability YOK)", () => {
     vi.stubGlobal("fetch", makeFetchMock({ references: [] }));
     wrap(
       <AddVariantsDrawer
@@ -174,10 +175,14 @@ describe("AddVariantsDrawer — Review Queue tab disabled", () => {
     );
     const reviewTab = screen.getByRole("tab", { name: /Review Queue/i });
     fireEvent.click(reviewTab);
-    // Reference Batches hâlâ aktif (disabled tab tıklanmaz).
+    // Reference Batches artık aktif değil
     expect(
       screen.getByRole("tab", { name: /Reference Batches/i }),
-    ).toHaveAttribute("aria-selected", "true");
+    ).toHaveAttribute("aria-selected", "false");
+    // Görünür inline notice: kullanıcı neden disabled olduğunu görür
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent(/Review Queue henüz aktif değil/i);
+    expect(notice).toHaveTextContent(/Phase 6 canlı smoke/i);
   });
 });
 

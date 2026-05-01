@@ -249,11 +249,18 @@ export function AddVariantsDrawer({
             <button
               type="button"
               role="tab"
-              aria-selected={false}
-              disabled
+              aria-selected={activeTab === "review-queue"}
+              aria-disabled
+              onClick={() => setActiveTab("review-queue")}
               title={REVIEW_QUEUE_DISABLED_TOOLTIP}
               aria-describedby="review-queue-disabled-hint"
-              className="px-3 py-2 text-sm font-medium border-b-2 -mb-px border-transparent text-text-muted opacity-60 cursor-not-allowed"
+              className={[
+                "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors duration-fast ease-out",
+                activeTab === "review-queue"
+                  ? "border-accent text-text-muted"
+                  : "border-transparent text-text-muted hover:text-text",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+              ].join(" ")}
             >
               Review Queue
               <span
@@ -279,7 +286,9 @@ export function AddVariantsDrawer({
                 onToggleDesign={toggleDesign}
                 onSelectEntireBatch={selectEntireBatch}
               />
-            ) : null}
+            ) : (
+              <ReviewQueueDisabledNotice />
+            )}
           </div>
 
           {/* Bottom action bar */}
@@ -344,6 +353,42 @@ type BatchesTabContentProps = {
   onToggleDesign: (id: string) => void;
   onSelectEntireBatch: (batch: Batch) => void;
 };
+
+/**
+ * Review Queue tab içeriği — Phase 6 canlı smoke açık kaldığı sürece
+ * BLOCKED. Phase 7 v1.0.1 polish (2026-05-01 — manuel QA bulgusu
+ * `selection-drawer-disabled-tab-tooltip`): tab tıklanabilir hâle
+ * geldi (hover'a bağlı tooltip'e ek olarak görünür inline mesaj).
+ *
+ * Honesty disiplini korunur: sahte capability YOK, "yakında" cümlesi
+ * dürüst — Phase 6 canlı smoke kapanınca aktif olacağı belirtilir.
+ */
+function ReviewQueueDisabledNotice() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-md border border-border bg-surface-2 p-4"
+    >
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden
+          className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border border-border-strong text-text-muted text-xs font-mono"
+        >
+          i
+        </span>
+        <div className="flex-1 text-sm text-text">
+          <p className="font-medium">Review Queue henüz aktif değil</p>
+          <p className="mt-1 text-text-muted">
+            Phase 6 canlı smoke kapandıktan sonra burada review queue'ndaki
+            tasarımları sete ekleyebileceksin. Şimdilik <em>Reference
+            Batches</em> sekmesini kullan.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function BatchesTabContent({
   referencesQuery,

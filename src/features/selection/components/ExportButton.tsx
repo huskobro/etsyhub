@@ -76,13 +76,22 @@ export function ExportButton({
   // bildirimi).
   useExportCompletionToast(activeExport);
 
-  // Polling — queued/running iken 3sn aralıkla set query invalidate.
+  // Polling — queued/running iken 3sn aralıkla set query refetch.
   // `enabled: isProcessing` ile job bitince polling durur (completed/failed/
   // null → refetchInterval false). Query key ayrı; set query'siyle çakışmaz.
+  //
+  // Phase 7 v1.0.1 polish (2026-05-01 — manuel QA bulgusu
+  // `selection-studio-export-polling-invalidate`): `invalidateQueries`
+  // yerine `refetchQueries` kullanılır. Sebep: QueryProvider global
+  // `staleTime: 30_000` koyduğu için `invalidateQueries` mark-stale yapar
+  // ama refetch'i bir sonraki mount/focus event'ine erteleyebilir.
+  // Component zaten mount + `refetchOnWindowFocus: false` → fiili refetch
+  // gecikmeli geliyordu (manuel QA'da 10+ sn gözlendi). `refetchQueries`
+  // staleness'tan bağımsız force refetch tetikler.
   useQuery({
     queryKey: ["selection", "export-poll", setId],
     queryFn: async () => {
-      await queryClient.invalidateQueries({
+      await queryClient.refetchQueries({
         queryKey: selectionSetQueryKey(setId),
       });
       return Date.now();

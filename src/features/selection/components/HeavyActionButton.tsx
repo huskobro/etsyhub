@@ -53,14 +53,19 @@ export function HeavyActionButton({
   // inline UI ana yüzey, toast SR + görünürlük takviyesi).
   useHeavyEditCompletionToast(item);
 
-  // Polling — job aktifken set query'sini 3 saniyede bir invalidate et.
+  // Polling — job aktifken set query'sini 3 saniyede bir refetch et.
   // useQuery `enabled: isProcessing` ile job bitince polling durur. Gerçek
-  // veri set query'sinden gelir; bu hook yalnız invalidate tetikler. Task 39
+  // veri set query'sinden gelir; bu hook yalnız refetch tetikler. Task 39
   // SSE/notification entegrasyonu sonrası bu polling kaldırılabilir.
+  //
+  // Phase 7 v1.0.1 polish (2026-05-01 — paralel ExportButton fix paterni):
+  // `invalidateQueries` yerine `refetchQueries` — QueryProvider global
+  // `staleTime: 30_000` etkisiyle invalidate bir sonraki mount/focus'a
+  // refetch erteleyebilir; force refetch staleness'tan bağımsız.
   useQuery({
     queryKey: ["selection", "set", setId, "heavy-poll", item.id],
     queryFn: async () => {
-      await queryClient.invalidateQueries({
+      await queryClient.refetchQueries({
         queryKey: selectionSetQueryKey(setId),
       });
       return Date.now();

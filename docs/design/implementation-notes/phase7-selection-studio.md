@@ -1,7 +1,7 @@
 # Phase 7 — Selection Studio Closeout
 
-> **Tarih:** 2026-04-30
-> **Status:** 🟢 Phase 7 v1 (42 task tamamlandı, tüm otomasyon gate'leri PASS, manuel QA browser-based smoke (2026-05-01) GEÇTİ — 2 küçük UX polish carry-forward not edildi, kritik bug yok)
+> **Tarih:** 2026-04-30 (v1) / 2026-05-01 (v1.0.1 polish)
+> **Status:** 🟢 Phase 7 v1.0.1 (42 task + 2 polish bulgu kapatıldı, tüm otomasyon gate'leri PASS, manuel QA browser-based smoke GEÇTİ, kritik bug yok)
 > **Spec:** [`../../plans/2026-04-30-phase7-selection-studio-design.md`](../../plans/2026-04-30-phase7-selection-studio-design.md)
 > **Plan:** [`../../plans/2026-04-30-phase7-selection-studio-plan.md`](../../plans/2026-04-30-phase7-selection-studio-plan.md)
 > **Mockup hazırlık:** [`./phase7-mockup-studio-prep.md`](./phase7-mockup-studio-prep.md) (Phase 7+ tasarım kaynağı)
@@ -422,3 +422,59 @@ yürütebilir.
 ### Cleanup
 QA fixture'ları (smoke design jobId patch + fake job + QA-yaratılan
 SelectionSet) cleanup edildi. DB temiz state'e döndürüldü.
+
+---
+
+## Phase 7 v1.0.1 polish (2026-05-01)
+
+Manuel QA'da bulunan iki küçük UX bulgusu kapatıldı. Phase 6 baseline'a
+HİÇ dokunulmadı.
+
+### Bulgu #1: `selection-studio-export-polling-invalidate` — KAPALI
+
+**Kök neden:** QueryProvider global `staleTime: 30_000` + `refetchOnWindowFocus: false`
+kombinasyonu, polling cycle'daki `invalidateQueries` çağrısını "mark-stale"
+seviyesinde tutup fiili refetch'i bir sonraki mount/focus event'ine
+ertelendi. Component zaten mount durumunda olduğu için event tetiklenmedi
+ve refetch ~10sn gecikti (manuel QA gözlemi).
+
+**Fix:** ExportButton + HeavyActionButton polling cycle'ında
+`queryClient.invalidateQueries` → `queryClient.refetchQueries`. Force
+refetch staleness'tan bağımsız tetiklenir; polling 3sn cycle'ında her
+seferinde fresh `set.activeExport` (veya `item.activeHeavyJobId`) state
+gelir.
+
+**Dokunulan dosyalar:**
+- `src/features/selection/components/ExportButton.tsx`
+- `src/features/selection/components/HeavyActionButton.tsx`
+
+**Test:** mevcut 23 test (export-button + heavy-action-button) PASS.
+
+### Bulgu #2: `selection-drawer-disabled-tab-tooltip` — KAPALI
+
+**Kök neden:** AddVariantsDrawer "Review Queue" tab `disabled` attribute
+ile tıklanamaz hâlde idi. Sadece hover'da `title` tooltip görünüyordu;
+touch device veya hover-lazy kullanıcı disabled nedenini öğrenemiyordu.
+
+**Fix:** Tab clickable hâle getirildi (`aria-disabled="true"` + click
+handler). Tıklama `activeTab="review-queue"` set eder ve body'de
+`<ReviewQueueDisabledNotice>` info card render olur — kullanıcı
+"Phase 6 canlı smoke kapandıktan sonra burada review queue'ndaki
+tasarımları sete ekleyebileceksin. Şimdilik Reference Batches sekmesini
+kullan." mesajını **görünür** olarak okur. Honesty disiplini korunur:
+sahte capability YOK, dürüst hint var.
+
+**Dokunulan dosyalar:**
+- `src/features/selection/components/AddVariantsDrawer.tsx`
+- `tests/unit/selection/add-variants-drawer.test.tsx` (2 test güncellendi)
+
+**Test:** drawer suite 15/15 PASS.
+
+### Kalite gate (polish sonrası)
+
+| Komut | Sonuç |
+|-------|-------|
+| UI suite (`vitest.config.ui.ts`) | ✅ 735/735 PASS (63 dosya) |
+| `npx tsc --noEmit` | ✅ 0 hata |
+| `npm run check:tokens` | ✅ 0 ihlal |
+| Phase 6 baseline regression | ✅ etkilenmedi (yalnız Phase 7 dosyaları) |
