@@ -1,7 +1,7 @@
 # Phase 7 — Selection Studio Closeout
 
 > **Tarih:** 2026-04-30
-> **Status:** 🟢 Phase 7 v1 (42 task tamamlandı, tüm otomasyon gate'leri PASS, manuel QA kullanıcı tarafından adım adım yürütülecek — sonuç [`phase7-manual-qa.md`](./phase7-manual-qa.md)'ye işlenecek)
+> **Status:** 🟢 Phase 7 v1 (42 task tamamlandı, tüm otomasyon gate'leri PASS, manuel QA browser-based smoke (2026-05-01) GEÇTİ — 2 küçük UX polish carry-forward not edildi, kritik bug yok)
 > **Spec:** [`../../plans/2026-04-30-phase7-selection-studio-design.md`](../../plans/2026-04-30-phase7-selection-studio-design.md)
 > **Plan:** [`../../plans/2026-04-30-phase7-selection-studio-plan.md`](../../plans/2026-04-30-phase7-selection-studio-plan.md)
 > **Mockup hazırlık:** [`./phase7-mockup-studio-prep.md`](./phase7-mockup-studio-prep.md) (Phase 7+ tasarım kaynağı)
@@ -211,6 +211,8 @@ Phase 7 v1 bağımsız `🟢` ilan edilebilir.
 | `phase7-eslint-config-fix` | `edit.service.ts:190` rule config eksik + `AddVariantsDrawer.tsx` `no-unescaped-entities` warnings — pre-existing baseline; ayrı küçük cleanup turu |
 | `phase7-imgly-audit-vulns` | `npm audit` 42 vulnerability — `@imgly/background-removal-node` transitif bağımlılık. Hard-block değil, monitoring |
 | `phase7-e2e-baseline-other-specs` | `tests/e2e/auth.spec.ts` ve diğer mevcut E2E spec'leri auth-shell baseline kayması — `helpers.ts` fix sonrası 4/11 PASS, diğer 7 spec ayrı carry-forward |
+| `selection-studio-export-polling-invalidate` | Manuel QA bulgu (2026-05-01): ExportButton polling refetch sırasında server tamamlandıktan sonra UI invalidate edemedi (~10sn gecikme). Reload sonrası state #3 doğru render. Polling refetch `selectionSetQueryKey` invalidate çağırıyor ama BullMQ `getActiveExport` cache miss olabilir. Phase 7 v1 v1.0.1 polish — kullanıcı etkisi: completed olduktan sonra 1 reload yeterli |
+| `selection-drawer-disabled-tab-tooltip` | Manuel QA bulgu (2026-05-01): AddVariantsDrawer "Review Queue" tab disabled ama tıklamada hint mesajı görünmüyor (tooltip yalnız hover'da). Disabled tab tıklandığında inline mesaj "Phase 6 canlı smoke sonrası aktif" gösterimi daha yardımsever. Phase 7 v1 dürüst (sahte capability yok) ama yardımsever değil |
 
 ---
 
@@ -331,3 +333,92 @@ Aşağıdaki sözleşmeler Phase 7 v1'in **bağlayıcı** çıktısıdır:
 - **Notification + inline feedback ikilisi** — heavy edit + export
   tamamlanma/failure her zaman iki kanaldan da görünür (page-level Toast +
   buton-içi inline).
+
+---
+
+## Manuel QA sonucu (2026-05-01 — browser-based smoke)
+
+**Tarih:** 2026-05-01
+**Test ortamı:** localhost:3000 (next dev) + dev-worker (BullMQ), admin user, Chrome
+**Kapsam:** /selection index, CreateSetModal, Studio shell, filmstrip, AI Kalite,
+quick actions (crop dropdown + transparent + bg-remove buton + upscale disabled),
+selection toggle, FinalizeModal gate, ExportButton state machine, ZIP extract,
+AddVariantsDrawer (Reference Batches + duplicate koruma + Review Queue disabled),
+ArchiveAction, /review Studio CTA.
+
+### Karar: GEÇTİ ✅
+
+**Kritik bug yok.** Final ürün hissi tutuyor — mockup tonu, sade panel
+yoğunluğu, dürüst empty/loading/error state'ler, honesty disiplini (Edit
+prompt komple gizli, Upscale "Yakında" sakin, Review yok hint dürüst,
+disabled affordance'lar gerçek davranışı yansıtıyor).
+
+**Geçen alanlar (browser smoke):**
+- /selection index — aktif draft kartı + son ready listesi pattern ✓
+- /review → "Studio" CTA conditional render (jobId varsa) ✓
+- Quick start full akış: review card → POST /quick-start → /selection/sets/[id]
+  redirect, auto-name "Smoke Aşama 2A reference — 01 May 2026" ✓
+- Studio shell üst bar: set adı + Draft badge + "1 varyant · 1 seçili"
+  subtitle + İndir/Finalize/kebap menü ✓
+- Filmstrip: variant count + filter dropdown + checkmark (selected) +
+  active border + "+ Varyant ekle" placeholder ✓
+- Sağ panel "Edit": header + AI Kalite (review yok hint + disabled
+  "Review'a gönder" link) + Hızlı işlem 4 buton (Background remove enabled,
+  Upscale 2× disabled "YAKINDA", Crop dropdown, Transparent PNG kontrolü) +
+  İŞLEM GEÇMİŞİ + Reddet/Seçime ekle ✓
+- Edit prompt section komple GİZLİ (mockup'taki bölüm Phase 7'de yok) ✓
+- Crop dropdown 4 ratio: 2:3/4:5/1:1/3:4 portrait/square/landscape ✓
+- Crop instant edit: 1:1 ratio uygulandı, edit history "Crop (1:1) — az önce"
+  push'landı, "Orijinale döndür" enabled, Sharp resize gerçek çalıştı ✓
+- Selection toggle: "Seçime ekle" → "Seçimden çıkar" label değişimi
+  (final ürün UX improvement, mockup'tan ekstra), filmstrip checkmark,
+  üst bar subtitle "0 seçili" → "1 seçili", Finalize butonu enabled
+  (gate satisfied) ✓
+- FinalizeModal: 3-sayı breakdown grid (1 Seçili / 0 Beklemede / 0 Reddedildi),
+  dürüst metin (yalnız selected'lar Phase 8 input, pending donar) ✓
+- ExportButton state #1 → #2: idle → "Export hazırlanıyor..." spinner
+  transition ✓; state #3 reload sonrası "İndir" link primary tonu ✓
+- ZIP extract: 4 dosya (manifest.json + README.txt + images/var-001.png +
+  originals/var-001.png — A3 stratejisi); manifest schemaVersion "1",
+  exportedBy.userId PII-safe, sourceMetadata Quick start info, item
+  editHistory crop, status selected; README.txt Türkçe + Phase 8 disclaimer ✓
+- AddVariantsDrawer: sağdan kayan panel, 2 tab (Reference Batches aktif +
+  Review Queue disabled), reference selector, batch card "1 varyant ·
+  1 set'te var" duplicate count, item thumbnail opacity reduced + "set'te
+  var" badge, İptal/Ekle bottom ✓
+- ArchiveAction: kebap menü → "Set'i arşivle" menuitem → ConfirmDialog
+  warning tone, dürüst metin, İptal/Arşivle butonları ✓
+
+### UI/UX sürtünmeleri (carry-forward, kritik değil)
+
+1. **`selection-studio-export-polling-invalidate`**: ExportButton polling
+   sırasında server tamamlandıktan sonra UI invalidate yapamadı (live
+   transitionda ~10sn gecikme). Reload sonrası state #3 doğru render etti
+   (DB `lastExportedAt` set, ZIP storage'da). Polling refetch
+   `selectionSetQueryKey(setId)` invalidate çağırıyor ama `getActiveExport`
+   BullMQ job state cache miss olabilir. Phase 7 v1 v1.0.1 polish — kullanıcı
+   etkisi: completed olduktan sonra 1 reload veya 1 manuel refetch yeterli.
+2. **`selection-drawer-disabled-tab-tooltip`**: AddVariantsDrawer "Review
+   Queue" tab disabled ama ekrandan tab'a tıklandığında hint mesajı
+   görünmüyor (tooltip yalnız hover'da; click no-op). UX polish: disabled
+   tab tıklandığında inline mesaj "Phase 6 canlı smoke sonrası aktif"
+   gösterimi daha yardımsever. Phase 7 v1 dürüst (sahte capability yok),
+   ama yardımsever değil.
+
+### Kullanıcı doğrulamaları geriye kalan (manuel QA checklist'te)
+
+Kullanıcı tarafından zamanlı olarak yapılması gerekenler (subagent
+yapamaz):
+- Reorder erişilebilirlik: VoiceOver/NVDA + keyboard tab/enter ile menu/button
+  reorder akışı, screen reader anonsları
+- Background remove görsel kalitesi: gerçek model inference (saç, transparent
+  obje edge case'leri); QA ortamında bu test'te denenmedi (smoke fixture
+  düz kırmızı kare; @imgly model load + render gerek)
+- Cross-browser: Safari, Firefox
+
+Bu maddeler `phase7-manual-qa.md` dosyasında listelenmiş, kullanıcı sonradan
+yürütebilir.
+
+### Cleanup
+QA fixture'ları (smoke design jobId patch + fake job + QA-yaratılan
+SelectionSet) cleanup edildi. DB temiz state'e döndürüldü.
