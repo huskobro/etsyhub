@@ -23,7 +23,7 @@
 // Phase 6 paterni: page.tsx server component → client component mount;
 // veri TanStack Query üzerinden client'ta (`useSelectionSet`).
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Download, MoreVertical } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -35,6 +35,7 @@ import { useStudioStore } from "@/features/selection/stores/studio-store";
 import { PreviewCard } from "./PreviewCard";
 import { Filmstrip } from "./Filmstrip";
 import { RightPanel } from "./RightPanel";
+import { SelectionBulkBar } from "./SelectionBulkBar";
 import type { SelectionSet } from "@prisma/client";
 
 export type StudioShellProps = {
@@ -60,6 +61,13 @@ export function StudioShell({ setId }: StudioShellProps) {
   const activeItemId = useStudioStore((s) => s.activeItemId);
   const setActiveItemId = useStudioStore((s) => s.setActiveItemId);
   const { data: set, isLoading, error } = useSelectionSet(setId);
+
+  // Task 33 — Bulk hard delete pending state. Task 34'te
+  // TypingConfirmation modal'ı bu state'e bağlanacak; şu an callback yalnız
+  // state'i tutuyor (UI etki yok). `setHardDeletePendingIds` parent
+  // sözleşmesi: SelectionBulkBar `onHardDeleteRequest(ids)` çağrısı → state
+  // güncelleme → Task 34 modal `hardDeletePendingIds.length > 0` ile açılır.
+  const [, setHardDeletePendingIds] = useState<string[]>([]);
 
   // Set değişince store reset (yeni setId → activeItemId/multiSelect/filter
   // sıfırlanır). Store içi guard aynı setId'de no-op.
@@ -164,6 +172,14 @@ export function StudioShell({ setId }: StudioShellProps) {
             tutucular RightPanel içinde. Edit prompt Phase 7'de YOK. */}
         <RightPanel setId={setId} items={set.items} setStatus={set.status} />
       </div>
+
+      {/* Task 33 — Multi-select sticky bottom bar. Bar `multiSelectIds.size > 0`
+          + `!isReadOnly` durumunda görünür; aksi halde null döner (DOM yok). */}
+      <SelectionBulkBar
+        setId={setId}
+        isReadOnly={isReadOnly}
+        onHardDeleteRequest={setHardDeletePendingIds}
+      />
     </div>
   );
 }
