@@ -176,6 +176,7 @@ model User {
   localLibraryAssets LocalLibraryAsset[]
   settings           UserSetting[]
   selectionSets      SelectionSet[]
+  mockupJobs         MockupJob[]
 
   @@index([deletedAt])
 }
@@ -919,7 +920,8 @@ model SelectionSet {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  items SelectionItem[]
+  items       SelectionItem[]
+  mockupJobs  MockupJob[]
 
   @@index([userId, status])
 }
@@ -949,4 +951,168 @@ model SelectionItem {
 
   @@index([selectionSetId, position])
   @@index([generatedDesignId])
+}
+
+// ============= MOCKUP STUDIO (Phase 8) =============
+//
+// MockupTemplate: kullanıcıya görünen provider-agnostik mockup kataloğu (canvas
+// vb.). Her template 1+ binding'e sahiptir; aktif binding render'da seçilir.
+//
+// MockupTemplateBinding: provider'a özel render konfigürasyonu (LOCAL_SHARP /
+// DYNAMIC_MOCKUPS). `config` Json kolonu provider'a göre discriminated şekil
+// alır (spec §3.2).
+//
+// MockupJob: SelectionSet → 10-görsel pack üreten aggregate. `setSnapshotId`
+// deterministik set+items hash'i (spec §3.4); `coverRenderId` packPosition=0
+// invariant'ı için kullanılır (cover swap atomic slot swap, spec §4.8).
+//
+// MockupRender: pack içindeki tek render. `packPosition` 0..9 arası; null
+// olanlar arşivlenmiş swap (spec §4.4). 5-class hata sözlüğü `errorClass`
+// kolonunda tutulur (spec §7.1).
+
+enum MockupProviderId {
+  LOCAL_SHARP
+  DYNAMIC_MOCKUPS
+}
+
+enum MockupTemplateStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum MockupBindingStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum MockupJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  PARTIAL_COMPLETE
+  FAILED
+  CANCELLED
+}
+
+enum MockupRenderStatus {
+  PENDING
+  RENDERING
+  SUCCESS
+  FAILED
+}
+
+enum MockupErrorClass {
+  TEMPLATE_INVALID
+  RENDER_TIMEOUT
+  SOURCE_QUALITY
+  SAFE_AREA_OVERFLOW
+  PROVIDER_DOWN
+}
+
+enum PackSelectionReason {
+  COVER
+  TEMPLATE_DIVERSITY
+  VARIANT_ROTATION
+}
+
+model MockupTemplate {
+  id                String               @id @default(cuid())
+  categoryId        String
+  name              String
+  status            MockupTemplateStatus @default(DRAFT)
+  /// MinIO key — kullanıcı UI'da template kart thumbnail'i.
+  thumbKey          String
+  /// Desteklenen aspect ratio listesi (örn. ["2:3","3:4"]).
+  aspectRatios      String[]
+  /// Vibe + room + composition tag'leri (filtreleme için).
+  tags              String[]
+  /// En hızlı active binding'in tahmini render süresi (ms). Job ETA hesabında kullanılır.
+  estimatedRenderMs Int
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  archivedAt        DateTime?
+
+  bindings MockupTemplateBinding[]
+
+  @@index([categoryId, status])
+}
+
+model MockupTemplateBinding {
+  id                String              @id @default(cuid())
+  templateId        String
+  template          MockupTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  providerId        MockupProviderId
+  version           Int                 @default(1)
+  status            MockupBindingStatus @default(DRAFT)
+  /// ProviderConfig (discriminated union, spec §3.2).
+  config            Json
+  estimatedRenderMs Int
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  archivedAt        DateTime?
+
+  @@unique([templateId, providerId])
+  @@index([providerId, status])
+}
+
+model MockupJob {
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  setId          String
+  set            SelectionSet    @relation(fields: [setId], references: [id], onDelete: Restrict)
+  /// Spec §3.4 deterministik set+items hash (sha256). Re-run idempotency.
+  setSnapshotId  String
+  /// V1: "canvas". V2'de genişler.
+  categoryId     String
+  status         MockupJobStatus
+  /// Hedef pack boyutu (default 10).
+  packSize       Int
+  /// Gerçekleşen pack boyutu (validPairs sınırı, spec §2.5).
+  actualPackSize Int
+  /// Cover invariant: packPosition=0 render id (cover swap = atomic slot swap, spec §4.8).
+  coverRenderId  String?
+  totalRenders   Int
+  successRenders Int             @default(0)
+  failedRenders  Int             @default(0)
+  /// 5-class hata roll-up (spec §7.1).
+  errorSummary   Json?
+  createdAt      DateTime        @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+
+  renders MockupRender[]
+
+  @@index([userId, createdAt])
+  @@index([setId, createdAt])
+  @@index([status])
+}
+
+model MockupRender {
+  id               String              @id @default(cuid())
+  jobId            String
+  job              MockupJob           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  /// SelectionItem.id — pack üyesi tasarım.
+  variantId        String
+  bindingId        String
+  /// RenderSnapshot (spec §3.3) — byte-stable yeniden üretim için.
+  templateSnapshot Json
+  /// 0..9 arası pack slot'u; null = arşivlenmiş swap (spec §4.4).
+  packPosition     Int?
+  selectionReason  PackSelectionReason
+  status           MockupRenderStatus
+  /// MinIO output asset key (success'te dolar).
+  outputKey        String?
+  thumbnailKey     String?
+  /// 5-class hata sınıfı (spec §7.1).
+  errorClass       MockupErrorClass?
+  errorDetail      String?
+  retryCount       Int                 @default(0)
+  startedAt        DateTime?
+  completedAt      DateTime?
+
+  @@index([jobId, packPosition])
+  @@index([jobId, status])
 }
