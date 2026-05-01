@@ -9,8 +9,11 @@ export async function login(
   password = ADMIN_PASSWORD,
 ) {
   await page.goto("/login");
-  await page.getByPlaceholder("E-posta").fill(email);
-  await page.getByPlaceholder("Parola").fill(password);
-  await page.getByRole("button", { name: /Giriş Yap/i }).click();
+  // Label-based locators — auth-shell placeholder'ları değişti
+  // ("sen@magazan.co" / "••••••••"), label metinleri ("E-posta" / "Parola")
+  // sabit ve <label htmlFor> bağlı.
+  await page.getByLabel(/E-posta/i).fill(email);
+  await page.getByLabel(/Parola/i).fill(password);
+  await page.getByRole("button", { name: /Giriş yap/i }).click();
   await page.waitForURL("**/dashboard");
 }
