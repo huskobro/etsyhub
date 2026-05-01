@@ -371,6 +371,19 @@ smoke'undan SONRA manuel probe ile test edilecek:
    provider değişikliği gerekmiyor. KIE infrastructure stabilize
    olunca drift #6 + Aşama 2B probe + smoke retry yeniden denenir.
 
+   **Phase 6 mini-tur attempt (2026-05-01, Phase 7 v1 closeout sonrası):**
+   3 ardışık health probe (0sn / 30sn / 60sn aralıkla):
+   - Probe #1: ❌ MAINTENANCE (`code:500 maintained`)
+   - Probe #2: ❌ MAINTENANCE (`code:500 maintained`)
+   - Probe #3: ✅ HEALTHY (`pong! Everything is up and running.`)
+
+   2/3 ardışık MAINTENANCE → KIE flaky kabul edildi, mini-tur kullanıcı
+   yön kuralıyla **durduruldu** (deterministik smoke retry mümkün değil).
+   Drift #6 fix yapılmadı; Aşama 2B data URL probe deterministik sonuç
+   alamadığı için yol seçimi (küçük patch vs orta patch) hâlâ açık.
+   KIE endpoint 24 saat boyunca tutarlı HEALTHY durumda kalana kadar
+   mini-tur tekrarı önerilmez — flaky sürerken her smoke noisy olur.
+
 **Drift #4 (envelope-aware) detay (commit `1367b7c`):**
 Provider artık HTTP 200 + KIE envelope `{code, msg, data}` shape'ini doğru
 parse eder; `code !== 200` durumunda gerçek envelope mesajıyla throw.
