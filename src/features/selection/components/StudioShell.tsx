@@ -37,6 +37,7 @@ import { Filmstrip } from "./Filmstrip";
 import { RightPanel } from "./RightPanel";
 import { SelectionBulkBar } from "./SelectionBulkBar";
 import { BulkHardDeleteDialog } from "./BulkHardDeleteDialog";
+import { FinalizeModal } from "./FinalizeModal";
 import type { SelectionSet } from "@prisma/client";
 
 export type StudioShellProps = {
@@ -72,6 +73,11 @@ export function StudioShell({ setId }: StudioShellProps) {
     [],
   );
 
+  // Task 35 — FinalizeModal open/close state. Üst bar Finalize butonu
+  // setFinalizeOpen(true) ile modal'ı açar. Modal `selected ≥ 1` gate'ini
+  // server-side endpoint öncesi UI'da gösterir.
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+
   // Set değişince store reset (yeni setId → activeItemId/multiSelect/filter
   // sıfırlanır). Store içi guard aynı setId'de no-op.
   useEffect(() => {
@@ -104,6 +110,26 @@ export function StudioShell({ setId }: StudioShellProps) {
   // değil — multi-select bulk action içindir, "seçili" status'un kendisi).
   const selectedCount = set.items.filter((i) => i.status === "selected").length;
 
+  // Task 35 — Finalize gate UX (StudioShell tarafı).
+  //
+  // İki kademeli savunma:
+  //   1) StudioShell üst bar butonu: 0 selected → disabled + native title
+  //      tooltip ("En az 1 'Seçime ekle' yapılmış varyant gerekli"). Modal
+  //      hiç açılmaz; kullanıcı yanlış aksiyona girmez.
+  //   2) FinalizeModal kendisi: items prop'u değişebilir (modal açıkken
+  //      başka bir tab/window'da değişiklik). Modal içinde de gate uyarısı
+  //      görünür + Finalize buton disabled.
+  //   3) Server-side: POST /finalize endpoint (Task 22) FinalizeGateError
+  //      409 fırlatır — defense in depth.
+  //
+  // Read-only durumda (status !== "draft") buton zaten disabled. Tooltip
+  // sadece draft + 0 selected durumunda gösterilir.
+  const finalizeDisabled = isReadOnly || selectedCount === 0;
+  const finalizeTooltip =
+    !isReadOnly && selectedCount === 0
+      ? "En az 1 'Seçime ekle' yapılmış varyant gerekli"
+      : undefined;
+
   return (
     <div className="flex h-full flex-col gap-4">
       {/* Üst bar */}
@@ -133,10 +159,9 @@ export function StudioShell({ setId }: StudioShellProps) {
           </Button>
           <Button
             variant="primary"
-            disabled={isReadOnly}
-            onClick={() => {
-              // Task 35 FinalizeModal trigger
-            }}
+            disabled={finalizeDisabled}
+            onClick={() => setFinalizeOpen(true)}
+            title={finalizeTooltip}
           >
             Set&apos;i finalize et
           </Button>
@@ -193,6 +218,16 @@ export function StudioShell({ setId }: StudioShellProps) {
         onOpenChange={(next) => {
           if (!next) setHardDeletePendingIds([]);
         }}
+      />
+
+      {/* Task 35 — FinalizeModal. Üst bar Finalize butonu açar; gate
+          UI'da görünür (selected ≥ 1) + dürüst breakdown + 409 error
+          handling. Success → invalidate → modal close. */}
+      <FinalizeModal
+        setId={setId}
+        items={set.items}
+        open={finalizeOpen}
+        onOpenChange={setFinalizeOpen}
       />
     </div>
   );

@@ -142,9 +142,30 @@ describe("StudioShell — error state", () => {
 });
 
 describe("StudioShell — draft set", () => {
-  it("set adı + Draft badge + 3 aksiyon ENABLED", () => {
+  it("set adı + Draft badge + İndir/kebab ENABLED + Finalize gate (1+ selected)", () => {
+    // Task 35 gate: 1+ selected → Finalize enabled. Item status = "selected"
+    // verilerek Finalize gate'i doğrulanır.
     mockUseSelectionSet.mockReturnValue({
-      data: makeSet({ name: "Boho wall art", status: "draft" }),
+      data: makeSet({
+        name: "Boho wall art",
+        status: "draft",
+        items: [
+          {
+            id: "i1",
+            selectionSetId: "set-1",
+            generatedDesignId: "gd1",
+            sourceAssetId: "a1",
+            editedAssetId: null,
+            lastUndoableAssetId: null,
+            editHistoryJson: [],
+            status: "selected",
+            position: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            review: null,
+          },
+        ],
+      }),
       isLoading: false,
       error: null,
     });
@@ -161,6 +182,56 @@ describe("StudioShell — draft set", () => {
     expect(indirBtn).not.toBeDisabled();
     expect(finalizeBtn).not.toBeDisabled();
     expect(kebabBtn).not.toBeDisabled();
+  });
+
+  it("Task 35 — 0 selected (sadece pending) → Finalize DISABLED + tooltip görünür", () => {
+    // makeSet default'u: 1 pending item, 0 selected → gate fail.
+    mockUseSelectionSet.mockReturnValue({
+      data: makeSet({ status: "draft" }),
+      isLoading: false,
+      error: null,
+    });
+    wrapper(<StudioShell setId="set-1" />);
+    const finalizeBtn = screen.getByRole("button", {
+      name: /set'i finalize et/i,
+    });
+    expect(finalizeBtn).toBeDisabled();
+    // Native title attribute: "En az 1 'Seçime ekle' yapılmış varyant gerekli"
+    expect(finalizeBtn.getAttribute("title")).toMatch(
+      /en az 1.*seçime ekle.*varyant gerekli/i,
+    );
+  });
+
+  it("Task 35 — 1+ selected → Finalize ENABLED + tooltip yok", () => {
+    mockUseSelectionSet.mockReturnValue({
+      data: makeSet({
+        status: "draft",
+        items: [
+          {
+            id: "i1",
+            selectionSetId: "set-1",
+            generatedDesignId: "gd1",
+            sourceAssetId: "a1",
+            editedAssetId: null,
+            lastUndoableAssetId: null,
+            editHistoryJson: [],
+            status: "selected",
+            position: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            review: null,
+          },
+        ],
+      }),
+      isLoading: false,
+      error: null,
+    });
+    wrapper(<StudioShell setId="set-1" />);
+    const finalizeBtn = screen.getByRole("button", {
+      name: /set'i finalize et/i,
+    });
+    expect(finalizeBtn).not.toBeDisabled();
+    expect(finalizeBtn.getAttribute("title")).toBeNull();
   });
 
   it("varyant sayısı + selected count subtitle'da gösterilir", () => {
