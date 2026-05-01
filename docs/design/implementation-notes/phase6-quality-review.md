@@ -384,6 +384,26 @@ smoke'undan SONRA manuel probe ile test edilecek:
    KIE endpoint 24 saat boyunca tutarlı HEALTHY durumda kalana kadar
    mini-tur tekrarı önerilmez — flaky sürerken her smoke noisy olur.
 
+   **Aşama 2B mikro-probe (2026-05-01 22:10, Phase 8 execution sırasında
+   açılan kısa pencere):** KIE flaky pattern bugün 3/3 HEALTHY probe ile
+   geçici olarak iyileşti (mini-tur AÇILMADI, kapsam dar tutuldu — yalnız
+   drift #6 yol seçimi için karar verdirici tek probe).
+
+   `scripts/smoke-data-url-probe.ts` çalıştırıldı: 64×64 transparent PNG
+   fixture (218 byte, data URL 314 char) `image_url` content-part'ında
+   inline base64 olarak KIE Gemini chat/completions'a gönderildi.
+   - **Sonuç:** ✅ HTTP 200, 34s yanıt. KIE içerikteki PNG'yi gerçekten
+     anladı; istenen JSON formatında doğru cevabı döndürdü
+     (`{"qualityScore":50,"riskFlags":[],...}` markdown wrap'li).
+   - **Karar:** Drift #6 için **küçük patch yolu açık** —
+     `image-loader.ts` local-path için data URL inline yapabilir; KIE
+     bulutu localhost MinIO'ya erişmek zorunda kalmaz. MinIO bridge /
+     public proxy / production storage migration **gerekmez**.
+
+   Bu carry-forward bilgisi: Phase 6 mini-tur tekrar açıldığında Aşama 2B
+   impl yönü `image-loader.ts` data URL inline (küçük patch) olacak.
+   Phase 8 execution buradan etkilenmez; not bilgilendirme amaçlı.
+
 **Drift #4 (envelope-aware) detay (commit `1367b7c`):**
 Provider artık HTTP 200 + KIE envelope `{code, msg, data}` shape'ini doğru
 parse eder; `code !== 200` durumunda gerçek envelope mesajıyla throw.
