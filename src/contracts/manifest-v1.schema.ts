@@ -14,46 +14,62 @@
 
 import { z } from "zod";
 
-const ReviewSchema = z.object({
-  score: z.number(),
-  status: z.string(),
-  signals: z.object({
-    resolution: z.string(),
-    textDetection: z.string(),
-    artifactCheck: z.string(),
-    trademarkRisk: z.string(),
-  }),
-});
+// Phase 7 Task 40 — forward-compat invariant: tüm nested object'ler `.strict()`.
+// Bilinmeyen alanlar reject (top-level + set + items[] + items[].review +
+// items[].review.signals + items[].metadata + exportedBy). Bu sıkılaştırma
+// Phase 8 Mockup Studio handoff'unu schema drift'inden korur.
+const ReviewSchema = z
+  .object({
+    score: z.number(),
+    status: z.string(),
+    signals: z
+      .object({
+        resolution: z.string(),
+        textDetection: z.string(),
+        artifactCheck: z.string(),
+        trademarkRisk: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
 
-export const ManifestV1Schema = z.object({
-  schemaVersion: z.literal("1"),
-  exportedAt: z.string().datetime(),
-  // PII disiplini: strict — yalnız userId. userEmail/role gibi alanlar reject.
-  exportedBy: z.object({ userId: z.string().min(1) }).strict(),
-  set: z.object({
-    id: z.string().min(1),
-    name: z.string(),
-    status: z.enum(["draft", "ready", "archived"]),
-    createdAt: z.string().datetime(),
-    sourceMetadata: z.record(z.unknown()).nullable(),
-  }),
-  items: z.array(
-    z.object({
-      filename: z.string().min(1),
-      originalFilename: z.string().min(1).optional(),
-      generatedDesignId: z.string().min(1),
-      sourceAssetId: z.string().min(1),
-      editedAssetId: z.string().min(1).optional(),
-      editHistory: z.array(z.unknown()),
-      review: ReviewSchema.optional(),
-      status: z.enum(["pending", "selected", "rejected"]),
-      metadata: z.object({
-        width: z.number().int().nonnegative(),
-        height: z.number().int().nonnegative(),
-        mimeType: z.string().min(1),
-      }),
-    }),
-  ),
-});
+export const ManifestV1Schema = z
+  .object({
+    schemaVersion: z.literal("1"),
+    exportedAt: z.string().datetime(),
+    // PII disiplini: strict — yalnız userId. userEmail/role gibi alanlar reject.
+    exportedBy: z.object({ userId: z.string().min(1) }).strict(),
+    set: z
+      .object({
+        id: z.string().min(1),
+        name: z.string(),
+        status: z.enum(["draft", "ready", "archived"]),
+        createdAt: z.string().datetime(),
+        sourceMetadata: z.record(z.unknown()).nullable(),
+      })
+      .strict(),
+    items: z.array(
+      z
+        .object({
+          filename: z.string().min(1),
+          originalFilename: z.string().min(1).optional(),
+          generatedDesignId: z.string().min(1),
+          sourceAssetId: z.string().min(1),
+          editedAssetId: z.string().min(1).optional(),
+          editHistory: z.array(z.unknown()),
+          review: ReviewSchema.optional(),
+          status: z.enum(["pending", "selected", "rejected"]),
+          metadata: z
+            .object({
+              width: z.number().int().nonnegative(),
+              height: z.number().int().nonnegative(),
+              mimeType: z.string().min(1),
+            })
+            .strict(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
 
 export type ManifestV1 = z.infer<typeof ManifestV1Schema>;
