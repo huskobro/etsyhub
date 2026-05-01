@@ -39,7 +39,10 @@
 
 import type { DesignReview, GeneratedDesign } from "@prisma/client";
 import { ReviewStatus } from "@prisma/client";
-import type { ReviewRiskFlagType } from "@/providers/review/types";
+import {
+  readRiskFlagKind,
+  type ReviewRiskFlagType,
+} from "@/providers/review/types";
 import type { ReviewView } from "./types";
 
 // ────────────────────────────────────────────────────────────
@@ -72,16 +75,17 @@ const TRADEMARK_FLAGS: ReadonlySet<ReviewRiskFlagType> = new Set([
  * `reviewIssues` kaynakları runtime'da malformed olabilir (legacy rowlar,
  * provider hatası, vb.). Array değil veya parse fail → boş array.
  *
- * Array içindeki her eleman `{ type: ReviewRiskFlagType }` shape'i kontrol
- * edilir; geçerli olmayan elementler silently skip edilir (defensive).
+ * Drift #5 read-both: Array içindeki her eleman önce `kind` (yeni format),
+ * yoksa `type` (legacy format) okunur. `readRiskFlagKind` helper'ı tek
+ * kaynak — tüketiciler aynı sözleşmeyi paylaşır. Bilinmeyen string /
+ * non-flag entry silently skip (defensive).
  */
 function parseFlagTypes(raw: unknown): Set<ReviewRiskFlagType> {
   const result = new Set<ReviewRiskFlagType>();
   if (!Array.isArray(raw)) return result;
   for (const entry of raw) {
-    if (entry === null || typeof entry !== "object") continue;
-    const candidate = (entry as { type?: unknown }).type;
-    if (typeof candidate !== "string") continue;
+    const candidate = readRiskFlagKind(entry);
+    if (candidate === null) continue;
     // Type guard — single source of truth `REVIEW_RISK_FLAG_TYPES`
     // ile sözleşmeli. Bilinmeyen string skip.
     if (

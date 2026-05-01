@@ -514,3 +514,87 @@ describe("mapReviewToView — defensive parsing", () => {
     expect(view!.signals.trademarkRisk).toBe("high");
   });
 });
+
+// ────────────────────────────────────────────────────────────
+// Phase 6 Drift #5 — read-both backward-compat
+// ────────────────────────────────────────────────────────────
+//
+// KIE strict JSON schema validator `properties.type` reserved word çakışması
+// nedeniyle 422 atıyor; hotfix `type` → `kind`. Eski review row'ları DB'de
+// olabilir (write-new disiplin gereği bu testte yok ama defansif okuma şart).
+// Mapper read-both: `kind` (yeni) öncelikli, `type` (legacy) fallback,
+// mixed array — her ikisi de tanınır.
+
+describe("mapReviewToView — Drift #5 read-both (kind/type backward-compat)", () => {
+  it("yeni format { kind: 'watermark_detected' } → trademarkRisk 'high'", () => {
+    const gd = buildGeneratedDesign({
+      reviewStatus: ReviewStatus.NEEDS_REVIEW,
+      reviewedAt: new Date(),
+    });
+    const dr = buildDesignReview({
+      decision: ReviewStatus.NEEDS_REVIEW,
+      score: 60,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      issues: [{ kind: "watermark_detected", confidence: 0.9, reason: "wm" } as any],
+    });
+    const view = mapReviewToView({ generatedDesign: gd, designReview: dr });
+    expect(view!.signals.trademarkRisk).toBe("high");
+  });
+
+  it("legacy format { type: 'text_detected' } → textDetection 'issue'", () => {
+    const gd = buildGeneratedDesign({
+      reviewStatus: ReviewStatus.NEEDS_REVIEW,
+      reviewedAt: new Date(),
+    });
+    const dr = buildDesignReview({
+      decision: ReviewStatus.NEEDS_REVIEW,
+      score: 60,
+      issues: [{ type: "text_detected", confidence: 0.9, reason: "txt" }],
+    });
+    const view = mapReviewToView({ generatedDesign: gd, designReview: dr });
+    expect(view!.signals.textDetection).toBe("issue");
+  });
+
+  it("mixed array (bazı entries kind, bazı type) → her ikisi de tanınır", () => {
+    const gd = buildGeneratedDesign({
+      reviewStatus: ReviewStatus.NEEDS_REVIEW,
+      reviewedAt: new Date(),
+    });
+    const dr = buildDesignReview({
+      decision: ReviewStatus.NEEDS_REVIEW,
+      score: 60,
+      issues: [
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { kind: "watermark_detected", confidence: 0.9, reason: "yeni" } as any,
+        { type: "text_detected", confidence: 0.7, reason: "eski" },
+      ],
+    });
+    const view = mapReviewToView({ generatedDesign: gd, designReview: dr });
+    expect(view!.signals.trademarkRisk).toBe("high");
+    expect(view!.signals.textDetection).toBe("issue");
+  });
+
+  it("hem kind hem type → kind öncelikli (collision durumunda)", () => {
+    const gd = buildGeneratedDesign({
+      reviewStatus: ReviewStatus.NEEDS_REVIEW,
+      reviewedAt: new Date(),
+    });
+    const dr = buildDesignReview({
+      decision: ReviewStatus.NEEDS_REVIEW,
+      score: 60,
+      issues: [
+        // kind = trademark, type = text — kind kazanır, sonuç trademark high.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {
+          kind: "watermark_detected",
+          type: "text_detected",
+          confidence: 0.8,
+          reason: "x",
+        } as any,
+      ],
+    });
+    const view = mapReviewToView({ generatedDesign: gd, designReview: dr });
+    expect(view!.signals.trademarkRisk).toBe("high");
+    expect(view!.signals.textDetection).toBe("clean");
+  });
+});

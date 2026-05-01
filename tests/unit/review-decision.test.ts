@@ -4,8 +4,9 @@ import { decideReviewStatus } from "@/server/services/review/decision";
 import type { ReviewRiskFlag } from "@/providers/review/types";
 
 const noFlags: ReviewRiskFlag[] = [];
+// Drift #5: `type` → `kind` (KIE strict JSON schema fix).
 const oneFlag: ReviewRiskFlag[] = [
-  { type: "watermark_detected", confidence: 0.9, reason: "köşede silik imza" },
+  { kind: "watermark_detected", confidence: 0.9, reason: "köşede silik imza" },
 ];
 
 describe("decideReviewStatus (R8) — karar kuralı", () => {

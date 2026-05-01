@@ -85,17 +85,18 @@ describe("KIE Gemini Flash review provider — başarılı senaryolar", () => {
   });
 
   it("riskFlags dolu valid output → parse", async () => {
+    // Drift #5: `type` → `kind` (KIE strict JSON schema reserved-word fix).
     const withFlags = {
       ...validOutput,
       score: 70,
-      riskFlags: [{ type: "watermark_detected", confidence: 0.85, reason: "köşede silik imza" }],
+      riskFlags: [{ kind: "watermark_detected", confidence: 0.85, reason: "köşede silik imza" }],
     };
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       mockKieResponse(JSON.stringify(withFlags)),
     );
     const result = await kieGeminiFlashReviewProvider.review(baseInput, { apiKey: "kie-key" });
     expect(result.riskFlags).toHaveLength(1);
-    expect(result.riskFlags[0]!.type).toBe("watermark_detected");
+    expect(result.riskFlags[0]!.kind).toBe("watermark_detected");
   });
 });
 
@@ -172,10 +173,10 @@ describe("KIE Gemini Flash review provider — hata senaryoları (sessiz fallbac
     ).rejects.toThrow(/non-JSON output/);
   });
 
-  it("bilinmeyen risk flag type ⇒ Zod throw", async () => {
+  it("bilinmeyen risk flag kind ⇒ Zod throw", async () => {
     const bad = {
       ...validOutput,
-      riskFlags: [{ type: "fake_flag", confidence: 0.5, reason: "x" }],
+      riskFlags: [{ kind: "fake_flag", confidence: 0.5, reason: "x" }],
     };
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       mockKieResponse(JSON.stringify(bad)),

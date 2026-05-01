@@ -148,7 +148,8 @@ describe("handleReviewDesign — scope=local", () => {
     expect(updated?.reviewScore).toBe(92);
     expect(updated?.reviewSummary).toBe("minimalist wall art");
     expect(updated?.reviewProviderSnapshot).toMatch(/^google-gemini-flash@\d{4}-\d{2}-\d{2}$/);
-    expect(updated?.reviewPromptSnapshot).toContain("v1.0");
+    // Drift #5 prompt version bump: v1.0 → v1.1 (riskFlags `type` → `kind`).
+    expect(updated?.reviewPromptSnapshot).toContain("v1.1");
     expect(updated?.reviewedAt).not.toBeNull();
     // Legacy reviewIssues yazılmıyor.
     expect(updated?.reviewIssues).toBeNull();

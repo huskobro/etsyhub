@@ -463,7 +463,8 @@ describe("GET /api/review/queue", () => {
       score: 65,
       riskFlags: [
         {
-          type: "watermark_detected",
+          // Drift #5: `type` → `kind` (KIE strict JSON schema fix).
+          kind: "watermark_detected",
           confidence: 0.9,
           reason: "Köşe watermark",
         },

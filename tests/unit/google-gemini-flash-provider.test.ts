@@ -54,14 +54,15 @@ describe("Google Gemini Flash review provider — başarılı senaryolar", () =>
     const withFlags = {
       ...validOutput,
       score: 70,
-      riskFlags: [{ type: "watermark_detected", confidence: 0.85, reason: "köşede silik imza" }],
+      // Drift #5: `type` → `kind` (KIE strict JSON schema fix; ortak Zod schema).
+      riskFlags: [{ kind: "watermark_detected", confidence: 0.85, reason: "köşede silik imza" }],
     };
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       mockGeminiResponse(JSON.stringify(withFlags)),
     );
     const result = await googleGeminiFlashReviewProvider.review(baseInput, { apiKey: "test-key" });
     expect(result.riskFlags).toHaveLength(1);
-    expect(result.riskFlags[0]!.type).toBe("watermark_detected");
+    expect(result.riskFlags[0]!.kind).toBe("watermark_detected");
   });
 });
 
@@ -123,8 +124,8 @@ describe("Google Gemini Flash review provider — hata senaryoları (sessiz fall
     ).rejects.toThrow(/non-JSON output/);
   });
 
-  it("bilinmeyen risk flag type ⇒ Zod throw", async () => {
-    const bad = { ...validOutput, riskFlags: [{ type: "fake_flag", confidence: 0.5, reason: "x" }] };
+  it("bilinmeyen risk flag kind ⇒ Zod throw", async () => {
+    const bad = { ...validOutput, riskFlags: [{ kind: "fake_flag", confidence: 0.5, reason: "x" }] };
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       mockGeminiResponse(JSON.stringify(bad)),
     );

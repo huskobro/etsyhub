@@ -34,7 +34,7 @@ export async function runAlphaChecks(
   if (!meta.hasAlpha) {
     return [
       {
-        type: "no_alpha_channel",
+        kind: "no_alpha_channel",
         confidence: 1,
         reason: "Görselde alfa kanalı yok",
       },
@@ -80,7 +80,7 @@ export async function runAlphaChecks(
   if (ratio > EDGE_ARTIFACT_RATIO_THRESHOLD) {
     return [
       {
-        type: "transparent_edge_artifact",
+        kind: "transparent_edge_artifact",
         confidence: Math.min(1, ratio * 10),
         reason: `Kenar piksellerinin %${(ratio * 100).toFixed(1)}'inde yarı saydam artifact`,
       },

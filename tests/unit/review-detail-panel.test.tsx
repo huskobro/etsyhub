@@ -40,7 +40,8 @@ const baseItem = {
   riskFlagCount: 1,
   riskFlags: [
     {
-      type: "watermark_detected" as const,
+      // Drift #5: `type` → `kind` (KIE strict JSON schema fix).
+      kind: "watermark_detected" as const,
       confidence: 0.9,
       reason: "köşede silik imza",
     },

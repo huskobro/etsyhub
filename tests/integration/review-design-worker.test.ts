@@ -212,7 +212,8 @@ describe("handleReviewDesign — scope=design", () => {
     expect(updated?.textDetected).toBe(false);
     expect(updated?.gibberishDetected).toBe(false);
     expect(updated?.reviewProviderSnapshot).toMatch(/^google-gemini-flash@\d{4}-\d{2}-\d{2}$/);
-    expect(updated?.reviewPromptSnapshot).toContain("v1.0");
+    // Drift #5 prompt version bump: v1.0 → v1.1 (riskFlags `type` → `kind`).
+    expect(updated?.reviewPromptSnapshot).toContain("v1.1");
     expect(updated?.reviewPromptSnapshot).toContain("Etsy print-on-demand");
     expect(updated?.reviewedAt).not.toBeNull();
     // Legacy reviewIssues canonical alan değil — yazılmamalı.
@@ -237,7 +238,8 @@ describe("handleReviewDesign — scope=design", () => {
       textDetected: false,
       gibberishDetected: false,
       riskFlags: [
-        { type: "watermark_detected", confidence: 0.9, reason: "köşede silik imza" },
+        // Drift #5: `type` → `kind` (KIE strict JSON schema fix).
+        { kind: "watermark_detected", confidence: 0.9, reason: "köşede silik imza" },
       ],
       summary: "watermark görünüyor",
     });
@@ -248,10 +250,11 @@ describe("handleReviewDesign — scope=design", () => {
 
     expect(result.status).toBe(ReviewStatus.NEEDS_REVIEW);
     const updated = await db.generatedDesign.findUnique({ where: { id: designId } });
-    const flags = updated?.reviewRiskFlags as Array<{ type: string; confidence: number }>;
+    // Drift #5: persist edilen format `kind` (write-new disipline).
+    const flags = updated?.reviewRiskFlags as Array<{ kind: string; confidence: number }>;
     expect(Array.isArray(flags)).toBe(true);
     expect(flags).toHaveLength(1);
-    expect(flags[0]?.type).toBe("watermark_detected");
+    expect(flags[0]?.kind).toBe("watermark_detected");
   });
 
   it("sticky USER: rerun status değişmez, hiçbir alan yazılmaz", async () => {

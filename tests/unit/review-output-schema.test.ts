@@ -17,10 +17,11 @@ const validOutput = {
 };
 
 describe("ReviewOutputSchema (DRY paylaşılan Zod)", () => {
-  it("bilinmeyen risk flag type reddeder", () => {
+  it("bilinmeyen risk flag kind reddeder", () => {
+    // Drift #5: `type` → `kind` (KIE strict JSON schema reserved-word fix).
     const bad = {
       ...validOutput,
-      riskFlags: [{ type: "fake_flag", confidence: 0.5, reason: "x" }],
+      riskFlags: [{ kind: "fake_flag", confidence: 0.5, reason: "x" }],
     };
     const result = ReviewOutputSchema.safeParse(bad);
     expect(result.success).toBe(false);
@@ -35,7 +36,7 @@ describe("ReviewOutputSchema (DRY paylaşılan Zod)", () => {
   it("confidence > 1 reddeder", () => {
     const bad = {
       ...validOutput,
-      riskFlags: [{ type: "watermark_detected", confidence: 1.5, reason: "x" }],
+      riskFlags: [{ kind: "watermark_detected", confidence: 1.5, reason: "x" }],
     };
     const result = ReviewOutputSchema.safeParse(bad);
     expect(result.success).toBe(false);

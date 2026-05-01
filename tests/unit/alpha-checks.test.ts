@@ -8,7 +8,8 @@ describe("runAlphaChecks — deterministic alpha kontrolleri", () => {
   it("opaque PNG (alfa kanalı yok) → no_alpha_channel flag döner", async () => {
     const flags = await runAlphaChecks(path.join(FIXTURE_DIR, "opaque.png"));
     expect(flags).toHaveLength(1);
-    expect(flags[0]!.type).toBe("no_alpha_channel");
+    // Drift #5: alan adı `type` → `kind` (KIE strict JSON schema fix).
+    expect(flags[0]!.kind).toBe("no_alpha_channel");
     expect(flags[0]!.confidence).toBeGreaterThanOrEqual(0);
     expect(flags[0]!.confidence).toBeLessThanOrEqual(1);
     expect(flags[0]!.reason.length).toBeGreaterThan(0);
@@ -26,7 +27,7 @@ describe("runAlphaChecks — deterministic alpha kontrolleri", () => {
       path.join(FIXTURE_DIR, "transparent-edge-artifact.png"),
     );
     expect(flags).toHaveLength(1);
-    expect(flags[0]!.type).toBe("transparent_edge_artifact");
+    expect(flags[0]!.kind).toBe("transparent_edge_artifact");
     expect(flags[0]!.confidence).toBeGreaterThanOrEqual(0);
     expect(flags[0]!.confidence).toBeLessThanOrEqual(1);
     expect(flags[0]!.reason.length).toBeGreaterThan(0);

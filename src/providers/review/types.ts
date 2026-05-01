@@ -34,12 +34,47 @@ export function isReviewRiskFlagType(value: string): value is ReviewRiskFlagType
 }
 
 export type ReviewRiskFlag = {
-  type: ReviewRiskFlagType;
+  /**
+   * Risk flag türü. Drift #5 (2026-04-30) sonrası alan adı `kind`.
+   * Önceki ad `type` idi; KIE strict JSON schema validator'ı
+   * `properties.type` shape'ini reserved word çakışması olarak reddetti
+   * (HTTP 200 + envelope 422). 3 curl probe'la kanıtlandı: alan adı
+   * `kind` olunca KIE 200 dönüyor.
+   *
+   * Geçiş modeli (kullanıcı yön kararı C — Hibrit):
+   *   - Yazma (write-new): yeni review output'larında `kind` üretilir.
+   *   - Okuma (read-both): tüketiciler `readRiskFlagKind` helper'ı ile
+   *     önce `kind`, yoksa legacy `type` okur (DB'deki eski row'lar için).
+   */
+  kind: ReviewRiskFlagType;
   /** 0-1 arası provider güveni. Doğrulaması Task 4 parse katmanında yapılır. */
   confidence: number;
   /** Kısa, kullanıcıya görünür açıklama. */
   reason: string;
 };
+
+/**
+ * Drift #5 read-both helper — DB'deki review row'ları runtime'da iki shape
+ * taşıyabilir:
+ *   - Yeni: { kind: "watermark_detected", ... }
+ *   - Legacy: { type: "watermark_detected", ... }
+ *
+ * Bu fonksiyon herhangi bir flag entry'sinden kategori string'ini güvenli
+ * çıkarır (önce `kind`, yoksa `type`). Geçersiz / null / non-object girişler
+ * `null` döner. Tüketiciler (review-mapper, queue route, decisions API)
+ * tek noktadan import eder — duplicate mantık YASAK.
+ *
+ * Not: Bu helper string döner; type guard değildir. `REVIEW_RISK_FLAG_TYPES`
+ * üyeliği kontrolü çağrı tarafının sorumluluğu (`isReviewRiskFlagType`).
+ */
+export function readRiskFlagKind(entry: unknown): string | null {
+  if (entry === null || entry === undefined) return null;
+  if (typeof entry !== "object") return null;
+  const obj = entry as { kind?: unknown; type?: unknown };
+  if (typeof obj.kind === "string") return obj.kind;
+  if (typeof obj.type === "string") return obj.type;
+  return null;
+}
 
 /**
  * Görsel kaynağı — tek code path için discriminated union.

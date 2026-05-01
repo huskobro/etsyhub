@@ -288,12 +288,13 @@ describe("POST /api/review/decisions/bulk", () => {
     const safe1 = await createDesign(userAId, productTypeId);
     const risky1 = await createDesign(userAId, productTypeId, {
       riskFlags: [
-        { type: "watermark_detected", confidence: 0.9, reason: "x" },
+        // Drift #5: `type` → `kind` (KIE strict JSON schema fix).
+        { kind: "watermark_detected", confidence: 0.9, reason: "x" },
       ],
     });
     const risky2 = await createDesign(userAId, productTypeId, {
       riskFlags: [
-        { type: "text_detected", confidence: 0.7, reason: "y" },
+        { kind: "text_detected", confidence: 0.7, reason: "y" },
       ],
     });
 
@@ -338,7 +339,7 @@ describe("POST /api/review/decisions/bulk", () => {
     currentUser.id = userAId;
     const safe1 = await createDesign(userAId, productTypeId);
     const risky1 = await createDesign(userAId, productTypeId, {
-      riskFlags: [{ type: "text_detected", confidence: 0.5, reason: "x" }],
+      riskFlags: [{ kind: "text_detected", confidence: 0.5, reason: "x" }],
     });
 
     const res = await POST(

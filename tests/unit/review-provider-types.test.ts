@@ -59,13 +59,14 @@ describe("ReviewProvider interface — conformance", () => {
     expect(out.riskFlags).toEqual([]);
   });
 
-  it("ReviewRiskFlag yapısı type/confidence/reason taşır", () => {
+  it("ReviewRiskFlag yapısı kind/confidence/reason taşır (Drift #5)", () => {
+    // Drift #5: alan adı `type` → `kind` (KIE strict JSON schema fix).
     const flag: ReviewRiskFlag = {
-      type: "watermark_detected",
+      kind: "watermark_detected",
       confidence: 0.9,
       reason: "sağ alt köşede yarı saydam imza izi",
     };
-    expect(flag.type).toBe("watermark_detected");
+    expect(flag.kind).toBe("watermark_detected");
     expect(flag.confidence).toBe(0.9);
   });
 });
