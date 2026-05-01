@@ -277,7 +277,10 @@ describe("StudioShell — ready / archived (read-only)", () => {
     expect(finalizeBtn).toBeDisabled();
   });
 
-  it("archived: Archived badge + readonly banner", () => {
+  it("archived: Archived badge + readonly banner + ArchiveAction null (kebap yok)", () => {
+    // Task 37 — archived set'te ArchiveAction null döner; üst bar kebap
+    // butonu (Set seçenekleri) DOM'a gelmez. Spec Section 4.3: archived
+    // → archived geçişi yok, action gizlenir.
     mockUseSelectionSet.mockReturnValue({
       data: makeSet({ status: "archived" }),
       isLoading: false,
@@ -286,6 +289,9 @@ describe("StudioShell — ready / archived (read-only)", () => {
     wrapper(<StudioShell setId="set-1" />);
     expect(screen.getByText("Archived")).toBeInTheDocument();
     expect(screen.getByText(/finalize edildi/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /set seçenekleri/i }),
+    ).not.toBeInTheDocument();
   });
 });
 

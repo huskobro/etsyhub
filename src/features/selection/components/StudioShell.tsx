@@ -24,7 +24,6 @@
 // veri TanStack Query üzerinden client'ta (`useSelectionSet`).
 
 import { useEffect, useState } from "react";
-import { MoreVertical } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
@@ -39,6 +38,7 @@ import { SelectionBulkBar } from "./SelectionBulkBar";
 import { BulkHardDeleteDialog } from "./BulkHardDeleteDialog";
 import { FinalizeModal } from "./FinalizeModal";
 import { ExportButton } from "./ExportButton";
+import { ArchiveAction } from "./ArchiveAction";
 import type { SelectionSet } from "@prisma/client";
 
 export type StudioShellProps = {
@@ -161,16 +161,10 @@ export function StudioShell({ setId }: StudioShellProps) {
           >
             Set&apos;i finalize et
           </Button>
-          <button
-            type="button"
-            aria-label="Set seçenekleri"
-            className="grid h-control-md w-control-md place-items-center rounded-md border border-border bg-surface text-text-muted transition-colors duration-fast ease-out hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={() => {
-              // Task 37 ArchiveAction (DropdownMenu trigger)
-            }}
-          >
-            <MoreVertical className="h-4 w-4" aria-hidden />
-          </button>
+          {/* Task 37 — ArchiveAction (set kebap menü minimal). Archived set'te
+              ArchiveAction null döner; spec Section 4.3 (archived → archived
+              geçişi yok). */}
+          <ArchiveAction setId={setId} setStatus={set.status} />
         </div>
       </div>
 
