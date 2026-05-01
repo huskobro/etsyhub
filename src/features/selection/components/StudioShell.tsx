@@ -24,7 +24,7 @@
 // veri TanStack Query üzerinden client'ta (`useSelectionSet`).
 
 import { useEffect, useState } from "react";
-import { Download, MoreVertical } from "lucide-react";
+import { MoreVertical } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
@@ -38,6 +38,7 @@ import { RightPanel } from "./RightPanel";
 import { SelectionBulkBar } from "./SelectionBulkBar";
 import { BulkHardDeleteDialog } from "./BulkHardDeleteDialog";
 import { FinalizeModal } from "./FinalizeModal";
+import { ExportButton } from "./ExportButton";
 import type { SelectionSet } from "@prisma/client";
 
 export type StudioShellProps = {
@@ -147,16 +148,11 @@ export function StudioShell({ setId }: StudioShellProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            icon={<Download className="h-4 w-4" aria-hidden />}
-            disabled={isReadOnly}
-            onClick={() => {
-              // Task 36 ExportButton (queue başlatma + activeExport state) bağlayacak
-            }}
-          >
-            İndir (ZIP)
-          </Button>
+          <ExportButton
+            setId={setId}
+            itemCount={set.items.length}
+            activeExport={set.activeExport}
+          />
           <Button
             variant="primary"
             disabled={finalizeDisabled}
