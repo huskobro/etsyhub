@@ -1,59 +1,73 @@
-// PHASE 8 TASK 5 STUB — Task 7'de BullMQ producer ile değişir.
+// Phase 8 Task 7 — MOCKUP_RENDER queue producer (gerçek BullMQ).
 //
-// Phase 7 emsali: src/server/queue.ts (BullMQ queues + enqueue helper).
-// Task 7'de bu pattern Mockup-render queue için birebir uyarlanır
-// (JobType.MOCKUP_RENDER enum + queue tanımı + worker).
+// Task 5+6'da stub idi (no-op log); Task 7'de central queue
+// (src/server/queue.ts) üzerinden gerçek dispatch + cleanup.
 //
-// Şimdilik no-op log; render'ları PENDING durumda bırakır. Task 5 entegrasyon
-// testleri queue dispatch'inin handoff'tan kopuk doğrulamasını yapar
-// (DB row'ları yaratıldı + queueMockupRenderJobs çağrıldı).
+// Phase 7 emsali: src/server/queue.ts central JobType-indexed Queue map.
+// MOCKUP_RENDER enum'u Task 7 partial'da eklendi (commit 05835e8); queue
+// otomatik registered.
+
+import { JobType } from "@prisma/client";
+import { queues } from "@/server/queue";
+import { db } from "@/server/db";
+import {
+  MOCKUP_RENDER_JOB_OPTIONS,
+  type MockupRenderJobPayload,
+} from "./mockup-render.config";
 
 /**
- * Mockup render job'larını render queue'sine dispatch eder.
+ * Task 5 handoff service N render için BullMQ job dispatch eder.
  *
- * @param jobId - MockupJob.id
- * @param renderIds - MockupRender.id'leri (eager yaratılmış PENDING row'lar)
- *
- * Phase 7 emsali (export-selection-set.queue.ts):
- *   - jobId stable identifier; aynı id ile ikinci enqueue idempotent
- *   - render id'leri job payload içinde geçer; worker DB'den çeker
- *
- * Task 7 implementation kontratı:
- *   - BullMQ queue (`MOCKUP_RENDER` JobType)
- *   - per-render veya per-job dispatch (spec §5.x karara bağlı)
- *   - retry/backoff policy worker tarafında
+ * Spec §3.4: her MockupRender için 1 BullMQ job (parallel-safe; attempts=1
+ * Spec §7.2). BullMQ jobId = renderId — idempotent re-dispatch (aynı
+ * renderId ikinci kez enqueue edilirse mevcut job kullanılır).
  */
 export async function queueMockupRenderJobs(
   jobId: string,
   renderIds: string[],
 ): Promise<void> {
-  // eslint-disable-next-line no-console
-  console.log(
-    `[mockup-render-queue STUB] job=${jobId} renders=${renderIds.length}`,
+  // jobId arg debug/log için tutuluyor (worker DB'den render üzerinden
+  // job'a ulaşır; payload'da gerek yok).
+  void jobId;
+
+  const queue = queues[JobType.MOCKUP_RENDER];
+  await Promise.all(
+    renderIds.map((renderId) =>
+      queue.add(
+        JobType.MOCKUP_RENDER,
+        { renderId } satisfies MockupRenderJobPayload,
+        {
+          jobId: renderId,
+          ...MOCKUP_RENDER_JOB_OPTIONS,
+        },
+      ),
+    ),
   );
 }
 
-// ────────────────────────────────────────────────────────────
-// PHASE 8 TASK 6 STUB — Task 7'de BullMQ producer kaldırma çağrısıyla değişir.
-//
-// `cancelJob` (job.service.ts) bu fonksiyonu çağırır. DB-side render
-// status'ları cancel transaction'ı içinde zaten FAILED'a çekildiği için
-// kuyrukta kalan orphan job'lar daha fazla iş yapamaz (worker `findUnique`
-// ile DB row'unu çeker, status FAILED görür ve no-op döner — Task 7'de
-// worker invariant'ı bu yönde tasarlanacak). Yine de queue temizliği iyi
-// hijyen; Task 7'de gerçek implementation:
-//   - bullMQ queue.remove(jobId) ya da getJobs + remove döngüsü
-//   - retry'ları cancel etmek için active/waiting set'lerini tara
-// ────────────────────────────────────────────────────────────
-
 /**
- * Belirtilen MockupJob'a ait kuyruktaki render iş kayıtlarını kaldırır
- * (best-effort). Cancel akışında çağrılır; DB-side status guard zaten
- * worker'ın no-op'a gitmesini sağlar.
+ * Task 6 cancelJob çağırır: queue'da bekleyen render'ları best-effort kaldır.
  *
- * @param jobId - MockupJob.id
+ * Render status FAILED'a cancelJob transaction'ında çekildi (errorClass=null,
+ * kullanıcı eylemi). Worker zaten dequeue edince job.status === "CANCELLED"
+ * gördüğünde no-op döner (race koruması Task 6 disiplini). Bu fonksiyon
+ * yalnız WAITING/DELAYED job'ları temizler — ACTIVE worker'lar tamamlasın.
  */
 export async function removeMockupRenderJobs(jobId: string): Promise<void> {
-  // eslint-disable-next-line no-console
-  console.log(`[mockup-render-queue STUB] removeMockupRenderJobs job=${jobId}`);
+  const queue = queues[JobType.MOCKUP_RENDER];
+  const renders = await db.mockupRender.findMany({
+    where: { jobId },
+    select: { id: true },
+  });
+
+  await Promise.all(
+    renders.map(async (r) => {
+      const job = await queue.getJob(r.id);
+      if (!job) return;
+      const state = await job.getState();
+      if (state === "waiting" || state === "delayed") {
+        await job.remove();
+      }
+    }),
+  );
 }

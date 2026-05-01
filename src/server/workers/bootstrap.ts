@@ -14,6 +14,7 @@ import { handleReviewDesign } from "./review-design.worker";
 import { handleSelectionEditRemoveBackground } from "./selection-edit.worker";
 import { handleSelectionExport } from "./selection-export.worker";
 import { handleSelectionExportCleanup } from "./selection-export-cleanup.worker";
+import { handleMockupRender } from "./mockup-render.worker";
 
 /** Günlük FETCH_NEW_LISTINGS repeat için sabit scheduler ID. */
 export const FETCH_NEW_LISTINGS_SCHEDULE_ID = "fetch-new-listings-daily";
@@ -56,6 +57,11 @@ export async function startWorkers() {
       name: JobType.SELECTION_EXPORT_CLEANUP,
       handler: handleSelectionExportCleanup,
     },
+    // Phase 8 Task 7 — mockup render worker. Concurrency 2: Sharp render
+    // CPU+I/O karışık (Phase 7 selection-export ve selection-edit emsali);
+    // per-render attempts=1 (Spec §7.2 auto-retry yok), 60s timeout cap
+    // AbortSignal worker tarafında.
+    { name: JobType.MOCKUP_RENDER, handler: handleMockupRender },
   ] as const;
 
   for (const s of specs) {
