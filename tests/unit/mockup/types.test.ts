@@ -19,7 +19,7 @@ import type {
   RenderSnapshot,
   RenderInput,
   RenderOutput,
-} from "@/lib/providers/mockup/types";
+} from "@/providers/mockup/types";
 
 describe("SafeArea discriminated union", () => {
   it("narrows to SafeAreaRect when type === 'rect'", () => {
