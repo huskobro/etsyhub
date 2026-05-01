@@ -36,6 +36,7 @@ import { PreviewCard } from "./PreviewCard";
 import { Filmstrip } from "./Filmstrip";
 import { RightPanel } from "./RightPanel";
 import { SelectionBulkBar } from "./SelectionBulkBar";
+import { BulkHardDeleteDialog } from "./BulkHardDeleteDialog";
 import type { SelectionSet } from "@prisma/client";
 
 export type StudioShellProps = {
@@ -62,12 +63,14 @@ export function StudioShell({ setId }: StudioShellProps) {
   const setActiveItemId = useStudioStore((s) => s.setActiveItemId);
   const { data: set, isLoading, error } = useSelectionSet(setId);
 
-  // Task 33 — Bulk hard delete pending state. Task 34'te
-  // TypingConfirmation modal'ı bu state'e bağlanacak; şu an callback yalnız
-  // state'i tutuyor (UI etki yok). `setHardDeletePendingIds` parent
-  // sözleşmesi: SelectionBulkBar `onHardDeleteRequest(ids)` çağrısı → state
-  // güncelleme → Task 34 modal `hardDeletePendingIds.length > 0` ile açılır.
-  const [, setHardDeletePendingIds] = useState<string[]>([]);
+  // Task 33 + Task 34 — Bulk hard delete pending state.
+  // SelectionBulkBar `onHardDeleteRequest(ids)` → state güncelleme →
+  // BulkHardDeleteDialog `hardDeletePendingIds.length > 0` ile açılır.
+  // Modal kapanırsa (success / cancel / error close) state sıfırlanır →
+  // dialog `open=false` ile unmount edilir.
+  const [hardDeletePendingIds, setHardDeletePendingIds] = useState<string[]>(
+    [],
+  );
 
   // Set değişince store reset (yeni setId → activeItemId/multiSelect/filter
   // sıfırlanır). Store içi guard aynı setId'de no-op.
@@ -179,6 +182,17 @@ export function StudioShell({ setId }: StudioShellProps) {
         setId={setId}
         isReadOnly={isReadOnly}
         onHardDeleteRequest={setHardDeletePendingIds}
+      />
+
+      {/* Task 34 — Hard delete TypingConfirmation modal. Modal kapanırsa
+          (success / cancel) state sıfırlanır → dialog unmount. */}
+      <BulkHardDeleteDialog
+        setId={setId}
+        itemIds={hardDeletePendingIds}
+        open={hardDeletePendingIds.length > 0}
+        onOpenChange={(next) => {
+          if (!next) setHardDeletePendingIds([]);
+        }}
       />
     </div>
   );
