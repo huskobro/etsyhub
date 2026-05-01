@@ -14,3 +14,6 @@ next-env.d.ts
 *.log
 tsconfig.tsbuildinfo
 videolar/
+
+# Phase 8 — mockup design kaynak arşivi (klasör versiyonu git'te)
+docs/design/EtsyHub_mockups.zip

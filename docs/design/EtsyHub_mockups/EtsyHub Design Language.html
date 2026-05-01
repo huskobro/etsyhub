@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8"/>
+<title>EtsyHub · Tasarım Dili + Ekranlar</title>
+<meta name="viewport" content="width=1440"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="tokens.css"/>
+<style>
+  html, body { margin: 0; padding: 0; background: #e8e6e0; height: 100%; font-family: "Inter", sans-serif; }
+  #root { height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+  const TWEAKS_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "accent": "#E85D25",
+    "density": "mixed"
+  }/*EDITMODE-END*/;
+</script>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="primitives.jsx"></script>
+<script type="text/babel" src="primitives-sheet.jsx"></script>
+<script type="text/babel" src="app-shell.jsx"></script>
+<script type="text/babel" src="screens.jsx"></script>
+<script type="text/babel" src="screens-b.jsx"></script>
+
+<script type="text/babel">
+const { DesignCanvas, DCSection, DCArtboard } = window;
+const { Dashboard, BookmarksGrid, AdminUsers, Login, PrimitivesSheet } = window;
+const {
+  References, Collections, AdminProductTypes, AdminFeatureFlags,
+  Competitors, TrendStories, ConfirmDialogs, EmptyStates, SkeletonCatalog,
+  SelectionStudio, MockupStudio,
+} = window;
+const { TweaksPanel, useTweaks, TweakSection, TweakColor, TweakRadio } = window;
+
+function App() {
+  const [tweaks, setTweaks] = useTweaks(TWEAKS_DEFAULTS);
+
+  // Apply accent color live
+  React.useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--color-accent", tweaks.accent);
+    // derive hover (10% darker) and soft (15% alpha tint)
+    const hex = tweaks.accent.replace("#", "");
+    const r = parseInt(hex.slice(0,2), 16), g = parseInt(hex.slice(2,4), 16), b = parseInt(hex.slice(4,6), 16);
+    const darker = `#${[r,g,b].map(c => Math.max(0, Math.floor(c * 0.85)).toString(16).padStart(2,"0")).join("")}`;
+    root.style.setProperty("--color-accent-hover", darker);
+  }, [tweaks.accent]);
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="lang" title="Tasarım Dili" subtitle="A.2 · UI Language Kit · editoryal kokpit yönü">
+          <DCArtboard id="primitives" label="Primitives showcase · tipografi, renk, button, badge, state, skeleton" width={1200} height={2200}>
+            <PrimitivesSheet/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="auth" title="Auth" subtitle="B.2 · Login / Register — brand panel + form panel">
+          <DCArtboard id="login" label="Login · default state" width={1280} height={800}>
+            <Login/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="user" title="Kullanıcı Paneli" subtitle="B.1 + B.3 · user density — p-6, gap-4, gevşek ton">
+          <DCArtboard id="dashboard" label="Dashboard · son işler + review bekleyen + trendler" width={1440} height={1060}>
+            <Dashboard/>
+          </DCArtboard>
+          <DCArtboard id="bookmarks" label="Bookmarks grid · default · 3 selected · bulk bar açık" width={1440} height={1000}>
+            <BookmarksGrid/>
+          </DCArtboard>
+          <DCArtboard id="bookmarks-empty" label="Bookmarks · empty state · StateMessage primitive" width={1440} height={820}>
+            <BookmarksGrid empty/>
+          </DCArtboard>
+          <DCArtboard id="bookmarks-loading" label="Bookmarks · loading · 6 sabit skeleton kart" width={1440} height={900}>
+            <BookmarksGrid loading/>
+          </DCArtboard>
+          <DCArtboard id="references" label="References · koleksiyon filtreli grid · 2 seçili + bulk ready" width={1440} height={1040}>
+            <References/>
+          </DCArtboard>
+          <DCArtboard id="collections" label="Collections · 2×2 mosaic kartlar · son güncelleme" width={1440} height={900}>
+            <Collections/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="discover" title="Keşif" subtitle="B.8 + B.9 · aynı aile, farklı grameri — competitors veri yoğun, trend stories thumbnail yoğun">
+          <DCArtboard id="competitors" label="Competitors · mağaza ekle + takipli mağazalar + top reviewed tablo" width={1440} height={1080}>
+            <Competitors/>
+          </DCArtboard>
+          <DCArtboard id="trend-stories" label="Trend Stories · cluster satırı + yeni listing story akışı" width={1440} height={1180}>
+            <TrendStories/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="production" title="Üretim" subtitle="B.13 + B.14 · Selection Studio + Mockup Studio — üretim kokpiti">
+          <DCArtboard id="selection" label="Selection Studio · varyant preview + edit sidebar + kalite skoru" width={1440} height={960}>
+            <SelectionStudio/>
+          </DCArtboard>
+          <DCArtboard id="mockup" label="Mockup Studio · featured render + template grid + queue" width={1440} height={1040}>
+            <MockupStudio/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="admin" title="Admin Paneli" subtitle="B.6 + B.7 · admin density — p-4, gap-3, sıkı tablo tonu">
+          <DCArtboard id="admin-users" label="Admin Users · tablo · 1 satır seçili · bulk bar + filters" width={1440} height={820}>
+            <AdminUsers/>
+          </DCArtboard>
+          <DCArtboard id="admin-product-types" label="Admin Product Types · toggle + usage + recipe sayısı" width={1440} height={680}>
+            <AdminProductTypes/>
+          </DCArtboard>
+          <DCArtboard id="admin-feature-flags" label="Admin Feature Flags · kapsam + env + rollout progress" width={1440} height={720}>
+            <AdminFeatureFlags/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="catalog" title="Sistem Katalog" subtitle="B.10 + B.11 + B.12 · primitive'lerin tüm varyantlarının aynı yerde kanıtı">
+          <DCArtboard id="confirms" label="Confirm dialog · destructive / warning / neutral — 3 tone yan yana" width={1280} height={400}>
+            <ConfirmDialogs/>
+          </DCArtboard>
+          <DCArtboard id="empties" label="Empty state · neutral / warning / error — 4 gerçek kullanım örneği" width={1280} height={720}>
+            <EmptyStates/>
+          </DCArtboard>
+          <DCArtboard id="skeletons" label="Skeleton · user grid · admin row · detail layout — 3 density" width={1280} height={1200}>
+            <SkeletonCatalog/>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection title="Aksan rengi">
+          <TweakColor tweaks={tweaks} setTweaks={setTweaks} k="accent" label="Accent"/>
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            {[
+              { label: "E85D25 · önerilen", hex: "#E85D25" },
+              { label: "D84315 · daha koyu", hex: "#D84315" },
+              { label: "F25C05 · daha sıcak", hex: "#F25C05" },
+              { label: "C8321C · brick", hex: "#C8321C" },
+            ].map(p => (
+              <button key={p.hex} onClick={() => setTweaks({ accent: p.hex })}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "4px 8px",
+                  background: tweaks.accent === p.hex ? "#fff" : "transparent",
+                  border: tweaks.accent === p.hex ? "1px solid #E85D25" : "1px solid #e5e3dc",
+                  borderRadius: 4, cursor: "pointer", fontSize: 11, color: "#333",
+                }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: p.hex }}/>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </TweakSection>
+        <TweakSection title="Density">
+          <TweakRadio tweaks={tweaks} setTweaks={setTweaks} k="density" label="Ekran yoğunluğu"
+            options={[
+              { value: "mixed", label: "Karışık (her ekran kendi density'si)" },
+              { value: "user", label: "Hepsi user · p-6, gap-4" },
+              { value: "admin", label: "Hepsi admin · p-4, gap-3" },
+            ]}/>
+        </TweakSection>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

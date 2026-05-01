@@ -1,0 +1,455 @@
+/* Mockup Studio — Scene primitives + studio chrome
+ * Pure CSS sahne bileşenleri. Her .ms-scene kendi içinde 16:9 / 4:3 / 9:16 oranında çalışabilir.
+ * Token-pure: tokens.css değişkenlerini kullanır.
+ */
+
+/* ─── Scene base ─────────────────────────────────────────── */
+.ms-scene {
+  position: relative;
+  overflow: hidden;
+  background: #ECE7DD;
+  border-radius: 0;
+}
+
+/* warm ivory wall, side window light */
+.ms-scene--ivory-wall {
+  background:
+    radial-gradient(120% 80% at 18% 20%, rgba(255,255,255,0.55), rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, #EFE9DC 0%, #E2DBC9 100%);
+}
+
+/* charcoal moody wall — moon phase, modern dark scenes */
+.ms-scene--charcoal {
+  background:
+    radial-gradient(110% 70% at 22% 18%, rgba(255,255,255,0.07), rgba(0,0,0,0) 55%),
+    linear-gradient(180deg, #2A2622 0%, #1B1815 100%);
+}
+
+/* nursery — soft pink */
+.ms-scene--nursery {
+  background:
+    radial-gradient(120% 80% at 30% 20%, rgba(255,255,255,0.60), rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, #F5E6E0 0%, #E8D3CB 100%);
+}
+
+/* boho — terracotta + cream */
+.ms-scene--boho {
+  background:
+    radial-gradient(120% 80% at 25% 18%, rgba(255,250,240,0.55), rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, #E9D9C5 0%, #D2B59A 100%);
+}
+
+/* desk · kraft — flat lay neutrals */
+.ms-scene--kraft {
+  background:
+    radial-gradient(140% 100% at 50% 0%, rgba(255,255,255,0.40), rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, #D7C7AE 0%, #B89F7E 100%);
+}
+
+/* paper — flat, neutral, for digital previews */
+.ms-scene--paper {
+  background: #F4F1EA;
+}
+
+/* transparent grid — clipart */
+.ms-scene--transparent {
+  background-color: #FFFFFF;
+  background-image:
+    linear-gradient(45deg, #ECEAE3 25%, transparent 25%),
+    linear-gradient(-45deg, #ECEAE3 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ECEAE3 75%),
+    linear-gradient(-45deg, transparent 75%, #ECEAE3 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+/* ─── Floor plane (perspective hint) ─────────────────────── */
+.ms-floor {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 35%;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(60,40,20,0.18) 60%, rgba(40,28,18,0.28) 100%);
+  pointer-events: none;
+}
+.ms-floor--charcoal {
+  background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.45) 100%);
+}
+
+/* ─── Window light slash ─────────────────────────────────── */
+.ms-window-light {
+  position: absolute;
+  top: -10%; left: -5%;
+  width: 50%; height: 80%;
+  background: linear-gradient(115deg, rgba(255,255,250,0.42) 0%, rgba(255,255,250,0) 55%);
+  pointer-events: none;
+}
+
+/* ─── Frame primitive ────────────────────────────────────── */
+.ms-frame {
+  position: absolute;
+  background: #FFFFFF;
+  box-shadow:
+    0 2px 1px rgba(0,0,0,0.04),
+    0 8px 18px rgba(40,28,18,0.18),
+    0 22px 40px rgba(40,28,18,0.10);
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+.ms-frame--natural { background: #C9A87A; }   /* pine */
+.ms-frame--walnut  { background: #6B4A2B; }
+.ms-frame--black   { background: #1B1815; }
+.ms-frame--white   { background: #FAF7EF; }
+.ms-frame--brass   { background: #B7975B; }
+
+.ms-frame__mat {
+  flex: 1;
+  margin: 9%;
+  background: #FBF8F0;
+  position: relative;
+  overflow: hidden;
+}
+.ms-frame--unframed {
+  background: transparent;
+  box-shadow:
+    0 2px 1px rgba(0,0,0,0.06),
+    0 14px 22px rgba(40,28,18,0.16);
+}
+.ms-frame--unframed .ms-frame__mat { margin: 0; }
+
+/* ─── Artwork inside frame ───────────────────────────────── */
+.ms-art {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* ─── Furniture silhouettes (CSS only) ───────────────────── */
+.ms-sofa {
+  position: absolute;
+  left: 8%; right: 8%;
+  bottom: 0;
+  height: 32%;
+  background:
+    linear-gradient(180deg, #C7B49A 0%, #A48E72 100%);
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -2px 0 rgba(0,0,0,0.04) inset;
+}
+.ms-sofa::before, .ms-sofa::after {
+  content: "";
+  position: absolute;
+  bottom: 30%;
+  width: 28%; height: 60%;
+  background: linear-gradient(180deg, #D4C1A6 0%, #B59B7C 100%);
+  border-radius: 14px;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.05) inset;
+}
+.ms-sofa::before { left: 6%; }
+.ms-sofa::after  { right: 6%; }
+
+.ms-console {
+  position: absolute;
+  left: 12%; right: 12%;
+  bottom: 0;
+  height: 18%;
+  background: linear-gradient(180deg, #8C6B49 0%, #6E5236 100%);
+  box-shadow: 0 -1px 0 rgba(0,0,0,0.10) inset;
+}
+.ms-console::before {
+  content: "";
+  position: absolute;
+  inset: 8% 6%;
+  border-top: 1px solid rgba(255,255,255,0.12);
+  border-bottom: 1px solid rgba(0,0,0,0.18);
+}
+
+.ms-bed {
+  position: absolute;
+  left: 4%; right: 4%;
+  bottom: 0;
+  height: 30%;
+  background: linear-gradient(180deg, #F2E2D9 0%, #DEC6BA 100%);
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 -2px 0 rgba(0,0,0,0.04) inset;
+}
+
+.ms-desk {
+  position: absolute;
+  inset: 0;
+}
+.ms-desk__paper {
+  position: absolute;
+  background: #F8F2E5;
+  box-shadow: 0 4px 12px rgba(60,40,20,0.18);
+}
+.ms-desk__plant {
+  position: absolute;
+  width: 16%; aspect-ratio: 1 / 1;
+  background: radial-gradient(circle at 50% 60%, #5A7B47 0 60%, transparent 62%);
+  filter: blur(0.3px);
+}
+.ms-desk__cup {
+  position: absolute;
+  width: 9%; aspect-ratio: 1 / 1;
+  background: radial-gradient(circle, #C9A87A 0 55%, transparent 56%);
+}
+
+.ms-book {
+  position: absolute;
+  left: 18%; right: 18%; top: 14%; bottom: 14%;
+  background:
+    linear-gradient(180deg, #F8F2E5 0%, #EAE0CE 100%);
+  box-shadow:
+    0 12px 28px rgba(40,28,18,0.18),
+    inset 0 0 0 1px rgba(40,28,18,0.05);
+  border-radius: 4px 8px 8px 4px;
+  overflow: hidden;
+}
+.ms-book::before {
+  content: "";
+  position: absolute;
+  left: 50%; top: 0; bottom: 0; width: 2px;
+  background: linear-gradient(180deg, rgba(40,28,18,0.18), rgba(40,28,18,0.10));
+}
+.ms-book__lines {
+  position: absolute;
+  inset: 18% 8% 18% 54%;
+  background:
+    repeating-linear-gradient(180deg, rgba(40,28,18,0.18) 0 1px, transparent 1px 8px);
+  opacity: 0.6;
+}
+.ms-book__lines--left {
+  inset: 18% 54% 18% 8%;
+}
+
+.ms-hand {
+  position: absolute;
+  left: 12%; right: 12%; bottom: -4%;
+  height: 38%;
+  background: linear-gradient(180deg, #E8C7A1 0%, #C99E72 100%);
+  border-radius: 60% 60% 8px 8px / 50% 50% 8px 8px;
+  box-shadow: 0 -2px 0 rgba(0,0,0,0.06) inset;
+}
+
+/* ─── Bookmark primitive ─────────────────────────────────── */
+.ms-bookmark {
+  position: absolute;
+  background: #F8F2E5;
+  box-shadow: 0 6px 14px rgba(40,28,18,0.18);
+  overflow: hidden;
+}
+.ms-bookmark--tassel::after {
+  content: "";
+  position: absolute;
+  left: 50%; top: 100%;
+  width: 8%;
+  height: 14%;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #C28A4B 0%, #8C5A24 100%);
+  border-radius: 0 0 4px 4px;
+}
+
+/* ─── Poster (unframed) ──────────────────────────────────── */
+.ms-poster {
+  position: absolute;
+  background: #FBF8F0;
+  box-shadow:
+    0 2px 1px rgba(0,0,0,0.06),
+    0 14px 22px rgba(40,28,18,0.16);
+}
+
+/* ─── Artwork content swatches (boho, moon, abstract, etc.) ─ */
+.ms-art-fill {
+  position: absolute;
+  inset: 0;
+}
+.ms-art--boho-moon {
+  background:
+    radial-gradient(circle at 50% 35%, #1B1815 0 7%, transparent 7.5%),
+    radial-gradient(circle at 30% 35%, #1B1815 0 5%, transparent 5.5%),
+    radial-gradient(circle at 70% 35%, #1B1815 0 5%, transparent 5.5%),
+    radial-gradient(circle at 18% 35%, #1B1815 0 3%, transparent 3.5%),
+    radial-gradient(circle at 82% 35%, #1B1815 0 3%, transparent 3.5%),
+    linear-gradient(180deg, #F2E5D4 0%, #E2C9AA 100%);
+}
+.ms-art--abstract-warm {
+  background:
+    radial-gradient(60% 40% at 30% 30%, #C56A33 0 60%, transparent 62%),
+    radial-gradient(50% 30% at 70% 65%, #6E4A2B 0 60%, transparent 62%),
+    linear-gradient(180deg, #F2E5D4 0%, #E2C9AA 100%);
+}
+.ms-art--landscape {
+  background:
+    linear-gradient(180deg, #EAD5B4 0%, #D7B68A 50%, #8C6B49 50%, #6B4A2B 100%);
+}
+.ms-art--floral {
+  background:
+    radial-gradient(circle at 32% 38%, #C56A33 0 6%, transparent 7%),
+    radial-gradient(circle at 65% 55%, #6E4A2B 0 5%, transparent 6%),
+    radial-gradient(circle at 50% 70%, #5A7B47 0 8%, transparent 9%),
+    linear-gradient(180deg, #FBF6EA 0%, #E8D6B8 100%);
+}
+.ms-art--seasonal {
+  background:
+    radial-gradient(circle at 50% 40%, #B13A28 0 14%, transparent 14.5%),
+    linear-gradient(180deg, #E4F1E9 0%, #C7DCC8 100%);
+}
+.ms-art--nursery-balloon {
+  background:
+    radial-gradient(circle at 50% 38%, #E8AFA0 0 16%, transparent 17%),
+    linear-gradient(180deg, #FBF6EA 0%, #F5E6E0 100%);
+}
+.ms-art--bookmark-floral {
+  background:
+    radial-gradient(circle at 50% 18%, #C56A33 0 14%, transparent 15%),
+    radial-gradient(circle at 50% 50%, #5A7B47 0 18%, transparent 19%),
+    radial-gradient(circle at 50% 82%, #B47415 0 12%, transparent 13%),
+    linear-gradient(180deg, #FBF6EA 0%, #EFE0C7 100%);
+}
+.ms-art--bookmark-quote {
+  background:
+    repeating-linear-gradient(180deg, transparent 0 18%, rgba(40,28,18,0.14) 18% 19%),
+    linear-gradient(180deg, #1B1815 0%, #2A2622 100%);
+  color: #F8F2E5;
+}
+.ms-art--clipart-grid {
+  background: #FFFFFF;
+  background-image:
+    radial-gradient(circle at 25% 25%, #E85D25 0 8%, transparent 9%),
+    radial-gradient(circle at 75% 25%, #5A7B47 0 8%, transparent 9%),
+    radial-gradient(circle at 25% 75%, #2D5F8F 0 8%, transparent 9%),
+    radial-gradient(circle at 75% 75%, #B47415 0 8%, transparent 9%);
+}
+
+/* ─── Safe-area + placement overlays ─────────────────────── */
+.ms-safe-area {
+  position: absolute;
+  border: 1px dashed var(--color-accent);
+  background: rgba(232, 93, 37, 0.04);
+  pointer-events: none;
+}
+.ms-safe-area__label {
+  position: absolute;
+  top: -10px; left: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--color-accent);
+  background: var(--color-bg);
+  padding: 0 4px;
+}
+.ms-bleed-line {
+  position: absolute;
+  inset: 0;
+  border: 1px dashed rgba(177, 58, 40, 0.65);
+  pointer-events: none;
+}
+
+.ms-handle {
+  position: absolute;
+  width: 10px; height: 10px;
+  background: #FFFFFF;
+  border: 1.5px solid var(--color-accent);
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+}
+.ms-handle--rotate {
+  border-radius: 50%;
+  width: 12px; height: 12px;
+}
+.ms-handle__line {
+  position: absolute;
+  left: 50%;
+  top: -22px;
+  width: 1px;
+  height: 18px;
+  background: var(--color-accent);
+}
+
+/* ─── Render scrim (in-progress, queued) ─────────────────── */
+.ms-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(26, 23, 21, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ms-scan {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(232, 93, 37, 0) 0%, rgba(232, 93, 37, 0.18) 50%, rgba(232, 93, 37, 0) 100%);
+  animation: ms-scan 1.6s linear infinite;
+}
+@keyframes ms-scan {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(100%); }
+}
+
+/* ─── Status dots ────────────────────────────────────────── */
+.ms-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-subtle);
+  vertical-align: middle;
+}
+.ms-dot--running  { background: var(--color-accent); box-shadow: 0 0 0 3px rgba(232,93,37,0.18); animation: ms-pulse 1.4s ease-out infinite; }
+.ms-dot--queued   { background: var(--color-text-subtle); }
+.ms-dot--done     { background: var(--color-success); }
+.ms-dot--failed   { background: var(--color-danger); }
+.ms-dot--warning  { background: var(--color-warning); }
+
+@keyframes ms-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(232,93,37,0.40); }
+  70%  { box-shadow: 0 0 0 6px rgba(232,93,37,0); }
+  100% { box-shadow: 0 0 0 0 rgba(232,93,37,0); }
+}
+
+/* ─── Output card hover lift ─────────────────────────────── */
+.ms-output {
+  transition: transform var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+.ms-output:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(40,28,18,0.18), 0 4px 10px rgba(40,28,18,0.06);
+}
+
+/* ─── Scrollable rails (queue, drawer thumbs) ────────────── */
+.ms-rail {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.ms-rail::-webkit-scrollbar { height: 8px; width: 8px; }
+.ms-rail::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 4px; }
+
+/* ─── Drawer / modal scrim ───────────────────────────────── */
+.ms-modal-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(26, 23, 21, 0.42);
+  backdrop-filter: blur(1px);
+}
+
+/* ─── Hero image badge (gold) ────────────────────────────── */
+.ms-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6B4A2B;
+  background: linear-gradient(180deg, #F1D89E 0%, #D6B36A 100%);
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #B7975B;
+}
