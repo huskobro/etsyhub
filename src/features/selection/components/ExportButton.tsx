@@ -47,6 +47,7 @@ import { selectionSetQueryKey } from "../queries";
 import type { ActiveExportView } from "../queries";
 import { Button } from "@/components/ui/Button";
 import { Download, AlertTriangle } from "lucide-react";
+import { useExportCompletionToast } from "../hooks/useExportCompletionToast";
 
 export type ExportButtonProps = {
   setId: string;
@@ -69,6 +70,11 @@ export function ExportButton({
 
   const isProcessing =
     activeExport?.status === "queued" || activeExport?.status === "running";
+
+  // Task 39 — export completion/failure → page-level Toast (fail-safe;
+  // 4-state inline UI ana yüzey, toast sayfa terk durumunda son state
+  // bildirimi).
+  useExportCompletionToast(activeExport);
 
   // Polling — queued/running iken 3sn aralıkla set query invalidate.
   // `enabled: isProcessing` ile job bitince polling durur (completed/failed/

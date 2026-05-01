@@ -31,6 +31,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SelectionItemView } from "../queries";
 import { selectionSetQueryKey } from "../queries";
 import { ImageOff, AlertTriangle } from "lucide-react";
+import { useHeavyEditCompletionToast } from "../hooks/useHeavyEditCompletionToast";
 
 export type HeavyActionButtonProps = {
   setId: string;
@@ -47,6 +48,10 @@ export function HeavyActionButton({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const isProcessing = !!item.activeHeavyJobId;
+
+  // Task 39 — heavy edit completion/failure → page-level Toast (fail-safe;
+  // inline UI ana yüzey, toast SR + görünürlük takviyesi).
+  useHeavyEditCompletionToast(item);
 
   // Polling — job aktifken set query'sini 3 saniyede bir invalidate et.
   // useQuery `enabled: isProcessing` ile job bitince polling durur. Gerçek

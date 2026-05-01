@@ -39,6 +39,7 @@ import { BulkHardDeleteDialog } from "./BulkHardDeleteDialog";
 import { FinalizeModal } from "./FinalizeModal";
 import { ExportButton } from "./ExportButton";
 import { ArchiveAction } from "./ArchiveAction";
+import { StudioToastSlot } from "./StudioToastSlot";
 import type { SelectionSet } from "@prisma/client";
 
 export type StudioShellProps = {
@@ -219,6 +220,11 @@ export function StudioShell({ setId }: StudioShellProps) {
         open={finalizeOpen}
         onOpenChange={setFinalizeOpen}
       />
+
+      {/* Task 39 — page-level Toast slot. Heavy edit + export
+          completion/failure event'leri inline UI'ya ek olarak burada
+          görünür. Mikro state için notification yok. */}
+      <StudioToastSlot />
     </div>
   );
 }
