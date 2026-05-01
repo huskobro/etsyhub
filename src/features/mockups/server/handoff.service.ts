@@ -189,17 +189,16 @@ export async function createMockupJob(
   // 6) setSnapshotId — §3.4 deterministik hash.
   const setSnapshotId = computeSetSnapshotId(set as SelectionSetWithItems);
 
-  // 7) Pack selection (Task 5 stub — Task 8'de gerçek algoritma).
+  // 7) Pack selection (Task 8 — gerçek 3-katmanlı algoritma:
+  //    aspect filter → cover → template diversity → variant rotation).
+  //    Aspect filter için template referansı şart; bindingPairs (template +
+  //    binding tuple'ları) doğrudan geçilir.
   const packItems: PackSelectionItem[] = validItems.map((item) => ({
     id: item.id,
     aspectRatio: resolveAspectRatio(item)!,
     position: item.position,
   }));
-  const pack = buildPackSelection(
-    packItems,
-    bindingPairs.map((p) => p.binding),
-    10,
-  );
+  const pack = buildPackSelection(packItems, bindingPairs, 10);
 
   if (pack.slots.length === 0) {
     // Compatibility filter sonrası hiç valid pair yok.

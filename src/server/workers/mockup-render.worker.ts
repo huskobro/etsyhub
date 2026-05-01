@@ -31,6 +31,7 @@ import type {
   RenderSnapshot,
 } from "@/providers/mockup";
 import { recomputeJobStatus } from "@/features/mockups/server/job.service";
+import { recomputePackOnRenderComplete } from "@/features/mockups/server/pack-selection.service";
 import type { MockupRenderJobPayload } from "@/jobs/mockup-render.config";
 
 // ────────────────────────────────────────────────────────────
@@ -203,6 +204,13 @@ export async function handleMockupRender(
     );
   }
 
-  // 7) Aggregate roll-up (Task 6).
+  // 7) Cover-fail fallback (K10 — review-2 gözlemi).
+  //    Cover render kendisi FAILED ise atomic slot swap yap (yeni cover =
+  //    ilk success render). recomputeJobStatus'tan ÖNCE çağrılmalı çünkü
+  //    swap durumunda coverRenderId değişiyor; aggregate hesabı sırasında
+  //    bu değişiklik tutarlı olmalı. Idempotent.
+  await recomputePackOnRenderComplete(render.jobId);
+
+  // 8) Aggregate roll-up (Task 6).
   await recomputeJobStatus(render.jobId);
 }
