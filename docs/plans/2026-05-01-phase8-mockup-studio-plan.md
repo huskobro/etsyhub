@@ -71,11 +71,13 @@ Her task tamamlandıktan sonra **2-stage review** (Phase 7 emsali):
 | B2 | Phase 6 KIE flaky | BLOCKED ama Phase 8 bağımsız | Phase 6 mini-tour durduruldu; Phase 8 etkilemiyor |
 | B3 | Phase 6 drift #6 | BLOCKED ama Phase 8 bağımsız | Ayrı carry-forward |
 | B4 | Phase 9 Listing Builder | YET — Phase 9'a kadar | S8 "Listing'e gönder →" CTA disabled placeholder (§5.6) |
+| B5 | Task 10 perspective compositor | **BLOCKED (2026-05-01) — Task 0/T0b spike bağımlılığı** | `sharp-perspective` paketi mevcut değil; Sharp `affine()` 4-corner homography için yetersiz. Spike kararı (manuel pixel homography vs ek dep vs hibrit yol) Task 0/T0b sorumluluğu (human-parallel). Task 9 (rect) ✅ tamamlandı; perspective template Office 3/4 render fail eder + PROVIDER_DOWN classify (V1 perspective vaadi yarım kalır). Task 31 perspective SSIM testi de bağlıdır. Phase 8 execution Task 10 olmadan ilerler — bağımsız task'lar Task 11+ devam eder. |
 
 **Disiplin:**
 - Phase 6'ya geri dönülmeyecek
 - Phase 7 schema'sına yeni alan eklenmeyecek (hero fallback `position` 0, aspectRatio fallback chain spec §1.4)
 - Yeni scope açılmayacak (15 carry-forward §1.3 dürüstçe ayrılmış)
+- **Task 10 BLOCKED** — fake perspective implementation YASAK; Task 0/T0b spike sonrası açılır
 
 ---
 
@@ -1166,14 +1168,58 @@ docs/design/implementation-notes/
 
 ### Task 10: Local Sharp compositor — perspective safeArea (4-corner transform)
 
-**Files:**
-- Modify: `src/lib/providers/mockup/local-sharp/safe-area.ts` (add `placePerspective`)
-- Modify: `src/lib/providers/mockup/local-sharp/compositor.ts` (add `renderPerspective`)
-- Modify: `__tests__/unit/mockup/compositor.test.ts`
+> ⚠️ **STATUS: BLOCKED (2026-05-01) — Task 0/T0b spike bağımlılığı**
+>
+> **Sebep:**
+> - Plan'da bahsedilen `sharp-perspective` npm paketi **mevcut değil** (npm
+>   registry 404, doğrulandı: `npm view sharp-perspective`).
+> - Sharp native `affine()` operasyonu yalnızca **2D affine transform**
+>   (3-point, 6-parameter); 4-corner perspective **homography** (4-point,
+>   8-parameter) için yeterli değil. `affine()` ile homography expressing
+>   edilemez.
+> - 4-corner perspective için doğru teknik yol seçimi (manuel pixel
+>   homography vs ek dependency vs hibrit yaklaşım) **spike kararı
+>   gerektiriyor** — Task 0/T0b sorumluluğu.
+>
+> **Disiplin gereği:**
+> - Spec §1.2 "v1'de en az 1 gerçek perspective template" kararı kilitli
+>   (review-2 sonrası); sessiz stub bırakmak bu kararı bozar.
+> - Spec §1.3 "yeni dependency ekleme" yasağı; ek paket scope açar.
+> - Task 9 mevcut implementation'da `placePerspective()` `NOT_IMPLEMENTED`
+>   throw eder; worker bunu `PROVIDER_DOWN` classify eder. Pack selection
+>   algorithm aspect compatibility filter perspective binding'i pack'e
+>   sokar fakat render fail eder. Bu **edge case dürüstçe** spec ile
+>   uyumlu (V1 perspective template yalnız 1: Office 3/4).
+>
+> **Açılış koşulu:**
+> Task 0/T0b spike sonucu (paket vs manuel matrix vs hibrit yol kararı) +
+> seçilen yolun deterministic test edilebilirlik garantisi. Task 0 human-
+> parallel dependency olduğu için bu kararı insan/tasarım ekibi verir.
+>
+> **Etki:**
+> Task 31 (Sharp deterministic snapshot test) perspective template için
+> SSIM tolerance test eder; Task 10 olmadan bu kapsam V1'de yarım kalır.
+> Task 32 (E2E golden path) Quick Pack default 6 template seçimini izler;
+> selectQuickPackDefault (Task 13) algoritması perspective template'i
+> seçim chain'inde kabul edebilir. V1 göndermesi 7 frontal template ile
+> mümkün ama "%87 kapsama"; perspective Task 10'da V1 tamamlanır.
+>
+> **Bağımsız task'lar:**
+> Phase 8 execution Task 10 olmadan devam eder. Bağımsız task'lar:
+> Task 11 (error classifier), Task 12 (seed runner — Task 0 koşullu),
+> Task 13 (Quick Pack default), Task 14-15 (URL state hooks),
+> Task 16-22 (API endpoints), Task 23-30 (UI screens).
+> Plan'ın orijinal 1→2→3...→33 sırası BLOCKED nedeniyle değiştirilir;
+> Task 10 yeniden açıldığında ele alınır.
 
-> Task 0/T0b'deki spike kararına göre `sharp-perspective` paketi veya manuel matrix transform kullan.
+**Files (Task 10 açıldığında):**
+- Modify: `src/providers/mockup/local-sharp/safe-area.ts` (replace
+  `placePerspective` stub with real implementation)
+- Modify: `src/providers/mockup/local-sharp/compositor.ts` (no change
+  needed; dispatch already routes perspective → placePerspective)
+- Create: `tests/integration/mockup/compositor-perspective.test.ts`
 
-- [ ] **Step 1: Install dependency (T0b kararına göre)**
+- [ ] **Step 1: Task 0/T0b spike sonucu** (insan/tasarım ekibi karar verir)
 
 - [ ] **Step 2: Failing perspective tests**
 
@@ -1187,11 +1233,9 @@ docs/design/implementation-notes/
 
 - [ ] **Step 3: Implement placePerspective**
 
-- [ ] **Step 4: Implement renderPerspective**
+- [ ] **Step 4: Tests PASS (SSIM tolerance bazlı)**
 
-- [ ] **Step 5: Tests PASS (SSIM tolerance bazlı)**
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
   ```bash
   git commit -m "feat(phase8): Sharp compositor — perspective safeArea (4-corner transform)"
