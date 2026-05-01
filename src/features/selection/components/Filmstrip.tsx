@@ -28,7 +28,7 @@
 // `grid-cols-8 lg:grid-cols-12` ile responsive (config-defined) — adaptif
 // breakpoint paterni Phase 6 emsallerinde de bu şekilde.
 
-import { useRef, type MouseEvent } from "react";
+import { useMemo, useRef, useState, type MouseEvent } from "react";
 import { Check, Plus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { useStudioStore, type FilmstripFilter } from "../stores/studio-store";
@@ -36,6 +36,7 @@ import { AssetImage } from "@/components/ui/asset-image";
 import type { SelectionItemView } from "@/features/selection/queries";
 import type { SelectionSet } from "@prisma/client";
 import { ReorderMenu } from "./ReorderMenu";
+import { AddVariantsDrawer } from "./AddVariantsDrawer";
 
 export type FilmstripProps = {
   setId: string;
@@ -76,6 +77,15 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
 
   // Range tracking için son tıklanan index. useRef → renderler arası persist.
   const lastClickedIdxRef = useRef<number | null>(null);
+
+  // Task 32 — AddVariantsDrawer state. Drawer Filmstrip seviyesinde tutulur
+  // (üst component setId zaten prop'larda; mount yeri pragmatik). Mevcut
+  // item'ların `generatedDesignId`'leri drawer'a duplicate koruma için geçer.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const existingDesignIds = useMemo(
+    () => new Set(items.map((i) => i.generatedDesignId)),
+    [items],
+  );
 
   const isReadOnly = setStatus !== "draft";
   const filteredItems = applyFilter(items, filter);
@@ -227,9 +237,7 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
           {!isReadOnly ? (
             <button
               type="button"
-              onClick={() => {
-                // Task 32 — AddVariantsDrawer trigger. Şu an placeholder no-op.
-              }}
+              onClick={() => setDrawerOpen(true)}
               className="grid aspect-portrait place-items-center rounded-sm border-2 border-dashed border-border text-text-muted transition-colors duration-fast ease-out hover:border-accent hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               aria-label="Varyant ekle"
             >
@@ -238,6 +246,19 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
           ) : null}
         </div>
       )}
+
+      {/* Task 32 — AddVariantsDrawer. Yalnız draft set'te mount edilebilir;
+          read-only set'lerde drawer trigger butonu yok zaten. Open state
+          Filmstrip içinde tutulur — drawer kapanışta yenilenmiş set verisi
+          (selectionSetQueryKey invalidate ile) parent'tan tekrar gelir. */}
+      {!isReadOnly ? (
+        <AddVariantsDrawer
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          setId={setId}
+          existingDesignIds={existingDesignIds}
+        />
+      ) : null}
     </Card>
   );
 }

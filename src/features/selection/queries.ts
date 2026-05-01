@@ -133,3 +133,103 @@ export function useSelectionSet(setId: string | null | undefined) {
     },
   });
 }
+
+// ────────────────────────────────────────────────────────────
+// Phase 7 Task 32 — AddVariantsDrawer hook'ları
+// ────────────────────────────────────────────────────────────
+//
+// Drawer'da reference selector + jobId üzerinden batch grouping yapılır.
+// Mevcut endpoint'ler reuse edilir:
+//   - `/api/references` (GET, listReferences) → `{ items, nextCursor }`
+//   - `/api/variation-jobs?referenceId=...` (GET) → `{ designs }`
+//
+// Repo'da `references` feature'ında ortak hook yok (page-level fetch yapılıyor),
+// drawer izolasyonu için burada hafif hook'lar açıyoruz. Query key paterni:
+// `["selection", "drawer", ...]` — Phase 7 namespace altında.
+
+export type DrawerReference = {
+  id: string;
+  notes: string | null;
+  productType: { id: string; key: string; displayName: string } | null;
+};
+
+export type DrawerDesign = {
+  id: string;
+  jobId: string | null;
+  assetId: string;
+  createdAt: string;
+};
+
+/**
+ * Drawer reference selector için kullanıcının referans listesi.
+ *
+ * `/api/references` cevabı `{ items, nextCursor }` shape'i (route dosyası).
+ * Drawer için yalnız `id + notes + productType.displayName` yeterli; diğer
+ * alanlar (asset/tags vb.) drawer UX'ine gerekmez.
+ */
+export function useDrawerReferences(enabled: boolean) {
+  return useQuery<DrawerReference[]>({
+    queryKey: ["selection", "drawer", "references"],
+    enabled,
+    queryFn: async () => {
+      const res = await fetch("/api/references");
+      if (!res.ok) {
+        throw new Error(`Referans listesi alınamadı (${res.status})`);
+      }
+      const data = (await res.json()) as {
+        items: Array<{
+          id: string;
+          notes: string | null;
+          productType: {
+            id: string;
+            key: string;
+            displayName: string;
+          } | null;
+        }>;
+      };
+      return data.items.map((r) => ({
+        id: r.id,
+        notes: r.notes,
+        productType: r.productType,
+      }));
+    },
+  });
+}
+
+/**
+ * Seçili reference için variation designs listesi.
+ *
+ * `/api/variation-jobs?referenceId=...` (Phase 5) → `{ designs }`.
+ * Drawer'da jobId üzerinden batch grouping client-side yapılır (server bu
+ * grouping'i yansıtmaz; aynı reference altında farklı jobId → ayrı batch).
+ */
+export function useDrawerDesigns(referenceId: string | null) {
+  return useQuery<DrawerDesign[]>({
+    queryKey: ["selection", "drawer", "designs", referenceId ?? "_none"],
+    enabled: !!referenceId,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/variation-jobs?referenceId=${encodeURIComponent(
+          referenceId ?? "",
+        )}`,
+      );
+      if (!res.ok) {
+        throw new Error(`Variation designs alınamadı (${res.status})`);
+      }
+      const data = (await res.json()) as {
+        designs: Array<{
+          id: string;
+          jobId: string | null;
+          assetId: string;
+          createdAt: string;
+        }>;
+      };
+      return data.designs.map((d) => ({
+        id: d.id,
+        jobId: d.jobId,
+        assetId: d.assetId,
+        createdAt: d.createdAt,
+      }));
+    },
+  });
+}
