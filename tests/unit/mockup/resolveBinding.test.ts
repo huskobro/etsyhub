@@ -105,10 +105,11 @@ describe("MockupProvider interface compliance", () => {
     expect(typeof dynamicMockupsProvider.validateConfig).toBe("function");
   });
 
-  it("localSharpProvider.render throws NOT_IMPLEMENTED (Task 9-10 implementation pending)", async () => {
-    await expect(localSharpProvider.render({} as never)).rejects.toThrow(
-      /NOT_IMPLEMENTED/
-    );
+  it("localSharpProvider.render is a real function (Task 9 — rect path active; perspective Task 10)", () => {
+    // Task 9 sonrası render() artık scaffold değil; gerçek compositor'ı
+    // çağırır. Asıl render davranışı integration testlerinde doğrulanır
+    // (tests/integration/mockup/compositor-rect.test.ts).
+    expect(typeof localSharpProvider.render).toBe("function");
   });
 
   it("dynamicMockupsProvider.render throws PROVIDER_NOT_CONFIGURED (V2 stub)", async () => {

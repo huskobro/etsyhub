@@ -2,8 +2,11 @@
 //
 // Senaryolar (Plan Task 7 step 1):
 //   1. PENDING → RENDERING → FAILED (NOT_IMPLEMENTED → PROVIDER_DOWN)
-//      Sharp localSharpProvider Task 9-10 öncesi NOT_IMPLEMENTED throw eder;
-//      worker bunu yakalayıp PROVIDER_DOWN classify eder.
+//      Task 9 sonrası rect path artık gerçek render eder; bu nedenle
+//      worker testi PROVIDER_DOWN classify yolunu doğrulamak için
+//      `safeArea.type === "perspective"` fixture kullanır — placePerspective
+//      Task 10'a kadar NOT_IMPLEMENTED throw eder, sınıflandırma davranışı
+//      değişmez.
 //   2. Job CANCELLED ise render dokunulmaz (no-op return; Task 6 race koruması).
 //   3. QUEUED → RUNNING transition (ilk render PENDING dışına çıkınca).
 //   4. Tüm render NOT_IMPLEMENTED throw → job FAILED aggregate.
@@ -163,7 +166,19 @@ async function makeTemplateAndBinding(
             providerId: "local-sharp",
             baseAssetKey: `${name}/base.png`,
             baseDimensions: { w: 2400, h: 1600 },
-            safeArea: { type: "rect", x: 0.3, y: 0.2, w: 0.4, h: 0.5 },
+            // Perspective fixture (Task 10 stub) — render Task 9 sonrası
+            // rect path success'e gider; PROVIDER_DOWN classify davranışını
+            // izole etmek için perspective seçildi (placePerspective hâlâ
+            // NOT_IMPLEMENTED throw eder).
+            safeArea: {
+              type: "perspective",
+              corners: [
+                [0.1, 0.1],
+                [0.9, 0.1],
+                [0.9, 0.9],
+                [0.1, 0.9],
+              ],
+            },
             recipe: { blendMode: "normal" },
             coverPriority: 50,
           },
@@ -241,7 +256,18 @@ async function makeJobWithRenders(args: {
             providerId: "local-sharp",
             baseAssetKey: "x/base.png",
             baseDimensions: { w: 2400, h: 1600 },
-            safeArea: { type: "rect", x: 0.3, y: 0.2, w: 0.4, h: 0.5 },
+            // Perspective fixture — Task 9 sonrası rect path artık gerçek
+            // render; perspective Task 10'a kadar NOT_IMPLEMENTED throw eder
+            // → PROVIDER_DOWN classify davranışı korunur.
+            safeArea: {
+              type: "perspective",
+              corners: [
+                [0.1, 0.1],
+                [0.9, 0.1],
+                [0.9, 0.9],
+                [0.1, 0.9],
+              ],
+            },
             recipe: { blendMode: "normal" },
           },
         },
@@ -308,7 +334,11 @@ function mockJob(payload: MockupRenderJobPayload): Job<MockupRenderJobPayload> {
 // ────────────────────────────────────────────────────────────
 
 describe("MOCKUP_RENDER worker — handleMockupRender", () => {
-  it("processes PENDING → FAILED (localSharpProvider NOT_IMPLEMENTED → PROVIDER_DOWN)", async () => {
+  it("processes PENDING → FAILED (provider failure → PROVIDER_DOWN)", async () => {
+    // Task 9 sonrası rect path artık gerçek render eder. Bu test
+    // perspective fixture kullanır → placePerspective NOT_IMPLEMENTED
+    // throw eder VEYA MinIO base download 404 → her iki yol da
+    // PROVIDER_DOWN classify edilir (Task 7 minimal classifier default).
     const productType = await ensureProductType();
     const { variant } = await makeDesignAndItem(userAId, productType.id);
     const { binding, templateName } = await makeTemplateAndBinding("p1");
@@ -330,7 +360,12 @@ describe("MOCKUP_RENDER worker — handleMockupRender", () => {
     });
     expect(after.status).toBe("FAILED");
     expect(after.errorClass).toBe("PROVIDER_DOWN");
-    expect(after.errorDetail).toContain("NOT_IMPLEMENTED");
+    // Task 9 sonrası errorDetail iki yoldan biri:
+    //   - placePerspective NOT_IMPLEMENTED throw (asset MinIO'da varsa)
+    //   - MinIO 404 (asset yoksa; fixture sadece DB Asset row yaratır)
+    // Her iki mesaj da non-empty olmalı; PROVIDER_DOWN sınıflandırması
+    // davranışı testin esas iddiası.
+    expect(after.errorDetail).toBeTruthy();
     expect(after.completedAt).toBeInstanceOf(Date);
     expect(after.startedAt).toBeInstanceOf(Date);
 
