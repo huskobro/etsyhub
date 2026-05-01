@@ -1,8 +1,8 @@
-// Phase 8 Task 19 — POST /api/mockup/renders/[renderId]/swap route handler.
+// Phase 8 Task 19 — POST /api/mockup/jobs/[jobId]/renders/[renderId]/swap route handler.
 //
 // Spec §4.4: Manuel render swap (deterministic hata sınıfları için).
 //   - Auth: requireUser (UnauthorizedError 401 otomatik)
-//   - Path param: renderId
+//   - Path params: jobId, renderId (Zod: validate both exist)
 //   - Body: boş (pack deterministik; swap alternative pair algoritması)
 //   - Service: swapRender(renderId, userId) — Task 18
 //     Kontroller:
@@ -14,7 +14,7 @@
 //       - Yeni render: PENDING, aynı packPosition, aynı selectionReason
 //       - BullMQ queue'ya dispatch
 //     Hata: NoAlternativePairError (409) — pack'te kalan pair yok
-//   - Response 200: { status: "PENDING", newRenderId } (swap başlatıldı)
+//   - Response 200: { newRenderId, status: "PENDING" } (swap başlatıldı)
 //   - Error mapping: withErrorHandling HOF AppError.statusCode → HTTP.
 //
 // Phase 7 emsali: src/app/api/selection/...
@@ -23,10 +23,11 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
+import { db } from "@/server/db";
 import { swapRender } from "@/features/mockups/server/render.service";
 
 export const POST = withErrorHandling(
-  async (_req: Request, ctx: { params: { renderId: string } }) => {
+  async (_req: Request, ctx: { params: { jobId: string; renderId: string } }) => {
     const user = await requireUser();
 
     // Task 18: swapRender atomic transaction + AppError throw.
@@ -34,10 +35,16 @@ export const POST = withErrorHandling(
     //   - RenderNotFoundError (404)
     //   - RenderNotFailedError (409)
     //   - NoAlternativePairError (409)
-    const result = await swapRender(ctx.params.renderId, user.id);
+    const { newRenderId } = await swapRender(ctx.params.renderId, user.id);
+
+    // Service'in DB write'ı sonrası taze render fetch et
+    const render = await db.mockupRender.findUniqueOrThrow({
+      where: { id: newRenderId },
+      select: { id: true, status: true },
+    });
 
     return NextResponse.json(
-      { status: result.status, newRenderId: result.newRenderId },
+      { newRenderId: render.id, status: render.status },
       { status: 200 }
     );
   }
