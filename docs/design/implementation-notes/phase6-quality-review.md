@@ -323,15 +323,16 @@ smoke'undan SONRA manuel probe ile test edilecek:
 
 ## Bilinen Sınırlar (Dürüstlük)
 
-**Aşama 2A canlı smoke durumu (2026-04-30 itibarıyla):**
+**Aşama 2A canlı smoke durumu (2026-05-01 itibarıyla):**
 
 | Bileşen | Durum |
 |---------|-------|
 | Variation generation (z-image t2i) | ✅ Canlı doğrulandı (`state: SUCCESS`, KIE'den `resultUrl` döndü) |
 | Review provider envelope drift (#4) | ✅ Düzeltildi (commit `1367b7c`); yanıltıcı "empty content" hatası kayboldu |
 | Phase 5 KIE provider env-var bağımlılığı (drift #2) | ✅ Hotfix `f2ca19c` ile çözüldü (settings-aware refactor) |
-| Review pipeline canlı smoke | ⏳ KIE Gemini endpoint bakımda; `chat/completions` HTTP 200 + `{code:500, msg:"The server is currently being maintained..."}`. Bakım sonrası retry bekliyor |
-| Phase 6 status | 🟡 (Aşama 2A mimari tamam + variation üretimi canlı; review tarafı maintenance bekliyor) |
+| Review provider strict JSON schema reserved-word drift (#5) | ✅ Düzeltildi (commit `b681006`); `riskFlags[].type` → `riskFlags[].kind` write-new + read-both backward-compat. KIE strict schema kabul ediyor — smoke retry job 63'te 422 kayboldu. |
+| Review pipeline canlı smoke | ⏳ Drift #5 sonrası ilerledi; ardından **drift #6 (image URL erişim)** ve KIE flaky maintenance ile bloke oldu. Detay aşağıda. |
+| Phase 6 status | 🟡 (Aşama 2A mimari tamam + variation üretimi canlı + drift #5 kapandı; drift #6 ve KIE flaky stabilite bekliyor) |
 
 **Açık drift / blocker listesi (sırasıyla):**
 
@@ -345,18 +346,30 @@ smoke'undan SONRA manuel probe ile test edilecek:
    supported"). Smoke `kie-z-image` text-to-image ile geçici unblock;
    gerçek model id'leri kullanıcı tarafından KIE docs'tan getirilip
    provider güncellenecek. Ayrı follow-up.
-3. **Phase 6 / Aşama 2A — KIE bakım bitince smoke retry:** Bakım
-   bittiğinde curl probe ile teyit + ya mevcut design (`cmoklo1hi...`)
-   için manuel `REVIEW_DESIGN` enqueue ya da yeni z-image trigger.
-   `/review` UI + drawer + USER override + reset + CostUsage + local
-   2B throw doğrulanır.
-4. **Aşama 2B — Local mode için data URL probe sonucu bekleniyor:**
+3. **Drift #6 — KIE bulut image URL erişimi (NEW, 2026-05-01):**
+   Smoke retry job 63'te schema fix sonrası KIE `image_url`
+   content-part'ında verilen MinIO signed URL'ini indiremedi:
+   `kie review failed: 400 The image URL <localhost:9000/...> image
+   download failed: HTTP 403: Forbidden`. Kök neden: KIE bulut
+   servisi `localhost:9000` MinIO instance'ına erişemez (dev
+   ortamı). İki olası çözüm Aşama 2B kapsamına genişletildi
+   (aşağıda).
+4. **Aşama 2B — Local mode + drift #6 için data URL probe (PENDING):**
    KIE Gemini `image_url` content-part'ında `data:image/...;base64,...`
-   destekli mi (curl probe smoke retry sırasında veya öncesinde
-   yapılır):
-   - 200 ⇒ küçük patch (`image-loader.ts` local-path için data URL inline)
-   - 400/415 ⇒ orta patch (MinIO temp upload bridge + signed URL)
+   destekli mi probe smoke retry sırasında **yapılamadı** (KIE flaky
+   maintenance'a düştü, deterministik sonuç alınamadı):
+   - 200 ⇒ küçük patch (`image-loader.ts` hem local-path hem
+     remote-url için data URL inline; drift #6 da çözülür)
+   - 400/415 ⇒ orta patch (MinIO temp upload bridge + ngrok-style
+     public proxy veya production object storage migration)
    Probe sonucuna göre Aşama 2B impl yönü belirlenir.
+5. **KIE flaky maintenance pattern (NEW, 2026-05-01):**
+   Smoke retry günü endpoint sürekli arasıra `code:500
+   "maintained"` envelope dönmeye başladı (HEALTHY → flaky → drift
+   #6 hatası → flaky döngüsü). Provider envelope-aware (drift #4
+   fix) bunu zaten doğru hata mesajıyla throw ediyor; ek bir
+   provider değişikliği gerekmiyor. KIE infrastructure stabilize
+   olunca drift #6 + Aşama 2B probe + smoke retry yeniden denenir.
 
 **Drift #4 (envelope-aware) detay (commit `1367b7c`):**
 Provider artık HTTP 200 + KIE envelope `{code, msg, data}` shape'ini doğru
@@ -364,6 +377,33 @@ parse eder; `code !== 200` durumunda gerçek envelope mesajıyla throw.
 Defansif: envelope yoksa (KIE ileride flat OpenAI dönerse) flat body
 fallback. Production'da her gerçek KIE hata mesajı (rate limit, auth,
 validation) artık doğru yansır.
+
+**Drift #5 (KIE strict JSON schema reserved-word) detay (commit `b681006`):**
+KIE maintenance bittikten sonra strict JSON schema validator davranışı
+değişti: HTTP 200 + envelope `{ code: 422, msg:
+"$.response_format.json_schema.schema.properties.riskFlags.items.properties.type
+must be string or array", ... }`. Üç curl probe ile kök neden: KIE'nin
+JSON schema parser'ı `properties: { type: { ... } }` yapısını JSON
+Schema reserved word çakışması olarak reddediyor.
+
+Kullanıcı yön kararı **(C) Hibrit — write-new + read-both backward-compat**:
+- **Write-new**: Yeni review output'larda `riskFlags[].kind` üretilir
+  (Zod schema + KIE strict JSON schema güncel; alpha-checks `kind` üretir;
+  master prompt v1.0 → v1.1).
+- **Read-both**: `readRiskFlagKind(entry)` helper hem `kind` (yeni) hem
+  `type` (legacy) okur. Tüketiciler: Phase 7 selection review-mapper +
+  Phase 6 UI ReviewRiskFlagList. DB'de eski format row'u olmadığı için
+  backfill yapılmadı; defansif disipline gereği helper eklendi.
+
+Kapsam: 19 dosya değişti / 1 yeni helper test dosyası. Phase 6 baseline
+minimum blast radius (cost-budget, KIE image provider, Aşama 2B local
+mode, Phase 7 selection edit-ops dokunulmadı). Tam regression: 1664
+test PASS (Phase 6 baseline 178/178, Phase 7 selection 399/399, UI
+623/623).
+
+Smoke retry job 63 (2026-05-01): drift #5 sonrası 422 kayboldu, akış
+KIE image URL download'a kadar ilerledi → drift #6 ortaya çıktı (MinIO
+localhost erişim). Schema fix kanıtlanmış şekilde çalışıyor.
 
 **Qwen3.5-4B değerlendirmesi (2026-04-30 — implement EDİLMEYECEK):**
 
