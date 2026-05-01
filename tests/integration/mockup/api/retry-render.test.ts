@@ -29,12 +29,12 @@ import {
   vi,
 } from "vitest";
 import bcrypt from "bcryptjs";
-import { UserRole, UserStatus, MockupRenderStatus } from "@prisma/client";
+import { UserRole, UserStatus, MockupRenderStatus, MockupErrorClass } from "@prisma/client";
 import { db } from "@/server/db";
 
 vi.mock("@/server/session", () => ({ requireUser: vi.fn() }));
 
-import { POST } from "@/app/api/mockup/renders/[renderId]/retry/route";
+import { POST } from "@/app/api/mockup/jobs/[jobId]/renders/[renderId]/retry/route";
 import { requireUser } from "@/server/session";
 
 // ────────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ async function makeJob(args: { userId: string; setId: string }) {
 
 async function makeFailedRender(args: {
   jobId: string;
-  errorClass: string;
+  errorClass: MockupErrorClass;
   retryCount?: number;
 }) {
   return db.mockupRender.create({
@@ -278,7 +278,7 @@ describe("POST /api/mockup/renders/[renderId]/retry (Spec §4.5)", () => {
     });
 
     const res = await POST(makeRetryRequest(render.id), {
-      params: { renderId: render.id },
+      params: { jobId: job.id, renderId: render.id },
     });
 
     expect(res.status).toBe(200);
@@ -327,7 +327,7 @@ describe("POST /api/mockup/renders/[renderId]/retry (Spec §4.5)", () => {
     });
 
     const res = await POST(makeRetryRequest(render.id), {
-      params: { renderId: render.id },
+      params: { jobId: job.id, renderId: render.id },
     });
 
     expect(res.status).toBe(200);
@@ -382,7 +382,7 @@ describe("POST /api/mockup/renders/[renderId]/retry (Spec §4.5)", () => {
     });
 
     const res = await POST(makeRetryRequest(render.id), {
-      params: { renderId: render.id },
+      params: { jobId: job.id, renderId: render.id },
     });
 
     expect(res.status).toBe(409);
@@ -423,7 +423,7 @@ describe("POST /api/mockup/renders/[renderId]/retry (Spec §4.5)", () => {
     });
 
     const res = await POST(makeRetryRequest(render.id), {
-      params: { renderId: render.id },
+      params: { jobId: job.id, renderId: render.id },
     });
 
     expect(res.status).toBe(409);
@@ -464,7 +464,7 @@ describe("POST /api/mockup/renders/[renderId]/retry (Spec §4.5)", () => {
     });
 
     const res = await POST(makeRetryRequest(render.id), {
-      params: { renderId: render.id },
+      params: { jobId: job.id, renderId: render.id },
     });
 
     expect(res.status).toBe(409);
@@ -505,7 +505,7 @@ describe("POST /api/mockup/renders/[renderId]/retry (Spec §4.5)", () => {
     });
 
     const res = await POST(makeRetryRequest(render.id), {
-      params: { renderId: render.id },
+      params: { jobId: job.id, renderId: render.id },
     });
 
     expect(res.status).toBe(404);
@@ -519,7 +519,7 @@ describe("POST /api/mockup/renders/[renderId]/retry (Spec §4.5)", () => {
     });
 
     const res = await POST(makeRetryRequest("non-existent-id"), {
-      params: { renderId: "non-existent-id" },
+      params: { jobId: "non-existent-job", renderId: "non-existent-id" },
     });
 
     expect(res.status).toBe(404);
@@ -534,7 +534,7 @@ describe("POST /api/mockup/renders/[renderId]/retry (Spec §4.5)", () => {
     );
 
     const res = await POST(makeRetryRequest("any-render"), {
-      params: { renderId: "any-render" },
+      params: { jobId: "any-job", renderId: "any-render" },
     });
 
     expect(res.status).toBe(401);

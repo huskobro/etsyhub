@@ -31,12 +31,12 @@ import {
   vi,
 } from "vitest";
 import bcrypt from "bcryptjs";
-import { UserRole, UserStatus, MockupRenderStatus } from "@prisma/client";
+import { UserRole, UserStatus, MockupRenderStatus, MockupErrorClass } from "@prisma/client";
 import { db } from "@/server/db";
 
 vi.mock("@/server/session", () => ({ requireUser: vi.fn() }));
 
-import { POST } from "@/app/api/mockup/renders/[renderId]/swap/route";
+import { POST } from "@/app/api/mockup/jobs/[jobId]/renders/[renderId]/swap/route";
 import { requireUser } from "@/server/session";
 
 // ────────────────────────────────────────────────────────────
@@ -127,6 +127,7 @@ async function makeReadySet(args: {
     },
   });
 
+  const items: string[] = [];
   for (let i = 0; i < args.variantCount; i++) {
     const { design, asset } = await makeDesign({
       userId: args.userId,
@@ -134,7 +135,7 @@ async function makeReadySet(args: {
       productTypeId: args.productTypeId,
     });
 
-    await db.selectionItem.create({
+    const item = await db.selectionItem.create({
       data: {
         selectionSetId: set.id,
         generatedDesignId: design.id,
@@ -143,9 +144,10 @@ async function makeReadySet(args: {
         status: "selected",
       },
     });
+    items.push(item.id);
   }
 
-  return set;
+  return { set, itemIds: items };
 }
 
 async function makeJob(args: {
@@ -176,7 +178,7 @@ async function makeRender(args: {
   bindingId: string;
   packPosition: number;
   status: MockupRenderStatus;
-  errorClass?: string;
+  errorClass?: MockupErrorClass;
 }) {
   return db.mockupRender.create({
     data: {
@@ -197,7 +199,7 @@ async function makeRender(args: {
         completedAt: new Date(),
       }),
       ...(args.status === "FAILED" && {
-        errorClass: args.errorClass,
+        errorClass: args.errorClass || null,
         errorDetail: "Test error",
         startedAt: new Date(Date.now() - 5000),
         completedAt: new Date(),
@@ -282,10 +284,51 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
     });
 
     // 3 variant, 2 binding → 6 pair olası
-    const set = await makeReadySet({
+    const { set, itemIds } = await makeReadySet({
       userId: userAId,
       productTypeId: productType.id,
       variantCount: 3,
+    });
+
+    // 2 template + binding oluştur (unique constraint: templateId + providerId)
+    const template0 = await db.mockupTemplate.create({
+      data: {
+        name: "Template 0 - Phase8 Swap Test",
+        categoryId: "canvas",
+        aspectRatios: ["2:3"],
+        thumbKey: "thumb-template-0",
+        estimatedRenderMs: 5000,
+        status: "ACTIVE",
+      },
+    });
+    const binding0 = await db.mockupTemplateBinding.create({
+      data: {
+        templateId: template0.id,
+        providerId: "LOCAL_SHARP",
+        status: "ACTIVE",
+        config: { aspectRatios: ["2:3"] },
+        estimatedRenderMs: 5000,
+      },
+    });
+
+    const template1 = await db.mockupTemplate.create({
+      data: {
+        name: "Template 1 - Phase8 Swap Test",
+        categoryId: "canvas",
+        aspectRatios: ["2:3"],
+        thumbKey: "thumb-template-1",
+        estimatedRenderMs: 5000,
+        status: "ACTIVE",
+      },
+    });
+    const binding1 = await db.mockupTemplateBinding.create({
+      data: {
+        templateId: template1.id,
+        providerId: "LOCAL_SHARP",
+        status: "ACTIVE",
+        config: { aspectRatios: ["2:3"] },
+        estimatedRenderMs: 5000,
+      },
     });
 
     const job = await makeJob({
@@ -294,11 +337,12 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
       totalRenders: 3, // pack 3 render alabilir
     });
 
-    // packPosition 0, 1, 2 — bundan variant-0/binding-0, variant-1/binding-0, variant-2/binding-0 seçilmiş
+    // packPosition 0, 1, 2 — itemIds[0,1,2] seçilmiş, render0=binding0, render1=binding1, render2=binding0
+    // Swap'da render0 FAILED → binding1'i araya sıkıştıramaz (item[0] × binding1 UNUSED)
     const render0 = await makeRender({
       jobId: job.id,
-      variantId: "variant-0",
-      bindingId: "binding-0",
+      variantId: itemIds[0]!,
+      bindingId: binding0.id,
       packPosition: 0,
       status: "FAILED",
       errorClass: "TEMPLATE_INVALID",
@@ -306,26 +350,26 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
 
     const render1 = await makeRender({
       jobId: job.id,
-      variantId: "variant-1",
-      bindingId: "binding-0",
+      variantId: itemIds[1]!,
+      bindingId: binding1.id,
       packPosition: 1,
       status: "SUCCESS",
     });
 
     const render2 = await makeRender({
       jobId: job.id,
-      variantId: "variant-2",
-      bindingId: "binding-0",
+      variantId: itemIds[2]!,
+      bindingId: binding0.id,
       packPosition: 2,
       status: "SUCCESS",
     });
 
     const res = await POST(makeSwapRequest(render0.id), {
-      params: { renderId: render0.id },
+      params: { jobId: job.id, renderId: render0.id },
     });
 
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as { status: string; newRenderId: string };
     expect(body.status).toBe("PENDING");
     expect(body.newRenderId).toBeTruthy();
 
@@ -337,7 +381,7 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
 
     // Yeni render var mı, status PENDING?
     const newRender = await db.mockupRender.findUnique({
-      where: { id: body.newRenderId },
+      where: { id: body.newRenderId! },
     });
     expect(newRender!.status).toBe("PENDING");
     expect(newRender!.packPosition).toBe(0); // eski packPosition kopyası
@@ -359,10 +403,31 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
       },
     });
 
-    const set = await makeReadySet({
+    const { set, itemIds } = await makeReadySet({
       userId: userAId,
       productTypeId: productType.id,
       variantCount: 1,
+    });
+
+    const template = await db.mockupTemplate.create({
+      data: {
+        name: "Template RenderNotFailed Test",
+        categoryId: "canvas",
+        aspectRatios: ["2:3"],
+        thumbKey: "thumb-template-rnf",
+        estimatedRenderMs: 5000,
+        status: "ACTIVE",
+      },
+    });
+
+    const binding = await db.mockupTemplateBinding.create({
+      data: {
+        templateId: template.id,
+        providerId: "LOCAL_SHARP",
+        status: "ACTIVE",
+        config: { aspectRatios: ["2:3"] },
+        estimatedRenderMs: 5000,
+      },
     });
 
     const job = await makeJob({
@@ -373,18 +438,18 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
 
     const render = await makeRender({
       jobId: job.id,
-      variantId: "variant-1",
-      bindingId: "binding-1",
+      variantId: itemIds[0]!,
+      bindingId: binding.id,
       packPosition: 0,
       status: "SUCCESS",
     });
 
     const res = await POST(makeSwapRequest(render.id), {
-      params: { renderId: render.id },
+      params: { jobId: job.id, renderId: render.id },
     });
 
     expect(res.status).toBe(409);
-    const body = await res.json();
+    const body = (await res.json()) as { code: string };
     expect(body.code).toBe("RENDER_NOT_FAILED");
   });
 
@@ -404,10 +469,31 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
       },
     });
 
-    const set = await makeReadySet({
+    const { set, itemIds } = await makeReadySet({
       userId: userAId,
       productTypeId: productType.id,
       variantCount: 1, // 1 variant sadece
+    });
+
+    const template = await db.mockupTemplate.create({
+      data: {
+        name: "Template NoAlternativePair Test",
+        categoryId: "canvas",
+        aspectRatios: ["2:3"],
+        thumbKey: "thumb-template-nap",
+        estimatedRenderMs: 5000,
+        status: "ACTIVE",
+      },
+    });
+
+    const binding = await db.mockupTemplateBinding.create({
+      data: {
+        templateId: template.id,
+        providerId: "LOCAL_SHARP",
+        status: "ACTIVE",
+        config: { aspectRatios: ["2:3"] },
+        estimatedRenderMs: 5000,
+      },
     });
 
     const job = await makeJob({
@@ -419,19 +505,19 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
     // 1 variant, 1 binding → sadece 1 pair olası, kullanıldı
     const render = await makeRender({
       jobId: job.id,
-      variantId: "variant-0",
-      bindingId: "binding-0",
+      variantId: itemIds[0]!,
+      bindingId: binding.id,
       packPosition: 0,
       status: "FAILED",
       errorClass: "TEMPLATE_INVALID",
     });
 
     const res = await POST(makeSwapRequest(render.id), {
-      params: { renderId: render.id },
+      params: { jobId: job.id, renderId: render.id },
     });
 
     expect(res.status).toBe(409);
-    const body = await res.json();
+    const body = (await res.json()) as { code: string };
     expect(body.code).toBe("NO_ALTERNATIVE_PAIR");
   });
 
@@ -447,10 +533,31 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
       },
     });
 
-    const set = await makeReadySet({
+    const { set, itemIds } = await makeReadySet({
       userId: userAId,
       productTypeId: productType.id,
       variantCount: 2,
+    });
+
+    const template = await db.mockupTemplate.create({
+      data: {
+        name: "Template CrossUser Test",
+        categoryId: "canvas",
+        aspectRatios: ["2:3"],
+        thumbKey: "thumb-template-cu",
+        estimatedRenderMs: 5000,
+        status: "ACTIVE",
+      },
+    });
+
+    const binding = await db.mockupTemplateBinding.create({
+      data: {
+        templateId: template.id,
+        providerId: "LOCAL_SHARP",
+        status: "ACTIVE",
+        config: { aspectRatios: ["2:3"] },
+        estimatedRenderMs: 5000,
+      },
     });
 
     const job = await makeJob({
@@ -461,8 +568,8 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
 
     const render = await makeRender({
       jobId: job.id,
-      variantId: "variant-0",
-      bindingId: "binding-0",
+      variantId: itemIds[0]!,
+      bindingId: binding.id,
       packPosition: 0,
       status: "FAILED",
       errorClass: "TEMPLATE_INVALID",
@@ -474,11 +581,11 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
     });
 
     const res = await POST(makeSwapRequest(render.id), {
-      params: { renderId: render.id },
+      params: { jobId: job.id, renderId: render.id },
     });
 
     expect(res.status).toBe(404);
-    const body = await res.json();
+    const body = (await res.json()) as { code: string };
     expect(body.code).toBe("RENDER_NOT_FOUND");
   });
 
@@ -488,11 +595,11 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
     });
 
     const res = await POST(makeSwapRequest("non-existent-id"), {
-      params: { renderId: "non-existent-id" },
+      params: { jobId: "non-existent-job", renderId: "non-existent-id" },
     });
 
     expect(res.status).toBe(404);
-    const body = await res.json();
+    const body = (await res.json()) as { code: string };
     expect(body.code).toBe("RENDER_NOT_FOUND");
   });
 
@@ -503,11 +610,11 @@ describe("POST /api/mockup/renders/[renderId]/swap (Spec §4.4)", () => {
     );
 
     const res = await POST(makeSwapRequest("any-render"), {
-      params: { renderId: "any-render" },
+      params: { jobId: "any-job", renderId: "any-render" },
     });
 
     expect(res.status).toBe(401);
-    const body = await res.json();
+    const body = (await res.json()) as { code: string };
     expect(body.code).toBe("UNAUTHORIZED");
   });
 });
