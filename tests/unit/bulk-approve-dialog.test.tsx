@@ -59,6 +59,10 @@ function makeItem(
     riskFlags: [],
     reviewedAt: null,
     reviewProviderSnapshot: null,
+    // Phase 7 Task 38: alanlar additive — bulk dialog ile alakasız, null.
+    referenceId: null,
+    productTypeId: null,
+    jobId: null,
   };
 }
 

@@ -98,6 +98,13 @@ export const GET = withErrorHandling(async (req: Request) => {
           reviewedAt: true,
           reviewProviderSnapshot: true,
           asset: { select: { storageKey: true } },
+          // Phase 7 Task 38 — Quick start CTA için (additive):
+          // POST /api/selection/sets/quick-start gövdesi referenceId,
+          // batchId (== jobId), productTypeId bekler. Burada toplu seçimle
+          // ek round-trip'siz card-level CTA mümkün hale gelir.
+          referenceId: true,
+          productTypeId: true,
+          jobId: true,
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -136,6 +143,10 @@ export const GET = withErrorHandling(async (req: Request) => {
           riskFlags: normalizeRiskFlags(it.reviewRiskFlags),
           reviewedAt: it.reviewedAt?.toISOString() ?? null,
           reviewProviderSnapshot: it.reviewProviderSnapshot,
+          // Phase 7 Task 38: quick start CTA için (additive).
+          referenceId: it.referenceId,
+          productTypeId: it.productTypeId,
+          jobId: it.jobId,
         };
       }),
     );
@@ -193,6 +204,12 @@ export const GET = withErrorHandling(async (req: Request) => {
     riskFlags: normalizeRiskFlags(it.reviewRiskFlags),
     reviewedAt: it.reviewedAt?.toISOString() ?? null,
     reviewProviderSnapshot: it.reviewProviderSnapshot,
+    // Phase 7 Task 38 (additive): local-library asset'leri için Quick start
+    // anlamlı değil — variation batch / reference / productType yok.
+    // UI ReviewCard buton render'ını jobId === null kontrolüyle gizler.
+    referenceId: null,
+    productTypeId: null,
+    jobId: null,
   }));
 
   return NextResponse.json({

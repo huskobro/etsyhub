@@ -20,6 +20,8 @@
 // (text-text, text-text-muted, border-border, vb.) tema sisteminden gelir.
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useMutation } from "@tanstack/react-query";
+import { Layers } from "lucide-react";
 import type { ReviewQueueItem, ReviewStatusEnum } from "@/features/review/queries";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { buildReviewUrl } from "@/features/review/lib/search-params";
@@ -54,6 +56,41 @@ export function ReviewCard({ item }: Props) {
       buildReviewUrl(pathname, searchParams, { detail: item.id }),
     );
   };
+
+  // Phase 7 Task 38 — Quick start canonical entry point.
+  // ReviewCard'dan tek tıkla SelectionSet oluşturup /selection/sets/[id]'ye
+  // redirect eder. Yalnız scope === "design" item'larında render edilir
+  // (jobId !== null). Local-library asset'leri için anlamlı değil.
+  const quickStart = useMutation({
+    mutationFn: async () => {
+      if (!item.referenceId || !item.productTypeId || !item.jobId) {
+        // UI guard: buton zaten gizli; defansif fallback.
+        throw new Error("Quick start için gerekli alanlar yok");
+      }
+      const res = await fetch("/api/selection/sets/quick-start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "variation-batch",
+          referenceId: item.referenceId,
+          batchId: item.jobId,
+          productTypeId: item.productTypeId,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          typeof body.error === "string" ? body.error : `HTTP ${res.status}`,
+        );
+      }
+      return (await res.json()) as { setId: string };
+    },
+    onSuccess: (data) => {
+      router.push(`/selection/sets/${data.setId}`);
+    },
+  });
 
   return (
     <article
@@ -146,6 +183,31 @@ export function ReviewCard({ item }: Props) {
           >
             {item.riskFlagCount} risk işareti
           </span>
+        ) : null}
+        {item.jobId ? (
+          <div className="flex items-center justify-end pt-1">
+            <button
+              type="button"
+              data-testid="quick-start-button"
+              onClick={(e) => {
+                // Kart click (detail drawer) tetiklenmesin — Quick start
+                // bağımsız primary action'dur (Phase 7 canonical entry).
+                e.stopPropagation();
+                quickStart.mutate();
+              }}
+              onKeyDown={(e) => {
+                // Space/Enter de kart open'ını tetiklemesin.
+                if (e.key === " " || e.key === "Enter") e.stopPropagation();
+              }}
+              disabled={quickStart.isPending}
+              aria-label="Selection Studio'da aç"
+              title="Selection Studio'da aç"
+              className="flex items-center gap-1 rounded-md border border-border bg-transparent px-2 py-1 text-xs text-text-muted hover:border-border-strong hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Layers className="h-3 w-3" aria-hidden="true" />
+              {quickStart.isPending ? "Açılıyor..." : "Studio"}
+            </button>
+          </div>
         ) : null}
       </div>
     </article>

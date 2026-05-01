@@ -454,6 +454,50 @@ describe("GET /api/review/queue", () => {
     expect(body.page).toBe(2);
   });
 
+  // Phase 7 Task 38 — Quick start primary action için ek alanlar response'ta.
+  // ReviewCard CTA'sı POST /api/selection/sets/quick-start için
+  // referenceId + productTypeId + jobId (== batchId) bilgilerini bekler.
+  // Additive: mevcut field'lar değişmez; yeni 3 alan opsiyonel sayılabilir
+  // ama design scope'unda her zaman belirli (productTypeId/referenceId zorunlu).
+  it("design scope items include referenceId/productTypeId/jobId (Task 38 quick start)", async () => {
+    currentUser.id = userAId;
+    await createDesign(userAId, productTypeId, {
+      reviewStatus: ReviewStatus.APPROVED,
+    });
+    const res = await GET(makeRequest("scope=design"));
+    const body = (await res.json()) as {
+      items: Array<{
+        referenceId: string | null;
+        productTypeId: string | null;
+        jobId: string | null;
+      }>;
+    };
+    const item = body.items[0]!;
+    expect(typeof item.referenceId).toBe("string");
+    expect(item.referenceId!.length).toBeGreaterThan(0);
+    expect(item.productTypeId).toBe(productTypeId);
+    // jobId — createDesign helper jobId set etmiyor, null bekleriz; ama field var.
+    expect(item).toHaveProperty("jobId");
+  });
+
+  // Phase 7 Task 38 — local scope'ta quick start anlamlı değil; alanlar null.
+  it("local scope items: referenceId/productTypeId/jobId null (Task 38)", async () => {
+    currentUser.id = userAId;
+    await createLocalAsset(userAId);
+    const res = await GET(makeRequest("scope=local"));
+    const body = (await res.json()) as {
+      items: Array<{
+        referenceId: string | null;
+        productTypeId: string | null;
+        jobId: string | null;
+      }>;
+    };
+    const item = body.items[0]!;
+    expect(item.referenceId).toBeNull();
+    expect(item.productTypeId).toBeNull();
+    expect(item.jobId).toBeNull();
+  });
+
   // Phase 6 Dalga B (Task 15): detail panel için endpoint genişlemesi —
   // riskFlags (full JSON), reviewSummary, reviewProviderSnapshot response'ta.
   it("detail alanları response'a dahil (design): riskFlags + reviewSummary + reviewProviderSnapshot", async () => {

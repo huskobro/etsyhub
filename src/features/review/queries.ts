@@ -34,6 +34,13 @@ export type ReviewQueueItem = {
   riskFlags: ReviewRiskFlag[];
   reviewedAt: string | null;
   reviewProviderSnapshot: string | null;
+  // Phase 7 Task 38 — Quick start CTA için (additive).
+  // Yalnız scope === "design" item'larında doludur; local-library asset'leri
+  // bu üç alanı null taşır (variation batch / reference / productType yok).
+  // ReviewCard "Selection Studio'da Aç" butonu jobId === null ise gizlenir.
+  referenceId: string | null;
+  productTypeId: string | null;
+  jobId: string | null;
 };
 
 export type ReviewQueueResponse = {
