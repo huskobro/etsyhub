@@ -42,3 +42,18 @@ export const UpdateListingMetaSchema = z
   .strict();
 
 export type UpdateListingMetaInput = z.infer<typeof UpdateListingMetaSchema>;
+
+/**
+ * POST /api/listings/draft/[id]/generate-meta body — Phase 9 V1 Task 16.
+ *
+ * Tüm field'lar opsiyonel — service default'lar (productType="generic",
+ * toneHint=null, providerId=DEFAULT). Strict mode: bilinmeyen field reject.
+ */
+export const GenerateListingMetaSchema = z
+  .object({
+    productType: z.string().min(1).max(64).optional(),
+    toneHint: z.string().min(1).max(120).optional(),
+  })
+  .strict();
+
+export type GenerateListingMetaInput = z.infer<typeof GenerateListingMetaSchema>;

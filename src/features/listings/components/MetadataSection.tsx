@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Wand2 } from "lucide-react";
+import { Wand2, Loader2 } from "lucide-react";
 import { useUpdateListingDraft } from "../hooks/useUpdateListingDraft";
+import { useGenerateListingMeta } from "../hooks/useGenerateListingMeta";
 import type { ListingDraftView } from "../types";
 
 /**
@@ -13,13 +14,20 @@ import type { ListingDraftView } from "../types";
  * - Title (text input)
  * - Description (textarea)
  * - 13 tags (comma-separated input)
- * - Save button + AI button placeholder
+ * - Save button + AI Oluştur button (Phase 9 V1 Task 16 — AI binding)
  * - Inline error alert
+ *
+ * AI binding (Task 16):
+ * - useGenerateListingMeta(listing.id) hook'u POST /generate-meta tetikler
+ * - Success → form alanları doldurulur (auto-save YOK; kullanıcı "Kaydet" ile commit eder)
+ * - Loading → "Üretiliyor…" + spinner + disabled
+ * - Error → ayrı role="alert" (kaydetme hatasıyla karışmasın)
  *
  * @param listing ListingDraft
  */
 export function MetadataSection({ listing }: { listing: ListingDraftView }) {
   const mutation = useUpdateListingDraft(listing.id);
+  const aiMutation = useGenerateListingMeta(listing.id);
 
   const [title, setTitle] = useState(listing.title || "");
   const [description, setDescription] = useState(listing.description || "");
@@ -40,6 +48,16 @@ export function MetadataSection({ listing }: { listing: ListingDraftView }) {
       title: title || undefined,
       description: description || undefined,
       tags: newTags,
+    });
+  };
+
+  const handleGenerateAI = () => {
+    aiMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        setTitle(data.output.title);
+        setDescription(data.output.description);
+        setTagsInput(data.output.tags.join(", "));
+      },
     });
   };
 
@@ -107,7 +125,20 @@ export function MetadataSection({ listing }: { listing: ListingDraftView }) {
           </p>
         </div>
 
-        {/* Error Alert */}
+        {/* AI Generation Status */}
+        {aiMutation.isSuccess && (
+          <p className="text-xs text-text-subtle" role="status">
+            AI önerisi alanlara yazıldı. İncele ve "Kaydet" ile kaydet.
+          </p>
+        )}
+
+        {aiMutation.error && (
+          <p role="alert" className="text-sm text-red-600">
+            AI üretim başarısız: {aiMutation.error.message}
+          </p>
+        )}
+
+        {/* Save Mutation Error */}
         {mutation.error && (
           <p role="alert" className="text-sm text-red-600">
             Kaydetme başarısız: {mutation.error.message}
@@ -123,14 +154,18 @@ export function MetadataSection({ listing }: { listing: ListingDraftView }) {
             {mutation.isPending ? "Kaydediliyor…" : "Kaydet"}
           </Button>
           <Button
+            type="button"
             variant="secondary"
-            disabled
-            title="Task 21'de AI listing generation eklenecek"
-            aria-label="AI başlık üretimi şu an kullanılamaz (sonraki aşamada aktif)"
+            onClick={handleGenerateAI}
+            disabled={aiMutation.isPending}
             className="inline-flex items-center gap-2"
           >
-            <Wand2 className="w-4 h-4" />
-            AI Oluştur
+            {aiMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+            ) : (
+              <Wand2 className="w-4 h-4" aria-hidden />
+            )}
+            {aiMutation.isPending ? "Üretiliyor…" : "AI Oluştur"}
           </Button>
         </div>
       </div>

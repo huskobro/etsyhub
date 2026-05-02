@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MetadataSection } from "@/features/listings/components/MetadataSection";
 import { useUpdateListingDraft } from "@/features/listings/hooks/useUpdateListingDraft";
+import { useGenerateListingMeta } from "@/features/listings/hooks/useGenerateListingMeta";
 import type { ListingDraftView } from "@/features/listings/types";
 
 vi.mock("@/features/listings/hooks/useUpdateListingDraft");
+vi.mock("@/features/listings/hooks/useGenerateListingMeta");
 
 const mockListing: ListingDraftView = {
   id: "test-123",
@@ -27,19 +29,39 @@ const mockListing: ListingDraftView = {
   readiness: [],
 };
 
+function idleAiMutation() {
+  return {
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+    isSuccess: false,
+    status: "idle",
+    data: undefined,
+    reset: vi.fn(),
+    variables: undefined,
+    context: undefined,
+  } as any;
+}
+
+function idleSaveMutation() {
+  return {
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+    status: "idle",
+    data: undefined,
+    reset: vi.fn(),
+    variables: undefined,
+    context: undefined,
+  } as any;
+}
+
 describe("MetadataSection", () => {
   beforeEach(() => {
-    vi.mocked(useUpdateListingDraft).mockReturnValue({
-      mutate: vi.fn(),
-      mutateAsync: vi.fn(),
-      isPending: false,
-      error: null,
-      status: "idle",
-      data: undefined,
-      reset: vi.fn(),
-      variables: undefined,
-      context: undefined,
-    } as any);
+    vi.mocked(useUpdateListingDraft).mockReturnValue(idleSaveMutation());
+    vi.mocked(useGenerateListingMeta).mockReturnValue(idleAiMutation());
   });
 
   it("renders title input with initial value", () => {
@@ -82,16 +104,9 @@ describe("MetadataSection", () => {
   it("calls mutate with parsed tags on Save", () => {
     const mockMutate = vi.fn();
     vi.mocked(useUpdateListingDraft).mockReturnValue({
+      ...idleSaveMutation(),
       mutate: mockMutate,
-      mutateAsync: vi.fn(),
-      isPending: false,
-      error: null,
-      status: "idle",
-      data: undefined,
-      reset: vi.fn(),
-      variables: undefined,
-      context: undefined,
-    } as any);
+    });
 
     render(<MetadataSection listing={mockListing} />);
     const titleInput = screen.getByLabelText("Başlık") as HTMLInputElement;
@@ -107,48 +122,143 @@ describe("MetadataSection", () => {
     );
   });
 
-  it("shows error alert on mutation error", () => {
+  it("shows error alert on save mutation error", () => {
     vi.mocked(useUpdateListingDraft).mockReturnValue({
-      mutate: vi.fn(),
-      mutateAsync: vi.fn(),
-      isPending: false,
+      ...idleSaveMutation(),
       error: new Error("Save failed"),
       status: "error",
-      data: undefined,
-      reset: vi.fn(),
-      variables: undefined,
-      context: undefined,
-    } as any);
+    });
 
     render(<MetadataSection listing={mockListing} />);
-    const alert = screen.getByRole("alert") as HTMLElement;
-    expect(alert).toHaveTextContent("Kaydetme başarısız: Save failed");
-  });
-
-  it("disables AI button (placeholder for Task 21)", () => {
-    render(<MetadataSection listing={mockListing} />);
-    // aria-label ile accessible name override edildi (a11y disabled-button hint)
-    const aiButton = screen.getByRole("button", { name: /AI başlık üretimi şu an kullanılamaz/i });
-    expect(aiButton).toBeDisabled();
+    expect(screen.getByText(/Kaydetme başarısız: Save failed/)).toBeInTheDocument();
   });
 
   it("shows pending state on Save button during mutation", () => {
     vi.mocked(useUpdateListingDraft).mockReturnValue({
-      mutate: vi.fn(),
-      mutateAsync: vi.fn(),
+      ...idleSaveMutation(),
       isPending: true,
-      error: null,
       status: "pending",
-      data: undefined,
-      reset: vi.fn(),
-      variables: undefined,
-      context: undefined,
-    } as any);
+    });
 
     render(<MetadataSection listing={mockListing} />);
     const titleInput = screen.getByLabelText("Başlık");
     fireEvent.change(titleInput, { target: { value: "New Title" } });
     const saveButtons = screen.getAllByRole("button", { name: /Kaydediliyor/i });
     expect(saveButtons[0]).toBeDisabled();
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // Phase 9 V1 Task 16 — AI Oluştur button binding tests
+  // ────────────────────────────────────────────────────────────
+
+  it("AI button enabled by default", () => {
+    render(<MetadataSection listing={mockListing} />);
+    const aiButton = screen.getByRole("button", { name: /AI Oluştur/i });
+    expect(aiButton).not.toBeDisabled();
+  });
+
+  it("AI button click → mutate called", () => {
+    const aiMutate = vi.fn();
+    vi.mocked(useGenerateListingMeta).mockReturnValue({
+      ...idleAiMutation(),
+      mutate: aiMutate,
+    });
+    render(<MetadataSection listing={mockListing} />);
+    const aiButton = screen.getByRole("button", { name: /AI Oluştur/i });
+    fireEvent.click(aiButton);
+    expect(aiMutate).toHaveBeenCalled();
+  });
+
+  it("AI button isPending → 'Üretiliyor…' + disabled", () => {
+    vi.mocked(useGenerateListingMeta).mockReturnValue({
+      ...idleAiMutation(),
+      isPending: true,
+      status: "pending",
+    });
+    render(<MetadataSection listing={mockListing} />);
+    const aiButton = screen.getByRole("button", { name: /Üretiliyor/i });
+    expect(aiButton).toBeDisabled();
+  });
+
+  it("AI mutation error → ayrı alert (kaydetme hatasından farklı)", () => {
+    vi.mocked(useGenerateListingMeta).mockReturnValue({
+      ...idleAiMutation(),
+      error: new Error("AI servis hatası"),
+      status: "error",
+    });
+    render(<MetadataSection listing={mockListing} />);
+    expect(
+      screen.getByText(/AI üretim başarısız: AI servis hatası/),
+    ).toBeInTheDocument();
+  });
+
+  it("save error + AI error → iki ayrı alert birlikte gösterilir", () => {
+    vi.mocked(useUpdateListingDraft).mockReturnValue({
+      ...idleSaveMutation(),
+      error: new Error("Save failed"),
+      status: "error",
+    });
+    vi.mocked(useGenerateListingMeta).mockReturnValue({
+      ...idleAiMutation(),
+      error: new Error("AI servis hatası"),
+      status: "error",
+    });
+    render(<MetadataSection listing={mockListing} />);
+    expect(screen.getByText(/AI üretim başarısız: AI servis hatası/)).toBeInTheDocument();
+    expect(screen.getByText(/Kaydetme başarısız: Save failed/)).toBeInTheDocument();
+  });
+
+  it("AI isSuccess true → status mesajı görünür", () => {
+    vi.mocked(useGenerateListingMeta).mockReturnValue({
+      ...idleAiMutation(),
+      isSuccess: true,
+      status: "success",
+      data: {
+        output: { title: "AI Title", description: "AI Desc", tags: [] },
+        providerSnapshot: "gemini-2.5-flash@2026-05-03",
+        promptVersion: "v1.0",
+      },
+    });
+    render(<MetadataSection listing={mockListing} />);
+    expect(
+      screen.getByText(/AI önerisi alanlara yazıldı/i),
+    ).toBeInTheDocument();
+  });
+
+  it("AI mutation onSuccess callback → form alanları doldurulur", () => {
+    const tags = Array.from({ length: 13 }, (_, i) => `t${i + 1}`);
+    const aiMutate = vi.fn().mockImplementation((_input, options) => {
+      options?.onSuccess?.({
+        output: {
+          title: "AI New Title",
+          description: "AI Desc",
+          tags,
+        },
+        providerSnapshot: "gemini-2.5-flash@2026-05-03",
+        promptVersion: "v1.0",
+      });
+    });
+    vi.mocked(useGenerateListingMeta).mockReturnValue({
+      ...idleAiMutation(),
+      mutate: aiMutate,
+    });
+
+    // Save mutation must NOT be called (auto-save YOK)
+    const saveMutate = vi.fn();
+    vi.mocked(useUpdateListingDraft).mockReturnValue({
+      ...idleSaveMutation(),
+      mutate: saveMutate,
+    });
+
+    render(<MetadataSection listing={mockListing} />);
+    fireEvent.click(screen.getByRole("button", { name: /AI Oluştur/i }));
+
+    expect(screen.getByLabelText("Başlık")).toHaveValue("AI New Title");
+    expect(screen.getByLabelText("Açıklama")).toHaveValue("AI Desc");
+    expect(screen.getByLabelText("Etiketler (maksimum 13)")).toHaveValue(
+      tags.join(", "),
+    );
+    // Auto-save guard: PATCH mutation NOT called
+    expect(saveMutate).not.toHaveBeenCalled();
   });
 });
