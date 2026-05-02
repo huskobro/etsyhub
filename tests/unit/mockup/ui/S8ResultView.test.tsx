@@ -1,9 +1,9 @@
-// Phase 8 Task 28+29 — S8ResultView grid layout + swap + per-render actions.
+// Phase 8 Task 28+29 + Phase 9 Task 19 — S8ResultView grid layout + swap + per-render actions + listing CTA.
 //
-// 12 scenarios: status guard (redirect non-completed), full/compat-limited/partial
-// complete layouts, all-failed recovery, cover slot styling, bulk download, phase 9
-// listing CTA, per-render overlay, cover swap POST, per-render retry/swap, failed
-// error class mapping.
+// 15 scenarios: status guard (redirect non-completed), full/compat-limited/partial
+// complete layouts, all-failed recovery, cover slot styling, bulk download,
+// per-render overlay, cover swap POST, per-render retry/swap, failed error class mapping,
+// listing CTA (Phase 9 integration), listing creation success/error.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
@@ -33,6 +33,16 @@ vi.mock("@/features/mockups/hooks/useMockupJob", () => ({
     error: null,
   }),
   mockupJobQueryKey: (jobId: string) => ["mockup-job", jobId],
+}));
+
+// Phase 9 Task 19: useCreateListingDraft mock
+let mockUseCreateListingDraftReturn: any = null;
+
+vi.mock("@/features/listings/hooks/useCreateListingDraft", () => ({
+  useCreateListingDraft: vi.fn(() => mockUseCreateListingDraftReturn || {
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 
 function createMockRender(overrides?: Partial<MockupRenderView>): MockupRenderView {
@@ -97,7 +107,9 @@ describe("<S8ResultView>", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRouter.replace.mockClear();
+    mockRouter.push.mockClear();
     mockUseMockupJobReturn = null;
+    mockUseCreateListingDraftReturn = null;
   });
 
   it("redirects to S7 if status not in {COMPLETED, PARTIAL_COMPLETE}", async () => {
@@ -304,21 +316,8 @@ describe("<S8ResultView>", () => {
     );
   });
 
-  it("Listing'e gönder → CTA disabled with Phase 9 tooltip", () => {
-    const job = createMockJob({ status: "COMPLETED" });
-    mockUseMockupJobReturn = {
-      data: job,
-      isLoading: false,
-      error: null,
-    };
-
-    render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
-
-    // Phase 9'da CTA disabled
-    const listingButton = screen.getByRole("button", { name: /Listing'e gönder/ });
-    expect(listingButton).toBeDisabled();
-    expect(listingButton.getAttribute("title")).toMatch(/Phase 9/);
-  });
+  // Removed: Phase 8 test "Listing'e gönder → CTA disabled with Phase 9 tooltip"
+  // Phase 9 Task 19: CTA is now ENABLED (see Phase 9 tests below)
 
   it("per-render swap action → POST /jobs/[jobId]/renders/[renderId]/swap (gerçek fetch)", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue({
@@ -514,5 +513,102 @@ describe("<S8ResultView>", () => {
     expect(screen.getByText(/Tasarım sığmadı/)).toBeInTheDocument(); // SAFE_AREA_OVERFLOW
     expect(screen.getByText(/Kaynak yetersiz/)).toBeInTheDocument(); // SOURCE_QUALITY
     expect(screen.getByText(/Motor erişilemez/)).toBeInTheDocument(); // PROVIDER_DOWN
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // Phase 9 Task 19 — Listing CTA tests (3 scenarios)
+  // ────────────────────────────────────────────────────────────
+
+  it("Phase 9: Listing CTA button visible and clickable on successful pack", async () => {
+    const job = createMockJob({ status: "COMPLETED", successRenders: 10 });
+    mockUseMockupJobReturn = {
+      data: job,
+      isLoading: false,
+      error: null,
+    };
+
+    const mockMutateAsync = vi.fn().mockResolvedValue({ listingId: "clxywzk3f0000gl6h7k5j" });
+    mockUseCreateListingDraftReturn = {
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+    };
+
+    render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
+
+    // CTA butonu aktif olmalı (disabled değil)
+    const ctaBtn = screen.getByRole("button", { name: /Listing'e gönder/i });
+    expect(ctaBtn).toBeInTheDocument();
+    expect(ctaBtn).not.toHaveAttribute("disabled");
+  });
+
+  it("Phase 9: clicking Listing CTA calls createListingDraft mutation with jobId", async () => {
+    const job = createMockJob({ status: "COMPLETED", successRenders: 10 });
+    mockUseMockupJobReturn = {
+      data: job,
+      isLoading: false,
+      error: null,
+    };
+
+    const mockMutateAsync = vi.fn().mockResolvedValue({ listingId: "clxywzk3f0000gl6h7k5j" });
+    mockUseCreateListingDraftReturn = {
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+    };
+
+    render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
+
+    const ctaBtn = screen.getByRole("button", { name: /Listing'e gönder/i });
+    fireEvent.click(ctaBtn);
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        mockupJobId: "job-1",
+      });
+    });
+  });
+
+  it("Phase 9: successful listing creation navigates to /listings/draft/[id]", async () => {
+    const job = createMockJob({ status: "COMPLETED", successRenders: 10 });
+    mockUseMockupJobReturn = {
+      data: job,
+      isLoading: false,
+      error: null,
+    };
+
+    const listingId = "clxywzk3f0000gl6h7k5j";
+    const mockMutateAsync = vi.fn().mockResolvedValue({ listingId });
+    mockUseCreateListingDraftReturn = {
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+    };
+
+    render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
+
+    const ctaBtn = screen.getByRole("button", { name: /Listing'e gönder/i });
+    fireEvent.click(ctaBtn);
+
+    await waitFor(() => {
+      expect(mockRouter.push).toHaveBeenCalledWith(`/listings/draft/${listingId}`);
+    });
+  });
+
+  it("Phase 9: CTA button shows loading state while mutation pending", async () => {
+    const job = createMockJob({ status: "COMPLETED", successRenders: 10 });
+    mockUseMockupJobReturn = {
+      data: job,
+      isLoading: false,
+      error: null,
+    };
+
+    const mockMutateAsync = vi.fn();
+    mockUseCreateListingDraftReturn = {
+      mutateAsync: mockMutateAsync,
+      isPending: true, // Simulate pending state
+    };
+
+    render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
+
+    const ctaBtn = screen.getByRole("button", { name: /Listing oluşturuluyor/i });
+    expect(ctaBtn).toHaveAttribute("disabled");
   });
 });

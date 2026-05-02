@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMockupJob, type MockupRenderView, type MockupJobView } from "@/features/mockups/hooks/useMockupJob";
+import { useCreateListingDraft } from "@/features/listings/hooks/useCreateListingDraft";
 import { Button } from "@/components/ui/Button";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { CoverSwapModal } from "./CoverSwapModal";
 import { PerRenderActions } from "./PerRenderActions";
 
@@ -153,6 +154,21 @@ function FailedRenderSlot({ render, jobId }: { render: MockupRenderView; jobId: 
 export function S8ResultView({ setId, jobId }: { setId: string; jobId: string }) {
   const router = useRouter();
   const { data: job, isLoading } = useMockupJob(jobId);
+  const createListingMutation = useCreateListingDraft();
+  const [isCreatingListing, setIsCreatingListing] = useState(false);
+
+  const handleCreateListing = async () => {
+    try {
+      setIsCreatingListing(true);
+      const result = await createListingMutation.mutateAsync({
+        mockupJobId: jobId,
+      });
+      // Navigate to listing draft detail page
+      router.push(`/listings/draft/${result.listingId}`);
+    } finally {
+      setIsCreatingListing(false);
+    }
+  };
 
   // Status guard: ∉ {COMPLETED, PARTIAL_COMPLETE} → S7'e geri yolla
   useEffect(() => {
@@ -212,11 +228,18 @@ export function S8ResultView({ setId, jobId }: { setId: string; jobId: string })
           </Button>
         </a>
         <Button
-          disabled
-          title="Phase 9'da listing builder eklenecek"
+          onClick={handleCreateListing}
+          disabled={isCreatingListing || createListingMutation.isPending}
           variant="secondary"
         >
-          Listing'e gönder →
+          {isCreatingListing || createListingMutation.isPending ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              Listing oluşturuluyor…
+            </>
+          ) : (
+            "Listing'e gönder →"
+          )}
         </Button>
       </div>
 
