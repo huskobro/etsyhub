@@ -320,7 +320,12 @@ describe("<S8ResultView>", () => {
     expect(listingButton.getAttribute("title")).toMatch(/Phase 9/);
   });
 
-  it("per-render swap action → POST /renders/[id]/swap (PerRenderActions integration)", () => {
+  it("per-render swap action → POST /jobs/[jobId]/renders/[renderId]/swap (gerçek fetch)", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ newRenderId: "render-new", status: "PENDING" }),
+    } as Response);
+
     const job = createMockJob({
       status: "PARTIAL_COMPLETE",
       successRenders: 8,
@@ -345,11 +350,36 @@ describe("<S8ResultView>", () => {
 
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
-    // PerRenderActions component integration — failed slot render edilecek
+    // 5-class hata rozet görünür
     expect(screen.getByText(/Şablon geçersiz/)).toBeInTheDocument();
+
+    // Swap butonu görünür (TEMPLATE_INVALID swap-only, retry yok)
+    const swapButtons = screen.getAllByRole("button", { name: /^Swap$/i });
+    expect(swapButtons.length).toBeGreaterThan(0);
+
+    // Click → gerçek POST /jobs/[jobId]/renders/[renderId]/swap
+    fireEvent.click(swapButtons[0]!);
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/mockup/jobs/job-1/renders/render-3/swap",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    fetchSpy.mockRestore();
   });
 
-  it("per-render retry action → POST /renders/[id]/retry (PerRenderActions integration)", () => {
+  it("per-render retry action → POST /jobs/[jobId]/renders/[renderId]/retry (gerçek fetch, RENDER_TIMEOUT)", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        renderId: "render-3",
+        status: "PENDING",
+        retryCount: 1,
+      }),
+    } as Response);
+
     const job = createMockJob({
       status: "PARTIAL_COMPLETE",
       successRenders: 9,
@@ -374,8 +404,52 @@ describe("<S8ResultView>", () => {
 
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
-    // PerRenderActions component integration — failed slot render edilecek
+    // 5-class hata rozet görünür
     expect(screen.getByText(/Zaman aşımı/)).toBeInTheDocument();
+
+    // RENDER_TIMEOUT retryable → Retry butonu görünür
+    const retryButtons = screen.getAllByRole("button", { name: /^Retry$/i });
+    expect(retryButtons.length).toBeGreaterThan(0);
+
+    fireEvent.click(retryButtons[0]!);
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/mockup/jobs/job-1/renders/render-3/retry",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    fetchSpy.mockRestore();
+  });
+
+  it("non-retryable error class (TEMPLATE_INVALID) → Retry butonu YOK, sadece Swap", () => {
+    const job = createMockJob({
+      status: "PARTIAL_COMPLETE",
+      successRenders: 9,
+      failedRenders: 1,
+      renders: [
+        createMockRender({ id: "render-1" }),
+        createMockRender({
+          id: "render-2",
+          packPosition: 1,
+          status: "FAILED",
+          errorClass: "TEMPLATE_INVALID",
+        }),
+      ],
+    });
+
+    mockUseMockupJobReturn = { data: job, isLoading: false, error: null };
+
+    render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
+
+    // Retry butonu YOK (TEMPLATE_INVALID retryable değil)
+    expect(
+      screen.queryByRole("button", { name: /^Retry$/i }),
+    ).not.toBeInTheDocument();
+
+    // Swap butonu VAR
+    expect(screen.getAllByRole("button", { name: /^Swap$/i }).length).toBeGreaterThan(0);
   });
 
   it("failed slot UI per error class (5 mappings)", () => {

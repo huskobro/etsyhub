@@ -23,6 +23,7 @@
 // Phase 6 paterni: page.tsx server component → client component mount;
 // veri TanStack Query üzerinden client'ta (`useSelectionSet`).
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -172,9 +173,19 @@ export function StudioShell({ setId }: StudioShellProps) {
       {isReadOnly && (
         <div
           role="note"
-          className="rounded-md border border-border bg-surface-2 px-4 py-3 text-sm text-text-muted"
+          className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-4 py-3 text-sm text-text-muted"
         >
-          Bu set finalize edildi — Phase 8 Mockup Studio&apos;da işlenecek.
+          <span>
+            Bu set finalize edildi — Phase 8 Mockup Studio&apos;da işlenecek.
+          </span>
+          {set.status === "ready" && (
+            <Link
+              href={`/selection/sets/${setId}/mockup/apply`}
+              className="shrink-0 rounded-md bg-text px-3 py-1.5 text-xs font-medium text-bg hover:opacity-90"
+            >
+              Mockup Studio&apos;da Aç →
+            </Link>
+          )}
         </div>
       )}
 

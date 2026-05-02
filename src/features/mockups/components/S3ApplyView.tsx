@@ -52,7 +52,7 @@ export function S3ApplyView({ setId }: { setId: string }) {
         throw new Error(message);
       }
       const { jobId } = await res.json();
-      // TODO Task 28: S7 Job sayfası bu path'te gelecek; şimdilik 404 verir
+      // S7 Job sayfası: src/app/(app)/selection/sets/[setId]/mockup/jobs/[jobId]/page.tsx (Task 28)
       router.push(`/selection/sets/${setId}/mockup/jobs/${jobId}`);
     } finally {
       setIsSubmitting(false);
