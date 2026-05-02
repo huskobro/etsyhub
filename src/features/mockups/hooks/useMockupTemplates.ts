@@ -1,40 +1,33 @@
 "use client";
 
-// Phase 8 Task 14 — `useMockupTemplates` STUB.
+// Phase 8 Task 22 — useMockupTemplates real implementation.
 //
-// PHASE 8 TASK 14 STUB — Task 22'de gerçek implementation gelir.
+// Task 14 stub'ını gerçek API çağrısına çevirir. `MockupTemplateView` shape'i SABİT
+// kalacak (consumer'lar — useMockupPackState Task 14, S3ApplyView Task 23+ —
+// bu shape'e bağlı; kırılmaz).
 //
-// Sözleşme (Task 22): GET /api/mockup/templates?categoryId=... endpoint'inden
-// aktif template'leri çeker (yalın View shape: id, name, aspectRatios, tags,
-// thumbKey, estimatedRenderMs, hasActiveBinding). `useMockupPackState` (Task 14)
-// `selectQuickPackDefault` (Task 13) input'u için tüketir.
-//
-// Şu anki STUB davranışı: `enabled: false` ile fetch yapmıyor; `data` undefined
-// kalıyor. Test ortamında `vi.mock("@/features/mockups/hooks/useMockupTemplates")`
-// ile override edilerek stable shape döndürülmesi yeterli (Task 14 senaryoları).
-//
-// Task 22'de bu dosya gerçek `queryFn` + `enabled: !!params.categoryId` ile
-// değiştirilecek; `MockupTemplateView` shape'i sabit kalacak (consumer'lar
-// kırılmaz).
+// Endpoint: Task 22 GET /api/mockup/templates?categoryId=...
+// Response: { templates: MockupTemplateView[] }
 
 import { useQuery } from "@tanstack/react-query";
+import { z } from "zod";
 
-/**
- * Template view shape (Spec §6.1 + §9 V1 envanter).
- *
- * Backend `/api/mockup/templates` route'u (Task 22) bu yalın View'ı döndürür;
- * raw `MockupTemplate` row'u değil. `tags` ve `aspectRatios` string array
- * (JSON column), `hasActiveBinding` snapshot resolver çıktısı.
- */
-export type MockupTemplateView = {
-  id: string;
-  name: string;
-  aspectRatios: string[];
-  tags: string[];
-  thumbKey: string;
-  estimatedRenderMs: number;
-  hasActiveBinding: boolean;
-};
+// View shape — Task 14'ten taşınan sabit sözleşme.
+const MockupTemplateViewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  aspectRatios: z.array(z.string()),
+  tags: z.array(z.string()),
+  thumbKey: z.string(),
+  estimatedRenderMs: z.number(),
+  hasActiveBinding: z.boolean(),
+});
+
+const ResponseSchema = z.object({
+  templates: z.array(MockupTemplateViewSchema),
+});
+
+export type MockupTemplateView = z.infer<typeof MockupTemplateViewSchema>;
 
 export const mockupTemplatesQueryKey = (categoryId: string) =>
   ["mockup-templates", categoryId] as const;
@@ -49,11 +42,17 @@ export function useMockupTemplates(params: { categoryId: string }) {
   return useQuery<MockupTemplateView[]>({
     queryKey: mockupTemplatesQueryKey(params.categoryId),
     queryFn: async () => {
-      // PHASE 8 TASK 14 STUB — Task 22'de gerçek fetch + zod parse.
-      return [];
+      const url = `/api/mockup/templates?categoryId=${encodeURIComponent(params.categoryId)}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(
+          `Template listesi alınamadı (HTTP ${res.status})`,
+        );
+      }
+      const json = await res.json();
+      const parsed = ResponseSchema.parse(json);
+      return parsed.templates;
     },
-    // Task 22'de `enabled: !!params.categoryId` olacak; STUB sürede fetch
-    // tetiklenmesin diye false.
-    enabled: false,
+    enabled: !!params.categoryId,
   });
 }
