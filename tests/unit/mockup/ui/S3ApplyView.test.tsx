@@ -23,12 +23,46 @@ vi.mock("@/features/selection/queries", () => ({
       id: "test-set",
       name: "Test Set",
       status: "ready",
-      categoryId: "canvas",
-      // selection set detail view shape — Task 14 extractVariants buradan okur
-      variants: [
-        { id: "v1", aspectRatio: "2:3" },
-        { id: "v2", aspectRatio: "2:3" },
+      userId: "user-1",
+      sourceMetadata: null,
+      lastExportedAt: null,
+      finalizedAt: null,
+      archivedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      items: [
+        {
+          id: "item-1",
+          selectionSetId: "test-set",
+          generatedDesignId: "design-1",
+          sourceAssetId: "asset-1",
+          editedAssetId: null,
+          lastUndoableAssetId: "asset-1",
+          activeHeavyJobId: null,
+          editHistoryJson: "{}",
+          status: "selected",
+          position: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          review: null,
+        },
+        {
+          id: "item-2",
+          selectionSetId: "test-set",
+          generatedDesignId: "design-2",
+          sourceAssetId: "asset-2",
+          editedAssetId: null,
+          lastUndoableAssetId: "asset-2",
+          activeHeavyJobId: null,
+          editHistoryJson: "{}",
+          status: "selected",
+          position: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          review: null,
+        },
       ],
+      activeExport: null,
     },
     isLoading: false,
   }),
@@ -108,5 +142,38 @@ describe("<S3ApplyView>", () => {
 
     // Seçili görsel sayısı gösterilir
     expect(screen.getByText(/2 görsel üretilecek/)).toBeInTheDocument();
+  });
+
+  it("renders SetSummaryCard with set info", () => {
+    render(<S3ApplyView setId="test-set" />, { wrapper });
+
+    // SetSummaryCard heading'i
+    expect(screen.getByRole("heading")).toHaveTextContent("Test Set");
+    expect(screen.getByText(/2 tasarım seçili/)).toBeInTheDocument();
+  });
+
+  it("renders PackPreviewCard with selected templates", () => {
+    render(<S3ApplyView setId="test-set" />, { wrapper });
+
+    expect(screen.getByText(/2 görsel üretilecek/)).toBeInTheDocument();
+    expect(screen.getByText("Modern Sofa Wall")).toBeInTheDocument();
+    expect(screen.getByText("Boho Canvas")).toBeInTheDocument();
+  });
+
+  it("renders DecisionBand with submit button", () => {
+    render(<S3ApplyView setId="test-set" />, { wrapper });
+
+    const button = screen.getByRole("button", { name: /Render et/ });
+    expect(button).toBeInTheDocument();
+    expect(button).toBeEnabled();
+  });
+
+  it("shows header breadcrumb navigation", () => {
+    render(<S3ApplyView setId="test-set" />, { wrapper });
+
+    expect(screen.getByText("Mockup Studio")).toBeInTheDocument();
+    // "Test Set" appears multiple times (header + SetSummaryCard),
+    // so use getByRole instead
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
   });
 });
