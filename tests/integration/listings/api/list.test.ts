@@ -152,8 +152,8 @@ describe("GET /api/listings", () => {
     expect(res.status).toBe(200);
 
     const data = (await res.json()) as { listings: ListingIndexView[] };
-    expect(data.listings[0].id).toBe(listing2.id); // Most recent first
-    expect(data.listings[1].id).toBe(listing1.id);
+    expect(data.listings[0]!.id).toBe(listing2.id); // Most recent first
+    expect(data.listings[1]!.id).toBe(listing1.id);
   });
 
   it("200 — ListingIndexView shape (no readiness)", async () => {
