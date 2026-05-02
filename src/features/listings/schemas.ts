@@ -57,3 +57,13 @@ export const GenerateListingMetaSchema = z
   .strict();
 
 export type GenerateListingMetaInput = z.infer<typeof GenerateListingMetaSchema>;
+
+/**
+ * POST /api/listings/draft/[id]/submit body — Phase 9 V1 Task 17.
+ *
+ * V1 foundation: body boş; sadece path id'siyle çalışır. Strict mode.
+ * V1.1+ carry-forward: dryRun, scheduleAt vb.
+ */
+export const SubmitListingDraftSchema = z.object({}).strict();
+
+export type SubmitListingDraftInput = z.infer<typeof SubmitListingDraftSchema>;
