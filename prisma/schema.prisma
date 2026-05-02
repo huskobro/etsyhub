@@ -670,12 +670,22 @@ model Listing {
   status            ListingStatus    @default(DRAFT)
   etsyDraftId       String?
   mockups           Mockup[]
+  /// Phase 9 V1 K1 — Listing extend (additive, legacy dokunulmaz)
+  mockupJobId       String?
+  mockupJob         MockupJob?       @relation(fields: [mockupJobId], references: [id], onDelete: SetNull)
+  coverRenderId     String?
+  imageOrderJson    Json?
+  submittedAt       DateTime?
+  publishedAt       DateTime?
+  etsyListingId     String?
+  failedReason      String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   deletedAt         DateTime?
 
   @@index([userId])
   @@index([status])
+  @@index([mockupJobId])
 }
 
 // ============= JOBS / AUDIT / FLAGS / THEME / COST =============
@@ -1084,7 +1094,8 @@ model MockupJob {
   startedAt      DateTime?
   completedAt    DateTime?
 
-  renders MockupRender[]
+  renders   MockupRender[]
+  listings  Listing[]
 
   @@index([userId, createdAt])
   @@index([setId, createdAt])
