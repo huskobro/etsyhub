@@ -2,17 +2,17 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { PricingSection } from "@/features/listings/components/PricingSection";
 import { useUpdateListingDraft } from "@/features/listings/hooks/useUpdateListingDraft";
-import type { ListingDraft } from "@/features/listings/types";
+import type { ListingDraftView } from "@/features/listings/types";
 
 vi.mock("@/features/listings/hooks/useUpdateListingDraft");
 
-const mockListing: ListingDraft = {
+const mockListing: ListingDraftView = {
   id: "test-123",
   title: "Test Listing",
   description: "Test description",
   tags: ["tag1"],
   priceCents: 999, // $9.99
-  materials: [],
+  materials: ["Digital download"],
   status: "DRAFT",
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
@@ -25,7 +25,6 @@ const mockListing: ListingDraft = {
   etsyListingId: null,
   failedReason: null,
   readiness: [],
-  mockups: [],
 };
 
 describe("PricingSection", () => {

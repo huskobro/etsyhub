@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MetadataSection } from "@/features/listings/components/MetadataSection";
 import { useUpdateListingDraft } from "@/features/listings/hooks/useUpdateListingDraft";
-import type { ListingDraft } from "@/features/listings/types";
+import type { ListingDraftView } from "@/features/listings/types";
 
 vi.mock("@/features/listings/hooks/useUpdateListingDraft");
 
-const mockListing: ListingDraft = {
+const mockListing: ListingDraftView = {
   id: "test-123",
   title: "Test Title",
   description: "Test Description",
@@ -25,7 +25,6 @@ const mockListing: ListingDraft = {
   etsyListingId: null,
   failedReason: null,
   readiness: [],
-  mockups: [],
 };
 
 describe("MetadataSection", () => {

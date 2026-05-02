@@ -89,12 +89,3 @@ export type ListingIndexView = {
   updatedAt: string;
 };
 
-/**
- * Phase 9 Task 20 — Editable listing draft (component form state).
- *
- * AssetSection, MetadataSection, PricingSection form manipulation için.
- * ListingDraftView base'den derived (editable subset + mockups).
- */
-export type ListingDraft = ListingDraftView & {
-  mockups?: Array<{ id: string; name: string; outputKey: string }>;
-};

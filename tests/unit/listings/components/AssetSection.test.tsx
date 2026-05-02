@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { AssetSection } from "@/features/listings/components/AssetSection";
-import type { ListingDraft } from "@/features/listings/types";
+import type { ListingDraftView } from "@/features/listings/types";
 
-const mockListing: ListingDraft = {
+const mockListing: ListingDraftView = {
   id: "test-123",
   title: "Test Listing",
   description: "Test description",
@@ -44,9 +44,6 @@ const mockListing: ListingDraft = {
   etsyListingId: null,
   failedReason: null,
   readiness: [],
-  mockups: [
-    { id: "mock-1", name: "Canvas", outputKey: "/mockups/canvas.png" },
-  ],
 };
 
 describe("AssetSection", () => {

@@ -11,9 +11,13 @@ import type { ListingDraftView } from "../types";
  * Spec §5.1: GET /api/listings/draft/[id] → ListingDraftView
  * (includes readiness checks, imageOrder, all metadata).
  */
+export function listingDraftQueryKey(listingId: string) {
+  return ["listing-draft", listingId] as const;
+}
+
 export function useListingDraft(listingId: string) {
   return useQuery<ListingDraftView>({
-    queryKey: ["listing-draft", listingId] as const,
+    queryKey: listingDraftQueryKey(listingId),
     queryFn: async () => {
       const res = await fetch(`/api/listings/draft/${listingId}`);
       if (!res.ok) {

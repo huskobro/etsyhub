@@ -14,6 +14,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ListingDraftView } from "@/features/listings/ui/ListingDraftView";
 import type { ListingDraftView as ListingDraftViewType } from "@/features/listings/types";
 
+// Support both old and new ListingDraftView type name
+type ListingDraft = ListingDraftViewType;
+
 // Mock hook
 vi.mock("@/features/listings/hooks/useListingDraft", () => ({
   useListingDraft: vi.fn(),
@@ -158,7 +161,7 @@ describe("ListingDraftView", () => {
     expect(screen.getByText(/Network error/i)).toBeTruthy();
   });
 
-  it("should render listing detail with all metadata", () => {
+  it("should render listing detail with all metadata (Task 20: editable forms)", () => {
     (useListingDraft as any).mockReturnValue({
       data: mockListingDraft,
       isLoading: false,
@@ -167,18 +170,19 @@ describe("ListingDraftView", () => {
 
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
-    // Title should display
-    expect(screen.getByText("Beautiful Canvas Wall Art")).toBeTruthy();
+    // Title in input value (MetadataSection Task 20)
+    expect(screen.getByDisplayValue("Beautiful Canvas Wall Art")).toBeTruthy();
 
     // Status
     expect(screen.getByText(/Status: DRAFT/i)).toBeTruthy();
 
-    // Price
-    expect(screen.getByText(/\$29.99/)).toBeTruthy();
+    // Price in PricingSection input (Task 20: editable form)
+    const priceInput = screen.getByLabelText("Fiyat (USD)") as HTMLInputElement;
+    expect(priceInput.value).toBe("29.99");
 
-    // Tags (should show count and at least one tag)
-    expect(screen.getByText(/13\/13/)).toBeTruthy();
-    expect(screen.getByText("wall art")).toBeTruthy();
+    // Tags in MetadataSection input
+    const tagsInput = screen.getByLabelText("Etiketler (maksimum 13)") as HTMLInputElement;
+    expect(tagsInput.value).toContain("wall art");
   });
 
   it("should render image gallery with cover badge", () => {
@@ -246,7 +250,7 @@ describe("ListingDraftView", () => {
     expect(screen.getByText("Açıklama girilmeli")).toBeTruthy();
   });
 
-  it("should render metadata summary as read-only (no input fields)", () => {
+  it("should render editable metadata forms (Task 20: input fields visible)", () => {
     (useListingDraft as any).mockReturnValue({
       data: mockListingDraft,
       isLoading: false,
@@ -255,13 +259,12 @@ describe("ListingDraftView", () => {
 
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
-    // Verify displayed as text, not as input fields
-    const descriptionText = screen.getByText(/Modern abstract design/);
-    expect(descriptionText).toBeTruthy();
-
-    // Should NOT have input fields (Task 20)
+    // MetadataSection + PricingSection inputs visible (Task 20)
     const inputs = screen.queryAllByRole("textbox");
-    expect(inputs.length).toBe(0);
+    expect(inputs.length).toBeGreaterThan(0);
+
+    // Verify description input contains the text
+    expect(screen.getByDisplayValue(/Modern abstract design/)).toBeTruthy();
   });
 
   it("should render disabled submit button (Task 22 placeholder)", () => {
@@ -309,10 +312,8 @@ describe("ListingDraftView", () => {
 
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
-    // Should show "etiket yok" — check that empty tag placeholder renders
-    expect(screen.getByText(/0\/13/)).toBeTruthy(); // tag count badge
-    const placeholder = screen.getByText(/etiket yok/);
-    expect(placeholder).toBeTruthy();
+    // Should show "0/13 etiket" in MetadataSection counter
+    expect(screen.getByText(/0\/13 etiket/)).toBeTruthy();
   });
 
   it("should display correct cover image with isCover=true", () => {
@@ -346,8 +347,8 @@ describe("ListingDraftView", () => {
     expect(zipLink).toBeTruthy();
     expect(zipLink).toHaveAttribute("href", `/api/listings/${mockListingDraft.id}/assets/download`);
 
-    // Mockup count badge
-    expect(screen.getByText(/mockup/)).toBeTruthy();
+    // Mockup count badge (AssetSection mockupJobId check)
+    expect(screen.getByText(/1 mockup/i)).toBeTruthy();
   });
 
   // Task 20 slice tests: MetadataSection mounted

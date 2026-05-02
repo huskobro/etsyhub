@@ -1,5 +1,5 @@
 import { Download } from "lucide-react";
-import type { ListingDraft } from "../types";
+import type { ListingDraftView } from "../types";
 
 /**
  * AssetSection — Listing cover + grid + ZIP download + mockup badge.
@@ -12,7 +12,7 @@ import type { ListingDraft } from "../types";
  *
  * @param listing ListingDraft
  */
-export function AssetSection({ listing }: { listing: ListingDraft }) {
+export function AssetSection({ listing }: { listing: ListingDraftView }) {
   // Organize images: cover first, then others by packPosition
   const coverImage = listing.imageOrder.find((img: any) => img.isCover);
   const otherImages = listing.imageOrder
@@ -22,8 +22,8 @@ export function AssetSection({ listing }: { listing: ListingDraft }) {
   // Check if ready for ZIP download
   const allImagesReady = listing.imageOrder.every((img) => img.outputKey);
 
-  // Mockup count
-  const mockupCount = listing.mockups?.length ?? 0;
+  // Mockup count (from readiness check — Phase 8 integration)
+  const mockupJobReady = listing.mockupJobId != null;
 
   return (
     <div className="mb-8">
@@ -45,8 +45,8 @@ export function AssetSection({ listing }: { listing: ListingDraft }) {
       <div className="mb-6">
         <div className="grid grid-cols-4 gap-4">
           {coverImage && (
-            <div className="relative rounded-lg overflow-hidden shadow-lg border-2 border-accent col-span-1 row-span-2">
-              <div className="aspect-square bg-gray-100 flex items-center justify-center">
+            <div className="relative rounded-lg overflow-hidden shadow-lg col-span-1 row-span-2">
+              <div className="aspect-square bg-gray-100 flex items-center justify-center border-2 border-accent">
                 {coverImage.outputKey ? (
                   <img
                     src={coverImage.outputKey}
@@ -89,9 +89,9 @@ export function AssetSection({ listing }: { listing: ListingDraft }) {
 
       {/* Mockup Info & ZIP Ready */}
       <div className="flex flex-wrap gap-3 items-center text-sm">
-        {mockupCount > 0 && (
+        {mockupJobReady && (
           <div className="px-3 py-1 bg-blue-50 border border-blue-200 text-blue-700 rounded">
-            {mockupCount} mockup
+            1 mockup
           </div>
         )}
         {allImagesReady && (

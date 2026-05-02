@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Wand2 } from "lucide-react";
 import { useUpdateListingDraft } from "../hooks/useUpdateListingDraft";
-import type { ListingDraft } from "../types";
+import type { ListingDraftView } from "../types";
 
 /**
  * MetadataSection — Edit title, description, tags.
@@ -18,7 +18,7 @@ import type { ListingDraft } from "../types";
  *
  * @param listing ListingDraft
  */
-export function MetadataSection({ listing }: { listing: ListingDraft }) {
+export function MetadataSection({ listing }: { listing: ListingDraftView }) {
   const mutation = useUpdateListingDraft(listing.id);
 
   const [title, setTitle] = useState(listing.title || "");

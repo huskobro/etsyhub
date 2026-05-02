@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { useUpdateListingDraft } from "../hooks/useUpdateListingDraft";
-import type { ListingDraft } from "../types";
+import type { ListingDraftView } from "../types";
 
 /**
  * PricingSection — Edit price & materials.
@@ -16,7 +16,7 @@ import type { ListingDraft } from "../types";
  *
  * @param listing ListingDraft
  */
-export function PricingSection({ listing }: { listing: ListingDraft }) {
+export function PricingSection({ listing }: { listing: ListingDraftView }) {
   const mutation = useUpdateListingDraft(listing.id);
 
   const [priceDollars, setPriceDollars] = useState(
@@ -40,7 +40,10 @@ export function PricingSection({ listing }: { listing: ListingDraft }) {
 
     mutation.mutate({
       priceCents,
-      materials: materials.trim() ? materials.trim() : undefined,
+      materials: materials
+        .split(",")
+        .map((m) => m.trim())
+        .filter((m) => m.length > 0),
     });
   };
 
