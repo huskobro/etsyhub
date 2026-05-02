@@ -29,8 +29,8 @@ export type ToastEvent = {
   tone: ToastTone;
   message: string;
   /** Debug/observability için. UI'da görünür değil; test'lerde varlık
-   *  doğrulanır (heavy-edit / export). */
-  source?: "heavy-edit" | "export";
+   *  doğrulanır (heavy-edit / export / mockup-job). */
+  source?: "heavy-edit" | "export" | "mockup-job";
 };
 
 type State = {

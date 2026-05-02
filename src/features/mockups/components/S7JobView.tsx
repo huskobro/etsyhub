@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMockupJob, mockupJobQueryKey } from "@/features/mockups/hooks/useMockupJob";
+import { useMockupJobCompletionToast } from "@/features/mockups/hooks/useMockupJobCompletionToast";
 import { Button } from "@/components/ui/Button";
 import { AlertTriangle } from "lucide-react";
 
@@ -15,6 +16,9 @@ export function S7JobView({ setId, jobId }: { setId: string; jobId: string }) {
   const { data: job, isLoading, error } = useMockupJob(jobId);
   const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [isCancelling, setIsCancelling] = React.useState(false);
+
+  // Phase 8 Task 30 — Job completion/failure toast
+  useMockupJobCompletionToast(job);
 
   // Auto-redirect on terminal success states (Spec §5.5 satır 1304-1311)
   useEffect(() => {
