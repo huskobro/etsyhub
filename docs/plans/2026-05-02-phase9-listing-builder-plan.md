@@ -1,14 +1,26 @@
-# Phase 9 — Listing Builder Plan (Taslak)
+# Phase 9 — Listing Builder Plan
 
-> **Status:** 🟡 Plan taslağı (kullanıcı onayı bekliyor)
+> **Status:** 🟢 Approved / locked assumptions (K1-K6 onayıyla 2026-05-02)
 > **Tarih:** 2026-05-02
-> **Design doc:** [`./2026-05-02-phase9-listing-builder-design.md`](./2026-05-02-phase9-listing-builder-design.md)
+> **Design doc:** [`./2026-05-02-phase9-listing-builder-design.md`](./2026-05-02-phase9-listing-builder-design.md) (§10.1 lock-in tablosu)
 > **Phase 8 emsali:** [`./2026-05-01-phase8-mockup-studio-plan.md`](./2026-05-01-phase8-mockup-studio-plan.md)
 >
 > **Önemli:**
-> - Bu plan **taslak**; design doc K1-K6 kararları onaylandıktan sonra finalize edilir
-> - Phase 8 V1 manual QA pending; sürpriz bug Phase 9 implementation'ı bloklayabilir
+> - K1-K6 kararları kullanıcı onayıyla kilitlendi (design doc §10.1)
+> - **Hâlâ açık:** T2 (AI provider) — Task 5 başlangıcında netleşecek
+> - Phase 8 V1 manual QA pending; paralel yürür, sürpriz bug fix önceliğine göre Phase 9 duraklayabilir
 > - Implementation `superpowers:subagent-driven-development` ile yürütülür (Phase 8 emsali)
+
+## Lock-in özeti (design doc §10.1)
+
+| # | Karar | Plan etkisi |
+|---|---|---|
+| K1 = A | `Listing` extend | Task 1 (migration) — additive nullable alanlar |
+| K2 = A | Manuel AI button | Task 16, 23 — POST /generate-meta endpoint + UI button |
+| K3 = A | Soft warn readiness | Task 8, 24 — readiness service + UI checklist |
+| K4 = A | Flat `/listings/draft/[id]` | Task 21, 31 — server entry path + S8 CTA target |
+| K5 = A | Gerçek Etsy + feature flag | Task 4, 10, 17, 27-30 — OAuth + submit + ETSY_API_ENABLED |
+| K6 = A | V1 dokunma | Task 1 — eski `Listing`/`Mockup` modelleri additive |
 
 ---
 
@@ -62,7 +74,7 @@ Toplam: **35 task** (Phase 8'in 33'üne yakın).
 
 **Açıklama:** `Listing` modeline Phase 8 köprü alanları ekle (additive, nullable). `JobType` enum'una `ETSY_LISTING_SUBMIT` ekle.
 
-**Önerilen varsayım K1:** `Listing` extend (S1).
+**Onaylanmış karar (K1 = A):** `Listing` extend (S1) — additive nullable alanlar.
 
 **Files:**
 - `prisma/schema.prisma` (modify)
@@ -120,7 +132,7 @@ Toplam: **35 task** (Phase 8'in 33'üne yakın).
 
 **External dependency:** ⚠️ OpenAI API key (E3).
 
-> **🟡 T2 Karar gerekli:** Provider seçimi (OpenAI vs KIE vs local). Önerilen varsayım = OpenAI gpt-4.
+> **🟡 T2 — Açık karar (Task 5 dispatch öncesi):** Provider seçimi (OpenAI vs KIE vs local). Önerim = OpenAI gpt-4. Bu karar K1-K6 lock kapsamı dışı; Task 5 implementer dispatch'inde son karar verilecek. KIE seçilirse Phase 6 carry-forward (`d439cf7`) flaky note önce ele alınmalı.
 
 ---
 
@@ -197,7 +209,7 @@ Toplam: **35 task** (Phase 8'in 33'üne yakın).
 
 **Bağımlılık:** Task 9.
 
-**Karar gerekli (auxiliary):** V1'de negative library hard-block mi (üretilen çıktı içeriyorsa reddet) yoksa warn-only mi? Önerim: **warn-only** V1; V1.1 hard block.
+**🟡 Auxiliary karar (Task 12 dispatch'inde):** V1'de negative library hard-block mi (üretilen çıktı içeriyorsa reddet) yoksa warn-only mi? Önerim: **warn-only** V1; V1.1 hard block. Bu karar K1-K6 lock kapsamı dışı; Task 12 implementer dispatch'inde son karar verilecek.
 
 ---
 
@@ -243,7 +255,7 @@ Toplam: **35 task** (Phase 8'in 33'üne yakın).
 
 **Bağımlılık:** Task 9.
 
-> **🟡 K2 Karar gerekli:** Manuel button vs handoff'ta otomatik. Önerilen varsayım = manuel button.
+> **✅ K2 onaylandı (2026-05-02):** Manuel "✨ AI ile üret" button. Handoff'ta otomatik üretim YOK.
 
 ### Task 17 — `POST /api/listings/draft/[id]/submit`
 
@@ -334,7 +346,7 @@ Toplam: **35 task** (Phase 8'in 33'üne yakın).
 
 **Bağımlılık:** Task 21.
 
-> **🟡 K3 Karar gerekli:** Soft warn vs hard gate. Önerilen varsayım = soft warn.
+> **✅ K3 onaylandı (2026-05-02):** Soft warn (submit enabled kalır, uyarı görünür). V1.1'de hard gate flag.
 
 ### Task 25 — Submit modal + footer
 
@@ -578,9 +590,60 @@ Plan finalize edilmeden önce kontrol:
 
 ## Status
 
-🟡 **Plan taslağı.** Design doc K1-K6 kararları onaylandıktan sonra finalize edilir. Implementation `superpowers:subagent-driven-development` ile yürütülür (Phase 8 emsali — fresh implementer per task + 2-stage review + bağımsız doğrulama).
+🟢 **Approved / locked assumptions (2026-05-02).** Design doc K1-K6 kararları onaylandı. Implementation `superpowers:subagent-driven-development` ile yürütülür (Phase 8 emsali — fresh implementer per task + 2-stage review + bağımsız doğrulama).
 
-**Onay sonrası:**
-1. Bu plan finalize edilir (`Status: 🟢 approved`)
-2. Phase 8 manual QA tamamlanmasını bekle (ideal) veya paralel başla (Phase 8 fix bağımlılığı kabul ederek)
-3. Task 1'den başla (Foundation)
+**Açık kalanlar (lock kapsamı dışı, implementation sırasında):**
+- T2 — AI provider (Task 5 dispatch öncesi)
+- Auxiliary — auto-save vs explicit "Save draft" (Task 21-25 dispatch'inde)
+- Auxiliary — negative library warn-only vs hard-block (Task 12 dispatch'inde)
+
+**Sıradaki adım:** Implementation kickoff prerequisites kontrolü (bkz. §15) tamam olunca Task 1'den başla.
+
+---
+
+## 15. Implementation Kickoff Prerequisites
+
+Phase 9 V1 implementation başlamadan önce şunlar net olmalı (design doc §13 ile uyumlu):
+
+### 15.1 Phase 8 manuel QA — paralel ama pending
+
+- Phase 8 `phase8-manual-qa.md` checklist henüz koşturulmadı (insan-paralel iş)
+- Phase 9 implementation Phase 8 manual QA'yı **bloklamaz** — paralel yürüyebilir
+- Phase 8 manual QA'da kritik bug çıkarsa Phase 9 fix önceliğine göre duraklayabilir
+- **İdeal sıra:** Phase 8 manual QA → 🟢 PASS → Phase 9 başla
+- **Pragmatik sıra:** Paralel; task switch riskini kabul
+
+### 15.2 Etsy developer credentials / sandbox dependency
+
+- **External (E1):** Etsy developer portal API key + secret kullanıcı tarafından sağlanmalı
+- **External (E2):** Etsy sandbox shop (test için) veya production shop (gerçek kullanım) bağlanmalı
+- **Etki:** Task 4 + Task 27-28 öncesi credentials gerekir
+- **Mitigation:** `ETSY_API_ENABLED=false` feature flag ile dev/test simulate; credentials gelmeden Task 1-3, 6-9, 13-16, 19-26 başlatılabilir; Task 4, 10, 17, 27-30 credentials gelince activate
+- **Önemli:** Task 1'den 3'e kadar (foundation) credentials gerektirmez — implementation hemen başlayabilir
+
+### 15.3 AI provider kararı (T2) — Task 5 dispatch öncesi
+
+- **Açık karar:** OpenAI gpt-4 / KIE / local
+- **Önerim:** OpenAI gpt-4 (hızlı, hazır, provider abstraction sayesinde V2 swap kolay)
+- **External (E3):** OpenAI API key kullanıcı tarafından sağlanmalı (T2 onaylandıktan sonra)
+- **Etki:** Task 5 implementer dispatch'inde T2 onayı zorunlu
+- **Phase 6 carry-forward:** KIE provider flaky note (`d439cf7`) hâlâ açık; KIE alternatifi seçilirse Phase 6 stabilizasyonu önce olmalı
+- **Workaround:** Task 1-4 T2 kararı olmadan başlatılabilir; Task 5 öncesi T2 = OpenAI/KIE/local netleşmeli
+
+### 15.4 Legacy `Listing` row count kontrolü — Task 1 öncesi
+
+- **K1 = A** (Listing extend) onaylandı — migration güvenliği için doğrulama:
+  ```sql
+  SELECT count(*) FROM "Listing";
+  ```
+- **Beklenen:** 0 (kod tarafı kullanım yok, prod data muhtemelen boş)
+- **Eğer >0 ise:** Mevcut row'lar nullable yeni alanlarla uyumlu (additive); default value migration gerekmez ama kontrol et
+- **Sorumlu:** Task 1 implementer dispatch öncesi prerequisite check
+
+### 15.5 Active publish disipline — kalıcı kilit
+
+- CLAUDE.md disipline mutlak: **Etsy'ye direct active publish HİÇBİR ZAMAN yapılmayacak**
+- V1+ kod tarafında Etsy `updateListing(state="active")` veya equivalent endpoint çağrısı **YASAK**
+- Sadece `createDraftListing` + `uploadListingImage` endpoint'leri kullanılır
+- Etsy panelinde manuel publish kullanıcının sorumluluğu
+- **Code review disipline:** Task 10, 17, 30 (Etsy submit + token refresh) kodu bu disipline bağlı; review checklist'inde bu madde olmalı
