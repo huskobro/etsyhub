@@ -1,80 +1,73 @@
-// Phase 9 V1 Task 18 — GET /api/listings (list user listings).
+// Phase 9 V1 Task 18 — GET /api/listings index route.
 //
-// Endpoint: GET /api/listings
-// Response: { listings: ListingCompact[], pagination: {...} }
-// Query params: status, limit, offset (optional, V1 basic)
+// User'ın listing'lerini liste; status filter opsiyonel.
+//   - Auth: requireUser
+//   - Query: ?status=DRAFT|FAILED|... (opsiyonel, ListingStatus enum)
+//   - Cross-user disipline: WHERE userId
+//   - soft-delete filter: deletedAt: null
+//   - Order: updatedAt DESC
+//   - Response: { listings: ListingIndexView[] }
+//   - readiness DÖNMEZ (perf — detail view'da)
 //
-// Spec §6.1 (listing index). Compact format (no readiness for perf).
-// User sees own; admin can see all (future role support).
+// Phase 8 emsali: src/app/api/mockup/templates/route.ts (read-only liste).
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireUser } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
 import { ValidationError } from "@/lib/errors";
 import { db } from "@/server/db";
+import type { ListingIndexView } from "@/features/listings/types";
 
-// ────────────────────────────────────────────────────────────
-// Handler
-// ────────────────────────────────────────────────────────────
+const QuerySchema = z.object({
+  status: z
+    .enum([
+      "DRAFT",
+      "SCHEDULED",
+      "PUBLISHED",
+      "FAILED",
+      "REJECTED",
+      "NEEDS_REVIEW",
+    ])
+    .optional(),
+});
 
-async function handleList(req: NextRequest) {
-  // 1. Auth guard
+export const GET = withErrorHandling(async (req: Request) => {
   const user = await requireUser();
-  const userId = user.id;
 
-  // 2. Parse query params (basic, V1)
-  const url = new URL(req.url);
-  const statusParam = url.searchParams.get("status");
-  const limitStr = url.searchParams.get("limit");
-  const offsetStr = url.searchParams.get("offset");
-
-  const limit = limitStr ? Math.min(parseInt(limitStr), 100) : 50;
-  const offset = offsetStr ? parseInt(offsetStr) : 0;
-
-  // Validate limit/offset
-  if (isNaN(limit) || isNaN(offset) || limit < 1 || offset < 0) {
-    throw new ValidationError("Invalid limit/offset");
+  const { searchParams } = new URL(req.url);
+  const parsed = QuerySchema.safeParse({
+    status: searchParams.get("status") ?? undefined,
+  });
+  if (!parsed.success) {
+    throw new ValidationError(
+      "Geçersiz query parametresi",
+      parsed.error.flatten(),
+    );
   }
 
-  // 3. Build filter (V1: status optional, user-scoped)
-  const where: any = {
-    userId,
-  };
-
-  if (statusParam) {
-    where.status = statusParam;
-  }
-
-  // 4. Fetch listings (compact index, no readiness)
   const listings = await db.listing.findMany({
-    where,
-    select: {
-      id: true,
-      status: true,
-      title: true,
-      mockupJobId: true,
-      coverRenderId: true,
-      createdAt: true,
-      updatedAt: true,
+    where: {
+      userId: user.id,
+      deletedAt: null,
+      ...(parsed.data.status ? { status: parsed.data.status } : {}),
     },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-    skip: offset,
+    orderBy: { updatedAt: "desc" },
   });
 
-  // 5. Fetch total count
-  const total = await db.listing.count({ where });
+  const view: ListingIndexView[] = listings.map((l) => ({
+    id: l.id,
+    status: l.status,
+    mockupJobId: l.mockupJobId,
+    coverRenderId: l.coverRenderId,
+    title: l.title,
+    priceCents: l.priceCents,
+    submittedAt: l.submittedAt?.toISOString() ?? null,
+    publishedAt: l.publishedAt?.toISOString() ?? null,
+    etsyListingId: l.etsyListingId,
+    createdAt: l.createdAt.toISOString(),
+    updatedAt: l.updatedAt.toISOString(),
+  }));
 
-  // 6. Return response
-  return NextResponse.json({
-    listings,
-    pagination: {
-      limit,
-      offset,
-      total,
-      hasMore: offset + limit < total,
-    },
-  });
-}
-
-export const GET = withErrorHandling(handleList);
+  return NextResponse.json({ listings: view });
+});

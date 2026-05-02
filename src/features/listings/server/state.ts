@@ -74,3 +74,13 @@ export function assertValidTransition(
     throw new ListingInvalidTransitionError(from, to);
   }
 }
+
+/**
+ * isListingEditable(status) — V1 editability guard.
+ *
+ * V1: Only DRAFT and NEEDS_REVIEW are editable.
+ * Terminal statuses (PUBLISHED, FAILED, REJECTED) are not editable.
+ */
+export function isListingEditable(status: ListingStatus): boolean {
+  return status === "DRAFT" || status === "NEEDS_REVIEW";
+}

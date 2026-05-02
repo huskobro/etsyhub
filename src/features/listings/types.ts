@@ -36,3 +36,55 @@ export type ReadinessCheck = {
   severity: "warn" | "error";
   message: string;
 };
+
+/**
+ * Phase 9 V1 — Listing draft detay view (GET /api/listings/draft/[id], PATCH response).
+ *
+ * Provider-agnostik: legacy alanlar (generatedDesignId, etsyDraftId,
+ * productTypeId, mockups[], deletedAt) expose edilmiyor — K6 lock.
+ *
+ * imageOrder PARSED — handoff sırasında JSON snapshot alındı, view'da
+ * tipli array.
+ *
+ * readiness server-side compute (computeReadiness — Task 8 readiness
+ * service); UI checklist render eder, V1 soft warn (K3 lock).
+ */
+export type ListingDraftView = {
+  id: string;
+  status: ListingStatus;
+  mockupJobId: string | null;
+  coverRenderId: string | null;
+  imageOrder: ListingImageOrderEntry[];
+  title: string | null;
+  description: string | null;
+  tags: string[];
+  category: string | null;
+  priceCents: number | null;
+  materials: string[];
+  submittedAt: string | null;
+  publishedAt: string | null;
+  etsyListingId: string | null;
+  failedReason: string | null;
+  readiness: ReadinessCheck[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Phase 9 V1 — Listing compact index view (GET /api/listings).
+ *
+ * readiness DÖNMEZ (perf — UI detail view'da çağrılır).
+ */
+export type ListingIndexView = {
+  id: string;
+  status: ListingStatus;
+  mockupJobId: string | null;
+  coverRenderId: string | null;
+  title: string | null;
+  priceCents: number | null;
+  submittedAt: string | null;
+  publishedAt: string | null;
+  etsyListingId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
