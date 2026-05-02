@@ -96,7 +96,7 @@ export async function swapCover(
   const oldCover = job.renders.find((r) => r.id === job.coverRenderId);
   if (!oldCover) {
     // Defensive: job should always have cover. If missing, fail fast.
-    throw new AppError(500, "INTERNAL_ERROR", "Job has no cover render");
+    throw new AppError("Job has no cover render", "INTERNAL_ERROR", 500);
   }
 
   // Save old cover's position (for swap)

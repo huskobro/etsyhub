@@ -235,7 +235,7 @@ async function makeJob(args: {
   if (renders.length > 0) {
     await db.mockupJob.update({
       where: { id: job.id },
-      data: { coverRenderId: renders[0].id },
+      data: { coverRenderId: renders[0]!.id },
     });
   }
 
@@ -293,8 +293,8 @@ describe("POST /api/mockup/jobs/[jobId]/cover (Spec §4.8)", () => {
       });
 
       // Before: covers = render[0] (packPos 0), secondary = render[1] (packPos 1)
-      const beforeCover = renders[0];
-      const swapTarget = renders[1];
+      const beforeCover = renders[0]!;
+      const swapTarget = renders[1]!;
       expect(beforeCover.packPosition).toBe(0);
       expect(swapTarget.packPosition).toBe(1);
 
@@ -351,7 +351,7 @@ describe("POST /api/mockup/jobs/[jobId]/cover (Spec §4.8)", () => {
         bindings,
       });
 
-      const newCover = renders[1];
+      const newCover = renders[1]!;
 
       vi.mocked(requireUser).mockResolvedValueOnce({
         id: userAId,
@@ -417,7 +417,7 @@ describe("POST /api/mockup/jobs/[jobId]/cover (Spec §4.8)", () => {
       const res = await POST(
         new Request("http://test/api/mockup/jobs/[jobId]/cover", {
           method: "POST",
-          body: JSON.stringify({ renderId: otherRenders[0].id }),
+          body: JSON.stringify({ renderId: otherRenders[0]!.id }),
         }),
         { params: { jobId: job.id } },
       );
@@ -461,8 +461,8 @@ describe("POST /api/mockup/jobs/[jobId]/cover (Spec §4.8)", () => {
       const successRender = await db.mockupRender.create({
         data: {
           jobId: job.id,
-          variantId: itemIds[0],
-          bindingId: bindings[0].id,
+          variantId: itemIds[0]!,
+          bindingId: bindings[0]!.id,
           templateSnapshot: { mock: true },
           packPosition: 0,
           selectionReason: "COVER",
@@ -474,8 +474,8 @@ describe("POST /api/mockup/jobs/[jobId]/cover (Spec §4.8)", () => {
       const failedRender = await db.mockupRender.create({
         data: {
           jobId: job.id,
-          variantId: itemIds[1],
-          bindingId: bindings[1].id,
+          variantId: itemIds[1]!,
+          bindingId: bindings[1]!.id,
           templateSnapshot: { mock: true },
           packPosition: 1,
           selectionReason: "TEMPLATE_DIVERSITY",
@@ -524,7 +524,7 @@ describe("POST /api/mockup/jobs/[jobId]/cover (Spec §4.8)", () => {
         bindings: [binding],
       });
 
-      const cover = renders[0];
+      const cover = renders[0]!;
 
       vi.mocked(requireUser).mockResolvedValueOnce({
         id: userAId,
@@ -573,7 +573,7 @@ describe("POST /api/mockup/jobs/[jobId]/cover (Spec §4.8)", () => {
       const res = await POST(
         new Request("http://test/api/mockup/jobs/[jobId]/cover", {
           method: "POST",
-          body: JSON.stringify({ renderId: renders[1].id }),
+          body: JSON.stringify({ renderId: renders[1]!.id }),
         }),
         { params: { jobId: job.id } },
       );
@@ -604,7 +604,7 @@ describe("POST /api/mockup/jobs/[jobId]/cover (Spec §4.8)", () => {
       });
 
       // Swap to position 2
-      const newCover = renders[2];
+      const newCover = renders[2]!;
 
       vi.mocked(requireUser).mockResolvedValueOnce({
         id: userAId,
