@@ -144,6 +144,8 @@ function useDebouncedCallback<TArgs extends unknown[]>(
 export type UseMockupPackStateResult = {
   selectedTemplateIds: string[];
   defaultTemplateIds: string[];
+  incompatibleTemplateIds?: string[];
+  incompatibleReason?: string;
   isDirty: boolean;
   isCustom: boolean;
   toggleTemplate: (templateId: string) => void;
