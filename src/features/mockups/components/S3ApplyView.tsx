@@ -11,7 +11,7 @@
 //   - useMockupPackState (Task 14) — selected templates + dirty state
 //   - useMockupOverlayState (Task 15) — drawer/modal URL state
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSelectionSet } from "@/features/selection/queries";
 import { useMockupTemplates } from "@/features/mockups/hooks/useMockupTemplates";
@@ -42,24 +42,31 @@ export function S3ApplyView({ setId }: { setId: string }) {
   const isQuickPack = !packState.isCustom;
   const actualPackSize = packState.selectedTemplateIds.length;
 
-  const handleSubmit = async () => {
-    if (actualPackSize === 0) {
-      throw new Error("Lütfen en az bir şablon seçiniz");
-    }
-
+  const handleSubmit = useCallback(async () => {
     setIsSubmitting(true);
     try {
+      const res = await fetch("/api/mockup/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          setId,
+          categoryId: "canvas",
+          templateIds: packState.selectedTemplateIds,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const message =
+          body?.error ?? body?.message ?? `HTTP ${res.status}`;
+        throw new Error(message);
+      }
+      const { jobId } = await res.json();
       // TODO Task 28: S7 Job sayfası bu path'te gelecek; şimdilik 404 verir
-      // Gerçek submit: API POST /api/mockup/jobs ile job oluştur
-      // Ardından: router.push(`/selection/sets/${setId}/mockup/jobs/${jobId}`)
-
-      // MVP'de placeholder submit
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      router.push(`/selection/sets/${setId}/mockup/jobs/job-123`);
+      router.push(`/selection/sets/${setId}/mockup/jobs/${jobId}`);
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [setId, packState.selectedTemplateIds, router]);
 
   return (
     <main className="flex min-h-screen flex-col bg-white">
