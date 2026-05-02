@@ -13,6 +13,13 @@ import { GET } from "@/app/api/listings/draft/[id]/route";
 import { requireUser } from "@/server/session";
 import type { ListingDraftView } from "@/features/listings/types";
 
+// Stable prefix + per-test nonce → paralel suite collision'ı önler.
+const TEST_PREFIX = "phase9-get-draft";
+let nonce = 0;
+function uniqueEmail(label: string) {
+  return `${TEST_PREFIX}-${label}-${Date.now()}-${++nonce}-${Math.random().toString(36).slice(2, 8)}@test.local`;
+}
+
 async function ensureUser(email: string) {
   return db.user.upsert({
     where: { email },
@@ -34,7 +41,7 @@ describe("GET /api/listings/draft/[id]", () => {
   });
 
   it("200 — view shape correct, readiness computed", async () => {
-    const user = await ensureUser(`user-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("shape"));
     userIds.push(user.id);
 
     const store = await db.store.create({
@@ -71,7 +78,7 @@ describe("GET /api/listings/draft/[id]", () => {
   });
 
   it("200 — legacy fields NOT exposed (K6 lock)", async () => {
-    const user = await ensureUser(`user-legacy-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("legacy"));
     userIds.push(user.id);
 
     const store = await db.store.create({
@@ -103,8 +110,8 @@ describe("GET /api/listings/draft/[id]", () => {
   });
 
   it("404 — cross-user listing", async () => {
-    const user1 = await ensureUser(`user1-${Date.now() + Math.random()}@test.local`);
-    const user2 = await ensureUser(`user2-${Date.now() + Math.random()}@test.local`);
+    const user1 = await ensureUser(uniqueEmail("cross1"));
+    const user2 = await ensureUser(uniqueEmail("cross2"));
     userIds.push(user1.id, user2.id);
 
     const store1 = await db.store.create({
@@ -129,7 +136,7 @@ describe("GET /api/listings/draft/[id]", () => {
   });
 
   it("404 — non-existent listing", async () => {
-    const user = await ensureUser(`user-404-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("404"));
     userIds.push(user.id);
 
     const req = new Request(
@@ -143,7 +150,7 @@ describe("GET /api/listings/draft/[id]", () => {
   });
 
   it("400 — invalid id param (not cuid)", async () => {
-    const user = await ensureUser(`user-400-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("400"));
     userIds.push(user.id);
 
     const req = new Request("http://localhost/api/listings/draft/invalid-id");
@@ -156,7 +163,18 @@ describe("GET /api/listings/draft/[id]", () => {
 });
 
 afterAll(async () => {
+  // FK order: listing -> mockupRender -> mockupJob -> selectionItem ->
+  // selectionSet -> generatedDesign -> reference -> asset -> store -> user.
+  // Bu suite çoğunlukla sadece user+store+listing yaratıyor, ama paralel
+  // suite'ler aynı user'a child bağlamış olabilir — defansif tam temizlik.
   await db.listing.deleteMany({ where: { userId: { in: userIds } } });
+  await db.mockupRender.deleteMany({ where: { job: { userId: { in: userIds } } } });
+  await db.mockupJob.deleteMany({ where: { userId: { in: userIds } } });
+  await db.selectionItem.deleteMany({ where: { selectionSet: { userId: { in: userIds } } } });
+  await db.selectionSet.deleteMany({ where: { userId: { in: userIds } } });
+  await db.generatedDesign.deleteMany({ where: { userId: { in: userIds } } });
+  await db.reference.deleteMany({ where: { userId: { in: userIds } } });
+  await db.asset.deleteMany({ where: { userId: { in: userIds } } });
   await db.store.deleteMany({ where: { userId: { in: userIds } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
 });

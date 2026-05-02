@@ -13,6 +13,13 @@ import { GET } from "@/app/api/listings/route";
 import { requireUser } from "@/server/session";
 import type { ListingIndexView } from "@/features/listings/types";
 
+// Stable prefix + per-test nonce → paralel suite collision'ı önler.
+const TEST_PREFIX = "phase9-list";
+let nonce = 0;
+function uniqueEmail(label: string) {
+  return `${TEST_PREFIX}-${label}-${Date.now()}-${++nonce}-${Math.random().toString(36).slice(2, 8)}@test.local`;
+}
+
 async function ensureUser(email: string) {
   return db.user.upsert({
     where: { email },
@@ -34,7 +41,7 @@ describe("GET /api/listings", () => {
   });
 
   it("200 — user sees own listings, status filter works", async () => {
-    const user = await ensureUser(`user-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("filter"));
     userIds.push(user.id);
 
     const store = await db.store.create({
@@ -71,7 +78,7 @@ describe("GET /api/listings", () => {
   });
 
   it("200 — empty list when user has no listings", async () => {
-    const user = await ensureUser(`user-empty-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("empty"));
     userIds.push(user.id);
 
     const req = new Request("http://localhost/api/listings");
@@ -85,7 +92,7 @@ describe("GET /api/listings", () => {
   });
 
   it("200 — soft-deleted listings hidden", async () => {
-    const user = await ensureUser(`user-soft-delete-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("soft-delete"));
     userIds.push(user.id);
 
     const store = await db.store.create({
@@ -118,7 +125,7 @@ describe("GET /api/listings", () => {
   });
 
   it("200 — ordered by updatedAt DESC", async () => {
-    const user = await ensureUser(`user-order-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("order"));
     userIds.push(user.id);
 
     const store = await db.store.create({
@@ -157,7 +164,7 @@ describe("GET /api/listings", () => {
   });
 
   it("200 — ListingIndexView shape (no readiness)", async () => {
-    const user = await ensureUser(`user-shape-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("shape"));
     userIds.push(user.id);
 
     const store = await db.store.create({
@@ -191,7 +198,7 @@ describe("GET /api/listings", () => {
   });
 
   it("400 — invalid status query parameter", async () => {
-    const user = await ensureUser(`user-invalid-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("invalid"));
     userIds.push(user.id);
 
     const req = new Request("http://localhost/api/listings?status=INVALID_STATUS");
@@ -203,7 +210,17 @@ describe("GET /api/listings", () => {
 });
 
 afterAll(async () => {
+  // FK order: listing -> mockupRender -> mockupJob -> selectionItem ->
+  // selectionSet -> generatedDesign -> reference -> asset -> store -> user.
+  // Paralel suite'ler aynı user'a child bağlamış olabilir — defansif tam temizlik.
   await db.listing.deleteMany({ where: { userId: { in: userIds } } });
+  await db.mockupRender.deleteMany({ where: { job: { userId: { in: userIds } } } });
+  await db.mockupJob.deleteMany({ where: { userId: { in: userIds } } });
+  await db.selectionItem.deleteMany({ where: { selectionSet: { userId: { in: userIds } } } });
+  await db.selectionSet.deleteMany({ where: { userId: { in: userIds } } });
+  await db.generatedDesign.deleteMany({ where: { userId: { in: userIds } } });
+  await db.reference.deleteMany({ where: { userId: { in: userIds } } });
+  await db.asset.deleteMany({ where: { userId: { in: userIds } } });
   await db.store.deleteMany({ where: { userId: { in: userIds } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
 });

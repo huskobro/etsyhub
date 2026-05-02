@@ -14,6 +14,13 @@ import { POST } from "@/app/api/listings/draft/route";
 import { requireUser } from "@/server/session";
 import { createListingDraftFromMockupJob, ListingHandoffJobNotFoundError } from "@/features/listings/server/handoff.service";
 
+// Stable prefix + per-test nonce → paralel suite collision'ı önler.
+const TEST_PREFIX = "phase9-create-draft";
+let nonce = 0;
+function uniqueEmail(label: string) {
+  return `${TEST_PREFIX}-${label}-${Date.now()}-${++nonce}-${Math.random().toString(36).slice(2, 8)}@test.local`;
+}
+
 async function ensureUser(email: string) {
   return db.user.upsert({
     where: { email },
@@ -38,7 +45,7 @@ describe("POST /api/listings/draft", () => {
   });
 
   it("202 — happy path: service called, listingId returned", async () => {
-    const user = await ensureUser(`user-202-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("202"));
     userIds.push(user.id);
 
     const req = new Request("http://localhost/api/listings/draft", {
@@ -56,7 +63,7 @@ describe("POST /api/listings/draft", () => {
   });
 
   it("400 — validation: mockupJobId eksik", async () => {
-    const user = await ensureUser(`user-400a-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("400a"));
     userIds.push(user.id);
 
     const req = new Request("http://localhost/api/listings/draft", {
@@ -71,7 +78,7 @@ describe("POST /api/listings/draft", () => {
   });
 
   it("400 — validation: mockupJobId not cuid", async () => {
-    const user = await ensureUser(`user-400b-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("400b"));
     userIds.push(user.id);
 
     const req = new Request("http://localhost/api/listings/draft", {
@@ -88,5 +95,18 @@ describe("POST /api/listings/draft", () => {
 });
 
 afterAll(async () => {
+  // FK order: listing -> mockupRender -> mockupJob -> selectionItem ->
+  // selectionSet -> generatedDesign -> reference -> asset -> store -> user.
+  // Bu suite çoğunlukla sadece user yaratıyor, ama paralel suite'ler aynı
+  // user'a child bağlamış olabilir — defansif tam temizlik.
+  await db.listing.deleteMany({ where: { userId: { in: userIds } } });
+  await db.mockupRender.deleteMany({ where: { job: { userId: { in: userIds } } } });
+  await db.mockupJob.deleteMany({ where: { userId: { in: userIds } } });
+  await db.selectionItem.deleteMany({ where: { selectionSet: { userId: { in: userIds } } } });
+  await db.selectionSet.deleteMany({ where: { userId: { in: userIds } } });
+  await db.generatedDesign.deleteMany({ where: { userId: { in: userIds } } });
+  await db.reference.deleteMany({ where: { userId: { in: userIds } } });
+  await db.asset.deleteMany({ where: { userId: { in: userIds } } });
+  await db.store.deleteMany({ where: { userId: { in: userIds } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
 });

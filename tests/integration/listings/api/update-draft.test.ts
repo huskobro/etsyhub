@@ -13,6 +13,13 @@ import { PATCH } from "@/app/api/listings/draft/[id]/route";
 import { requireUser } from "@/server/session";
 import type { ListingDraftView } from "@/features/listings/types";
 
+// Stable prefix + per-test nonce → paralel suite collision'ı önler.
+const TEST_PREFIX = "phase9-update-draft";
+let nonce = 0;
+function uniqueEmail(label: string) {
+  return `${TEST_PREFIX}-${label}-${Date.now()}-${++nonce}-${Math.random().toString(36).slice(2, 8)}@test.local`;
+}
+
 async function ensureUser(email: string) {
   return db.user.upsert({
     where: { email },
@@ -34,7 +41,7 @@ describe("PATCH /api/listings/draft/[id]", () => {
   });
 
   it("200 — title update + readiness recompute", async () => {
-    const user = await ensureUser(`user-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("title"));
     userIds.push(user.id);
 
     const store = await db.store.create({
@@ -67,7 +74,7 @@ describe("PATCH /api/listings/draft/[id]", () => {
   });
 
   it("200 — partial update: tags only", async () => {
-    const user = await ensureUser(`user-partial-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("partial"));
     userIds.push(user.id);
 
     const store = await db.store.create({
@@ -101,7 +108,7 @@ describe("PATCH /api/listings/draft/[id]", () => {
   });
 
   it("400 — title too short (min 5)", async () => {
-    const user = await ensureUser(`user-short-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("short"));
     userIds.push(user.id);
 
     const store = await db.store.create({
@@ -130,7 +137,7 @@ describe("PATCH /api/listings/draft/[id]", () => {
   });
 
   it("400 — strict mode: unknown field rejected", async () => {
-    const user = await ensureUser(`user-strict-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("strict"));
     userIds.push(user.id);
 
     const store = await db.store.create({
@@ -162,7 +169,7 @@ describe("PATCH /api/listings/draft/[id]", () => {
   });
 
   it("409 — PUBLISHED status not editable", async () => {
-    const user = await ensureUser(`user-pub-${Date.now() + Math.random()}@test.local`);
+    const user = await ensureUser(uniqueEmail("pub"));
     userIds.push(user.id);
 
     const store = await db.store.create({
@@ -191,8 +198,8 @@ describe("PATCH /api/listings/draft/[id]", () => {
   });
 
   it("404 — cross-user listing", async () => {
-    const user1 = await ensureUser(`user1-cross-${Date.now() + Math.random()}@test.local`);
-    const user2 = await ensureUser(`user2-cross-${Date.now() + Math.random()}@test.local`);
+    const user1 = await ensureUser(uniqueEmail("cross1"));
+    const user2 = await ensureUser(uniqueEmail("cross2"));
     userIds.push(user1.id, user2.id);
 
     const store1 = await db.store.create({
@@ -222,7 +229,17 @@ describe("PATCH /api/listings/draft/[id]", () => {
 });
 
 afterAll(async () => {
+  // FK order: listing -> mockupRender -> mockupJob -> selectionItem ->
+  // selectionSet -> generatedDesign -> reference -> asset -> store -> user.
+  // Paralel suite'ler aynı user'a child bağlamış olabilir — defansif tam temizlik.
   await db.listing.deleteMany({ where: { userId: { in: userIds } } });
+  await db.mockupRender.deleteMany({ where: { job: { userId: { in: userIds } } } });
+  await db.mockupJob.deleteMany({ where: { userId: { in: userIds } } });
+  await db.selectionItem.deleteMany({ where: { selectionSet: { userId: { in: userIds } } } });
+  await db.selectionSet.deleteMany({ where: { userId: { in: userIds } } });
+  await db.generatedDesign.deleteMany({ where: { userId: { in: userIds } } });
+  await db.reference.deleteMany({ where: { userId: { in: userIds } } });
+  await db.asset.deleteMany({ where: { userId: { in: userIds } } });
   await db.store.deleteMany({ where: { userId: { in: userIds } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
 });
