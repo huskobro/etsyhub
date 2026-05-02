@@ -20,6 +20,8 @@ import { useMockupOverlayState } from "@/features/mockups/hooks/useMockupOverlay
 import { SetSummaryCard } from "./SetSummaryCard";
 import { PackPreviewCard } from "./PackPreviewCard";
 import { DecisionBand } from "./DecisionBand";
+import { S1BrowseDrawer } from "./S1BrowseDrawer";
+import { S2DetailModal } from "./S2DetailModal";
 
 export function S3ApplyView({ setId }: { setId: string }) {
   const router = useRouter();
@@ -30,17 +32,6 @@ export function S3ApplyView({ setId }: { setId: string }) {
     useMockupTemplates({ categoryId: "canvas" });
   const packState = useMockupPackState(setId);
   const overlayState = useMockupOverlayState();
-
-  if (setLoading || templatesLoading) {
-    return <div className="p-6 text-sm text-text-muted">Yükleniyor…</div>;
-  }
-
-  if (!set) {
-    return <div className="p-6 text-sm text-text-muted">Set bulunamadı.</div>;
-  }
-
-  const isQuickPack = !packState.isCustom;
-  const actualPackSize = packState.selectedTemplateIds.length;
 
   const handleSubmit = useCallback(async () => {
     setIsSubmitting(true);
@@ -67,6 +58,17 @@ export function S3ApplyView({ setId }: { setId: string }) {
       setIsSubmitting(false);
     }
   }, [setId, packState.selectedTemplateIds, router]);
+
+  if (setLoading || templatesLoading) {
+    return <div className="p-6 text-sm text-text-muted">Yükleniyor…</div>;
+  }
+
+  if (!set) {
+    return <div className="p-6 text-sm text-text-muted">Set bulunamadı.</div>;
+  }
+
+  const isQuickPack = !packState.isCustom;
+  const actualPackSize = packState.selectedTemplateIds.length;
 
   return (
     <main className="flex min-h-screen flex-col bg-white">
@@ -115,6 +117,39 @@ export function S3ApplyView({ setId }: { setId: string }) {
         isSubmitting={isSubmitting}
         onSubmit={handleSubmit}
         onReset={packState.resetToQuickPack}
+      />
+
+      {/* Task 26 + 27: Customize Drawer + Detail Modal */}
+      <S1BrowseDrawer
+        open={overlayState.isCustomizeOpen}
+        onOpenChange={(open) =>
+          open
+            ? overlayState.openCustomizeDrawer()
+            : overlayState.closeCustomize()
+        }
+        templates={templates}
+        selectedTemplateIds={packState.selectedTemplateIds}
+        onToggleTemplate={packState.toggleTemplate}
+        onOpenTemplateModal={overlayState.openTemplateModal}
+      />
+
+      <S2DetailModal
+        open={overlayState.modalTemplateId !== null}
+        onOpenChange={(open) => {
+          if (!open) overlayState.closeTemplateModal();
+        }}
+        template={
+          overlayState.modalTemplateId
+            ? templates.find((t) => t.id === overlayState.modalTemplateId) ?? null
+            : null
+        }
+        isSelected={
+          overlayState.modalTemplateId
+            ? packState.selectedTemplateIds.includes(overlayState.modalTemplateId)
+            : false
+        }
+        onToggleTemplate={packState.toggleTemplate}
+        selectedCount={packState.selectedTemplateIds.length}
       />
     </main>
   );
