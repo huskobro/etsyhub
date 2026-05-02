@@ -64,8 +64,6 @@ vi.mock("@/features/mockups/hooks/useMockupPackState", () => ({
   useMockupPackState: () => ({
     selectedTemplateIds: ["t1", "t2"],
     defaultTemplateIds: ["t1", "t2"],
-    incompatibleTemplateIds: [],
-    incompatibleReason: undefined,
     isDirty: false,
     isCustom: false,
     toggleTemplate: vi.fn(),
@@ -104,11 +102,11 @@ describe("<S3ApplyView>", () => {
     // Quick Pack rozet görünür
     expect(screen.getByTestId("pack-badge")).toHaveTextContent(/Quick Pack/);
 
-    // CTA enabled (default render senaryosu) — DecisionBand button'ı testid ile bul
-    const cta = screen.getByTestId("render-button-ready");
+    // CTA enabled (default render senaryosu)
+    const cta = screen.getByRole("button", { name: /Render et/ });
     expect(cta).toBeEnabled();
 
-    // Pack preview kart görünür
-    expect(screen.getByTestId("pack-preview-card")).toBeInTheDocument();
+    // Seçili görsel sayısı gösterilir
+    expect(screen.getByText(/2 görsel üretilecek/)).toBeInTheDocument();
   });
 });
