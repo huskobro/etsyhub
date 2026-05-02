@@ -127,7 +127,8 @@ describe("MetadataSection", () => {
 
   it("disables AI button (placeholder for Task 21)", () => {
     render(<MetadataSection listing={mockListing} />);
-    const aiButton = screen.getByRole("button", { name: /AI Oluştur/i });
+    // aria-label ile accessible name override edildi (a11y disabled-button hint)
+    const aiButton = screen.getByRole("button", { name: /AI başlık üretimi şu an kullanılamaz/i });
     expect(aiButton).toBeDisabled();
   });
 

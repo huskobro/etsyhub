@@ -173,8 +173,8 @@ describe("ListingDraftView", () => {
     // Title in input value (MetadataSection Task 20)
     expect(screen.getByDisplayValue("Beautiful Canvas Wall Art")).toBeTruthy();
 
-    // Status
-    expect(screen.getByText(/Status: DRAFT/i)).toBeTruthy();
+    // Status (Turkish label via LISTING_STATUS_LABELS map)
+    expect(screen.getByText(/Status: Taslak/i)).toBeTruthy();
 
     // Price in PricingSection input (Task 20: editable form)
     const priceInput = screen.getByLabelText("Fiyat (USD)") as HTMLInputElement;
@@ -212,12 +212,23 @@ describe("ListingDraftView", () => {
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
     // Check title, description, tags, category, price, cover checks appear
-    expect(screen.getByText("Title")).toBeTruthy();
-    expect(screen.getByText("Description")).toBeTruthy();
-    expect(screen.getByText("Tags")).toBeTruthy();
-    expect(screen.getByText("Category")).toBeTruthy();
-    expect(screen.getByText("Price")).toBeTruthy();
-    expect(screen.getByText("Cover")).toBeTruthy();
+    // (visible label + sr-only "geçti/uyarı" suffix → function matcher
+    //  combines text content across elements within the same <p>)
+    const expectFieldLabel = (label: string) => {
+      expect(
+        screen.getByText((_content, element) => {
+          if (!element || element.tagName !== "P") return false;
+          const text = element.textContent ?? "";
+          return text.startsWith(`${label}:`);
+        }),
+      ).toBeTruthy();
+    };
+    expectFieldLabel("Title");
+    expectFieldLabel("Description");
+    expectFieldLabel("Tags");
+    expectFieldLabel("Category");
+    expectFieldLabel("Price");
+    expectFieldLabel("Cover");
 
     // Check pass indicators (all pass = all ✓)
     const checkmarks = screen.getAllByText("✓");
@@ -276,7 +287,8 @@ describe("ListingDraftView", () => {
 
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
-    const submitBtn = screen.getByRole("button", { name: /Taslak Gönder/ });
+    // aria-label override accessible name with disabled-button hint (a11y)
+    const submitBtn = screen.getByRole("button", { name: /Taslak gönderme şu an kullanılamaz/i });
     expect(submitBtn).toHaveAttribute("disabled");
   });
 
@@ -325,7 +337,7 @@ describe("ListingDraftView", () => {
 
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
-    const coverImg = screen.getByAltText("cover");
+    const coverImg = screen.getByAltText(/Kapak görseli/);
     expect(coverImg).toHaveAttribute("src", "s3://bucket/render-1.jpg");
   });
 

@@ -6,6 +6,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { AssetSection } from "../components/AssetSection";
 import { MetadataSection } from "../components/MetadataSection";
 import { PricingSection } from "../components/PricingSection";
+import { LISTING_STATUS_LABELS } from "./status-labels";
 
 /**
  * Phase 9 V1 Task 19 — Listing draft detail view (foundation slice UI).
@@ -25,7 +26,11 @@ export function ListingDraftView({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <div className="p-8 flex items-center justify-center">
+      <div
+        role="status"
+        aria-live="polite"
+        className="p-8 flex items-center justify-center"
+      >
         <Loader2 className="w-6 h-6 animate-spin text-accent" />
         <span className="ml-2">Listing yükleniyor…</span>
       </div>
@@ -56,7 +61,7 @@ export function ListingDraftView({ id }: { id: string }) {
           Listing Taslağı: {listing.title || "(başlıksız)"}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Status: {listing.status} • Oluşturuldu: {new Date(listing.createdAt).toLocaleDateString("tr")}
+          Status: {LISTING_STATUS_LABELS[listing.status]} • Oluşturuldu: {new Date(listing.createdAt).toLocaleDateString("tr")}
         </p>
       </header>
 
@@ -78,6 +83,7 @@ export function ListingDraftView({ id }: { id: string }) {
             >
               <div className="flex items-start gap-3">
                 <span
+                  aria-hidden="true"
                   className={`text-lg font-bold ${check.pass ? "text-green-600" : "text-yellow-600"}`}
                 >
                   {check.pass ? "✓" : "⚠"}
@@ -85,6 +91,9 @@ export function ListingDraftView({ id }: { id: string }) {
                 <div className="flex-1">
                   <p className="font-medium text-sm">
                     {check.field.charAt(0).toUpperCase() + check.field.slice(1)}
+                    <span className="sr-only">
+                      : {check.pass ? "geçti" : "uyarı"}
+                    </span>
                   </p>
                   <p className="text-xs text-gray-700 mt-1">{check.message}</p>
                 </div>
@@ -105,6 +114,7 @@ export function ListingDraftView({ id }: { id: string }) {
         <Button
           disabled
           title="Task 22'de publish aksiyonu eklenecek"
+          aria-label="Taslak gönderme şu an kullanılamaz (sonraki aşamada aktif)"
         >
           Taslak Gönder
         </Button>

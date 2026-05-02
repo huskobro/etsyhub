@@ -68,7 +68,8 @@ describe("GET /api/listings/draft/[id]", () => {
     const res = await GET(req, ctx as any);
     expect(res.status).toBe(200);
 
-    const data = (await res.json()) as ListingDraftView;
+    const body = (await res.json()) as { listing: ListingDraftView };
+    const data = body.listing;
     expect(data.id).toBe(listing.id);
     expect(data.title).toBe("Test Listing");
     expect(data.status).toBe("DRAFT");
@@ -99,14 +100,15 @@ describe("GET /api/listings/draft/[id]", () => {
 
     vi.mocked(requireUser).mockResolvedValueOnce(user as any);
     const res = await GET(req, ctx as any);
-    const body = (await res.json()) as Record<string, unknown>;
+    const body = (await res.json()) as { listing: Record<string, unknown> };
+    const view = body.listing;
 
-    expect(body).not.toHaveProperty("generatedDesignId");
-    expect(body).not.toHaveProperty("etsyDraftId");
-    expect(body).not.toHaveProperty("productTypeId");
-    expect(body).not.toHaveProperty("mockups");
-    expect(body).not.toHaveProperty("imageOrderJson");
-    expect(body).not.toHaveProperty("deletedAt");
+    expect(view).not.toHaveProperty("generatedDesignId");
+    expect(view).not.toHaveProperty("etsyDraftId");
+    expect(view).not.toHaveProperty("productTypeId");
+    expect(view).not.toHaveProperty("mockups");
+    expect(view).not.toHaveProperty("imageOrderJson");
+    expect(view).not.toHaveProperty("deletedAt");
   });
 
   it("404 — cross-user listing", async () => {

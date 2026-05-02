@@ -68,7 +68,8 @@ describe("PATCH /api/listings/draft/[id]", () => {
     const res = await PATCH(req, ctx as any);
     expect(res.status).toBe(200);
 
-    const data = (await res.json()) as ListingDraftView;
+    const body = (await res.json()) as { listing: ListingDraftView };
+    const data = body.listing;
     expect(data.title).toBe("New Title Test");
     expect(data.readiness).toBeDefined();
   });
@@ -102,7 +103,8 @@ describe("PATCH /api/listings/draft/[id]", () => {
     const res = await PATCH(req, ctx as any);
     expect(res.status).toBe(200);
 
-    const data = (await res.json()) as ListingDraftView;
+    const body = (await res.json()) as { listing: ListingDraftView };
+    const data = body.listing;
     expect(data.tags).toEqual(["new1", "new2"]);
     expect(data.title).toBe("Title");
   });

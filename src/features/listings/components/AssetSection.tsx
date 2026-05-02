@@ -1,5 +1,5 @@
 import { Download } from "lucide-react";
-import type { ListingDraftView } from "../types";
+import type { ListingDraftView, ListingImageOrderEntry } from "../types";
 
 /**
  * AssetSection — Listing cover + grid + ZIP download + mockup badge.
@@ -14,10 +14,15 @@ import type { ListingDraftView } from "../types";
  */
 export function AssetSection({ listing }: { listing: ListingDraftView }) {
   // Organize images: cover first, then others by packPosition
-  const coverImage = listing.imageOrder.find((img: any) => img.isCover);
+  const coverImage = listing.imageOrder.find(
+    (img: ListingImageOrderEntry) => img.isCover,
+  );
   const otherImages = listing.imageOrder
-    .filter((img: any) => !img.isCover)
-    .sort((a: any, b: any) => a.packPosition - b.packPosition);
+    .filter((img: ListingImageOrderEntry) => !img.isCover)
+    .sort(
+      (a: ListingImageOrderEntry, b: ListingImageOrderEntry) =>
+        a.packPosition - b.packPosition,
+    );
 
   // Check if ready for ZIP download
   const allImagesReady = listing.imageOrder.every((img) => img.outputKey);
@@ -50,7 +55,7 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
                 {coverImage.outputKey ? (
                   <img
                     src={coverImage.outputKey}
-                    alt="cover"
+                    alt={`Kapak görseli (${coverImage.templateName})`}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -63,7 +68,7 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
             </div>
           )}
 
-          {otherImages.map((img: any) => (
+          {otherImages.map((img: ListingImageOrderEntry) => (
             <div
               key={img.renderId}
               className="relative rounded-lg overflow-hidden shadow border"
@@ -72,7 +77,7 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
                 {img.outputKey ? (
                   <img
                     src={img.outputKey}
-                    alt={`position-${img.packPosition}`}
+                    alt={`Görsel ${img.packPosition + 1} (${img.templateName})`}
                     className="w-full h-full object-cover"
                   />
                 ) : (

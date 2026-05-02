@@ -17,6 +17,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useListings } from "@/features/listings/hooks/useListings";
 import type { ListingStatusValue } from "@/features/listings/types";
+import {
+  LISTING_STATUS_LABELS,
+  LISTING_STATUS_BADGE_CLASS,
+} from "@/features/listings/ui/status-labels";
 
 const STATUS_FILTERS: Array<{ value: ListingStatusValue | "all"; label: string }> = [
   { value: "all", label: "Tümü" },
@@ -25,30 +29,12 @@ const STATUS_FILTERS: Array<{ value: ListingStatusValue | "all"; label: string }
   { value: "FAILED", label: "Başarısız" },
 ];
 
-const STATUS_LABELS: Record<ListingStatusValue, string> = {
-  DRAFT: "Taslak",
-  SCHEDULED: "Zamanlanmış",
-  PUBLISHED: "Yayınlanmış",
-  FAILED: "Başarısız",
-  REJECTED: "Reddedildi",
-  NEEDS_REVIEW: "İnceleme bekleniyor",
-};
-
-const STATUS_BADGE_CLASS: Record<ListingStatusValue, string> = {
-  DRAFT: "bg-slate-100 text-slate-700",
-  SCHEDULED: "bg-blue-100 text-blue-700",
-  PUBLISHED: "bg-green-100 text-green-700",
-  FAILED: "bg-red-100 text-red-700",
-  REJECTED: "bg-zinc-100 text-zinc-700",
-  NEEDS_REVIEW: "bg-amber-100 text-amber-700",
-};
-
 export function ListingsIndexView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const statusParam = searchParams.get("status");
   const activeStatus = (statusParam &&
-    Object.keys(STATUS_LABELS).includes(statusParam)
+    Object.keys(LISTING_STATUS_LABELS).includes(statusParam)
     ? (statusParam as ListingStatusValue)
     : null) as ListingStatusValue | null;
 
@@ -122,9 +108,14 @@ export function ListingsIndexView() {
           <div className="rounded-md border border-border bg-surface-2 p-6 text-center">
             <p className="text-sm text-text-muted">
               {activeStatus
-                ? `${STATUS_LABELS[activeStatus]} durumda listing yok.`
-                : "Henüz listing yok. Mockup pack'inden listing draft oluşturmak için Mockup Studio'dan başla."}
+                ? `${LISTING_STATUS_LABELS[activeStatus]} durumda listing yok.`
+                : "Henüz listing yok."}
             </p>
+            {!activeStatus && (
+              <p className="mt-2 text-xs text-text-subtle">
+                Listing draft'ı oluşturmak için Mockup Studio'dan bir pack tamamla.
+              </p>
+            )}
           </div>
         )}
 
@@ -146,10 +137,10 @@ export function ListingsIndexView() {
                     <span
                       data-testid={`listing-status-${listing.id}`}
                       className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        STATUS_BADGE_CLASS[listing.status]
+                        LISTING_STATUS_BADGE_CLASS[listing.status]
                       }`}
                     >
-                      {STATUS_LABELS[listing.status]}
+                      {LISTING_STATUS_LABELS[listing.status]}
                     </span>
                   </div>
 

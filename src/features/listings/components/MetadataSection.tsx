@@ -126,6 +126,7 @@ export function MetadataSection({ listing }: { listing: ListingDraftView }) {
             variant="secondary"
             disabled
             title="Task 21'de AI listing generation eklenecek"
+            aria-label="AI başlık üretimi şu an kullanılamaz (sonraki aşamada aktif)"
             className="inline-flex items-center gap-2"
           >
             <Wand2 className="w-4 h-4" />

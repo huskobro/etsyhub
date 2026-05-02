@@ -28,10 +28,12 @@ export function useUpdateListingDraft(id: string) {
         const message = body?.error ?? body?.message ?? `HTTP ${res.status}`;
         throw new Error(message);
       }
-      return (await res.json()) as ListingDraftView;
+      const data = (await res.json()) as { listing: ListingDraftView };
+      return data.listing;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: listingDraftQueryKey(id) });
+      queryClient.invalidateQueries({ queryKey: ["listings"] });
     },
   });
 }

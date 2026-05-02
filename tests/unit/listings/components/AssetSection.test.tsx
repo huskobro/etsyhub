@@ -49,7 +49,7 @@ const mockListing: ListingDraftView = {
 describe("AssetSection", () => {
   it("renders cover image with orange border", () => {
     render(<AssetSection listing={mockListing} />);
-    const coverImg = screen.getByAltText("cover");
+    const coverImg = screen.getByAltText(/Kapak görseli/);
     expect(coverImg).toBeInTheDocument();
     expect(coverImg.closest("div")).toHaveClass("border-accent");
   });

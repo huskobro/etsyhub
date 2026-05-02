@@ -96,7 +96,7 @@ export const GET = withErrorHandling(
       throw new ListingDraftNotFoundError();
     }
 
-    return NextResponse.json(buildListingDraftView(listing));
+    return NextResponse.json({ listing: buildListingDraftView(listing) });
   },
 );
 
@@ -139,6 +139,6 @@ export const PATCH = withErrorHandling(
       data: body.data,
     });
 
-    return NextResponse.json(buildListingDraftView(updated));
+    return NextResponse.json({ listing: buildListingDraftView(updated) });
   },
 );
