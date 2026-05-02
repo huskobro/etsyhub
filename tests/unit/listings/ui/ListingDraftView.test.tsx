@@ -264,7 +264,7 @@ describe("ListingDraftView", () => {
     expect(inputs.length).toBe(0);
   });
 
-  it("should render disabled action buttons (Task 20+ placeholder)", () => {
+  it("should render disabled submit button (Task 22 placeholder)", () => {
     (useListingDraft as any).mockReturnValue({
       data: mockListingDraft,
       isLoading: false,
@@ -273,10 +273,7 @@ describe("ListingDraftView", () => {
 
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
-    const editBtn = screen.getByRole("button", { name: /Düzenle/ });
     const submitBtn = screen.getByRole("button", { name: /Taslak Gönder/ });
-
-    expect(editBtn).toHaveAttribute("disabled");
     expect(submitBtn).toHaveAttribute("disabled");
   });
 
@@ -329,5 +326,80 @@ describe("ListingDraftView", () => {
 
     const coverImg = screen.getByAltText("cover");
     expect(coverImg).toHaveAttribute("src", "s3://bucket/render-1.jpg");
+  });
+
+  // Task 20 slice tests: AssetSection mounted
+  it("should render AssetSection with image gallery and ZIP download", () => {
+    (useListingDraft as any).mockReturnValue({
+      data: mockListingDraft,
+      isLoading: false,
+      error: null,
+    });
+
+    renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
+
+    // AssetSection header "Görseller & Dosyalar"
+    expect(screen.getByText("Görseller & Dosyalar")).toBeTruthy();
+
+    // ZIP download link (all images ready)
+    const zipLink = screen.getByRole("link", { name: /ZIP İndir/i });
+    expect(zipLink).toBeTruthy();
+    expect(zipLink).toHaveAttribute("href", `/api/listings/${mockListingDraft.id}/assets/download`);
+
+    // Mockup count badge
+    expect(screen.getByText(/mockup/)).toBeTruthy();
+  });
+
+  // Task 20 slice tests: MetadataSection mounted
+  it("should render MetadataSection with title/description/tags inputs", () => {
+    (useListingDraft as any).mockReturnValue({
+      data: mockListingDraft,
+      isLoading: false,
+      error: null,
+    });
+
+    renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
+
+    // MetadataSection header
+    expect(screen.getByText("Başlık & Açıklama")).toBeTruthy();
+
+    // Input fields now visible (not read-only)
+    const titleInput = screen.getByLabelText("Başlık");
+    const descInput = screen.getByLabelText("Açıklama");
+    const tagsInput = screen.getByLabelText("Etiketler (maksimum 13)");
+
+    expect(titleInput).toHaveValue("Beautiful Canvas Wall Art");
+    expect(descInput).toHaveValue("Modern abstract design perfect for living rooms");
+    expect(tagsInput).toHaveValue("wall art, canvas, modern, abstract, home decor, minimalist, interior design, contemporary, trendy, art print, decoration, living room, gift");
+
+    // Save button visible
+    const saveMetadataBtn = screen.getAllByRole("button", { name: /Kaydet/i })[0];
+    expect(saveMetadataBtn).toBeTruthy();
+  });
+
+  // Task 20 slice tests: PricingSection mounted
+  it("should render PricingSection with price and materials inputs", () => {
+    (useListingDraft as any).mockReturnValue({
+      data: mockListingDraft,
+      isLoading: false,
+      error: null,
+    });
+
+    renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
+
+    // PricingSection header
+    expect(screen.getByText("Fiyat & Malzemeler")).toBeTruthy();
+
+    // Price input (converted from cents)
+    const priceInput = screen.getByLabelText("Fiyat (USD)") as HTMLInputElement;
+    expect(priceInput.value).toBe("29.99");
+
+    // Materials input
+    const materialsInput = screen.getByLabelText("Malzemeler");
+    expect(materialsInput).toBeTruthy();
+
+    // Save button visible
+    const savePricingBtn = screen.getAllByRole("button", { name: /Kaydet/i })[1];
+    expect(savePricingBtn).toBeTruthy();
   });
 });

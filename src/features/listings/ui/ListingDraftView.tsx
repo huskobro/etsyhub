@@ -3,6 +3,9 @@
 import { useListingDraft } from "../hooks/useListingDraft";
 import { Button } from "@/components/ui/Button";
 import { AlertTriangle, Loader2 } from "lucide-react";
+import { AssetSection } from "../components/AssetSection";
+import { MetadataSection } from "../components/MetadataSection";
+import { PricingSection } from "../components/PricingSection";
 
 /**
  * Phase 9 V1 Task 19 — Listing draft detail view (foundation slice UI).
@@ -45,11 +48,6 @@ export function ListingDraftView({ id }: { id: string }) {
     );
   }
 
-  // Organize image order: cover first, then others by packPosition
-  const coverImage = listing.imageOrder.find((img) => img.isCover);
-  const otherImages = listing.imageOrder
-    .filter((img) => !img.isCover)
-    .sort((a, b) => a.packPosition - b.packPosition);
 
   return (
     <main className="p-8 max-w-4xl mx-auto">
@@ -62,52 +60,8 @@ export function ListingDraftView({ id }: { id: string }) {
         </p>
       </header>
 
-      {/* Image Gallery — Cover + position badges */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">Görseller</h2>
-        <div className="grid grid-cols-4 gap-4">
-          {coverImage && (
-            <div className="relative rounded-lg overflow-hidden shadow-lg border-2 border-accent col-span-1 row-span-2">
-              <div className="aspect-square bg-gray-100 flex items-center justify-center">
-                {coverImage.outputKey ? (
-                  <img
-                    src={coverImage.outputKey}
-                    alt="cover"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-gray-400 text-xs">Görsel yok</span>
-                )}
-              </div>
-              <div className="absolute top-2 left-2 bg-accent text-white px-2 py-1 rounded text-xs font-bold">
-                ★ COVER
-              </div>
-            </div>
-          )}
-
-          {otherImages.map((img) => (
-            <div
-              key={img.renderId}
-              className="relative rounded-lg overflow-hidden shadow border"
-            >
-              <div className="aspect-square bg-gray-100 flex items-center justify-center">
-                {img.outputKey ? (
-                  <img
-                    src={img.outputKey}
-                    alt={`position-${img.packPosition}`}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-gray-400 text-xs">Görsel yok</span>
-                )}
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-2">
-                #{img.packPosition + 1}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Asset Section — cover + grid + ZIP + mockup badge */}
+      <AssetSection listing={listing} />
 
       {/* Readiness Checklist (soft warn) */}
       <div className="mb-8">
@@ -140,52 +94,14 @@ export function ListingDraftView({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* Metadata Summary (read-only in V1) */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">Metadata</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 bg-surface rounded-lg border">
-            <p className="text-xs text-muted-foreground">Başlık</p>
-            <p className="text-sm font-medium mt-1">{listing.title || "(boş)"}</p>
-          </div>
-          <div className="p-4 bg-surface rounded-lg border">
-            <p className="text-xs text-muted-foreground">Fiyat</p>
-            <p className="text-sm font-medium mt-1">
-              {listing.priceCents ? `$${(listing.priceCents / 100).toFixed(2)}` : "(boş)"}
-            </p>
-          </div>
-          <div className="p-4 bg-surface rounded-lg border col-span-2">
-            <p className="text-xs text-muted-foreground">Açıklama</p>
-            <p className="text-sm font-medium mt-1">
-              {listing.description ? listing.description.substring(0, 100) + "…" : "(boş)"}
-            </p>
-          </div>
-          <div className="p-4 bg-surface rounded-lg border col-span-2">
-            <p className="text-xs text-muted-foreground">Etiketler ({listing.tags.length}/13)</p>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {listing.tags.length > 0 ? (
-                listing.tags.map((tag) => (
-                  <span key={tag} className="px-2 py-1 bg-accent/10 text-accent rounded text-xs">
-                    {tag}
-                  </span>
-                ))
-              ) : (
-                <span className="text-xs text-gray-500">(etiket yok)</span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Metadata Section — title/description/13 tags form + save */}
+      <MetadataSection listing={listing} />
 
-      {/* Actions — disabled in V1 (Task 20+ için yer tutucu) */}
+      {/* Pricing Section — price + materials form + save */}
+      <PricingSection listing={listing} />
+
+      {/* Actions — Publish button disabled (Task 22'de eklenecek) */}
       <div className="flex gap-3">
-        <Button
-          disabled
-          title="Task 20'de edit form eklenecek"
-          variant="secondary"
-        >
-          Düzenle
-        </Button>
         <Button
           disabled
           title="Task 22'de publish aksiyonu eklenecek"
