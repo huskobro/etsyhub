@@ -37,7 +37,7 @@ export const USER_NAV: NavItem[] = [
   { href: "/review", label: "Review", icon: ShieldCheck, roles: ["USER", "ADMIN"], phase: 6, enabled: true },
   { href: "/selection", label: "Seçim", icon: Layers, roles: ["USER", "ADMIN"], phase: 7, enabled: true },
   { href: "/mockups", label: "Mockup", icon: Frame, roles: ["USER", "ADMIN"], phase: 8, enabled: false },
-  { href: "/listings", label: "Listingler", icon: ListChecks, roles: ["USER", "ADMIN"], phase: 9, enabled: false },
+  { href: "/listings", label: "Listingler", icon: ListChecks, roles: ["USER", "ADMIN"], phase: 9, enabled: true },
   { href: "/settings", label: "Ayarlar", icon: SettingsIcon, roles: ["USER", "ADMIN"], phase: 1, enabled: true },
 ];
 
