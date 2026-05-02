@@ -661,8 +661,6 @@ model Listing {
   generatedDesign   GeneratedDesign? @relation(fields: [generatedDesignId], references: [id])
   productTypeId     String?
   productType       ProductType?     @relation(fields: [productTypeId], references: [id])
-  mockupJobId       String?
-  mockupJob         MockupJob?       @relation(fields: [mockupJobId], references: [id])
   title             String?
   description       String?
   tags              String[]         @default([])
@@ -1086,8 +1084,7 @@ model MockupJob {
   startedAt      DateTime?
   completedAt    DateTime?
 
-  renders   MockupRender[]
-  listings  Listing[]
+  renders MockupRender[]
 
   @@index([userId, createdAt])
   @@index([setId, createdAt])
