@@ -8,6 +8,7 @@
 
 import type { Listing } from "@prisma/client";
 import type { ReadinessCheck, ListingImageOrderEntry } from "../types";
+import { checkNegativeLibrary } from "./negative-library.service";
 
 // ────────────────────────────────────────────────────────────
 // Readiness Rules (V1 soft warn)
@@ -26,19 +27,20 @@ const PRICE_MIN_CENTS = 100; // $1.00 minimum
 /**
  * Compute readiness checks for listing (V1: soft warns).
  *
- * Returns array of 6 checks:
+ * Returns array of 6+ checks (6 baseline + 0..N negative library matches):
  *   1. title: min 5, max 140 chars
  *   2. description: non-empty
  *   3. tags: exactly 13 tags
  *   4. category: non-empty
  *   5. price: >= 100 cents ($1.00)
  *   6. cover: imageOrderJson[0].isCover = true (Phase 8 handoff guarantee)
+ *   7+. negative library matches (Task 12): policy/trademark/spam uyarıları
  *
  * V1 spec (K3): All severity = "warn" (soft gate).
  * Severity "error" reserved for V1.1 hard gate / Task 17.
  *
  * @param listing Draft listing (may have null/empty metadata)
- * @returns ReadinessCheck[] (always 6 items, order as above)
+ * @returns ReadinessCheck[] (baseline 6 items + 0..N negative library matches)
  */
 export function computeReadiness(listing: Listing): ReadinessCheck[] {
   const checks: ReadinessCheck[] = [];
@@ -118,6 +120,23 @@ export function computeReadiness(listing: Listing): ReadinessCheck[] {
       ? `Kapak görseli hazır (${imageOrder[0]?.templateName ?? "Bilinmeyen"})`
       : "Kapak görselü (cover image) gereklidir (mockup'tan generate edilmeli)",
   });
+
+  // 7. Negative library check (Task 12)
+  // K3 lock soft warn — submit blocked DEĞİL, sadece UI uyarısı.
+  const negativeMatches = checkNegativeLibrary({
+    title: listing.title,
+    description: listing.description,
+    tags: listing.tags,
+  });
+
+  for (const match of negativeMatches) {
+    checks.push({
+      field: match.field,
+      pass: false,
+      severity: "warn",
+      message: `Politika uyarısı: "${match.phrase}" ifadesi (${match.field}) — ${match.reason}`,
+    });
+  }
 
   return checks;
 }

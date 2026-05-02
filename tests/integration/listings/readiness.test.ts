@@ -211,4 +211,120 @@ describe("Listing readiness service (V1)", () => {
       expect(errors).toHaveLength(0);
     });
   });
+
+  describe("Negative library integration", () => {
+    it("temiz listing için negative library check eklenmemiş (mevcut 6 check)", () => {
+      const cleanListing = {
+        ...baseListing,
+        title: "Modern Wall Art",
+        description: "Beautiful print for your home",
+        tags: ["wall-art", "canvas", "modern", "art", "home", "decor", "design", "print", "poster", "painting", "gallery", "canvas-art", "contemporary"],
+        category: "Wall Art",
+        priceCents: 1999,
+        imageOrderJson: [
+          {
+            packPosition: 0,
+            renderId: "r1",
+            outputKey: "o1",
+            templateName: "Canvas",
+            isCover: true,
+          },
+        ],
+      };
+      const checks = computeReadiness(cleanListing);
+
+      // Mevcut 6 check var
+      expect(checks).toHaveLength(6);
+
+      // Hiçbir "Politika uyarısı" yok
+      const policyWarnings = checks.filter((c) =>
+        c.message.includes("Politika uyarısı"),
+      );
+      expect(policyWarnings).toEqual([]);
+    });
+
+    it("title'da Disney — readiness'a 1 ek policy warning eklenir", () => {
+      const dirtyListing = {
+        ...baseListing,
+        title: "Disney Wall Art",
+        description: "Beautiful print",
+        tags: ["wall-art", "canvas", "modern", "art", "home", "decor", "design", "print", "poster", "painting", "gallery", "canvas-art", "contemporary"],
+      };
+      const checks = computeReadiness(dirtyListing);
+
+      // 6 mevcut + 1 negative library = 7 toplam
+      expect(checks.length).toBeGreaterThanOrEqual(7);
+
+      const policyWarnings = checks.filter((c) =>
+        c.message.includes("Politika uyarısı"),
+      );
+      expect(policyWarnings).toHaveLength(1);
+      expect(policyWarnings[0]?.field).toBe("title");
+      expect(policyWarnings[0]?.severity).toBe("warn"); // K3 soft warn
+      expect(policyWarnings[0]?.pass).toBe(false);
+    });
+
+    it("description ve tags'te ayrı eşleşmeler — ayrı entry'ler", () => {
+      const dirtyListing = {
+        ...baseListing,
+        title: "Wall Art",
+        description: "CBD themed product",
+        tags: ["best deal", "wall-art", "modern", "art", "home", "decor", "design", "print", "poster", "painting", "gallery", "canvas-art"],
+      };
+      const checks = computeReadiness(dirtyListing);
+
+      const policyWarnings = checks.filter((c) =>
+        c.message.includes("Politika uyarısı"),
+      );
+      expect(policyWarnings.length).toBeGreaterThanOrEqual(2);
+      const fields = policyWarnings.map((c) => c.field).sort();
+      expect(fields).toContain("description");
+      expect(fields).toContain("tags");
+    });
+
+    it("K3 soft warn lock — submit block YOK (severity hep 'warn')", () => {
+      const dirtyListing = {
+        ...baseListing,
+        title: "Disney Marvel Nike Wall Art",
+        description: "NFL themed product",
+        tags: ["nfl", "marvel", "wall-art", "modern", "art", "home", "decor", "design", "print", "poster", "painting"],
+      };
+      const checks = computeReadiness(dirtyListing);
+
+      // Hiçbir policy warning severity:"error" değil
+      const policyWarnings = checks.filter((c) =>
+        c.message.includes("Politika uyarısı"),
+      );
+      expect(policyWarnings.every((c) => c.severity === "warn")).toBe(true);
+    });
+
+    it("mevcut 6 check pass davranışı negative library'den etkilenmez", () => {
+      const cleanContent = {
+        ...baseListing,
+        title: "Modern Wall Art Print",
+        description:
+          "A beautiful canvas painting for your home decor needs and style preferences",
+        tags: ["wall-art", "canvas", "modern", "art", "home", "decor", "design", "print", "poster", "painting", "gallery", "canvas-art", "contemporary"],
+        category: "art",
+        priceCents: 1999,
+        imageOrderJson: [
+          {
+            packPosition: 0,
+            renderId: "r1",
+            outputKey: "o1",
+            templateName: "Canvas",
+            isCover: true,
+          },
+        ],
+      };
+      const checks = computeReadiness(cleanContent);
+
+      // 6 check'in hepsi pass
+      const baseChecks = checks.filter(
+        (c) => !c.message.includes("Politika uyarısı"),
+      );
+      expect(baseChecks).toHaveLength(6);
+      expect(baseChecks.every((c) => c.pass)).toBe(true);
+    });
+  });
 });
