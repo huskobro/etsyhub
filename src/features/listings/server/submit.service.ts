@@ -1,21 +1,29 @@
 // Phase 9 V1 Task 10 — Listing submit service (foundation slice).
 //
 // submitListingDraft(listingId, userId):
-//   1. listing fetch + ownership guard
+//   1. listing fetch + ownership guard (productType include)
 //   2. status guard (DRAFT veya NEEDS_REVIEW dışı 409)
 //   3. readiness snapshot (V1 soft warn — submit'i bloklamaz, ama kayıt için)
-//   4. payload builder: Listing → EtsyDraftListingInput
+//   4. payload builder: Listing → EtsyDraftListingInput (taxonomyId resolve)
 //   5. connection resolve (resolveEtsyConnection — typed throw)
-//   6. provider.createDraftListing (image upload V1.1+ carry-forward)
-//   7. listing'i SUBMITTED state'e ÇEKMEDEN, etsyListingId + submittedAt
+//   6. taxonomy resolve (resolveEtsyTaxonomyId — env-based; eksikse 422)
+//   7. provider.createDraftListing
+//   8. image upload pipeline (uploadListingImages — packPosition ASC, cover-first)
+//   9. listing'i SUBMITTED state'e ÇEKMEDEN, etsyListingId + submittedAt
 //      yaz; status 'PUBLISHED'a (V1 sözleşmesi: Etsy draft = listingHub
 //      teslim noktası; gerçek "publish" Etsy admin panelinden manuel).
 //
 // V1 sözleşmesi: bizim Listing.status için "submit" sonrası nereye gidecek?
-// - Etsy draft create başarılı → bizim DB'de status: PUBLISHED (Etsy draft
-//   = "yayınlamak için hazır" anlamı, kullanıcı Etsy admin'de manual publish
-//   yapacak — bu V1 sınırı).
-// - HATA → status: FAILED + failedReason (typed error message).
+// - Etsy draft create + image upload başarılı → bizim DB'de status: PUBLISHED
+//   (Etsy draft = "yayınlamak için hazır" anlamı, kullanıcı Etsy admin'de
+//   manual publish yapacak — bu V1 sınırı).
+// - Image upload PARTIAL → status PUBLISHED + failedReason mesajı (Etsy
+//   listing var, sadece bazı image'lar eksik; kullanıcı Etsy admin'den
+//   tamamlayabilir).
+// - HATA (draft create veya tüm image upload başarısız) → status: FAILED
+//   + failedReason (typed error message). Image upload all-failed durumunda
+//   etsyListingId persist edilir (orphan listing kullanıcı Etsy admin'de
+//   yönetebilir).
 //
 // state.ts'e DRAFT → PUBLISHED transition'ı eklenmesi GEREKLİ. Ama state.ts
 // dokunulmaz; bunun yerine submit service kendi `assertSubmittable` guard'ını
@@ -25,7 +33,7 @@
 //
 // V1 LOCK: provider çağrısı V1 foundation; ETSY_CLIENT_ID yoksa
 // EtsyNotConfiguredError. Connection yoksa EtsyConnectionNotFoundError.
-// V1.1: image upload (mockup pack) carry-forward.
+// Taxonomy mapping yoksa EtsyTaxonomyMissingError 422.
 
 import { db } from "@/server/db";
 import { AppError } from "@/lib/errors";
@@ -37,10 +45,18 @@ import {
   DEFAULT_ETSY_PROVIDER_ID,
   isEtsyConfigured,
   EtsyNotConfiguredError,
+  resolveEtsyTaxonomyId,
+  EtsyTaxonomyMissingError,
 } from "@/providers/etsy";
 import type { EtsyDraftListingInput } from "@/providers/etsy";
 import { buildProviderSnapshot } from "@/providers/review/snapshot";
 import type { ListingStatus } from "@prisma/client";
+import {
+  uploadListingImages,
+  ListingImageUploadAllFailedError,
+  type ImageUploadResult,
+} from "./image-upload.service";
+import type { ListingImageOrderEntry } from "@/features/listings/types";
 
 // ────────────────────────────────────────────────────────────
 // Submit-specific errors
@@ -78,14 +94,20 @@ export class ListingSubmitMissingFieldsError extends AppError {
 // ────────────────────────────────────────────────────────────
 
 export type SubmitListingResult = {
-  /** Listing'in yeni durumu (PUBLISHED on success, FAILED on caught error). */
+  /** Listing'in yeni durumu (PUBLISHED on success / partial-image, FAILED on caught error). */
   status: "PUBLISHED" | "FAILED";
-  /** Etsy listing_id (success path), yoksa null (FAILED). */
+  /** Etsy listing_id (success path veya partial / image-all-failed path), yoksa null. */
   etsyListingId: string | null;
-  /** Hata mesajı (FAILED path). */
+  /** Hata mesajı veya partial info (FAILED path / partial image upload). */
   failedReason: string | null;
   /** Provider snapshot, audit için. */
   providerSnapshot: string;
+  /** Image upload sonucu (success path) — partial varsa attempts array'i ile dürüst raporla. */
+  imageUpload?: {
+    successCount: number;
+    failedCount: number;
+    partial: boolean;
+  };
 };
 
 /**
@@ -96,10 +118,10 @@ export type SubmitListingResult = {
  *   - whenMade: "made_to_order"
  *   - quantity: 1
  *   - isDigital: true (printable/digital download odak)
- *   - taxonomyId: null (V1 foundation: caller resolve etmiyor; provider
- *     içinde EtsyValidationError 422 fırlatır — honest signal)
  *
- * Phase 9.1+: ProductType → taxonomyId mapping (Etsy V3 taxonomy API).
+ * taxonomyId artık caller (submit pipeline) tarafından resolve edilir
+ * (resolveEtsyTaxonomyId — env mapping, foundation slice). Geçilen değer
+ * pozitif tam sayı; null kabul etmiyor.
  */
 export function buildEtsyDraftPayload(
   listing: {
@@ -109,6 +131,7 @@ export function buildEtsyDraftPayload(
     materials: string[];
     priceCents: number | null;
   },
+  taxonomyId: number,
 ): EtsyDraftListingInput {
   // Zorunlu alan check'i — burada throw etmiyoruz; üst seviye assertSubmittable yapıyor.
   const title = listing.title ?? "";
@@ -121,10 +144,10 @@ export function buildEtsyDraftPayload(
     priceUsd: priceCents / 100,
     tags: listing.tags,
     materials: listing.materials,
-    taxonomyId: null,         // V1 foundation
-    isDigital: true,          // V1 default
-    quantity: 1,              // V1 lock
-    whoMade: "i_did",         // V1 lock
+    taxonomyId,                // V1 foundation: caller resolve etti
+    isDigital: true,           // V1 default
+    quantity: 1,               // V1 lock
+    whoMade: "i_did",          // V1 lock
     whenMade: "made_to_order", // V1 lock
   };
 }
@@ -152,12 +175,37 @@ export function assertSubmittable(listing: {
   }
 }
 
+/**
+ * ProductType key resolver — submit pipeline'da taxonomy lookup için.
+ *
+ * Öncelik:
+ *   1. listing.productType?.key (Listing.productTypeId join)
+ *   2. listing.category fallback (free-form string → normalize: lowercase + underscore)
+ *      Örn. "Wall Art" → "wall_art"; ProductType seed key'leriyle örtüşmesi
+ *      umulur. Örtüşmezse caller `resolveEtsyTaxonomyId` MissingError fırlatır.
+ *
+ * İkisi de yoksa MissingError 422 (sistem yöneticisine honest sinyal).
+ */
+function resolveProductTypeKey(listing: {
+  productType: { key: string } | null;
+  category: string | null;
+}): string {
+  if (listing.productType?.key) return listing.productType.key;
+  if (listing.category && listing.category.trim().length > 0) {
+    return listing.category.trim().toLowerCase().replace(/\s+/g, "_");
+  }
+  throw new EtsyTaxonomyMissingError("(productType ve category boş)");
+}
+
 export async function submitListingDraft(
   listingId: string,
   userId: string,
 ): Promise<SubmitListingResult> {
-  // 1. Listing fetch + ownership
-  const listing = await db.listing.findUnique({ where: { id: listingId } });
+  // 1. Listing fetch + ownership + productType include
+  const listing = await db.listing.findUnique({
+    where: { id: listingId },
+    include: { productType: true },
+  });
   if (!listing || listing.userId !== userId) {
     throw new ListingSubmitNotFoundError();
   }
@@ -179,9 +227,13 @@ export async function submitListingDraft(
   // 5. Connection resolve (typed throw: NotFound / TokenMissing / TokenExpired)
   const { accessToken, shopId } = await resolveEtsyConnection(userId);
 
-  // 6. Provider call — V1 foundation: createDraftListing yalnız (image upload V1.1+)
+  // 6. Taxonomy resolve (B+C entegrasyon — env mapping, foundation)
+  const productTypeKey = resolveProductTypeKey(listing);
+  const taxonomyId = resolveEtsyTaxonomyId(productTypeKey); // throws MissingError 422
+
+  // 7. Provider call — draft create
   const provider = getEtsyProvider(DEFAULT_ETSY_PROVIDER_ID);
-  const payload = buildEtsyDraftPayload(listing);
+  const payload = buildEtsyDraftPayload(listing, taxonomyId);
 
   // Provider snapshot — Phase 6 buildProviderSnapshot reuse
   const providerSnapshot = buildProviderSnapshot(
@@ -189,47 +241,91 @@ export async function submitListingDraft(
     new Date(),
   );
 
+  let createResult: { etsyListingId: string; state: "draft" };
   try {
-    const result = await provider.createDraftListing(payload, {
+    createResult = await provider.createDraftListing(payload, {
       accessToken,
       shopId,
     });
-
-    // 7. Listing'i PUBLISHED'a çek + etsyListingId + submittedAt + publishedAt persist.
-    // V1 sözleşmesi: Etsy "draft" oluştu = bizim "PUBLISHED" (kullanıcı Etsy admin'de
-    // manuel "publish" yapacak — V1 sınırı, dürüst raporla).
-    await db.listing.update({
-      where: { id: listingId },
-      data: {
-        status: "PUBLISHED",
-        etsyListingId: result.etsyListingId,
-        submittedAt: new Date(),
-        publishedAt: new Date(),
-        failedReason: null,
-      },
-    });
-
-    return {
-      status: "PUBLISHED",
-      etsyListingId: result.etsyListingId,
-      failedReason: null,
-      providerSnapshot,
-    };
   } catch (err) {
-    // FAIL path — listing'i FAILED'a çek, error message persist.
+    // Draft create fail — listing FAILED, image upload denenmedi
     const failedReason =
       err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500);
-
     await db.listing.update({
       where: { id: listingId },
       data: {
         status: "FAILED",
         failedReason,
-        submittedAt: new Date(), // submit denendi (audit)
+        submittedAt: new Date(),
       },
     });
-
-    // Re-throw — endpoint typed error'ı HTTP'ye map eder.
     throw err;
   }
+
+  // 8. Image upload pipeline (B entegrasyon — packPosition ASC, cover-first)
+  let imageUploadResult: ImageUploadResult | null = null;
+  let imageUploadFailedReason: string | null = null;
+  try {
+    const imageOrder =
+      (listing.imageOrderJson as ListingImageOrderEntry[] | null) ?? [];
+    imageUploadResult = await uploadListingImages({
+      etsyListingId: createResult.etsyListingId,
+      imageOrder,
+      accessToken,
+      shopId,
+    });
+    if (imageUploadResult.partial) {
+      const failedRanks = imageUploadResult.attempts
+        .filter((a) => !a.ok)
+        .map((a) => `rank=${a.rank}`);
+      imageUploadFailedReason = `Image upload kısmen başarısız: ${imageUploadResult.successCount}/${imageUploadResult.attempts.length} yüklendi (başarısızlar: ${failedRanks.join(", ")})`;
+    }
+  } catch (err) {
+    // ListingImageUploadAllFailedError — listing draft Etsy'de var ama image yok.
+    // V1 sözleşmesi: bunu listing FAILED'a çek ama etsyListingId persist et
+    // (orphan listing kullanıcı Etsy admin'den yönetebilir).
+    const failedReason =
+      err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500);
+    await db.listing.update({
+      where: { id: listingId },
+      data: {
+        status: "FAILED",
+        etsyListingId: createResult.etsyListingId, // Etsy tarafı listing yaratıldı
+        failedReason,
+        submittedAt: new Date(),
+      },
+    });
+    throw err;
+  }
+
+  // 9. Listing PUBLISHED (Etsy draft = bizim PUBLISHED V1 sözleşmesi)
+  // Partial image upload varsa failedReason'a not düşeriz ama status PUBLISHED
+  // (Etsy listing var; kullanıcı Etsy admin'de eksik image'ları manuel ekleyebilir).
+  await db.listing.update({
+    where: { id: listingId },
+    data: {
+      status: "PUBLISHED",
+      etsyListingId: createResult.etsyListingId,
+      submittedAt: new Date(),
+      publishedAt: new Date(),
+      failedReason: imageUploadFailedReason, // Partial varsa not, tam başarıda null
+    },
+  });
+
+  return {
+    status: "PUBLISHED",
+    etsyListingId: createResult.etsyListingId,
+    failedReason: imageUploadFailedReason,
+    providerSnapshot,
+    imageUpload: imageUploadResult
+      ? {
+          successCount: imageUploadResult.successCount,
+          failedCount: imageUploadResult.failedCount,
+          partial: imageUploadResult.partial,
+        }
+      : undefined,
+  };
 }
+
+// Re-export for downstream consumers (image upload error class).
+export { ListingImageUploadAllFailedError };

@@ -51,3 +51,12 @@ export {
   readOAuthStateCookie,
   clearOAuthStateCookie,
 } from "./oauth-state-cookie";
+
+// Phase 9 V1 — Taxonomy mapping (additive).
+export {
+  resolveEtsyTaxonomyId,
+  tryResolveEtsyTaxonomyId,
+  resetTaxonomyCache,
+  EtsyTaxonomyConfigError,
+  EtsyTaxonomyMissingError,
+} from "./taxonomy";

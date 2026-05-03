@@ -35,6 +35,7 @@ import {
   EtsyApiError,
   EtsyConnectionNotFoundError,
   EtsyNotConfiguredError,
+  EtsyTaxonomyMissingError,
 } from "@/providers/etsy";
 
 const TEST_PREFIX = "phase9-api-submit";
@@ -255,6 +256,39 @@ describe("POST /api/listings/draft/[id]/submit", () => {
     expect(res.status).toBe(422);
     const body = (await res.json()) as { details: { missing: string[] } };
     expect(body.details.missing).toContain("title");
+  });
+
+  it("422 — service EtsyTaxonomyMissingError (env mapping yok)", async () => {
+    const user = await ensureUser(uniqueEmail("422tax"));
+    userIds.push(user.id);
+    vi.mocked(requireUser).mockResolvedValueOnce(user as any);
+
+    const listing = await db.listing.create({
+      data: {
+        userId: user.id,
+        title: "T",
+        description: "D",
+        priceCents: 500,
+        status: "DRAFT",
+      },
+    });
+
+    vi.mocked(submitListingDraft).mockRejectedValue(
+      new EtsyTaxonomyMissingError("hoodie"),
+    );
+
+    const req = new Request(
+      "http://localhost/api/listings/draft/" + listing.id + "/submit",
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    const res = await POST(req, { params: { id: listing.id } });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { details: { productTypeKey: string } };
+    expect(body.details.productTypeKey).toBe("hoodie");
   });
 
   it("502 — service EtsyApiError", async () => {
