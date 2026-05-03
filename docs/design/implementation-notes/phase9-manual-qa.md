@@ -1,8 +1,8 @@
 # Phase 9 Listing Builder — Manuel QA Checklist
 
-> **Tarih:** 2026-05-03 (sync 2026-05-03)
+> **Tarih:** 2026-05-03 (sync 2026-05-04, repo-wide audit sonrası)
 > **Phase 9 status:** 🟡 (implementation/local foundation neredeyse tamam; otomasyon gate'leri PASS; manuel QA kullanıcı tarafından adım adım yürütülecek — sonuç bu dosyaya işaretlenecek)
-> **HEAD:** `ddb3acf`
+> **HEAD:** `92b0072`
 > **Status doc:** [`./phase9-status.md`](./phase9-status.md)
 > **Spec:** [`../../plans/2026-05-02-phase9-listing-builder-design.md`](../../plans/2026-05-02-phase9-listing-builder-design.md)
 > **Phase 8 emsali:** [`./phase8-manual-qa.md`](./phase8-manual-qa.md) (Phase 8 manuel QA hâlâ pending — Phase 9 closeout'tan önce kapanmalı)

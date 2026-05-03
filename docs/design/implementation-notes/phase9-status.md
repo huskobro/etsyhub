@@ -1,8 +1,8 @@
 # Phase 9 — Listing Builder Status (Pre-Closeout)
 
-> **Tarih:** 2026-05-03 (sync 2026-05-03)
+> **Tarih:** 2026-05-03 (sync 2026-05-04, repo-wide audit sonrası)
 > **Status:** 🟡 **Pre-closeout** — Phase 9 V1 implementation/local foundation neredeyse tamam; live Etsy success **yalnız external credentials + manual QA** bekliyor (kod tarafında ek lokal blocker kalmadı); "PASS" / "tamamlandı" ilan edilmedi
-> **HEAD:** `ddb3acf`
+> **HEAD:** `92b0072`
 > **Spec:** [`../../plans/2026-05-02-phase9-listing-builder-design.md`](../../plans/2026-05-02-phase9-listing-builder-design.md)
 > **Plan:** [`../../plans/2026-05-02-phase9-listing-builder-plan.md`](../../plans/2026-05-02-phase9-listing-builder-plan.md)
 > **Manual QA:** [`./phase9-manual-qa.md`](./phase9-manual-qa.md) (henüz koşulmadı)
@@ -77,9 +77,10 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 | Closeout-prep doc sync | phase9-status + manual-qa doc'larında ZIP/OAuth/taxonomy/image-upload yansıması | `7cb3f51` |
 | Token refresh resilience | `resolveEtsyConnectionWithRefresh` (submit-time opportunistic) + 5dk grace + EtsyTokenRefreshFailedError 401 | `56a0b19` |
 | Submit UX büyük paketi | SubmitResultPanel + ImageUploadDiagnostics + Etsy deep-links + FAILED → DRAFT recovery + listings index "Etsy'de Aç" | `ddb3acf` |
-| V1 Finalization — readiness diagnostics | `GET /api/settings/etsy-connection/readiness` + EtsyReadinessSummary 3-state checklist + Settings panel polish (4-env tam liste + auto-refresh ipucu) | (bu commit) |
+| V1 Finalization — readiness diagnostics | `GET /api/settings/etsy-connection/readiness` + EtsyReadinessSummary 3-state checklist + Settings panel polish (4-env tam liste + auto-refresh ipucu) | `92b0072` |
+| Repo-wide final audit + doc finalize | İki audit pass (general-purpose + Explore deep stale) — fake fix-now bulgusu yok; phase9 doc HEAD/tarih sync; bilinçli V1.1+ carry-forward'lar (per-render download, Phase 6 canlı smoke gating, admin endpoint test gap) doğrulandı | (bu commit) |
 
-**Toplam:** 27+ commit, 0 revert.
+**Toplam:** 28+ commit, 0 revert.
 
 ---
 
