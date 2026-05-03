@@ -69,7 +69,7 @@ describe("AssetSection", () => {
     render(<AssetSection listing={mockListing} />);
     const zipLink = screen.getByRole("link", { name: /ZIP İndir/i });
     expect(zipLink).toBeInTheDocument();
-    expect(zipLink).toHaveAttribute("href", `/api/listings/${mockListing.id}/assets/download`);
+    expect(zipLink).toHaveAttribute("href", `/api/listings/draft/${mockListing.id}/assets/download`);
   });
 
   it("hides ZIP download when images not ready", () => {

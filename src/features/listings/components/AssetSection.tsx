@@ -36,7 +36,7 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
         <span>Görseller & Dosyalar</span>
         {allImagesReady && (
           <a
-            href={`/api/listings/${listing.id}/assets/download`}
+            href={`/api/listings/draft/${listing.id}/assets/download`}
             download={`listing-${listing.id}.zip`}
             className="inline-flex items-center gap-2 px-3 py-1 bg-accent text-white rounded text-sm hover:bg-accent/90 transition-colors"
           >

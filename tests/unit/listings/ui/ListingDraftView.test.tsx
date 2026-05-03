@@ -567,7 +567,7 @@ describe("ListingDraftView", () => {
     // ZIP download link (all images ready)
     const zipLink = screen.getByRole("link", { name: /ZIP İndir/i });
     expect(zipLink).toBeTruthy();
-    expect(zipLink).toHaveAttribute("href", `/api/listings/${mockListingDraft.id}/assets/download`);
+    expect(zipLink).toHaveAttribute("href", `/api/listings/draft/${mockListingDraft.id}/assets/download`);
 
     // Mockup count badge (AssetSection mockupJobId check)
     expect(screen.getByText(/1 mockup/i)).toBeTruthy();
