@@ -20,7 +20,7 @@ vi.mock("@/providers/etsy", async () => {
   return {
     ...actual,
     getEtsyProvider: vi.fn(),
-    resolveEtsyConnection: vi.fn(),
+    resolveEtsyConnectionWithRefresh: vi.fn(),
     isEtsyConfigured: vi.fn(),
   };
 });
@@ -45,12 +45,13 @@ import {
 } from "@/features/listings/server/submit.service";
 import {
   getEtsyProvider,
-  resolveEtsyConnection,
+  resolveEtsyConnectionWithRefresh,
   isEtsyConfigured,
   EtsyConnectionNotFoundError,
   EtsyNotConfiguredError,
   EtsyApiError,
   EtsyTaxonomyMissingError,
+  EtsyTokenRefreshFailedError,
   resetTaxonomyCache,
 } from "@/providers/etsy";
 import {
@@ -89,7 +90,7 @@ const ORIG_TAXONOMY_ENV = process.env.ETSY_TAXONOMY_MAP_JSON;
 
 beforeEach(() => {
   vi.mocked(isEtsyConfigured).mockReset();
-  vi.mocked(resolveEtsyConnection).mockReset();
+  vi.mocked(resolveEtsyConnectionWithRefresh).mockReset();
   vi.mocked(getEtsyProvider).mockReset();
   vi.mocked(uploadListingImages).mockReset();
   // Default: image upload mock success path (boş imageOrder → noop)
@@ -291,7 +292,7 @@ describe("submitListingDraft", () => {
     });
 
     vi.mocked(isEtsyConfigured).mockReturnValue(true);
-    vi.mocked(resolveEtsyConnection).mockRejectedValue(
+    vi.mocked(resolveEtsyConnectionWithRefresh).mockRejectedValue(
       new EtsyConnectionNotFoundError(),
     );
 
@@ -318,7 +319,7 @@ describe("submitListingDraft", () => {
     });
 
     vi.mocked(isEtsyConfigured).mockReturnValue(true);
-    vi.mocked(resolveEtsyConnection).mockResolvedValue({
+    vi.mocked(resolveEtsyConnectionWithRefresh).mockResolvedValue({
       connection: {} as any,
       accessToken: "decrypted-at",
       shopId: "55555",
@@ -393,7 +394,7 @@ describe("submitListingDraft", () => {
     });
 
     vi.mocked(isEtsyConfigured).mockReturnValue(true);
-    vi.mocked(resolveEtsyConnection).mockResolvedValue({
+    vi.mocked(resolveEtsyConnectionWithRefresh).mockResolvedValue({
       connection: {} as any,
       accessToken: "at",
       shopId: "1",
@@ -437,7 +438,7 @@ describe("submitListingDraft", () => {
     });
 
     vi.mocked(isEtsyConfigured).mockReturnValue(true);
-    vi.mocked(resolveEtsyConnection).mockResolvedValue({
+    vi.mocked(resolveEtsyConnectionWithRefresh).mockResolvedValue({
       connection: {} as any,
       accessToken: "at",
       shopId: "1",
@@ -467,7 +468,7 @@ describe("submitListingDraft", () => {
     });
 
     vi.mocked(isEtsyConfigured).mockReturnValue(true);
-    vi.mocked(resolveEtsyConnection).mockResolvedValue({
+    vi.mocked(resolveEtsyConnectionWithRefresh).mockResolvedValue({
       connection: {} as any,
       accessToken: "at",
       shopId: "1",
@@ -499,7 +500,7 @@ describe("submitListingDraft", () => {
     });
 
     vi.mocked(isEtsyConfigured).mockReturnValue(true);
-    vi.mocked(resolveEtsyConnection).mockResolvedValue({
+    vi.mocked(resolveEtsyConnectionWithRefresh).mockResolvedValue({
       connection: {} as any,
       accessToken: "at",
       shopId: "55",
@@ -561,7 +562,7 @@ describe("submitListingDraft", () => {
     });
 
     vi.mocked(isEtsyConfigured).mockReturnValue(true);
-    vi.mocked(resolveEtsyConnection).mockResolvedValue({
+    vi.mocked(resolveEtsyConnectionWithRefresh).mockResolvedValue({
       connection: {} as any,
       accessToken: "at",
       shopId: "55",
@@ -615,7 +616,7 @@ describe("submitListingDraft", () => {
     });
 
     vi.mocked(isEtsyConfigured).mockReturnValue(true);
-    vi.mocked(resolveEtsyConnection).mockResolvedValue({
+    vi.mocked(resolveEtsyConnectionWithRefresh).mockResolvedValue({
       connection: {} as any,
       accessToken: "at",
       shopId: "10",
@@ -658,5 +659,101 @@ describe("submitListingDraft", () => {
 
     const updated = await db.listing.findUnique({ where: { id: listing.id } });
     expect(updated?.failedReason).toBeNull();
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // Phase 9 V1 — token refresh resilience integration (submit pipeline)
+  //
+  // resolveEtsyConnectionWithRefresh refresh path'inde sessizce yeni token
+  // döner; submit pipeline farkına bile varmaz. Refresh fail durumunda
+  // typed EtsyTokenRefreshFailedError 401 fırlatılır; listing'e dokunulmaz
+  // (provider çağrılmadığı için draft create denenmemiştir; image upload
+  // path da hiç açılmaz). Bu davranış endpoint'te 401'e map edilir.
+  // ────────────────────────────────────────────────────────────
+
+  it("refresh success — pipeline expired token görür, refresh sessizce yeni token döndürür, PUBLISHED yolu açılır", async () => {
+    const user = await ensureUser(uniqueEmail("refresh-ok"));
+    userIds.push(user.id);
+
+    const listing = await db.listing.create({
+      data: {
+        userId: user.id,
+        title: "Title",
+        description: "Desc",
+        priceCents: 1500,
+        category: "wall_art",
+        status: "DRAFT",
+      },
+    });
+
+    vi.mocked(isEtsyConfigured).mockReturnValue(true);
+    // Helper içinde refresh tamamlandı varsay; pipeline'a fresh accessToken döner
+    vi.mocked(resolveEtsyConnectionWithRefresh).mockResolvedValue({
+      connection: {} as any,
+      accessToken: "fresh-after-refresh",
+      shopId: "55555",
+    });
+    const createDraftListing = vi.fn().mockResolvedValue({
+      etsyListingId: "L-REFRESHED",
+      state: "draft",
+    });
+    vi.mocked(getEtsyProvider).mockReturnValue({
+      id: "etsy-api",
+      apiVersion: "v3",
+      createDraftListing,
+      uploadListingImage: vi.fn(),
+    });
+
+    const result = await submitListingDraft(listing.id, user.id);
+    expect(result.status).toBe("PUBLISHED");
+    expect(result.etsyListingId).toBe("L-REFRESHED");
+
+    // Provider, refresh sonrası fresh accessToken ile çağrıldı (pipeline farkına varmadı)
+    expect(createDraftListing).toHaveBeenCalledWith(
+      expect.objectContaining({ taxonomyId: 2078 }),
+      expect.objectContaining({ accessToken: "fresh-after-refresh" }),
+    );
+  });
+
+  it("refresh fail — EtsyTokenRefreshFailedError 401, listing DRAFT'ta kalır (provider çağrılmaz)", async () => {
+    const user = await ensureUser(uniqueEmail("refresh-fail"));
+    userIds.push(user.id);
+
+    const listing = await db.listing.create({
+      data: {
+        userId: user.id,
+        title: "Title",
+        description: "Desc",
+        priceCents: 1500,
+        category: "wall_art",
+        status: "DRAFT",
+      },
+    });
+
+    vi.mocked(isEtsyConfigured).mockReturnValue(true);
+    vi.mocked(resolveEtsyConnectionWithRefresh).mockRejectedValue(
+      new EtsyTokenRefreshFailedError("invalid_grant"),
+    );
+
+    let caught: unknown;
+    try {
+      await submitListingDraft(listing.id, user.id);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(EtsyTokenRefreshFailedError);
+    expect((caught as EtsyTokenRefreshFailedError).status).toBe(401);
+    expect((caught as EtsyTokenRefreshFailedError).message).toContain(
+      "Etsy token yenileme başarısız",
+    );
+
+    // Listing DRAFT'ta kalmış olmalı (provider hiç çağrılmadı, image upload hiç açılmadı)
+    const updated = await db.listing.findUnique({ where: { id: listing.id } });
+    expect(updated?.status).toBe("DRAFT");
+    expect(updated?.etsyListingId).toBeNull();
+    expect(updated?.failedReason).toBeNull();
+    expect(updated?.submittedAt).toBeNull();
+    expect(getEtsyProvider).not.toHaveBeenCalled();
+    expect(uploadListingImages).not.toHaveBeenCalled();
   });
 });

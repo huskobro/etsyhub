@@ -15,17 +15,24 @@
  */
 
 import { db } from "@/server/db";
-import { encryptSecret } from "@/lib/secrets";
+import { encryptSecret, decryptSecret } from "@/lib/secrets";
 import {
   isEtsyConfigured,
   ETSY_DEFAULT_SCOPES,
   getEtsyOAuthConfig,
+  refreshAccessToken,
 } from "./oauth";
 import {
   classifyEtsyHttpError,
   classifyEtsyNetworkError,
 } from "./error-classifier";
-import { EtsyApiError } from "./errors";
+import {
+  EtsyApiError,
+  EtsyConnectionNotFoundError,
+  EtsyTokenMissingError,
+  EtsyTokenRefreshFailedError,
+} from "./errors";
+import type { EtsyConnectionResolved } from "./types";
 
 const ETSY_API_BASE = "https://openapi.etsy.com/v3/application";
 
@@ -234,4 +241,111 @@ export async function deleteEtsyConnection(userId: string): Promise<void> {
   await db.etsyConnection.delete({
     where: { id: store.etsyConnection.id },
   });
+}
+
+/**
+ * Token refresh threshold — token bu süreden önce expired'a düşerse
+ * proactive olarak refresh eder. V1: 5 dakika (Etsy V3 access tokens
+ * 1 saat geçerli; 5 dk margin yeterli).
+ *
+ * V1.1+: configurable + background worker preempt refresh (BullMQ).
+ */
+const TOKEN_REFRESH_GRACE_MS = 5 * 60 * 1000;
+
+/**
+ * Phase 9 V1 — Etsy connection resolve + opportunistic token refresh.
+ *
+ * Submit pipeline `resolveEtsyConnection` (read-only) yerine bu helper'ı
+ * kullanır. Davranış:
+ *   1. Store + EtsyConnection fetch (read path connection.ts emsali)
+ *   2. accessToken null veya shopId null → EtsyTokenMissingError 400
+ *   3. tokenExpires geçmişte veya grace window içinde:
+ *      a. refreshToken null/boş → EtsyTokenRefreshFailedError 401
+ *         (kullanıcı Settings'ten yeniden bağlanmalı)
+ *      b. refreshToken var → refreshAccessToken çağır
+ *         - Success: EtsyConnection update (yeni access + refresh +
+ *           tokenExpires + scopes corun) → decrypted yeni token döndür
+ *         - Fail: underlying error message ile EtsyTokenRefreshFailedError
+ *           wrap (Etsy reddetti / network / vs)
+ *   4. Token geçerli ve grace dışında → mevcut decrypted accessToken döndür
+ *
+ * Connection state hâlâ kullanıcı action gerektiriyorsa (refresh fail)
+ * dürüst 401 fırlatılır; UI Settings panel `expired` state gösterir.
+ *
+ * Read-only `resolveEtsyConnection` (connection.ts) DOKUNULMADI; tüketiciler
+ * (V1'de yalnız submit) opportunistic refresh isterse bu helper'ı kullanır.
+ */
+export async function resolveEtsyConnectionWithRefresh(
+  userId: string,
+): Promise<EtsyConnectionResolved> {
+  // 1. Store + connection fetch (read path emsali)
+  const store = await db.store.findFirst({
+    where: { userId, deletedAt: null },
+    include: { etsyConnection: true },
+  });
+
+  if (!store || !store.etsyConnection) {
+    throw new EtsyConnectionNotFoundError();
+  }
+
+  const connection = store.etsyConnection;
+
+  if (!connection.accessToken) {
+    throw new EtsyTokenMissingError();
+  }
+
+  if (!connection.shopId) {
+    throw new EtsyTokenMissingError();
+  }
+
+  // 2. Token expiry guard — eğer grace window içinde değilse mevcut token'ı dön
+  const now = Date.now();
+  const expiresAt = connection.tokenExpires?.getTime() ?? 0;
+  const needsRefresh = expiresAt - now <= TOKEN_REFRESH_GRACE_MS;
+
+  if (!needsRefresh) {
+    return {
+      connection,
+      accessToken: decryptSecret(connection.accessToken),
+      shopId: connection.shopId,
+    };
+  }
+
+  // 3. Refresh path — refreshToken yoksa honest fail
+  if (!connection.refreshToken) {
+    throw new EtsyTokenRefreshFailedError(
+      "refresh token mevcut değil (eski bağlantı OAuth scope eksik veya manuel insert)",
+    );
+  }
+
+  let refreshed;
+  try {
+    refreshed = await refreshAccessToken({
+      refreshToken: decryptSecret(connection.refreshToken),
+    });
+  } catch (err) {
+    // Etsy reddetti / token revoked / network — wrap honest error
+    const message = err instanceof Error ? err.message : String(err);
+    throw new EtsyTokenRefreshFailedError(message);
+  }
+
+  // 4. DB update — yeni token'ları encrypt + persist (scopes + shopId/shopName korun)
+  const newTokenExpires = new Date(
+    Date.now() + refreshed.expiresInSeconds * 1000,
+  );
+  const updated = await db.etsyConnection.update({
+    where: { id: connection.id },
+    data: {
+      accessToken: encryptSecret(refreshed.accessToken),
+      refreshToken: encryptSecret(refreshed.refreshToken),
+      tokenExpires: newTokenExpires,
+      // scopes, shopId, shopName: değişmez — Etsy refresh response'unda yer almaz
+    },
+  });
+
+  return {
+    connection: updated,
+    accessToken: refreshed.accessToken, // already plain (just refreshed)
+    shopId: connection.shopId,
+  };
 }

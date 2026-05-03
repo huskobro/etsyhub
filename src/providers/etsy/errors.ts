@@ -86,3 +86,21 @@ export class EtsyNetworkError extends AppError {
     super(`Etsy bağlantı hatası: ${message}`, "ETSY_NETWORK", 502);
   }
 }
+
+/**
+ * Token refresh denendi ama başarısız oldu (refresh token revoked,
+ * expired, veya Etsy reddetti). Kullanıcıya "yeniden bağlan" UX'i.
+ *
+ * Phase 9 V1 foundation: submit pipeline expired token path'inde refresh
+ * dener; başarısızsa bu fırlatılır. UI/endpoint mapping: 401 — kullanıcı
+ * Settings'ten yeniden bağlanmalı.
+ */
+export class EtsyTokenRefreshFailedError extends AppError {
+  constructor(public readonly underlyingMessage: string) {
+    super(
+      `Etsy token yenileme başarısız: ${underlyingMessage}. Settings → Etsy bağlantısı'ndan yeniden bağlanmanız gerek.`,
+      "ETSY_TOKEN_REFRESH_FAILED",
+      401,
+    );
+  }
+}

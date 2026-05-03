@@ -36,6 +36,7 @@ import {
   EtsyConnectionNotFoundError,
   EtsyNotConfiguredError,
   EtsyTaxonomyMissingError,
+  EtsyTokenRefreshFailedError,
 } from "@/providers/etsy";
 
 const TEST_PREFIX = "phase9-api-submit";
@@ -320,5 +321,39 @@ describe("POST /api/listings/draft/[id]/submit", () => {
     );
     const res = await POST(req, { params: { id: listing.id } });
     expect(res.status).toBe(502);
+  });
+
+  it("401 — service EtsyTokenRefreshFailedError (kullanıcı reconnect)", async () => {
+    const user = await ensureUser(uniqueEmail("401refresh"));
+    userIds.push(user.id);
+    vi.mocked(requireUser).mockResolvedValueOnce(user as any);
+
+    const listing = await db.listing.create({
+      data: {
+        userId: user.id,
+        title: "T",
+        description: "D",
+        priceCents: 500,
+        status: "DRAFT",
+      },
+    });
+
+    vi.mocked(submitListingDraft).mockRejectedValue(
+      new EtsyTokenRefreshFailedError("invalid_grant"),
+    );
+
+    const req = new Request(
+      "http://localhost/api/listings/draft/" + listing.id + "/submit",
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    const res = await POST(req, { params: { id: listing.id } });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string; code: string };
+    expect(body.code).toBe("ETSY_TOKEN_REFRESH_FAILED");
+    expect(body.error).toContain("Etsy token yenileme başarısız");
   });
 });

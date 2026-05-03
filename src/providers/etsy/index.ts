@@ -31,6 +31,7 @@ export {
   EtsyRateLimitError,
   EtsyValidationError,
   EtsyNetworkError,
+  EtsyTokenRefreshFailedError,
 } from "./errors";
 export { isRetryableEtsyError } from "./error-classifier";
 
@@ -39,6 +40,7 @@ export {
   getEtsyConnectionStatus,
   persistEtsyConnection,
   deleteEtsyConnection,
+  resolveEtsyConnectionWithRefresh,
   type EtsyConnectionStatus,
 } from "./connection.service";
 export {

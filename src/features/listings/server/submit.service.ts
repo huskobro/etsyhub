@@ -41,7 +41,7 @@ import { isListingEditable } from "./state";
 import { computeReadiness, allReadinessPass } from "./readiness.service";
 import {
   getEtsyProvider,
-  resolveEtsyConnection,
+  resolveEtsyConnectionWithRefresh,
   DEFAULT_ETSY_PROVIDER_ID,
   isEtsyConfigured,
   EtsyNotConfiguredError,
@@ -224,8 +224,10 @@ export async function submitListingDraft(
     throw new EtsyNotConfiguredError();
   }
 
-  // 5. Connection resolve (typed throw: NotFound / TokenMissing / TokenExpired)
-  const { accessToken, shopId } = await resolveEtsyConnection(userId);
+  // 5. Connection resolve + opportunistic token refresh
+  // (resolveEtsyConnectionWithRefresh — typed throw: NotFound / TokenMissing /
+  // TokenRefreshFailed; refresh başarılı ise sessizce yeni token döner).
+  const { accessToken, shopId } = await resolveEtsyConnectionWithRefresh(userId);
 
   // 6. Taxonomy resolve (B+C entegrasyon — env mapping, foundation)
   const productTypeKey = resolveProductTypeKey(listing);
