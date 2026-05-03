@@ -25,6 +25,7 @@ const mockListing: ListingDraftView = {
   etsyListingId: null,
   failedReason: null,
   readiness: [],
+  etsyShop: null,
 };
 
 describe("PricingSection", () => {

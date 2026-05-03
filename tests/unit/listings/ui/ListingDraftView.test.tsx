@@ -1,11 +1,16 @@
 /**
- * Phase 9 V1 Task 19 — ListingDraftView UI test (foundation slice).
+ * Phase 9 V1 — ListingDraftView UI test (kompozisyon slice).
  *
  * Spec §8.1.1 — Render detail view: images (cover + position badges),
  * readiness checklist (soft warn green/yellow), metadata summary (read-only).
  *
- * V1 scope: layout + data binding test. Edit form + actions test Task 20+.
- * Mock useListingDraft hook (server-side logic tested separately).
+ * V1 (Submit sonrası UX paketi): submit panel SubmitResultPanel'e delegate.
+ * Bu test sadece kompozisyon + early returns + readiness + AssetSection /
+ * MetadataSection / PricingSection mount'unu doğrular. Submit pipeline
+ * davranışı SubmitResultPanel.test.tsx'te ayrı ele alınır.
+ *
+ * Mocks: useListingDraft (server-side logic) + SubmitResultPanel (delegate
+ * bileşen, sadece mount kontrolü).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -14,20 +19,20 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ListingDraftView } from "@/features/listings/ui/ListingDraftView";
 import type { ListingDraftView as ListingDraftViewType } from "@/features/listings/types";
 
-// Support both old and new ListingDraftView type name
-type ListingDraft = ListingDraftViewType;
-
 // Mock hooks
 vi.mock("@/features/listings/hooks/useListingDraft", () => ({
   useListingDraft: vi.fn(),
 }));
 
-vi.mock("@/features/listings/hooks/useSubmitListingDraft", () => ({
-  useSubmitListingDraft: vi.fn(),
+// Mock SubmitResultPanel — bu bileşenin davranışı ayrı testte; burada
+// sadece doğru listing ile mount edildiğini doğrularız.
+vi.mock("@/features/listings/components/SubmitResultPanel", () => ({
+  SubmitResultPanel: ({ listing }: { listing: { id: string } }) => (
+    <div data-testid="submit-result-panel">SubmitResultPanel({listing.id})</div>
+  ),
 }));
 
 import { useListingDraft } from "@/features/listings/hooks/useListingDraft";
-import { useSubmitListingDraft } from "@/features/listings/hooks/useSubmitListingDraft";
 
 // Test fixture data
 const mockListingDraft: ListingDraftViewType = {
@@ -120,6 +125,7 @@ const mockListingDraft: ListingDraftViewType = {
       message: "Cover görsel mevcut",
     },
   ],
+  etsyShop: null,
   createdAt: "2026-05-02T10:00:00Z",
   updatedAt: "2026-05-02T10:05:00Z",
 };
@@ -136,34 +142,10 @@ function renderWithProvider(component: React.ReactNode) {
   );
 }
 
-// Default submit mutation mock — idle state.
-function defaultSubmitMutationMock(overrides: Record<string, unknown> = {}) {
-  return {
-    mutate: vi.fn(),
-    mutateAsync: vi.fn(),
-    isPending: false,
-    isError: false,
-    isSuccess: false,
-    isIdle: true,
-    error: null,
-    data: undefined,
-    status: "idle" as const,
-    reset: vi.fn(),
-    variables: undefined,
-    context: undefined,
-    failureCount: 0,
-    failureReason: null,
-    submittedAt: 0,
-    ...overrides,
-  };
-}
-
 describe("ListingDraftView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryClient.clear();
-    // Default: idle submit mutation (not pending/success/error).
-    (useSubmitListingDraft as any).mockReturnValue(defaultSubmitMutationMock());
   });
 
   it("should render loading state while fetching", () => {
@@ -307,199 +289,19 @@ describe("ListingDraftView", () => {
     expect(screen.getByDisplayValue(/Modern abstract design/)).toBeTruthy();
   });
 
-  // Phase 9 V1 Task 22 — submit button activation (real endpoint binding).
-  describe("submit button (Task 22)", () => {
-    it("renders enabled submit button on DRAFT status by default", () => {
-      (useListingDraft as any).mockReturnValue({
-        data: mockListingDraft,
-        isLoading: false,
-        error: null,
-      });
-
-      renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
-
-      const submitBtn = screen.getByRole("button", { name: /Taslak Gönder/i });
-      expect(submitBtn).not.toHaveAttribute("disabled");
+  // Phase 9 V1 — submit panel artık SubmitResultPanel'e delegated.
+  it("renders SubmitResultPanel mounted with current listing", () => {
+    (useListingDraft as any).mockReturnValue({
+      data: mockListingDraft,
+      isLoading: false,
+      error: null,
     });
 
-    it("invokes submit mutation when button clicked", () => {
-      const mutateSpy = vi.fn();
-      (useListingDraft as any).mockReturnValue({
-        data: mockListingDraft,
-        isLoading: false,
-        error: null,
-      });
-      (useSubmitListingDraft as any).mockReturnValue(
-        defaultSubmitMutationMock({ mutate: mutateSpy }),
-      );
+    renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
-      renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
-
-      const submitBtn = screen.getByRole("button", { name: /Taslak Gönder/i });
-      submitBtn.click();
-      expect(mutateSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it("shows pending label and disables button while submitting", () => {
-      (useListingDraft as any).mockReturnValue({
-        data: mockListingDraft,
-        isLoading: false,
-        error: null,
-      });
-      (useSubmitListingDraft as any).mockReturnValue(
-        defaultSubmitMutationMock({ isPending: true, isIdle: false, status: "pending" }),
-      );
-
-      renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
-
-      const submitBtn = screen.getByRole("button", { name: /Gönderiliyor…/i });
-      expect(submitBtn).toHaveAttribute("disabled");
-    });
-
-    it("renders role=alert with error message on submit failure", () => {
-      (useListingDraft as any).mockReturnValue({
-        data: mockListingDraft,
-        isLoading: false,
-        error: null,
-      });
-      (useSubmitListingDraft as any).mockReturnValue(
-        defaultSubmitMutationMock({
-          isError: true,
-          isIdle: false,
-          status: "error",
-          error: new Error("Etsy entegrasyonu yapılandırılmamış"),
-        }),
-      );
-
-      renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
-
-      const alert = screen.getByRole("alert");
-      expect(alert.textContent).toContain("Gönderme başarısız");
-      expect(alert.textContent).toContain("Etsy entegrasyonu yapılandırılmamış");
-    });
-
-    it("renders role=status with Etsy listing ID on submit success", () => {
-      (useListingDraft as any).mockReturnValue({
-        data: mockListingDraft,
-        isLoading: false,
-        error: null,
-      });
-      (useSubmitListingDraft as any).mockReturnValue(
-        defaultSubmitMutationMock({
-          isSuccess: true,
-          isIdle: false,
-          status: "success",
-          data: {
-            status: "PUBLISHED" as const,
-            etsyListingId: "1234567890",
-            failedReason: null,
-            providerSnapshot: "etsy-mock@v3-2026-05-03",
-          },
-        }),
-      );
-
-      renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
-
-      // role=status banner: success message + Etsy listing ID
-      const statuses = screen.getAllByRole("status");
-      const successBanner = statuses.find((el) =>
-        el.textContent?.includes("Etsy taslağı oluşturuldu"),
-      );
-      expect(successBanner).toBeTruthy();
-      expect(successBanner?.textContent).toContain("1234567890");
-    });
-
-    it("disables button + shows status banner when listing is PUBLISHED (terminal)", () => {
-      const publishedListing = {
-        ...mockListingDraft,
-        status: "PUBLISHED" as const,
-        etsyListingId: "etsy-99999",
-        publishedAt: "2026-05-03T10:00:00Z",
-        submittedAt: "2026-05-03T10:00:00Z",
-      };
-      (useListingDraft as any).mockReturnValue({
-        data: publishedListing,
-        isLoading: false,
-        error: null,
-      });
-
-      renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
-
-      const submitBtn = screen.getByRole("button", { name: /Taslak Gönder/i });
-      expect(submitBtn).toHaveAttribute("disabled");
-
-      // PUBLISHED green banner with Etsy listing ID
-      const statuses = screen.getAllByRole("status");
-      const publishedBanner = statuses.find((el) =>
-        el.textContent?.includes("Bu listing Etsy'ye gönderildi"),
-      );
-      expect(publishedBanner).toBeTruthy();
-      expect(publishedBanner?.textContent).toContain("etsy-99999");
-
-      // Disabled hint visible
-      expect(screen.getByText(/Bu durumda yeniden gönderilemez/i)).toBeTruthy();
-    });
-
-    it("renders FAILED red banner with failedReason when listing previously failed", () => {
-      const failedListing = {
-        ...mockListingDraft,
-        status: "FAILED" as const,
-        failedReason: "Etsy V3 reddetti: taxonomy_id required",
-        submittedAt: "2026-05-03T10:00:00Z",
-      };
-      (useListingDraft as any).mockReturnValue({
-        data: failedListing,
-        isLoading: false,
-        error: null,
-      });
-
-      renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
-
-      const statuses = screen.getAllByRole("status");
-      const failedBanner = statuses.find((el) =>
-        el.textContent?.includes("Önceki gönderim başarısız"),
-      );
-      expect(failedBanner).toBeTruthy();
-      expect(failedBanner?.textContent).toContain(
-        "Etsy V3 reddetti: taxonomy_id required",
-      );
-
-      // FAILED is terminal — submit button disabled
-      const submitBtn = screen.getByRole("button", { name: /Taslak Gönder/i });
-      expect(submitBtn).toHaveAttribute("disabled");
-    });
-
-    it("shows soft readiness warning text on DRAFT when readiness fails (does not block submit)", () => {
-      const failingReadinessListing = {
-        ...mockListingDraft,
-        readiness: [
-          ...mockListingDraft.readiness.slice(0, 1),
-          {
-            field: "description" as const,
-            pass: false,
-            severity: "warn" as const,
-            message: "Açıklama girilmeli",
-          },
-          ...mockListingDraft.readiness.slice(2),
-        ],
-      };
-      (useListingDraft as any).mockReturnValue({
-        data: failingReadinessListing,
-        isLoading: false,
-        error: null,
-      });
-
-      renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
-
-      // Soft warn text visible (does not block)
-      expect(
-        screen.getByText(/Bazı hazırlık kontrolleri eksik/i),
-      ).toBeTruthy();
-
-      // Submit button still ENABLED — soft warn, K3 lock
-      const submitBtn = screen.getByRole("button", { name: /Taslak Gönder/i });
-      expect(submitBtn).not.toHaveAttribute("disabled");
-    });
+    const panel = screen.getByTestId("submit-result-panel");
+    expect(panel).toBeTruthy();
+    expect(panel.textContent).toContain(mockListingDraft.id);
   });
 
   it("should handle null/empty title gracefully", () => {

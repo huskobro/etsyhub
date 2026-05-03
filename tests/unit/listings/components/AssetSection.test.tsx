@@ -15,6 +15,7 @@ const mockListing: ListingDraftView = {
   updatedAt: new Date().toISOString(),
   mockupJobId: "job-1",
   coverRenderId: "cover-1",
+  etsyShop: null,
   imageOrder: [
     {
       renderId: "cover-1",

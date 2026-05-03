@@ -15,6 +15,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ExternalLink } from "lucide-react";
 import { useListings } from "@/features/listings/hooks/useListings";
 import type { ListingStatusValue } from "@/features/listings/types";
 import {
@@ -125,36 +126,54 @@ export function ListingsIndexView() {
             className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
           >
             {listings.map((listing) => (
-              <li key={listing.id}>
-                <Link
-                  href={`/listings/draft/${listing.id}`}
-                  className="block rounded-md border border-border bg-white p-4 transition hover:border-text"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <h2 className="text-sm font-medium text-text">
-                      {listing.title ?? "İsimsiz draft"}
-                    </h2>
-                    <span
-                      data-testid={`listing-status-${listing.id}`}
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        LISTING_STATUS_BADGE_CLASS[listing.status]
-                      }`}
+              <li
+                key={listing.id}
+                className="rounded-md border border-border bg-white p-4 transition hover:border-text"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <h2 className="text-sm font-medium text-text">
+                    <Link
+                      href={`/listings/draft/${listing.id}`}
+                      className="hover:underline"
                     >
-                      {LISTING_STATUS_LABELS[listing.status]}
-                    </span>
-                  </div>
+                      {listing.title ?? "İsimsiz draft"}
+                    </Link>
+                  </h2>
+                  <span
+                    data-testid={`listing-status-${listing.id}`}
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      LISTING_STATUS_BADGE_CLASS[listing.status]
+                    }`}
+                  >
+                    {LISTING_STATUS_LABELS[listing.status]}
+                  </span>
+                </div>
 
-                  {listing.priceCents != null && (
-                    <p className="mt-2 text-xs text-text-muted">
-                      ${(listing.priceCents / 100).toFixed(2)}
-                    </p>
-                  )}
-
-                  <p className="mt-3 text-xs text-text-muted">
-                    Güncellendi:{" "}
-                    {new Date(listing.updatedAt).toLocaleDateString("tr-TR")}
+                {listing.priceCents != null && (
+                  <p className="mt-2 text-xs text-text-muted">
+                    ${(listing.priceCents / 100).toFixed(2)}
                   </p>
-                </Link>
+                )}
+
+                <p className="mt-3 text-xs text-text-muted">
+                  Güncellendi:{" "}
+                  {new Date(listing.updatedAt).toLocaleDateString("tr-TR")}
+                </p>
+
+                {/* Phase 9 V1 — PUBLISHED listing'lerde Etsy admin URL'ine
+                    direkt deep-link. Outer Link kaldırıldı (nested <a>
+                    HTML invalid), başlık linkine ek olarak ayrı render. */}
+                {listing.status === "PUBLISHED" && listing.etsyListingId && (
+                  <a
+                    href={`https://www.etsy.com/your/shops/me/tools/listings/${listing.etsyListingId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex items-center gap-1 text-xs text-green-700 hover:underline"
+                  >
+                    Etsy'de Aç
+                    <ExternalLink className="h-3 w-3" aria-hidden />
+                  </a>
+                )}
               </li>
             ))}
           </ul>

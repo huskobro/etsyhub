@@ -66,6 +66,17 @@ export type ListingDraftView = {
   etsyListingId: string | null;
   failedReason: string | null;
   readiness: ReadinessCheck[];
+  /**
+   * Phase 9 V1 — Submit sonrası UX paketi.
+   *
+   * Listing'in sahibi olan store'un Etsy bağlantısı varsa shop bilgisi.
+   * UI "Etsy'de Aç" + "Mağazaya Git" linkleri için kullanır.
+   * Connection yoksa null (kullanıcı henüz Etsy bağlantısı kurmadı).
+   */
+  etsyShop: {
+    shopId: string;
+    shopName: string | null;
+  } | null;
   createdAt: string;
   updatedAt: string;
 };

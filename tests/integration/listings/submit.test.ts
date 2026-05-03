@@ -661,6 +661,73 @@ describe("submitListingDraft", () => {
     expect(updated?.failedReason).toBeNull();
   });
 
+  // Phase 9 V1 — Submit sonrası UX paketi: imageUpload.attempts response shape.
+  it("imageUpload.attempts — submit response flat attempts array'i içerir (rank/cover/etsyImageId)", async () => {
+    const user = await ensureUser(uniqueEmail("attempts"));
+    userIds.push(user.id);
+
+    const listing = await db.listing.create({
+      data: {
+        userId: user.id,
+        title: "Title",
+        description: "Desc",
+        priceCents: 1500,
+        category: "wall_art",
+        status: "DRAFT",
+        imageOrderJson: [
+          { packPosition: 0, renderId: "r0", outputKey: "k0", templateName: "tpl-c", isCover: true },
+          { packPosition: 1, renderId: "r1", outputKey: "k1", templateName: "tpl-1", isCover: false },
+        ],
+      },
+    });
+
+    vi.mocked(isEtsyConfigured).mockReturnValue(true);
+    vi.mocked(resolveEtsyConnectionWithRefresh).mockResolvedValue({
+      connection: {} as any,
+      accessToken: "at",
+      shopId: "55",
+    });
+    vi.mocked(getEtsyProvider).mockReturnValue({
+      id: "etsy-api",
+      apiVersion: "v3",
+      createDraftListing: vi.fn().mockResolvedValue({
+        etsyListingId: "L-ATT",
+        state: "draft",
+      }),
+      uploadListingImage: vi.fn(),
+    });
+    vi.mocked(uploadListingImages).mockResolvedValue({
+      successCount: 1,
+      failedCount: 1,
+      partial: true,
+      attempts: [
+        { rank: 1, packPosition: 0, renderId: "r0", isCover: true, ok: true, etsyImageId: "img-cover" },
+        { rank: 2, packPosition: 1, renderId: "r1", isCover: false, ok: false, error: "rate_limited" },
+      ],
+    });
+
+    const result = await submitListingDraft(listing.id, user.id);
+
+    expect(result.imageUpload?.attempts).toBeDefined();
+    expect(result.imageUpload?.attempts).toHaveLength(2);
+
+    const cover = result.imageUpload?.attempts?.[0];
+    expect(cover?.rank).toBe(1);
+    expect(cover?.packPosition).toBe(0);
+    expect(cover?.renderId).toBe("r0");
+    expect(cover?.isCover).toBe(true);
+    expect(cover?.ok).toBe(true);
+    expect(cover?.etsyImageId).toBe("img-cover");
+    expect(cover?.error).toBeUndefined();
+
+    const failed = result.imageUpload?.attempts?.[1];
+    expect(failed?.rank).toBe(2);
+    expect(failed?.isCover).toBe(false);
+    expect(failed?.ok).toBe(false);
+    expect(failed?.error).toBe("rate_limited");
+    expect(failed?.etsyImageId).toBeUndefined();
+  });
+
   // ────────────────────────────────────────────────────────────
   // Phase 9 V1 — token refresh resilience integration (submit pipeline)
   //

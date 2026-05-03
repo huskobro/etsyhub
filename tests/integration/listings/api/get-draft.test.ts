@@ -162,6 +162,74 @@ describe("GET /api/listings/draft/[id]", () => {
     const res = await GET(req, ctx as any);
     expect(res.status).toBe(400);
   });
+
+  // Phase 9 V1 — Submit sonrası UX paketi: etsyShop additive field.
+  it("200 — etsyShop null (Etsy bağlantısı yoksa)", async () => {
+    const user = await ensureUser(uniqueEmail("etsyshop-null"));
+    userIds.push(user.id);
+
+    const store = await db.store.create({
+      data: { userId: user.id, name: "Test Store No Etsy" },
+    });
+
+    const listing = await db.listing.create({
+      data: {
+        userId: user.id,
+        storeId: store.id,
+        title: "Listing No Etsy",
+        status: "DRAFT",
+      },
+    });
+
+    const req = new Request("http://localhost/api/listings/draft/" + listing.id);
+    const ctx = { params: { id: listing.id } };
+
+    vi.mocked(requireUser).mockResolvedValueOnce(user as any);
+    const res = await GET(req, ctx as any);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { listing: ListingDraftView };
+    expect(body.listing.etsyShop).toBeNull();
+  });
+
+  it("200 — etsyShop populated (shopId + shopName)", async () => {
+    const user = await ensureUser(uniqueEmail("etsyshop-populated"));
+    userIds.push(user.id);
+
+    const store = await db.store.create({
+      data: { userId: user.id, name: "Test Store With Etsy" },
+    });
+
+    await db.etsyConnection.create({
+      data: {
+        storeId: store.id,
+        shopId: "55555",
+        shopName: "EtsyHubStore",
+      },
+    });
+
+    const listing = await db.listing.create({
+      data: {
+        userId: user.id,
+        storeId: store.id,
+        title: "Listing With Etsy",
+        status: "DRAFT",
+      },
+    });
+
+    const req = new Request("http://localhost/api/listings/draft/" + listing.id);
+    const ctx = { params: { id: listing.id } };
+
+    vi.mocked(requireUser).mockResolvedValueOnce(user as any);
+    const res = await GET(req, ctx as any);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { listing: ListingDraftView };
+    expect(body.listing.etsyShop).toEqual({
+      shopId: "55555",
+      shopName: "EtsyHubStore",
+    });
+  });
 });
 
 afterAll(async () => {
@@ -177,6 +245,9 @@ afterAll(async () => {
   await db.generatedDesign.deleteMany({ where: { userId: { in: userIds } } });
   await db.reference.deleteMany({ where: { userId: { in: userIds } } });
   await db.asset.deleteMany({ where: { userId: { in: userIds } } });
+  await db.etsyConnection.deleteMany({
+    where: { store: { userId: { in: userIds } } },
+  });
   await db.store.deleteMany({ where: { userId: { in: userIds } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
 });

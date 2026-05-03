@@ -24,7 +24,15 @@ import type {
 } from "@/features/listings/types";
 import { computeReadiness } from "@/features/listings/server/readiness.service";
 import { isListingEditable } from "@/features/listings/server/state";
-import type { Listing } from "@prisma/client";
+import type { EtsyConnection, Listing } from "@prisma/client";
+
+/**
+ * Phase 9 V1 — Listing fetch için store→etsyConnection nested type.
+ * GET handler join'inde kullanılır; helper'a tipli aktarılır.
+ */
+type ListingWithEtsyConnection = Listing & {
+  store: { etsyConnection: EtsyConnection | null } | null;
+};
 
 // ────────────────────────────────────────────────────────────
 // Custom errors (AppError extend, withErrorHandling HOF auto-map)
@@ -50,8 +58,18 @@ export class ListingNotEditableError extends AppError {
 // Helper: Listing → ListingDraftView mapper (DRY için)
 // ────────────────────────────────────────────────────────────
 
-function buildListingDraftView(listing: Listing): ListingDraftView {
+function buildListingDraftView(
+  listing: Listing,
+  etsyConnection: EtsyConnection | null = null,
+): ListingDraftView {
   const readiness = computeReadiness(listing);
+  // Phase 9 V1 — Submit sonrası UX paketi: shopId varsa shop bilgisi expose;
+  // shopId null veya connection yoksa null (kullanıcı bağlantı kurmadı /
+  // OAuth callback shopId resolve etmedi).
+  const etsyShop =
+    etsyConnection && etsyConnection.shopId
+      ? { shopId: etsyConnection.shopId, shopName: etsyConnection.shopName }
+      : null;
   return {
     id: listing.id,
     status: listing.status,
@@ -70,6 +88,7 @@ function buildListingDraftView(listing: Listing): ListingDraftView {
     etsyListingId: listing.etsyListingId,
     failedReason: listing.failedReason,
     readiness,
+    etsyShop,
     createdAt: listing.createdAt.toISOString(),
     updatedAt: listing.updatedAt.toISOString(),
   };
@@ -88,15 +107,30 @@ export const GET = withErrorHandling(
       throw new ValidationError("Geçersiz parametre", params.error.flatten());
     }
 
-    const listing = await db.listing.findUnique({
+    // Phase 9 V1 — Submit sonrası UX paketi: store→etsyConnection nested
+    // include (single query). Listing.storeId null olabilir (legacy listing'ler);
+    // store da null dönebilir; helper bu durumu null connection ile handle ediyor.
+    const listing = (await db.listing.findUnique({
       where: { id: params.data.id },
-    });
+      include: {
+        store: {
+          include: {
+            etsyConnection: true,
+          },
+        },
+      },
+    })) as ListingWithEtsyConnection | null;
 
     if (!listing || listing.userId !== user.id) {
       throw new ListingDraftNotFoundError();
     }
 
-    return NextResponse.json({ listing: buildListingDraftView(listing) });
+    return NextResponse.json({
+      listing: buildListingDraftView(
+        listing,
+        listing.store?.etsyConnection ?? null,
+      ),
+    });
   },
 );
 

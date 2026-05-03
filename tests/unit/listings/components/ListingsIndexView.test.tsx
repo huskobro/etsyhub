@@ -149,4 +149,46 @@ describe("<ListingsIndexView>", () => {
     const publishedButton = screen.getByRole("button", { name: /Yayınlanmış/ });
     expect(publishedButton).toHaveAttribute("aria-pressed", "true");
   });
+
+  // Phase 9 V1 — Submit sonrası UX paketi: PUBLISHED card'da Etsy admin link.
+  it("PUBLISHED card'da 'Etsy'de Aç' link doğru href ile render edilir", () => {
+    mockUseListingsReturn = {
+      data: [
+        makeListing({
+          id: "lpub",
+          title: "Published Listing",
+          status: "PUBLISHED",
+          etsyListingId: "12345",
+        }),
+      ],
+      isLoading: false,
+      error: null,
+    };
+    render(<ListingsIndexView />, { wrapper });
+
+    const etsyLink = screen.getByRole("link", { name: /Etsy'de Aç/i });
+    expect(etsyLink).toHaveAttribute(
+      "href",
+      "https://www.etsy.com/your/shops/me/tools/listings/12345",
+    );
+    expect(etsyLink).toHaveAttribute("target", "_blank");
+  });
+
+  it("DRAFT card'da 'Etsy'de Aç' link YOK", () => {
+    mockUseListingsReturn = {
+      data: [
+        makeListing({
+          id: "ldraft",
+          title: "Draft Listing",
+          status: "DRAFT",
+          etsyListingId: null,
+        }),
+      ],
+      isLoading: false,
+      error: null,
+    };
+    render(<ListingsIndexView />, { wrapper });
+
+    expect(screen.queryByRole("link", { name: /Etsy'de Aç/i })).toBeNull();
+  });
 });

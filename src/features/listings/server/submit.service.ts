@@ -107,6 +107,20 @@ export type SubmitListingResult = {
     successCount: number;
     failedCount: number;
     partial: boolean;
+    /**
+     * Phase 9 V1 — UI diagnostics için attempts detayı (image-upload.service'in
+     * raw discriminated union'ı flat shape'e map'lenmiş halde).
+     * Kullanıcı "Detayı göster" ile rank/cover/error breakdown'ı görür.
+     */
+    attempts: Array<{
+      rank: number;
+      packPosition: number;
+      renderId: string;
+      isCover: boolean;
+      ok: boolean;
+      etsyImageId?: string;
+      error?: string;
+    }>;
   };
 };
 
@@ -324,6 +338,28 @@ export async function submitListingDraft(
           successCount: imageUploadResult.successCount,
           failedCount: imageUploadResult.failedCount,
           partial: imageUploadResult.partial,
+          // Phase 9 V1 — discriminated union'dan flat shape'e map (UI tüketimi
+          // tip-friendly olsun; etsyImageId / error mutually exclusive ama
+          // optional hâline dönüştürülür).
+          attempts: imageUploadResult.attempts.map((a) =>
+            a.ok
+              ? {
+                  rank: a.rank,
+                  packPosition: a.packPosition,
+                  renderId: a.renderId,
+                  isCover: a.isCover,
+                  ok: true,
+                  etsyImageId: a.etsyImageId,
+                }
+              : {
+                  rank: a.rank,
+                  packPosition: a.packPosition,
+                  renderId: a.renderId,
+                  isCover: a.isCover,
+                  ok: false,
+                  error: a.error,
+                },
+          ),
         }
       : undefined,
   };
