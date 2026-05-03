@@ -69,7 +69,7 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 | Etsy foundation | Provider abstraction + OAuth scaffold + error classifier + submit service + endpoint (Task 4+10+11+17) | `23f6ffd` |
 | Submit UI | useSubmitListingDraft hook + ListingDraftView submit button activation (Task 22) | `ebd20af` |
 
-**Toplam:** 16 commit, 0 revert.
+**Toplam:** 18+ commit, 0 revert.
 
 ---
 
@@ -127,6 +127,14 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 - **UI:** ListingDraftView footer "Taslak Gönder" button + readiness uyarı + PUBLISHED/FAILED status banner + taze submit success/error banner
 - **Davranış:** Backend honest fail (typed AppError → HTTP map) UI'a kullanıcı dostu Türkçe mesaj olarak gelir; **fake success YOK**
 - **Test:** [`tests/integration/listings/submit.test.ts`](../../../tests/integration/listings/submit.test.ts) + [`tests/integration/listings/api/submit.test.ts`](../../../tests/integration/listings/api/submit.test.ts) + hook/UI testleri
+
+### 8. Listing assets ZIP download
+- **Endpoint:** `GET /api/listings/draft/[id]/assets/download`
+- **Service:** Phase 8 [`buildMockupZip`](../../../src/features/mockups/server/download.service.ts) reuse — yeni archiver/storage/manifest kodu YOK; tek import köprü
+- **Bridge mantığı:** Listing fetch + ownership 404 + soft-delete guard + `mockupJobId` null guard (409 `LISTING_ASSETS_NOT_READY`); Phase 8 service typed error'ları (404 `JobNotFound`, 403 `JobNotDownloadable`) `errorResponse` üzerinden HTTP'ye pass-through
+- **UI:** [`AssetSection.tsx`](../../../src/features/listings/components/AssetSection.tsx) "ZIP İndir" link gerçek route'a bağlı; tüm imageOrder render'ları yüklüyse görünür
+- **Filename:** `listing-{etsyListingId || cuid}.zip` (Etsy submit sonrası daha okunabilir)
+- **Test:** [`tests/integration/listings/api/assets-download.test.ts`](../../../tests/integration/listings/api/assets-download.test.ts) (8 senaryo: 400 invalid path, 404 listing yok / cross-user / soft-deleted, 409 mockupJobId null, 403 job non-terminal, 200 happy + ZIP magic bytes, 200 etsyListingId filename)
 
 ---
 
@@ -213,8 +221,7 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 - V1.1+ ADR ile rasyonalize edilecek (mevcut yapı çalışıyor, refactor risk taşır)
 
 ### Per-render PNG/JPG download endpoint YOK
-- Sadece bulk ZIP (Phase 8 Task 21 endpoint reuse, link UI'da var ama route handler implementasyonu Phase 9.1+)
-- Phase 9 V1 [`AssetSection.tsx`](../../../src/features/listings/components/AssetSection.tsx) "ZIP İndir" link'i `/api/listings/${listing.id}/assets/download` endpoint'ine pointer; route handler henüz yazılmadı
+- Sadece bulk ZIP (Phase 9 V1 endpoint hazır — `GET /api/listings/draft/[id]/assets/download`, Phase 8 `buildMockupZip` reuse; per-render PNG/JPG endpoint V1.1+)
 
 ### Manual QA henüz koşulmadı
 - Phase 9 manual QA checklist: [`./phase9-manual-qa.md`](./phase9-manual-qa.md) (henüz koşulmadı)
@@ -227,7 +234,7 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 
 | Layer | Phase 9 katkı | Toplam | Komut |
 |---|---|---|---|
-| Default suite (unit + integration) | +166 test (önceki Phase 8 baseline'dan) | 1562 / 166 file | `npm test` |
+| Default suite (unit + integration) | +166 test (önceki Phase 8 baseline'dan) | 1570 / 167 file | `npm test` |
 | UI suite (jsdom) | +63 test | 921 / 81 file | `npm run test:ui` |
 | E2E suite | Phase 9 için yeni E2E senaryosu YOK (foundation; submit live success external dep) | (Phase 8 baseline) | `npm run test:e2e` |
 
@@ -259,7 +266,7 @@ Unit (UI / jsdom):
 |---|---|---|
 | TypeScript strict | 0 hata | `npx tsc --noEmit` |
 | Token check (Tailwind disipline) | İhlal yok | `npm run check:tokens` |
-| Default suite | 1562/1562 pass | `npm test` |
+| Default suite | 1570/1570 pass | `npm test` |
 | UI suite | 921/921 pass | `npm run test:ui` |
 
 ---
@@ -313,7 +320,7 @@ submit, etsy-connection) bu pattern'ı sıfırdan uyguladı.
 | Etsy connection resolve | ✅ | ✅ | n/a | ❌ | ✅ | ❌ OAuth flow |
 | Listing submit (UI binding) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ taxonomy + image upload |
 | OAuth full flow | ⚠️ scaffold | n/a | ❌ | ❌ | partial | ❌ |
-| ZIP download (Phase 9 listing scope) | ⚠️ link var | n/a | ❌ | ⚠️ pointer | ❌ | ❌ |
+| ZIP download (Phase 9 listing scope) | ✅ | ✅ (reuse Phase 8) | ✅ | ✅ | ✅ | ✅ |
 
 ---
 
@@ -342,12 +349,7 @@ Phase 9 lokal yüzey doygun. Sıradaki seçenekler:
 - **Etki:** Lokal yüzey gerçek kullanıcı flow'larında doğrulanır; bulgu varsa carry-forward
 - **Not:** Etsy credentials yoksa B-G blokları (submit live) "honest-fail path" olarak doğrulanır
 
-### (E) ZIP download route handler
-- **Ne:** `/api/listings/[id]/assets/download/route.ts` — Phase 8 mockup ZIP endpoint pattern reuse
-- **Bağımlılık:** Yok (lokal)
-- **Etki:** AssetSection "ZIP İndir" link'i çalışır
-
-### (F) Phase 9 V1 closeout (PASS ilanı)
+### (E) Phase 9 V1 closeout (PASS ilanı)
 - **Ne:** Manual QA + Phase 8 manual QA tamamlandıktan sonra closeout doc'unu finalize et
 - **Bağımlılık:** D (Phase 9 manual QA) + Phase 8 manual QA tamamlanması
 - **Etki:** Phase 9 V1 "🟢 PASS" ilan edilir; Phase 9.1 (Etsy live success enabler'ları) açılabilir
@@ -357,8 +359,8 @@ Phase 9 lokal yüzey doygun. Sıradaki seçenekler:
 ## Status: 🟡 Phase 9 V1 lokal yüzey doygun, manual QA + external dep bekliyor
 
 **Tamamlanan:**
-- 16 commit, 0 revert, lokal yüzeyde tüm Phase 9 task'lar (1-19, 22) implement edildi
-- Tüm otomasyon kalite gate'leri PASS (TS strict 0, token check pass, 1562 + 921 test yeşil)
+- 18+ commit, 0 revert, lokal yüzeyde tüm Phase 9 task'lar (1-19, 22) implement edildi
+- Tüm otomasyon kalite gate'leri PASS (TS strict 0, token check pass, 1570 + 921 test yeşil)
 - Hook + service + UI + provider abstraction + endpoint sözleşmeleri stable
 - Phase 8 + Phase 6 review + settings yüzeyleri dokunulmadı
 
