@@ -33,3 +33,21 @@ export {
   EtsyNetworkError,
 } from "./errors";
 export { isRetryableEtsyError } from "./error-classifier";
+
+// Phase 9 V1 — OAuth callback + Settings panel slice (additive).
+export {
+  getEtsyConnectionStatus,
+  persistEtsyConnection,
+  deleteEtsyConnection,
+  type EtsyConnectionStatus,
+} from "./connection.service";
+export {
+  generateCodeVerifier,
+  generateCodeChallenge,
+  generateState,
+} from "./pkce";
+export {
+  setOAuthStateCookie,
+  readOAuthStateCookie,
+  clearOAuthStateCookie,
+} from "./oauth-state-cookie";

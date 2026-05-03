@@ -2,6 +2,7 @@ import { requireUser } from "@/server/session";
 import { Card } from "@/components/ui/Card";
 import { LocalLibrarySettingsPanel } from "@/features/settings/local-library/components/local-library-settings-panel";
 import { AiModeSettingsPanel } from "@/features/settings/ai-mode/components/ai-mode-settings-panel";
+import { EtsyConnectionSettingsPanel } from "@/features/settings/etsy-connection/components/etsy-connection-settings-panel";
 
 export default async function SettingsPage() {
   const user = await requireUser();
@@ -21,10 +22,8 @@ export default async function SettingsPage() {
       {/* Phase 5 Task 15 — operator-facing settings (Settings Registry kuralı). */}
       <LocalLibrarySettingsPanel />
       <AiModeSettingsPanel />
-
-      <p className="text-sm text-text-muted">
-        Mağaza bağlantıları, Etsy token&apos;ları ve preset&apos;ler Phase 3+&apos;da eklenecek.
-      </p>
+      {/* Phase 9 V1 — Etsy bağlantı paneli (OAuth flow). */}
+      <EtsyConnectionSettingsPanel />
     </div>
   );
 }
