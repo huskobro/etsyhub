@@ -1,6 +1,7 @@
 "use client";
 
 import { useListingDraft } from "../hooks/useListingDraft";
+import { useSubmitListingDraft } from "../hooks/useSubmitListingDraft";
 import { Button } from "@/components/ui/Button";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { AssetSection } from "../components/AssetSection";
@@ -23,6 +24,9 @@ import { LISTING_STATUS_LABELS } from "./status-labels";
  */
 export function ListingDraftView({ id }: { id: string }) {
   const { data: listing, isLoading, error } = useListingDraft(id);
+  // Task 22 — submit mutation MUST be called before any early return
+  // (React rules of hooks).
+  const submitMutation = useSubmitListingDraft(id);
 
   if (isLoading) {
     return (
@@ -109,16 +113,92 @@ export function ListingDraftView({ id }: { id: string }) {
       {/* Pricing Section — price + materials form + save */}
       <PricingSection listing={listing} />
 
-      {/* Actions — Publish button disabled (Task 22'de eklenecek) */}
-      <div className="flex gap-3">
-        <Button
-          disabled
-          title="Task 22'de publish aksiyonu eklenecek"
-          aria-label="Taslak gönderme şu an kullanılamaz (sonraki aşamada aktif)"
-        >
-          Taslak Gönder
-        </Button>
-      </div>
+      {/* Submit Action — Phase 9 V1 Task 22 (real endpoint, honest fail) */}
+      {(() => {
+        const isEditable =
+          listing.status === "DRAFT" || listing.status === "NEEDS_REVIEW";
+        const hasReadinessWarn = listing.readiness.some((r) => !r.pass);
+        return (
+          <div className="space-y-3">
+            {/* Readiness uyarısı (soft warn — submit'i bloklamaz, K3 lock) */}
+            {hasReadinessWarn && listing.status === "DRAFT" && (
+              <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded p-2">
+                ⚠ Bazı hazırlık kontrolleri eksik. Yine de gönderilebilir, ancak
+                Etsy reddedebilir.
+              </p>
+            )}
+
+            {/* Geçmiş submit durum bilgisi (PUBLISHED) */}
+            {listing.status === "PUBLISHED" &&
+              listing.etsyListingId &&
+              !submitMutation.isSuccess && (
+                <p
+                  role="status"
+                  className="text-sm text-green-700 bg-green-50 border border-green-200 rounded p-3"
+                >
+                  Bu listing Etsy'ye gönderildi (Etsy listing ID:{" "}
+                  <code className="font-mono">{listing.etsyListingId}</code>).
+                  Yayına almak için Etsy admin panelinden manuel publish
+                  yapılabilir.
+                </p>
+              )}
+
+            {/* Geçmiş submit durum bilgisi (FAILED) */}
+            {listing.status === "FAILED" &&
+              listing.failedReason &&
+              !submitMutation.isError && (
+                <p
+                  role="status"
+                  className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3"
+                >
+                  Önceki gönderim başarısız: {listing.failedReason}. Tekrar
+                  denenebilir.
+                </p>
+              )}
+
+            {/* Taze submit sonucu (success) */}
+            {submitMutation.isSuccess && (
+              <p
+                role="status"
+                className="text-sm text-green-700 bg-green-50 border border-green-200 rounded p-3"
+              >
+                Etsy taslağı oluşturuldu (Etsy listing ID:{" "}
+                <code className="font-mono">
+                  {submitMutation.data.etsyListingId}
+                </code>
+                ). Etsy admin panelinden manuel publish yapabilirsin.
+              </p>
+            )}
+
+            {/* Taze submit sonucu (error) */}
+            {submitMutation.isError && (
+              <p
+                role="alert"
+                className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3"
+              >
+                Gönderme başarısız: {submitMutation.error.message}
+              </p>
+            )}
+
+            <div className="flex gap-3 items-center">
+              <Button
+                onClick={() => submitMutation.mutate()}
+                disabled={submitMutation.isPending || !isEditable}
+                loading={submitMutation.isPending}
+              >
+                {submitMutation.isPending ? "Gönderiliyor…" : "Taslak Gönder"}
+              </Button>
+
+              {!isEditable && (
+                <p className="text-xs text-muted-foreground">
+                  Bu durumda yeniden gönderilemez (status:{" "}
+                  {LISTING_STATUS_LABELS[listing.status]}).
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </main>
   );
 }
