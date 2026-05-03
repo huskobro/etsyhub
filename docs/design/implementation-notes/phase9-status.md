@@ -1,8 +1,8 @@
 # Phase 9 — Listing Builder Status (Pre-Closeout)
 
-> **Tarih:** 2026-05-03
-> **Status:** 🟡 **Pre-closeout** — Phase 9 V1 lokal yüzeyi doygun (listing CRUD + AI metadata + submit UI hazır), Etsy live success external dependency bekliyor; manual QA henüz koşulmadı; "PASS" / "tamamlandı" ilan edilmedi
-> **HEAD:** `ebd20af`
+> **Tarih:** 2026-05-03 (sync 2026-05-03)
+> **Status:** 🟡 **Pre-closeout** — Phase 9 V1 implementation/local foundation neredeyse tamam; live Etsy success **yalnız external credentials + manual QA** bekliyor (kod tarafında ek lokal blocker kalmadı); "PASS" / "tamamlandı" ilan edilmedi
+> **HEAD:** `e5059cc`
 > **Spec:** [`../../plans/2026-05-02-phase9-listing-builder-design.md`](../../plans/2026-05-02-phase9-listing-builder-design.md)
 > **Plan:** [`../../plans/2026-05-02-phase9-listing-builder-plan.md`](../../plans/2026-05-02-phase9-listing-builder-plan.md)
 > **Manual QA:** [`./phase9-manual-qa.md`](./phase9-manual-qa.md) (henüz koşulmadı)
@@ -10,15 +10,18 @@
 
 ## Özet
 
-Phase 9 V1 Listing Builder lokal yüzeyi **bağımsız çalışır** seviyede:
-listing draft create (Phase 8 handoff'tan), GET/PATCH detay, listings index,
-readiness checklist (soft warn), negative library guard, AI metadata
-generation (KIE/Gemini 2.5 Flash, foundation + live-if-configured) ve submit
-UI (gerçek endpoint, honest fail). Etsy V3 provider abstraction + OAuth
-scaffold + submit service + endpoint **foundation** olarak yazıldı; ama gerçek
-Etsy publish success **external dependency** (developer credentials, OAuth
-callback flow tamamlanması, taxonomy mapping, image upload pipeline)
-bekliyor.
+Phase 9 V1 Listing Builder lokal yüzeyi **uçtan uca yazıldı**: listing draft
+create (Phase 8 handoff'tan), GET/PATCH detay, listings index, readiness
+checklist (soft warn), negative library guard, AI metadata generation
+(KIE Gemini 2.5 Flash, foundation + live-if-configured), submit UI (gerçek
+endpoint), ZIP download (Phase 8 reuse), Etsy V3 provider abstraction, OAuth
+flow (start + callback) + Settings Etsy connection paneli, **taxonomy
+mapping** (env-based foundation) ve **image upload pipeline** (storage +
+multipart Etsy upload, cover-first, partial/all-failed semantics). Submit
+pipeline taxonomy + draft create + image upload adımlarını gerçek olarak
+yapıyor; credentials + OAuth bağlantısı + `ETSY_TAXONOMY_MAP_JSON` env
+mevcutsa Etsy V3 endpoint'lerine canlı gider. Bu üçü olmayan her durumda
+honest fail (typed AppError → HTTP map → kullanıcı dostu Türkçe mesaj).
 
 **Phase 8 → Phase 9 contract:** MockupJob terminal state (`COMPLETED` veya
 `PARTIAL_COMPLETE`) + `coverRenderId` invariant + `imageOrderJson`
@@ -68,8 +71,12 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 | AI vertical slice | generate-meta endpoint + UI button activation (Task 16) | `1b778ca` |
 | Etsy foundation | Provider abstraction + OAuth scaffold + error classifier + submit service + endpoint (Task 4+10+11+17) | `23f6ffd` |
 | Submit UI | useSubmitListingDraft hook + ListingDraftView submit button activation (Task 22) | `ebd20af` |
+| Closeout-prep | phase9-status.md + phase9-manual-qa.md doc'ları | `af79e60` |
+| ZIP download route | `GET /api/listings/draft/[id]/assets/download` — Phase 8 buildMockupZip reuse | `d128f15` (+ doc sync `f6a383a`) |
+| OAuth full flow + Settings panel | `/api/etsy/oauth/start` + `/api/etsy/oauth/callback` + Settings Etsy connection panel + PKCE + cookie | `c875cf3` |
+| Taxonomy + image upload + submit entegrasyonu | env-based taxonomy resolver + image-upload.service + submit pipeline tam yazıldı | `e5059cc` |
 
-**Toplam:** 18+ commit, 0 revert.
+**Toplam:** 23+ commit, 0 revert.
 
 ---
 
@@ -120,13 +127,23 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
   - Key varsa → gerçek KIE çağrısı yapılır (live-if-configured)
 - **Test:** [`tests/integration/listings/generate-meta.test.ts`](../../../tests/integration/listings/generate-meta.test.ts) + [`tests/integration/listings/api/generate-meta.test.ts`](../../../tests/integration/listings/api/generate-meta.test.ts) + UI/hook testleri
 
-### 7. Submit UI wiring (endpoint reachable, honest fail)
+### 7. Submit pipeline (taxonomy + draft create + image upload — gerçek)
 - **Endpoint:** `POST /api/listings/draft/[id]/submit`
-- **Service:** [`submit.service.ts`](../../../src/features/listings/server/submit.service.ts) `submitListingDraft(listingId, userId)` — pipeline: ownership → status guard → readiness snapshot → Etsy config guard → connection resolve → provider call
+- **Service:** [`submit.service.ts`](../../../src/features/listings/server/submit.service.ts) `submitListingDraft(listingId, userId)` — tam pipeline:
+  1. Ownership 404 (`productType` include eklendi)
+  2. `assertSubmittable` (status DRAFT/NEEDS_REVIEW + zorunlu alanlar)
+  3. Readiness snapshot (V1 soft warn — bloklamaz, K3 lock)
+  4. `isEtsyConfigured` guard → 503 `EtsyNotConfigured`
+  5. `resolveEtsyConnection` → 400 `ConnectionNotFound` / 401 `TokenExpired` / 400 `TokenMissing`
+  6. `resolveProductTypeKey` → `resolveEtsyTaxonomyId` → 422 `EtsyTaxonomyMissing` (env'de mapping yoksa)
+  7. `provider.createDraftListing` (gerçek Etsy V3 POST)
+  8. `uploadListingImages` (storage'tan buffer + multipart Etsy upload, cover-first, sequential)
+  9. State persist (PUBLISHED + etsyListingId; partial → PUBLISHED + failedReason mesajı; all-failed → FAILED + orphan etsyListingId)
 - **Hook:** [`useSubmitListingDraft.ts`](../../../src/features/listings/hooks/useSubmitListingDraft.ts) (cache invalidation: `["listing-draft", id]` + `["listings"]`)
 - **UI:** ListingDraftView footer "Taslak Gönder" button + readiness uyarı + PUBLISHED/FAILED status banner + taze submit success/error banner
-- **Davranış:** Backend honest fail (typed AppError → HTTP map) UI'a kullanıcı dostu Türkçe mesaj olarak gelir; **fake success YOK**
-- **Test:** [`tests/integration/listings/submit.test.ts`](../../../tests/integration/listings/submit.test.ts) + [`tests/integration/listings/api/submit.test.ts`](../../../tests/integration/listings/api/submit.test.ts) + hook/UI testleri
+- **Response shape:** `{ status, etsyListingId, failedReason, providerSnapshot, imageUpload?: { successCount, failedCount, partial } }` (imageUpload additive)
+- **Davranış:** Backend honest fail (typed AppError → HTTP map) UI'a kullanıcı dostu Türkçe mesaj olarak gelir; **fake success YOK**; live success ancak credentials + OAuth connection + `ETSY_TAXONOMY_MAP_JSON` env eş zamanlı doluysa
+- **Test:** [`tests/integration/listings/submit.test.ts`](../../../tests/integration/listings/submit.test.ts) + [`tests/integration/listings/api/submit.test.ts`](../../../tests/integration/listings/api/submit.test.ts) + hook/UI testleri (taxonomy mock + image upload mock dahil)
 
 ### 8. Listing assets ZIP download
 - **Endpoint:** `GET /api/listings/draft/[id]/assets/download`
@@ -136,50 +153,70 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 - **Filename:** `listing-{etsyListingId || cuid}.zip` (Etsy submit sonrası daha okunabilir)
 - **Test:** [`tests/integration/listings/api/assets-download.test.ts`](../../../tests/integration/listings/api/assets-download.test.ts) (8 senaryo: 400 invalid path, 404 listing yok / cross-user / soft-deleted, 409 mockupJobId null, 403 job non-terminal, 200 happy + ZIP magic bytes, 200 etsyListingId filename)
 
+### 9. Etsy OAuth flow (start + callback) + Settings panel
+- **Start route:** `GET /api/etsy/oauth/start` — auth + state/PKCE üret + cookie set + Etsy auth URL'e 302 redirect; env yoksa 503 honest fail
+- **Callback route:** `GET /api/etsy/oauth/callback` — error/missing/state-mismatch/exchange-fail tüm path'ler `/settings?etsy=...` query ile dürüst raporlar; happy path `/settings?etsy=connected`
+- **Connection service:** [`connection.service.ts`](../../../src/providers/etsy/connection.service.ts) — `getEtsyConnectionStatus(userId)` 4-state non-throw + `persistEtsyConnection` (Etsy `/users/me` + `/shops` lookup → store auto-create + EtsyConnection upsert encrypted) + `deleteEtsyConnection`
+- **Settings UI:** [`etsy-connection-settings-panel.tsx`](../../../src/features/settings/etsy-connection/components/etsy-connection-settings-panel.tsx) — 4 status (not_configured/not_connected/expired/connected) + URL query feedback banner + "Bağlantıyı kaldır" button + Etsy revoke uyarısı
+- **PKCE + state cookie:** [`pkce.ts`](../../../src/providers/etsy/pkce.ts) (RFC 7636) + [`oauth-state-cookie.ts`](../../../src/providers/etsy/oauth-state-cookie.ts) (httpOnly + base64url + path scope `/api/etsy/oauth` + max-age 600s)
+- **Davranış:** `ETSY_CLIENT_ID/SECRET/REDIRECT_URI` yoksa panel "not_configured" admin uyarısı + Bağlan CTA YOK; varsa kullanıcı tıklar → Etsy auth → callback → connected/expired
+- **Test:** [`tests/integration/etsy/{oauth-start,oauth-callback,connection-service}.test.ts`](../../../tests/integration/etsy/) + [`tests/unit/etsy/{pkce,oauth-state-cookie}.test.ts`](../../../tests/unit/etsy/) + [`tests/unit/settings/etsy-connection-panel.test.tsx`](../../../tests/unit/settings/etsy-connection-panel.test.tsx) + [`tests/integration/settings/etsy-connection-api.test.ts`](../../../tests/integration/settings/etsy-connection-api.test.ts)
+
+### 10. Etsy taxonomy mapping (env-based foundation)
+- **Resolver:** [`taxonomy.ts`](../../../src/providers/etsy/taxonomy.ts) `resolveEtsyTaxonomyId(productTypeKey)` — env JSON `ETSY_TAXONOMY_MAP_JSON` lookup
+- **Format:** `'{"wall_art":2078,"sticker":1208,...}'` — admin `developer.etsy.com /seller-taxonomy/nodes` endpoint'inden elle çıkarır + `.env.local`'e koyar
+- **Submit pipeline kaynağı:** `listing.productType?.key` öncelik; yoksa `listing.category` fallback ("Wall Art" → "wall_art" lowercase + underscore normalize)
+- **Hata sözlüğü:**
+  - `EtsyTaxonomyMissingError` 422 (ProductType key mapping yok; `details.productTypeKey` payload)
+  - `EtsyTaxonomyConfigError` 503 (bozuk JSON / array / non-numeric / zero / negative)
+- **Cache + reset:** `resetTaxonomyCache()` test deterministic helper
+- **`tryResolveEtsyTaxonomyId`:** non-throw lookup (UI/diagnostic)
+- **Schema değişikliği YOK:** V1.1+ admin UI ile `ProductType.etsyTaxonomyId Int?` field eklenebilir (additive evolution)
+- **Test:** [`tests/unit/etsy/taxonomy.test.ts`](../../../tests/unit/etsy/taxonomy.test.ts) (10 senaryo)
+
+### 11. Image upload pipeline (storage → multipart Etsy)
+- **Service:** [`image-upload.service.ts`](../../../src/features/listings/server/image-upload.service.ts) `uploadListingImages()`
+- **Reuse:** `getStorage().download(outputKey)` (Phase 8 storage) + `etsyV3Provider.uploadListingImage` (mevcut provider, dokunulmadı)
+- **Davranış:** `listing.imageOrderJson` packPosition ASC sıralı (defensive sort), cover (`packPosition=0`) rank=1, sequential upload (rate-limit safe), Etsy 10-image cap, default mimeType `image/png` (Phase 8 sharp renderer)
+- **Partial fail:** `partial: true` + attempts array (rank, packPosition, renderId, isCover, ok+etsyImageId / ok=false+error)
+- **All-failed:** `ListingImageUploadAllFailedError` 502 + `failedRanks[]` payload (caller listing FAILED + etsyListingId orphan persist)
+- **Submit entegrasyonu:** Submit pipeline draft create sonrası bu service'i çağırır; partial → PUBLISHED + failedReason mesajı, all-failed → FAILED + orphan etsyListingId
+- **Test:** [`tests/integration/listings/image-upload.test.ts`](../../../tests/integration/listings/image-upload.test.ts) (8 senaryo: happy, boş order skip, partial, all-failed, storage fail, 10-cap)
+
 ---
 
 ## External dependency bekleyen alanlar
 
-### Etsy OAuth
-- **Foundation hazır:** [`src/providers/etsy/oauth.ts`](../../../src/providers/etsy/oauth.ts) — `buildAuthorizationUrl` (PKCE), `exchangeAuthorizationCode`, `refreshAccessToken`, `getEtsyOAuthConfig`, `isEtsyConfigured`
-- **Eksik:**
-  - OAuth callback route (`/api/etsy/oauth/callback/route.ts` yok)
-  - State CSRF cookie helper yok
-  - PKCE code_verifier persistence yok (cookie/session)
-  - Settings → Etsy bağlantı paneli UI yok
-- **Etki:** Kullanıcı browser'dan Etsy bağlantı flow'unu başlatamıyor
+Phase 9 V1 implementation/local foundation neredeyse tamam. Live Etsy
+success için kalan **lokal kod blocker'ı yok** — yalnız aşağıdaki
+external/operasyonel dependency'ler var:
 
-### Etsy credentials
+### Etsy app credentials (`developer.etsy.com`)
 - **Eksik env değişkenleri** (`.env.local`'de yok, sadece `.env.example`'de yorum):
   - `ETSY_CLIENT_ID`
   - `ETSY_CLIENT_SECRET`
-  - `ETSY_REDIRECT_URI`
-- **Kaynağı:** `developer.etsy.com` üzerinde app oluşturup credentials almak gerek
-- **Etki:** `isEtsyConfigured()` her zaman `false` döner → submit her zaman `503 EtsyNotConfigured`
+  - `ETSY_REDIRECT_URI` (verified on Etsy app config)
+- **Kaynağı:** `developer.etsy.com` üzerinde app oluşturup credentials almak; redirect URI verify etmek
+- **Etki:** Tüm Etsy yolu (OAuth start/callback, submit, image upload) 503 `EtsyNotConfigured` honest fail'a düşer
+- **Operasyonel sorumluluk:** Sistem yöneticisi / kullanıcı
 
-### Etsy taxonomy mapping
-- **Mevcut durum:** [`buildEtsyDraftPayload`](../../../src/features/listings/server/submit.service.ts) `taxonomyId: null` döner; provider gerçek çağrıda `EtsyValidationError 422` "taxonomy_id required" fırlatır (honest signal)
-- **Eksik:**
-  - Etsy V3 `/seller-taxonomy/nodes` API client
-  - ProductType → taxonomyId mapping table
-  - Listing'de productType binding (mevcut Listing.productTypeId schema'da var ama Phase 9 V1 view'da expose edilmedi — K6 lock)
-- **Etki:** Tam credential + connection olsa bile submit her zaman 422
+### `ETSY_TAXONOMY_MAP_JSON` env
+- **Format:** `'{"wall_art":2078,"sticker":1208,"clipart":1207,...}'`
+- **Kaynağı:** Admin `developer.etsy.com` `/seller-taxonomy/nodes` endpoint'ine canlı bağlanıp taxonomy node ID'lerini çıkarır + ProductType key'leriyle eşleştirir + `.env.local`'e yazar
+- **Etki:** Credentials + connection olsa bile bu env yoksa submit 422 `EtsyTaxonomyMissing` honest fail (kullanıcıya `details.productTypeKey` ile rehber)
+- **Operasyonel sorumluluk:** Admin (deploy zamanı çözüm); V1.1+ admin UI ile DB-backed `ProductType.etsyTaxonomyId Int?` field
+- **Lokal foundation:** ✅ Resolver yazıldı, env'i okur, eksikse 422 fırlatır
 
-### Image upload
-- **Mevcut durum:** Provider [`uploadListingImage`](../../../src/providers/etsy/client.ts) tanımlı (multipart, buffer-only) ama submit pipeline'da çağrılmıyor
-- **Eksik:**
-  - Storage'tan render buffer fetch helper (S3/MinIO `getObject`)
-  - Submit pipeline'a image upload step eklemesi (cover + her render rank 1-10)
-  - Hata recovery (image upload kısmen fail → listing var ama image yok)
-- **Etki:** Tam credential olsa bile listing image'sız oluşur
+### Etsy OAuth flow live test
+- **Eksik:** Verified redirect URI Etsy app config'inde + kullanıcı browser'da bağlantı kuracak
+- **Etki:** Code path tam yazılı (start + callback + cookie + state CSRF + token exchange + persist + Etsy /users/me + /shops lookup), live smoke ancak credentials + verified redirect URI olduğunda mümkün
+- **Lokal foundation:** ✅ OAuth full flow + Settings panel + connection upsert + 4-state status
 
-### Token refresh
-- **Mevcut durum:** [`refreshAccessToken`](../../../src/providers/etsy/oauth.ts) tanımlı, kullanıcı yok
-- **Eksik:**
-  - Submit pipeline öncesi token expiry pre-check + auto-refresh
-  - Refresh job/worker (Phase 9.1+ BullMQ)
-  - Connection update transaction (yeni token encrypt + persist)
-- **Etki:** Token expired olduğunda kullanıcı 401 honest fail görür, manuel re-connect gerek
+### Token refresh worker (V1.1+ carry-forward)
+- **Mevcut durum:** `refreshAccessToken` tanımlı, otomatik tetikleyici YOK
+- **V1 davranışı:** Token expired → submit/start pipeline 401 honest fail → kullanıcı Settings'te "Yeniden bağlan" tıklar (manuel reconnect)
+- **V1.1+:** Submit pipeline öncesi expiry pre-check + auto-refresh; BullMQ worker ile background refresh
+- **Etki:** V1'de UX biraz kaba (expired → manuel), ama dürüst
 
 ---
 
@@ -190,23 +227,10 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 - AI generation sonrası form alanları doldurulur ama otomatik PATCH YAPILMAZ — kullanıcı görür, ister edit eder, ister "Kaydet" ile kaydeder
 - Sebep: trust gate (AI çıktısı garantili Etsy-policy uyumlu değil) + iterative editing UX
 
-### OAuth callback route + Settings Etsy UI YOK
-- Foundation `oauth.ts` yazılı; ama callback handler ve settings panel bu turun kapsamında değildi
-- Kullanıcı Etsy bağlanmak için manuel `developer.etsy.com` üzerinden token üretip DB'ye `psql` ile yazmak zorunda kalır (V1 dışı UX)
-- Carry-forward: Phase 9.1 settings UI slice
-
-### Taxonomy mapping YOK
-- Provider hardcoded `EtsyValidationError "taxonomy_id required (V1 foundation: caller henüz resolve etmiyor)"` fırlatır
-- Phase 9.1+ ProductType → Etsy V3 taxonomy node mapping (Etsy V3 `/seller-taxonomy/nodes` API)
-
-### Image upload pipeline YOK
-- Provider `uploadListingImage` tanımlı (buffer-only, URL kind explicit reject)
-- Submit pipeline'da çağrılmıyor — listing image'sız oluşur
-- Carry-forward: Phase 9.1+ storage buffer fetch + multipart upload step
-
-### Token refresh worker YOK
-- `refreshAccessToken` consumer yok
-- Expired token → kullanıcı 401 görür, manuel reconnect (Phase 9.1+ refresh worker)
+### Active publish (Etsy `state: "active"`) YOK
+- V1 sözleşmesi: bizim oluşturduğumuz Etsy listing `state: "draft"` (provider hardcoded). Yayına alma Etsy admin panelinden manuel
+- UI status banner: "Etsy admin panelinden manuel publish yapılabilir"
+- V2 carry-forward (admin gözetimi gerek)
 
 ### Cost tracking integration YOK
 - KIE çağrıları başına 1 cent estimate üretiyor ama `CostUsage` tablosuna log akmıyor
@@ -223,6 +247,10 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 ### Per-render PNG/JPG download endpoint YOK
 - Sadece bulk ZIP (Phase 9 V1 endpoint hazır — `GET /api/listings/draft/[id]/assets/download`, Phase 8 `buildMockupZip` reuse; per-render PNG/JPG endpoint V1.1+)
 
+### Image upload paralelleştirme + retry policy YOK
+- V1 foundation: sequential upload (rate-limit + cover öncelik garantisi)
+- V1.1+: paralel upload + Etsy 5xx/network retry policy + worker queue ile background upload + progress reporting
+
 ### Manual QA henüz koşulmadı
 - Phase 9 manual QA checklist: [`./phase9-manual-qa.md`](./phase9-manual-qa.md) (henüz koşulmadı)
 - Phase 8 manual QA da hâlâ pending (kullanıcı sorumluluğu)
@@ -234,13 +262,13 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 
 | Layer | Phase 9 katkı | Toplam | Komut |
 |---|---|---|---|
-| Default suite (unit + integration) | +166 test (önceki Phase 8 baseline'dan) | 1570 / 167 file | `npm test` |
-| UI suite (jsdom) | +63 test | 921 / 81 file | `npm run test:ui` |
+| Default suite (unit + integration) | +242 test (önceki Phase 8 baseline'dan) | 1638 / 175 file | `npm test` |
+| UI suite (jsdom) | +84 test | 929 / 82 file | `npm run test:ui` |
 | E2E suite | Phase 9 için yeni E2E senaryosu YOK (foundation; submit live success external dep) | (Phase 8 baseline) | `npm run test:e2e` |
 
-**Phase 9 test envanter (24 dosya):**
+**Phase 9 test envanter (34 dosya):**
 
-Integration:
+Integration — listings:
 - [`tests/integration/listings/handoff.test.ts`](../../../tests/integration/listings/handoff.test.ts)
 - [`tests/integration/listings/state.test.ts`](../../../tests/integration/listings/state.test.ts)
 - [`tests/integration/listings/readiness.test.ts`](../../../tests/integration/listings/readiness.test.ts)
@@ -248,10 +276,15 @@ Integration:
 - [`tests/integration/listings/etsy-connection.test.ts`](../../../tests/integration/listings/etsy-connection.test.ts)
 - [`tests/integration/listings/generate-meta.test.ts`](../../../tests/integration/listings/generate-meta.test.ts)
 - [`tests/integration/listings/submit.test.ts`](../../../tests/integration/listings/submit.test.ts)
-- [`tests/integration/listings/api/{create-draft,get-draft,list,update-draft,generate-meta,submit}.test.ts`](../../../tests/integration/listings/api/)
+- [`tests/integration/listings/image-upload.test.ts`](../../../tests/integration/listings/image-upload.test.ts)
+- [`tests/integration/listings/api/{create-draft,get-draft,list,update-draft,generate-meta,submit,assets-download}.test.ts`](../../../tests/integration/listings/api/)
+
+Integration — etsy + settings:
+- [`tests/integration/etsy/{oauth-start,oauth-callback,connection-service}.test.ts`](../../../tests/integration/etsy/)
+- [`tests/integration/settings/etsy-connection-api.test.ts`](../../../tests/integration/settings/etsy-connection-api.test.ts)
 
 Unit (default node):
-- [`tests/unit/etsy/{error-classifier,oauth,registry}.test.ts`](../../../tests/unit/etsy/)
+- [`tests/unit/etsy/{error-classifier,oauth,registry,pkce,oauth-state-cookie,taxonomy}.test.ts`](../../../tests/unit/etsy/)
 - [`tests/unit/listings/url-state.test.ts`](../../../tests/unit/listings/url-state.test.ts)
 - [`tests/unit/listing-meta-{provider-registry,output-schema,prompt}.test.ts`](../../../tests/unit/)
 
@@ -259,6 +292,7 @@ Unit (UI / jsdom):
 - [`tests/unit/listings/components/{AssetSection,ListingsIndexView,MetadataSection,PricingSection}.test.tsx`](../../../tests/unit/listings/components/)
 - [`tests/unit/listings/hooks/{useGenerateListingMeta,useSubmitListingDraft}.test.tsx`](../../../tests/unit/listings/hooks/)
 - [`tests/unit/listings/ui/ListingDraftView.test.tsx`](../../../tests/unit/listings/ui/ListingDraftView.test.tsx)
+- [`tests/unit/settings/etsy-connection-panel.test.tsx`](../../../tests/unit/settings/etsy-connection-panel.test.tsx)
 
 ## Otomasyon kalite gate'leri (PASS — manual QA harici)
 
@@ -266,8 +300,8 @@ Unit (UI / jsdom):
 |---|---|---|
 | TypeScript strict | 0 hata | `npx tsc --noEmit` |
 | Token check (Tailwind disipline) | İhlal yok | `npm run check:tokens` |
-| Default suite | 1570/1570 pass | `npm test` |
-| UI suite | 921/921 pass | `npm run test:ui` |
+| Default suite | 1638/1638 pass | `npm test` |
+| UI suite | 929/929 pass | `npm run test:ui` |
 
 ---
 
@@ -315,59 +349,64 @@ submit, etsy-connection) bu pattern'ı sıfırdan uyguladı.
 | Listings index | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Readiness compute | ✅ | ✅ | (inline) | ✅ | ✅ | ✅ |
 | Negative library | ✅ | ✅ | (inline) | (inline) | ✅ | ✅ |
-| AI metadata generate | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ KIE key gerek |
-| Etsy provider abstraction | ✅ | n/a | n/a | n/a | ✅ | ❌ credentials |
-| Etsy connection resolve | ✅ | ✅ | n/a | ❌ | ✅ | ❌ OAuth flow |
-| Listing submit (UI binding) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ taxonomy + image upload |
-| OAuth full flow | ⚠️ scaffold | n/a | ❌ | ❌ | partial | ❌ |
+| AI metadata generate (KIE Gemini 2.5 Flash) | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ KIE key gerek |
+| Etsy provider abstraction | ✅ | n/a | n/a | n/a | ✅ | ⚠️ credentials gerek |
+| Etsy connection resolve | ✅ | ✅ | n/a | n/a | ✅ | ⚠️ credentials + OAuth |
+| Etsy OAuth flow (start + callback) + Settings panel | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ credentials gerek |
+| Etsy taxonomy mapping (env-based) | ✅ | ✅ (env) | n/a | n/a | ✅ | ⚠️ env JSON gerek |
+| Image upload pipeline (storage → multipart) | ✅ | ✅ | n/a | n/a | ✅ | ⚠️ credentials gerek |
+| Listing submit (UI + taxonomy + draft + image upload) | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ credentials + env + OAuth |
 | ZIP download (Phase 9 listing scope) | ✅ | ✅ (reuse Phase 8) | ✅ | ✅ | ✅ | ✅ |
+
+**Live sütunu:** ✅ = lokal env'de tam çalışır; ⚠️ = lokal kod hazır, sadece external credential/env eksik. **Phase 9 V1'de `❌ kod blocker'ı` yüzeyi kalmadı.**
 
 ---
 
 ## Next-step options
 
-Phase 9 lokal yüzey doygun. Sıradaki seçenekler:
+Phase 9 V1 implementation/local foundation neredeyse tamam — kod tarafında
+ek lokal blocker yok. Sıradaki seçenekler **operasyonel + manual QA**
+ağırlıklı:
 
-### (A) OAuth callback + Settings Etsy panel UI
-- **Ne:** `/api/etsy/oauth/callback/route.ts` + state CSRF cookie helper + Settings → Etsy bağlantı paneli UI
-- **Bağımlılık:** ETSY_CLIENT_ID/SECRET env (mock secret ile foundation test edilebilir)
-- **Etki:** Kullanıcı browser'dan Etsy bağlantı kurabilecek; live submit yolu açılır
-
-### (B) Etsy taxonomy mapping foundation
-- **Ne:** Etsy V3 `/seller-taxonomy/nodes` API client + ProductType → taxonomyId binding
-- **Bağımlılık:** Live test için credentials gerek
-- **Etki:** Submit "taxonomy_id required" hatasını aşar
-
-### (C) Image upload pipeline
-- **Ne:** Storage buffer fetch + multipart Etsy upload + submit pipeline'a step ekleme
-- **Bağımlılık:** Live test için credentials gerek
-- **Etki:** Listing image'lı oluşur
-
-### (D) Manual QA tetikle
+### (A) Manual QA tetikle (pre-closeout zorunluluğu)
 - **Ne:** [`./phase9-manual-qa.md`](./phase9-manual-qa.md) checklist'ini browser'da koşmak
-- **Bağımlılık:** Postgres + MinIO + Redis + Next dev server + (opsiyonel) KIE key + (opsiyonel) Etsy credentials
+- **Bağımlılık:** Postgres + MinIO + Redis + Next dev server + (opsiyonel) KIE key + (opsiyonel) Etsy credentials + (opsiyonel) `ETSY_TAXONOMY_MAP_JSON`
 - **Etki:** Lokal yüzey gerçek kullanıcı flow'larında doğrulanır; bulgu varsa carry-forward
-- **Not:** Etsy credentials yoksa B-G blokları (submit live) "honest-fail path" olarak doğrulanır
+- **Not:** Tüm external dep yoksa "honest-fail path" doğrulanır; varsa live success path doğrulanır — checklist iki yolu da ayrı ayrı tarif eder
 
-### (E) Phase 9 V1 closeout (PASS ilanı)
-- **Ne:** Manual QA + Phase 8 manual QA tamamlandıktan sonra closeout doc'unu finalize et
-- **Bağımlılık:** D (Phase 9 manual QA) + Phase 8 manual QA tamamlanması
-- **Etki:** Phase 9 V1 "🟢 PASS" ilan edilir; Phase 9.1 (Etsy live success enabler'ları) açılabilir
+### (B) Phase 8 manual QA tetikle (Phase 9 closeout için önkoşul)
+- **Ne:** Phase 8 V1 [`./phase8-manual-qa.md`](./phase8-manual-qa.md) checklist'i
+- **Bağımlılık:** Phase 8 V1 closeout sözleşmesi
+- **Etki:** Phase 9 V1 final closeout (PASS ilanı) için önkoşul
+
+### (C) Token refresh worker (V1.1 carry-forward)
+- **Ne:** Submit pipeline öncesi expiry pre-check + auto-refresh + BullMQ background worker
+- **Bağımlılık:** Manuel reconnect UX'inden memnun değilsek
+- **Etki:** Expired token kullanıcıya görünmeden refresh edilir
+
+### (D) Phase 9 V1 closeout (PASS ilanı)
+- **Ne:** A + B tamamlandıktan sonra closeout doc'unu finalize et
+- **Bağımlılık:** Phase 9 manual QA + Phase 8 manual QA tamamlanması
+- **Etki:** Phase 9 V1 "🟢 PASS" ilan edilir; Phase 9.1 (token refresh worker, admin taxonomy UI, V2 active publish) açılabilir
 
 ---
 
-## Status: 🟡 Phase 9 V1 lokal yüzey doygun, manual QA + external dep bekliyor
+## Status: 🟡 Phase 9 V1 implementation/local foundation neredeyse tamam, manual QA + external credentials bekliyor
 
-**Tamamlanan:**
-- 18+ commit, 0 revert, lokal yüzeyde tüm Phase 9 task'lar (1-19, 22) implement edildi
-- Tüm otomasyon kalite gate'leri PASS (TS strict 0, token check pass, 1570 + 921 test yeşil)
+**Tamamlanan (lokal):**
+- 19+ commit, 0 revert, Phase 9 V1 lokal yüzey uçtan uca yazıldı
+- Tüm otomasyon kalite gate'leri PASS (TS strict 0, token check pass, 1638 + 929 test yeşil)
 - Hook + service + UI + provider abstraction + endpoint sözleşmeleri stable
-- Phase 8 + Phase 6 review + settings yüzeyleri dokunulmadı
+- Phase 8 + Phase 6 review + Settings UI panel'leri dokunulmadı
+- Submit pipeline gerçek (taxonomy resolve → draft create → image upload pipeline → state persist)
 
-**Pending (insan-paralel):**
+**Pending (insan-paralel + operasyonel):**
 - Phase 9 manual QA browser-based smoke — [`./phase9-manual-qa.md`](./phase9-manual-qa.md)
 - Phase 8 manual QA hâlâ pending — [`./phase8-manual-qa.md`](./phase8-manual-qa.md) (Phase 9 closeout'tan önce kapanması gerek)
-- Etsy live success external dep (credentials + OAuth callback + taxonomy + image upload)
+- Live Etsy success external operasyonel dep:
+  - Etsy app credentials (`developer.etsy.com` üzerinden + verified redirect URI)
+  - `ETSY_TAXONOMY_MAP_JSON` env (admin elle çıkarır)
+  - OAuth flow live test (kullanıcı browser'da bağlantı kurar)
 
 **"PASS" / "tamamlandı" ilan edilmedi.** Bu doc **pre-closeout preparation**;
 manual QA gerçek koşum sonucu bu doc'un altına `## Bulgular — YYYY-MM-DD`

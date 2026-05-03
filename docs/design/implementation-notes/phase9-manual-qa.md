@@ -1,8 +1,8 @@
 # Phase 9 Listing Builder — Manuel QA Checklist
 
-> **Tarih:** 2026-05-03
-> **Phase 9 status:** 🟡 (lokal yüzey doygun, otomasyon gate'leri PASS; manuel QA kullanıcı tarafından adım adım yürütülecek — sonuç bu dosyaya işaretlenecek)
-> **HEAD:** `ebd20af`
+> **Tarih:** 2026-05-03 (sync 2026-05-03)
+> **Phase 9 status:** 🟡 (implementation/local foundation neredeyse tamam; otomasyon gate'leri PASS; manuel QA kullanıcı tarafından adım adım yürütülecek — sonuç bu dosyaya işaretlenecek)
+> **HEAD:** `e5059cc`
 > **Status doc:** [`./phase9-status.md`](./phase9-status.md)
 > **Spec:** [`../../plans/2026-05-02-phase9-listing-builder-design.md`](../../plans/2026-05-02-phase9-listing-builder-design.md)
 > **Phase 8 emsali:** [`./phase8-manual-qa.md`](./phase8-manual-qa.md) (Phase 8 manuel QA hâlâ pending — Phase 9 closeout'tan önce kapanmalı)
@@ -39,9 +39,21 @@ checkbox'lar boş `[ ]`. Kullanıcı koşum sonrası tikleyecek.
 
 ### Opsiyonel (Etsy submit live success testi için)
 
-- [ ] `.env.local` dosyasına `ETSY_CLIENT_ID`, `ETSY_CLIENT_SECRET`, `ETSY_REDIRECT_URI` eklenmiş ve `npm run dev` restart edilmiş
-  - **NOT:** Bu env'ler yoksa Submit honest-fail path olarak doğrulanır (Bölüm G.1) — Phase 9 V1'in beklenen davranışı bu
-- [ ] (Eğer credentials varsa) Kullanıcının Etsy hesabı bağlı (DB'de `EtsyConnection` row'u doldurulmuş — V1'de UI yok, manuel `psql` veya OAuth callback flow eksik olduğu için bu adım external dependency)
+Live Etsy submit success için **3 ayrı external dep** eş zamanlı sağlanmalı:
+
+- [ ] **Etsy app credentials** — `.env.local` dosyasına `ETSY_CLIENT_ID`, `ETSY_CLIENT_SECRET`, `ETSY_REDIRECT_URI` eklenmiş ve `npm run dev` restart edilmiş
+  - Kaynağı: `developer.etsy.com` üzerinde app oluşturup credentials almak; redirect URI verify etmek
+  - Yoksa: tüm Etsy yolu (OAuth start/callback, Settings panel, submit) 503 `EtsyNotConfigured` honest fail (Bölüm H.1, J.1)
+- [ ] **OAuth bağlantısı kurulmuş** — Settings → "Etsy bağlantısı" panelinden "Etsy'ye bağlan" → Etsy izin → callback `?etsy=connected` ile dönmüş; panel `connected` state'i gösteriyor
+  - Bu adım Bölüm H'de canlı yürütülür (önkoşul değil, **ilk live senaryo**)
+  - Yoksa: submit 400 `ConnectionNotFound` honest fail (Bölüm J.2)
+- [ ] **`ETSY_TAXONOMY_MAP_JSON` env** — `.env.local`'e admin tarafından doldurulmuş örn:
+  ```
+  ETSY_TAXONOMY_MAP_JSON='{"wall_art":2078,"sticker":1208,"clipart":1207}'
+  ```
+  - Kaynağı: Admin `developer.etsy.com /seller-taxonomy/nodes` endpoint'inden ilgili node ID'lerini elle çıkarır + ProductType key'leriyle eşleştirir
+  - Yoksa: submit 422 `EtsyTaxonomyMissing` honest fail (Bölüm J.3) — credentials + connection olsa bile
+- [ ] (Live submit doğrulanacaksa) **En az 1 listing draft** mockup pack ile + zorunlu alanlar (title/description/price/category) dolu
 
 ---
 
@@ -235,68 +247,174 @@ checkbox'lar boş `[ ]`. Kullanıcı koşum sonrası tikleyecek.
 
 ---
 
-## G. Submit honest-fail path (Etsy credentials yoksa)
+## G. Settings Etsy connection paneli + OAuth flow
 
-> **Hedef:** Phase 9 V1 sözleşmesi: `ETSY_CLIENT_ID/SECRET/REDIRECT_URI` env yoksa submit endpoint 503 honest fail.
+> **Hedef:** Settings → "Etsy bağlantısı" paneli 4 status'u (not_configured / not_connected / connected / expired) doğru gösterir; OAuth flow start + callback wire'ı çalışır.
 >
-> **Önkoşul:** `.env.local`'de Etsy env değişkenleri YOK + `npm run dev` restart sonrası.
+> **Hazırlık:** `Settings → Etsy bağlantısı` ekranına git.
 
-### G.1 — Etsy not configured
-- [ ] Listing detay sayfası DRAFT status, title/description/price doluysa "Taslak Gönder" button enabled
-- [ ] "Taslak Gönder" tıkla → button "Gönderiliyor…" → spinner
-- [ ] Network: `POST /api/listings/draft/[id]/submit` → response 503
-- [ ] UI'da kırmızı alert: "Gönderme başarısız: Etsy entegrasyonu yapılandırılmadı (ETSY_CLIENT_ID / ETSY_CLIENT_SECRET env yok). Sistem yöneticisinin .env'i tamamlaması gerek."
-- [ ] Listing.status DB'de hâlâ DRAFT (FAIL path service'de re-throw, ama 503 öncesi durduğu için DB transaction yok)
+### G.1 — `not_configured` durumu (env yoksa)
+> **Önkoşul:** `.env.local`'de `ETSY_CLIENT_ID` YOK + `npm run dev` restart sonrası.
 
-### G.2 — Missing fields guard
-- [ ] Listing'de title boş bırak → "Taslak Gönder" tıkla
-- [ ] Response 422 + body `{ error: "Listing zorunlu alanları eksik: title", details: { missing: ["title"] } }`
-- [ ] UI alert: "Gönderme başarısız: Listing zorunlu alanları eksik: title"
+- [ ] Panel başlığı: "Etsy bağlantısı"
+- [ ] Açıklama: "Listing taslaklarını Etsy'ye göndermek için mağazanızı bağlayın. Bağlantı kurulduktan sonra sadece taslak (draft) oluşturulur — yayına alma Etsy admin panelinden manuel yapılır."
+- [ ] `not_configured` branch görünür: "Etsy entegrasyonu yapılandırılmadı." + admin uyarısı (`.env` dosyasına `ETSY_CLIENT_ID`, `ETSY_CLIENT_SECRET`, `ETSY_REDIRECT_URI` eklenmesi gerek + `developer.etsy.com` referansı)
+- [ ] **"Etsy'ye bağlan" CTA YOK** — env eksikken bağlantı denenmesin
 
-### G.3 — Status guard (terminal)
-- [ ] DB'de manuel status: "PUBLISHED" çek
-- [ ] Detay sayfası refresh → "Taslak Gönder" button **disabled**
-- [ ] Yanında muted text: "Bu durumda yeniden gönderilemez (status: Yayınlanmış)."
-- [ ] PUBLISHED banner görünür: "Bu listing Etsy'ye gönderildi (Etsy listing ID: ...)" + "Yayına almak için Etsy admin panelinden manuel publish yapılabilir."
+### G.2 — `not_connected` durumu (env var, bağlantı yok)
+> **Önkoşul:** Env credentials var, kullanıcının `EtsyConnection` row'u yok.
 
-### G.4 — FAILED status banner
-- [ ] DB'de manuel status: "FAILED" + failedReason: "test failure" çek
-- [ ] Detay sayfası refresh → kırmızı banner: "Önceki gönderim başarısız: test failure. Tekrar denenebilir."
-- [ ] **NOT:** V1'de FAILED → DRAFT'a geri reset etmek için manuel DB intervention gerek (UI'da "Reset" button yok — V1.1+ carry-forward)
+- [ ] Panel: "Etsy hesabınız bağlı değil."
+- [ ] "Etsy'ye bağlan" link href="/api/etsy/oauth/start"
 
-### G.5 — Cross-user
-- [ ] Başka user ile login → URL'den aynı listing id'siyle submit endpoint'ine direkt POST → 404
+### G.3 — OAuth start route
+- [ ] G.2'deki "Etsy'ye bağlan" tıkla
+- [ ] Browser `/api/etsy/oauth/start`'a gider → 302 redirect Etsy auth URL'ine (`https://www.etsy.com/oauth/connect?...&code_challenge=...&state=...`)
+- [ ] Cookie `etsy_oauth_state` set edildi (DevTools → Application → Cookies; httpOnly + path `/api/etsy/oauth`)
+- [ ] Browser'da Etsy login sayfası açılır
 
-### G.6 — Cache invalidation
-- [ ] (G.1 sonrası) Detay sayfasında alert görünürken `/listings` index'e geç
-- [ ] Listing card'ında status değişmedi (DRAFT) — submit fail olduğu için doğru
-- [ ] (E.2 success path varsa) Submit success sonrası index'te status "Yayınlanmış" badge'e dönüş gözle doğrula
+### G.4 — OAuth callback happy path (kullanıcı izin verir)
+- [ ] Etsy login + scope onay
+- [ ] Browser callback'e döner: `/api/etsy/oauth/callback?code=...&state=...`
+- [ ] Server token exchange + Etsy `/users/me` + `/users/{id}/shops` lookup yapar
+- [ ] Otomatik redirect: `/settings?etsy=connected`
+- [ ] Settings panelde yeşil banner: "Etsy bağlantısı kuruldu."
+- [ ] URL temizlendi (`?etsy=connected` query kaldı kalmadı browser history'ye)
+- [ ] Panel `connected` state'e döndü:
+  - [ ] Mağaza adı (Etsy shop_name)
+  - [ ] Mağaza ID (numeric)
+  - [ ] Token süresi
+  - [ ] Yetkiler: `listings_w, listings_r, shops_r`
+  - [ ] "Bağlantıyı kaldır" button enabled
+  - [ ] Etsy revoke uyarısı: "etsy.com/your/account/apps üzerinden izinleri kaldırmalısınız."
+- [ ] DB'de `EtsyConnection` row'u var: `accessToken` + `refreshToken` encrypted, `shopId`, `tokenExpires` gelecekte
+- [ ] Store auto-create: kullanıcının store'u yoksa otomatik yaratıldı (`name` = Etsy shop_name)
+
+### G.5 — OAuth callback honest-fail paths
+> Aşağıdaki senaryoları DevTools veya manuel URL ile tetikle:
+
+- [ ] **error query** (Etsy reddetti) — `/api/etsy/oauth/callback?error=access_denied&error_description=...` → redirect `/settings?etsy=error-access_denied` → kırmızı banner
+- [ ] **missing code** — `/api/etsy/oauth/callback?state=x` (code yok) → `/settings?etsy=missing-code` → kırmızı banner
+- [ ] **state-mismatch** — cookie state ≠ query state → `/settings?etsy=state-mismatch` → kırmızı banner
+- [ ] **missing-state** — cookie expire olmuş veya yok → `/settings?etsy=missing-state` → kırmızı banner
+
+### G.6 — Connection delete
+- [ ] G.4 sonrası `connected` state'te → "Bağlantıyı kaldır" tıkla
+- [ ] DELETE `/api/settings/etsy-connection` → 200
+- [ ] Panel `not_connected` state'e döndü, "Etsy'ye bağlan" CTA görünür
+- [ ] DB'de `EtsyConnection` row'u silindi
+- [ ] **NOT:** Etsy uygulama izinleri otomatik revoke EDİLMEZ — kullanıcı `etsy.com/your/account/apps` üzerinden ayrıca yapmalı (UI'da bilgilendiriliyor)
+
+### G.7 — `expired` durumu
+> **Önkoşul:** Connected, ama `tokenExpires` geçmişte. DB'de manuel update ile simüle edilebilir.
+
+- [ ] DB'de `EtsyConnection.tokenExpires` geçmişe çek (`UPDATE EtsyConnection SET "tokenExpires" = NOW() - INTERVAL '1 hour'`)
+- [ ] Panel refresh → `expired` branch: "Bağlantı süresi doldu (..). Yeniden bağlanmak gerek."
+- [ ] "Yeniden bağlan" link → `/api/etsy/oauth/start` (G.3-G.4 yolu yeniden çalışır)
+- [ ] **NOT:** Token refresh worker V1.1+ — V1'de manuel reconnect
 
 ---
 
-## H. Submit success path prerequisites
+## H. Submit live success path (credentials + connection + taxonomy varsa)
 
-> **Bu bölüm Phase 9 V1'de TAM tamamlanmamıştır.** Aşağıdaki tüm önkoşullar karşılanmadan submit live success çalışmaz:
+> **Hedef:** Phase 9 V1 implementation/local foundation neredeyse tamam — credentials + OAuth bağlantısı + `ETSY_TAXONOMY_MAP_JSON` üçü eş zamanlı doluysa submit gerçek Etsy V3 endpoint'lerine canlı gider.
+>
+> **Önkoşul:** Önkoşul env doğrulamasındaki **3 dep**'in hepsi tamam (credentials + G.4 connected + taxonomy env). Listing zorunlu alanları dolu (title/description/price/category eşleşmiş ProductType key'le).
 
-### H.1 — External dependency checklist (kullanıcı önkoşulu)
+### H.1 — Submit happy path (live)
+- [ ] Listing detay sayfası DRAFT, "Taslak Gönder" button enabled
+- [ ] "Taslak Gönder" tıkla → button "Gönderiliyor…" + spinner
+- [ ] Backend pipeline:
+  - [ ] taxonomy resolve (env'den) → success
+  - [ ] `provider.createDraftListing` Etsy V3 POST `/shops/{shopId}/listings` → 200
+  - [ ] `uploadListingImages` her render için storage download + multipart Etsy upload
+- [ ] Network tab: response 200 + body `{ status: "PUBLISHED", etsyListingId: "...", failedReason: null, providerSnapshot: "etsy-api-v3@YYYY-MM-DD", imageUpload: { successCount: N, failedCount: 0, partial: false } }`
+- [ ] UI'da yeşil banner: "Etsy taslağı oluşturuldu (Etsy listing ID: ...). Etsy admin panelinden manuel publish yapabilirsin."
+- [ ] Listing.status DB'de PUBLISHED, etsyListingId persist, submittedAt + publishedAt set
+- [ ] Status badge "Yayınlanmış"a döndü
+- [ ] `/listings` index'te status badge yenilendi (cache invalidation)
+- [ ] Etsy admin panelinde listing draft görünür (gerçek doğrulama: tarayıcıda etsy.com/your/shops/me/tools/listings)
 
-- [ ] `developer.etsy.com` üzerinde app oluşturuldu (V1'de geliştirici tarafından)
-- [ ] `ETSY_CLIENT_ID`, `ETSY_CLIENT_SECRET`, `ETSY_REDIRECT_URI` `.env.local`'de set
-- [ ] `npm run dev` restart edildi
-- [ ] OAuth callback route mevcut (`/api/etsy/oauth/callback/route.ts`) ⚠️ **BU TURDA YOK** (Phase 9.1+)
-- [ ] Settings → Etsy bağlantı UI mevcut ⚠️ **BU TURDA YOK** (Phase 9.1+)
-- [ ] Kullanıcının `EtsyConnection` row'u DB'de doldurulmuş (accessToken encrypted, shopId set, tokenExpires gelecekte)
+### H.2 — Submit partial image upload
+> **Önkoşul:** Etsy rate-limit veya 5xx simülasyonu (gerçek live'da rare; canlıda tetiklemek zor olabilir, atla).
 
-### H.2 — V1'de bilinen blocker'lar
+- [ ] (Eğer yakalanırsa) Submit yapıldı, bazı image'lar başarısız → status PUBLISHED + failedReason: "Image upload kısmen başarısız: X/N yüklendi (başarısızlar: rank=..)"
+- [ ] Etsy listing var, eksik image'lar Etsy admin'den manuel eklenebilir
 
-- [ ] **Taxonomy mapping:** Submit yapılsa bile provider 422 fırlatır ("taxonomy_id required") — Phase 9.1+ gerek
-- [ ] **Image upload:** Submit success olsa bile listing image'sız oluşur (provider'da `uploadListingImage` var ama submit pipeline çağırmıyor) — Phase 9.1+
+### H.3 — Submit image upload all-failed (orphan)
+> **Önkoşul:** Storage bucket'a tüm render'lara erişim kapalı (test için MinIO permission iptali) — gerçek live ortamda nadir.
 
-### H.3 — Honest gözlem (V1 V1.1 carry-forward)
+- [ ] (Eğer yakalanırsa) Submit yapıldı → status FAILED + etsyListingId persist (orphan listing) + failedReason: "Listing image upload tamamen başarısız: ..."
+- [ ] Kullanıcı Etsy admin'den orphan listing'i yönetebilir (sil veya manuel image yükle)
 
-Bu bölüm `[ ]` boş kalır — Phase 9 V1'de submit live success **bilinçli olarak**
-külliyen test edilemez. Phase 9 V1 closeout'u **lokal honest-fail path'in
-doğrulanmasıyla** tamamlanır; live success Phase 9.1+ kapsamında.
+### H.4 — Submit cross-user
+- [ ] Başka user ile login → DevTools'tan POST `/api/listings/draft/{listingId}/submit` direkt çağır → 404 `LISTING_SUBMIT_NOT_FOUND`
+
+### H.5 — Submit terminal status guard
+- [ ] H.1 sonrası listing PUBLISHED → "Taslak Gönder" button disabled + muted text "Bu durumda yeniden gönderilemez (status: Yayınlanmış)."
+- [ ] PUBLISHED banner: "Bu listing Etsy'ye gönderildi (Etsy listing ID: ...). Yayına almak için Etsy admin panelinden manuel publish yapılabilir."
+
+---
+
+## J. Submit honest-fail paths (external dep eksikse)
+
+> **Hedef:** Phase 9 V1 sözleşmesi: external dep yoksa submit pipeline her aşamada honest fail. **Hiçbir senaryoda fake success YOK.**
+
+### J.1 — Etsy not configured (env yok)
+> **Önkoşul:** `ETSY_CLIENT_ID/SECRET/REDIRECT_URI` env'de YOK + dev restart.
+
+- [ ] Listing DRAFT, "Taslak Gönder" tıkla
+- [ ] Response 503 + body `{ error: "Etsy entegrasyonu yapılandırılmadı...", code: "ETSY_NOT_CONFIGURED" }`
+- [ ] UI alert: "Gönderme başarısız: Etsy entegrasyonu yapılandırılmadı (ETSY_CLIENT_ID / ETSY_CLIENT_SECRET env yok). Sistem yöneticisinin .env'i tamamlaması gerek."
+- [ ] Listing.status DB'de hâlâ DRAFT
+
+### J.2 — Connection not found (env var, bağlantı yok)
+> **Önkoşul:** Env credentials var, ama kullanıcının `EtsyConnection` row'u yok.
+
+- [ ] Listing DRAFT, "Taslak Gönder" tıkla
+- [ ] Response 400 + code `ETSY_CONNECTION_NOT_FOUND`
+- [ ] UI alert: "Gönderme başarısız: Etsy hesabı bağlı değil. Settings → Etsy bağlantısı kurulmalı."
+- [ ] Listing.status DB'de hâlâ DRAFT
+
+### J.3 — Taxonomy missing (env yok)
+> **Önkoşul:** Credentials + connection var, ama `ETSY_TAXONOMY_MAP_JSON` env'de YOK + restart.
+
+- [ ] Listing'in productType.key veya category'si "wall_art" olsun
+- [ ] "Taslak Gönder" tıkla
+- [ ] Response 422 + code `ETSY_TAXONOMY_MISSING` + `details.productTypeKey: "wall_art"`
+- [ ] UI alert: "Gönderme başarısız: Etsy taxonomy mapping bulunamadı: \"wall_art\". Sistem yöneticisinin ETSY_TAXONOMY_MAP_JSON env değişkenine bu ürün tipini eklemesi gerek."
+- [ ] Listing.status DB'de hâlâ DRAFT
+
+### J.4 — Token expired
+> **Önkoşul:** Connection var, ama `tokenExpires` geçmişte (G.7 senaryosu sonrası).
+
+- [ ] "Taslak Gönder" tıkla
+- [ ] Response 401 + code `ETSY_TOKEN_EXPIRED`
+- [ ] UI alert: "Gönderme başarısız: Etsy access token süresi doldu. Yeniden bağlanmak gerek."
+- [ ] Settings → Etsy panel `expired` state gösterir → "Yeniden bağlan" ile düzelt
+
+### J.5 — Missing fields (zorunlu alanlar)
+- [ ] Listing'de title boş bırak → "Taslak Gönder"
+- [ ] Response 422 + code `LISTING_SUBMIT_MISSING_FIELDS` + `details.missing: ["title"]`
+- [ ] UI alert: "Gönderme başarısız: Listing zorunlu alanları eksik: title"
+
+### J.6 — Status guard (terminal)
+- [ ] DB'de manuel status: "PUBLISHED" çek
+- [ ] Detay sayfası refresh → "Taslak Gönder" button **disabled**
+- [ ] PUBLISHED banner görünür
+
+### J.7 — FAILED status banner
+- [ ] DB'de manuel status: "FAILED" + failedReason: "test failure" çek
+- [ ] Detay sayfası refresh → kırmızı banner: "Önceki gönderim başarısız: test failure. Tekrar denenebilir."
+- [ ] **NOT:** V1'de FAILED → DRAFT'a geri reset için manuel DB intervention gerek (UI "Reset" button yok — V1.1+)
+
+### J.8 — Cross-user
+- [ ] Başka user ile login → URL'den aynı listing id'siyle submit endpoint'ine direkt POST → 404
+
+### J.9 — Cache invalidation
+- [ ] (J.1-J.5 sonrası) Detay sayfasında alert görünürken `/listings` index'e geç
+- [ ] Listing card'ında status değişmedi (submit fail olduğu için doğru)
+- [ ] (H.1 success path varsa) Submit success sonrası index'te "Yayınlanmış" badge'e dönüş gözle doğrula
 
 ---
 
@@ -315,8 +433,8 @@ doğrulanmasıyla** tamamlanır; live success Phase 9.1+ kapsamında.
 ### I.3 — TypeScript / build sağlığı
 - [ ] `npx tsc --noEmit` → 0 hata
 - [ ] `npm run check:tokens` → ihlal yok
-- [ ] `npm test` → 1562/1562 pass
-- [ ] `npm run test:ui` → 921/921 pass
+- [ ] `npm test` → 1638/1638 pass
+- [ ] `npm run test:ui` → 929/929 pass
 
 ### I.4 — Tarayıcı uyumluluğu
 - [ ] Chrome — listing detay sayfası, AI button, submit button gözle test
@@ -329,21 +447,22 @@ doğrulanmasıyla** tamamlanır; live success Phase 9.1+ kapsamında.
 
 ---
 
-## J. Bilinen V1 sınırları (test ETMEYİN, dokümante edildi)
+## K. Bilinen V1 sınırları (test ETMEYİN, dokümante edildi)
 
-Bu davranışları test etmek **gerekmez** — Phase 9 V1 sözleşmesinde yer almıyor:
+Bu davranışları test etmek **gerekmez** — Phase 9 V1 sözleşmesinde yer almıyor veya V1.1+'a ertelendi:
 
 - **Auto-save** — yok (kullanıcı "Kaydet" tıklamak zorunda)
-- **OAuth flow UI** — yok (Settings → Etsy bağlantı paneli Phase 9.1+)
-- **OAuth callback route** — yok
-- **Token refresh worker** — yok (expired token → 401 honest fail)
-- **Etsy taxonomy mapping** — yok (provider 422)
-- **Image upload pipeline** — yok (listing image'sız oluşur)
-- **ZIP download route handler** — yok (`/api/listings/[id]/assets/download` link var ama 404 verir — Phase 9.1+)
-- **Listing reset (FAILED → DRAFT)** — yok (manuel DB intervention)
-- **Negative library hard-block** — yok (V1 soft warn, K3 lock)
-- **Custom mockup/category extension** — Phase 9 V1 tek kategori (canvas), Phase 8 emsali
-- **Cost tracking integration** — yok (KIE 1 cent estimate var ama CostUsage tablosuna log akmıyor)
+- **Active publish (Etsy `state: "active"`)** — yok (V1: bizim oluşturduğumuz Etsy listing `state: "draft"`; yayına alma Etsy admin manuel — V2)
+- **Token refresh worker** — yok (expired token → 401 honest fail; kullanıcı Settings'te "Yeniden bağlan" — V1.1+ otomatik refresh)
+- **Listing reset (FAILED → DRAFT)** — yok (manuel DB intervention; UI "Reset" button V1.1+)
+- **Negative library hard-block** — yok (V1 soft warn, K3 lock — V1.1+ severity "error" hard gate)
+- **Custom mockup/category extension** — Phase 9 V1 ProductType seed'inde 8 key (canvas/wall_art/printable/clipart/sticker/tshirt/hoodie/dtf), Phase 8 emsali
+- **Cost tracking integration** — yok (KIE 1 cent estimate var ama `CostUsage` tablosuna log akmıyor — V1.1+)
+- **Image upload paralelleştirme + retry policy** — V1 sequential + no retry (V1.1+ paralel + 5xx retry policy + worker queue)
+- **Per-render PNG/JPG download endpoint** — yok (sadece bulk ZIP V1'de hazır; per-render V1.1+)
+- **Admin taxonomy UI / DB-backed taxonomy** — yok (V1: env-based JSON; V1.1+ admin UI ile `ProductType.etsyTaxonomyId Int?` field eklenebilir)
+- **Etsy V3 `/seller-taxonomy/nodes` discovery + cache** — yok (V1: admin elle çıkarır + env'e koyar; V1.1+ runtime discovery)
+- **Folder unification `ui/` ↔ `components/`** — yok (mevcut yapı çalışıyor, refactor risk taşır; V1.1+ ADR)
 
 ---
 
