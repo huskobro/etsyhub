@@ -64,7 +64,7 @@ function mockGetStatus(state: object) {
 }
 
 describe("EtsyConnectionSettingsPanel — status rendering", () => {
-  it("not_configured: env uyarısı + Bağlan link YOK", async () => {
+  it("not_configured: env uyarısı + 4-env tam liste (TAXONOMY_MAP_JSON dahil) + Bağlan link YOK", async () => {
     mockGetStatus({ state: "not_configured" });
     renderWithQuery(<EtsyConnectionSettingsPanel />);
 
@@ -74,6 +74,11 @@ describe("EtsyConnectionSettingsPanel — status rendering", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText(/ETSY_CLIENT_ID/)).toBeInTheDocument();
+    expect(screen.getByText(/ETSY_CLIENT_SECRET/)).toBeInTheDocument();
+    expect(screen.getByText(/ETSY_REDIRECT_URI/)).toBeInTheDocument();
+    // Phase 9 V1 Finalization — TAXONOMY_MAP_JSON da bilgi olarak listeleniyor
+    expect(screen.getByText(/ETSY_TAXONOMY_MAP_JSON/)).toBeInTheDocument();
+    expect(screen.getByText(/seller-taxonomy\/nodes/)).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: /Etsy.*bağlan/i }),
     ).not.toBeInTheDocument();
@@ -89,7 +94,7 @@ describe("EtsyConnectionSettingsPanel — status rendering", () => {
     expect(link.getAttribute("href")).toBe("/api/etsy/oauth/start");
   });
 
-  it("connected: shopName/shopId/scopes + 'Bağlantıyı kaldır' button", async () => {
+  it("connected: shopName/shopId/scopes + 'Bağlantıyı kaldır' button + submit pipeline auto-refresh ipucu", async () => {
     mockGetStatus({
       state: "connected",
       shopId: "12345",
@@ -104,6 +109,10 @@ describe("EtsyConnectionSettingsPanel — status rendering", () => {
     expect(screen.getByText(/listings_w, shops_r/)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Bağlantıyı kaldır/i }),
+    ).toBeInTheDocument();
+    // Phase 9 V1 Finalization — submit pipeline ↔ Settings UI bağlantı ipucu
+    expect(
+      screen.getByText(/Submit pipeline expired token.*otomatik yeniler/i),
     ).toBeInTheDocument();
   });
 

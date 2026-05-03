@@ -160,15 +160,25 @@ export function EtsyConnectionSettingsPanel() {
             </p>
             <p className="mt-1">
               Sistem yöneticisinin <code className="font-mono">.env</code>{" "}
-              dosyasına <code className="font-mono">ETSY_CLIENT_ID</code>,{" "}
-              <code className="font-mono">ETSY_CLIENT_SECRET</code> ve{" "}
-              <code className="font-mono">ETSY_REDIRECT_URI</code> eklemesi
-              gerek.
+              dosyasına şu değerleri eklemesi gerek:
             </p>
-            <p className="mt-2 text-xs">
-              Credentials kaynağı:{" "}
-              <span className="font-mono">developer.etsy.com</span>
-            </p>
+            <ul className="mt-2 list-disc pl-5 text-xs">
+              <li>
+                <code className="font-mono">ETSY_CLIENT_ID</code>,{" "}
+                <code className="font-mono">ETSY_CLIENT_SECRET</code>,{" "}
+                <code className="font-mono">ETSY_REDIRECT_URI</code> — OAuth
+                flow için (kaynak:{" "}
+                <span className="font-mono">developer.etsy.com</span>)
+              </li>
+              <li>
+                <code className="font-mono">ETSY_TAXONOMY_MAP_JSON</code> —
+                submit canlı başarı için (kaynak:{" "}
+                <span className="font-mono">developer.etsy.com</span>{" "}
+                <code className="font-mono">/seller-taxonomy/nodes</code>{" "}
+                endpoint&apos;inden node ID&apos;leri çıkarıp ProductType
+                key&apos;leriyle JSON object olarak)
+              </li>
+            </ul>
           </div>
         )}
 
@@ -225,6 +235,11 @@ export function EtsyConnectionSettingsPanel() {
                   "Bağlantı kaldırılamadı"}
               </p>
             )}
+
+            <p className="text-xs text-text-muted">
+              Submit pipeline expired token&apos;ı otomatik yeniler; sürekli
+              sorun olursa buradan yeniden bağlanın.
+            </p>
 
             <p className="text-xs text-text-muted">
               &quot;Bağlantıyı kaldır&quot; sadece bizim tarafta token&apos;ı
