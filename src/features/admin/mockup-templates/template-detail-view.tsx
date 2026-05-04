@@ -387,6 +387,17 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
           Kategori: <span className="font-mono">{template.categoryId}</span> · ID:{" "}
           <span className="font-mono">{template.id}</span>
         </p>
+
+        {/* Pass 15 — Readiness banner: ACTIVE template + 0 ACTIVE binding sessiz fail önler */}
+        <ReadinessBanner
+          status={template.status}
+          activeBindingCount={
+            (bindingsQuery.data ?? []).filter((b) => b.status === "ACTIVE").length
+          }
+          totalBindingCount={(bindingsQuery.data ?? []).length}
+          categoryId={template.categoryId}
+          aspectRatios={template.aspectRatios}
+        />
       </div>
 
       {/* Metadata form */}
@@ -927,6 +938,82 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
           </form>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Pass 15 — Template readiness banner.
+ *
+ * Admin authoring sırasında "kullanıcıya görünür mü?" sorusunu UI içinde
+ * yanıtlar. Mevcut sessiz fail senaryoları:
+ *   - ACTIVE template + 0 ACTIVE binding → user tarafında templates[] boş
+ *   - ACTIVE template + binding ACTIVE ama Apply page'de görünmüyor olabilir
+ *     (ProductType.aspectRatio template aspectRatios[] içinde değilse)
+ *
+ * Bu banner sadece honest durum bilgisi verir; herhangi bir prod logic'i
+ * bypass etmez.
+ */
+function ReadinessBanner({
+  status,
+  activeBindingCount,
+  totalBindingCount,
+  categoryId,
+  aspectRatios,
+}: {
+  status: "DRAFT" | "ACTIVE" | "ARCHIVED";
+  activeBindingCount: number;
+  totalBindingCount: number;
+  categoryId: string;
+  aspectRatios: string[];
+}) {
+  // DRAFT/ARCHIVED — Apply page'de zaten görünmez, mesaj nötr
+  if (status === "DRAFT") {
+    return (
+      <div className="rounded-md border border-border bg-bg p-3 text-xs text-text-muted">
+        <span className="font-medium text-text">Taslak</span> — kullanıcı Apply
+        page&apos;inde görünmez. Yayınlamak için en az 1 ACTIVE binding ekleyin
+        sonra &quot;Yayınla&quot;ya basın.
+      </div>
+    );
+  }
+  if (status === "ARCHIVED") {
+    return (
+      <div className="rounded-md border border-border bg-bg p-3 text-xs text-text-muted">
+        <span className="font-medium text-text">Arşivli</span> — kullanıcı Apply
+        page&apos;inde görünmez. Mevcut render&apos;lar etkilenmez (templateSnapshot
+        stable). Geri yüklemek için &quot;Geri al&quot;.
+      </div>
+    );
+  }
+
+  // ACTIVE template + 0 ACTIVE binding = sessiz fail; uyar
+  if (activeBindingCount === 0) {
+    return (
+      <div className="rounded-md border border-warning/40 bg-warning-soft p-3 text-xs text-text">
+        <span className="font-medium text-warning">⚠ Aktif ama Apply page&apos;de görünmüyor</span>
+        {" — "}
+        Template ACTIVE durumda fakat hiç ACTIVE binding yok ({totalBindingCount}
+        {" "}toplam binding). Aşağıdan binding ekleyin veya mevcut bir binding&apos;i Yayınlayın.
+      </div>
+    );
+  }
+
+  // ACTIVE + ACTIVE binding var → "Apply page'de gör" deep-link
+  // Apply page categoryId + aspectRatio filtresine göre çalışır;
+  // admin'in kendi mağazası varsa direkt deep-link öneririz.
+  // Pratik: admin sidebar üzerinden kendi /selection/sets'e gitsin (ProductType
+  // resolve oradan yapılır). Burada sadece "ne olduğunu" göster.
+  return (
+    <div className="rounded-md border border-success/40 bg-success-soft p-3 text-xs text-text">
+      <span className="font-medium text-success">✓ Apply page&apos;de görünür</span>
+      {" — "}
+      {activeBindingCount}/{totalBindingCount} ACTIVE binding · kategori{" "}
+      <span className="font-mono">{categoryId}</span> · aspectRatio{" "}
+      <span className="font-mono">{aspectRatios.join(", ")}</span>. Kullanıcı
+      uygun bir SelectionSet ile Apply page&apos;e geldiğinde bu template
+      &quot;Şablon Seç&quot; listesinde çıkar (eşleşen ProductType.aspectRatio
+      şart).
     </div>
   );
 }

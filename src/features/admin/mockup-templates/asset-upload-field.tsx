@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 
 /**
@@ -63,6 +63,26 @@ async function fetchSignedUrl(key: string): Promise<string> {
   return data.url;
 }
 
+type ExistingAsset = {
+  key: string;
+  sizeBytes: number;
+  lastModified: string;
+};
+
+async function listExistingAssets(args: {
+  categoryId: string;
+  purpose: "thumb" | "base";
+}): Promise<ExistingAsset[]> {
+  const url = `/api/admin/mockup-templates/list-assets?categoryId=${encodeURIComponent(args.categoryId)}&purpose=${args.purpose}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? "Mevcut asset listesi alınamadı");
+  }
+  const data = (await res.json()) as { items: ExistingAsset[] };
+  return data.items;
+}
+
 export type AssetUploadFieldProps = {
   value: string;
   onChange: (
@@ -87,12 +107,22 @@ export function AssetUploadField({
 }: AssetUploadFieldProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const mutation = useMutation({
     mutationFn: uploadAsset,
     onSuccess: (data) => {
       onChange(data.storageKey, { width: data.width, height: data.height });
     },
+  });
+
+  // Existing assets — yalnız picker açıldığında çağrılır (lazy)
+  const existingAssetsQuery = useQuery({
+    queryKey: ["admin", "mockup-template-assets", categoryId, purpose],
+    queryFn: () => listExistingAssets({ categoryId, purpose }),
+    enabled: pickerOpen,
+    // Picker her açıldığında tazele (yeni upload olmuş olabilir)
+    staleTime: 0,
   });
 
   // Value değiştiğinde signed URL fetch (preview)
@@ -168,20 +198,79 @@ export function AssetUploadField({
           </div>
         )}
 
-        {/* File picker + manual override */}
-        <div className="flex items-center gap-2">
+        {/* File picker + existing asset reuse + manual override */}
+        <div className="flex flex-wrap items-center gap-2">
           <input
             id={`upload-${purpose}`}
             type="file"
             accept="image/png,image/jpeg,image/webp"
             onChange={onFileChange}
             disabled={mutation.isPending}
-            className="block w-full text-sm text-text-muted file:mr-2 file:h-control-sm file:cursor-pointer file:rounded-md file:border-0 file:bg-accent file:px-3 file:text-xs file:font-medium file:text-white hover:file:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="block flex-1 text-sm text-text-muted file:mr-2 file:h-control-sm file:cursor-pointer file:rounded-md file:border-0 file:bg-accent file:px-3 file:text-xs file:font-medium file:text-white hover:file:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
           />
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setPickerOpen((v) => !v)}
+            disabled={mutation.isPending}
+          >
+            {pickerOpen ? "Picker'ı kapat" : "Mevcut asset seç"}
+          </Button>
           {mutation.isPending ? (
             <span className="text-xs text-text-muted">Yükleniyor…</span>
           ) : null}
         </div>
+
+        {/* Existing asset picker (lazy fetch on open) */}
+        {pickerOpen ? (
+          <div className="flex flex-col gap-2 rounded-md border border-border bg-surface p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-text-muted">
+                {categoryId} / {purpose} · daha önce yüklenmişler
+              </span>
+              {existingAssetsQuery.isFetching ? (
+                <span className="text-xs text-text-muted">Yükleniyor…</span>
+              ) : null}
+            </div>
+            {existingAssetsQuery.error ? (
+              <p className="text-xs text-danger" role="alert">
+                {(existingAssetsQuery.error as Error).message}
+              </p>
+            ) : null}
+            {existingAssetsQuery.data ? (
+              existingAssetsQuery.data.length === 0 ? (
+                <p className="text-xs text-text-muted">
+                  Bu kategori + purpose için henüz yüklü asset yok.
+                </p>
+              ) : (
+                <div className="grid max-h-60 grid-cols-3 gap-2 overflow-auto sm:grid-cols-4">
+                  {existingAssetsQuery.data.map((a) => (
+                    <button
+                      key={a.key}
+                      type="button"
+                      onClick={() => {
+                        // Picker'dan seçim — width/height bilinmiyor (storage list metadata sınırlı)
+                        // Admin manuel override için boyutu ayrı düzenler
+                        onChange(a.key);
+                        setPickerOpen(false);
+                      }}
+                      className="flex flex-col items-stretch gap-1 rounded-md border border-border bg-bg p-1 text-left transition-colors hover:border-accent"
+                    >
+                      <AssetThumb assetKey={a.key} />
+                      <span className="truncate font-mono text-xs text-text-muted">
+                        {a.key.split("/").pop()}
+                      </span>
+                      <span className="text-xs text-text-muted">
+                        {Math.round(a.sizeBytes / 1024)}KB
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Manual key override */}
         <details className="text-xs">
@@ -221,5 +310,39 @@ export function AssetUploadField({
         <p className="text-xs text-text-muted">{description}</p>
       ) : null}
     </div>
+  );
+}
+
+function AssetThumb({ assetKey }: { assetKey: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchSignedUrl(assetKey)
+      .then((u) => {
+        if (!cancelled) setUrl(u);
+      })
+      .catch(() => {
+        // Sessizce: thumbnail yüklenemediyse fallback UI göster
+        if (!cancelled) setUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assetKey]);
+
+  if (!url) {
+    return (
+      <div className="flex aspect-square items-center justify-center rounded-md bg-surface text-xs text-text-muted">
+        …
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={assetKey}
+      className="aspect-square w-full rounded-md object-cover"
+    />
   );
 }

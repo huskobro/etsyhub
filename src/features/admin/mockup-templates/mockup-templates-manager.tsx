@@ -91,6 +91,16 @@ async function deleteItem(id: string) {
   return res.json();
 }
 
+async function cloneItem(input: { id: string; name: string }) {
+  const res = await fetch(`/api/admin/mockup-templates/${input.id}/clone`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: input.name }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error ?? "Klonlama başarısız");
+  return res.json() as Promise<{ item: { id: string } }>;
+}
+
 function statusBadgeTone(s: MockupTemplateRow["status"]): "success" | "neutral" | "warning" {
   if (s === "ACTIVE") return "success";
   if (s === "ARCHIVED") return "neutral";
@@ -116,6 +126,11 @@ export function MockupTemplatesManager() {
   });
   const deleteMutation = useMutation({
     mutationFn: deleteItem,
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["admin", "mockup-templates"] }),
+  });
+  const cloneMutation = useMutation({
+    mutationFn: cloneItem,
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["admin", "mockup-templates"] }),
   });
@@ -183,6 +198,22 @@ export function MockupTemplatesManager() {
     deleteMutation.mutate(row.id, {
       onError: (err) => setActionError((err as Error).message),
     });
+  };
+
+  const onClone = (row: MockupTemplateRow) => {
+    const defaultName = `${row.name} (kopya)`;
+    const next = window.prompt(
+      `"${row.name}" klonlanıyor. Yeni template adı:`,
+      defaultName,
+    );
+    if (!next || next.trim().length === 0) return;
+    setActionError(null);
+    cloneMutation.mutate(
+      { id: row.id, name: next.trim() },
+      {
+        onError: (err) => setActionError((err as Error).message),
+      },
+    );
   };
 
   return (
@@ -332,6 +363,14 @@ export function MockupTemplatesManager() {
                         Geri al
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onClone(row)}
+                      disabled={cloneMutation.isPending}
+                    >
+                      Klonla
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"
