@@ -44,6 +44,7 @@ export const USER_NAV: NavItem[] = [
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Admin", icon: Shield, roles: ["ADMIN"], phase: 1, enabled: true },
   { href: "/admin/scraper-providers", label: "Scraper Providers", icon: Globe2, roles: ["ADMIN"], phase: 3, enabled: true },
+  { href: "/admin/mockup-templates", label: "Mockup Templates", icon: Frame, roles: ["ADMIN"], phase: 8, enabled: true },
 ];
 
 export function navForRole(role: UserRole): NavItem[] {
