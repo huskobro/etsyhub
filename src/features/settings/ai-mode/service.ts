@@ -16,6 +16,7 @@
 
 import { db } from "@/server/db";
 import { encryptSecret, decryptSecret } from "@/lib/secrets";
+import { logger } from "@/lib/logger";
 import {
   AiModeSettingsSchema,
   StoredAiModeSettingsSchema,
@@ -23,6 +24,26 @@ import {
 } from "./schemas";
 
 const SETTING_KEY = "aiMode";
+
+/**
+ * Cipher format/key mismatch fail-safe: SECRETS_ENCRYPTION_KEY rotasyonu veya
+ * elle düzenlenmiş bozuk persist sonrası decrypt fail oluyorsa, kullanıcının
+ * UI'da kalıcı 500 görmemesi için null fallback. Schema OK ama cipher decrypt
+ * fail = recoverable case (kullanıcı yeni key girip üzerine yazabilir). Schema
+ * corruption (parse fail) ise fail-fast bırakılır (sysadmin müdahale).
+ */
+function safeDecrypt(cipher: string | null, field: string): string | null {
+  if (!cipher) return null;
+  try {
+    return decryptSecret(cipher);
+  } catch (err) {
+    logger.warn(
+      { field, err: (err as Error).message },
+      "ai-mode secret decrypt failed; returning null fallback (key rotation veya bozuk cipher)",
+    );
+    return null;
+  }
+}
 
 export async function getUserAiModeSettings(userId: string): Promise<AiModeSettings> {
   const row = await db.userSetting.findUnique({
@@ -37,8 +58,8 @@ export async function getUserAiModeSettings(userId: string): Promise<AiModeSetti
   // Aşama 1: reviewProvider field'ı eski row'larda yoksa Zod default "kie".
   const raw = StoredAiModeSettingsSchema.parse(row.value);
   return {
-    kieApiKey: raw.kieApiKey ? decryptSecret(raw.kieApiKey) : null,
-    geminiApiKey: raw.geminiApiKey ? decryptSecret(raw.geminiApiKey) : null,
+    kieApiKey: safeDecrypt(raw.kieApiKey, "kieApiKey"),
+    geminiApiKey: safeDecrypt(raw.geminiApiKey, "geminiApiKey"),
     reviewProvider: raw.reviewProvider,
   };
 }

@@ -68,6 +68,50 @@ describe("ai-mode settings", () => {
     await expect(getUserAiModeSettings(TEST_USER_ID)).rejects.toThrow();
   });
 
+  // Recovery scenario: cipher format/key mismatch (örn. SECRETS_ENCRYPTION_KEY
+  // değiştirildi). Schema OK ama decrypt fail → kullanıcı sıkışmasın diye
+  // graceful fallback null döner ve PUT preserve sentinel devre dışı kalır
+  // (kullanıcı yeni key gönderiyor zaten). Aksi takdirde GET 500 → form hiç
+  // yüklenmez → UI'da kalıcı "sunucu hatası".
+  it("getUserAiModeSettings: decrypt fail (cipher format/key mismatch) → null fallback, throw YOK", async () => {
+    await db.userSetting.create({
+      data: {
+        userId: TEST_USER_ID,
+        key: "aiMode",
+        value: {
+          kieApiKey: "INVALID_NOT_HEX_FORMAT",
+          geminiApiKey: null,
+          reviewProvider: "kie",
+        },
+      },
+    });
+    const s = await getUserAiModeSettings(TEST_USER_ID);
+    expect(s.kieApiKey).toBeNull();
+    expect(s.geminiApiKey).toBeNull();
+    expect(s.reviewProvider).toBe("kie");
+  });
+
+  it("updateUserAiModeSettings: bozuk eski cipher varken yeni key yazılabilir (PUT 500'e takılmaz)", async () => {
+    await db.userSetting.create({
+      data: {
+        userId: TEST_USER_ID,
+        key: "aiMode",
+        value: {
+          kieApiKey: "INVALID_NOT_HEX_FORMAT",
+          geminiApiKey: null,
+          reviewProvider: "kie",
+        },
+      },
+    });
+    await updateUserAiModeSettings(TEST_USER_ID, {
+      kieApiKey: "k_recovery_value",
+      geminiApiKey: null,
+      reviewProvider: "kie",
+    });
+    const s = await getUserAiModeSettings(TEST_USER_ID);
+    expect(s.kieApiKey).toBe("k_recovery_value");
+  });
+
   it("Aşama 1 backwards compat: reviewProvider field'ı eksik eski persist row default 'kie'", async () => {
     // Migration YOK; eski row'larda reviewProvider yok ⇒ Zod parse default "kie".
     await db.userSetting.create({
