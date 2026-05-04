@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { mockupJobQueryKey, type MockupRenderView } from "@/features/mockups/hooks/useMockupJob";
 import { Button } from "@/components/ui/Button";
-import { ChevronUp, RotateCcw, Maximize2, Repeat } from "lucide-react";
+import { ChevronUp, RotateCcw, Download, Repeat } from "lucide-react";
 
 // 5-class hata × eylem önerisi (Spec §5.6 satır 1422-1428).
 const RETRYABLE_ERROR_CLASSES = new Set([
@@ -102,16 +102,20 @@ export function PerRenderActions({
       )}
 
       {isSuccess && (
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled
-          title="Phase 9'da per-render download eklenecek"
+        <a
+          href={`/api/mockup/jobs/${jobId}/renders/${render.id}/download`}
           className="w-full"
+          download
         >
-          <Maximize2 className="w-4 h-4 mr-1" />
-          Büyüt
-        </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="w-full"
+          >
+            <Download className="w-4 h-4 mr-1" />
+            İndir
+          </Button>
+        </a>
       )}
 
       {isFailed && (

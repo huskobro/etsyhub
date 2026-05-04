@@ -86,6 +86,7 @@ function CoverSlot({
           <a
             href={`/api/mockup/jobs/${jobId}/renders/${render.id}/download`}
             className="w-full"
+            download
           >
             <Button size="sm" variant="secondary" className="w-full">
               İndir

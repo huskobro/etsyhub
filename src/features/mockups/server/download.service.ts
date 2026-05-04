@@ -32,6 +32,24 @@ export class JobNotDownloadableError extends AppError {
   }
 }
 
+/**
+ * Per-render download için dedicated error sınıfları.
+ * Cross-user / yok → 404 (varlık sızıntısı yok); render başarısız → 409.
+ */
+export class RenderNotFoundError extends AppError {
+  constructor() {
+    super("Render bulunamadı", "RENDER_NOT_FOUND", 404);
+  }
+}
+
+export class RenderNotDownloadableError extends AppError {
+  constructor(
+    message = "Render download için hazır değil (status SUCCESS olmalı + outputKey set)",
+  ) {
+    super(message, "RENDER_NOT_DOWNLOADABLE", 409);
+  }
+}
+
 // ────────────────────────────────────────────────────────────
 // Types
 // ────────────────────────────────────────────────────────────
@@ -223,4 +241,56 @@ export async function buildMockupZip(
     buffer,
     filename: `mockup-pack-${jobId}.zip`,
   };
+}
+
+// ────────────────────────────────────────────────────────────
+// Per-render download (V1 final completion — release-readiness V1.1+
+// carry-forward'undan V1'e alındı; UI tarafı zaten S8ResultView "İndir"
+// hover button'ında URL'i kuruyor, backend eksikti — dead CTA fix).
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Tek render PNG/JPG download — bulk ZIP'in muadili.
+ *
+ * Cross-user / yok → 404 (varlık sızıntısı yok, Phase 6 disiplini).
+ * Non-SUCCESS render veya outputKey null → 409 (download için hazır değil).
+ *
+ * Filename pattern: `mockup-{jobId}-pos-{packPosition}.{ext}`
+ *   - extension storage'dan gelen content-type yoksa "png" default
+ *   - cover invariant `packPosition=0` → filename'da görünür ama
+ *     `01-cover-` prefix YOK (bulk ZIP'in özel cover ordering pattern'i
+ *     tek dosya için geçersiz)
+ */
+export async function downloadSingleRender(
+  jobId: string,
+  renderId: string,
+  userId: string,
+): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
+  const render = await db.mockupRender.findUnique({
+    where: { id: renderId },
+    include: { job: true },
+  });
+
+  // Cross-user / yok / job mismatch → 404
+  if (!render || render.job.userId !== userId || render.job.id !== jobId) {
+    throw new RenderNotFoundError();
+  }
+
+  // Status guard: SUCCESS + outputKey null değil
+  if (render.status !== "SUCCESS" || !render.outputKey) {
+    throw new RenderNotDownloadableError();
+  }
+
+  const buffer = await getStorage().download(render.outputKey);
+
+  // Extension + content-type (V1 sharp output PNG; V2'de provider farklı
+  // mimeType verebilir — outputKey extension'ından parse).
+  const keyExt = render.outputKey.split(".").pop()?.toLowerCase();
+  const ext = keyExt === "jpg" || keyExt === "jpeg" ? "jpg" : "png";
+  const contentType = ext === "jpg" ? "image/jpeg" : "image/png";
+
+  const pos = render.packPosition ?? 0;
+  const filename = `mockup-${jobId}-pos-${pos}.${ext}`;
+
+  return { buffer, filename, contentType };
 }

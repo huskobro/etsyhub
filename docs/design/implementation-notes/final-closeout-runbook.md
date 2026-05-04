@@ -290,7 +290,7 @@ Sonra Phase 9 H (live submit success) + G.2-G.6 (OAuth live state'leri) canlı k
 ## V1.1+ / V2 carry-forward (release-readiness.md ile uyumlu)
 
 Bu işler V1 sözleşmesinde **kasıtlı olarak yok**; PASS ilanını engellemez:
-- **Phase 9.1+** — token refresh BullMQ worker, per-render PNG/JPG endpoint, admin taxonomy UI, DB-backed `ProductType.etsyTaxonomyId Int?`
+- **Phase 9.1+** — token refresh BullMQ worker, admin taxonomy UI, DB-backed `ProductType.etsyTaxonomyId Int?` (per-render PNG/JPG download endpoint **V1'de açıldı**, HEAD `d30a893`+ sonrası)
 - **V2** — Etsy active publish (`state: "active"`), multi-store, custom mockup upload (Spec §10), AI-assisted style variant
 - **Phase 10+** — Admin theme token editor, advanced analytics, cost tracking integration
 - **Auth** — Google sign-in / forgot password (intentional MVP scope dışı)

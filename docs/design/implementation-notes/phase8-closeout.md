@@ -64,7 +64,7 @@ Phase 8 V1 KIE bağımsız (Sharp local render).
 - AI-assisted style variant — V1 kapsamı dışı (Phase 8 sadece Sharp deterministik render)
 - Çoklu kategori (poster/printable/clipart/sticker/t-shirt/hoodie/DTF) — V1 sadece `canvas`
 - Listing'e gönder workflow — Phase 9 listing builder
-- Per-render PNG/JPG download endpoint — V2
+- ~~Per-render PNG/JPG download endpoint — V2~~ → V1'de açıldı (HEAD `d30a893`+ sonrası): `GET /api/mockup/jobs/[jobId]/renders/[renderId]/download` — S8ResultView hover "İndir" linki canlı PASS
 
 ---
 
@@ -179,9 +179,12 @@ Phase 8 V1 KIE bağımsız (Sharp local render).
 - Manuel QA'da backdrop click gerçek ortamda doğrulanacak (`phase8-manual-qa.md` bölüm O)
 - V1 src/ dokunulmaz disiplini öncelikli; testID ekleme V2
 
-### Per-render download endpoint YOK
-- V1: sadece bulk ZIP (Task 21)
-- Per-render PNG/JPG download endpoint V2'ye
+### Per-render download endpoint VAR (V1 final completion, 2026-05-04, HEAD `d30a893`+)
+- **Bulk ZIP**: Task 21 `GET /api/mockup/jobs/[jobId]/download`
+- **Per-render**: `GET /api/mockup/jobs/[jobId]/renders/[renderId]/download` — S8ResultView "İndir" hover linki + PerRenderActions success render row "İndir" CTA
+- Kontrat: ownership 404 + status SUCCESS guard (RENDER_NOT_DOWNLOADABLE 409 if FAILED/PENDING) + image/png|image/jpeg + filename `mockup-{jobId}-pos-{N}.{ext}`
+- Test: 6/6 integration pass (`tests/integration/mockup/api/render-download.test.ts`)
+- Dead CTA fix: önceden UI link vardı ama backend yoktu (404) → endpoint açıldı; PerRenderActions stale "Phase 9'da per-render download eklenecek" disabled "Büyüt" copy temizlendi → success render hover'da "İndir" enabled + browser-native download attr
 
 ---
 
