@@ -25,7 +25,8 @@ coverRenderId`), bulk ZIP download (cover-first filename ordering + manifest).
 **Tek kategori (`canvas`)** + **8 template** (7 frontal + 1 perspective; perspective
 Task 10 BLOCKED nedeniyle V1'de sadece schema/contract düzeyinde) + **6 ekran**
 (S3 Apply, S1 Browse drawer, S2 Detail modal, S7 Job, S8 Result, Phase 9
-köprüsü S8'deki disabled "Listing'e gönder" CTA).
+köprüsü S8'deki active "Listing'e gönder" CTA — Phase 9 V1 handoff endpoint
+canlı, listing draft yaratıp `/listings/draft/[id]` yönlendiriyor).
 
 **Phase 6 + Phase 7 ile ilişki:** Phase 6 baseline (cost-budget, KIE provider,
 Aşama 2B local mode) **dokunulmadı**. Phase 7 SelectionSet/SelectionItem veri
@@ -260,7 +261,7 @@ Phase 9 input'u Phase 8 MockupJob (`status ∈ {COMPLETED, PARTIAL_COMPLETE}`) +
 - **`coverRenderId`** Phase 9 listing thumbnail kaynağı (`packPosition=0` invariant'ı sayesinde Phase 9 image_order bilgisini packPosition'dan alabilir)
 - **Cover swap atomic** (Task 20 `POST /api/mockup/jobs/[jobId]/cover`) Phase 9 listing thumbnail değişikliklerini destekler — yeni MockupRender üretmez, sadece slot swap
 - **Bulk ZIP** (Task 21 `GET /api/mockup/jobs/[jobId]/download`) Phase 9 ZIP-first attachment workflow için hazır (cover-first filename ordering, manifest.json failedPackPositions tracking)
-- **Listing'e gönder CTA** (S8) V1'de disabled + tooltip "Phase 9'da listing builder eklenecek" — Phase 9 activate edecek ve `router.push("/selection/sets/[setId]/listings/draft?jobId=[jobId]")` bağlantısını kuracak
+- **Listing'e gönder CTA** (S8) Phase 9 V1 ile aktif edildi (HEAD `856cd0c` - Task 19); CTA `useCreateListingDraft` hook'una bağlı, başarılı POST `/api/listings/draft` sonrası `router.push("/listings/draft/${listingId}")` ile Phase 9 detay sayfasına yönlendirir. Phase 8 → Phase 9 köprüsü canlı.
 - **Manifest schema** Phase 8 V1'de yok; Phase 9'da listing draft input contract'ı olarak tanımlanacak (snapshot disiplini Phase 8 binding seviyesinde, Phase 9 listing seviyesinde genişler)
 
 ---

@@ -186,6 +186,18 @@ Tüm senaryolar başlamadan önce:
 - [ ] All failed (success=0): "Pack üretilemedi" + hata özeti + "S3'e dön" + "Phase 7'ye dön" recovery CTA'ları
 - [ ] Status guard: URL manuel `/result`'e gidilirse + status ∉ {COMPLETED, PARTIAL_COMPLETE} → S7'ye otomatik redirect
 
+### G.1 — Phase 9 köprüsü: "Listing'e gönder" CTA
+
+> **Hedef:** Phase 8 → Phase 9 V1 handoff (Task 19) canlı; CTA active ve yeni listing draft sayfasına yönlendirir.
+
+- [ ] S8 başarılı pack ekranında "Listing'e gönder →" button visible ve **enabled**
+- [ ] Button tıkla → button "Listing yaratılıyor..." (loading state)
+- [ ] Network tab: `POST /api/listings/draft` → 202 response + body `{listingId: "..."}`
+- [ ] Otomatik redirect: `/listings/draft/[listingId]` (Phase 9 V1 detay sayfası)
+- [ ] Yeni listing detay sayfası yüklendi (DRAFT status, başlık boş, AssetSection cover/grid + readiness checklist)
+- [ ] DB'de Listing row yaratıldı: `userId`, `mockupJobId` (source MockupJob), `coverRenderId`, `imageOrderJson` snapshot
+- [ ] Cross-user 404: başka user ile login → aynı `mockupJobId`'yi `POST /api/listings/draft`'a manuel gönder → 404 honest fail
+
 ---
 
 ## H. Bulk ZIP download

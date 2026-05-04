@@ -86,6 +86,12 @@ KIE.ai docs'tan onaylı kontrat:
 - Response: `choices[0].message.content` (JSON string), `usage.total_tokens`,
   `model: "gemini-2.5-flash"`
 
+> **Aşama 2B kapanış notu (2026-05-04, HEAD `f686882`):** Aşağıdaki "Aşama 2B
+> bekleniyor" throw artık geçerli değil — provider kod tarafı kapandı; image-loader
+> data URL inline ile hem AI mode hem local mode çalışır. Eski throw mesajı tarihsel
+> referans olarak korunmuştur (test güncellemesi: `tests/unit/kie-gemini-flash-provider.test.ts`).
+> Detay: bu doc satır 366-396 ("Aşama 2B — Kapanış (2026-05-04)").
+
 **Aşama 2A kapsamı:**
 
 - KIE provider `kie-gemini-flash` gerçek implementasyon (STUB silindi)

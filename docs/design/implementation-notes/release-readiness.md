@@ -84,13 +84,50 @@ AI metadata generation için (opsiyonel, "AI Oluştur" butonu için):
 
 | Phase | Doküman | Status |
 |---|---|---|
+| **Phase 6 V1** | [`phase6-manual-qa.md`](./phase6-manual-qa.md) | ⏳ henüz koşulmadı (kod tarafı tamam — drift #6 + Aşama 2B kapandı HEAD `f686882`; KIE flaky external dep — health probe 3/3 HEALTHY önkoşulu); **Phase 7 v1.0.1 Review Queue gating'i bağlı** — kapanana kadar Review Queue + AiQualityPanel "Review'a gönder" disabled kalır |
 | Phase 8 V1 | [`phase8-manual-qa.md`](./phase8-manual-qa.md) | ⏳ henüz koşulmadı |
 | Phase 9 V1 | [`phase9-manual-qa.md`](./phase9-manual-qa.md) | ⏳ henüz koşulmadı (HEAD `92b0072` sync edildi; L bölümü dahil tüm yüzey test edilebilir) |
-| Phase 6 Aşama 2A canlı smoke | [`phase6-quality-review.md`](./phase6-quality-review.md) | ⚠️ drift #6 (image URL erişim) + KIE flaky maintenance bekliyor |
 
 Phase 6 canlı smoke kapanmadan **Phase 7 v1.0.1**'in Review Queue tab'ı disabled
 kalır (intentional gating); kapanınca aktif olur. Phase 9 V1 PASS ilanı için
 Phase 8 V1 manual QA da kapanması gerekir.
+
+---
+
+## Manual QA sıra planı (zorunlu)
+
+Phase'ler arası bağımlılıklar nedeniyle manual QA aşağıdaki sırada yapılmalı:
+
+1. **Phase 6 V1** — [`phase6-manual-qa.md`](./phase6-manual-qa.md)
+   - Önkoşul: KIE health probe 3/3 HEALTHY (terminal: `npx tsx scripts/kie-health-probe.ts`)
+   - Önkoşul: Settings → AI Mode'da `kieApiKey` doldurulmuş
+   - Kapsam: AI mode (F.1) + local mode (F.2) + honest-fail (F.3, F.4)
+   - **Sonuç:** Phase 7 v1.0.1 Review Queue + AiQualityPanel gating açılır
+   - **KIE flaky external dep** — endpoint 24h+ tutarlı HEALTHY olmadan smoke retry önerilmez
+
+2. **Phase 7 v1.0.1 Review Queue activation** (Phase 6 sonrası)
+   - Manuel test gerekmez — Phase 6 PASS sonrası kod tarafı zaten aktif
+   - Selection Studio AI Quality Panel "Review'a gönder" button artık enabled
+   - AddVariantsDrawer Review Queue tab erişilebilir
+
+3. **Phase 8 V1** — [`phase8-manual-qa.md`](./phase8-manual-qa.md)
+   - Önkoşul: Postgres + MinIO + Redis + BullMQ worker running
+   - Önkoşul: 8 ACTIVE MockupTemplate seed (admin user)
+   - Kapsam: 6 ekran (S3-S8) + ZIP download + cover swap + per-render retry
+   - **Phase 9 köprüsü:** G.1 alt-section "Listing'e gönder" CTA test (Phase 9 V1 handoff)
+   - **Sonuç:** Phase 8 V1 closeout PASS ilanı
+
+4. **Phase 9 V1** — [`phase9-manual-qa.md`](./phase9-manual-qa.md)
+   - Önkoşul: Phase 8 V1 manual QA PASS (S8 result valid pack required)
+   - Kapsam zorunlu: A-G bölümleri (handoff + detail + edit + index + AI E.1 honest-fail + negative library + Settings)
+   - Kapsam opsiyonel: E.2 (KIE live AI), H (Etsy live submit success), J (honest-fail tüm path'ler)
+   - **3 external dep eş zamanlı:** ETSY_CLIENT_ID/SECRET/REDIRECT_URI + ETSY_TAXONOMY_MAP_JSON + OAuth live test
+   - **Sonuç:** Phase 9 V1 closeout PASS ilanı
+
+5. **Final closeout** — bu doc + her phase'in status doc'u
+   - Status `🟡` → `🟢 PASS` update
+   - `## Bulgular — YYYY-MM-DD` section'ı her phase'in manual-qa.md doc'una ekle
+   - Sürpriz bulgu varsa drift olarak status doc'a yansıt
 
 ---
 
