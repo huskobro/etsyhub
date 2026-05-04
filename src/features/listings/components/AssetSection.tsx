@@ -25,7 +25,12 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
     );
 
   // Check if ready for ZIP download
-  const allImagesReady = listing.imageOrder.every((img) => img.outputKey);
+  // Defensive: empty imageOrder makes Array.every() return true (vacuous truth) —
+  // explicit length guard prevents misleading "✓ ZIP'e hazır" + active link
+  // when listing has no images yet (e.g. listing created before mockup pack).
+  const allImagesReady =
+    listing.imageOrder.length > 0 &&
+    listing.imageOrder.every((img) => img.outputKey);
 
   // Mockup count (from readiness check — Phase 8 integration)
   const mockupJobReady = listing.mockupJobId != null;
