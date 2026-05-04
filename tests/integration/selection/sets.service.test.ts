@@ -306,6 +306,55 @@ describe("Phase 7 sets.service — getSet", () => {
     expect(result.items).toEqual([]);
   });
 
+  // Phase 8 §1.4 fallback chain — Phase 7 → Phase 8 köprü:
+  //   items[].aspectRatio = generatedDesign.productType.aspectRatio fallback.
+  // useMockupPackState selectQuickPackDefault'a bu alanı verir; eksikse
+  // Apply page'inde "0 görsel üretilecek" görünür (gerçek bug repro).
+  it("items[].aspectRatio — productType.aspectRatio fallback resolve eder", async () => {
+    // Productype'ı aspectRatio "3:4" ile zenginleştir (canvas için spec default)
+    await db.productType.update({
+      where: { key: PRODUCT_TYPE_KEY },
+      data: { aspectRatio: "3:4" },
+    });
+
+    const { design, designAsset } = await ensureBaseFixtures(userAId);
+    const set = await createSet({ userId: userAId, name: "AspectRatio Set" });
+    await db.selectionItem.create({
+      data: {
+        selectionSetId: set.id,
+        generatedDesignId: design.id,
+        sourceAssetId: designAsset.id,
+        position: 0,
+      },
+    });
+
+    const result = await getSet({ userId: userAId, setId: set.id });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.aspectRatio).toBe("3:4");
+  });
+
+  it("items[].aspectRatio — productType.aspectRatio null ise null döner (skip-able by quick-pack)", async () => {
+    await db.productType.update({
+      where: { key: PRODUCT_TYPE_KEY },
+      data: { aspectRatio: null },
+    });
+
+    const { design, designAsset } = await ensureBaseFixtures(userAId);
+    const set = await createSet({ userId: userAId, name: "Null AspectRatio Set" });
+    await db.selectionItem.create({
+      data: {
+        selectionSetId: set.id,
+        generatedDesignId: design.id,
+        sourceAssetId: designAsset.id,
+        position: 0,
+      },
+    });
+
+    const result = await getSet({ userId: userAId, setId: set.id });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.aspectRatio).toBeNull();
+  });
+
   it("cross-user → NotFoundError", async () => {
     const set = await createSet({ userId: userAId, name: "A's Set" });
 

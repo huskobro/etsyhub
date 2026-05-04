@@ -95,7 +95,10 @@ export async function getSet(input: {
   setId: string;
 }): Promise<
   SelectionSet & {
-    items: (SelectionItem & { review: ReviewView | null })[];
+    items: (SelectionItem & {
+      review: ReviewView | null;
+      aspectRatio: string | null;
+    })[];
     activeExport: ActiveExport | null;
   }
 > {
@@ -105,18 +108,25 @@ export async function getSet(input: {
     orderBy: { position: "asc" },
     include: {
       generatedDesign: {
-        include: { review: true },
+        include: { review: true, productType: true },
       },
     },
   });
   // Mapper sonucu inject; raw `generatedDesign` payload'ı API yanıtında
-  // sızdırılmaz — yalnız `review` (view) eklenir, eklenen include kalkar.
+  // sızdırılmaz — yalnız `review` (view) ve `aspectRatio` resolve edilen
+  // primitive eklenir, eklenen include kalkar.
+  //
+  // Phase 8 §1.4 fallback chain — Phase 7 → Phase 8 köprü:
+  //   1. GeneratedDesign.aspectRatio (V1: schema'da yok, daima null)
+  //   2. GeneratedDesign.productType.aspectRatio (canvas → "3:4", wall_art → "2:3" vb.)
+  //   3. null → Phase 8 quick-pack default hesabında skip edilir
   const items = rows.map(({ generatedDesign, ...item }) => ({
     ...item,
     review: mapReviewToView({
       generatedDesign,
       designReview: generatedDesign.review,
     }),
+    aspectRatio: generatedDesign.productType.aspectRatio ?? null,
   }));
   // Phase 7 Task 14 — activeExport (Set GET payload genişletme, design Section 6.6).
   // Additive alan: BullMQ queue'dan en son EXPORT_SELECTION_SET job'unun durumu.

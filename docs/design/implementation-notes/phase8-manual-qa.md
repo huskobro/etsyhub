@@ -1,7 +1,7 @@
 # Phase 8 Mockup Studio — Manuel QA Checklist
 
-> **Tarih:** 2026-05-02 (sync 2026-05-04 — manual QA execution + QA fixture seed eklendi)
-> **Phase 8 status:** 🟡 **Pending — manual QA başlatma noktası açık** (HEAD `bed2579`+). Kod-otomasyon gate'leri PASS; Selection Studio entry browser render PASS; **QA fixture seed script eklendi (`scripts/seed-qa-fixtures.ts`)** — admin user için ready SelectionSet + terminal MockupJob (COMPLETED, 10 successful renders) + cover invariant + MinIO sample PNG'ler. A-O ana akış (S3-S8 + ZIP + cover swap + per-render retry/swap) artık fixture'lı browser e2e smoke için **açık**. Phase 8 self-contained (KIE bağımsız Sharp local renderer) — runbook 4.2'ye göre honest-fail path YOK; PASS için fixture'lı gerçek browser akışı zorunlu, ama fixture eklendikten sonra kullanıcı/admin doğrudan A-O senaryolarını koşturabilir.
+> **Tarih:** 2026-05-02 (sync 2026-05-04 — QA fixture + Phase 7→8 köprü aspectRatio resolve fix)
+> **Phase 8 status:** 🟡 **Pending — A-O browser smoke pending (Apply + S8 + köprü + ZIP canlı PASS)** (HEAD `e4eb36d`+). Kod-otomasyon gate'leri PASS; Selection Studio entry browser render PASS; QA fixture seed (`scripts/seed-qa-fixtures.ts`) admin user için ready SelectionSet + terminal MockupJob + cover invariant + MinIO sample PNG'ler üretiyor. **Yeni: Phase 7→8 köprü `getSet` items[].aspectRatio resolve fix** (Spec §1.4 fallback chain) — Apply page Quick Pack default önceden "0 görsel üretilecek" + "Render et" disabled idi; fix sonrası "6 görsel üretilecek" + "Render et" enabled (canlı doğrulandı). A-O ana akış (S3-S8 + ZIP + cover swap + per-render retry/swap) artık tam yürünebilir; Phase 8 self-contained (KIE bağımsız Sharp local renderer); runbook 4.2 honest-fail path YOK — tam A-O kullanıcı/admin browser smoke koşumu sonrasında PASS ilan edilir.
 > **Önkoşul:**
 >   - `npm run dev` (Next.js dev server)
 >   - Postgres + MinIO + Redis local'de çalışıyor olmalı (Phase 7 emsali)
@@ -380,26 +380,33 @@ Tüm senaryolar başlamadan önce:
 
 ---
 
-## Bulgular — 2026-05-04 (manual QA execution + QA fixture seed eklendi, HEAD `bed2579`+)
+## Bulgular — 2026-05-04 (QA fixture + Phase 7→8 aspectRatio resolve fix, HEAD `e4eb36d`+)
 
-**Genel sonuç:** 🟡 **Pending — manual QA başlatma noktası açık.** Selection Studio entry browser PASS + QA fixture seed script eklendi; A-O ana akış artık fixture'lı browser e2e smoke için hazır.
+**Genel sonuç:** 🟡 **Pending — A-O browser smoke pending (Apply + S8 + köprü + ZIP canlı PASS).** Selection Studio entry browser PASS + QA fixture seed + getSet aspectRatio fix sonrası: Apply page Quick Pack default canlı + S8 result + Phase 9 köprüsü + ZIP route canlı doğrulandı. Tam A-O akışı kullanıcı browser smoke'una hazır.
 
 ### 🟢 PASS — Canlı doğrulanmış
 
 - **Selection Studio (`/selection`) entry render:** browser canlı PASS — H1 "Selection Studio", H2 "Aktif draft" + H2 "Son finalize edilen set'ler", Türkçe empty state ("Henüz aktif draft set yok" / "Henüz finalize edilen set yok").
 - **Phase 9 köprüsü S8 → listing draft (Phase 9 A.1 + A.2):** Phase 9 manual QA execution turunda cross-user 404 + terminal status guard canlı PASS (handoff endpoint integration testler 6 senaryo ✓).
 
-#### QA fixture seed sonrası canlı doğrulama (2026-05-04, HEAD `bed2579`+)
+#### QA fixture + Phase 7→8 aspectRatio resolve fix sonrası canlı doğrulama (2026-05-04, HEAD `e4eb36d`+)
 
-QA fixture seed script ekledikten sonra browser canlı koşum:
+**Phase 7→8 köprü gerçek bug + fix (HEAD `e4eb36d`+):** Apply page Quick Pack default önceden `0 görsel üretilecek` + `Render et` disabled — root cause: `getSet` service'ı `items[].aspectRatio`'yu döndürmüyordu (Spec §1.4 fallback chain "backend'de" diyordu ama uygulanmamıştı). Hook `useMockupPackState` `extractVariants` boş array döndürüyor → `selectQuickPackDefault` 0 template → 0 valid pair. Fix: `getSet` mapper'a `productType` include + `items[].aspectRatio = generatedDesign.productType.aspectRatio ?? null` resolve. **Bu sadece QA fixture'ı değil, üretim akışını da düzeltti** — herhangi bir gerçek SelectionSet (variation→review→selection finalize) artık Apply page'de Quick Pack default 6 template otomatik seçecek.
+
+**Browser canlı doğrulama (HEAD `e4eb36d`+):**
 
 - **`/selection` Selection Studio kart:** "[QA] Phase 8 fixture set / Finalize: 04 May 2026 / Ready" görünüyor. Empty state kayboldu.
+- **`/selection/sets/[setId]/mockup/apply` (S3 Apply landing):** H1 fixture set adı + breadcrumb "← Selection / [QA] Phase 8 fixture set / Mockup Studio"; "Toplam 3 tasarım seçili"; "Hazır" status; "★ Quick Pack" rozet; **aspectRatio fix sonrası: "6 görsel üretilecek" + "Render et (Quick Pack)" enabled + "Tahmini süre: ~30 saniye"** (önceki state "0 görsel üretilecek" + "Render et" disabled idi — Phase 7→8 köprü `getSet` aspectRatio resolve fix HEAD `e4eb36d`+ ile düzeldi).
 - **`/selection/sets/[setId]/mockup/jobs/[jobId]/result` (S8 result page):** H1 "Pack hazır: 10/10 görsel"; 10 görsel render ediliyor (qa-fixture/mockup-pos-0..9.png); 5 CTA: "⬇ Bulk download ZIP (10 görsel)", "Listing'e gönder →", "Cover'ı Değiştir", "İndir", "Listingler".
 - **Phase 9 köprüsü canlı doğrulandı:** `POST /api/listings/draft { mockupJobId }` 202 + listingId. Listing detail sayfasında `imageOrder.length=10`, `coverRenderId` set, cover image isCover:true packPosition:0 outputKey valid; readiness "Kapak görseli hazır" pass:true.
 - **AssetSection cover render canlı:** Yeni listing'in detail sayfasında cover image (qa-fixture/mockup-pos-0.png) görünüyor + 9 grid image; "ZIP İndir" link aktif; "✓ ZIP'e hazır" badge görünüyor.
 - **ZIP download (Phase 9 ZIP route + Phase 8 buildMockupZip reuse):** `GET /api/listings/draft/[id]/assets/download` 200 application/zip + filename `listing-{cuid}.zip` + ZIP magic bytes (PK\x03\x04) + 64KB content.
 
-A-O senaryolarının **tetiklenebilir** olduğu (entry + S8 result page + Phase 9 köprüsü + ZIP) canlı doğrulandı. Tam A-O browser smoke (S3 Apply → S1 Browse → S2 Detail → Submit → S7 polling → S8 redirect → ZIP → Cover swap → Per-render retry/swap → 5-class hata → Cross-user → Toast → Backdrop) **kullanıcı/admin tarafında pending** — fixture mevcut, doğrudan başlatılabilir.
+A-O senaryolarının **tetiklenebilir + tam yürünebilir** olduğu canlı doğrulandı:
+- **A S3 Apply landing PASS** (Quick Pack default 6 template + "Render et" enabled)
+- **G S8 cover + grid + G.1 Phase 9 köprüsü PASS**
+- **H Bulk ZIP PASS**
+- B (S1 Browse drawer) + C (S2 Detail modal) + D (Submit flow) + E (S7 polling) + F (S7→S8 auto-redirect) + I (Cover swap modal) + J/K (Per-render retry/swap) + L (Failed render UI) + M (Cross-user 404) + N (Completion toast) + O (Backdrop) **kullanıcı/admin tarafında pending** — fixture + üretim akışı (aspectRatio fix) ikisi de canlı, doğrudan koşturulabilir.
 
 ### 🟡 NOT
 
@@ -416,20 +423,20 @@ _(yok)_
 - **Task 10 perspective Sharp render:** spike sonrası schema-only.
 - **Per-render PNG/JPG download endpoint:** V1 bulk ZIP yeterli.
 
-### Pending (manual QA browser smoke — fixture hazır, kullanıcı koşturmalı)
+### Pending (manual QA browser smoke — fixture + üretim akışı hazır, kullanıcı koşturmalı)
 
-QA fixture seed script eklendikten sonra A-O senaryolarının hepsi tetiklenebilir hale geldi. Kalan: **manuel browser koşum**:
+QA fixture seed + Phase 7→8 aspectRatio fix sonrası A-O senaryolarının hepsi tam yürünebilir:
 
-- **A S3 Apply landing** — fixture set entry açık (`/selection/sets/[setId]/mockup/apply`)
-- **B S1 Browse drawer + C S2 Detail modal + D Submit flow + E S7 polling + F S7 → S8 auto-redirect** — apply → submit → polling → S8 redirect zinciri kullanıcı browser'da koşturabilir
-- **G S8 cover + grid + G.1 Phase 9 köprüsü** — ✅ canlı doğrulandı (yukarıda); A-O kapsamında full smoke kullanıcı tarafında
-- **H Bulk ZIP** — ✅ canlı doğrulandı (Phase 9 ZIP route üzerinden)
+- **A S3 Apply landing** — ✅ canlı PASS (Quick Pack default 6 template + "Render et" enabled)
+- **B S1 Browse drawer + C S2 Detail modal + D Submit flow + E S7 polling + F S7 → S8 auto-redirect** — apply → submit → polling → S8 redirect zinciri kullanıcı browser'da koşturabilir (Render et tıklanınca)
+- **G S8 cover + grid + G.1 Phase 9 köprüsü** — ✅ canlı PASS
+- **H Bulk ZIP** — ✅ canlı PASS (Phase 9 ZIP route üzerinden)
 - **I Cover swap modal** — kullanıcı browser'da test edebilir
 - **J Per-render retry + K Per-render swap + L Failed render UI** — V1 fixture sadece SUCCESS render'ları içeriyor; failed render senaryosu için ayrı fixture varyantı V1.1 nice-to-have (mevcut fixture FAILED render eklemiyor — silent corruption olmamak için)
 - **M Cross-user 404** — Phase 9'da analog akış canlı PASS oldu (cross-user ownership disipline aynı pattern); Phase 8 endpoint'leri için integration testler 33 task kapsamında PASS
 - **N Completion toast** — Phase 7 emsali baseline; Phase 8 fixture toast tetikleyici background completion için ayrı senaryo
 - **O Backdrop davranışları** — kullanıcı browser'da koşturmalı
 
-**Phase 8 V1 PASS sözleşmesi (runbook 4.1):** "Tüm bölümler PASS" — A-F + G+G.1 + H-O + P E2E. Fixture eklendi → A-O kapsamı tetiklenebilir; tam PASS ilanı için kullanıcı/admin browser smoke koşumu gerekli.
+**Phase 8 V1 PASS sözleşmesi (runbook 4.1):** "Tüm bölümler PASS" — A-F + G+G.1 + H-O + P E2E. Fixture + aspectRatio fix sonrası A-O kapsamı **tam yürünebilir**; tam PASS ilanı için kullanıcı/admin browser smoke koşumu gerekli (özellikle B/C/D/E/F submit→polling→S8 zinciri ve I/J/K/L UI).
 
-**Karar:** Phase 8 V1 status **🟡 Pending — manual QA başlatma noktası açık** kalır; runbook 4.1 PASS sözleşmesi kullanıcı tarafında. Phase 9 V1 closeout PASS'i Phase 8 V1 PASS'a göre değil **runbook 5.2 honest-fail PASS sınırına göre** değerlendirildi (Phase 9 A.1 + A.2 cross-user/terminal guard tek başına canlı PASS + fixture sonrası A handoff canlı PASS).
+**Karar:** Phase 8 V1 status **🟡 Pending — A-O browser smoke pending (Apply + S8 + köprü + ZIP canlı PASS)** kalır; runbook 4.1 PASS sözleşmesi kullanıcı tarafında. Phase 9 V1 closeout PASS'i Phase 8 V1 PASS'a göre değil **runbook 5.2 honest-fail PASS sınırına göre** değerlendirildi.

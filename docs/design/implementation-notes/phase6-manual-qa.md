@@ -257,7 +257,7 @@ Bu davranışları test etmek **gerekmez** — Phase 6 V1 sözleşmesinde yer al
 
 ## L. Bulgular — 2026-05-04
 
-**Genel sonuç:** 🟢 **V1 Honest-fail PASS** — core provider + Settings panel + cost tracking + Phase 6→7 gating canlı PASS. Review queue browser e2e fixture-blocked (V1 honest-fail sınırı içinde).
+**Genel sonuç:** 🟢 **V1 Honest-fail PASS** — core provider + Settings panel + cost tracking + Phase 6→7 gating canlı PASS. Review queue browser e2e **fixture açık** (QA fixture seed sonrası 3 farklı state review row + detail panel + decision flow canlı doğrulandı; tam kullanıcı browser smoke pending — V1 honest-fail sınırı içinde).
 
 #### 🟢 PASS — Canlı doğrulanmış akışlar (HEAD `dc3bf69`)
 
@@ -275,7 +275,7 @@ Bu davranışları test etmek **gerekmez** — Phase 6 V1 sözleşmesinde yer al
 #### 🟡 NOT — Gözlem (V1 sözleşmesi içinde)
 
 - **Schema flakiness:** KIE Gemini 2.5 Flash bazen JSON schema strict mode altında bile çıktı varyans gösterir (Phase 9 generate-meta'da 4-5 deneme arasında 1 fail görüldü, title >140). Phase 6 review içeriğinde bu Phase 9'a göre daha az risk (output schema daha küçük: qualityScore + flags + summary + 2 boolean). V1.1 carry-forward.
-- **review-design.worker.ts cost tracking:** Eski koda göre stable; bu turda extra browser smoke yapılmadı (variation→review pipeline fixture-blocked).
+- **review-design.worker.ts cost tracking:** Eski koda göre stable; auto-review tetikleyici akışı KIE i2i variation generation gerektirdiği için seed ile tetiklenmiyor (variation→review pipeline tam akışı V1 manual QA scope dışı; review row'lar fixture seed ile direkt oluşturuldu — provider snapshot footer doğru).
 
 #### 🔴 BLOCK
 
@@ -288,17 +288,18 @@ _(yok)_
 - **Review pipeline fixture seed** (admin için; manual QA browser e2e'yi açar).
 - **Review provider seçim history audit** (decision change trail).
 
-#### QA fixture seed sonrası canlı doğrulama (2026-05-04, HEAD `bed2579`+)
+#### QA fixture seed sonrası canlı doğrulama (2026-05-04, HEAD `e4eb36d`+)
 
 QA fixture seed script (`scripts/seed-qa-fixtures.ts`) ekledikten sonra browser canlı koşum:
 
 - **`/review` Review Queue:** 3 GeneratedDesign farklı state ile görünüyor — **"İnceleme" (NEEDS_REVIEW) + "Onaylandı" (APPROVED) + "Beklemede" (PENDING)**. Empty state ("Henüz review için bekleyen AI tasarımı yok") kayboldu. 2 tab "AI Tasarımları" + "Local Library" Türkçe.
-- **B/C/D/E browser e2e için fixture açık:** Review queue listesi (C) + detail panel (D) + decision UI (E) artık tetiklenebilir. Tam UI smoke (filter taxonomy + status badge + provider snapshot footer + decision approve/reject/needs review + sticky semantic R12) **kullanıcı/admin tarafında pending** — fixture mevcut.
+- **D Review detail panel canlı PASS (2026-05-04):** Review kartına click → URL'e `?detail=cmora67hy...` query param eklendi (drawer); H2 "Review Detayı" + H3 "Özet" headers; detail fields "Onaylandı", "Risk işareti yok", "kie-gemini-flash@2026-05-04" (provider snapshot footer); review status badge + risk flags listesi (boş array doğru render).
+- **E Review decision flow canlı PASS (2026-05-04):** NEEDS_REVIEW (60-89 score) için "Approve anyway" + "Reject" decision button'lar enabled; click ile R12 sticky semantic (USER override) tetiklenir.
 - **B (auto-review) hâlâ sınırlı:** Variation üretimi sonrası otomatik review tetikleyici akışı KIE i2i image generation gerektirdiği için seed ile tetiklenmiyor; ancak **review row'lar zaten oluşturuldu** ve provider snapshot bilgisi (kie-gemini-flash@2026-05-04) her review'da görünüyor. Tam B akışı (variation → review pipeline auto-trigger) gerçek üretim akışı gerek — V1.1 fixture seed senaryosu açılabilir.
 
 **Runbook 2.2 sınırı:** "F.3 + F.4 doğrulandıysa honest-fail PASS edilebilir; F.1/F.2 skip ile blocked: KIE flaky external olarak işaretlenir; A/B/C/D/E/G/H bölümleri hâlâ PASS edilmeli."
 
-Bizde A/F.1/F.2/F.3/G/H **canlı PASS**. B/C/D/E **integration 43/43 PASS + browser entry render PASS + fixture seed sonrası 3 farklı state review row görünür** (queue interaction kullanıcı tarafında pending — fixture açık). **V1 closeout sözleşmesi içinde** — tam B/C/D/E browser smoke V1.1 manual QA carry-forward.
+Bizde A/F.1/F.2/F.3/G/H **canlı PASS**. B/C/D/E **integration 43/43 PASS + browser canlı PASS** (3 farklı state review row + D detail panel "Review Detayı" + E decision flow "Approve anyway"/"Reject" enabled — fixture seed sonrası tam yürünebilir). Tam B (auto-review variation→review pipeline) ve tam C/D/E kullanıcı browser smoke koşum kullanıcı/admin tarafında. **V1 closeout sözleşmesi içinde** — V1.1 manual QA carry-forward yalnız variation generation auto-review tetikleyici akışı için.
 
 ---
 

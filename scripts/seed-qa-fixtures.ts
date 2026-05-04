@@ -133,21 +133,27 @@ async function main() {
     return;
   }
 
-  // Canvas productType
-  const canvasPt = await db.productType.findUnique({ where: { key: "canvas" } });
-  if (!canvasPt) {
-    console.error("[seed-qa-fixtures] FATAL: canvas ProductType yok. Önce: npx tsx prisma/seed.ts");
-    process.exit(1);
-  }
-
-  // Phase 8 için 1 ACTIVE template + 1 ACTIVE binding gerek
+  // Phase 8 için 1 ACTIVE template + 1 ACTIVE binding gerek (canvas kategorisi V1)
   const activeTpl = await db.mockupTemplate.findFirst({ where: { categoryId: "canvas", status: "ACTIVE" }, include: { bindings: { where: { status: "ACTIVE" } } } });
   if (!activeTpl || activeTpl.bindings.length === 0) {
     console.error("[seed-qa-fixtures] FATAL: ACTIVE canvas MockupTemplate veya binding yok. Phase 8 prerequisite eksik.");
     process.exit(1);
   }
   const activeBinding = activeTpl.bindings[0]!;
-  console.log(`[seed-qa-fixtures] active template ${activeTpl.id} + binding ${activeBinding.id}`);
+  // ProductType seçimi: Phase 8 §1.4 quick-pack default için
+  // selectionItem.aspectRatio = productType.aspectRatio fallback'ı template
+  // aspectRatio'larıyla eşleşmeli (validPairs > 0 — TemplateInvalidError'dan kaçınmak için).
+  // Canvas template'lar V1'de `2:3` aspectRatio ile seed'leniyor (admin asset prep);
+  // canvas ProductType ise `3:4` (production seed). Bu drift'i seed-time'da
+  // çözmek için: template'ın aspectRatio'suna uyan ProductType'ı seç (wall_art "2:3"
+  // → match). Canvas ProductType drift'i V1.1 carry-forward (release-readiness.md).
+  const tplAspect = activeTpl.aspectRatios[0] ?? "2:3";
+  const productPt = await db.productType.findFirst({ where: { aspectRatio: tplAspect, isSystem: true } });
+  if (!productPt) {
+    console.error(`[seed-qa-fixtures] FATAL: aspectRatio=${tplAspect} ile uyumlu ProductType yok.`);
+    process.exit(1);
+  }
+  console.log(`[seed-qa-fixtures] active template ${activeTpl.id} (aspectRatio=${tplAspect}) + binding ${activeBinding.id}; productType=${productPt.key} (aspectRatio=${productPt.aspectRatio})`);
 
   // 1. Source asset (reference image) + Reference + GeneratedDesign'ler
   console.log("[seed-qa-fixtures] 1/4 — Reference + GeneratedDesign + Asset row'ları...");
@@ -171,7 +177,7 @@ async function main() {
     data: {
       userId: admin.id,
       assetId: refAsset.id,
-      productTypeId: canvasPt.id,
+      productTypeId: productPt.id,
       notes: `[${QA_FIXTURE_MARKER}] QA fixture reference`,
     },
   });
@@ -205,7 +211,7 @@ async function main() {
         userId: admin.id,
         referenceId: reference.id,
         assetId: genAsset.id,
-        productTypeId: canvasPt.id,
+        productTypeId: productPt.id,
         similarity: "medium",
         qualityScore: v.qualityScore,
         reviewStatus: v.reviewStatus,
@@ -231,7 +237,7 @@ async function main() {
       sourceMetadata: {
         kind: "qa-fixture",
         marker: QA_FIXTURE_MARKER,
-        productTypeId: canvasPt.id,
+        productTypeId: productPt.id,
         originalCount: genDesigns.length,
       },
     },

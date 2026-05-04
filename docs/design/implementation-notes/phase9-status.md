@@ -6,7 +6,7 @@
 > **Spec:** [`../../plans/2026-05-02-phase9-listing-builder-design.md`](../../plans/2026-05-02-phase9-listing-builder-design.md)
 > **Plan:** [`../../plans/2026-05-02-phase9-listing-builder-plan.md`](../../plans/2026-05-02-phase9-listing-builder-plan.md)
 > **Manual QA:** [`./phase9-manual-qa.md`](./phase9-manual-qa.md) (henüz koşulmadı)
-> **Phase 8 emsali:** [`./phase8-closeout.md`](./phase8-closeout.md) (Phase 8 V1 `🟡 Pending — fixture-blocked`; QA fixture seed script `scripts/seed-qa-fixtures.ts` ile manual QA başlatılabilir)
+> **Phase 8 emsali:** [`./phase8-closeout.md`](./phase8-closeout.md) (Phase 8 V1 `🟡 Pending — A-O browser smoke pending`; QA fixture seed `scripts/seed-qa-fixtures.ts` + Phase 7→8 aspectRatio resolve fix sonrası Apply + S8 + köprü + ZIP canlı PASS)
 
 ## Özet
 
@@ -413,7 +413,7 @@ ağırlıklı:
 
 ### (B) Phase 8 V1 manual QA — fixture'lı browser smoke ✅ KALAN
 - **Ne:** `scripts/seed-qa-fixtures.ts` ile admin için ready SelectionSet + terminal MockupJob + 10 MockupRender seed; sonra `phase8-manual-qa.md` A-O senaryoları
-- **Sonrası:** Phase 8 V1 `🟡 Pending — fixture-blocked` → `🟢 V1 PASS`
+- **Sonrası:** Phase 8 V1 `🟡 Pending — A-O browser smoke pending` → `🟢 V1 PASS`
 
 ### (C) Token refresh BullMQ background worker (V1.1 carry-forward)
 - **Ne:** Submit pipeline öncesi expiry pre-check + auto-refresh + BullMQ background worker

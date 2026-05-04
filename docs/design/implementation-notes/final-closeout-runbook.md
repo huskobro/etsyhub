@@ -1,8 +1,8 @@
 # EtsyHub Final Closeout Runbook
 
-> **Tarih:** 2026-05-04 (manual QA execution turu sonrası sync)
-> **HEAD:** `dc3bf69`
-> **Mevcut durum (2026-05-04):** Phase 6 + Phase 9 **🟢 V1 Honest-fail PASS**; Phase 8 **🟡 Pending — fixture-blocked**; Etsy live submit success external operasyonel dep bekliyor. Bu runbook **operasyonel + manual QA fixture rehberi** olarak kalır — Full release PASS için Phase 8 + Etsy 3 dep tamamlanmalı.
+> **Tarih:** 2026-05-04 (Pass 7 — final completion: Phase 7→8 aspectRatio resolve fix)
+> **HEAD:** `e4eb36d`+
+> **Mevcut durum (2026-05-04):** Phase 6 + Phase 9 **🟢 V1 Honest-fail PASS**; Phase 8 **🟡 Pending — A-O browser smoke pending (Apply + S8 + köprü + ZIP canlı PASS)**; Etsy live submit success external operasyonel dep bekliyor. Bu runbook **operasyonel + manual QA fixture rehberi** olarak kalır — Full release PASS için Phase 8 tam A-O browser smoke + Etsy 3 dep tamamlanmalı.
 > **Amaç:** Repo-wide release readiness'i 🟢 V1 Honest-fail PASS → **🟢 Full release PASS** hâline getirmek için gereken **tek operasyonel rehber**. Kullanıcı/admin bu doc'tan adım adım yürüyerek son 1 mile'ı tamamlar.
 
 Bu doküman:
@@ -10,14 +10,15 @@ Bu doküman:
 - Yeni feature spec'i **DEĞİL** (kod release-ready)
 - Sıralama + PASS kriteri + closeout sonrası doc update planı
 
-**Tamamlanan (2026-05-04 manual QA execution + QA enablement):**
-- ✅ Phase 6 V1 Honest-fail PASS — A + F.1 + F.2 + F.3 + G + H canlı (KIE Gemini 2.5 Flash health probe + smoke data URL probe 200)
-- ✅ Phase 9 V1 Honest-fail PASS — V1 zorunlu kapsam (A.1 + A.2 + B + C + D + E.1 + E.2 KIE 10/10 + F + G.1 + I + J.1+J.5+J.6+J.7+J.8+J.9 + L.4) canlı PASS
-- 5 fix-now bug kapatıldı: title pass-message regression `b89d873`, ai-mode 500 cipher decrypt `78d82e3`, logger pino-pretty crash `f1d4664`, AssetSection ZIP guard `920c6d2`, listing-meta cost recording `dc3bf69`
-- **QA fixture seed eklendi (`scripts/seed-qa-fixtures.ts`):** Phase 6 + Phase 8 manual QA için admin user fixture (review queue 3 state'li GeneratedDesign + Phase 8 ready SelectionSet + terminal MockupJob + 10 MockupRender). Browser canlı doğrulandı: `/review` 3 review row + `/selection` "[QA] Phase 8 fixture set" + S8 result page "Pack hazır: 10/10 görsel" + Phase 9 köprüsü 202 + ZIP download 200 ZIP magic bytes.
+**Tamamlanan (2026-05-04 manual QA execution + QA enablement + final completion):**
+- ✅ Phase 6 V1 Honest-fail PASS — A + F.1 + F.2 + F.3 + G + H canlı + B/C/D/E fixture sonrası açık (review queue 3 state row + detail panel + decision flow canlı)
+- ✅ Phase 9 V1 Honest-fail PASS — V1 zorunlu kapsam canlı (10/10 KIE Gemini 2.5 Flash stabilite + cost recording)
+- 6 fix-now bug kapatıldı: title pass-message regression `b89d873`, ai-mode 500 cipher decrypt `78d82e3`, logger pino-pretty crash `f1d4664`, AssetSection ZIP guard `920c6d2`, listing-meta cost recording `dc3bf69`, **Phase 7→8 köprü aspectRatio resolve `e4eb36d`+** (Apply page Quick Pack default önceden "0 görsel" disabled idi → şimdi "6 görsel üretilecek" + "Render et" enabled; üretim akışını da düzeltti)
+- **QA fixture seed (`scripts/seed-qa-fixtures.ts`):** Phase 6 + Phase 8 manual QA için admin user fixture (review queue 3 state'li GeneratedDesign + Phase 8 ready SelectionSet + terminal MockupJob + 10 MockupRender). aspectRatio-aware ProductType seçimi (template aspect'iyle uyumlu, V1.1 carry-forward canvas seed drift not edildi).
+- **Browser canlı doğrulama:** `/review` 3 review row + D detail panel + E decision flow + `/selection` "[QA] Phase 8 fixture set" + Apply page Quick Pack "6 görsel" enabled + S8 result page "Pack hazır: 10/10 görsel" + Phase 9 köprüsü 202 + ZIP download 200 ZIP magic bytes.
 
 **Kalan (Full release PASS için):**
-- 🟡 Phase 8 V1 manual QA browser smoke — fixture mevcut (`scripts/seed-qa-fixtures.ts`), kullanıcı/admin A-O senaryolarını koşturur
+- 🟡 Phase 8 V1 manual QA browser smoke — fixture + üretim akışı (aspectRatio fix) hazır; kullanıcı/admin A-O tam koşum (özellikle B/C/D/E submit→polling→S8 zinciri ve I/J/K/L UI senaryoları)
 - 🟡 Phase 9 H + G.2-G.6 — Etsy 3 external dep (credentials + taxonomy env + OAuth)
 
 İçerik 6 bölüm: önkoşul env → QA sırası → her phase'in PASS kriterleri → honest-fail PASS sınırı → blocked sınırı → closeout sonrası doc update.
@@ -300,21 +301,21 @@ Bu işler V1 sözleşmesinde **kasıtlı olarak yok**; PASS ilanını engellemez
 
 ## Kısa özet (TL;DR)
 
-**Mevcut durum (2026-05-04, HEAD `bed2579`+):**
+**Mevcut durum (2026-05-04, HEAD `e4eb36d`+):**
 1. ✅ Env (0.1) tamam
-2. ✅ **QA fixture seed (0.4) eklendi** (`scripts/seed-qa-fixtures.ts`) — Phase 6 + Phase 8 manual QA başlatma noktası açık
-3. ✅ Phase 6 V1 Honest-fail PASS — A + F.1 + F.2 + F.3 + G + H canlı (KIE Gemini 2.5 Flash live + fixture sonrası review queue 3 farklı state row)
+2. ✅ **QA fixture seed (0.4)** (`scripts/seed-qa-fixtures.ts`) — aspectRatio-aware ProductType seçimi
+3. ✅ Phase 6 V1 Honest-fail PASS — A + F.1 + F.2 + F.3 + G + H canlı + B/C/D/E fixture sonrası açık (review queue + detail panel + decision flow canlı)
 4. ✅ Phase 7 — otomatik aktif (zaten 🟢 PASS)
-5. 🟡 Phase 8 V1 Pending — manual QA başlatma noktası açık (fixture mevcut, A-O browser smoke kullanıcı tarafında); entry + S8 result + Phase 9 köprüsü + ZIP canlı doğrulandı
+5. 🟡 Phase 8 V1 Pending — A-O browser smoke pending; **Apply page Quick Pack default canlı PASS** ("6 görsel üretilecek" + "Render et" enabled, Phase 7→8 aspectRatio resolve fix sonrası); S8 result + Phase 9 köprüsü + ZIP canlı doğrulandı
 6. ✅ Phase 9 V1 Honest-fail PASS — V1 zorunlu kapsam canlı + KIE 10/10 stabilite + cost recording
-7. 🟡 release-readiness.md "V1 Honest-fail PASS" — Full release PASS için Phase 8 fixture'lı manual QA + Etsy 3 dep kalan
+7. 🟡 release-readiness.md "V1 Honest-fail PASS" — Full release PASS için Phase 8 tam A-O browser smoke + Etsy 3 dep kalan
 
 **Full release PASS için kalan:**
-- Phase 8 V1 manual QA browser smoke (kullanıcı/admin `scripts/seed-qa-fixtures.ts` ile fixture hazırlayıp A-O senaryoları koşturur)
+- Phase 8 V1 manual QA tam A-O browser smoke (B/C/D/E submit→polling→S8 zinciri + I cover swap + J/K/L per-render retry/swap/failed UI + M-O cross-user/toast/backdrop)
 - Etsy 3 external dep (credentials + taxonomy env + OAuth live test)
 - Phase 9 H + G.2-G.6 final smoke
 - release-readiness.md final update
 
-**Repo-side blocker'lar bu turda tamamen kapatıldı.** Kalan: external dep + kullanıcı/admin browser smoke koşumu.
+**Repo-side blocker'lar bu turda tamamen kapatıldı + Phase 7→8 köprü gerçek bug fix edildi (üretim akışı dahil).** Kalan: external dep + kullanıcı/admin browser smoke koşumu.
 
 **"V1 Honest-fail PASS" ilan edildi** (Phase 6 + 9 — runbook 2.2 + 5.2 sınırlarına göre). **"Full release PASS"** Phase 8 + Etsy operasyonel dep tamamlanınca ilan edilecek.
