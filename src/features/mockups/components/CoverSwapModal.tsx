@@ -80,9 +80,13 @@ export function CoverSwapModal({
                       : "border-border hover:border-border-strong"
                   }`}
                 >
-                  {render.thumbnailKey ? (
+                  {/* Pass 16 fix — render.thumbnailKey storage path olarak
+                      `<img src>`'e doğrudan yapıştırılıyordu (bug); download
+                      endpoint stream'i thumbnail için kullan. */}
+                  {render.outputKey ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={render.thumbnailKey}
+                      src={`/api/mockup/jobs/${jobId}/renders/${render.id}/download`}
                       alt="thumbnail"
                       className="w-full aspect-square object-cover rounded"
                     />

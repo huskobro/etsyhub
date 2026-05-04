@@ -60,7 +60,17 @@ function CoverSlot({
       <div className="relative group rounded-lg overflow-hidden shadow-lg border-2 border-accent">
         <div className="aspect-square bg-gray-100 flex items-center justify-center">
           {render.outputKey ? (
-            <img src={render.outputKey} alt="cover" className="w-full h-full object-cover" />
+            // Pass 16 fix — render.outputKey storage path; doğrudan src olarak
+            // kullanılınca browser current page'e relative interpret eder. Mevcut
+            // download endpoint (Content-Type: image/png stream) preview için de
+            // çalışır — hem signed URL fetch overhead'inden kurtulur hem auth
+            // korunur.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/mockup/jobs/${jobId}/renders/${render.id}/download`}
+              alt="cover"
+              className="w-full h-full object-cover"
+            />
           ) : (
             <span className="text-gray-400">Görsel yok</span>
           )}
@@ -111,7 +121,13 @@ function SuccessRenderSlot({ render, jobId }: { render: MockupRenderView; jobId:
     <div className="relative group rounded-lg overflow-hidden shadow border">
       <div className="aspect-square bg-gray-100 flex items-center justify-center">
         {render.outputKey ? (
-          <img src={render.outputKey} alt="render" className="w-full h-full object-cover" />
+          // Pass 16 fix — bkz. CoverSlot yorumu (download endpoint stream)
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/mockup/jobs/${jobId}/renders/${render.id}/download`}
+            alt="render"
+            className="w-full h-full object-cover"
+          />
         ) : (
           <span className="text-gray-400">Görsel yok</span>
         )}
