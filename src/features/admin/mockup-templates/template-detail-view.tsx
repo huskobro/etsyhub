@@ -1,11 +1,46 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { AssetUploadField } from "./asset-upload-field";
+import { LocalSharpConfigEditor } from "./local-sharp-config-editor";
+
+type LocalSharpEditorConfig = {
+  providerId?: "local-sharp";
+  baseAssetKey: string;
+  baseDimensions: { w: number; h: number };
+  safeArea:
+    | { type: "rect"; x: number; y: number; w: number; h: number; rotation?: number }
+    | {
+        type: "perspective";
+        corners: [
+          [number, number],
+          [number, number],
+          [number, number],
+          [number, number],
+        ];
+      };
+  recipe: {
+    blendMode: "normal" | "multiply" | "screen";
+    shadow?: { offsetX: number; offsetY: number; blur: number; opacity: number };
+  };
+  coverPriority: number;
+};
+
+function defaultLocalSharpConfig(aspectCsv: string, baseAssetKey: string): LocalSharpEditorConfig {
+  const ar = aspectCsv.split(",")[0]?.trim() ?? "3:4";
+  const h = ar === "3:4" ? 1600 : ar === "2:3" ? 1800 : 1200;
+  return {
+    baseAssetKey,
+    baseDimensions: { w: 1200, h },
+    safeArea: { type: "rect", x: 0.1, y: 0.1, w: 0.8, h: 0.8 },
+    recipe: { blendMode: "normal" },
+    coverPriority: 50,
+  };
+}
 
 /**
  * Admin · MockupTemplate detay/edit sayfası (V2 admin authoring).
@@ -117,7 +152,11 @@ async function createBinding(input: {
 async function patchBinding(input: {
   templateId: string;
   bindingId: string;
-  body: { status?: "DRAFT" | "ACTIVE" | "ARCHIVED"; estimatedRenderMs?: number };
+  body: {
+    status?: "DRAFT" | "ACTIVE" | "ARCHIVED";
+    estimatedRenderMs?: number;
+    config?: object;
+  };
 }) {
   const res = await fetch(
     `/api/admin/mockup-templates/${input.templateId}/bindings/${input.bindingId}`,
@@ -229,25 +268,19 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
   const [bindingConfigJson, setBindingConfigJson] = useState("");
   const [bindingEstimatedMs, setBindingEstimatedMs] = useState(2000);
   const [bindingError, setBindingError] = useState<string | null>(null);
-  // V2 (HEAD `4606834`+) — baseAssetKey LOCAL_SHARP için ayrı upload widget;
-  // onChange'te JSON config'in `baseAssetKey` alanı otomatik güncellenir.
-  const [bindingBaseAssetKey, setBindingBaseAssetKey] = useState("");
+  // V2 Phase 8 (Pass 14) — LOCAL_SHARP structured editor state.
+  // DYNAMIC_MOCKUPS path'i hâlâ JSON textarea kullanıyor (stub provider,
+  // tek alan: externalTemplateId).
+  const [bindingLocalConfig, setBindingLocalConfig] = useState<LocalSharpEditorConfig>(
+    () => defaultLocalSharpConfig(aspectRatiosCsv, ""),
+  );
 
-  // Aspect ratio dependent config template (admin'in formunu kolaylaştırmak için)
-  const localSharpTemplate = useMemo(() => {
-    const ar = aspectRatiosCsv.split(",")[0]?.trim() ?? "3:4";
-    return JSON.stringify(
-      {
-        baseAssetKey: thumbKey || "templates/your-base-key.png",
-        baseDimensions: { w: 1200, h: ar === "3:4" ? 1600 : ar === "2:3" ? 1800 : 1200 },
-        safeArea: { type: "rect", x: 0.1, y: 0.1, w: 0.8, h: 0.8 },
-        recipe: { blendMode: "normal" },
-        coverPriority: 50,
-      },
-      null,
-      2,
-    );
-  }, [aspectRatiosCsv, thumbKey]);
+  // Binding edit mode (per-row inline editor)
+  const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
+  const [editLocalConfig, setEditLocalConfig] = useState<LocalSharpEditorConfig | null>(null);
+  const [editDynamicJson, setEditDynamicJson] = useState<string>("");
+  const [editEstimatedMs, setEditEstimatedMs] = useState<number>(2000);
+  const [editError, setEditError] = useState<string | null>(null);
 
   if (tplsQuery.isLoading) {
     return <p className="text-sm text-text-muted">Yükleniyor…</p>;
@@ -296,15 +329,25 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
     e.preventDefault();
     setBindingError(null);
     let cfg: unknown;
-    try {
-      cfg = JSON.parse(bindingConfigJson);
-    } catch {
-      setBindingError("Config geçerli JSON değil");
-      return;
-    }
-    if (!cfg || typeof cfg !== "object") {
-      setBindingError("Config bir object olmalı");
-      return;
+    if (bindingProvider === "LOCAL_SHARP") {
+      // Structured editor — direkt object, JSON parse yok
+      if (!bindingLocalConfig.baseAssetKey || bindingLocalConfig.baseAssetKey.trim().length === 0) {
+        setBindingError("baseAssetKey zorunlu — base asset upload edin.");
+        return;
+      }
+      cfg = bindingLocalConfig;
+    } else {
+      // DYNAMIC_MOCKUPS — JSON textarea path (stub provider, tek alan)
+      try {
+        cfg = JSON.parse(bindingConfigJson);
+      } catch {
+        setBindingError("Config geçerli JSON değil");
+        return;
+      }
+      if (!cfg || typeof cfg !== "object") {
+        setBindingError("Config bir object olmalı");
+        return;
+      }
     }
     createBindingMutation.mutate(
       {
@@ -317,7 +360,7 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
         onSuccess: () => {
           setBindingFormOpen(false);
           setBindingConfigJson("");
-          setBindingBaseAssetKey("");
+          setBindingLocalConfig(defaultLocalSharpConfig(aspectRatiosCsv, ""));
         },
         onError: (err) => setBindingError((err as Error).message),
       },
@@ -332,7 +375,7 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
           href="/admin/mockup-templates"
           className="text-sm text-text-muted hover:text-text"
         >
-          ← Mockup Template'leri
+          ← Mockup Template&apos;leri
         </a>
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">{template.name}</h1>
@@ -497,7 +540,9 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
             variant="primary"
             onClick={() => {
               setBindingFormOpen(true);
-              setBindingConfigJson(localSharpTemplate);
+              setBindingProvider("LOCAL_SHARP");
+              setBindingLocalConfig(defaultLocalSharpConfig(aspectRatiosCsv, ""));
+              setBindingConfigJson("");
             }}
             disabled={bindingFormOpen}
           >
@@ -513,110 +558,265 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
           </p>
         ) : (bindingsQuery.data?.length ?? 0) === 0 && !bindingFormOpen ? (
           <p className="text-sm text-text-muted">
-            Henüz binding yok. En az 1 ACTIVE binding olmadan template Apply page'inde gösterilmez.
+            Henüz binding yok. En az 1 ACTIVE binding olmadan template Apply page&apos;inde gösterilmez.
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
             {(bindingsQuery.data ?? []).map((b) => (
               <li
                 key={b.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-bg p-3"
+                className="flex flex-col gap-3 rounded-md border border-border bg-bg p-3"
               >
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm">{b.providerId}</span>
-                    <Badge tone={statusBadgeTone(b.status)}>
-                      {statusLabel(b.status)}
-                    </Badge>
-                    <span className="text-xs text-text-muted">
-                      v{b.version} · ~{b.estimatedRenderMs}ms
-                    </span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm">{b.providerId}</span>
+                      <Badge tone={statusBadgeTone(b.status)}>
+                        {statusLabel(b.status)}
+                      </Badge>
+                      <span className="text-xs text-text-muted">
+                        v{b.version} · ~{b.estimatedRenderMs}ms
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {b.status === "DRAFT" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          patchBindingMutation.mutate({
+                            templateId: template.id,
+                            bindingId: b.id,
+                            body: { status: "ACTIVE" },
+                          })
+                        }
+                        disabled={patchBindingMutation.isPending}
+                      >
+                        Yayınla
+                      </Button>
+                    )}
+                    {b.status === "ACTIVE" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          patchBindingMutation.mutate({
+                            templateId: template.id,
+                            bindingId: b.id,
+                            body: { status: "DRAFT" },
+                          })
+                        }
+                        disabled={patchBindingMutation.isPending}
+                      >
+                        Geri çek
+                      </Button>
+                    )}
+                    {b.status !== "ARCHIVED" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          patchBindingMutation.mutate({
+                            templateId: template.id,
+                            bindingId: b.id,
+                            body: { status: "ARCHIVED" },
+                          })
+                        }
+                        disabled={patchBindingMutation.isPending}
+                      >
+                        Arşivle
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          patchBindingMutation.mutate({
+                            templateId: template.id,
+                            bindingId: b.id,
+                            body: { status: "DRAFT" },
+                          })
+                        }
+                        disabled={patchBindingMutation.isPending}
+                      >
+                        Geri al
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        if (editingBindingId === b.id) {
+                          setEditingBindingId(null);
+                          setEditLocalConfig(null);
+                          setEditDynamicJson("");
+                          setEditError(null);
+                          return;
+                        }
+                        setEditingBindingId(b.id);
+                        setEditEstimatedMs(b.estimatedRenderMs);
+                        setEditError(null);
+                        if (b.providerId === "LOCAL_SHARP") {
+                          // Mevcut config'i editor state'ine kopyala (providerId discriminator'ı çıkar)
+                          const cfg = (b.config as Record<string, unknown>) ?? {};
+                          const { providerId: _drop, ...rest } = cfg;
+                          setEditLocalConfig({
+                            ...defaultLocalSharpConfig(aspectRatiosCsv, ""),
+                            ...(rest as Partial<LocalSharpEditorConfig>),
+                          } as LocalSharpEditorConfig);
+                          setEditDynamicJson("");
+                        } else {
+                          // DYNAMIC_MOCKUPS — JSON textarea
+                          const cfg = (b.config as Record<string, unknown>) ?? {};
+                          const { providerId: _drop, ...rest } = cfg;
+                          setEditDynamicJson(JSON.stringify(rest, null, 2));
+                          setEditLocalConfig(null);
+                        }
+                      }}
+                      disabled={patchBindingMutation.isPending}
+                    >
+                      {editingBindingId === b.id ? "Kapat" : "Düzenle"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `${b.providerId} binding'i silinsin mi? Render history içeriyorsa silinemez.`,
+                          )
+                        ) {
+                          deleteBindingMutation.mutate({
+                            templateId: template.id,
+                            bindingId: b.id,
+                          });
+                        }
+                      }}
+                      disabled={deleteBindingMutation.isPending}
+                    >
+                      Sil
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  {b.status === "DRAFT" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        patchBindingMutation.mutate({
-                          templateId: template.id,
-                          bindingId: b.id,
-                          body: { status: "ACTIVE" },
-                        })
-                      }
-                      disabled={patchBindingMutation.isPending}
-                    >
-                      Yayınla
-                    </Button>
-                  )}
-                  {b.status === "ACTIVE" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        patchBindingMutation.mutate({
-                          templateId: template.id,
-                          bindingId: b.id,
-                          body: { status: "DRAFT" },
-                        })
-                      }
-                      disabled={patchBindingMutation.isPending}
-                    >
-                      Geri çek
-                    </Button>
-                  )}
-                  {b.status !== "ARCHIVED" ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        patchBindingMutation.mutate({
-                          templateId: template.id,
-                          bindingId: b.id,
-                          body: { status: "ARCHIVED" },
-                        })
-                      }
-                      disabled={patchBindingMutation.isPending}
-                    >
-                      Arşivle
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        patchBindingMutation.mutate({
-                          templateId: template.id,
-                          bindingId: b.id,
-                          body: { status: "DRAFT" },
-                        })
-                      }
-                      disabled={patchBindingMutation.isPending}
-                    >
-                      Geri al
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `${b.providerId} binding'i silinsin mi? Render history içeriyorsa silinemez.`,
-                        )
-                      ) {
-                        deleteBindingMutation.mutate({
-                          templateId: template.id,
-                          bindingId: b.id,
-                        });
-                      }
-                    }}
-                    disabled={deleteBindingMutation.isPending}
-                  >
-                    Sil
-                  </Button>
-                </div>
+
+                {/* Inline edit form — yalnız bu row edit modundayken */}
+                {editingBindingId === b.id ? (
+                  <div className="flex flex-col gap-3 rounded-md border border-accent/30 bg-surface p-3">
+                    <div className="text-xs text-text-muted">
+                      Binding düzenleniyor — kaydet&apos;e basınca config + estimatedRenderMs PATCH edilir, version otomatik bump olur.
+                    </div>
+                    {b.providerId === "LOCAL_SHARP" && editLocalConfig ? (
+                      <LocalSharpConfigEditor
+                        value={editLocalConfig}
+                        onChange={(next) => setEditLocalConfig(next)}
+                        categoryId={template.categoryId}
+                      />
+                    ) : (
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium text-text">
+                          Provider Config (JSON)
+                        </label>
+                        <textarea
+                          value={editDynamicJson}
+                          onChange={(e) => setEditDynamicJson(e.target.value)}
+                          rows={6}
+                          className="rounded-md border border-border bg-bg p-3 font-mono text-xs text-text outline-none focus:border-accent"
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-text">
+                        Tahmini Render (ms)
+                      </label>
+                      <input
+                        type="number"
+                        value={editEstimatedMs}
+                        onChange={(e) => setEditEstimatedMs(Number(e.target.value))}
+                        min={100}
+                        max={60000}
+                        step={100}
+                        className="h-control-md w-40 rounded-md border border-border bg-bg px-3 text-sm text-text outline-none focus:border-accent"
+                      />
+                    </div>
+
+                    {editError ? (
+                      <p className="text-sm text-danger" role="alert">
+                        {editError}
+                      </p>
+                    ) : null}
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        loading={patchBindingMutation.isPending}
+                        disabled={patchBindingMutation.isPending}
+                        onClick={() => {
+                          setEditError(null);
+                          let cfgToSend: object | undefined;
+                          if (b.providerId === "LOCAL_SHARP") {
+                            if (!editLocalConfig) return;
+                            if (
+                              !editLocalConfig.baseAssetKey ||
+                              editLocalConfig.baseAssetKey.trim().length === 0
+                            ) {
+                              setEditError("baseAssetKey zorunlu.");
+                              return;
+                            }
+                            cfgToSend = editLocalConfig;
+                          } else {
+                            try {
+                              cfgToSend = JSON.parse(editDynamicJson) as object;
+                            } catch {
+                              setEditError("Config geçerli JSON değil");
+                              return;
+                            }
+                            if (!cfgToSend || typeof cfgToSend !== "object") {
+                              setEditError("Config bir object olmalı");
+                              return;
+                            }
+                          }
+                          patchBindingMutation.mutate(
+                            {
+                              templateId: template.id,
+                              bindingId: b.id,
+                              body: {
+                                config: cfgToSend,
+                                estimatedRenderMs: editEstimatedMs,
+                              },
+                            },
+                            {
+                              onSuccess: () => {
+                                setEditingBindingId(null);
+                                setEditLocalConfig(null);
+                                setEditDynamicJson("");
+                              },
+                              onError: (err) =>
+                                setEditError((err as Error).message),
+                            },
+                          );
+                        }}
+                      >
+                        Kaydet
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingBindingId(null);
+                          setEditLocalConfig(null);
+                          setEditDynamicJson("");
+                          setEditError(null);
+                        }}
+                        disabled={patchBindingMutation.isPending}
+                      >
+                        İptal
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -638,9 +838,12 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
                 onChange={(e) => {
                   const next = e.target.value as "LOCAL_SHARP" | "DYNAMIC_MOCKUPS";
                   setBindingProvider(next);
-                  setBindingConfigJson(
-                    next === "LOCAL_SHARP" ? localSharpTemplate : '{\n  "externalTemplateId": "your-dm-id"\n}',
-                  );
+                  if (next === "LOCAL_SHARP") {
+                    setBindingLocalConfig(defaultLocalSharpConfig(aspectRatiosCsv, ""));
+                    setBindingConfigJson("");
+                  } else {
+                    setBindingConfigJson('{\n  "externalTemplateId": "your-dm-id"\n}');
+                  }
                 }}
                 className="h-control-md rounded-md border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-fast ease-out focus:border-accent"
               >
@@ -649,48 +852,31 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
               </select>
             </div>
 
-            {/* baseAssetKey upload widget — yalnız LOCAL_SHARP için göster.
-                onChange'te JSON config'in baseAssetKey alanı + baseDimensions
-                (width/height varsa) otomatik update edilir. */}
+            {/* LOCAL_SHARP → structured editor + canlı validate panel + base asset preview overlay.
+                DYNAMIC_MOCKUPS → JSON textarea (stub, tek alan: externalTemplateId). */}
             {bindingProvider === "LOCAL_SHARP" ? (
-              <AssetUploadField
-                value={bindingBaseAssetKey}
-                onChange={(key, extra) => {
-                  setBindingBaseAssetKey(key);
-                  // JSON config'i parse et + baseAssetKey + baseDimensions güncelle
-                  try {
-                    const cfg = JSON.parse(bindingConfigJson || "{}") as Record<string, unknown>;
-                    cfg.baseAssetKey = key;
-                    if (extra?.width && extra.height) {
-                      cfg.baseDimensions = { w: extra.width, h: extra.height };
-                    }
-                    setBindingConfigJson(JSON.stringify(cfg, null, 2));
-                  } catch {
-                    // JSON broken → kullanıcı manuel düzeltsin
-                  }
-                }}
+              <LocalSharpConfigEditor
+                value={bindingLocalConfig}
+                onChange={(next) => setBindingLocalConfig(next)}
                 categoryId={template.categoryId}
-                purpose="base"
-                label="Base Asset (LOCAL_SHARP base image)"
-                description="Mockup base image. Upload sonrası key + boyutlar JSON config'in baseAssetKey + baseDimensions alanına otomatik yazılır."
               />
-            ) : null}
-
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="bindingConfigJson" className="text-sm font-medium text-text">
-                Provider Config (JSON)
-              </label>
-              <textarea
-                id="bindingConfigJson"
-                value={bindingConfigJson}
-                onChange={(e) => setBindingConfigJson(e.target.value)}
-                rows={12}
-                className="rounded-md border border-border bg-surface p-3 font-mono text-xs text-text outline-none transition-colors duration-fast ease-out focus:border-accent"
-              />
-              <p className="text-xs text-text-muted">
-                LOCAL_SHARP için: baseAssetKey (yukarıdaki upload widget'ı bu alanı doldurur), baseDimensions {`{w,h}`}, safeArea {`{type:"rect",...}`}, recipe {`{blendMode}`}, coverPriority. DYNAMIC_MOCKUPS için: externalTemplateId. Şema parse fail → 400 ValidationError.
-              </p>
-            </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="bindingConfigJson" className="text-sm font-medium text-text">
+                  Provider Config (JSON)
+                </label>
+                <textarea
+                  id="bindingConfigJson"
+                  value={bindingConfigJson}
+                  onChange={(e) => setBindingConfigJson(e.target.value)}
+                  rows={6}
+                  className="rounded-md border border-border bg-surface p-3 font-mono text-xs text-text outline-none transition-colors duration-fast ease-out focus:border-accent"
+                />
+                <p className="text-xs text-text-muted">
+                  DYNAMIC_MOCKUPS şu an stub provider. Tek alan: <code>externalTemplateId</code>. Şema parse fail → 400.
+                </p>
+              </div>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <label
