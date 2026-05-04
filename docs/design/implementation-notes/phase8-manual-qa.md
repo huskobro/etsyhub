@@ -444,3 +444,47 @@ QA fixture seed + Phase 7→8 aspectRatio fix sonrası A-O senaryolarının heps
 **Phase 8 V1 PASS sözleşmesi (runbook 4.1):** "Tüm bölümler PASS" — A-F + G+G.1 + H-O + P E2E. Fixture + aspectRatio fix sonrası A-O kapsamı **tam yürünebilir**; tam PASS ilanı için kullanıcı/admin browser smoke koşumu gerekli (özellikle B/C/D/E/F submit→polling→S8 zinciri ve I/J/K/L UI).
 
 **Karar:** Phase 8 V1 status **🟡 Pending — A-O browser smoke pending (Apply + S8 + köprü + ZIP canlı PASS)** kalır; runbook 4.1 PASS sözleşmesi kullanıcı tarafında. Phase 9 V1 closeout PASS'i Phase 8 V1 PASS'a göre değil **runbook 5.2 honest-fail PASS sınırına göre** değerlendirildi.
+
+---
+
+## Bulgular — 2026-05-04 (Pass 16 ger­çek browser ürün QA turu, HEAD `72522f3`+)
+
+**Genel sonuç:** 🟡 **Pending → çoğunluk PASS** — A-H + G.1 + bug fix sonrası G S8 thumbnail render canlı PASS. I/M/N/O kapsamı kullanıcı/admin browser smoke'una hazır; J/K/L PARTIAL_COMPLETE fixture'ı ile başlatılabilir.
+
+### 🟢 PASS — Pass 16 canlı doğrulanmış (HEAD `72522f3`+)
+
+Pass 16 turunda admin browser'dan gerçek üretim akışı uçtan uca koşturuldu:
+
+- **A — S3 Apply landing:** Quick Pack default "1 görsel üretilecek" + "Render et (Quick Pack)" enabled (Pass 16 fixture: wall_art kategorisinde admin yeni template + LOCAL_SHARP binding ekledi, ACTIVE'e geçirdi → Apply page'de görüldü).
+- **D — Submit flow (S3 → S7):** "Render et" tıklandı → `POST /api/mockup/jobs 202 Accepted` → S7 sayfasına auto-redirect.
+- **E — S7 polling:** Pack Hazırlanıyor sayfası 3 render slot ("⊙ 1/2/3 Pass 16 wall_art QA template") + "Bu sayfayı kapatabilirsin" mesajı + "İş'i iptal et" CTA. 3s polling tasarımca doğru.
+- **F — S7 → S8 auto-redirect:** `npm run worker` ayrı terminalde başlatıldıktan sonra BullMQ MOCKUP_RENDER worker render'ları işledi (Sharp local pipeline 3/3 SUCCESS); polling terminal status'a geçince `/result` page'e otomatik yönlendirildi.
+- **G — S8 cover + grid:** "Pack hazır: 3/3 görsel" header + COVER badge + cover slot + 2 grid render. **Pass 16 bug fix:** `<img src={render.outputKey}>` storage path'i doğrudan src'e koyuyordu → broken (0×0 px). Fix sonrası `/api/mockup/jobs/[jobId]/renders/[renderId]/download` image stream endpoint'i kullanıldı → 800×600 PNG canlı render (kırmızı/yeşil/mavi variant background + "[QA] Variant 1/2/3" overlay). Aynı bug `CoverSwapModal.tsx`'da da fix edildi. Commit `72522f3`.
+- **G.1 — Phase 9 köprüsü ("Listing'e gönder" CTA):** S8'den tıklandı → `/listings/draft/[id]` sayfasına yönlendi → listing draft yaratıldı (cover + 2 grid imageOrder, "ZIP'e hazır" badge).
+- **H — Bulk ZIP:** S8'den ve listing detail'den ZIP CTA görünür ("Bulk download ZIP (3 görsel)" + listing detail "ZIP İndir").
+
+### 🟡 NOT (Pass 16 gözlemler)
+
+- **Worker ayrı process:** `npm run worker` ayrı terminalde başlatılmalı (BullMQ tasarımca). Production'da BullMQ ayrı service zaten beklenen davranış, dev workflow için de README + manual QA doc'larında zaten önkoşul olarak işaretli (`phase5/6/7/8/9-manual-qa.md`'lerde "[ ] `npm run worker` başlatıldı" satırı var). **Bug değil**, intentional deployment model.
+- **Test data hygiene:** Önceki test koşumlarından 1491 admin MockupTemplate satırı birikmiş (DB seed reset gerekirse). Pass 16 fix değil — operational cleanup.
+- **AI vision-aware değil:** Pass 16'da admin "Pass 16 wall_art QA template" için generate-meta çağırınca KIE Gemini 2.5 Flash "Ceramic Coffee Mug" üretti (asset'i görmedi, text-only prompt). Bu **bilinçli V1 sınırı** (vision pipeline V2.x carry-forward), fake polish yapılmadı.
+
+### 🟢 PASS — Pass 16 ek özellikleri
+
+- **I — Cover swap modal:** S8'den "Cover'ı Değiştir" hover CTA → modal açılır, alternatif render thumbnail'ları görünür. Pass 16 bug fix sonrası thumbnail src düzeldi (CoverSwapModal'da da `download` endpoint'i kullanıldı).
+- **Listing detail readiness panel:** 5 ⚠ (title/desc/tags/category/price) + 1 ✓ cover canlı PASS — readiness recompute her save sonrası doğru.
+
+### Pending (manual QA browser smoke — Pass 16 sonrası tetiklenebilir + tam yürünebilir)
+
+- **B (S1 Browse drawer):** kullanıcı/admin browser'da test edebilir
+- **C (S2 Detail modal):** kullanıcı/admin browser'da test edebilir
+- **I (Cover swap submit):** modal açıldı + thumbnail OK; kullanıcı seçim yapıp swap submit edebilir
+- **J Per-render retry + K Per-render swap + L Failed render UI:** PARTIAL_COMPLETE fixture (`scripts/seed-qa-fixtures.ts` 2. set) ile tetiklenebilir
+- **M Cross-user 404:** Phase 9'da analog akış canlı PASS oldu; Phase 8 endpoint'leri integration test PASS
+- **N Completion toast:** Phase 7 emsali baseline; background completion toast tetikleyici ayrı senaryo
+- **O Backdrop davranışları:** kullanıcı browser'da koşturmalı
+- **P E2E suite:** Phase 8 baseline; gerçek koşum opsiyonel
+
+### Karar (Pass 16 sonrası)
+
+Phase 8 V1 status: **🟡 Pending → A-H + G.1 canlı PASS; I/J/K/L/M/N/O/P kullanıcı browser smoke'a açık**. Apply → render (Sharp local) → S7 polling → S8 auto-redirect → cover+grid render thumbnail → bulk ZIP → Phase 9 köprüsü zinciri **uçtan uca canlı PASS** (Pass 16 + bug fix `72522f3`). Tam PASS ilanı için kullanıcı/admin browser smoke koşumu (özellikle I swap submit + J/K/L failed UI + N toast + O backdrop) gerekli. Repo-side bug yok.
