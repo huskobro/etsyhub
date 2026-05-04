@@ -1,8 +1,9 @@
 # EtsyHub Release Readiness — Repo-Wide Status
 
-> **Tarih:** 2026-05-04 (manual QA execution audit sonrası sync)
-> **HEAD:** `0e9436d` + bu commit (script bug + doc drift fix)
-> **Audit sonucu:** 3 audit pass — Pass 1+2 (HEAD `92b0072`): cross-phase consistency + stale claim; Pass 3 (manual QA execution mode): script env + integration test runner + UI claim verify. **241/241 integration+unit test PASS** doğrulandı.
+> **Tarih:** 2026-05-04 (final handoff sync)
+> **HEAD:** `920c6d2`
+> **Closeout runbook:** [`./final-closeout-runbook.md`](./final-closeout-runbook.md) — kullanıcı/admin **buradan** son 1 mile'ı yürür (PASS/honest-fail PASS/blocked sınırları + closeout sonrası doc update planı)
+> **Audit sonucu:** 4 audit pass — Pass 1+2 (HEAD `92b0072`): cross-phase consistency + stale claim; Pass 3 (HEAD `0e9436d`, manual QA execution mode): script env + integration test runner + UI claim verify; Pass 4 (HEAD `920c6d2`, browser-based manual QA): live login + Phase 1+9 navigasyon + 1 visible bug bulundu+fix (AssetSection ZIP-ready vacuous truth). **1674 default + 946 UI test PASS** doğrulandı.
 
 Bu doküman tüm phase'lerin release readiness durumunu tek yerde gösterir.
 Manual QA tamamlanmamış phase'ler için **PASS ilan edilmemiştir**;
@@ -28,13 +29,13 @@ external dependency bekleyen alanlar dürüstçe işaretlenmiştir.
 
 ---
 
-## Otomasyon gate'leri (HEAD `92b0072`)
+## Otomasyon gate'leri (HEAD `920c6d2`)
 
 | Gate | Sonuç | Komut |
 |---|---|---|
 | TypeScript strict | 0 hata | `npx tsc --noEmit` |
 | Token check (Tailwind disipline) | İhlal yok | `npm run check:tokens` |
-| Default test suite | 1671/1671 pass | `npm test` |
+| Default test suite | 1674/1674 pass | `npm test` |
 | UI test suite (jsdom) | 946/946 pass | `npm run test:ui` |
 | E2E suite | (Phase 8 baseline + Phase 7 selection-flow + auth-flow) | `npm run test:e2e` |
 
@@ -86,7 +87,7 @@ AI metadata generation için (opsiyonel, "AI Oluştur" butonu için):
 |---|---|---|
 | **Phase 6 V1** | [`phase6-manual-qa.md`](./phase6-manual-qa.md) | ⏳ henüz koşulmadı (kod tarafı tamam — drift #6 + Aşama 2B kapandı HEAD `f686882`; KIE flaky external dep — health probe 3/3 HEALTHY önkoşulu); **Phase 7 v1.0.1 Review Queue gating'i bağlı** — kapanana kadar Review Queue + AiQualityPanel "Review'a gönder" disabled kalır |
 | Phase 8 V1 | [`phase8-manual-qa.md`](./phase8-manual-qa.md) | ⏳ henüz koşulmadı |
-| Phase 9 V1 | [`phase9-manual-qa.md`](./phase9-manual-qa.md) | ⏳ henüz koşulmadı (HEAD `92b0072` sync edildi; L bölümü dahil tüm yüzey test edilebilir) |
+| Phase 9 V1 | [`phase9-manual-qa.md`](./phase9-manual-qa.md) | ⏳ kısmen Pass 4 ile doğrulandı (browser-based; login + listings index + listing detail + Etsy readiness summary + AI button honest fail + submit J.1/J.5 + reset endpoint + ZIP route 409 + cross-user 404). Live Etsy submit success + Phase 8 köprüsü browser smoke kullanıcı tarafında pending |
 
 Phase 6 canlı smoke kapanmadan **Phase 7 v1.0.1**'in Review Queue tab'ı disabled
 kalır (intentional gating); kapanınca aktif olur. Phase 9 V1 PASS ilanı için

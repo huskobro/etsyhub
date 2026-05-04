@@ -1,8 +1,8 @@
 # Phase 9 — Listing Builder Status (Pre-Closeout)
 
-> **Tarih:** 2026-05-03 (sync 2026-05-04, repo-wide audit sonrası)
-> **Status:** 🟡 **Pre-closeout** — Phase 9 V1 implementation/local foundation neredeyse tamam; live Etsy success **yalnız external credentials + manual QA** bekliyor (kod tarafında ek lokal blocker kalmadı); "PASS" / "tamamlandı" ilan edilmedi
-> **HEAD:** `92b0072`
+> **Tarih:** 2026-05-03 (sync 2026-05-04, browser-based manual QA + final handoff)
+> **Status:** 🟡 **Pre-closeout** — Phase 9 V1 implementation/local foundation tamam; browser smoke çoğu yüzey üzerinde geçti (Pass 4); live Etsy success **yalnız external credentials + Phase 8 köprüsü manual QA** bekliyor; "PASS" / "tamamlandı" ilan edilmedi
+> **HEAD:** `920c6d2`
 > **Spec:** [`../../plans/2026-05-02-phase9-listing-builder-design.md`](../../plans/2026-05-02-phase9-listing-builder-design.md)
 > **Plan:** [`../../plans/2026-05-02-phase9-listing-builder-plan.md`](../../plans/2026-05-02-phase9-listing-builder-plan.md)
 > **Manual QA:** [`./phase9-manual-qa.md`](./phase9-manual-qa.md) (henüz koşulmadı)
@@ -78,9 +78,13 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 | Token refresh resilience | `resolveEtsyConnectionWithRefresh` (submit-time opportunistic) + 5dk grace + EtsyTokenRefreshFailedError 401 | `56a0b19` |
 | Submit UX büyük paketi | SubmitResultPanel + ImageUploadDiagnostics + Etsy deep-links + FAILED → DRAFT recovery + listings index "Etsy'de Aç" | `ddb3acf` |
 | V1 Finalization — readiness diagnostics | `GET /api/settings/etsy-connection/readiness` + EtsyReadinessSummary 3-state checklist + Settings panel polish (4-env tam liste + auto-refresh ipucu) | `92b0072` |
-| Repo-wide final audit + doc finalize | İki audit pass (general-purpose + Explore deep stale) — fake fix-now bulgusu yok; phase9 doc HEAD/tarih sync; bilinçli V1.1+ carry-forward'lar (per-render download, Phase 6 canlı smoke gating, admin endpoint test gap) doğrulandı | (bu commit) |
+| Repo-wide final audit + doc finalize | İki audit pass (general-purpose + Explore deep stale) — fake fix-now bulgusu yok; phase9 doc HEAD/tarih sync; bilinçli V1.1+ carry-forward'lar (per-render download, Phase 6 canlı smoke gating, admin endpoint test gap) doğrulandı | `ba3d539` |
+| Manual QA + Final Closeout Support paketi | yeni `phase6-manual-qa.md` + Phase 8 stale "disabled CTA" claim fix + Phase 9 E/H clarity NOT'lar + release-readiness Manual QA sıra planı | `0e9436d` |
+| Manual QA execution — script bug fixes | `_bootstrap-env.ts` (dotenv import-time race fix) + `path` import 2 script'te + 7 smoke script bootstrap pattern + doc HEAD sync | `0b65466` |
+| Browser QA Pass 4 — AssetSection ZIP-ready bug fix | `imageOrder.length > 0` defensive guard (vacuous truth fix); browser smoke ile 17/17 Phase 1+9 akış doğrulandı (login + listings + settings/Etsy readiness summary + listing draft + AI honest fail + submit J.1/J.5 + reset + ZIP route 409 + cross-user 404) | `920c6d2` |
+| Final handoff + closeout-runbook | Doc HEAD sync (`920c6d2`) + `final-closeout-runbook.md` yeni + AssetSection fix yansıması | (bu commit) |
 
-**Toplam:** 28+ commit, 0 revert.
+**Toplam:** 32+ commit, 0 revert.
 
 ---
 
@@ -153,7 +157,7 @@ Mevcut `aiMode.kieApiKey` settings altyapısı (encrypted-at-rest) reuse edildi.
 - **Endpoint:** `GET /api/listings/draft/[id]/assets/download`
 - **Service:** Phase 8 [`buildMockupZip`](../../../src/features/mockups/server/download.service.ts) reuse — yeni archiver/storage/manifest kodu YOK; tek import köprü
 - **Bridge mantığı:** Listing fetch + ownership 404 + soft-delete guard + `mockupJobId` null guard (409 `LISTING_ASSETS_NOT_READY`); Phase 8 service typed error'ları (404 `JobNotFound`, 403 `JobNotDownloadable`) `errorResponse` üzerinden HTTP'ye pass-through
-- **UI:** [`AssetSection.tsx`](../../../src/features/listings/components/AssetSection.tsx) "ZIP İndir" link gerçek route'a bağlı; tüm imageOrder render'ları yüklüyse görünür
+- **UI:** [`AssetSection.tsx`](../../../src/features/listings/components/AssetSection.tsx) "ZIP İndir" link gerçek route'a bağlı; **`imageOrder.length > 0 && every(outputKey)`** guard ile boş imageOrder durumunda link/badge görünmez (HEAD `920c6d2` AssetSection ZIP-ready vacuous truth bug fix)
 - **Filename:** `listing-{etsyListingId || cuid}.zip` (Etsy submit sonrası daha okunabilir)
 - **Test:** [`tests/integration/listings/api/assets-download.test.ts`](../../../tests/integration/listings/api/assets-download.test.ts) (8 senaryo: 400 invalid path, 404 listing yok / cross-user / soft-deleted, 409 mockupJobId null, 403 job non-terminal, 200 happy + ZIP magic bytes, 200 etsyListingId filename)
 
