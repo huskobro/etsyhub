@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { AssetUploadField } from "./asset-upload-field";
 
 /**
  * Admin · MockupTemplate detay/edit sayfası (V2 admin authoring).
@@ -228,6 +229,9 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
   const [bindingConfigJson, setBindingConfigJson] = useState("");
   const [bindingEstimatedMs, setBindingEstimatedMs] = useState(2000);
   const [bindingError, setBindingError] = useState<string | null>(null);
+  // V2 (HEAD `4606834`+) — baseAssetKey LOCAL_SHARP için ayrı upload widget;
+  // onChange'te JSON config'in `baseAssetKey` alanı otomatik güncellenir.
+  const [bindingBaseAssetKey, setBindingBaseAssetKey] = useState("");
 
   // Aspect ratio dependent config template (admin'in formunu kolaylaştırmak için)
   const localSharpTemplate = useMemo(() => {
@@ -313,6 +317,7 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
         onSuccess: () => {
           setBindingFormOpen(false);
           setBindingConfigJson("");
+          setBindingBaseAssetKey("");
         },
         onError: (err) => setBindingError((err as Error).message),
       },
@@ -364,21 +369,15 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
           />
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="thumbKey" className="text-sm font-medium text-text">
-            Thumbnail Storage Key
-          </label>
-          <input
-            id="thumbKey"
-            type="text"
-            value={thumbKey}
-            onChange={(e) => setThumbKey(e.target.value)}
-            required
-            minLength={1}
-            maxLength={500}
-            className="h-control-md rounded-md border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-fast ease-out focus:border-accent"
-          />
-        </div>
+        <AssetUploadField
+          value={thumbKey}
+          onChange={(key) => setThumbKey(key)}
+          categoryId={template.categoryId}
+          purpose="thumb"
+          label="Thumbnail"
+          description="Mevcut thumbnail'i değiştir veya yeni dosya yükle. Upload sonrası storage key otomatik güncellenir; 'Kaydet'e basınca DB'ye yazılır."
+          required
+        />
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="aspectRatios" className="text-sm font-medium text-text">
@@ -650,6 +649,33 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
               </select>
             </div>
 
+            {/* baseAssetKey upload widget — yalnız LOCAL_SHARP için göster.
+                onChange'te JSON config'in baseAssetKey alanı + baseDimensions
+                (width/height varsa) otomatik update edilir. */}
+            {bindingProvider === "LOCAL_SHARP" ? (
+              <AssetUploadField
+                value={bindingBaseAssetKey}
+                onChange={(key, extra) => {
+                  setBindingBaseAssetKey(key);
+                  // JSON config'i parse et + baseAssetKey + baseDimensions güncelle
+                  try {
+                    const cfg = JSON.parse(bindingConfigJson || "{}") as Record<string, unknown>;
+                    cfg.baseAssetKey = key;
+                    if (extra?.width && extra.height) {
+                      cfg.baseDimensions = { w: extra.width, h: extra.height };
+                    }
+                    setBindingConfigJson(JSON.stringify(cfg, null, 2));
+                  } catch {
+                    // JSON broken → kullanıcı manuel düzeltsin
+                  }
+                }}
+                categoryId={template.categoryId}
+                purpose="base"
+                label="Base Asset (LOCAL_SHARP base image)"
+                description="Mockup base image. Upload sonrası key + boyutlar JSON config'in baseAssetKey + baseDimensions alanına otomatik yazılır."
+              />
+            ) : null}
+
             <div className="flex flex-col gap-1.5">
               <label htmlFor="bindingConfigJson" className="text-sm font-medium text-text">
                 Provider Config (JSON)
@@ -662,7 +688,7 @@ export function TemplateDetailView({ templateId }: { templateId: string }) {
                 className="rounded-md border border-border bg-surface p-3 font-mono text-xs text-text outline-none transition-colors duration-fast ease-out focus:border-accent"
               />
               <p className="text-xs text-text-muted">
-                LOCAL_SHARP için: baseAssetKey, baseDimensions {`{w,h}`}, safeArea {`{type:"rect",...}`}, recipe {`{blendMode}`}, coverPriority. DYNAMIC_MOCKUPS için: externalTemplateId. Şema parse fail → 400 ValidationError.
+                LOCAL_SHARP için: baseAssetKey (yukarıdaki upload widget'ı bu alanı doldurur), baseDimensions {`{w,h}`}, safeArea {`{type:"rect",...}`}, recipe {`{blendMode}`}, coverPriority. DYNAMIC_MOCKUPS için: externalTemplateId. Şema parse fail → 400 ValidationError.
               </p>
             </div>
 

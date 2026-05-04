@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
+import { AssetUploadField } from "./asset-upload-field";
 
 /**
  * Admin · Yeni MockupTemplate creation form (V2 admin authoring).
@@ -144,26 +145,16 @@ export function TemplateCreateForm() {
         />
       </div>
 
-      {/* ThumbKey */}
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="thumbKey" className="text-sm font-medium text-text">
-          Thumbnail Storage Key
-        </label>
-        <input
-          id="thumbKey"
-          type="text"
-          value={thumbKey}
-          onChange={(e) => setThumbKey(e.target.value)}
-          required
-          minLength={1}
-          maxLength={500}
-          placeholder="Örn. templates/canvas/modern-frame-thumb.png"
-          className="h-control-md rounded-md border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-fast ease-out focus:border-accent"
-        />
-        <p className="text-xs text-text-muted">
-          MinIO/S3 storage key. Admin asset prep ile yüklenmiş olmalı; upload UI V2.x carry-forward.
-        </p>
-      </div>
+      {/* ThumbKey — V2 asset upload widget (HEAD `4606834`+ sonrası) */}
+      <AssetUploadField
+        value={thumbKey}
+        onChange={(key) => setThumbKey(key)}
+        categoryId={categoryId}
+        purpose="thumb"
+        label="Thumbnail"
+        description="Admin browser'dan PNG/JPG/WebP yüklenir; upload sonrası storage key (örn. templates/canvas/thumb/abc.png) otomatik form'a geçer. Manuel key girmek de mümkün."
+        required
+      />
 
       {/* Aspect ratios CSV */}
       <div className="flex flex-col gap-1.5">
