@@ -17,11 +17,10 @@
 // settings-aware; eksik key durumunda explicit throw eder
 // ("kieApiKey ayarlanmamış"). Eski env var (KIE_AI_API_KEY) artık okunmuyor.
 
-import { config } from "dotenv";
-import path from "node:path";
-config({ path: path.resolve(process.cwd(), ".env.local") });
+import "./_bootstrap-env";
 
 import { promises as fs } from "node:fs";
+import path from "node:path";
 import crypto from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { getStorage } from "@/providers/storage";

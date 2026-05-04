@@ -1,6 +1,4 @@
-import { config } from "dotenv";
-import path from "node:path";
-config({ path: path.resolve(process.cwd(), ".env.local") });
+import "./_bootstrap-env";
 
 import { PrismaClient } from "@prisma/client";
 import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";

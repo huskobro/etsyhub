@@ -2,9 +2,7 @@
 // Phase 6 Aşama 2A canlı smoke için bakım durumu kontrolü.
 // Admin user UserSetting `aiMode.kieApiKey` (encrypted at rest) decrypt edilir.
 
-import { config } from "dotenv";
-import path from "node:path";
-config({ path: path.resolve(process.cwd(), ".env.local") });
+import "./_bootstrap-env";
 
 import { PrismaClient } from "@prisma/client";
 import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";

@@ -1,8 +1,8 @@
 # EtsyHub Release Readiness — Repo-Wide Status
 
-> **Tarih:** 2026-05-04 (repo-wide final audit sonrası)
-> **HEAD:** `92b0072`
-> **Audit sonucu:** 2 paralel audit pass (general-purpose + Explore deep stale code) — fake fix-now bulgu yok; doc-drift sync edildi; bilinçli V1.1+ carry-forward'lar doğrulandı.
+> **Tarih:** 2026-05-04 (manual QA execution audit sonrası sync)
+> **HEAD:** `0e9436d` + bu commit (script bug + doc drift fix)
+> **Audit sonucu:** 3 audit pass — Pass 1+2 (HEAD `92b0072`): cross-phase consistency + stale claim; Pass 3 (manual QA execution mode): script env + integration test runner + UI claim verify. **241/241 integration+unit test PASS** doğrulandı.
 
 Bu doküman tüm phase'lerin release readiness durumunu tek yerde gösterir.
 Manual QA tamamlanmamış phase'ler için **PASS ilan edilmemiştir**;

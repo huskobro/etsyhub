@@ -1,8 +1,7 @@
-import { config } from "dotenv";
-import path from "node:path";
-config({ path: path.resolve(process.cwd(), ".env.local") });
+import "./_bootstrap-env";
 
 import { promises as fs } from "node:fs";
+import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
 import { getStorage } from "@/providers/storage";
