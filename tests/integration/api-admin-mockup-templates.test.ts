@@ -309,6 +309,61 @@ describe("PATCH /api/admin/mockup-templates/[id] (status transition)", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  // V2 PATCH metadata extension
+  it("metadata extend — name + thumbKey + aspectRatios + estimatedRenderMs edit", async () => {
+    setAuthAdmin();
+    const tpl = await createTemplate();
+    const res = await PATCH(
+      new Request(`http://localhost/api/admin/mockup-templates/${tpl.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "[V2-test] Updated Name",
+          thumbKey: "templates/updated/key.png",
+          aspectRatios: ["3:4", "2:3"],
+          estimatedRenderMs: 3500,
+          tags: ["new-tag"],
+        }),
+      }),
+      { params: { id: tpl.id } },
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.item.name).toBe("[V2-test] Updated Name");
+    expect(json.item.thumbKey).toBe("templates/updated/key.png");
+    expect(json.item.aspectRatios).toEqual(["3:4", "2:3"]);
+    expect(json.item.estimatedRenderMs).toBe(3500);
+    expect(json.item.tags).toEqual(["new-tag"]);
+  });
+
+  it("metadata reject — aspectRatios boş array", async () => {
+    setAuthAdmin();
+    const tpl = await createTemplate();
+    const res = await PATCH(
+      new Request(`http://localhost/api/admin/mockup-templates/${tpl.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aspectRatios: [] }),
+      }),
+      { params: { id: tpl.id } },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("metadata reject — estimatedRenderMs out of range", async () => {
+    setAuthAdmin();
+    const tpl = await createTemplate();
+    const res = await PATCH(
+      new Request(`http://localhost/api/admin/mockup-templates/${tpl.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estimatedRenderMs: 99 }),
+      }),
+      { params: { id: tpl.id } },
+    );
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("DELETE /api/admin/mockup-templates/[id]", () => {

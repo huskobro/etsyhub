@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Table,
@@ -195,7 +196,14 @@ export function MockupTemplatesManager() {
           placeholder="Ada veya kategoriye göre ara…"
           className="h-control-md w-72 rounded-md border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-fast ease-out focus:border-accent"
         />
-        <span className="text-xs text-text-muted">{filtered.length} template</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-text-muted">{filtered.length} template</span>
+          <Link href="/admin/mockup-templates/new">
+            <Button variant="primary" size="sm">
+              + Yeni template
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}
@@ -256,7 +264,12 @@ export function MockupTemplatesManager() {
             filtered.map((row) => (
               <TR key={row.id}>
                 <TD>
-                  <span className="font-medium">{row.name}</span>
+                  <Link
+                    href={`/admin/mockup-templates/${row.id}`}
+                    className="font-medium text-text hover:text-accent"
+                  >
+                    {row.name}
+                  </Link>
                 </TD>
                 <TD>
                   <span className="font-mono text-xs">{row.categoryId}</span>

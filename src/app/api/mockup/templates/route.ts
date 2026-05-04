@@ -2,7 +2,12 @@
 //
 // Spec §4.3: Admin-managed template katalog. Sistem-wide read-only.
 //   - Auth: requireUser (auth'lu ama cross-user yok)
-//   - Query: categoryId (V1'de "canvas" tek değer)
+//   - Query: categoryId — V2 (HEAD `d1fee51`+) MockupCategorySchema 8-değer
+//     enum (canvas + wall_art + printable + clipart + sticker + tshirt +
+//     hoodie + dtf). V1 sadece "canvas" template seed'liyordu; V2 admin
+//     non-canvas kategorilerde de template ekleyebilir
+//     (`/admin/mockup-templates/new`). DB seed'i olmayan kategoriler için
+//     boş array döner (honest empty state).
 //   - Filter: status=ACTIVE templates; ACTIVE binding aggregate
 //   - Response 200: { templates: MockupTemplateView[] }
 //   - Provider-agnostik: providerId, config, binding internal alanları ELENİR
@@ -15,10 +20,10 @@ import { requireUser } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
 import { ValidationError } from "@/lib/errors";
 import { db } from "@/server/db";
+import { MockupCategorySchema } from "@/features/mockups/schemas";
 
-// V1: yalnız "canvas" desteklenir (Spec §9). İleride genişler.
 const QuerySchema = z.object({
-  categoryId: z.enum(["canvas"]),
+  categoryId: MockupCategorySchema,
 });
 
 export const GET = withErrorHandling(async (req: Request) => {

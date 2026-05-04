@@ -1,6 +1,7 @@
 // V2 Phase 8 — Admin MockupTemplate detail endpoint.
 //
-// PATCH: status transition (DRAFT ↔ ACTIVE ↔ ARCHIVED) + name/tags edit.
+// PATCH: status transition (DRAFT ↔ ACTIVE ↔ ARCHIVED) + metadata edit
+//        (name + tags + thumbKey + aspectRatios + estimatedRenderMs).
 // DELETE: hard delete (yalnız hiç bağlı render olmayan template'ler).
 //
 // Status transition disipline:
@@ -28,13 +29,20 @@ import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 const ParamsSchema = z.object({ id: z.string().cuid() });
 
 // ────────────────────────────────────────────────────────────
-// PATCH — status / name / tags update
+// PATCH — status transition + metadata edit
 // ────────────────────────────────────────────────────────────
 
 const patchBody = z.object({
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).optional(),
   name: z.string().min(1).max(120).optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
+  // V2 admin authoring (HEAD `d1fee51`+): aspectRatios + thumbKey +
+  // estimatedRenderMs admin formundan düzenlenebilir. categoryId immutable
+  // (DB integrity — değişirse mevcut render snapshot'lar yanıltıcı olur;
+  // değiştirme istenirse yeni template oluşturulmalı).
+  thumbKey: z.string().min(1).max(500).optional(),
+  aspectRatios: z.array(z.string().min(1).max(10)).min(1).max(8).optional(),
+  estimatedRenderMs: z.number().int().min(100).max(60_000).optional(),
 });
 
 export const PATCH = withErrorHandling(
