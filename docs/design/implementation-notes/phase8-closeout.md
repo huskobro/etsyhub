@@ -1,7 +1,7 @@
 # Phase 8 — Mockup Studio Closeout
 
-> **Tarih:** 2026-05-02
-> **Status:** 🟡 Phase 8 V1 implementation complete (33 task tamamlandı, tüm otomasyon gate'leri PASS, manuel QA browser-based smoke **pending** — `phase8-manual-qa.md` checklist'i kullanıcı koşturacak)
+> **Tarih:** 2026-05-02 (sync 2026-05-04 — V1 final closeout audit)
+> **Status:** 🟡 **V1 Pending — fixture-blocked** (HEAD `dc3bf69`). Phase 8 V1 implementation complete (33 task, otomasyon gate'leri PASS — TS strict 0, 1674 + 946 test yeşil). Selection Studio entry browser render PASS (`/selection` H1 + 2 H2 + Türkçe empty state). A-O ana akış (S3-S8 + ZIP + cover swap + per-render retry/swap) admin user için **SelectionSet/MockupJob fixture eksikliği nedeniyle blocked**. Phase 8 self-contained (KIE bağımsız Sharp local renderer); runbook 4.2'ye göre **honest-fail path YOK** — PASS için fixture'lı gerçek browser akışı zorunlu. Kullanıcı/admin Phase 7 üzerinden valid SelectionSet hazırladığında manual QA browser-based smoke koşturulup PASS ilan edilebilir. Detay: [`./phase8-manual-qa.md`](./phase8-manual-qa.md) "Bulgular — 2026-05-04".
 > **Spec:** [`../../plans/2026-05-01-phase8-mockup-studio-design.md`](../../plans/2026-05-01-phase8-mockup-studio-design.md)
 > **Plan:** [`../../plans/2026-05-01-phase8-mockup-studio-plan.md`](../../plans/2026-05-01-phase8-mockup-studio-plan.md)
 > **Manuel QA:** [`./phase8-manual-qa.md`](./phase8-manual-qa.md)

@@ -1,7 +1,7 @@
 # Phase 8 Mockup Studio — Manuel QA Checklist
 
-> **Tarih:** 2026-05-02
-> **Phase 8 status:** 🟡 (kod-otomasyon gate'leri PASS; manuel QA kullanıcı tarafından adım adım yürütülecek — sonuç bu dosyaya işaretlenecek)
+> **Tarih:** 2026-05-02 (sync 2026-05-04 — manual QA execution turu)
+> **Phase 8 status:** 🟡 **Pending** — kod-otomasyon gate'leri PASS; Selection Studio entry browser render PASS; A-O ana akış (S3-S8 + ZIP + cover swap + per-render retry/swap) admin user için SelectionSet/MockupJob fixture eksikliği nedeniyle **blocked**. Phase 8 self-contained (KIE bağımsız Sharp local renderer) — runbook 4.2'ye göre honest-fail path YOK; PASS için fixture'lı gerçek akış zorunlu. Kullanıcı/admin Phase 7 üzerinden valid SelectionSet hazırladığında manual QA browser-based smoke yapılır.
 > **Önkoşul:**
 >   - `npm run dev` (Next.js dev server)
 >   - Postgres + MinIO + Redis local'de çalışıyor olmalı (Phase 7 emsali)
@@ -375,13 +375,52 @@ Tüm senaryolar başlamadan önce:
 
 ---
 
-## Bulgular — YYYY-MM-DD
+## Bulgular — 2026-05-04 (manual QA execution turu, HEAD `dc3bf69`)
 
-(Manuel QA gerçek koşum sonrası buraya yansıtın. Format Phase 7 emsali —
-[`./phase7-manual-qa.md`](./phase7-manual-qa.md) "Bulgular" bölümüne bakın.)
+**Genel sonuç:** 🟡 **Pending** — Selection Studio entry browser PASS; A-O ana akış admin user için fixture-blocked.
 
-**Şu anda boş** — manuel QA henüz koşturulmadı. Phase 8 status `🟡 pending
-manual run`. Koşum sonrası status:
-- Tüm checkbox'lar tikli + sürpriz bulgu yok → `🟢 PASS` (closeout doc güncelle)
-- Bulgu varsa → bu bölüme yansıt + closeout doc'a drift olarak ekle
-- Kritik bug → `🔴 BLOCK` (fix commit gerekli)
+### 🟢 PASS — Canlı doğrulanmış
+
+- **Selection Studio (`/selection`) entry render:** browser canlı PASS — H1 "Selection Studio", H2 "Aktif draft" + H2 "Son finalize edilen set'ler", Türkçe empty state ("Henüz aktif draft set yok" / "Henüz finalize edilen set yok").
+- **Phase 9 köprüsü S8 → listing draft (Phase 9 A.1 + A.2):** Phase 9 manual QA execution turunda cross-user 404 + terminal status guard canlı PASS (handoff endpoint integration testler 6 senaryo ✓).
+
+### 🟡 NOT
+
+- **Otomasyon kalite gate'leri (önceki tur):** TS strict 0, lint clean, token check pass, 1396 + 845 test yeşil (Phase 8 V1 baseline). Mevcut HEAD `dc3bf69`'de 1674 + 946 test PASS, Phase 8 dahil regression yok.
+
+### 🔴 BLOCK
+
+_(yok)_
+
+### 🔵 V1.1 / V2 carry-forward
+
+- **Phase 8 fixture seed:** admin user için 1 ready SelectionSet + 1 terminal MockupJob seed scripti — manual QA browser-based smoke'u admin için doğrudan açar.
+- **Task 12 Dynamic Mockups real adapter:** V1'de stub-only.
+- **Task 10 perspective Sharp render:** spike sonrası schema-only.
+- **Per-render PNG/JPG download endpoint:** V1 bulk ZIP yeterli.
+
+### Blocked (fixture eksikliği — Phase 8 self-contained, honest-fail path YOK)
+
+Admin user için 0 SelectionSet + 0 MockupJob → A-O senaryolarının hiçbiri tetiklenebilir değil:
+
+- **A S3 Apply landing** — entry için ready SelectionSet gerek
+- **B S1 Browse drawer** — same
+- **C S2 Detail modal** — same
+- **D Submit flow** — same
+- **E S7 polling** — same
+- **F S7 → S8 auto-redirect** — same
+- **G S8 cover + grid + G.1 Phase 9 köprüsü** — same (terminal MockupJob gerekir)
+- **H Bulk ZIP** — terminal MockupJob gerekir
+- **I Cover swap modal** — same
+- **J Per-render retry** — failed render gerek (Sharp local renderer admin fixture yokken tetiklenemez)
+- **K Per-render swap** — same
+- **L Failed render UI (5-class hata sözlüğü)** — same
+- **M Cross-user 404** — Phase 9'da analog akış canlı PASS oldu (cross-user ownership disipline aynı pattern)
+- **N Completion toast** — Phase 7 emsali baseline; Phase 8 fixture gerek
+- **O Backdrop davranışları** — fixture gerek
+
+**Phase 8 V1 PASS sözleşmesi (runbook 4.1):** "Tüm bölümler PASS" — A-F + G+G.1 + H-O + P E2E. Fixture eksikliği nedeniyle hiçbiri canlı koşturulamadı.
+
+**Yol:** Kullanıcı/admin Phase 7 üzerinden manual akışla 1 ready SelectionSet hazırlar (variation generation → review approve → selection finalize) sonra `/selection/sets/[setId]/mockup/apply` üzerinden Phase 8 manual QA başlatabilir.
+
+**Karar:** Phase 8 V1 status **🟡 Pending — fixture-blocked** kalır; Phase 9 V1 closeout PASS'i Phase 8 V1 PASS'a göre değil **runbook 5.2 honest-fail PASS sınırına göre** değerlendirilir (Phase 9 A.1 + A.2 cross-user/terminal guard tek başına canlı PASS oldu).

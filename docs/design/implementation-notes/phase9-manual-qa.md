@@ -1,8 +1,8 @@
 # Phase 9 Listing Builder — Manuel QA Checklist
 
-> **Tarih:** 2026-05-03 (sync 2026-05-04, browser-based Pass 4 QA + final handoff)
-> **Phase 9 status:** 🟡 (implementation/local foundation tamam; otomasyon gate'leri PASS — 1674 default + 946 UI test; browser-based Pass 4 ile A-K bölümlerinin büyük kısmı doğrulandı; live Etsy submit success + Phase 8 köprüsü browser smoke kullanıcı tarafında pending)
-> **HEAD:** `920c6d2`
+> **Tarih:** 2026-05-03 (sync 2026-05-04 final closeout — V1 Honest-fail PASS)
+> **Phase 9 status:** 🟢 **Honest-fail PASS** — V1 zorunlu kapsam (A/B/C/D/E.1/E.2 canlı/F/G.1/I/J.1+J.5+J.6+J.7+J.8+J.9/L.4) browser canlı koşturuldu ve geçti. Etsy live submit success path (H + G.2-G.6) external operasyonel dep (credentials + taxonomy env + OAuth) bekliyor — runbook 5.2 honest-fail PASS sınırı içinde.
+> **HEAD:** `dc3bf69`
 > **Status doc:** [`./phase9-status.md`](./phase9-status.md)
 > **Spec:** [`../../plans/2026-05-02-phase9-listing-builder-design.md`](../../plans/2026-05-02-phase9-listing-builder-design.md)
 > **Phase 8 emsali:** [`./phase8-manual-qa.md`](./phase8-manual-qa.md) (Phase 8 manuel QA hâlâ pending — Phase 9 closeout'tan önce kapanmalı)
@@ -556,16 +556,72 @@ Bu davranışları test etmek **gerekmez** — Phase 9 V1 sözleşmesinde yer al
 
 ## Bulgular
 
-> **Bu bölüm hazırlandığı anda boş.** Manuel QA gerçek koşum sonucu kullanıcı
-> bu başlık altına `### YYYY-MM-DD — bulgu özeti` formatında yazsın.
->
-> Kategoriler:
-> - 🟢 PASS (beklenen davranış)
-> - 🟡 NOT (gözlem, V1 sözleşmesi içinde)
-> - 🔴 BLOCK (V1'i pas geçirmeyen sürpriz hata)
-> - 🔵 V2 (carry-forward önerisi)
+> Manuel QA gerçek koşum sonucu kullanıcı bu başlık altına yazsın. Format:
+> `### YYYY-MM-DD — bulgu özeti`. Kategoriler: 🟢 PASS / 🟡 NOT / 🔴 BLOCK / 🔵 V2.
 
-_(boş)_
+### 2026-05-04 — Browser canlı QA + canlı KIE smoke (HEAD `dc3bf69`)
+
+**Genel sonuç:** 🟢 **Honest-fail PASS** — V1 zorunlu kapsam koşuldu, geçti. Etsy live success external dep'e bağlı blocked.
+
+#### 🟢 PASS — Canlı doğrulanmış akışlar
+
+- **A.1 Cross-user isolation:** PATCH başka user listing → `404 LISTING_DRAFT_NOT_FOUND` (information disclosure prevent).
+- **A.2 Terminal status guard:** PUBLISHED listing PATCH → `409 LISTING_NOT_EDITABLE`.
+- **B.1 Header:** H1 "Listing Taslağı: [title]", "Status: Taslak", tarih biçimi `dd.MM.yyyy`.
+- **B.2 AssetSection:** Boş imageOrder durumunda "ZIP'e hazır" badge + ZIP link **gösterilmiyor** (HEAD `920c6d2` vacuous truth fix); sarı "Tüm görseller yüklenmeyi bekliyor" görünüyor.
+- **B.3 Hazırlık Kontrolleri:** 6 baseline check + dinamik negative library check — readiness response `Array<{field, pass, severity:"warn", message}>` (K3 soft warn).
+- **B.4 MetadataSection:** Title/description/tags input + "AI Oluştur" button (canlı KIE).
+- **B.5 PricingSection:** priceCents save + Türkçe "Fiyat: $24.99" pass message.
+- **B.6 Submit Action footer:** "Taslak Gönder" enabled + "⚠ Bazı hazırlık kontrolleri eksik. Yine de gönderilebilir, ancak Etsy reddedebilir." sarı banner.
+- **C.1 Title save:** PATCH 200 + `titlePass:true, message:"Title hazır (N karakter)"` (HEAD `b89d873` pass-message regression fix yansıması).
+- **C.2 Description + tags save:** PATCH 200 + `descCheck:"Açıklama hazır"`, `tagsCheck:"13 tag (maksimum 13)"`.
+- **C.3 Price save:** PATCH 200 + readiness "Fiyat: $24.99".
+- **C.4 Strict mode validation:** 5/5 senaryo `400 VALIDATION` (negative price, zero price, tag>20 chars, title>140, unknown field).
+- **C.5 Status guard:** PUBLISHED listing PATCH → `409 LISTING_NOT_EDITABLE` + Türkçe.
+- **C.6 Cross-user:** Başka user listing PATCH → `404 LISTING_DRAFT_NOT_FOUND`.
+- **D Listings index:** 4 status filter tab (Tümü/Taslak/Yayınlanmış/Başarısız) + `?status=PUBLISHED` query state + Etsy admin deep-link `https://www.etsy.com/your/shops/me/tools/listings/{etsyListingId}` (PUBLISHED kart).
+- **E.1 AI honest-fail:** Settings AI Mode'da `kieApiKey` boş iken `POST /generate-meta` → `400 LISTING_META_PROVIDER_NOT_CONFIGURED` + Türkçe rehber.
+- **E.2 KIE Gemini 2.5 Flash live:** 10 ardışık deneme **10/10 PASS**. Çıktı varyans: title 76-132 char (≤140 ✓), description 363-551 char (≥50 ✓), tags 13/13 (her seferinde), maxTagLen 13-17 (≤20 ✓), latency 14.8-20.8s. providerSnapshot `gemini-2.5-flash@2026-05-04`, promptVersion `v1.0`. **Cost recording canlı doğrulandı**: 1 cent + providerKey `kie-gemini-flash` + model `gemini-2.5-flash` + units 1 + periodKey günlük (HEAD `dc3bf69` listing-meta cost recording fix).
+- **F Negative library:** 6 match (3 field × 2 phrase: title "disney"+"marvel", tags "nike"+"nfl", description "cbd"+"best deal"). Tüm severity:"warn" K3 lock + Türkçe + structured.
+- **G.1 Settings `not_configured`:** EtsyReadinessSummary 3-state diagnostic (`oauthCredentials.missing` + `taxonomyMapping.missing` + `connection.not_configured` + `liveReady=false`); 4-env tam liste; submit J.1 ile **aynı gerçeği söylüyor** (consistency PASS).
+- **I Submit guard surface:** "Taslak Gönder" enabled (DRAFT) + sarı readiness uyarı banner Türkçe.
+- **J.1 ETSY not_configured:** Submit → `503 ETSY_NOT_CONFIGURED` + Türkçe ("ETSY_CLIENT_ID / ETSY_CLIENT_SECRET env yok").
+- **J.5 Missing fields:** Boş listing submit → `422 LISTING_SUBMIT_MISSING_FIELDS` + `details.missing: ["title","description","price"]`.
+- **J.6 Status guard PUBLISHED:** Submit → `409 LISTING_SUBMIT_NOT_EDITABLE`.
+- **J.7 Status guard FAILED:** Submit → `409 LISTING_SUBMIT_NOT_EDITABLE` (recovery için L.4 kullanılır).
+- **J.8 Cross-user submit:** Başka user listing submit → `404 LISTING_SUBMIT_NOT_FOUND`.
+- **J.9 Cache invalidation:** Detail DRAFT, index `?status=DRAFT` 1 listing — submit fail sonrası status değişmedi.
+- **L.4 FAILED → DRAFT recovery:** "Yeniden DRAFT'a çevir" buton click → status DRAFT, `failedReason: null`, footer "Taslak Gönder" yeniden enabled. DB readback doğruladı.
+- **Auto-save YOK:** AI Oluştur sonrası KIE'den title/description/tags geldi ama listing fields **aynı kaldı** (`before === after`). Manuel "Kaydet" gerekmesi doğrulandı.
+- **Save akışı + readiness recompute + negative library temizleme:** "Disney Marvel" temizlendiği yeni metinde `policyCount=0`, 3 field pass:true.
+
+#### 🟡 NOT — Gözlem (V1 sözleşmesi içinde)
+
+- **E.2 schema flakiness:** Önceki batch'lerde 4-5 deneme arasında 1 fail görüldü (KIE Gemini bazen `title >140` döndürüyor). Bu turun 10/10 PASS oranı stabil görünüyor; yine de **deterministik LLM değil** — V1.1 carry-forward (validation-guided retry, max 2 try). Mevcut davranış honest fail (502 + Türkçe + retry button), kullanıcı dostu.
+- **J.5 missing list:** "title, description, price" — `category` submit-time hard required değil, submit pipeline `category` boşsa taxonomy resolver kuralında ayrı J.3 honest-fail atar. Ürün kararı, V1 spec'te.
+- **Tags `(maksimum 13)` mesajı:** Tam 13 tagde "13 tag (maksimum 13)" — kafa karıştırıcı ama valid (her durumda pass:true). UI iyileştirme V1.1 nice-to-have.
+
+#### 🔴 BLOCK
+
+_(yok)_
+
+#### 🔵 V2 / V1.1 carry-forward
+
+- **KIE schema flakiness mitigation:** validation-guided retry max 2 try (V1.1).
+- **Token refresh BullMQ background worker** (V1: submit-time opportunistic var).
+- **Per-render PNG/JPG download endpoint** (V1: bulk ZIP).
+- **Admin taxonomy UI + DB-backed `ProductType.etsyTaxonomyId Int?`** (V1: env-based).
+- **Etsy active publish (`state: "active"`)** (V2).
+- **Hard-block negative library (severity "error")** (V1.1).
+- **Image upload paralelleştirme + retry policy** (V1.1).
+
+#### Blocked (external operasyonel dep — runbook 5.2 honest-fail PASS sınırı içinde)
+
+- **G.2 `not_connected` durumu:** ETSY_CLIENT_ID/SECRET/REDIRECT_URI env yok — UI render edilebilir ama OAuth flow tetiklenemez.
+- **G.3 OAuth start route + G.4 callback happy + G.5 honest-fail paths + G.6 connection delete + G.7 expired:** Etsy app credentials + verified redirect URI gerekir.
+- **G.8 readiness diagnostics summary:** `not_configured` durumu G.1 ile PASS; `connected` + `expired` durumları için credentials + OAuth gerekir.
+- **H Submit live success path (H.1-H.5):** `ETSY_CLIENT_ID/SECRET/REDIRECT_URI + ETSY_TAXONOMY_MAP_JSON + OAuth flow live test` üçü eş zamanlı gerekir.
+- **J.2 Connection not found, J.3 Taxonomy missing, J.4 Token expired:** Bunlar ancak credentials varken farklı state'lerde test edilebilir; env yokken hepsi J.1 ile aynı 503'e düşüyor (honest-fail validated).
 
 ---
 

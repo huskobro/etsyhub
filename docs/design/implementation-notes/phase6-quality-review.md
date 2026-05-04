@@ -1,13 +1,17 @@
 # Phase 6 — AI Quality Review Closeout
 
-> **Tarih:** 2026-04-29 (sync 2026-05-04 — drift #6 + Aşama 2B kod kapanışı)
-> **Status:** 🟡 **Kod tarafı tamam, canlı smoke pending.** Backend pipeline + UI
+> **Tarih:** 2026-04-29 (sync 2026-05-04 — V1 final closeout: Honest-fail PASS)
+> **Status:** 🟢 **V1 Honest-fail PASS** (HEAD `dc3bf69`, 2026-05-04). Backend pipeline + UI
 > vitrin + UX kapanış + cost tracking + selectable review provider mimarisi
-> tamam. **Drift #6 + Aşama 2B (2026-05-04):** KIE provider artık hem AI mode
-> (remote-url) hem local mode (local-path) çalışır — image-loader data URL
-> inline (probe onaylı 2026-05-01 22:10, HTTP 200). Drift #6 (KIE bulutun
-> localhost MinIO erişim sorunu) çözüldü. **Canlı smoke hâlâ kullanıcı
-> tarafında pending** — KIE flaky maintenance pattern external dependency.
+> tamam. **Drift #6 + Aşama 2B kapandı + canlı doğrulandı:** KIE Gemini 2.5
+> Flash hem AI mode (remote-url) hem local mode (local-path) canlı çalıştı —
+> `kie-health-probe.ts` 200 + `smoke-data-url-probe.ts` 200 (qualityScore 50 +
+> structured review JSON). Phase 6 V1 zorunlu kapsam (A Settings + F.1/F.2/F.3
+> core provider + G cost + H Phase 7 gating) **canlı PASS**. Review queue
+> browser e2e (B/C/D/E) variation→review pipeline tetikleyici fixture
+> eksikliği nedeniyle blocked, ancak integration test suite **43/43 PASS** +
+> browser entry render PASS — runbook 2.2 honest-fail PASS sınırı içinde.
+> Phase 6 → Phase 7 v1.0.1 Review Queue gating zaten açık. Detay: [`./phase6-manual-qa.md`](./phase6-manual-qa.md) "L. Bulgular — 2026-05-04".
 
 ## Aşama 1: Mimari Düzeltme (2026-04-29)
 

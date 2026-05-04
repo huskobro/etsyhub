@@ -1,13 +1,23 @@
 # EtsyHub Final Closeout Runbook
 
-> **Tarih:** 2026-05-04
-> **HEAD:** `920c6d2`
-> **Amaç:** Repo-wide release readiness'i `🟡 Pre-closeout` → `🟢 PASS` hâline getirmek için gereken **tek operasyonel rehber**. Kullanıcı/admin bu doc'tan adım adım yürüyerek son 1 mile'ı tamamlar.
+> **Tarih:** 2026-05-04 (manual QA execution turu sonrası sync)
+> **HEAD:** `dc3bf69`
+> **Mevcut durum (2026-05-04):** Phase 6 + Phase 9 **🟢 V1 Honest-fail PASS**; Phase 8 **🟡 Pending — fixture-blocked**; Etsy live submit success external operasyonel dep bekliyor. Bu runbook **operasyonel + manual QA fixture rehberi** olarak kalır — Full release PASS için Phase 8 + Etsy 3 dep tamamlanmalı.
+> **Amaç:** Repo-wide release readiness'i 🟢 V1 Honest-fail PASS → **🟢 Full release PASS** hâline getirmek için gereken **tek operasyonel rehber**. Kullanıcı/admin bu doc'tan adım adım yürüyerek son 1 mile'ı tamamlar.
 
 Bu doküman:
 - Yeni manual QA checklist'i **DEĞİL** (mevcutlar var: `phase6-manual-qa.md`, `phase8-manual-qa.md`, `phase9-manual-qa.md`)
 - Yeni feature spec'i **DEĞİL** (kod release-ready)
 - Sıralama + PASS kriteri + closeout sonrası doc update planı
+
+**Tamamlanan (2026-05-04 manual QA execution turu):**
+- ✅ Phase 6 V1 Honest-fail PASS — A + F.1 + F.2 + F.3 + G + H canlı (KIE Gemini 2.5 Flash health probe + smoke data URL probe 200)
+- ✅ Phase 9 V1 Honest-fail PASS — V1 zorunlu kapsam (A.1 + A.2 + B + C + D + E.1 + E.2 KIE 10/10 + F + G.1 + I + J.1+J.5+J.6+J.7+J.8+J.9 + L.4) canlı PASS
+- 5 fix-now bug kapatıldı: title pass-message regression `b89d873`, ai-mode 500 cipher decrypt `78d82e3`, logger pino-pretty crash `f1d4664`, AssetSection ZIP guard `920c6d2`, listing-meta cost recording `dc3bf69`
+
+**Kalan (Full release PASS için):**
+- 🟡 Phase 8 V1 manual QA — admin user için fixture-blocked (Phase 7 üzerinden ready SelectionSet hazırlanmalı)
+- 🟡 Phase 9 H + G.2-G.6 — Etsy 3 external dep (credentials + taxonomy env + OAuth)
 
 İçerik 6 bölüm: önkoşul env → QA sırası → her phase'in PASS kriterleri → honest-fail PASS sınırı → blocked sınırı → closeout sonrası doc update.
 
@@ -99,6 +109,8 @@ Phase 6 PASS olduğunda:
 - `phase6-manual-qa.md` "Bulgular" bölümüne `### YYYY-MM-DD — PASS` ekle
 - `phase6-quality-review.md` header status `🟡 Kod tarafı tamam, canlı smoke pending` → `🟢 Phase 6 V1 PASS` (canlı smoke yapıldıysa) **veya** `🟡 Honest-fail PASS — canlı KIE smoke external dep` (yapılmadıysa)
 
+**✅ TAMAMLANDI (2026-05-04, HEAD `dc3bf69`):** Phase 6 V1 **Honest-fail PASS** — A + F.1 + F.2 + F.3 + G + H canlı PASS; B/C/D/E browser e2e fixture-blocked (integration 43/43 PASS). Detay: [`./phase6-manual-qa.md`](./phase6-manual-qa.md) "L. Bulgular — 2026-05-04".
+
 ---
 
 ## 3. Phase 7 v1.0.1 Review Queue activation (otomatik)
@@ -145,6 +157,8 @@ Phase 6 PASS sonrası **manuel test gerekmez** — kod gating'i yok, sadece kull
 Phase 8 PASS olduğunda:
 - `phase8-manual-qa.md` "Bulgular" bölümüne `### YYYY-MM-DD — PASS` ekle
 - `phase8-closeout.md` header status `🟡 implementation complete, manual QA pending` → `🟢 Phase 8 V1 PASS`
+
+**🟡 PENDING (2026-05-04 audit, HEAD `dc3bf69`):** Phase 8 V1 hâlâ fixture-blocked. Selection Studio entry browser render PASS ama A-O ana akış admin user için 0 SelectionSet + 0 MockupJob nedeniyle tetiklenebilir değil. **Yol:** Kullanıcı/admin Phase 7 üzerinden manual akışla 1 ready SelectionSet hazırlar (variation generation → review approve → selection finalize) sonra Phase 8 manual QA başlatılır. Detay: [`./phase8-manual-qa.md`](./phase8-manual-qa.md) "Bulgular — 2026-05-04".
 
 ---
 
@@ -203,33 +217,49 @@ Phase 9 PASS olduğunda:
 - `phase9-manual-qa.md` "Bulgular" bölümüne `### YYYY-MM-DD — PASS` ekle
 - `phase9-status.md` header status `🟡 Pre-closeout` → `🟢 Phase 9 V1 PASS`
 
+**✅ TAMAMLANDI (2026-05-04, HEAD `dc3bf69`):** Phase 9 V1 **Honest-fail PASS** — V1 zorunlu kapsam canlı PASS + KIE Gemini 2.5 Flash 10/10 stabilite + cost recording canlı doğrulandı. H Etsy live submit success path + G.2-G.6 OAuth flow live external operasyonel dep'lere bağlı blocked. Detay: [`./phase9-manual-qa.md`](./phase9-manual-qa.md) "Bulgular — 2026-05-04".
+
 ---
 
 ## 6. Final closeout doc update planı
 
-Phase 6 + 7 + 8 + 9 PASS olduktan sonra **release-readiness.md** finalize edilir:
+Phase 6 + 7 + 8 + 9 PASS olduktan sonra **release-readiness.md** finalize edilir.
 
-### 6.1 release-readiness.md update
-Mevcut Phase status haritası tablosu:
-- `Phase 6 | 🟡 Backend + UI + provider tam ...` → `🟢 Phase 6 V1 PASS (YYYY-MM-DD)`
-- `Phase 7 | 🟢 v1.0.1 (Manuel QA GEÇTİ)` → değişmez
-- `Phase 8 | 🟡 Implementation complete` → `🟢 Phase 8 V1 PASS (YYYY-MM-DD)`
-- `Phase 9 | 🟡 Pre-closeout — implementation/local foundation neredeyse tamam` → `🟢 Phase 9 V1 PASS (YYYY-MM-DD)`
+**Mevcut durum (2026-05-04, HEAD `dc3bf69`):**
+- `Phase 6 | 🟢 V1 Honest-fail PASS` ✅ tamamlandı
+- `Phase 7 | 🟢 v1.0.1` ✅ değişmedi
+- `Phase 8 | 🟡 Pending — fixture-blocked` ⏳ kalan
+- `Phase 9 | 🟢 V1 Honest-fail PASS` ✅ tamamlandı
 
-Header status satırı:
-```
-> **Status:** 🟢 EtsyHub V1 release-ready — tüm phase'ler PASS (YYYY-MM-DD)
-```
+**Full release PASS için kalan 2 adım:**
 
-### 6.2 Genel durum satırı
-Mevcut: `1 phase 🟢 PASS, 5 phase ✅ Live, 2 phase 🟡 manual QA pending, 1 phase 🟡 pre-closeout`
-Yeni: `9 phase 🟢 PASS / Live; release-ready (YYYY-MM-DD)`
+### 6.1 Phase 8 V1 manual QA tamamlanması
+Kullanıcı/admin Phase 7 üzerinden ready SelectionSet hazırlar → Phase 8 manual QA browser-based smoke koşturur:
+- A-O bölümleri (S3-S8 + ZIP + cover swap + per-render retry/swap) PASS
+- `phase8-manual-qa.md` "Bulgular — YYYY-MM-DD" güncellenir
+- `phase8-closeout.md` header status `🟡 Pending — fixture-blocked` → `🟢 Phase 8 V1 PASS`
 
-### 6.3 Manual QA kuyruğu tablosu
-Tüm satırlar `⏳ pending` → `✅ PASS (YYYY-MM-DD)` veya `✅ honest-fail PASS — external dep blocked`
+### 6.2 Phase 9 H + G.2-G.6 final smoke (Etsy operasyonel dep)
+Sysadmin/admin 3 dep'i tamamlar:
+- `developer.etsy.com` üzerinde Etsy app + `.env.local` `ETSY_CLIENT_ID/SECRET/REDIRECT_URI`
+- `ETSY_TAXONOMY_MAP_JSON` env JSON
+- Browser'dan OAuth flow live test
+
+Sonra Phase 9 H (live submit success) + G.2-G.6 (OAuth live state'leri) canlı koşturulur:
+- H.1-H.5 PASS (200 + etsyListingId + image upload diagnostics)
+- G.2-G.7 PASS (OAuth start → callback → connected → expired → delete state'leri)
+- `phase9-manual-qa.md` "Bulgular" bölümüne H/G.2-G.6 PASS ekle
+- `phase9-status.md` header `🟢 V1 Honest-fail PASS` → `🟢 V1 Full PASS (Etsy live success doğrulandı)`
+
+### 6.3 release-readiness.md final update
+6.1 + 6.2 tamamlanınca:
+- Phase 8 satırı `🟡 Pending` → `🟢 V1 PASS`
+- Phase 9 satırı `🟢 V1 Honest-fail PASS` → `🟢 V1 Full PASS`
+- Header status: `🟢 EtsyHub V1 release-ready — tüm phase'ler PASS (YYYY-MM-DD)`
+- Genel durum satırı: `9 phase 🟢 PASS / Live; release-ready (YYYY-MM-DD)`
 
 ### 6.4 Bu runbook
-- `final-closeout-runbook.md` "Closeout tamamlandı" notu eklenebilir; veya bu doc kalıcı arşiv (gelecekte V1.1 closeout için referans)
+- "Closeout tamamlandı" notu eklenebilir; veya bu doc kalıcı arşiv (gelecekte V1.1 closeout için referans pattern)
 
 ---
 
@@ -247,11 +277,18 @@ Bu işler V1 sözleşmesinde **kasıtlı olarak yok**; PASS ilanını engellemez
 
 ## Kısa özet (TL;DR)
 
-1. Env'i kur (0.1 zorunlu; 0.2 + 0.3 opsiyonel — yoksa honest-fail path)
-2. Phase 6 manual QA → PASS veya honest-fail PASS
-3. Phase 7 — otomatik aktif (test gerekmez)
-4. Phase 8 manual QA → PASS
-5. Phase 9 manual QA → PASS veya honest-fail PASS
-6. release-readiness.md `🟡` → `🟢` update + Bulgular section'larına PASS işaretle
+**Mevcut durum (2026-05-04, HEAD `dc3bf69`):**
+1. ✅ Env (0.1) tamam
+2. ✅ Phase 6 V1 Honest-fail PASS — A + F.1 + F.2 + F.3 + G + H canlı (KIE Gemini 2.5 Flash live)
+3. ✅ Phase 7 — otomatik aktif (zaten 🟢 PASS)
+4. 🟡 Phase 8 V1 Pending — fixture-blocked (admin için ready SelectionSet seed gerek)
+5. ✅ Phase 9 V1 Honest-fail PASS — V1 zorunlu kapsam canlı + KIE 10/10 stabilite + cost recording
+6. 🟡 release-readiness.md "V1 Honest-fail PASS" — Full release PASS için Phase 8 + Etsy 3 dep kalan
 
-**"PASS" / "tamamlandı" ilan etme sorumluluğu kullanıcı/admin'in.** Bu doc ne zaman PASS edilebilir + ne zaman honest-fail PASS yeterli sınırını net çizer.
+**Full release PASS için kalan:**
+- Phase 8 V1 manual QA (kullanıcı/admin Phase 7 üzerinden fixture hazırlar)
+- Etsy 3 external dep (credentials + taxonomy env + OAuth live test)
+- Phase 9 H + G.2-G.6 final smoke
+- release-readiness.md final update
+
+**"V1 Honest-fail PASS" ilan edildi** (Phase 6 + 9 — runbook 2.2 + 5.2 sınırlarına göre). **"Full release PASS"** Phase 8 + Etsy operasyonel dep tamamlanınca ilan edilecek.

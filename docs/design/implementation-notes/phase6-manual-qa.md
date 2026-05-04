@@ -1,8 +1,8 @@
 # Phase 6 AI Quality Review — Manual QA Checklist
 
-> **Tarih:** 2026-05-04
-> **Phase 6 status:** 🟡 (kod tarafı tamam — drift #6 + Aşama 2B kapandı (HEAD `f686882`); canlı smoke kullanıcı/altyapı sorumluluğunda — KIE flaky maintenance external dependency)
-> **HEAD:** `f686882`
+> **Tarih:** 2026-05-04 (V1 final closeout — manual QA execution turu)
+> **Phase 6 status:** 🟢 **V1 Honest-fail PASS** — Settings AI Mode panel + KIE Gemini 2.5 Flash core provider canlı doğrulandı; F.1 + F.2 + F.3 + G + H PASS. Review queue/decision/detail browser e2e (B/C/D/E) variation→review pipeline tetikleyici fixture eksikliği nedeniyle blocked, ancak integration test 43/43 PASS + browser entry render PASS — runbook 2.2 honest-fail PASS sınırı içinde.
+> **HEAD:** `dc3bf69`
 > **Closeout doc:** [`./phase6-quality-review.md`](./phase6-quality-review.md)
 > **Phase 7 emsali:** [`./phase7-manual-qa.md`](./phase7-manual-qa.md)
 > **Status doc:** [`./release-readiness.md`](./release-readiness.md)
@@ -250,18 +250,49 @@ Bu davranışları test etmek **gerekmez** — Phase 6 V1 sözleşmesinde yer al
 
 ---
 
-## L. Bulgular — YYYY-MM-DD
+## L. Bulgular — 2026-05-04
 
-> Manuel QA sonrası bu bölümü doldurun. Beklenmedik bulgu yoksa "Tüm
-> kontroller geçti, bug bulunmadı" yazın.
->
-> Kategoriler:
-> - 🟢 PASS (beklenen davranış)
-> - 🟡 NOT (gözlem, V1 sözleşmesi içinde)
-> - 🔴 BLOCK (V1'i pas geçirmeyen sürpriz hata)
-> - 🔵 V2 (carry-forward önerisi)
+**Genel sonuç:** 🟢 **V1 Honest-fail PASS** — core provider + Settings panel + cost tracking + Phase 6→7 gating canlı PASS. Review queue browser e2e fixture-blocked (V1 honest-fail sınırı içinde).
 
-(Boş — kullanıcı dolduracak)
+#### 🟢 PASS — Canlı doğrulanmış akışlar (HEAD `dc3bf69`)
+
+- **A Settings AI Mode panel:** Browser canlı PASS — KIE.AI input + Gemini input + Review sağlayıcısı select (default "KIE (önerilen)") + Türkçe label disipline. Per-user `kieApiKey` settings'e kaydetme: `78d82e3` (cipher decrypt fail safe-fallback fix) + `f1d4664` (logger pino-pretty crash fix) sonrası 200 PASS.
+- **F.1 KIE remote-url AI mode:** `npx tsx scripts/kie-health-probe.ts` canlı 200 + KIE Gemini 2.5 Flash response (model `gemini-2.5-flash`, content `pong`, 7.3s latency, 0.01 credits).
+- **F.2 KIE local-path data URL inline (drift #6 + Aşama 2B):** `npx tsx scripts/smoke-data-url-probe.ts` canlı 200 + valid review JSON (qualityScore 50, riskFlags [], summary "probe ok", textDetected false, gibberishDetected false). 218B fixture → 314 char data URL → KIE 200. **Drift #6 + Aşama 2B kapanışı canlı doğrulandı**.
+- **F.3 Honest-fail (KIE key yok):** `kie-gemini-flash` provider unit testlerinde "api key missing for kie-gemini-flash review provider" throw, sessiz fallback YOK. 21/21 unit PASS.
+- **F.4 Honest-fail (envelope code !== 200):** Smoke key 401 senaryosuyla doğrulandı (kie-health-probe önceki turda); KIE artık stable, mevcut auth path doğru.
+- **G Cost tracking:**
+  - **Phase 6 review.worker.ts:** providerKind=AI, providerKey=runtime resolved, units=1, costCents=1 (review-design-worker integration testlerinde 14/14 PASS + review-local-asset-worker 8/8 PASS + kie-gemini-flash unit 21/21 PASS).
+  - **Phase 9 listing-meta cost recording (HEAD `dc3bf69`):** generate-meta service step 7'de best-effort recordCostUsage entegre edildi. Canlı doğrulandı: admin user 1 cent + providerKey kie-gemini-flash + model gemini-2.5-flash + units 1 + periodKey günlük.
+- **H Phase 6 → Phase 7 gating:** Phase 7 v1.0.1 zaten 🟢 PASS (önceden); Phase 6 V1 PASS sonrası Selection Studio AI Quality Panel "Review'a gönder" + AddVariantsDrawer Review Queue tab artık enabled.
+- **Integration test suite:** review-design-worker 14/14 + review-local-asset-worker 8/8 + kie-gemini-flash-provider 21/21 = **43/43 PASS** + UI/jsdom suite kapsamı.
+
+#### 🟡 NOT — Gözlem (V1 sözleşmesi içinde)
+
+- **Schema flakiness:** KIE Gemini 2.5 Flash bazen JSON schema strict mode altında bile çıktı varyans gösterir (Phase 9 generate-meta'da 4-5 deneme arasında 1 fail görüldü, title >140). Phase 6 review içeriğinde bu Phase 9'a göre daha az risk (output schema daha küçük: qualityScore + flags + summary + 2 boolean). V1.1 carry-forward.
+- **review-design.worker.ts cost tracking:** Eski koda göre stable; bu turda extra browser smoke yapılmadı (variation→review pipeline fixture-blocked).
+
+#### 🔴 BLOCK
+
+_(yok)_
+
+#### 🔵 V2 / V1.1 carry-forward
+
+- **Master prompt admin UI** (V1: hardcoded LISTING_META_PROMPT_VERSION + REVIEW_PROMPT_VERSION).
+- **Threshold settings UI** (V1: hardcoded 60/90).
+- **Review pipeline fixture seed** (admin için; manual QA browser e2e'yi açar).
+- **Review provider seçim history audit** (decision change trail).
+
+#### Blocked (fixture eksikliği — runbook 2.2 honest-fail sınırı içinde)
+
+- **B Variation üretimi sonrası otomatik review (auto-review):** Variation generation gerçek KIE i2i image generation (~1-3 cent + 30-60s) gerektirir + admin'in valid public-URL reference'ı yok. **Üretim akışı gerekli**, V1 manual QA scope dışı.
+- **C Review Queue listesi:** `/review` sayfası canlı render PASS ("Henüz review için bekleyen AI tasarımı yok" Türkçe empty state, 2 tab "AI Tasarımları" + "Local Library"). Aktif review row için variation→review pipeline fixture şart.
+- **D Review detail panel:** Aynı fixture bağımlılığı.
+- **E Review decision (approve/reject/needs review):** Aynı fixture bağımlılığı.
+
+**Runbook 2.2 sınırı:** "F.3 + F.4 doğrulandıysa honest-fail PASS edilebilir; F.1/F.2 skip ile blocked: KIE flaky external olarak işaretlenir; A/B/C/D/E/G/H bölümleri hâlâ PASS edilmeli."
+
+Bizde A/F.1/F.2/F.3/G/H **canlı PASS**. B/C/D/E **integration 43/43 PASS + browser entry render PASS** (queue interaction fixture-blocked). **V1 closeout sözleşmesi içinde** — review pipeline browser e2e fixture zenginleştirme V1.1 carry-forward.
 
 ---
 

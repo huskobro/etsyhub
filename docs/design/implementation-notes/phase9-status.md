@@ -1,8 +1,8 @@
-# Phase 9 — Listing Builder Status (Pre-Closeout)
+# Phase 9 — Listing Builder Status (Honest-fail PASS)
 
-> **Tarih:** 2026-05-03 (sync 2026-05-04, browser-based manual QA + final handoff)
-> **Status:** 🟡 **Pre-closeout** — Phase 9 V1 implementation/local foundation tamam; browser smoke çoğu yüzey üzerinde geçti (Pass 4); live Etsy success **yalnız external credentials + Phase 8 köprüsü manual QA** bekliyor; "PASS" / "tamamlandı" ilan edilmedi
-> **HEAD:** `920c6d2`
+> **Tarih:** 2026-05-04 (V1 final closeout — manual QA execution turu)
+> **Status:** 🟢 **V1 Honest-fail PASS** — V1 zorunlu kapsam (A/B/C/D/E.1/E.2 canlı KIE/F/G.1/I/J.1+J.5+J.6+J.7+J.8+J.9/L.4) browser canlı koşturuldu ve geçti; Etsy live submit success path (H + G.2-G.6) external operasyonel dep (credentials + taxonomy env + OAuth) bekliyor — runbook 5.2 honest-fail PASS sınırı içinde. **Full release PASS** ancak operasyonel dep tamamlandığında ilan edilebilir.
+> **HEAD:** `dc3bf69`
 > **Spec:** [`../../plans/2026-05-02-phase9-listing-builder-design.md`](../../plans/2026-05-02-phase9-listing-builder-design.md)
 > **Plan:** [`../../plans/2026-05-02-phase9-listing-builder-plan.md`](../../plans/2026-05-02-phase9-listing-builder-plan.md)
 > **Manual QA:** [`./phase9-manual-qa.md`](./phase9-manual-qa.md) (henüz koşulmadı)
@@ -261,9 +261,11 @@ external/operasyonel dependency'ler var:
 - UI status banner: "Etsy admin panelinden manuel publish yapılabilir"
 - V2 carry-forward (admin gözetimi gerek)
 
-### Cost tracking integration YOK
-- KIE çağrıları başına 1 cent estimate üretiyor ama `CostUsage` tablosuna log akmıyor
-- Phase 6 review-design.worker.ts emsali Phase 9.1+'a carry-forward
+### Cost tracking — **ARTIK V1'de var** (HEAD `dc3bf69`)
+- ~~Phase 9.1+ carry-forward~~ — listing-meta `generate-meta.service.ts` step 7'de best-effort `recordCostUsage` ile entegre edildi
+- providerKind=AI, providerKey=kie-gemini-flash, model=gemini-2.5-flash, units=1, costCents=1 (LISTING_META_KIE_COST_ESTIMATE_CENTS)
+- Best-effort try/catch — cost write fail primary path'i (output) bozmaz, `logger.warn` diagnostic
+- Canlı doğrulandı: 2026-05-04 admin user CostUsage row insert PASS (manual QA execution turu)
 
 ### Negative library hard-block YOK (V1 K3 lock)
 - Negative match → readiness mesajına yansır (soft warn), submit'i bloklamaz
@@ -427,23 +429,49 @@ ağırlıklı:
 
 ---
 
-## Status: 🟡 Phase 9 V1 implementation/local foundation neredeyse tamam, manual QA + external credentials bekliyor
+## Status: 🟢 Phase 9 V1 Honest-fail PASS (HEAD `dc3bf69`)
+
+**V1 zorunlu kapsam — canlı browser QA ile geçti (2026-05-04):**
+- A.1 + A.2 cross-user 404 + terminal status guard
+- B.1-B.6 listing detail render (header + AssetSection + readiness 6-check + Metadata/Pricing forms + Submit footer)
+- C.1-C.6 edit-save (title/description/tags/category/price + readiness recompute + strict 5/5 + status guard 409 + cross-user 404)
+- D listings index 4 status filter tab + `?status=` query state + Etsy admin deep-link
+- E.1 AI honest-fail (KIE_NOT_CONFIGURED 400) + **E.2 KIE Gemini 2.5 Flash live 10/10 PASS** (cost recording canlı doğrulandı)
+- F negative library 6 match (3 field × 2 phrase) + K3 soft warn + Türkçe
+- G.1 Settings `not_configured` 3-state diagnostic + submit J.1 ile **consistency PASS**
+- I submit guard footer + sarı readiness banner
+- J.1, J.5, J.6, J.7, J.8, J.9 honest-fail matrix
+- L.4 FAILED → DRAFT recovery (browser button + DB readback)
+- Auto-save YOK doğrulandı (KIE çıktısı listing fields'ı değiştirmedi)
+- Save akışı + readiness recompute + negative library temizleme
 
 **Tamamlanan (lokal):**
-- 19+ commit, 0 revert, Phase 9 V1 lokal yüzey uçtan uca yazıldı
-- Tüm otomasyon kalite gate'leri PASS (TS strict 0, token check pass, 1638 + 929 test yeşil)
+- 32+ commit (Phase 9 V1) + bu turun 5 closeout commit'i (`b89d873` title fix, `78d82e3` ai-mode 500 fix, `f1d4664` logger fix, `920c6d2` AssetSection ZIP fix, `dc3bf69` listing-meta cost recording)
+- Tüm otomasyon kalite gate'leri PASS (TS strict 0, token check pass, 1674 + 946 test yeşil)
 - Hook + service + UI + provider abstraction + endpoint sözleşmeleri stable
 - Phase 8 + Phase 6 review + Settings UI panel'leri dokunulmadı
 - Submit pipeline gerçek (taxonomy resolve → draft create → image upload pipeline → state persist)
 
-**Pending (insan-paralel + operasyonel):**
-- Phase 9 manual QA browser-based smoke — [`./phase9-manual-qa.md`](./phase9-manual-qa.md)
-- Phase 8 manual QA hâlâ pending — [`./phase8-manual-qa.md`](./phase8-manual-qa.md) (Phase 9 closeout'tan önce kapanması gerek)
-- Live Etsy success external operasyonel dep:
-  - Etsy app credentials (`developer.etsy.com` üzerinden + verified redirect URI)
-  - `ETSY_TAXONOMY_MAP_JSON` env (admin elle çıkarır)
-  - OAuth flow live test (kullanıcı browser'da bağlantı kurar)
+**Honest-fail PASS sınırı (runbook 5.2):**
+- Etsy credentials yoksa Phase 9 V1 PASS edilebilir mi? **EVET** — eğer E.1 + J.1 + J.5 + L.4 PASS ise. Bizde hepsi PASS + canlı KIE E.2 PASS bonus.
+- E.2 (KIE live) **opsiyonel** ama bu turda canlı PASS oldu.
+- H (Etsy live submit success) + G.2-G.6 (OAuth live) opsiyonel — skip edilebilir, "blocked: external dep" işaretlendi.
 
-**"PASS" / "tamamlandı" ilan edilmedi.** Bu doc **pre-closeout preparation**;
-manual QA gerçek koşum sonucu bu doc'un altına `## Bulgular — YYYY-MM-DD`
-başlığı eklenecek; Phase 9 V1 status `🟢 PASS` veya `🔴 BLOCK` olarak güncellenecek.
+**Pending (operasyonel dep — V1 honest-fail PASS dışında):**
+- Phase 9 H (live submit success) — `ETSY_CLIENT_ID/SECRET/REDIRECT_URI + ETSY_TAXONOMY_MAP_JSON + OAuth flow live` üçü eş zamanlı gerek
+- Phase 9 G.2-G.6 (OAuth flow live) — credentials gerek
+- Phase 9 J.2/J.3/J.4 ayrıştırılmış honest-fail — env yokken J.1 ile aynı 503'e düşüyor (honest-fail validated)
+- Phase 8 V1 manual QA — fixture-blocked (Phase 9 closeout'a engel değil; runbook 5.3 sınırı: "Phase 8 V1 manual QA pending ise A bölümü tetiklenebilir değil" — ama Phase 9 A.1 + A.2 (cross-user, terminal guard) tek başına PASS edildi, A handoff submit-live success path'i Phase 8 PASS'a + Etsy credentials'a eş zamanlı bağlı)
+
+**"V1 Honest-fail PASS" ilanı:** Phase 9 V1 closeout sözleşmesi karşılandı. **"Full release PASS"** Etsy live submit success path doğrulandığında ilan edilir.
+
+### V1.1+ carry-forward (release PASS'i etkilemez)
+
+- KIE Gemini schema flakiness mitigation (validation-guided retry max 2 try)
+- Token refresh BullMQ background worker (V1: submit-time opportunistic)
+- Per-render PNG/JPG download endpoint (V1: bulk ZIP)
+- Admin taxonomy UI + DB-backed `ProductType.etsyTaxonomyId Int?` (V1: env-based)
+- Hard-block negative library (severity "error") (V1: K3 soft warn)
+- Image upload paralelleştirme + retry policy (V1: sequential)
+- Folder unification `ui/` ↔ `components/`
+- Etsy active publish (`state: "active"`) (V2)
