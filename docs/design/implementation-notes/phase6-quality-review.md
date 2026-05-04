@@ -1,12 +1,13 @@
 # Phase 6 — AI Quality Review Closeout
 
-> **Tarih:** 2026-04-29
-> **Status:** Backend pipeline + UI vitrin + UX kapanış + cost tracking + selectable
-> review provider mimarisi tamam. **Aşama 2A (2026-04-29):** KIE provider AI mode
-> için canlı çalışır durumda (kontrat KIE.ai docs'tan onaylı). Local mode
-> (`scope: "local"`) **Aşama 2B bekliyor** — canlı smoke sırasında manuel data URL
-> probe sonrası kapsam (küçük data URL patch / orta MinIO upload bridge)
-> netleşecek. Phase 6 full ✅ Aşama 2B sonrası.
+> **Tarih:** 2026-04-29 (sync 2026-05-04 — drift #6 + Aşama 2B kod kapanışı)
+> **Status:** 🟡 **Kod tarafı tamam, canlı smoke pending.** Backend pipeline + UI
+> vitrin + UX kapanış + cost tracking + selectable review provider mimarisi
+> tamam. **Drift #6 + Aşama 2B (2026-05-04):** KIE provider artık hem AI mode
+> (remote-url) hem local mode (local-path) çalışır — image-loader data URL
+> inline (probe onaylı 2026-05-01 22:10, HTTP 200). Drift #6 (KIE bulutun
+> localhost MinIO erişim sorunu) çözüldü. **Canlı smoke hâlâ kullanıcı
+> tarafında pending** — KIE flaky maintenance pattern external dependency.
 
 ## Aşama 1: Mimari Düzeltme (2026-04-29)
 
@@ -354,7 +355,15 @@ smoke'undan SONRA manuel probe ile test edilecek:
    servisi `localhost:9000` MinIO instance'ına erişemez (dev
    ortamı). İki olası çözüm Aşama 2B kapsamına genişletildi
    (aşağıda).
-4. **Aşama 2B — Local mode + drift #6 için data URL probe (PENDING):**
+
+   **Çözüldü (2026-05-04):** `kie-gemini-flash.ts` artık
+   `image-loader.imageToInlineData(input.image)` üzerinden hem
+   local-path hem remote-url için data URL inline yapıyor. KIE
+   bulutun MinIO erişim sorunu kalmadı. Probe sonucu (2026-05-01
+   22:10) gerçek davranışla doğrulandı. Aşama 2B impl yönü kapandı;
+   küçük patch tek code path'le hem local hem remote mode'u
+   destekliyor.
+4. **Aşama 2B — Kapanış (2026-05-04) (kod tarafı; canlı smoke pending):**
    KIE Gemini `image_url` content-part'ında `data:image/...;base64,...`
    destekli mi probe smoke retry sırasında **yapılamadı** (KIE flaky
    maintenance'a düştü, deterministik sonuç alınamadı):
@@ -363,6 +372,20 @@ smoke'undan SONRA manuel probe ile test edilecek:
    - 400/415 ⇒ orta patch (MinIO temp upload bridge + ngrok-style
      public proxy veya production object storage migration)
    Probe sonucuna göre Aşama 2B impl yönü belirlenir.
+
+   **Kapanış sonucu (2026-05-04):**
+   - `kie-gemini-flash.ts` patch: local-path explicit throw
+     kaldırıldı; provider artık `image-loader.imageToInlineData(input.image)`
+     çağırıp data URL üretiyor (hem local hem remote tek code path).
+   - Test güncellemeleri:
+     `tests/unit/kie-gemini-flash-provider.test.ts` "Aşama 2A local
+     mode kapalı" describe → "drift #6 + Aşama 2B kapanış (data URL
+     inline)" describe (4 yeni test).
+     `tests/integration/review-local-asset-worker.test.ts` "Aşama 2B
+     bekliyor throw" testi → "data URL inline ile başarılı" testi.
+   - Canlı smoke: hâlâ kullanıcı sorumluluğunda. KIE flaky
+     maintenance pattern external dependency; kapanmazsa Phase 6
+     manuel QA tetiklenebilir değil.
 5. **KIE flaky maintenance pattern (NEW, 2026-05-01):**
    Smoke retry günü endpoint sürekli arasıra `code:500
    "maintained"` envelope dönmeye başladı (HEALTHY → flaky → drift

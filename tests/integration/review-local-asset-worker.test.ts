@@ -341,35 +341,51 @@ describe("handleReviewDesign — scope=local — Task 18 cost tracking + budget"
   });
 });
 
-describe("handleReviewDesign — scope=local — Phase 6 Aşama 2A KIE local kapalı", () => {
-  it("local mode + reviewProvider 'kie' ⇒ provider 'KIE local review henüz etkin değil; Aşama 2B bekleniyor' throw + cost insert YOK", async () => {
+describe("handleReviewDesign — scope=local — Phase 6 drift #6 + Aşama 2B kapanış", () => {
+  it("local mode + reviewProvider 'kie' ⇒ provider data URL inline ile başarılı, cost insert YAPILDI", async () => {
     const { assetId } = await seedLocalAsset({
       reviewProvider: "kie",
       kieApiKey: "kie-test-key-zzz",
       geminiApiKey: null,
     });
 
-    // KIE provider gerçek davranışını mock üzerinden taklit et:
-    // local-path image input'unda "Aşama 2B bekleniyor" yön mesajı throw.
-    // Mock registry id-aware; review() shared reviewMock'a düşer — yön
-    // mesajını mock'la ver.
-    reviewMock.mockRejectedValueOnce(
-      new Error("KIE local review henüz etkin değil; Aşama 2B bekleniyor."),
+    // Drift #6 + Aşama 2B kapanış (2026-05-04): KIE provider artık local-path
+    // input için image-loader data URL inline yapıp KIE'ye gönderiyor. Bu
+    // worker integration test'i provider'ı mock'lar (registry mock); gerçek
+    // provider kod path'i ayrı unit test'te (kie-gemini-flash-provider.test.ts)
+    // doğrulanır. Burada mevzu: worker happy path + cost insert.
+    reviewMock.mockResolvedValueOnce({
+      score: 95,
+      textDetected: false,
+      gibberishDetected: false,
+      riskFlags: [],
+      summary: "kie data url inline ok",
+      costCents: 1,
+    });
+
+    const result = await handleReviewDesign(
+      makeJob({
+        scope: "local",
+        localAssetId: assetId,
+        userId: USER_ID,
+        productTypeKey: "wall_art",
+      }),
     );
 
-    await expect(
-      handleReviewDesign(
-        makeJob({
-          scope: "local",
-          localAssetId: assetId,
-          userId: USER_ID,
-          productTypeKey: "wall_art",
-        }),
-      ),
-    ).rejects.toThrow(/KIE local review henüz etkin değil; Aşama 2B bekleniyor/);
+    expect(result.skipped).toBe(false);
+    expect(result.status).toBe(ReviewStatus.APPROVED);
 
-    // Provider throw ettiği için sonrası kod (persist + cost insert) çalışmadı.
+    // Provider çağrıldı.
+    expect(reviewMock).toHaveBeenCalledTimes(1);
+
+    // Cost insert YAPILDI (provider id'si kie-gemini-flash → modelId
+    // gemini-2.5-flash; mock'taki modelIdForId mapping ile uyumlu).
     const usage = await db.costUsage.findMany({ where: { userId: USER_ID } });
-    expect(usage).toHaveLength(0);
+    expect(usage).toHaveLength(1);
+    const row = usage[0]!;
+    expect(row.costCents).toBe(1);
+    expect(row.providerKind).toBe(ProviderKind.AI);
+    expect(row.providerKey).toBe("kie-gemini-flash");
+    expect(row.model).toBe("gemini-2.5-flash");
   });
 });

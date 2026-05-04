@@ -1,4 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Drift #6 + Aşama 2B kapanış (2026-05-04):
+// Provider artık image-loader üzerinden hem local-path hem remote-url için data
+// URL inline yapıyor. Unit testlerde image-loader'ı mock'luyoruz — gerçek
+// fs/fetch çağrısı yapılmasın, KIE fetch tek çağrı kalsın (test odak temiz).
+const imageToInlineDataMock = vi.fn();
+vi.mock("@/providers/review/image-loader", () => ({
+  imageToInlineData: (...args: unknown[]) => imageToInlineDataMock(...args),
+}));
+
 import { kieGeminiFlashReviewProvider } from "@/providers/review/kie-gemini-flash";
 
 const baseInput = {
@@ -50,6 +60,10 @@ function mockKieResponse(
 
 beforeEach(() => {
   global.fetch = vi.fn() as unknown as typeof fetch;
+  imageToInlineDataMock.mockReset();
+  // Default: başarılı inline. Drift #6 + Aşama 2B sonrası bu mock her test'te
+  // çalışır. "ZmFrZQ==" base64 = "fake".
+  imageToInlineDataMock.mockResolvedValue({ mimeType: "image/png", data: "ZmFrZQ==" });
 });
 
 describe("KIE Gemini Flash review provider — başarılı senaryolar", () => {
@@ -100,18 +114,113 @@ describe("KIE Gemini Flash review provider — başarılı senaryolar", () => {
   });
 });
 
-describe("KIE Gemini Flash review provider — Aşama 2A local mode kapalı", () => {
-  it("local-path image input ⇒ explicit throw 'KIE local review henüz etkin değil'", async () => {
+describe("KIE Gemini Flash review provider — drift #6 + Aşama 2B kapanış (data URL inline)", () => {
+  it("local-path image input ⇒ image-loader data URL inline + KIE happy path", async () => {
+    imageToInlineDataMock.mockResolvedValueOnce({
+      mimeType: "image/png",
+      data: "TE9DQUw=", // base64("LOCAL")
+    });
+    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      mockKieResponse(JSON.stringify(validOutput)),
+    );
+
+    const result = await kieGeminiFlashReviewProvider.review(
+      {
+        image: { kind: "local-path", filePath: "/tmp/local.png" },
+        productType: "wall_art",
+        isTransparentTarget: false,
+      },
+      { apiKey: "kie-key" },
+    );
+
+    expect(result.score).toBe(85);
+    expect(result.costCents).toBe(1);
+
+    // image-loader doğru input'la çağrıldı.
+    expect(imageToInlineDataMock).toHaveBeenCalledTimes(1);
+    expect(imageToInlineDataMock).toHaveBeenCalledWith({
+      kind: "local-path",
+      filePath: "/tmp/local.png",
+    });
+
+    // KIE'ye giden body'de image_url.url data URL formatında.
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
+    const imageUrl = body.messages[0].content[1].image_url.url;
+    expect(imageUrl).toBe("data:image/png;base64,TE9DQUw=");
+  });
+
+  it("remote-url image input ⇒ image-loader fetch + data URL inline", async () => {
+    imageToInlineDataMock.mockResolvedValueOnce({
+      mimeType: "image/jpeg",
+      data: "UkVNT1RF", // base64("REMOTE")
+    });
+    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      mockKieResponse(JSON.stringify(validOutput)),
+    );
+
+    const result = await kieGeminiFlashReviewProvider.review(
+      {
+        image: { kind: "remote-url", url: "https://cdn.example.com/x.jpg" },
+        productType: "wall_art",
+        isTransparentTarget: false,
+      },
+      { apiKey: "kie-key" },
+    );
+
+    expect(result.score).toBe(85);
+    expect(imageToInlineDataMock).toHaveBeenCalledTimes(1);
+    expect(imageToInlineDataMock).toHaveBeenCalledWith({
+      kind: "remote-url",
+      url: "https://cdn.example.com/x.jpg",
+    });
+
+    // KIE'ye giden body'de image_url.url data URL formatında (mime preserved).
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
+    const imageUrl = body.messages[0].content[1].image_url.url;
+    expect(imageUrl).toBe("data:image/jpeg;base64,UkVNT1RF");
+  });
+
+  it("image-loader fail (local file yok) ⇒ explicit throw, KIE çağrılmaz", async () => {
+    imageToInlineDataMock.mockRejectedValueOnce(
+      new Error("ENOENT: no such file or directory, open '/tmp/missing.png'"),
+    );
+
     await expect(
       kieGeminiFlashReviewProvider.review(
         {
-          image: { kind: "local-path", filePath: "/tmp/test.png" },
+          image: { kind: "local-path", filePath: "/tmp/missing.png" },
           productType: "wall_art",
           isTransparentTarget: false,
         },
         { apiKey: "kie-key" },
       ),
-    ).rejects.toThrow(/KIE local review henüz etkin değil; Aşama 2B bekleniyor/);
+    ).rejects.toThrow(/ENOENT/);
+
+    // KIE fetch hiç çağrılmadı (sessiz fallback yok).
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock.mock.calls).toHaveLength(0);
+  });
+
+  it("image-loader fail (remote 404) ⇒ explicit throw, KIE çağrılmaz", async () => {
+    imageToInlineDataMock.mockRejectedValueOnce(
+      new Error("image fetch failed: 404 Not Found (https://cdn.example.com/missing.png)"),
+    );
+
+    await expect(
+      kieGeminiFlashReviewProvider.review(
+        {
+          image: { kind: "remote-url", url: "https://cdn.example.com/missing.png" },
+          productType: "wall_art",
+          isTransparentTarget: false,
+        },
+        { apiKey: "kie-key" },
+      ),
+    ).rejects.toThrow(/image fetch failed: 404/);
+
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock.mock.calls).toHaveLength(0);
   });
 });
 

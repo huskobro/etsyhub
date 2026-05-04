@@ -70,17 +70,21 @@ describe("Review provider registry — R17.3 + Phase 6 Aşama 2A", () => {
     ).rejects.toThrow(/api key missing/i);
   });
 
-  it("kie-gemini-flash Aşama 2A: local-path image input ⇒ '2B bekleniyor' throw", async () => {
+  it("kie-gemini-flash drift #6 + Aşama 2B kapanış: local-path image-loader fail ⇒ explicit throw (sessiz fallback yok)", async () => {
+    // Drift #6 + Aşama 2B kapanış (2026-05-04): provider artık image-loader
+    // üzerinden hem local hem remote için data URL inline yapıyor. Local
+    // path geçersizse (file yok) image-loader fs.readFile reject (ENOENT) →
+    // provider explicit throw. Sessiz fallback YASAK.
     const provider = getReviewProvider("kie-gemini-flash");
     await expect(
       provider.review(
         {
-          image: { kind: "local-path", filePath: "/tmp/x.png" },
+          image: { kind: "local-path", filePath: "/tmp/nonexistent-test-file.png" },
           productType: "wall_art",
           isTransparentTarget: false,
         },
         { apiKey: "valid-kie-key" },
       ),
-    ).rejects.toThrow(/Aşama 2B bekleniyor/);
+    ).rejects.toThrow(/ENOENT/);
   });
 });

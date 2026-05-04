@@ -1,6 +1,7 @@
 import type { ReviewProvider, ReviewOutput } from "./types";
 import { ReviewOutputSchema, REVIEW_OUTPUT_JSON_SCHEMA } from "./output-schema";
 import { REVIEW_SYSTEM_PROMPT, buildReviewUserPrompt } from "./prompt";
+import { imageToInlineData } from "./image-loader";
 
 const KIE_ENDPOINT = "https://api.kie.ai/gemini-2.5-flash/v1/chat/completions";
 const KIE_MODEL_ID = "gemini-2.5-flash";
@@ -17,24 +18,26 @@ const KIE_MODEL_ID = "gemini-2.5-flash";
 const REVIEW_ESTIMATED_COST_CENTS = 1;
 
 /**
- * KIE.ai üzerinden Gemini 2.5 Flash review provider — Aşama 2A.
+ * KIE.ai üzerinden Gemini 2.5 Flash review provider.
  *
- * KONTRAT (kullanıcı KIE docs'tan onayladı):
+ * KONTRAT (kullanıcı KIE docs + 2026-05-01 mikro-probe ile onaylı):
  * - Endpoint: POST https://api.kie.ai/gemini-2.5-flash/v1/chat/completions
  * - Auth: Authorization: Bearer <kieApiKey>
  * - Sync (non-streaming)
  * - OpenAI-compatible chat/completions multimodal
- * - Image input: { type: "image_url", image_url: { url: "<https URL>" } }
- *   - DIŞ ERİŞİLEBİLİR HTTP/HTTPS URL gerek (data URL Aşama 2B'de probe edilir)
+ * - Image input: { type: "image_url", image_url: { url: "<data URL>" } }
+ *   - data:image/...;base64,... formatında inline (drift #6 fix —
+ *     KIE bulut localhost MinIO'ya erişmek zorunda kalmaz)
  * - response_format strict JSON schema dene; fail ⇒ json_object fallback
  * - Response: choices[0].message.content (JSON string), usage.total_tokens
  *
- * AŞAMA 2A KAPSAMI:
- * - SADECE AI mode (image: { kind: "remote-url" }) çalışır
- * - Local mode (image: { kind: "local-path" }) explicit throw "2B bekleniyor"
+ * KAPSAM (Aşama 2A → 2B + drift #6 kapanış sonrası):
+ * - AI mode (image: { kind: "remote-url" }) çalışır
+ * - Local mode (image: { kind: "local-path" }) çalışır — image-loader
+ *   data URL inline yapar
  *
  * Sessiz fallback YASAK: HTTP error / JSON parse fail / Zod schema fail / image
- * input local path → hepsi explicit throw.
+ * loader fail → hepsi explicit throw.
  *
  * Snapshot zorunluluğu: Worker (review-design.worker.ts) reviewProviderSnapshot
  * "kie-gemini-flash@<settingsDate>" + reviewPromptSnapshot persist eder.
@@ -48,17 +51,14 @@ export const kieGeminiFlashReviewProvider: ReviewProvider = {
       throw new Error("api key missing for kie-gemini-flash review provider");
     }
 
-    // Aşama 2A: local mode için explicit throw (2B bekliyor).
-    // Yön mesajı kullanıcıya UI'da görünür — data URL probe smoke sonrası
-    // kapsam (küçük patch / orta MinIO upload) netleşecek.
-    if (input.image.kind === "local-path") {
-      throw new Error(
-        "KIE local review henüz etkin değil; Aşama 2B bekleniyor.",
-      );
-    }
+    // Drift #6 + Aşama 2B kapanış (2026-05-04):
+    // Hem local-path hem remote-url için image-loader üzerinden data URL inline.
+    // KIE bulut localhost MinIO'ya erişmek zorunda kalmaz; local mode da çalışır.
+    // Probe sonucu (2026-05-01 22:10): KIE chat/completions data URL içerikli
+    // image_url'i destekliyor (HTTP 200, gerçek cevap döndü).
+    const inline = await imageToInlineData(input.image);
+    const imageUrl = `data:${inline.mimeType};base64,${inline.data}`;
 
-    // Remote URL — KIE direkt fetch eder (signed URL veya kalıcı public URL).
-    const imageUrl = input.image.url;
     const userPrompt = buildReviewUserPrompt(input.productType, input.isTransparentTarget);
 
     const messages = [

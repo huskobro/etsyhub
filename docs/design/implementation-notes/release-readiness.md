@@ -19,7 +19,7 @@ external dependency bekleyen alanlar dürüstçe işaretlenmiştir.
 | Phase 3 | Competitor analysis | ✅ Live | ✅ implicit | ⚠️ Apify/Firecrawl scraper API key gerekirse | scraper provider abstraction + competitor card UI |
 | Phase 4 | Trend stories | ✅ Live | ✅ implicit | ⚠️ Apify scraper API key gerekirse | story timeline + cluster detection + bookmark/reference action |
 | Phase 5 | Variation generation | 🟢 Kapanış (17/17 task) | ✅ implicit | ⚠️ KIE key (per-user settings) | KIE GPT/Z image provider abstraction + per-user encrypted settings |
-| Phase 6 | AI quality review | 🟡 Backend + UI tam | ⚠️ Aşama 2B + drift #6 + KIE flaky bekliyor | ⚠️ KIE key + drift #6 (image URL erişim) | KIE/Google Gemini Flash review provider; UI vitrin tamam, canlı smoke gating; Selection Studio AI Quality Panel & Review Queue gating bağlı buna |
+| Phase 6 | AI quality review | 🟡 Backend + UI + provider tam (drift #6 + Aşama 2B kod kapandı) | ⏳ canlı smoke pending — KIE flaky external | ⚠️ KIE key | KIE/Google Gemini Flash review provider; UI vitrin tamam, kod tarafı kapanmış (data URL inline drift #6 fix); Selection Studio AI Quality Panel & Review Queue canlı smoke gating'i kullanıcı/altyapı sorumluluğunda |
 | Phase 7 | Selection studio | 🟢 v1.0.1 (Manuel QA GEÇTİ) | ✅ Geçti | — | 42 task + 2 polish; SelectionSet state machine + heavy edit-op + Quick Pack + cover invariant |
 | Phase 8 | Mockup studio | 🟡 Implementation complete | ⏳ pending — `phase8-manual-qa.md` checklist'i kullanıcı koşturacak | — | 33 task; Sharp local renderer + Dynamic Mockups stub; Phase 9 köprüsü tamam |
 | Phase 9 | Listing builder | 🟡 Pre-closeout — implementation/local foundation neredeyse tamam | ⏳ pending — `phase9-manual-qa.md` | ⚠️ Etsy credentials + `ETSY_TAXONOMY_MAP_JSON` env + OAuth live test + KIE key (AI metadata) | 28+ commit; submit pipeline tam (taxonomy resolve + draft create + image upload + token refresh resilience); SubmitResultPanel + recovery; readiness diagnostics |
@@ -51,6 +51,7 @@ external dependency bekleyen alanlar dürüstçe işaretlenmiştir.
 - Cache invalidation: ✅ tam (tüm listing mutation'ları `["listing-draft", id]` + `["listings"]` invalidate ediyor)
 - Honest fail discipline: ✅ tam (`EtsyNotConfiguredError` 503, `EtsyTokenRefreshFailedError` 401, `EtsyTaxonomyMissingError` 422, `LISTING_*` family — fake success/mock-as-real yok)
 - Fix-now bulgu: 1 doc-drift (`phase9-status.md` HEAD `ddb3acf` → `92b0072` sync) — bu commit'te kapatıldı
+- Phase 6 drift #6 + Aşama 2B kod kapanışı (2026-05-04 patch): kie-gemini-flash.ts data URL inline; canlı smoke hâlâ external dep
 
 ### Pass 2 — Explore deep stale code/drift audit
 - Stale TODO/Phase-X-eklenecek yorumları: 5 bulgu
