@@ -59,7 +59,9 @@ Phase 6 review queue (B/C/D/E) ve Phase 8 A-O ana akış manual QA browser-based
 
   Script şunları üretir (idempotent — tekrar çalıştırıldığında skip eder):
   - Phase 6 için: 1 Reference + 3 GeneratedDesign farklı review state ile (PENDING + APPROVED + NEEDS_REVIEW) + 4 Asset row (MinIO'da sample PNG)
-  - Phase 8 için: 1 ready SelectionSet + 3 SelectionItem + 1 terminal MockupJob (status=COMPLETED, packSize=10, actualPackSize=10, successRenders=10, coverRenderId set) + 10 MockupRender (cover + 9 grid, MinIO'da sample PNG'ler)
+  - Phase 8 için **iki fixture varyantı**:
+    - **COMPLETED set + job**: 10/10 SUCCESS render, A-H + I cover swap senaryoları için (S3 Apply → S8 result + bulk ZIP + per-render İndir + cover swap)
+    - **PARTIAL_COMPLETE set + job**: 8 SUCCESS + 2 FAILED render (5-class hata sözlüğünden pos=4 RENDER_TIMEOUT retryable + pos=9 SOURCE_QUALITY swap-önerisi). J Per-render retry + K Per-render swap + L Failed render UI senaryoları için.
   - Admin user scope (`ADMIN_EMAIL` env), name prefix `[QA]`, notes prefix `[qa-fixture-v1]`, storageKey prefix `qa-fixture/` — production data'dan ayırt edilebilir.
 
 - [ ] **Reset (opsiyonel — fresh start için):**

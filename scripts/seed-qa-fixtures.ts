@@ -33,6 +33,7 @@ import {
   ReviewStatusSource,
   MockupJobStatus,
   MockupRenderStatus,
+  MockupErrorClass,
   PackSelectionReason,
   SelectionSetStatus,
   SelectionItemStatus,
@@ -318,14 +319,139 @@ async function main() {
   await db.mockupJob.update({ where: { id: job.id }, data: { coverRenderId } });
   console.log(`  MockupJob ${job.id} (status=COMPLETED) + ${PACK_SIZE} MockupRender (cover=${coverRenderId})`);
 
-  // 4. Done — özet
+  // 4. PARTIAL_COMPLETE varyantı — 2. set + 2. job: 8 SUCCESS + 2 FAILED render
+  // Phase 8 J/K/L senaryolarını (per-render retry, swap, failed render UI
+  // 5-class hata sözlüğü) browser smoke için açar. Mevcut COMPLETED set'i
+  // bozmaz — ayrı SelectionSet + ayrı MockupJob.
+  console.log(`[seed-qa-fixtures] 4/4 — PARTIAL_COMPLETE fixture (8 SUCCESS + 2 FAILED render)...`);
+  const partialSet = await db.selectionSet.create({
+    data: {
+      userId: admin.id,
+      name: "[QA] Phase 8 PARTIAL fixture set",
+      status: SelectionSetStatus.ready,
+      finalizedAt: new Date(),
+      sourceMetadata: {
+        kind: "qa-fixture-partial",
+        marker: QA_FIXTURE_MARKER,
+        productTypeId: productPt.id,
+        originalCount: genDesigns.length,
+      },
+    },
+  });
+  for (let i = 0; i < genDesigns.length; i++) {
+    const gd = genDesigns[i]!;
+    await db.selectionItem.create({
+      data: {
+        selectionSetId: partialSet.id,
+        generatedDesignId: gd.id,
+        sourceAssetId: gd.assetId,
+        editHistoryJson: [],
+        status: SelectionItemStatus.pending,
+        position: i,
+      },
+    });
+  }
+  const partialItems = await db.selectionItem.findMany({ where: { selectionSetId: partialSet.id }, orderBy: { position: "asc" } });
+
+  const PARTIAL_FAILED_POSITIONS = new Set([4, 9]); // 8 SUCCESS, 2 FAILED
+  const SUCCESS_COUNT = PACK_SIZE - PARTIAL_FAILED_POSITIONS.size;
+  const partialSetSnapshotId = createHash("sha256").update(`${partialSet.id}:${partialSet.updatedAt.toISOString()}`).digest("hex");
+  const partialJob = await db.mockupJob.create({
+    data: {
+      userId: admin.id,
+      setId: partialSet.id,
+      setSnapshotId: partialSetSnapshotId,
+      categoryId: "canvas",
+      status: MockupJobStatus.PARTIAL_COMPLETE,
+      packSize: PACK_SIZE,
+      actualPackSize: PACK_SIZE,
+      totalRenders: PACK_SIZE,
+      successRenders: SUCCESS_COUNT,
+      failedRenders: PARTIAL_FAILED_POSITIONS.size,
+      errorSummary: {
+        // 5-class hata sözlüğü: spec §5.6 — RENDER_TIMEOUT + SOURCE_QUALITY karışık
+        RENDER_TIMEOUT: 1,
+        SOURCE_QUALITY: 1,
+      },
+      startedAt: new Date(Date.now() - 60_000),
+      completedAt: new Date(),
+    },
+  });
+
+  let partialCoverRenderId: string | null = null;
+  for (let pos = 0; pos < PACK_SIZE; pos++) {
+    const variantItem = partialItems[pos % partialItems.length]!;
+    const isFailed = PARTIAL_FAILED_POSITIONS.has(pos);
+
+    if (isFailed) {
+      // FAILED render: outputKey null, errorClass set. spec §5.6 — RENDER_TIMEOUT
+      // (retryable) + SOURCE_QUALITY (non-retryable, swap önerisi).
+      const errorClass: MockupErrorClass =
+        pos === 4 ? MockupErrorClass.RENDER_TIMEOUT : MockupErrorClass.SOURCE_QUALITY;
+      await db.mockupRender.create({
+        data: {
+          jobId: partialJob.id,
+          variantId: variantItem.id,
+          bindingId: activeBinding.id,
+          templateSnapshot: {
+            templateId: activeTpl.id,
+            provider: activeBinding.providerId,
+            marker: QA_FIXTURE_MARKER,
+          },
+          packPosition: pos,
+          selectionReason: PackSelectionReason.TEMPLATE_DIVERSITY,
+          status: MockupRenderStatus.FAILED,
+          outputKey: null,
+          thumbnailKey: null,
+          errorClass,
+          errorDetail: `[QA fixture] Simulated ${errorClass} at pos ${pos}`,
+          startedAt: new Date(Date.now() - 30_000 + pos * 1000),
+          completedAt: new Date(Date.now() - 20_000 + pos * 1000),
+        },
+      });
+    } else {
+      // SUCCESS render
+      const renderBuf = await makeSamplePng(`[QA] PartialMockup ${pos + 1}`, { r: 80 + pos * 10, g: 50, b: 220 - pos * 15 });
+      const renderKey = `qa-fixture/partial-mockup-${partialJob.id}-pos-${pos}.png`;
+      await getStorage().upload(renderKey, renderBuf, { contentType: "image/png" });
+      const thumbKey = `qa-fixture/partial-mockup-${partialJob.id}-pos-${pos}-thumb.png`;
+      const thumbBuf = await sharp(renderBuf).resize(200, 200).png().toBuffer();
+      await getStorage().upload(thumbKey, thumbBuf, { contentType: "image/png" });
+
+      const render = await db.mockupRender.create({
+        data: {
+          jobId: partialJob.id,
+          variantId: variantItem.id,
+          bindingId: activeBinding.id,
+          templateSnapshot: {
+            templateId: activeTpl.id,
+            provider: activeBinding.providerId,
+            marker: QA_FIXTURE_MARKER,
+          },
+          packPosition: pos,
+          selectionReason: pos === 0 ? PackSelectionReason.COVER : PackSelectionReason.TEMPLATE_DIVERSITY,
+          status: MockupRenderStatus.SUCCESS,
+          outputKey: renderKey,
+          thumbnailKey: thumbKey,
+          startedAt: new Date(Date.now() - 30_000 + pos * 1000),
+          completedAt: new Date(Date.now() - 20_000 + pos * 1000),
+        },
+      });
+      if (pos === 0) partialCoverRenderId = render.id;
+    }
+  }
+  await db.mockupJob.update({ where: { id: partialJob.id }, data: { coverRenderId: partialCoverRenderId } });
+  console.log(`  PARTIAL MockupJob ${partialJob.id} (status=PARTIAL_COMPLETE) — ${SUCCESS_COUNT} SUCCESS + ${PARTIAL_FAILED_POSITIONS.size} FAILED (RENDER_TIMEOUT + SOURCE_QUALITY)`);
+
+  // 5. Done — özet
   console.log("\n[seed-qa-fixtures] ✅ QA fixture hazır (admin user için).");
   console.log("\nManual QA başlangıç noktaları:");
-  console.log(`  Phase 8 — SelectionSet detail: /selection/sets/${set.id}`);
-  console.log(`  Phase 8 — Apply: /selection/sets/${set.id}/mockup/apply`);
-  console.log(`  Phase 8 — S8 Result: /mockup/jobs/${job.id}/result`);
+  console.log(`  Phase 8 — COMPLETED set: /selection/sets/${set.id}`);
+  console.log(`  Phase 8 — COMPLETED job result: /selection/sets/${set.id}/mockup/jobs/${job.id}/result`);
+  console.log(`  Phase 8 — PARTIAL_COMPLETE set: /selection/sets/${partialSet.id}`);
+  console.log(`  Phase 8 — PARTIAL_COMPLETE job result (J/K/L senaryoları için): /selection/sets/${partialSet.id}/mockup/jobs/${partialJob.id}/result`);
   console.log(`  Phase 6 — Review queue: /review (3 GeneratedDesign + 3 farklı state)`);
-  console.log(`  Phase 9 — Listing draft create: POST /api/listings/draft body { mockupJobId: "${job.id}" }`);
+  console.log(`  Phase 9 — Listing draft create (COMPLETED): POST /api/listings/draft body { mockupJobId: "${job.id}" }`);
   console.log("\nReset için: npx tsx scripts/seed-qa-fixtures.ts --reset");
 }
 

@@ -39,8 +39,12 @@ Tüm senaryolar başlamadan önce:
   ```bash
   npx tsx scripts/seed-qa-fixtures.ts
   ```
-  Beklenen output: 1 ready SelectionSet + 3 SelectionItem + 1 terminal MockupJob (status=COMPLETED, packSize=10, successRenders=10, coverRenderId set) + 10 MockupRender (cover + 9 grid). Console'da setId / jobId / detail page URL'leri yazdırılır. Reset için `--reset` flag.
-- [ ] `/selection` index sayfasında "[QA] Phase 8 fixture set" kartı `ready` durumda görünür
+  Beklenen output:
+  - **COMPLETED set + job** (10 SUCCESS render, A-H + I cover swap senaryoları için)
+  - **PARTIAL_COMPLETE set + job** (8 SUCCESS + 2 FAILED render, J Per-render retry + K Per-render swap + L Failed render UI 5-class hata sözlüğü senaryoları için; FAILED render'lar pos=4 RENDER_TIMEOUT + pos=9 SOURCE_QUALITY)
+  - 6 Asset + 3 GeneratedDesign (3 farklı review state — Phase 6 için de kullanılır)
+  Console'da setId / jobId / result page URL'leri yazdırılır. Reset için `--reset` flag.
+- [ ] `/selection` index sayfasında **"[QA] Phase 8 fixture set"** + **"[QA] Phase 8 PARTIAL fixture set"** kartlar `ready` durumda görünür
 - [ ] Admin seed: en az 1 ACTIVE MockupTemplate `canvas` kategorisinde mevcut (production seed'den)
 - [ ] Her template için en az 1 ACTIVE MockupTemplateBinding mevcut
   - Not: V1'de `provider=DYNAMIC_MOCKUPS` binding'leri yok (Task 12 KOŞULLU); `provider=LOCAL_SHARP` binding'leri olmalı
@@ -432,7 +436,7 @@ QA fixture seed + Phase 7→8 aspectRatio fix sonrası A-O senaryolarının heps
 - **G S8 cover + grid + G.1 Phase 9 köprüsü** — ✅ canlı PASS
 - **H Bulk ZIP** — ✅ canlı PASS (Phase 9 ZIP route üzerinden)
 - **I Cover swap modal** — kullanıcı browser'da test edebilir
-- **J Per-render retry + K Per-render swap + L Failed render UI** — V1 fixture sadece SUCCESS render'ları içeriyor; failed render senaryosu için ayrı fixture varyantı V1.1 nice-to-have (mevcut fixture FAILED render eklemiyor — silent corruption olmamak için)
+- **J Per-render retry + K Per-render swap + L Failed render UI** — ✅ **PARTIAL_COMPLETE fixture eklendi (HEAD `5af5ae7`+ sonrası, scripts/seed-qa-fixtures.ts)**: 2. SelectionSet + 2. MockupJob (status=PARTIAL_COMPLETE, 8 SUCCESS + 2 FAILED render). FAILED render'lar 5-class hata sözlüğünden 2 kategori içerir: pos=4 RENDER_TIMEOUT (retryable) + pos=9 SOURCE_QUALITY (non-retryable, swap önerisi). Browser canlı doğrulandı: H1 "Pack hazır: 8/10 görsel" + 8 İndir hover + 2 FAILED slot ("Retry" + "Swap" CTA enabled, errorClass + errorDetail Türkçe görünür).
 - **M Cross-user 404** — Phase 9'da analog akış canlı PASS oldu (cross-user ownership disipline aynı pattern); Phase 8 endpoint'leri için integration testler 33 task kapsamında PASS
 - **N Completion toast** — Phase 7 emsali baseline; Phase 8 fixture toast tetikleyici background completion için ayrı senaryo
 - **O Backdrop davranışları** — kullanıcı browser'da koşturmalı
