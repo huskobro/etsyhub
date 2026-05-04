@@ -272,15 +272,29 @@ Phase 6 KIE flaky durumu (`d439cf7` carry-forward note) Phase 8'i etkilemedi. Ph
 
 ---
 
-## Status: 🟡 Phase 8 V1 implementation complete, manual QA pending
+## Status: 🟡 Phase 8 V1 Pending — fixture-blocked (manual QA başlatma noktası açık)
 
 **Tamamlanan:**
-- 33 task implement edildi (kalan tek "yapılacak" Task 33 = bu doc + manuel QA checklist hazırlanması; manuel QA gerçek koşumu kullanıcıya bağlı)
-- Tüm otomasyon kalite gate'leri PASS (TS strict 0, lint clean, token check pass, 1396 + 845 test yeşil)
+- 33 task implement edildi (otomasyon gate'leri PASS — TS strict 0, lint clean, token check pass, 1674 + 946 test yeşil — HEAD `dc3bf69`+)
 - Hook + service + UI component kontratları stable
+- **Selection Studio entry browser render PASS** (canlı doğrulandı)
+- **QA fixture seed script eklendi (`scripts/seed-qa-fixtures.ts`)** — admin user için ready SelectionSet + terminal MockupJob (COMPLETED, 10 successful renders) + cover invariant + MinIO sample PNG'ler. Production akışını taklit etmez; manual QA başlangıç noktasını açar.
+- **Fixture'lı browser canlı doğrulama (2026-05-04):**
+  - `/selection` Selection Studio kart "[QA] Phase 8 fixture set / Ready" görünüyor
+  - `/selection/sets/[setId]/mockup/jobs/[jobId]/result` "Pack hazır: 10/10 görsel" + 10 image render + 5 CTA (Bulk download ZIP, Listing'e gönder, Cover'ı Değiştir, İndir, Listingler)
+  - `POST /api/listings/draft { mockupJobId }` 202 + listingId (Phase 9 köprüsü canlı)
+  - `GET /api/listings/draft/[id]/assets/download` 200 application/zip + ZIP magic bytes (PK\x03\x04) + 64KB
 
-**Pending (insan-paralel):**
-- Manuel QA browser-based smoke — kullanıcı `phase8-manual-qa.md` checklist'ini gerçek browser + gerçek backend (Postgres + MinIO + Redis + BullMQ + Next dev) ile yürütecek
+**Pending (insan-paralel — fixture'lı browser smoke):**
+- Phase 8 manual QA A-O senaryoları (S3 Apply → S1 Browse → S2 Detail → Submit → S7 polling → S8 redirect → ZIP → Cover swap → Per-render retry/swap → 5-class hata sözlüğü → Cross-user 404 → Toast → Backdrop) — fixture mevcut, kullanıcı/admin browser'da koşturabilir
 - E2E suite gerçek koşum (`npm run test:e2e`) — local dev env hazır olduğunda
 
-**Bulgular bölümü:** Manuel QA gerçek koşum sonucu bu doc'un altına `## Bulgular — YYYY-MM-DD` başlığı altında yansıtılacak. Sürpriz bug çıkarsa Phase 8 V1 status `🟢` (PASS) veya `🔴` (BLOCK) olarak güncellenecek.
+**Önkoşul:**
+```bash
+# Bir kez çalıştır:
+npx tsx scripts/seed-qa-fixtures.ts
+# Reset için:
+npx tsx scripts/seed-qa-fixtures.ts --reset
+```
+
+**Bulgular:** [`./phase8-manual-qa.md`](./phase8-manual-qa.md) "Bulgular — 2026-05-04" — fixture eklenince A-O senaryolarının nasıl başlatılacağı tarif edildi. Manuel browser smoke kullanıcı/admin tarafında — sürpriz bug çıkarsa Phase 8 V1 status `🟢` (PASS) veya `🔴` (BLOCK) olarak güncellenecek.

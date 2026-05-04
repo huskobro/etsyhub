@@ -6,7 +6,7 @@
 > **Spec:** [`../../plans/2026-05-02-phase9-listing-builder-design.md`](../../plans/2026-05-02-phase9-listing-builder-design.md)
 > **Plan:** [`../../plans/2026-05-02-phase9-listing-builder-plan.md`](../../plans/2026-05-02-phase9-listing-builder-plan.md)
 > **Manual QA:** [`./phase9-manual-qa.md`](./phase9-manual-qa.md) (henüz koşulmadı)
-> **Phase 8 emsali:** [`./phase8-closeout.md`](./phase8-closeout.md) (Phase 8 V1 hâlâ `🟡 manual QA pending`)
+> **Phase 8 emsali:** [`./phase8-closeout.md`](./phase8-closeout.md) (Phase 8 V1 `🟡 Pending — fixture-blocked`; QA fixture seed script `scripts/seed-qa-fixtures.ts` ile manual QA başlatılabilir)
 
 ## Özet
 
@@ -402,30 +402,28 @@ submit, etsy-connection) bu pattern'ı sıfırdan uyguladı.
 
 ## Next-step options
 
-Phase 9 V1 implementation/local foundation neredeyse tamam — kod tarafında
-ek lokal blocker yok. Sıradaki seçenekler **operasyonel + manual QA**
+Phase 9 V1 **🟢 Honest-fail PASS** ilan edildi (2026-05-04 manual QA execution).
+Sıradaki seçenekler **Full release PASS** (Etsy live submit success) ve V1.1+
 ağırlıklı:
 
-### (A) Manual QA tetikle (pre-closeout zorunluluğu)
-- **Ne:** [`./phase9-manual-qa.md`](./phase9-manual-qa.md) checklist'ini browser'da koşmak
-- **Bağımlılık:** Postgres + MinIO + Redis + Next dev server + (opsiyonel) KIE key + (opsiyonel) Etsy credentials + (opsiyonel) `ETSY_TAXONOMY_MAP_JSON`
-- **Etki:** Lokal yüzey gerçek kullanıcı flow'larında doğrulanır; bulgu varsa carry-forward
-- **Not:** Tüm external dep yoksa "honest-fail path" doğrulanır; varsa live success path doğrulanır — checklist iki yolu da ayrı ayrı tarif eder
+### (A) Etsy operasyonel hazırlık + Phase 9 H + G.2-G.6 final smoke ✅ KALAN
+- **Ne:** `developer.etsy.com` üzerinde Etsy app + `.env.local`'e 3 env (`ETSY_CLIENT_ID/SECRET/REDIRECT_URI` + `ETSY_TAXONOMY_MAP_JSON`) + browser OAuth flow live test
+- **Etki:** H.1-H.5 (live submit success) + G.2-G.7 (OAuth state'leri) canlı PASS edilebilir
+- **Sonrası:** Phase 9 V1 status `🟢 V1 Honest-fail PASS` → `🟢 V1 Full PASS`
 
-### (B) Phase 8 manual QA tetikle (Phase 9 closeout için önkoşul)
-- **Ne:** Phase 8 V1 [`./phase8-manual-qa.md`](./phase8-manual-qa.md) checklist'i
-- **Bağımlılık:** Phase 8 V1 closeout sözleşmesi
-- **Etki:** Phase 9 V1 final closeout (PASS ilanı) için önkoşul
+### (B) Phase 8 V1 manual QA — fixture'lı browser smoke ✅ KALAN
+- **Ne:** `scripts/seed-qa-fixtures.ts` ile admin için ready SelectionSet + terminal MockupJob + 10 MockupRender seed; sonra `phase8-manual-qa.md` A-O senaryoları
+- **Sonrası:** Phase 8 V1 `🟡 Pending — fixture-blocked` → `🟢 V1 PASS`
 
-### (C) Token refresh worker (V1.1 carry-forward)
+### (C) Token refresh BullMQ background worker (V1.1 carry-forward)
 - **Ne:** Submit pipeline öncesi expiry pre-check + auto-refresh + BullMQ background worker
 - **Bağımlılık:** Manuel reconnect UX'inden memnun değilsek
 - **Etki:** Expired token kullanıcıya görünmeden refresh edilir
 
-### (D) Phase 9 V1 closeout (PASS ilanı)
-- **Ne:** A + B tamamlandıktan sonra closeout doc'unu finalize et
-- **Bağımlılık:** Phase 9 manual QA + Phase 8 manual QA tamamlanması
-- **Etki:** Phase 9 V1 "🟢 PASS" ilan edilir; Phase 9.1 (token refresh worker, admin taxonomy UI, V2 active publish) açılabilir
+### (D) KIE Gemini schema flakiness mitigation (V1.1 carry-forward)
+- **Ne:** Provider-level validation-guided retry max 2 try (schema fail durumunda prompt feedback ile yeniden iste)
+- **Bağımlılık:** V1: 502 + Türkçe + retry button çalışıyor; flakiness oranı kabul edilebilir
+- **Etki:** Schema fail oranı düşer, kullanıcı manuel retry yerine otomatik retry görür
 
 ---
 

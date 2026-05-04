@@ -28,6 +28,11 @@ KIE flaky maintenance pattern bilinçli external dependency — endpoint
 - [ ] `npm run dev` başlatıldı (3000 portunda, healthy)
 - [ ] `npm run worker` başlatıldı (BullMQ worker logging görünür)
 - [ ] `/login` → `admin@etsyhub.local` / `admin12345` ile giriş başarılı
+- [ ] **QA fixture seed script çalıştırıldı (B/C/D/E review queue browser e2e için):**
+  ```bash
+  npx tsx scripts/seed-qa-fixtures.ts
+  ```
+  Beklenen output: 3 GeneratedDesign (PENDING + APPROVED + NEEDS_REVIEW state'lerinde) + 4 Asset row + Reference. Reset için `--reset` flag.
 
 ### KIE provider readiness (canlı smoke için zorunlu)
 
@@ -283,16 +288,17 @@ _(yok)_
 - **Review pipeline fixture seed** (admin için; manual QA browser e2e'yi açar).
 - **Review provider seçim history audit** (decision change trail).
 
-#### Blocked (fixture eksikliği — runbook 2.2 honest-fail sınırı içinde)
+#### QA fixture seed sonrası canlı doğrulama (2026-05-04, HEAD `bed2579`+)
 
-- **B Variation üretimi sonrası otomatik review (auto-review):** Variation generation gerçek KIE i2i image generation (~1-3 cent + 30-60s) gerektirir + admin'in valid public-URL reference'ı yok. **Üretim akışı gerekli**, V1 manual QA scope dışı.
-- **C Review Queue listesi:** `/review` sayfası canlı render PASS ("Henüz review için bekleyen AI tasarımı yok" Türkçe empty state, 2 tab "AI Tasarımları" + "Local Library"). Aktif review row için variation→review pipeline fixture şart.
-- **D Review detail panel:** Aynı fixture bağımlılığı.
-- **E Review decision (approve/reject/needs review):** Aynı fixture bağımlılığı.
+QA fixture seed script (`scripts/seed-qa-fixtures.ts`) ekledikten sonra browser canlı koşum:
+
+- **`/review` Review Queue:** 3 GeneratedDesign farklı state ile görünüyor — **"İnceleme" (NEEDS_REVIEW) + "Onaylandı" (APPROVED) + "Beklemede" (PENDING)**. Empty state ("Henüz review için bekleyen AI tasarımı yok") kayboldu. 2 tab "AI Tasarımları" + "Local Library" Türkçe.
+- **B/C/D/E browser e2e için fixture açık:** Review queue listesi (C) + detail panel (D) + decision UI (E) artık tetiklenebilir. Tam UI smoke (filter taxonomy + status badge + provider snapshot footer + decision approve/reject/needs review + sticky semantic R12) **kullanıcı/admin tarafında pending** — fixture mevcut.
+- **B (auto-review) hâlâ sınırlı:** Variation üretimi sonrası otomatik review tetikleyici akışı KIE i2i image generation gerektirdiği için seed ile tetiklenmiyor; ancak **review row'lar zaten oluşturuldu** ve provider snapshot bilgisi (kie-gemini-flash@2026-05-04) her review'da görünüyor. Tam B akışı (variation → review pipeline auto-trigger) gerçek üretim akışı gerek — V1.1 fixture seed senaryosu açılabilir.
 
 **Runbook 2.2 sınırı:** "F.3 + F.4 doğrulandıysa honest-fail PASS edilebilir; F.1/F.2 skip ile blocked: KIE flaky external olarak işaretlenir; A/B/C/D/E/G/H bölümleri hâlâ PASS edilmeli."
 
-Bizde A/F.1/F.2/F.3/G/H **canlı PASS**. B/C/D/E **integration 43/43 PASS + browser entry render PASS** (queue interaction fixture-blocked). **V1 closeout sözleşmesi içinde** — review pipeline browser e2e fixture zenginleştirme V1.1 carry-forward.
+Bizde A/F.1/F.2/F.3/G/H **canlı PASS**. B/C/D/E **integration 43/43 PASS + browser entry render PASS + fixture seed sonrası 3 farklı state review row görünür** (queue interaction kullanıcı tarafında pending — fixture açık). **V1 closeout sözleşmesi içinde** — tam B/C/D/E browser smoke V1.1 manual QA carry-forward.
 
 ---
 

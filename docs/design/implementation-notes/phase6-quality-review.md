@@ -343,7 +343,7 @@ smoke'undan SONRA manuel probe ile test edilecek:
 | Phase 5 KIE provider env-var bağımlılığı (drift #2) | ✅ Hotfix `f2ca19c` ile çözüldü (settings-aware refactor) |
 | Review provider strict JSON schema reserved-word drift (#5) | ✅ Düzeltildi (commit `b681006`); `riskFlags[].type` → `riskFlags[].kind` write-new + read-both backward-compat. KIE strict schema kabul ediyor — smoke retry job 63'te 422 kayboldu. |
 | Review pipeline canlı smoke | ⏳ Drift #5 sonrası ilerledi; ardından **drift #6 (image URL erişim)** ve KIE flaky maintenance ile bloke oldu. Detay aşağıda. |
-| Phase 6 status | 🟡 (Aşama 2A mimari tamam + variation üretimi canlı + drift #5 kapandı; drift #6 ve KIE flaky stabilite bekliyor) |
+| Phase 6 status | 🟢 V1 Honest-fail PASS (2026-05-04, HEAD `dc3bf69`+) — drift #5 + drift #6 + KIE flaky kapandı; canlı KIE Gemini 2.5 Flash health probe + smoke data URL probe 200; A + F.1 + F.2 + F.3 + G + H canlı PASS; B/C/D/E browser e2e için QA fixture seed script eklendi (`scripts/seed-qa-fixtures.ts`) |
 
 **Açık drift / blocker listesi (sırasıyla):**
 

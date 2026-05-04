@@ -10,13 +10,14 @@ Bu doküman:
 - Yeni feature spec'i **DEĞİL** (kod release-ready)
 - Sıralama + PASS kriteri + closeout sonrası doc update planı
 
-**Tamamlanan (2026-05-04 manual QA execution turu):**
+**Tamamlanan (2026-05-04 manual QA execution + QA enablement):**
 - ✅ Phase 6 V1 Honest-fail PASS — A + F.1 + F.2 + F.3 + G + H canlı (KIE Gemini 2.5 Flash health probe + smoke data URL probe 200)
 - ✅ Phase 9 V1 Honest-fail PASS — V1 zorunlu kapsam (A.1 + A.2 + B + C + D + E.1 + E.2 KIE 10/10 + F + G.1 + I + J.1+J.5+J.6+J.7+J.8+J.9 + L.4) canlı PASS
 - 5 fix-now bug kapatıldı: title pass-message regression `b89d873`, ai-mode 500 cipher decrypt `78d82e3`, logger pino-pretty crash `f1d4664`, AssetSection ZIP guard `920c6d2`, listing-meta cost recording `dc3bf69`
+- **QA fixture seed eklendi (`scripts/seed-qa-fixtures.ts`):** Phase 6 + Phase 8 manual QA için admin user fixture (review queue 3 state'li GeneratedDesign + Phase 8 ready SelectionSet + terminal MockupJob + 10 MockupRender). Browser canlı doğrulandı: `/review` 3 review row + `/selection` "[QA] Phase 8 fixture set" + S8 result page "Pack hazır: 10/10 görsel" + Phase 9 köprüsü 202 + ZIP download 200 ZIP magic bytes.
 
 **Kalan (Full release PASS için):**
-- 🟡 Phase 8 V1 manual QA — admin user için fixture-blocked (Phase 7 üzerinden ready SelectionSet hazırlanmalı)
+- 🟡 Phase 8 V1 manual QA browser smoke — fixture mevcut (`scripts/seed-qa-fixtures.ts`), kullanıcı/admin A-O senaryolarını koşturur
 - 🟡 Phase 9 H + G.2-G.6 — Etsy 3 external dep (credentials + taxonomy env + OAuth)
 
 İçerik 6 bölüm: önkoşul env → QA sırası → her phase'in PASS kriterleri → honest-fail PASS sınırı → blocked sınırı → closeout sonrası doc update.
@@ -45,6 +46,28 @@ Live Etsy submit success **3 external dep'in eş zamanlı sağlanmasına** bağl
 - [ ] **OAuth bağlantısı kurulur** — `Settings → Etsy bağlantısı` panelinden "Etsy'ye bağlan" → Etsy izin → callback `?etsy=connected`
 
 **Eğer 0.2 veya 0.3 sağlanamıyorsa**: ilgili phase'in **honest-fail PASS** path'i takip edilir — bu yine geçerli closeout'tur (V1 sözleşmesinde belirtilmiş).
+
+### 0.4 Phase 6 + Phase 8 fixture seed (zorunlu — review queue + S8 result browser e2e için)
+
+Phase 6 review queue (B/C/D/E) ve Phase 8 A-O ana akış manual QA browser-based smoke için admin user'da minimum başlangıç fixture'ı gerek. Bu **production akışını taklit etmez** — sadece DB seed + MinIO sample PNG yükleme:
+
+- [ ] **QA fixture seed script** — bir kez çalıştır:
+  ```bash
+  npx tsx scripts/seed-qa-fixtures.ts
+  ```
+
+  Script şunları üretir (idempotent — tekrar çalıştırıldığında skip eder):
+  - Phase 6 için: 1 Reference + 3 GeneratedDesign farklı review state ile (PENDING + APPROVED + NEEDS_REVIEW) + 4 Asset row (MinIO'da sample PNG)
+  - Phase 8 için: 1 ready SelectionSet + 3 SelectionItem + 1 terminal MockupJob (status=COMPLETED, packSize=10, actualPackSize=10, successRenders=10, coverRenderId set) + 10 MockupRender (cover + 9 grid, MinIO'da sample PNG'ler)
+  - Admin user scope (`ADMIN_EMAIL` env), name prefix `[QA]`, notes prefix `[qa-fixture-v1]`, storageKey prefix `qa-fixture/` — production data'dan ayırt edilebilir.
+
+- [ ] **Reset (opsiyonel — fresh start için):**
+  ```bash
+  npx tsx scripts/seed-qa-fixtures.ts --reset
+  ```
+  FK-safe sırada Mockup* + Selection* + GeneratedDesign + Reference + Asset row'larını siler + MinIO storage cleanup (best-effort).
+
+**CLAUDE.md uyumu:** production behavior değişmez; admin scope; fake mockup/review success YOK (sample PNG'ler "qa-fixture" etiketli, AI çıktısı taklit etmez); manual QA başlangıç noktasını açar — gerçek üretim akışı (Phase 5 variation → Phase 6 review → Phase 7 selection → Phase 8 mockup) end-user için **ayrı şekilde korunur**.
 
 ---
 
@@ -277,18 +300,21 @@ Bu işler V1 sözleşmesinde **kasıtlı olarak yok**; PASS ilanını engellemez
 
 ## Kısa özet (TL;DR)
 
-**Mevcut durum (2026-05-04, HEAD `dc3bf69`):**
+**Mevcut durum (2026-05-04, HEAD `bed2579`+):**
 1. ✅ Env (0.1) tamam
-2. ✅ Phase 6 V1 Honest-fail PASS — A + F.1 + F.2 + F.3 + G + H canlı (KIE Gemini 2.5 Flash live)
-3. ✅ Phase 7 — otomatik aktif (zaten 🟢 PASS)
-4. 🟡 Phase 8 V1 Pending — fixture-blocked (admin için ready SelectionSet seed gerek)
-5. ✅ Phase 9 V1 Honest-fail PASS — V1 zorunlu kapsam canlı + KIE 10/10 stabilite + cost recording
-6. 🟡 release-readiness.md "V1 Honest-fail PASS" — Full release PASS için Phase 8 + Etsy 3 dep kalan
+2. ✅ **QA fixture seed (0.4) eklendi** (`scripts/seed-qa-fixtures.ts`) — Phase 6 + Phase 8 manual QA başlatma noktası açık
+3. ✅ Phase 6 V1 Honest-fail PASS — A + F.1 + F.2 + F.3 + G + H canlı (KIE Gemini 2.5 Flash live + fixture sonrası review queue 3 farklı state row)
+4. ✅ Phase 7 — otomatik aktif (zaten 🟢 PASS)
+5. 🟡 Phase 8 V1 Pending — manual QA başlatma noktası açık (fixture mevcut, A-O browser smoke kullanıcı tarafında); entry + S8 result + Phase 9 köprüsü + ZIP canlı doğrulandı
+6. ✅ Phase 9 V1 Honest-fail PASS — V1 zorunlu kapsam canlı + KIE 10/10 stabilite + cost recording
+7. 🟡 release-readiness.md "V1 Honest-fail PASS" — Full release PASS için Phase 8 fixture'lı manual QA + Etsy 3 dep kalan
 
 **Full release PASS için kalan:**
-- Phase 8 V1 manual QA (kullanıcı/admin Phase 7 üzerinden fixture hazırlar)
+- Phase 8 V1 manual QA browser smoke (kullanıcı/admin `scripts/seed-qa-fixtures.ts` ile fixture hazırlayıp A-O senaryoları koşturur)
 - Etsy 3 external dep (credentials + taxonomy env + OAuth live test)
 - Phase 9 H + G.2-G.6 final smoke
 - release-readiness.md final update
+
+**Repo-side blocker'lar bu turda tamamen kapatıldı.** Kalan: external dep + kullanıcı/admin browser smoke koşumu.
 
 **"V1 Honest-fail PASS" ilan edildi** (Phase 6 + 9 — runbook 2.2 + 5.2 sınırlarına göre). **"Full release PASS"** Phase 8 + Etsy operasyonel dep tamamlanınca ilan edilecek.
