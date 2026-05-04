@@ -19,8 +19,10 @@
 // Phase 6 emsali: review-design.worker.ts orchestration; ama burada
 // queue/job kullanmıyoruz (V1 foundation: sync call).
 
+import { ProviderKind } from "@prisma/client";
 import { db } from "@/server/db";
 import { AppError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
 import {
   getListingMetaAIProvider,
@@ -28,6 +30,8 @@ import {
 } from "@/providers/listing-meta-ai/registry";
 import { buildProviderSnapshot } from "@/providers/review/snapshot";
 import { LISTING_META_PROMPT_VERSION } from "@/providers/listing-meta-ai/prompt";
+import { LISTING_META_KIE_COST_ESTIMATE_CENTS } from "@/providers/listing-meta-ai/kie-gemini-flash";
+import { recordCostUsage } from "@/server/services/cost/track-usage";
 import type { ListingMetaOutput } from "@/providers/listing-meta-ai/types";
 
 // ────────────────────────────────────────────────────────────
@@ -132,6 +136,25 @@ export async function generateListingMeta(
 
   // 6. Snapshot
   const providerSnapshot = buildProviderSnapshot(provider.modelId, new Date());
+
+  // 7. Cost recording (best-effort — Phase 6 review.worker emsali).
+  // Primary truth = output; cost write fail caller'ı 502'ye düşürmesin.
+  // V1 conservative estimate: 1 cent per call (LISTING_META_KIE_COST_ESTIMATE_CENTS).
+  try {
+    await recordCostUsage({
+      userId,
+      providerKind: ProviderKind.AI,
+      providerKey: provider.id,
+      model: provider.modelId,
+      units: 1,
+      costCents: LISTING_META_KIE_COST_ESTIMATE_CENTS,
+    });
+  } catch (err) {
+    logger.warn(
+      { userId, listingId, providerKey: provider.id, err: (err as Error).message },
+      "listing-meta cost recording failed (best-effort, primary path unaffected)",
+    );
+  }
 
   return {
     output,

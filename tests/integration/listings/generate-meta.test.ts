@@ -193,6 +193,72 @@ describe("generateListingMeta() — Phase 9 V1 Task 9", () => {
     expect(callOptions.apiKey).toBe("test-key");
   });
 
+  it("cost recording — happy path sonrası CostUsage row yazılır (1 cent estimate)", async () => {
+    const user = await ensureUser(uniqueEmail("cost"));
+    userIds.push(user.id);
+    await updateUserAiModeSettings(user.id, {
+      kieApiKey: "test-key",
+      geminiApiKey: null,
+      reviewProvider: "kie",
+    });
+
+    const listing = await db.listing.create({
+      data: { userId: user.id, title: "Cost Test", status: "DRAFT" },
+    });
+
+    const generateMock = vi.fn().mockResolvedValue(validOutput);
+    vi.mocked(getListingMetaAIProvider).mockReturnValueOnce({
+      id: "kie-gemini-flash",
+      modelId: "gemini-2.5-flash",
+      kind: "text",
+      generate: generateMock,
+    });
+
+    const before = Date.now();
+    await generateListingMeta(listing.id, user.id);
+
+    const rows = await db.costUsage.findMany({
+      where: { userId: user.id, createdAt: { gte: new Date(before - 1000) } },
+    });
+    expect(rows).toHaveLength(1);
+    const row = rows[0]!;
+    expect(row.providerKey).toBe("kie-gemini-flash");
+    expect(row.model).toBe("gemini-2.5-flash");
+    expect(row.units).toBe(1);
+    expect(row.costCents).toBe(1);
+  });
+
+  it("cost recording — provider hata atarsa CostUsage YAZILMAZ (best-effort cost = success-only)", async () => {
+    const user = await ensureUser(uniqueEmail("costfail"));
+    userIds.push(user.id);
+    await updateUserAiModeSettings(user.id, {
+      kieApiKey: "test-key",
+      geminiApiKey: null,
+      reviewProvider: "kie",
+    });
+
+    const listing = await db.listing.create({
+      data: { userId: user.id, title: "Cost Fail", status: "DRAFT" },
+    });
+
+    vi.mocked(getListingMetaAIProvider).mockImplementationOnce(() => ({
+      id: "kie-gemini-flash",
+      modelId: "gemini-2.5-flash",
+      kind: "text",
+      generate: vi.fn().mockRejectedValue(new Error("kie listing-meta failed: 503")),
+    }));
+
+    const before = Date.now();
+    await expect(generateListingMeta(listing.id, user.id)).rejects.toBeInstanceOf(
+      ListingMetaProviderError,
+    );
+
+    const rows = await db.costUsage.findMany({
+      where: { userId: user.id, createdAt: { gte: new Date(before - 1000) } },
+    });
+    expect(rows).toHaveLength(0);
+  });
+
   it("provider hata fırlatınca ListingMetaProviderError 502 wrap", async () => {
     const user = await ensureUser(uniqueEmail("proverr"));
     userIds.push(user.id);
@@ -240,8 +306,9 @@ describe("generateListingMeta() — Phase 9 V1 Task 9", () => {
 });
 
 afterAll(async () => {
-  // FK-safe cleanup chain — listing önce, UserSetting sonra, store, sonra user.
+  // FK-safe cleanup chain — listing + cost önce, UserSetting sonra, store, sonra user.
   await db.listing.deleteMany({ where: { userId: { in: userIds } } });
+  await db.costUsage.deleteMany({ where: { userId: { in: userIds } } });
   await db.userSetting.deleteMany({ where: { userId: { in: userIds } } });
   await db.store.deleteMany({ where: { userId: { in: userIds } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
