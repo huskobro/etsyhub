@@ -246,7 +246,7 @@ describe("CreateJobBodySchema", () => {
     ).toThrow();
   });
 
-  it("rejects non-canvas categoryId (V1 sınırı)", () => {
+  it("rejects unknown categoryId (V2 enum sınırı: 8 değer dışı)", () => {
     expect(() =>
       CreateJobBodySchema.parse({
         setId: "set-123",
@@ -254,6 +254,22 @@ describe("CreateJobBodySchema", () => {
         templateIds: ["tpl-a"],
       })
     ).toThrow();
+  });
+
+  it("V2 multi-category: 8 ProductType key kabul edilir (canvas + wall_art + printable + clipart + sticker + tshirt + hoodie + dtf)", () => {
+    const validCategories = [
+      "canvas", "wall_art", "printable", "clipart",
+      "sticker", "tshirt", "hoodie", "dtf",
+    ];
+    for (const categoryId of validCategories) {
+      expect(() =>
+        CreateJobBodySchema.parse({
+          setId: "set-123",
+          categoryId,
+          templateIds: ["tpl-a"],
+        })
+      ).not.toThrow();
+    }
   });
 
   it("rejects missing setId", () => {

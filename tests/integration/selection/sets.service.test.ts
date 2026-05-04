@@ -355,6 +355,27 @@ describe("Phase 7 sets.service — getSet", () => {
     expect(result.items[0]!.aspectRatio).toBeNull();
   });
 
+  // V2 multi-category foundation (HEAD `5eabffc`+):
+  //   items[].productTypeKey = generatedDesign.productType.key
+  //   Phase 8 Apply page useMockupTemplates({ categoryId }) bu key'i kullanır
+  //   (V1 hardcoded "canvas" düştü).
+  it("items[].productTypeKey — productType.key resolve eder (V2 multi-category)", async () => {
+    const { design, designAsset } = await ensureBaseFixtures(userAId);
+    const set = await createSet({ userId: userAId, name: "ProductTypeKey Set" });
+    await db.selectionItem.create({
+      data: {
+        selectionSetId: set.id,
+        generatedDesignId: design.id,
+        sourceAssetId: designAsset.id,
+        position: 0,
+      },
+    });
+
+    const result = await getSet({ userId: userAId, setId: set.id });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.productTypeKey).toBe(PRODUCT_TYPE_KEY);
+  });
+
   it("cross-user → NotFoundError", async () => {
     const set = await createSet({ userId: userAId, name: "A's Set" });
 

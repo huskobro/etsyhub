@@ -28,8 +28,14 @@ export function S3ApplyView({ setId }: { setId: string }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: set, isLoading: setLoading } = useSelectionSet(setId);
+  // V2 multi-category (HEAD `5eabffc`+): categoryId set'in items[0].
+  // productTypeKey'inden derive edilir; V1 hardcoded "canvas" fallback.
+  // Bu sayede sticker/wall_art/poster vb. ProductType'lı set'ler
+  // hardcoded canvas template havuzuna düşmez.
+  const setItems = (set as { items?: Array<{ productTypeKey?: string | null }> } | undefined)?.items;
+  const categoryId = setItems?.[0]?.productTypeKey ?? "canvas";
   const { data: templates = [], isLoading: templatesLoading } =
-    useMockupTemplates({ categoryId: "canvas" });
+    useMockupTemplates({ categoryId });
   const packState = useMockupPackState(setId);
   const overlayState = useMockupOverlayState();
 
@@ -41,7 +47,7 @@ export function S3ApplyView({ setId }: { setId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           setId,
-          categoryId: "canvas",
+          categoryId,
           templateIds: packState.selectedTemplateIds,
         }),
       });
@@ -57,7 +63,7 @@ export function S3ApplyView({ setId }: { setId: string }) {
     } finally {
       setIsSubmitting(false);
     }
-  }, [setId, packState.selectedTemplateIds, router]);
+  }, [setId, categoryId, packState.selectedTemplateIds, router]);
 
   if (setLoading || templatesLoading) {
     return <div className="p-6 text-sm text-text-muted">Yükleniyor…</div>;

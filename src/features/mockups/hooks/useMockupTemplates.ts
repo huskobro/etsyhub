@@ -35,8 +35,13 @@ export const mockupTemplatesQueryKey = (categoryId: string) =>
 /**
  * Aktif mockup template listesi.
  *
- * @param params.categoryId V1'de tek değer: `"canvas"` (Spec §9). İleride
- *                          farklı kategoriler eklenirse genişler.
+ * @param params.categoryId Spec §9 + V2 multi-category (HEAD `5eabffc`+):
+ *                          MOCKUP_CATEGORY_VALUES enum'undan biri (canvas,
+ *                          wall_art, printable, clipart, sticker, tshirt,
+ *                          hoodie, dtf). V1 sadece "canvas" template
+ *                          seed'liyor (admin asset prep); diğer kategorilerde
+ *                          empty array döner. Backend endpoint zaten herhangi
+ *                          string kabul ediyor (DB string kolon).
  */
 export function useMockupTemplates(params: { categoryId: string }) {
   return useQuery<MockupTemplateView[]>({

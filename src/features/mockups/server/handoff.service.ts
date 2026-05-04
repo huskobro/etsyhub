@@ -80,8 +80,13 @@ export class TemplateInvalidError extends AppError {
 export type CreateMockupJobInput = {
   userId: string;
   setId: string;
-  /** V1: tek kategori. V2'de genişler. */
-  categoryId: "canvas";
+  /**
+   * V2 (HEAD `5eabffc`+): 8-değer enum (canvas + wall_art + printable +
+   * clipart + sticker + tshirt + hoodie + dtf). MockupCategorySchema runtime
+   * guard. V1 sadece "canvas" template seed'liyor; admin asset prep ile
+   * diğer kategoriler de eklenebilir.
+   */
+  categoryId: import("@/features/mockups/schemas").MockupCategoryId;
   templateIds: string[];
 };
 

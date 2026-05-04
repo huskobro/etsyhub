@@ -11,7 +11,13 @@
 // Disiplin:
 // - Task 2 types otoriter. Zod schema'lar parse guard rolü.
 // - z.infer<> ile type re-export YOK; consumer'lar Task 2 types kullanır.
-// - V1 categoryId sadece "canvas" (z.literal); V2'de z.enum olur.
+// - **V2 (HEAD `5eabffc`+):** categoryId artık 8-değer enum (Phase 1 ProductType
+//   key'leriyle birebir uyumlu — canvas, wall_art, printable, clipart, sticker,
+//   tshirt, hoodie, dtf). MockupCategorySchema dışındaki bir değer reject
+//   edilir. Backward-compat: V1 sadece "canvas" template seed'lediği için
+//   Apply page diğer kategorilerde (`templates.length === 0`) boş gösterir;
+//   admin sonradan asset prep ile sticker/wall_art/poster vb. seed
+//   ekleyebilir. Spec §1.3 V2 carry-forward listesinden V2'e açıldı.
 // - SafeArea normalize 0..1 (base asset top-left origin).
 // - coverPriority snapshot'a sızmaz; render sonrası ayrı katalog metadata.
 
@@ -85,12 +91,40 @@ export const ProviderConfigSchema = z.discriminatedUnion("providerId", [
   DynamicMockupsConfigSchema,
 ]);
 
+// ── Mockup category enum (V2) ───────────────────────────────────────────
+
+/**
+ * Mockup kategori enum'u — Phase 1 ProductType.key değerleriyle birebir
+ * uyumlu (CLAUDE.md product types listesi). V1'de sadece "canvas" seed'lendi
+ * (admin asset prep); V2'de admin diğer kategorilerde de template seed
+ * ekleyebilir (sticker, wall_art, poster vb.) — schema/API/UI değişikliği
+ * gerekmez.
+ *
+ * MockupTemplate.categoryId DB'de zaten string; biz sadece runtime guard
+ * yapıyoruz. Bilinmeyen kategori → ValidationError.
+ */
+export const MOCKUP_CATEGORY_VALUES = [
+  "canvas",
+  "wall_art",
+  "printable",
+  "clipart",
+  "sticker",
+  "tshirt",
+  "hoodie",
+  "dtf",
+] as const;
+
+export const MockupCategorySchema = z.enum(MOCKUP_CATEGORY_VALUES);
+export type MockupCategoryId = z.infer<typeof MockupCategorySchema>;
+
 // ── API request body schemas ────────────────────────────────────────────
 
-// Spec §4.1 POST /api/mockup/jobs body
+// Spec §4.1 POST /api/mockup/jobs body — V2 enum (V1 hardcoded "canvas"
+// genişletildi; backward-compat: "canvas" hâlâ valid, diğer 7 kategori de
+// kabul edilir).
 export const CreateJobBodySchema = z.object({
   setId: z.string().min(1),
-  categoryId: z.literal("canvas"), // V1: tek kategori
+  categoryId: MockupCategorySchema,
   templateIds: z.array(z.string()).min(1).max(8),
 });
 

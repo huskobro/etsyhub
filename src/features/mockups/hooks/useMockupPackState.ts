@@ -163,7 +163,15 @@ export function useMockupPackState(setId: string): UseMockupPackStateResult {
 
   // 1. Server state (React Query, ayrı katman)
   const { data: set } = useSelectionSet(setId);
-  const { data: templates } = useMockupTemplates({ categoryId: "canvas" });
+  // V2 multi-category (HEAD `5eabffc`+): categoryId set'in items[0].
+  // productTypeKey'inden derive edilir (variation generation pattern: 1 set =
+  // 1 productType). Set yüklenmeden veya items boş ise "canvas" fallback —
+  // V1 backward-compat.
+  const categoryId = useMemo(() => {
+    const items = (set as { items?: Array<{ productTypeKey?: string | null }> } | undefined)?.items;
+    return items?.[0]?.productTypeKey ?? "canvas";
+  }, [set]);
+  const { data: templates } = useMockupTemplates({ categoryId });
 
   // 2. Default computation (memoized client-side, Spec §2.6 algoritması).
   //

@@ -62,7 +62,7 @@ Phase 8 V1 KIE bağımsız (Sharp local render).
 **Spec §1.3 out-of-scope (carry-forward) — V1'de bilinçli kapalı**:
 - Custom mockup upload (Spec §10) — Phase 9+
 - AI-assisted style variant — V1 kapsamı dışı (Phase 8 sadece Sharp deterministik render)
-- Çoklu kategori (poster/printable/clipart/sticker/t-shirt/hoodie/DTF) — V1 sadece `canvas`
+- ~~Çoklu kategori (poster/printable/clipart/sticker/t-shirt/hoodie/DTF) — V1 sadece `canvas`~~ → **V2'de schema/API/UI foundation açıldı** (HEAD `5eabffc`+ sonrası): `MockupCategorySchema` enum (8 ProductType key), `useMockupPackState` + `S3ApplyView` items[0].productTypeKey'den kategoriyi derive ediyor, hardcoded `categoryId="canvas"` düştü. Template seed admin asset prep sorumluluğunda — non-canvas kategorilerde `templates.length === 0` honest empty state ("Şablon Seç" + "Seçilmiş şablon yok").
 - Listing'e gönder workflow — Phase 9 listing builder
 - ~~Per-render PNG/JPG download endpoint — V2~~ → V1'de açıldı (HEAD `d30a893`+ sonrası): `GET /api/mockup/jobs/[jobId]/renders/[renderId]/download` — S8ResultView hover "İndir" linki canlı PASS
 
