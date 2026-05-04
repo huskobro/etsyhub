@@ -47,12 +47,14 @@ export function computeReadiness(listing: Listing): ReadinessCheck[] {
 
   // 1. Title check
   const titleLen = listing.title?.trim().length ?? 0;
+  const titlePass = titleLen >= TITLE_MIN_LEN && titleLen <= TITLE_MAX_LEN;
   checks.push({
     field: "title",
-    pass: titleLen >= TITLE_MIN_LEN && titleLen <= TITLE_MAX_LEN,
+    pass: titlePass,
     severity: "warn",
-    message:
-      titleLen === 0
+    message: titlePass
+      ? `Title hazır (${titleLen} karakter)`
+      : titleLen === 0
         ? `Title başlığı gereklidir (${TITLE_MIN_LEN}-${TITLE_MAX_LEN} karakter)`
         : titleLen < TITLE_MIN_LEN
           ? `Title çok kısa (en az ${TITLE_MIN_LEN} karakter gerekli, şu an ${titleLen})`

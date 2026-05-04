@@ -64,6 +64,15 @@ describe("Listing readiness service (V1)", () => {
       expect(checks[0]!.pass).toBe(true);
     });
 
+    it("pass:true durumunda title mesajı pozitif (regression: 'çok uzun' fallback bug)", () => {
+      const listing = { ...baseListing, title: "Disney Castle Wall Art Print" };
+      const checks = computeReadiness(listing);
+      expect(checks[0]!.pass).toBe(true);
+      expect(checks[0]!.message).not.toContain("çok uzun");
+      expect(checks[0]!.message).not.toContain("çok kısa");
+      expect(checks[0]!.message).not.toContain("gereklidir");
+    });
+
     it("should fail title when < 5 chars", () => {
       const listing = { ...baseListing, title: "Art" };
       const checks = computeReadiness(listing);
