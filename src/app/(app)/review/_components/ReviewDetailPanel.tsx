@@ -82,7 +82,10 @@ export function ReviewDetailPanel({ id, scope }: Props) {
   // Queue cache'inden item'ı bul. ReviewQueueList aynı sayfada zaten fetch
   // ettiği için cache hit; navigate olmuşsa fetch tetiklenir.
   const { data, isLoading } = useReviewQueue({ scope });
-  const item = data?.items.find((it) => it.id === id) ?? null;
+  const items = data?.items ?? [];
+  const idx = items.findIndex((it) => it.id === id);
+  const item = idx >= 0 ? (items[idx] ?? null) : null;
+  const total = items.length;
 
   const containerRef = useRef<HTMLElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
@@ -93,22 +96,49 @@ export function ReviewDetailPanel({ id, scope }: Props) {
     );
   };
 
-  // ESC key — close. searchParams object referansı her render'da değişebilir;
-  // close fonksiyonu deps'e eklenmiyor (effect handler'ı stale closure ile
-  // çalışsa bile en güncel router.push kullanılır — fonksiyonlar referans
-  // stable; değişen sadece pathname/searchParams).
+  // Pass 26 — Prev/Next navigation (decision workspace ergonomi).
+  // Local QuickLook emsali; aynı page içinde wraparound (son → ilk).
+  const navTo = (offset: number) => {
+    if (total === 0 || idx < 0) return;
+    const next = (idx + offset + total) % total;
+    const target = items[next];
+    if (!target) return;
+    router.push(
+      buildReviewUrl(pathname, searchParams, { detail: target.id }),
+    );
+  };
+
+  // ESC + Pass 26: ←/→ navigation. searchParams object referansı her
+  // render'da değişebilir; effect re-mount kabul.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Input/textarea içindeyken kısayolları yutma — kullanıcı yazıyor.
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         router.push(
           buildReviewUrl(pathname, searchParams, { detail: undefined }),
         );
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        navTo(-1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        navTo(1);
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [router, pathname, searchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, pathname, searchParams, idx, total]);
 
   // Focus trap: drawer açık iken Tab boundary; initial focus close butonuna
   // (kullanıcı ESC olmadan da klavye ile kapatabilsin).
@@ -127,45 +157,89 @@ export function ReviewDetailPanel({ id, scope }: Props) {
         className="fixed inset-0 z-30 bg-text/40 backdrop-blur-sm"
         data-testid="review-detail-backdrop"
       />
-      {/* Panel */}
+      {/* Panel — Pass 26: drawer width max-w-md → max-w-2xl (decision
+          workspace için büyük preview alanı; local QuickLook fullscreen
+          ile aynı yapı değil, drawer karakteri korundu). */}
       <aside
         ref={containerRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="review-detail-title"
         data-testid="review-detail-panel"
-        className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col gap-4 overflow-y-auto border-l border-border bg-surface p-6 shadow-popover"
+        className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col gap-4 overflow-y-auto border-l border-border bg-surface p-6 shadow-popover"
       >
-        <header className="flex items-center justify-between">
-          <h2
-            id="review-detail-title"
-            className="text-lg font-semibold text-text"
-          >
-            Review Detayı
-          </h2>
-          <button
-            ref={closeBtnRef}
-            type="button"
-            onClick={close}
-            aria-label="Kapat"
-            data-testid="review-detail-close"
-            className="rounded-md p-1 text-text-muted hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              aria-hidden
+        <header className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <h2
+              id="review-detail-title"
+              className="text-lg font-semibold text-text"
             >
-              <path
-                d="M4 4L12 12M12 4L4 12"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+              Review Detayı
+            </h2>
+            {/* Pass 26 — Index pill: kullanıcı kaç review arasında
+                navigasyon yaptığını anlık görsün. Local QuickLook emsali. */}
+            {total > 0 && idx >= 0 ? (
+              <span
+                className="rounded-full bg-surface-muted px-2 py-0.5 text-xs font-medium text-text-muted"
+                data-testid="review-detail-index"
+              >
+                {idx + 1}/{total}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-1">
+            {/* Pass 26 — Prev/Next butonları decision workspace ergonomi.
+                Klavye: ←/→ aynı işi yapar (Tab focus trap içinde de
+                erişilebilir). */}
+            {total > 1 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navTo(-1)}
+                  aria-label="Önceki review"
+                  title="Önceki (←)"
+                  data-testid="review-detail-prev"
+                  className="rounded-md p-1 text-text-muted hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navTo(1)}
+                  aria-label="Sonraki review"
+                  title="Sonraki (→)"
+                  data-testid="review-detail-next"
+                  className="rounded-md p-1 text-text-muted hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  ›
+                </button>
+              </>
+            ) : null}
+            <button
+              ref={closeBtnRef}
+              type="button"
+              onClick={close}
+              aria-label="Kapat"
+              title="Kapat (Esc)"
+              data-testid="review-detail-close"
+              className="rounded-md p-1 text-text-muted hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden
+              >
+                <path
+                  d="M4 4L12 12M12 4L4 12"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
         </header>
 
         {!item ? (
@@ -339,6 +413,12 @@ export function ReviewDetailPanel({ id, scope }: Props) {
 
             {/* Actions */}
             <ReviewDetailActions item={item} scope={scope} />
+
+            {/* Pass 26 — Keyboard shortcuts hint. Decision workspace
+                ergonomi: kullanıcı klavye ile hızlı karar verebilsin. */}
+            <p className="border-t border-border pt-2 text-xs text-text-muted">
+              ←/→ önceki/sonraki · Esc kapat
+            </p>
           </>
         )}
       </aside>
