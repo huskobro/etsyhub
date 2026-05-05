@@ -28,11 +28,24 @@ export default function ReviewPage({
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <header>
-        <h1 className="text-2xl font-semibold text-text">Review</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          AI tasarımları otomatik review&apos;dan geçer; local library asset&apos;leri manuel batch ile review edilir.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          {/* Pass 25 — workspace label clarity. Review = decision
+              workspace (üretim değil, kullanıcının onay/red kararı
+              verdiği yer). References/Variations = production
+              workspace. İki yüzeyin görev farkı subtitle ile net. */}
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold text-text">Review</h1>
+            <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-text">
+              Karar Atölyesi
+            </span>
+          </div>
+          <p className="text-sm text-text-muted">
+            Üretilen ve taranan görseller hakkında onay/red kararı verin.
+            Üretim için <strong>Referanslar &rsaquo; bir referans &rsaquo; Üret</strong>{" "}
+            yolunu kullanın.
+          </p>
+        </div>
       </header>
       <ReviewTabs activeTab={activeTab} />
       {detailId ? (

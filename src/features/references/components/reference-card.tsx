@@ -89,8 +89,13 @@ export function ReferenceCard({
             {reference.collection?.name ?? "Koleksiyon yok"}
           </span>
           <div className="flex items-center gap-1">
+            {/* Pass 25 — CTA naming polish: "Benzerini yap" → "Üret"
+                kullanıcı bu butonun production workspace'i (Üretim
+                Atölyesi) açtığını net anlasın. Title attribute uzun
+                açıklama. */}
             <Link
               href={`/references/${reference.id}/variations`}
+              title="Üretim atölyesini aç (lokal kütüphaneden seç veya AI ile yeni varyant üret)"
               className={cn(
                 "inline-flex h-control-sm items-center justify-center gap-1.5",
                 "rounded-md border border-border bg-surface px-2.5 text-sm font-medium text-text",
@@ -98,7 +103,7 @@ export function ReferenceCard({
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
               )}
             >
-              Benzerini yap
+              Üret
             </Link>
             {onArchive ? (
               <Button

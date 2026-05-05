@@ -25,8 +25,28 @@ export function VariationsPage({ referenceId }: { referenceId: string }) {
 
   return (
     <PageShell
-      title="Variations"
-      subtitle="Local mode varsayılan; AI mode bilinçli aksiyonla açılır"
+      title={
+        <span className="flex items-center gap-2">
+          <span>Üretim Atölyesi</span>
+          {/* Pass 25 — workspace label clarity. Production = burası,
+              Decision = /review. Aynı dil iki yüzeyde tutarlı. */}
+          <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-text">
+            Üretim
+          </span>
+        </span>
+      }
+      subtitle={
+        <span>
+          Bu referansa benzer yeni tasarım üret. Local: lokal kütüphaneden seç · AI: provider ile yeni varyant üret. Üretilen görseller{" "}
+          <a
+            href="/review"
+            className="text-accent underline hover:text-accent-hover"
+          >
+            Karar Atölyesi (Review)
+          </a>
+          &apos;ne düşer.
+        </span>
+      }
       toolbar={
         <div role="tablist" aria-label="Variations modu" className="flex gap-2">
           <button

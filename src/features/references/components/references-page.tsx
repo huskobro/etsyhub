@@ -242,7 +242,7 @@ export function ReferencesPage({
         actions={
           <>
             <Button variant="ghost" size="sm" disabled>
-              Benzerini yap
+              Üret
             </Button>
             <Button variant="ghost" size="sm" disabled>
               Koleksiyona taşı
