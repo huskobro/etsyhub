@@ -214,11 +214,13 @@ describe("Sidebar nav-config — /selection entry", () => {
     expect(entry!.roles).toEqual(expect.arrayContaining(["USER", "ADMIN"]));
   });
 
-  it("/selection entry sıralaması: /review sonrası, /mockups öncesi", () => {
+  it("/selection entry sıralaması: /review sonrası, /listings öncesi", () => {
+    // Pass 18 — `/mockups` top-level menüsü kaldırıldı (yanıltıcı pasif item).
+    // Akış sıralaması: Review → Seçim → Listingler.
     const reviewIdx = USER_NAV.findIndex((n) => n.href === "/review");
     const selectionIdx = USER_NAV.findIndex((n) => n.href === "/selection");
-    const mockupsIdx = USER_NAV.findIndex((n) => n.href === "/mockups");
+    const listingsIdx = USER_NAV.findIndex((n) => n.href === "/listings");
     expect(selectionIdx).toBeGreaterThan(reviewIdx);
-    expect(selectionIdx).toBeLessThan(mockupsIdx);
+    expect(selectionIdx).toBeLessThan(listingsIdx);
   });
 });

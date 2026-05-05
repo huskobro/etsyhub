@@ -257,6 +257,131 @@ export function LocalLibrarySettingsPanel() {
           </Button>
         </div>
       </form>
+
+      {/* Pass 18 — kütüphaneyi tara + son tarama özeti.
+          Mevcut /api/local-library/scan POST endpoint'ini settings ekranından
+          tetiklemek için. Önceden sadece variation generation flow içinden
+          çağrılabiliyordu; settings'te scan trigger + son tarama özeti yoktu,
+          kullanıcı path girer Kaydet'e basar ama görseller indekslenmezdi
+          ("neden görünmüyor?" UX gap). */}
+      {form.rootFolderPath ? (
+        <ScanSection rootFolderPath={form.rootFolderPath} />
+      ) : null}
     </Card>
+  );
+}
+
+// ── Scan trigger + summary ────────────────────────────────────────────────
+
+type FolderSummary = { name: string; path: string; fileCount: number };
+type ScanSummary = {
+  folderCount: number;
+  assetCount: number;
+};
+
+async function fetchScanSummary(): Promise<ScanSummary> {
+  const [foldersRes, assetsRes] = await Promise.all([
+    fetch("/api/local-library/folders"),
+    fetch("/api/local-library/assets"),
+  ]);
+  if (!foldersRes.ok || !assetsRes.ok) {
+    throw new Error("Kütüphane özeti yüklenemedi");
+  }
+  const f = (await foldersRes.json()) as { folders: FolderSummary[] };
+  const a = (await assetsRes.json()) as { assets: unknown[] };
+  return {
+    folderCount: f.folders.length,
+    assetCount: a.assets.length,
+  };
+}
+
+function ScanSection({ rootFolderPath }: { rootFolderPath: string }) {
+  const qc = useQueryClient();
+  const summary = useQuery({
+    queryKey: ["settings", "local-library", "scan-summary"],
+    queryFn: fetchScanSummary,
+  });
+  const scan = useMutation({
+    mutationFn: async () => {
+      const r = await fetch("/api/local-library/scan", { method: "POST" });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error ?? "Tarama başlatılamadı");
+      }
+      return r.json() as Promise<{ jobId: string }>;
+    },
+    onSuccess: () => {
+      // Scan worker arka planda çalışır; özet birkaç saniye sonra güncellenir.
+      // Kullanıcıya açık geri bildirim için 3s sonra yeniden fetch.
+      setTimeout(() => {
+        qc.invalidateQueries({
+          queryKey: ["settings", "local-library", "scan-summary"],
+        });
+      }, 3000);
+    },
+  });
+
+  return (
+    <div className="mt-6 flex flex-col gap-3 rounded-md border border-border bg-bg p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-text">Kütüphane taraması</span>
+          <span className="text-xs text-text-muted">
+            Klasör: <span className="font-mono">{rootFolderPath}</span>
+          </span>
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          loading={scan.isPending}
+          disabled={scan.isPending}
+          onClick={() => scan.mutate()}
+        >
+          {scan.isPending ? "Tarama başlatılıyor…" : "Şimdi tara"}
+        </Button>
+      </div>
+
+      {scan.isError ? (
+        <p className="text-sm text-danger" role="alert">
+          {(scan.error as Error).message}
+        </p>
+      ) : null}
+      {scan.isSuccess ? (
+        <p className="text-xs text-text-muted">
+          Tarama kuyruğa eklendi. Tamamlandığında özet aşağıda güncellenecek
+          (worker `npm run worker` çalışıyor olmalı).
+        </p>
+      ) : null}
+
+      <div className="flex flex-col gap-1 border-t border-border pt-3 text-xs text-text-muted">
+        <span className="font-medium text-text">Mevcut indeks</span>
+        {summary.isLoading ? (
+          <span>Yükleniyor…</span>
+        ) : summary.isError ? (
+          <span className="text-danger">
+            {(summary.error as Error).message}
+          </span>
+        ) : summary.data ? (
+          summary.data.folderCount === 0 ? (
+            <span>
+              Henüz indekslenmiş klasör yok. Yukarıdaki kök yolu kontrol edin
+              ve &quot;Şimdi tara&quot;ya basın. Görseller alt klasörlerin
+              içindeyse: scanner kök + 1 seviye alt klasör tarar (daha derin
+              yapılar henüz desteklenmiyor).
+            </span>
+          ) : (
+            <span>
+              {summary.data.folderCount} klasör · {summary.data.assetCount}{" "}
+              görsel indekslendi. Görselleri görmek için bir Reference&apos;a
+              gidip &quot;Lokal kütüphaneden ekle&quot; akışını kullanın
+              (Üret/Phase 5 akışı).
+            </span>
+          )
+        ) : null}
+        <span className="text-xs text-text-muted">
+          Desteklenen formatlar: .jpg, .jpeg, .png. (.webp şu an desteklenmiyor.)
+        </span>
+      </div>
+    </div>
   );
 }

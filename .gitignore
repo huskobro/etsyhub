@@ -17,3 +17,8 @@ videolar/
 
 # Phase 8 — mockup design kaynak arşivi (klasör versiyonu git'te)
 docs/design/EtsyHub_mockups.zip
+
+# Local-only job artifacts (CLAUDE.md "workspace/: job artifacts and durable local outputs")
+# Pass 18: local-library scanner thumbnails + .tmp helper outputs
+workspace/local-library/
+.tmp/

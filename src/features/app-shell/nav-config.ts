@@ -6,7 +6,6 @@ import {
   Bookmark,
   Image as ImageIcon,
   FolderOpen,
-  Wand2,
   ShieldCheck,
   Layers,
   Frame,
@@ -26,6 +25,14 @@ export type NavItem = {
   enabled: boolean;
 };
 
+// Pass 18 — `Üret` (Phase 5) ve `Mockup` (Phase 8) sidebar'dan kaldırıldı.
+// Pre-Pass 18: bu iki menü `enabled: false` + `P5`/`P8` rozeti ile görünüyordu;
+// kullanıcı pasif görünce "henüz yapılmamış" sanıyordu fakat akış zaten aktif:
+//   - Variation üretimi: `/references/[id]/variations` (reference detail launch)
+//   - Mockup üretimi: `/selection/sets/[setId]/mockup/apply` (selection set launch)
+// Top-level catalog sayfası tasarımca yok (intentional). Pasif menü misleading
+// olduğu için tamamen kaldırıldı; entry point'ler zaten aktif menülerden akıyor:
+// References (variations launch) → Review → Seçim (mockup launch) → Listingler.
 export const USER_NAV: NavItem[] = [
   { href: "/dashboard", label: "Panel", icon: LayoutDashboard, roles: ["USER", "ADMIN"], phase: 1, enabled: true },
   { href: "/trend-stories", label: "Trend Akışı", icon: Sparkles, roles: ["USER", "ADMIN"], phase: 4, enabled: true },
@@ -33,10 +40,8 @@ export const USER_NAV: NavItem[] = [
   { href: "/bookmarks", label: "Bookmark", icon: Bookmark, roles: ["USER", "ADMIN"], phase: 2, enabled: true },
   { href: "/references", label: "Referanslar", icon: ImageIcon, roles: ["USER", "ADMIN"], phase: 2, enabled: true },
   { href: "/collections", label: "Koleksiyonlar", icon: FolderOpen, roles: ["USER", "ADMIN"], phase: 2, enabled: true },
-  { href: "/variations", label: "Üret", icon: Wand2, roles: ["USER", "ADMIN"], phase: 5, enabled: false },
   { href: "/review", label: "Review", icon: ShieldCheck, roles: ["USER", "ADMIN"], phase: 6, enabled: true },
   { href: "/selection", label: "Seçim", icon: Layers, roles: ["USER", "ADMIN"], phase: 7, enabled: true },
-  { href: "/mockups", label: "Mockup", icon: Frame, roles: ["USER", "ADMIN"], phase: 8, enabled: false },
   { href: "/listings", label: "Listingler", icon: ListChecks, roles: ["USER", "ADMIN"], phase: 9, enabled: true },
   { href: "/settings", label: "Ayarlar", icon: SettingsIcon, roles: ["USER", "ADMIN"], phase: 1, enabled: true },
 ];
