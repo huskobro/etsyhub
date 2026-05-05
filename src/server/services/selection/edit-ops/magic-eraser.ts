@@ -96,16 +96,21 @@ async function runPythonInpaint(args: {
   outputPath: string;
 }): Promise<RunnerOutput> {
   const pythonBin = process.env.MAGIC_ERASER_PYTHON ?? "python3";
-  // Runner repo içinde sabit yol — production'da next build sonrası path
-  // değişmediği için __dirname relative değil, repo-root relative çözüm.
-  const runnerPath = path.join(
-    process.cwd(),
-    "src",
-    "server",
-    "services",
-    "magic-eraser",
-    "runner.py",
-  );
+  // Runner path lookup:
+  //   - MAGIC_ERASER_RUNNER_OVERRIDE: QA mock runner (Pass 30) için
+  //     escape hatch. LaMa kurulu olmayan dev ortamlarında
+  //     scripts/magic-eraser-mock-runner.py'a işaret eder.
+  //   - default: repo-root relative production runner.py.
+  const runnerPath =
+    process.env.MAGIC_ERASER_RUNNER_OVERRIDE ??
+    path.join(
+      process.cwd(),
+      "src",
+      "server",
+      "services",
+      "magic-eraser",
+      "runner.py",
+    );
 
   return new Promise((resolve, reject) => {
     const child = spawn(pythonBin, [
