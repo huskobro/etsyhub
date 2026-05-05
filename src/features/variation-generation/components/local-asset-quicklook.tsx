@@ -233,9 +233,16 @@ export function LocalAssetQuickLook({
           {/* Info panel (col 2 on md+) */}
           <div className="flex flex-col gap-4 overflow-y-auto border-t border-border p-5 md:border-l md:border-t-0">
             <div className="flex items-start justify-between gap-2">
-              <Dialog.Title className="text-base font-semibold text-text">
-                {current.fileName}
-              </Dialog.Title>
+              <div className="flex flex-col gap-1">
+                {/* Pass 23 — Context badge: kullanıcı modal içinde de
+                    hangi akışta olduğunu hatırlasın. */}
+                <span className="w-fit rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-text">
+                  Lokal kütüphane
+                </span>
+                <Dialog.Title className="text-base font-semibold text-text">
+                  {current.fileName}
+                </Dialog.Title>
+              </div>
               <Dialog.Close asChild>
                 <button
                   type="button"

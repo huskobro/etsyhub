@@ -165,6 +165,43 @@ describe("GET /api/local-library/folders", () => {
     expect(alpha?.fileCount).toBe(2);
     expect(body.folders.some((f: any) => f.name === "beta")).toBe(false);
   });
+
+  // Pass 23 — folder card preview strip
+  it("coverHashes: ilk 3 asset hash'i + negativeCount", async () => {
+    // 4 asset üret. CreatedAt aynı timestamp olabileceği için (test ortamı
+    // hızlı), kesin ordering yerine "3 hash döndü, hepsi mevcut asset'lerden"
+    // assertion kullan.
+    const a1 = await makeAsset(USER_A, { folderName: "gallery" });
+    const a2 = await makeAsset(USER_A, { folderName: "gallery" });
+    const a3 = await makeAsset(USER_A, { folderName: "gallery" });
+    const a4 = await makeAsset(USER_A, { folderName: "gallery" });
+    await db.localLibraryAsset.update({
+      where: { id: a2.id },
+      data: { isNegative: true, negativeReason: "test" },
+    });
+    (requireUser as any).mockResolvedValue({ id: USER_A });
+    const res = await foldersGet();
+    const body = await res.json();
+    const gallery = body.folders.find((f: any) => f.name === "gallery");
+    expect(gallery).toBeTruthy();
+    expect(gallery.fileCount).toBe(4);
+    expect(gallery.coverHashes).toHaveLength(3);
+    const hashes = new Set([a1.hash, a2.hash, a3.hash, a4.hash]);
+    for (const h of gallery.coverHashes) {
+      expect(hashes.has(h)).toBe(true);
+    }
+    expect(gallery.negativeCount).toBe(1);
+  });
+
+  it("coverHashes: tek asset olan klasörde 1-element array", async () => {
+    const single = await makeAsset(USER_A, { folderName: "lonely" });
+    (requireUser as any).mockResolvedValue({ id: USER_A });
+    const res = await foldersGet();
+    const body = await res.json();
+    const lonely = body.folders.find((f: any) => f.name === "lonely");
+    expect(lonely.coverHashes).toEqual([single.hash]);
+    expect(lonely.negativeCount).toBe(0);
+  });
 });
 
 describe("GET /api/local-library/assets", () => {

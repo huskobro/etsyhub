@@ -85,9 +85,17 @@ export function LocalModePanel() {
     return (
       <div className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-0.5">
-            <div className="text-sm text-text-muted">
-              Lokal kütüphane — toplam {list.length} klasör
+          <div className="flex flex-col gap-1">
+            {/* Pass 23 — Context clarity. "Lokal kütüphane" badge + total
+                count + root path. Önceden plain text "Lokal kütüphane —
+                toplam N klasör" idi; şimdi badge ile mod ayrımı görsel. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-text">
+                Lokal kütüphane
+              </span>
+              <span className="text-sm text-text-muted">
+                Toplam {list.length} klasör · diskinizdeki taranmış görseller
+              </span>
             </div>
             {rootPath ? (
               <div className="text-xs text-text-muted">
@@ -163,10 +171,11 @@ export function LocalModePanel() {
         </div>
       </div>
       {/* Pass 21 — Breadcrumb: kök yol + klasör adı + asset sayısı.
-          Önceden sadece "Klasör: {name}" diyordu; root path ve asset
-          count görünmüyordu. */}
+          Pass 23 — "Lokal kütüphane" badge ile mod ayrımı görselleşti. */}
       <div className="flex flex-wrap items-center gap-1 text-xs text-text-muted">
-        <span className="font-medium text-text">Lokal kütüphane</span>
+        <span className="rounded-full bg-accent-soft px-2 py-0.5 font-medium text-accent-text">
+          Lokal kütüphane
+        </span>
         <span>›</span>
         {rootPath ? (
           <span className="break-all font-mono">{rootPath}</span>

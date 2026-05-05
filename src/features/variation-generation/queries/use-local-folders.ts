@@ -2,7 +2,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-export type FolderRow = { name: string; path: string; fileCount: number };
+export type FolderRow = {
+  name: string;
+  path: string;
+  fileCount: number;
+  // Pass 23 — folder card preview strip
+  coverHashes: string[];
+  negativeCount: number;
+};
 
 export function useLocalFolders() {
   return useQuery({
