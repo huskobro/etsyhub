@@ -22,6 +22,10 @@ const whitelist = [
   // sprintinde terfi edilen `src/components/ui/progress-bar.tsx` path'ine
   // taşınır. Bkz. docs/plans/admin-feature-flags-data-model.md.
   "src/features/admin/feature-flags/_shared/rollout-bar.tsx",
+  // Pass 31: MaskCanvas brush preview circle — cursor pozisyonu ve fırça
+  // çapı CSS pixel olarak runtime'da hesaplanır (canvas DOM rect'e bağlı).
+  // Tailwind class ile ifade edilemez; inline style escape hatch'i.
+  "src/features/selection/components/MaskCanvas.tsx",
 ];
 
 let hadError = false;

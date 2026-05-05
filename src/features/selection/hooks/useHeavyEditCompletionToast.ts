@@ -28,6 +28,19 @@ type HistoryEntry = {
   reason?: string;
 };
 
+// Pass 31 — Op-aware kullanıcı mesajları. Pre-Pass 31: "Background remove
+// tamamlandı" hardcoded'tu; Magic Eraser tetiklendiğinde de yanlış mesaj
+// görünüyordu. Şimdi son history entry'sinin op tipine göre lokalize.
+const OP_LABELS: Record<string, string> = {
+  "background-remove": "Arka plan silme",
+  "magic-eraser": "Magic Eraser",
+};
+
+function opLabel(op: string | undefined): string {
+  if (!op) return "İşlem";
+  return OP_LABELS[op] ?? op;
+}
+
 export function useHeavyEditCompletionToast(
   item: SelectionItemView | null,
 ): void {
@@ -49,11 +62,12 @@ export function useHeavyEditCompletionToast(
         : [];
       const lastEntry = history[history.length - 1];
       const isFailure = lastEntry?.failed === true;
+      const label = opLabel(lastEntry?.op);
 
       if (isFailure) {
         push({
           tone: "error",
-          message: `Background remove başarısız: ${
+          message: `${label} başarısız: ${
             lastEntry?.reason ?? "bilinmeyen hata"
           }`,
           source: "heavy-edit",
@@ -61,7 +75,7 @@ export function useHeavyEditCompletionToast(
       } else {
         push({
           tone: "success",
-          message: "Background remove tamamlandı",
+          message: `${label} tamamlandı`,
           source: "heavy-edit",
         });
       }

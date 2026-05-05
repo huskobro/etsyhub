@@ -60,6 +60,16 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, MaskCanvasProps>(
     // Image native boyutları img onLoad sırasında set edilir.
     const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
 
+    // Pass 31 — Brush preview circle. Cursor canvas üzerindeyken fırça
+    // ayak izini gösterir; kullanıcı tıklamadan önce kapsama alanını görür.
+    // Display koordinatı (canvas DOM rect içi) kullanılır; canvas pixel
+    // değil çünkü overlay DOM div'i de display alanında.
+    const [hover, setHover] = useState<{
+      x: number;
+      y: number;
+      visible: boolean;
+    }>({ x: 0, y: 0, visible: false });
+
     // Canvas pixel size = image native (mask çıktısı tam çözünürlüklü olur).
     // Display tarafında canvas image'in render edilen kutusuyla overlay olur.
     useEffect(() => {
@@ -84,6 +94,23 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, MaskCanvasProps>(
       const y = (e.clientY - rect.top) * scaleY;
       return { x, y };
     };
+
+    // Display-space cursor (CSS pixel) — preview circle için.
+    const getDisplayPos = (e: React.PointerEvent): { x: number; y: number } | null => {
+      const canvas = canvasRef.current;
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+
+    // Display-space brush diameter — canvas pixel → CSS pixel scale.
+    const displayBrushPx = (() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return brushSize;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !canvas.width) return brushSize;
+      return brushSize * (rect.width / canvas.width);
+    })();
 
     const drawSegment = (from: { x: number; y: number }, to: { x: number; y: number }) => {
       const canvas = canvasRef.current;
@@ -111,6 +138,10 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, MaskCanvasProps>(
     };
 
     const onPointerMove = (e: React.PointerEvent) => {
+      // Pass 31 — Hover preview her hareket güncellenir (drawing değilken bile).
+      const dPos = getDisplayPos(e);
+      if (dPos) setHover({ x: dPos.x, y: dPos.y, visible: true });
+
       if (!isDrawingRef.current) return;
       const pos = getPos(e);
       if (!pos || !lastPosRef.current) return;
@@ -126,6 +157,15 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, MaskCanvasProps>(
       } catch {
         // capture set edilmemiş olabilir
       }
+    };
+
+    const onPointerEnter = (e: React.PointerEvent) => {
+      const dPos = getDisplayPos(e);
+      if (dPos) setHover({ x: dPos.x, y: dPos.y, visible: true });
+    };
+
+    const onPointerLeave = () => {
+      setHover((h) => ({ ...h, visible: false }));
     };
 
     useImperativeHandle(
@@ -200,14 +240,37 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, MaskCanvasProps>(
             }}
           />
           {imgSize ? (
-            <canvas
-              ref={canvasRef}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={onPointerUp}
-              className="absolute inset-0 h-full w-full cursor-crosshair touch-none opacity-50 mix-blend-screen"
-            />
+            <>
+              <canvas
+                ref={canvasRef}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
+                onPointerEnter={onPointerEnter}
+                onPointerLeave={onPointerLeave}
+                className="absolute inset-0 h-full w-full cursor-crosshair touch-none opacity-50 mix-blend-screen"
+              />
+              {/* Pass 31 — Brush preview circle. Cursor canvas üzerindeyken
+                  fırça ayak izini gösterir; pointer-events-none çünkü canvas
+                  hala olayları yakalamalı. Inline style: dinamik px (pozisyon
+                  ve çap canvas DOM rect'e göre hesaplanır). check-tokens
+                  whitelist'inde MaskCanvas.tsx escape hatch'i. */}
+              {hover.visible ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute rounded-full border-2 border-accent bg-accent/20"
+                  // eslint-disable-next-line no-restricted-syntax
+                  style={{
+                    left: hover.x,
+                    top: hover.y,
+                    width: displayBrushPx,
+                    height: displayBrushPx,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                />
+              ) : null}
+            </>
           ) : null}
         </div>
         {!imgSize ? (

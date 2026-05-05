@@ -109,22 +109,34 @@ export function MagicEraserModal({
           aria-describedby={undefined}
           className="fixed inset-4 z-50 flex flex-col overflow-hidden rounded-md border border-border bg-bg shadow-card md:inset-8"
         >
-          {/* Header */}
-          <header className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-border px-6 py-4">
-            <div className="flex items-center gap-2">
-              <Eraser className="h-5 w-5 text-accent" aria-hidden />
-              <Dialog.Title className="text-lg font-semibold text-text">
-                Magic Eraser
-              </Dialog.Title>
-              <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-text">
-                LaMa inpainting
-              </span>
+          {/* Pass 31 — Header polish: title + kullanıcı-dostu subtitle
+              ("LaMa inpainting" teknik etiket sağa). */}
+          <header className="flex flex-shrink-0 items-start justify-between gap-3 border-b border-border px-6 py-4">
+            <div className="flex items-start gap-3">
+              <Eraser
+                className="mt-1 h-5 w-5 flex-shrink-0 text-accent"
+                aria-hidden
+              />
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                  <Dialog.Title className="text-lg font-semibold text-text">
+                    Magic Eraser
+                  </Dialog.Title>
+                  <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-text">
+                    LaMa
+                  </span>
+                </div>
+                <p className="text-xs text-text-muted">
+                  Görseldeki istenmeyen bölgeyi fırça ile işaretleyin —
+                  AI o bölgeyi siler ve doğal şekilde doldurur.
+                </p>
+              </div>
             </div>
             <Dialog.Close asChild>
               <button
                 type="button"
                 aria-label="Kapat"
-                className="rounded-md p-1 text-text-muted hover:bg-surface-2 hover:text-text"
+                className="flex-shrink-0 rounded-md p-1 text-text-muted hover:bg-surface-2 hover:text-text"
               >
                 <X className="h-4 w-4" aria-hidden />
               </button>
@@ -170,7 +182,7 @@ export function MagicEraserModal({
                 <span className="ml-1">Maskeyi temizle</span>
               </Button>
               <p className="text-xs text-text-muted">
-                Beyaz alan = silinecek bölge. Esc kapatır.
+                İşaretlediğiniz bölgeler silinecek. Esc kapatır.
               </p>
             </div>
 
@@ -178,6 +190,21 @@ export function MagicEraserModal({
               <p className="text-sm text-danger" role="alert">
                 {error}
               </p>
+            ) : null}
+
+            {/* Pass 31 — Submit pending inline feedback. Modal kapanırken
+                kullanıcı boşluğa düşmesin: "İşlem kuyruğa alındı" mesajı +
+                progress bilgisi. Gerçek completion toast page-level
+                useHeavyEditCompletionToast tarafından (worker bittiğinde). */}
+            {submit.isPending ? (
+              <div
+                className="rounded-md bg-accent-soft px-3 py-2 text-xs text-accent-text"
+                role="status"
+              >
+                İşlem kuyruğa alınıyor… Sonuç hazırlandığında modal kapanır
+                ve sağ panelde edited önizleme görünür (genellikle birkaç
+                saniye).
+              </div>
             ) : null}
 
             <div className="flex items-center justify-end gap-2">
@@ -196,7 +223,10 @@ export function MagicEraserModal({
                 loading={submit.isPending}
                 disabled={submit.isPending}
               >
-                {submit.isPending ? "Gönderiliyor…" : "Sil"}
+                {/* Pass 31 — Sil → Uygula. "Sil" butonu kullanıcıyı
+                    "asset siliniyor mu?" diye düşündürebiliyordu;
+                    "Uygula" daha açık (mask uygulanır, asset değil). */}
+                {submit.isPending ? "Gönderiliyor…" : "Uygula"}
               </Button>
             </div>
           </footer>
