@@ -414,9 +414,11 @@ function ScanSection({
           ) : (
             <span>
               {summary.data.folderCount} klasör · {summary.data.assetCount}{" "}
-              görsel indekslendi. Görselleri görmek için bir Reference&apos;a
-              gidip &quot;Lokal kütüphaneden ekle&quot; akışını kullanın
-              (Üret/Phase 5 akışı).
+              görsel indekslendi. Görselleri görüntülemek için: sol menüden{" "}
+              <strong>Referanslar</strong> → bir referans aç →{" "}
+              <strong>Local</strong> sekmesi → bir klasöre tıkla. Görseller
+              kart grid&apos;inde thumbnail + çözünürlük + kalite skoruyla
+              listelenir.
             </span>
           )
         ) : null}
