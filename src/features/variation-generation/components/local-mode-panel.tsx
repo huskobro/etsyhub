@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useLocalFolders } from "../queries/use-local-folders";
 import { useLocalAssets } from "../queries/use-local-assets";
 import { useScanFolders } from "../mutations/use-scan-folders";
+import { useLocalLibrarySettings } from "../queries/use-local-library-settings";
 import { LocalFolderCard } from "./local-folder-card";
 import { LocalAssetCard } from "./local-asset-card";
+import { LocalAssetQuickLook } from "./local-asset-quicklook";
 import { Button } from "@/components/ui/Button";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { Chip } from "@/components/ui/Chip";
@@ -19,6 +21,12 @@ export function LocalModePanel() {
   const folders = useLocalFolders();
   const assets = useLocalAssets(folder, negativesOnly);
   const scan = useScanFolders();
+  const settings = useLocalLibrarySettings();
+  const rootPath = settings.data?.settings.rootFolderPath ?? null;
+
+  // Pass 21 — QuickLook lightbox state
+  const [quickLookId, setQuickLookId] = useState<string | null>(null);
+  const quickLookOpen = quickLookId !== null;
 
   if (folders.isLoading) {
     return <StateMessage tone="neutral" title="Klasörler yükleniyor…" />;
@@ -37,9 +45,23 @@ export function LocalModePanel() {
     const list = folders.data?.folders ?? [];
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-text-muted">
-            Lokal kütüphane — toplam {list.length} klasör
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <div className="text-sm text-text-muted">
+              Lokal kütüphane — toplam {list.length} klasör
+            </div>
+            {rootPath ? (
+              <div className="text-xs text-text-muted">
+                Kök:{" "}
+                <span className="break-all font-mono text-text">
+                  {rootPath}
+                </span>
+              </div>
+            ) : (
+              <div className="text-xs text-warning">
+                Kök klasör tanımlı değil — Ayarlar &rsaquo; Yerel kütüphane.
+              </div>
+            )}
           </div>
           <div className="flex flex-col items-end gap-1">
             <Button
@@ -101,8 +123,24 @@ export function LocalModePanel() {
           </Button>
         </div>
       </div>
-      <div className="text-sm text-text-muted">
-        Klasör: <span className="font-medium text-text">{folder}</span>
+      {/* Pass 21 — Breadcrumb: kök yol + klasör adı + asset sayısı.
+          Önceden sadece "Klasör: {name}" diyordu; root path ve asset
+          count görünmüyordu. */}
+      <div className="flex flex-wrap items-center gap-1 text-xs text-text-muted">
+        <span className="font-medium text-text">Lokal kütüphane</span>
+        <span>›</span>
+        {rootPath ? (
+          <span className="break-all font-mono">{rootPath}</span>
+        ) : (
+          <span className="italic">kök tanımsız</span>
+        )}
+        <span>›</span>
+        <span className="font-medium text-text">{folder}</span>
+        {assetList.length > 0 ? (
+          <span className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 font-medium">
+            {assetList.length} görsel
+          </span>
+        ) : null}
       </div>
       {assets.isLoading ? (
         <StateMessage tone="neutral" title="Görseller yükleniyor…" />
@@ -124,10 +162,26 @@ export function LocalModePanel() {
       ) : (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
           {assetList.map((a) => (
-            <LocalAssetCard key={a.id} asset={a} />
+            <LocalAssetCard
+              key={a.id}
+              asset={a}
+              onPreview={(id) => setQuickLookId(id)}
+            />
           ))}
         </div>
       )}
+
+      {/* Pass 21 — QuickLook lightbox.
+          Tıklanan görsel için büyük preview + prev/next + inline actions. */}
+      <LocalAssetQuickLook
+        open={quickLookOpen}
+        onOpenChange={(o) => {
+          if (!o) setQuickLookId(null);
+        }}
+        assets={assetList}
+        currentId={quickLookId}
+        onCurrentIdChange={(id) => setQuickLookId(id)}
+      />
     </div>
   );
 }

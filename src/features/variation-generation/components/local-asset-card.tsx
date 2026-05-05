@@ -28,16 +28,35 @@ const TONE_BADGE: Record<ScoreTone, string> = {
   neutral: "bg-surface-2 text-text-muted",
 };
 
-export function LocalAssetCard({ asset }: { asset: LocalLibraryAsset }) {
+export function LocalAssetCard({
+  asset,
+  onPreview,
+}: {
+  asset: LocalLibraryAsset;
+  // Pass 21 — kart tıklandığında QuickLook lightbox tetiklenir.
+  onPreview?: (id: string) => void;
+}) {
   const mark = useMarkNegative();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const settings = useLocalLibrarySettings();
   const thresholds = settings.data?.settings.qualityThresholds ?? DEFAULT_THRESHOLDS;
   const tone = scoreTone(asset.qualityScore, thresholds);
 
+  // Görsel alanına tıklama QuickLook'u açar; alt taraftaki action butonları
+  // event propagation kesilerek çakışmadan korunur.
+  const triggerPreview = () => {
+    if (onPreview) onPreview(asset.id);
+  };
+
   return (
     <article className="overflow-hidden rounded-md border border-border bg-surface">
-      <div className="relative aspect-square bg-surface-2">
+      <button
+        type="button"
+        onClick={triggerPreview}
+        disabled={!onPreview}
+        aria-label={`${asset.fileName} önizleme`}
+        className="relative block aspect-square w-full bg-surface-2 transition-opacity disabled:cursor-default enabled:hover:opacity-90"
+      >
         {asset.thumbnailPath ? (
           // Phase 5 Gap B — owner-only thumbnail stream; cross-user 404.
           /* eslint-disable-next-line @next/next/no-img-element */
@@ -68,7 +87,7 @@ export function LocalAssetCard({ asset }: { asset: LocalLibraryAsset }) {
             Negatif
           </span>
         ) : null}
-      </div>
+      </button>
       <div className="flex flex-col gap-1 p-3 text-xs">
         <div className="truncate font-medium text-text">{asset.fileName}</div>
         <div className="text-text-muted">
