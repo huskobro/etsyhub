@@ -176,6 +176,45 @@ export function ReviewCard({ item }: Props) {
             </Badge>
           ) : null}
         </div>
+        {/* Pass 24 — Source meta. Kullanıcının "bu görsel nereden geldi?"
+            sorusunu kart üzerinden cevaplar. Local: dosya adı + klasör
+            (truncate). Design: ProductType key + reference kısa id. */}
+        {item.source?.kind === "local-library" ? (
+          <div
+            className="flex flex-col gap-0.5 text-xs text-text-muted"
+            data-testid="source-meta"
+          >
+            <span
+              className="truncate font-medium text-text"
+              title={item.source.fileName}
+            >
+              {item.source.fileName}
+            </span>
+            <span className="truncate" title={item.source.folderName}>
+              📁 {item.source.folderName}
+            </span>
+            <span>
+              {item.source.width}×{item.source.height}
+              {item.source.dpi ? ` · ${item.source.dpi}dpi` : ""}
+            </span>
+          </div>
+        ) : item.source?.kind === "design" ? (
+          <div
+            className="flex flex-wrap items-center gap-1 text-xs text-text-muted"
+            data-testid="source-meta"
+          >
+            {item.source.productTypeKey ? (
+              <span className="rounded-sm bg-surface-muted px-1.5 py-0.5 font-medium text-text">
+                {item.source.productTypeKey}
+              </span>
+            ) : null}
+            {item.source.referenceShortId ? (
+              <span className="font-mono text-text-muted">
+                ref-{item.source.referenceShortId}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {item.riskFlagCount > 0 ? (
           <span
             data-testid="risk-flags"

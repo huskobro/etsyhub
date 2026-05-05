@@ -325,6 +325,68 @@ describe("GET /api/review/queue", () => {
     expect(body.items[0]!.thumbnailUrl).toBeNull();
   });
 
+  // Pass 24 — Source clarity (review path/source visibility).
+  it("local scope: source.kind=local-library + folderName/fileName + width/height expose", async () => {
+    currentUser.id = userAId;
+    await createLocalAsset(userAId, { score: 80 });
+
+    const res = await GET(makeRequest("scope=local"));
+    const body = (await res.json()) as {
+      items: Array<{
+        source?: {
+          kind: string;
+          folderName: string;
+          fileName: string;
+          folderPath: string;
+          qualityScore: number | null;
+          width: number;
+          height: number;
+          dpi: number | null;
+        };
+      }>;
+    };
+    const src = body.items[0]!.source!;
+    expect(src.kind).toBe("local-library");
+    expect(src.folderName).toBe("f"); // helper sabit "f"
+    expect(src.fileName).toContain(".png");
+    expect(src.folderPath).toBe("/p");
+    expect(src.width).toBe(100);
+    expect(src.height).toBe(100);
+    // qualityScore helper'da DB default — null kalabilir; test fixture'ı
+    // reviewScore'u set ediyor, qualityScore'u değil. Field expose edildi
+    // (null/number) — explicit shape kontrolü.
+    expect(["number", "object"]).toContain(typeof src.qualityScore);
+  });
+
+  it("design scope: source.kind=design + productTypeKey + referenceShortId expose", async () => {
+    currentUser.id = userAId;
+    await createDesign(userAId, productTypeId, {});
+
+    const res = await GET(makeRequest("scope=design"));
+    const body = (await res.json()) as {
+      items: Array<{
+        referenceId: string | null;
+        source?: {
+          kind: string;
+          productTypeKey: string | null;
+          referenceShortId: string | null;
+          createdAt: string;
+        };
+      }>;
+    };
+    const src = body.items[0]!.source!;
+    expect(src.kind).toBe("design");
+    // Test fixture'ı productType.key set ediyor (createDesign helper'ı)
+    expect(src.productTypeKey).toBeTruthy();
+    // referenceShortId, referenceId varsa son 6 karakter
+    if (body.items[0]!.referenceId) {
+      expect(src.referenceShortId).toBe(
+        body.items[0]!.referenceId.slice(-6),
+      );
+    }
+    expect(src.createdAt).toBeTruthy();
+  });
+
   it("status filter sadece o status'u döndürüyor (design)", async () => {
     currentUser.id = userAId;
     await createDesign(userAId, productTypeId, {

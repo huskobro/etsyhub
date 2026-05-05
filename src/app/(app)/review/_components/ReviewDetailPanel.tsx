@@ -228,6 +228,86 @@ export function ReviewDetailPanel({ id, scope }: Props) {
               ) : null}
             </section>
 
+            {/* Pass 24 — Source / Path. Kullanıcı "bu görsel hangi
+                kaynaktan geldi?" sorusunu detail panel'de açık olarak
+                görür. Local: full folder + file path. Design: product
+                type + reference deep-link. */}
+            {item.source?.kind === "local-library" ? (
+              <section
+                aria-label="Kaynak"
+                className="flex flex-col gap-1 border-t border-border pt-3"
+                data-testid="source-section"
+              >
+                <h3 className="text-sm font-medium text-text">Kaynak</h3>
+                <div className="rounded-md bg-accent-soft px-2 py-1 text-xs">
+                  <span className="font-medium text-accent-text">
+                    Lokal kütüphane
+                  </span>
+                </div>
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                  <dt className="text-text-muted">Dosya</dt>
+                  <dd
+                    className="break-all font-mono text-text"
+                    data-testid="source-filename"
+                  >
+                    {item.source.fileName}
+                  </dd>
+                  <dt className="text-text-muted">Klasör</dt>
+                  <dd className="break-all font-mono text-text">
+                    {item.source.folderName}
+                  </dd>
+                  <dt className="text-text-muted">Tam yol</dt>
+                  <dd className="break-all font-mono text-text-muted">
+                    {item.source.folderPath}
+                  </dd>
+                  <dt className="text-text-muted">Çözünürlük</dt>
+                  <dd className="text-text">
+                    {item.source.width}×{item.source.height}
+                    {item.source.dpi ? ` · ${item.source.dpi}dpi` : ""}
+                  </dd>
+                  {item.source.qualityScore !== null ? (
+                    <>
+                      <dt className="text-text-muted">Kalite</dt>
+                      <dd className="text-text">
+                        {item.source.qualityScore}/100
+                      </dd>
+                    </>
+                  ) : null}
+                </dl>
+              </section>
+            ) : item.source?.kind === "design" ? (
+              <section
+                aria-label="Kaynak"
+                className="flex flex-col gap-1 border-t border-border pt-3"
+                data-testid="source-section"
+              >
+                <h3 className="text-sm font-medium text-text">Kaynak</h3>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="rounded-md bg-surface-muted px-2 py-0.5 font-medium text-text">
+                    AI Variation
+                  </span>
+                  {item.source.productTypeKey ? (
+                    <span className="rounded-sm bg-accent-soft px-1.5 py-0.5 text-accent-text">
+                      {item.source.productTypeKey}
+                    </span>
+                  ) : null}
+                </div>
+                {item.referenceId ? (
+                  <a
+                    href={`/references/${item.referenceId}/variations`}
+                    className="text-xs text-accent underline hover:text-accent-hover"
+                  >
+                    Referans variations sayfasını aç →
+                  </a>
+                ) : null}
+                {item.source.referenceShortId ? (
+                  <span className="font-mono text-xs text-text-muted">
+                    ref-{item.source.referenceShortId}
+                  </span>
+                ) : null}
+              </section>
+            ) : null}
+
             {/* Summary */}
             {item.reviewSummary ? (
               <section

@@ -105,6 +105,12 @@ export const GET = withErrorHandling(async (req: Request) => {
           referenceId: true,
           productTypeId: true,
           jobId: true,
+          // Pass 24 — source clarity: ProductType.key (örn. "wall_art")
+          // ReviewCard'da görünür. Reference cuid son 6 karakter de
+          // verilir (kullanıcı aynı reference'tan gelen 6-12 variation
+          // ayırt edebilsin).
+          productType: { select: { key: true } },
+          createdAt: true,
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -147,6 +153,16 @@ export const GET = withErrorHandling(async (req: Request) => {
           referenceId: it.referenceId,
           productTypeId: it.productTypeId,
           jobId: it.jobId,
+          // Pass 24 — source clarity (additive). ProductType.key + reference
+          // cuid kısa id; UI ReviewCard "Wall Art · ref-3oa1m" formatında
+          // gösterir. Reference detail'e deep-link için referenceId zaten
+          // expose edildi.
+          source: {
+            kind: "design" as const,
+            productTypeKey: it.productType?.key ?? null,
+            referenceShortId: it.referenceId ? it.referenceId.slice(-6) : null,
+            createdAt: it.createdAt.toISOString(),
+          },
         };
       }),
     );
@@ -180,6 +196,18 @@ export const GET = withErrorHandling(async (req: Request) => {
         reviewedAt: true,
         reviewProviderSnapshot: true,
         thumbnailPath: true,
+        // Pass 24 — source/path clarity: kullanıcı review ekranında
+        // "bu görsel hangi klasörden / dosyadan geldi" bilgisini almalı.
+        // Mevcut DB alanları zaten doluydu (Phase 5 scanner upsert eder);
+        // sadece API response'a expose ediyoruz. UI'de dosya adı + klasör
+        // + kalite skoru + boyut + dpi gösterilir.
+        folderName: true,
+        fileName: true,
+        folderPath: true,
+        qualityScore: true,
+        width: true,
+        height: true,
+        dpi: true,
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -210,6 +238,17 @@ export const GET = withErrorHandling(async (req: Request) => {
     referenceId: null,
     productTypeId: null,
     jobId: null,
+    // Pass 24 — source clarity (additive)
+    source: {
+      kind: "local-library" as const,
+      folderName: it.folderName,
+      fileName: it.fileName,
+      folderPath: it.folderPath,
+      qualityScore: it.qualityScore,
+      width: it.width,
+      height: it.height,
+      dpi: it.dpi,
+    },
   }));
 
   return NextResponse.json({

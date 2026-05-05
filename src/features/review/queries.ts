@@ -23,6 +23,28 @@ export type ReviewStatusEnum =
 //   - riskFlags: detail panel ReviewRiskFlagList için (full array)
 //   - reviewSummary: detail panel "Özet" bölümü
 //   - reviewProviderSnapshot: detail panel snapshot satırı (audit trail)
+// Pass 24 — Source clarity. Review queue item'ın hangi kaynaktan geldiğini
+// UI'da net göstermek için iki ayrı discriminated union variant.
+export type ReviewQueueSourceLocal = {
+  kind: "local-library";
+  folderName: string;
+  fileName: string;
+  folderPath: string;
+  qualityScore: number | null;
+  width: number;
+  height: number;
+  dpi: number | null;
+};
+export type ReviewQueueSourceDesign = {
+  kind: "design";
+  productTypeKey: string | null;
+  referenceShortId: string | null;
+  createdAt: string;
+};
+export type ReviewQueueSource =
+  | ReviewQueueSourceLocal
+  | ReviewQueueSourceDesign;
+
 export type ReviewQueueItem = {
   id: string;
   thumbnailUrl: string | null;
@@ -41,6 +63,8 @@ export type ReviewQueueItem = {
   referenceId: string | null;
   productTypeId: string | null;
   jobId: string | null;
+  // Pass 24 — Source meta (additive, optional for backward compat).
+  source?: ReviewQueueSource;
 };
 
 export type ReviewQueueResponse = {
