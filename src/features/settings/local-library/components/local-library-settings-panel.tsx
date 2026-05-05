@@ -259,14 +259,15 @@ export function LocalLibrarySettingsPanel() {
       </form>
 
       {/* Pass 18 — kütüphaneyi tara + son tarama özeti.
-          Mevcut /api/local-library/scan POST endpoint'ini settings ekranından
-          tetiklemek için. Önceden sadece variation generation flow içinden
-          çağrılabiliyordu; settings'te scan trigger + son tarama özeti yoktu,
-          kullanıcı path girer Kaydet'e basar ama görseller indekslenmezdi
-          ("neden görünmüyor?" UX gap). */}
-      {form.rootFolderPath ? (
-        <ScanSection rootFolderPath={form.rootFolderPath} />
-      ) : null}
+          Pass 19 — buton her zaman render, path durumuna göre disabled +
+          uyarı. Önceki conditional `form.rootFolderPath ? ... : null` yeni
+          kullanıcılarda butonu tamamen gizliyordu ("Şimdi tara butonunu
+          göremedim" gerçek bug). Şimdi: panel altında her zaman görünür,
+          path boşsa veya draft != saved ise disabled + honest uyarı. */}
+      <ScanSection
+        draftPath={form.rootFolderPath}
+        savedPath={query.data?.settings.rootFolderPath ?? null}
+      />
     </Card>
   );
 }
@@ -295,7 +296,15 @@ async function fetchScanSummary(): Promise<ScanSummary> {
   };
 }
 
-function ScanSection({ rootFolderPath }: { rootFolderPath: string }) {
+function ScanSection({
+  draftPath,
+  savedPath,
+}: {
+  // Form state'inde olan path (kullanıcı yazıyor olabilir)
+  draftPath: string;
+  // DB'de saved olan path (scan endpoint'inin gerçekten kullandığı)
+  savedPath: string | null;
+}) {
   const qc = useQueryClient();
   const summary = useQuery({
     queryKey: ["settings", "local-library", "scan-summary"],
@@ -321,25 +330,58 @@ function ScanSection({ rootFolderPath }: { rootFolderPath: string }) {
     },
   });
 
+  // Buton durumunu üç state'e böl:
+  //   - savedPath null + draftPath boş → disabled, "önce kök klasör girin + Kaydet"
+  //   - savedPath null + draftPath dolu → disabled, "henüz kaydetmediniz; önce Kaydet'e basın"
+  //   - savedPath dolu (draftPath farklı olsa bile) → enabled (scan endpoint savedPath kullanır)
+  const draftTrim = draftPath.trim();
+  const dbReady = savedPath !== null && savedPath.length > 0;
+  const draftDiffersFromSaved = dbReady && draftTrim !== (savedPath ?? "");
+  const disableReason: string | null = !dbReady
+    ? draftTrim.length === 0
+      ? "Önce yukarıdaki “Kök klasör” alanına mutlak yol girip “Kaydet”e basın."
+      : "Yeni yolu kaydetmediniz. Tarama eski kayıtlı yolu değil, yalnız “Kaydet” sonrası kaydedilen yolu kullanır."
+    : null;
+
   return (
     <div className="mt-6 flex flex-col gap-3 rounded-md border border-border bg-bg p-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-medium text-text">Kütüphane taraması</span>
           <span className="text-xs text-text-muted">
-            Klasör: <span className="font-mono">{rootFolderPath}</span>
+            {dbReady ? (
+              <>
+                Kayıtlı klasör:{" "}
+                <span className="font-mono break-all">{savedPath}</span>
+              </>
+            ) : (
+              <>Henüz bir klasör kaydedilmemiş.</>
+            )}
           </span>
         </div>
         <Button
           type="button"
           variant="secondary"
           loading={scan.isPending}
-          disabled={scan.isPending}
+          disabled={scan.isPending || !dbReady}
           onClick={() => scan.mutate()}
         >
           {scan.isPending ? "Tarama başlatılıyor…" : "Şimdi tara"}
         </Button>
       </div>
+
+      {disableReason ? (
+        <p className="text-xs text-warning" role="status">
+          {disableReason}
+        </p>
+      ) : null}
+      {dbReady && draftDiffersFromSaved ? (
+        <p className="text-xs text-warning" role="status">
+          Düzenlediğiniz yol kayıtlı yolla aynı değil. Tarama, kayıtlı yolu (
+          <span className="font-mono">{savedPath}</span>) kullanır. Yeni yola
+          taramak için önce “Kaydet”e basın.
+        </p>
+      ) : null}
 
       {scan.isError ? (
         <p className="text-sm text-danger" role="alert">
@@ -349,7 +391,7 @@ function ScanSection({ rootFolderPath }: { rootFolderPath: string }) {
       {scan.isSuccess ? (
         <p className="text-xs text-text-muted">
           Tarama kuyruğa eklendi. Tamamlandığında özet aşağıda güncellenecek
-          (worker `npm run worker` çalışıyor olmalı).
+          (worker <code>npm run worker</code> çalışıyor olmalı).
         </p>
       ) : null}
 
