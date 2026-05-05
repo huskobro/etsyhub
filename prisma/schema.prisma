@@ -76,6 +76,10 @@ enum JobType {
   EXPORT_SELECTION_SET
   SELECTION_EXPORT_CLEANUP
   MOCKUP_RENDER
+  // Pass 29 — Magic Eraser inpainting (LaMa) Selection Studio edit-op.
+  // Pattern: REMOVE_BACKGROUND emsali; input asset + mask buffer →
+  // Python subprocess (LaMa) → output Asset (non-destructive).
+  MAGIC_ERASER_INPAINT
 }
 
 enum VariationState {

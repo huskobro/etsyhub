@@ -39,8 +39,9 @@ import {
   type SelectionItemView,
   type SelectionSetStatus,
 } from "../queries";
-import { Crop, Sparkles, CheckCircle2 } from "lucide-react";
+import { Crop, Sparkles, CheckCircle2, Eraser } from "lucide-react";
 import { HeavyActionButton } from "./HeavyActionButton";
+import { MagicEraserModal } from "./MagicEraserModal";
 
 type CropRatio = "2:3" | "4:5" | "1:1" | "3:4";
 
@@ -85,6 +86,25 @@ export function QuickActions({ setId, item, setStatus }: QuickActionsProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cropOpen, setCropOpen] = useState(false);
   const cropMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Pass 29 — Magic Eraser modal state. Modal açılınca signed URL fetch
+  // edilir (item'ın aktif asset id'sinden).
+  const [magicEraserOpen, setMagicEraserOpen] = useState(false);
+  const [magicEraserUrl, setMagicEraserUrl] = useState<string | null>(null);
+  const activeAssetId = item.editedAssetId ?? item.sourceAssetId;
+  const openMagicEraser = async () => {
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`/api/assets/${activeAssetId}/signed-url`);
+      if (!res.ok) throw new Error("Görsel URL alınamadı");
+      const data = (await res.json()) as { url?: string };
+      if (!data.url) throw new Error("Görsel URL boş");
+      setMagicEraserUrl(data.url);
+      setMagicEraserOpen(true);
+    } catch (err) {
+      setErrorMessage((err as Error).message);
+    }
+  };
 
   // Inline result auto-clear (5 saniye); unmount sonrası setState leak'siz.
   useEffect(() => {
@@ -198,6 +218,28 @@ export function QuickActions({ setId, item, setStatus }: QuickActionsProps) {
           item={item}
           isReadOnly={isReadOnly || isPending}
         />
+
+        {/* Pass 29 — Magic Eraser. Heavy op (BullMQ MAGIC_ERASER_INPAINT).
+            Lock state HeavyActionButton emsali activeHeavyJobId tarafından
+            yönetilir; UI tarafında button basit aç/kapat + modal. */}
+        <ActionButton
+          label="Magic Eraser"
+          icon={<Eraser className="h-3.5 w-3.5" />}
+          onClick={openMagicEraser}
+          disabled={isReadOnly || isPending || item.activeHeavyJobId !== null}
+        />
+        {magicEraserUrl ? (
+          <MagicEraserModal
+            open={magicEraserOpen}
+            onOpenChange={(o) => {
+              setMagicEraserOpen(o);
+              if (!o) setMagicEraserUrl(null);
+            }}
+            setId={setId}
+            item={item}
+            imageSrc={magicEraserUrl}
+          />
+        ) : null}
 
         {/* 2. Upscale 2× — DISABLED (provider yok, honesty: "Yakında") */}
         <UpscaleDisabledButton />

@@ -144,4 +144,60 @@ describe("POST /api/selection/sets/[setId]/items/[itemId]/edit/heavy", () => {
 
     expect(res.status).toBe(401);
   });
+
+  // Pass 29 — Magic Eraser ek heavy op
+  it("magic-eraser → 200 + { jobId }; mask base64 service'e geçer", async () => {
+    (requireUser as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "user-a" });
+    vi.mocked(applyEditAsync).mockResolvedValue({ jobId: "job-eraser-1" });
+
+    const res = await POST(
+      makeRequest("set-1", "item-1", {
+        op: "magic-eraser",
+        maskBase64: "AAAA", // geçerli base64
+      }),
+      { params: { setId: "set-1", itemId: "item-1" } },
+    );
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.jobId).toBe("job-eraser-1");
+    expect(applyEditAsync).toHaveBeenCalledWith({
+      userId: "user-a",
+      setId: "set-1",
+      itemId: "item-1",
+      op: { op: "magic-eraser", params: { maskBase64: "AAAA" } },
+    });
+  });
+
+  it("magic-eraser boş mask → 400 (zod min(1) reject)", async () => {
+    (requireUser as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "user-a" });
+
+    const res = await POST(
+      makeRequest("set-1", "item-1", {
+        op: "magic-eraser",
+        maskBase64: "",
+      }),
+      { params: { setId: "set-1", itemId: "item-1" } },
+    );
+
+    expect(res.status).toBe(400);
+    expect(applyEditAsync).not.toHaveBeenCalled();
+  });
+
+  it("magic-eraser çok büyük mask → 400 (>500KB reject)", async () => {
+    (requireUser as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "user-a" });
+
+    // 600KB string
+    const tooBig = "A".repeat(600 * 1024);
+    const res = await POST(
+      makeRequest("set-1", "item-1", {
+        op: "magic-eraser",
+        maskBase64: tooBig,
+      }),
+      { params: { setId: "set-1", itemId: "item-1" } },
+    );
+
+    expect(res.status).toBe(400);
+    expect(applyEditAsync).not.toHaveBeenCalled();
+  });
 });

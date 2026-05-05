@@ -1,0 +1,11 @@
+# Pass 29 — Magic Eraser Python runner dependencies.
+# Admin/sysadmin tarafında ayrı Python env'e kurulur:
+#   python3 -m venv .venv && source .venv/bin/activate
+#   pip install -r src/server/services/magic-eraser/requirements.txt
+#
+# simple-lama-inpainting LaMa modelini paketler (ilk çalıştırmada
+# ~150MB indirme — ~/.cache/torch). MPS (Apple Silicon) ve CPU otomatik
+# seçim. Production node ortamında SIMPLE_LAMA_PYTHON env'i runner'a
+# işaret eder (default: PATH'teki python3).
+Pillow>=10.0.0
+simple-lama-inpainting>=0.1.2

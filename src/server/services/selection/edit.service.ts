@@ -69,7 +69,10 @@ import type { RemoveBackgroundJobPayload } from "@/server/workers/selection-edit
 export type ApplyEditOp =
   | { op: "crop"; params: { ratio: CropRatio } }
   | { op: "transparent-check" }
-  | { op: "background-remove" };
+  | { op: "background-remove" }
+  // Pass 29 — magic-eraser heavy op. Mask buffer payload'da geçer
+  // (base64). UI MaskCanvas → endpoint → applyEditAsync → BullMQ.
+  | { op: "magic-eraser"; params: { maskBase64: string } };
 
 export type ApplyEditInput = {
   userId: string;
@@ -94,7 +97,10 @@ export type ApplyEditAsyncInput = {
   userId: string;
   setId: string;
   itemId: string;
-  op: { op: "background-remove" };
+  op:
+    | { op: "background-remove" }
+    // Pass 29 — magic-eraser heavy op (Python LaMa subprocess).
+    | { op: "magic-eraser"; params: { maskBase64: string } };
 };
 
 // ────────────────────────────────────────────────────────────
@@ -138,6 +144,10 @@ export async function applyEdit(input: ApplyEditInput): Promise<SelectionItem> {
     throw new Error(
       "background-remove heavy op — applyEditAsync kullan",
     );
+  }
+  // Pass 29 — magic-eraser de heavy; instant API'de kabul edilmez.
+  if (input.op.op === "magic-eraser") {
+    throw new Error("magic-eraser heavy op — applyEditAsync kullan");
   }
 
   const item = await requireItemOwnership({
@@ -302,8 +312,11 @@ export async function resetItem(
 export async function applyEditAsync(
   input: ApplyEditAsyncInput,
 ): Promise<{ jobId: string }> {
-  // Yalnız "background-remove" kabul. Instant op'lar applyEdit'ten gider.
-  if (input.op.op !== "background-remove") {
+  // Pass 29 — heavy op switch: background-remove + magic-eraser kabul edilir.
+  if (
+    input.op.op !== "background-remove" &&
+    input.op.op !== "magic-eraser"
+  ) {
     throw new Error(
       `applyEditAsync yalnız heavy op kabul eder; "${(input.op as { op: string }).op}" instant op — applyEdit kullan`,
     );
@@ -331,16 +344,33 @@ export async function applyEditAsync(
       );
     }
 
-    const payload: RemoveBackgroundJobPayload = {
-      userId: input.userId,
-      setId: input.setId,
-      itemId: input.itemId,
-      opType: "background-remove",
-    };
-    const job = await enqueue(
-      JobType.REMOVE_BACKGROUND,
-      payload as unknown as Record<string, unknown>,
-    );
+    let job;
+    if (input.op.op === "magic-eraser") {
+      // Pass 29 — Magic Eraser job. Mask buffer base64 payload'da
+      // (BullMQ Redis ~512KB limit; 4096×4096 mask binarize ~50KB safe).
+      const payload = {
+        userId: input.userId,
+        setId: input.setId,
+        itemId: input.itemId,
+        opType: "magic-eraser" as const,
+        maskBase64: input.op.params.maskBase64,
+      };
+      job = await enqueue(
+        JobType.MAGIC_ERASER_INPAINT,
+        payload as unknown as Record<string, unknown>,
+      );
+    } else {
+      const payload: RemoveBackgroundJobPayload = {
+        userId: input.userId,
+        setId: input.setId,
+        itemId: input.itemId,
+        opType: "background-remove",
+      };
+      job = await enqueue(
+        JobType.REMOVE_BACKGROUND,
+        payload as unknown as Record<string, unknown>,
+      );
+    }
     const jobId = job.id;
     if (!jobId) {
       throw new Error("BullMQ job.id null — enqueue başarısız");

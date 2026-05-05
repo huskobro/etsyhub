@@ -15,6 +15,7 @@ import { handleSelectionEditRemoveBackground } from "./selection-edit.worker";
 import { handleSelectionExport } from "./selection-export.worker";
 import { handleSelectionExportCleanup } from "./selection-export-cleanup.worker";
 import { handleMockupRender } from "./mockup-render.worker";
+import { handleMagicEraser } from "./magic-eraser.worker";
 
 /** Günlük FETCH_NEW_LISTINGS repeat için sabit scheduler ID. */
 export const FETCH_NEW_LISTINGS_SCHEDULE_ID = "fetch-new-listings-daily";
@@ -62,6 +63,11 @@ export async function startWorkers() {
     // per-render attempts=1 (Spec §7.2 auto-retry yok), 60s timeout cap
     // AbortSignal worker tarafında.
     { name: JobType.MOCKUP_RENDER, handler: handleMockupRender },
+    // Pass 29 — Magic Eraser inpainting worker. Concurrency 1:
+    // Python LaMa subprocess RAM-heavy (4096×4096 ~1-2GB peak) + cold
+    // start ~5-15s. Daha fazla concurrency OOM riski yaratır;
+    // serileştirme güvenli.
+    { name: JobType.MAGIC_ERASER_INPAINT, handler: handleMagicEraser },
   ] as const;
 
   for (const s of specs) {
@@ -78,11 +84,14 @@ export async function startWorkers() {
         ? 1
         : s.name === JobType.SELECTION_EXPORT_CLEANUP
           ? 1
-          : s.name === JobType.GENERATE_VARIATIONS
-            ? 4
-            : s.name === JobType.REVIEW_DESIGN
+          : // Pass 29 — magic-eraser concurrency 1 (Python LaMa RAM-heavy + cold start).
+            s.name === JobType.MAGIC_ERASER_INPAINT
+            ? 1
+            : s.name === JobType.GENERATE_VARIATIONS
               ? 4
-              : 2;
+              : s.name === JobType.REVIEW_DESIGN
+                ? 4
+                : 2;
     const worker = new Worker(s.name, s.handler as unknown as (job: unknown) => Promise<unknown>, {
       connection,
       concurrency,
