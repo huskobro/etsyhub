@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocalFolders } from "../queries/use-local-folders";
 import { useLocalAssets } from "../queries/use-local-assets";
 import { useScanFolders } from "../mutations/use-scan-folders";
@@ -15,18 +16,56 @@ import { Chip } from "@/components/ui/Chip";
 // Phase 5 §5.2 — Browse-first (R16): önce folder grid, klasör seçilince
 // asset grid. Tarama (scan) tetiklenebilir; rootFolderPath set değilse
 // backend 400 döner ve mutation hata mesajı kullanıcıya gösterilir.
+//
+// Pass 22 — URL state. State `useState` yerine search params (folder,
+// asset, neg). Refresh sonrası aynı state geri gelir, back/forward
+// browser navigation düzgün çalışır, ekran durumu paylaşılabilir.
+// Phase 8 emsali: useMockupPackState/useMockupOverlayState pattern'i.
 export function LocalModePanel() {
-  const [folder, setFolder] = useState<string | null>(null);
-  const [negativesOnly, setNegativesOnly] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // URL state'i oku
+  const folder = searchParams.get("folder") || null;
+  const negativesOnly = searchParams.get("neg") === "1";
+  const quickLookId = searchParams.get("asset") || null;
+  const quickLookOpen = quickLookId !== null;
+
+  // URL state'i güncelle (shallow router.replace — server re-fetch yok)
+  const updateParams = useCallback(
+    (patch: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, val] of Object.entries(patch)) {
+        if (val === null || val === "") {
+          params.delete(key);
+        } else {
+          params.set(key, val);
+        }
+      }
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [searchParams, router, pathname],
+  );
+
+  const setFolder = (next: string | null) => {
+    // Klasör değişince asset state'i de temizle (önceki klasörün asset id
+    // yeni klasörde geçersiz olur)
+    updateParams({ folder: next, asset: null });
+  };
+  const setNegativesOnly = (next: boolean) => {
+    updateParams({ neg: next ? "1" : null });
+  };
+  const setQuickLookId = (next: string | null) => {
+    updateParams({ asset: next });
+  };
+
   const folders = useLocalFolders();
   const assets = useLocalAssets(folder, negativesOnly);
   const scan = useScanFolders();
   const settings = useLocalLibrarySettings();
   const rootPath = settings.data?.settings.rootFolderPath ?? null;
-
-  // Pass 21 — QuickLook lightbox state
-  const [quickLookId, setQuickLookId] = useState<string | null>(null);
-  const quickLookOpen = quickLookId !== null;
 
   if (folders.isLoading) {
     return <StateMessage tone="neutral" title="Klasörler yükleniyor…" />;
@@ -110,7 +149,7 @@ export function LocalModePanel() {
         <div className="flex items-center gap-2">
           <Chip
             active={negativesOnly}
-            onToggle={() => setNegativesOnly((v) => !v)}
+            onToggle={() => setNegativesOnly(!negativesOnly)}
           >
             Yalnız negatifler
           </Chip>

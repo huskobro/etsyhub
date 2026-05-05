@@ -412,14 +412,27 @@ function ScanSection({
               yapılar henüz desteklenmiyor).
             </span>
           ) : (
-            <span>
-              {summary.data.folderCount} klasör · {summary.data.assetCount}{" "}
-              görsel indekslendi. Görselleri görüntülemek için: sol menüden{" "}
-              <strong>Referanslar</strong> → bir referans aç →{" "}
-              <strong>Local</strong> sekmesi → bir klasöre tıkla. Görseller
-              kart grid&apos;inde thumbnail + çözünürlük + kalite skoruyla
-              listelenir.
-            </span>
+            <div className="flex flex-col gap-2">
+              <span>
+                {summary.data.folderCount} klasör · {summary.data.assetCount}{" "}
+                görsel indekslendi.
+              </span>
+              {/* Pass 22 — Settings entry CTA. /references listesine
+                  yönlendirir (oradan kullanıcı bir referans seçip Local
+                  sekmesinden klasörlere ulaşır). Spesifik bir referance
+                  deep-link riskli — kullanıcı verisine bağımlı. */}
+              <a
+                href="/references"
+                className="inline-flex w-fit items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent-hover"
+              >
+                Kütüphaneyi aç →
+              </a>
+              <span className="text-xs text-text-muted">
+                Açılan ekranda bir referans aç → <strong>Local</strong>{" "}
+                sekmesi → bir klasöre tıkla. Görseller kart grid&apos;inde
+                thumbnail + çözünürlük + kalite skoruyla listelenir.
+              </span>
+            </div>
           )
         ) : null}
         <span className="text-xs text-text-muted">
