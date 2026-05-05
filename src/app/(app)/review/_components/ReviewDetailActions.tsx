@@ -109,7 +109,10 @@ export function ReviewDetailActions({ item, scope }: Props) {
   const resetVisible = item.reviewStatusSource === "USER";
 
   return (
-    <div className="flex flex-col gap-2 border-t border-border pt-4">
+    // Pass 27 — Container'ın border-t/pt'si kaldırıldı; ReviewDetailPanel
+    // bu component'i artık sticky <footer> içinde render ediyor (panel
+    // border'ı footer wrapper'da). Çift border önlendi.
+    <div className="flex flex-col gap-2">
       <div className="flex gap-2">
         <button
           type="button"

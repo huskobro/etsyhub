@@ -79,9 +79,20 @@ export function ReviewDetailPanel({ id, scope }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Queue cache'inden item'ı bul. ReviewQueueList aynı sayfada zaten fetch
-  // ettiği için cache hit; navigate olmuşsa fetch tetiklenir.
-  const { data, isLoading } = useReviewQueue({ scope });
+  // Pass 27 — Bug 1 fix: page=2 + detail kombinasyonunda detail panel
+  // "Kayıt bulunamadı" hatası alıyordu. Root cause: useReviewQueue page
+  // parametresi geçirmiyordu (default page=1 fetch); ReviewQueueList
+  // ise URL'den page okuyor. Detail page'in cache'inde page 1 items
+  // varken, kullanıcının detail=... id'si page 2'den geliyordu —
+  // items.find null döndürüyordu.
+  //
+  // Fix: aynı page parametresini ReviewDetailPanel da URL'den okusun.
+  // React Query cache key'i {scope, page} ile eşleşecek; ReviewQueueList
+  // zaten fetch ettiği için drawer cache hit (double fetch yok).
+  const pageRaw = searchParams.get("page");
+  const pageNum = pageRaw && Number(pageRaw) > 0 ? Number(pageRaw) : 1;
+
+  const { data, isLoading } = useReviewQueue({ scope, page: pageNum });
   const items = data?.items ?? [];
   const idx = items.findIndex((it) => it.id === id);
   const item = idx >= 0 ? (items[idx] ?? null) : null;
@@ -160,15 +171,20 @@ export function ReviewDetailPanel({ id, scope }: Props) {
       {/* Panel — Pass 26: drawer width max-w-md → max-w-2xl (decision
           workspace için büyük preview alanı; local QuickLook fullscreen
           ile aynı yapı değil, drawer karakteri korundu). */}
+      {/* Pass 27 — Bug 2 fix: drawer 3-zone layout (header / scroll
+          content / sticky action bar). Önceden tüm aside overflow-y-auto
+          idi → action bar listenin altında scroll-içinde kayboluyordu.
+          Yeni: aside overflow-hidden, content alanı flex-1 + overflow-y-auto,
+          action bar her zaman alt sabit görünür. */}
       <aside
         ref={containerRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="review-detail-title"
         data-testid="review-detail-panel"
-        className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col gap-4 overflow-y-auto border-l border-border bg-surface p-6 shadow-popover"
+        className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col overflow-hidden border-l border-border bg-surface shadow-popover"
       >
-        <header className="flex items-center justify-between gap-2">
+        <header className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-6 py-4">
           <div className="flex items-center gap-2">
             <h2
               id="review-detail-title"
@@ -243,13 +259,19 @@ export function ReviewDetailPanel({ id, scope }: Props) {
         </header>
 
         {!item ? (
-          <p className="text-sm text-text-muted" data-testid="review-detail-empty">
-            {isLoading
-              ? "Yükleniyor…"
-              : "Kayıt bulunamadı veya silinmiş olabilir."}
-          </p>
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <p className="text-sm text-text-muted" data-testid="review-detail-empty">
+              {isLoading
+                ? "Yükleniyor…"
+                : "Kayıt bulunamadı veya silinmiş olabilir."}
+            </p>
+          </div>
         ) : (
           <>
+            {/* Pass 27 — Scrollable content area (flex-1 overflow-y-auto)
+                + sticky footer (action bar + hint). Action bar artık
+                drawer altında her zaman görünür. */}
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-4">
             {/* Thumbnail */}
             {item.thumbnailUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -411,14 +433,18 @@ export function ReviewDetailPanel({ id, scope }: Props) {
               </section>
             ) : null}
 
-            {/* Actions */}
-            <ReviewDetailActions item={item} scope={scope} />
+            </div>
 
-            {/* Pass 26 — Keyboard shortcuts hint. Decision workspace
-                ergonomi: kullanıcı klavye ile hızlı karar verebilsin. */}
-            <p className="border-t border-border pt-2 text-xs text-text-muted">
-              ←/→ önceki/sonraki · Esc kapat
-            </p>
+            {/* Pass 27 — Sticky footer: Actions + keyboard hint her
+                zaman drawer altında görünür (scroll'la kaybolmaz). */}
+            <footer className="flex flex-shrink-0 flex-col gap-2 border-t border-border bg-surface px-6 py-3">
+              <ReviewDetailActions item={item} scope={scope} />
+              {/* Pass 26 — Keyboard shortcuts hint. Decision workspace
+                  ergonomi: kullanıcı klavye ile hızlı karar verebilsin. */}
+              <p className="text-xs text-text-muted">
+                ←/→ önceki/sonraki · Esc kapat
+              </p>
+            </footer>
           </>
         )}
       </aside>
