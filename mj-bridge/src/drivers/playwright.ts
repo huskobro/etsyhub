@@ -25,7 +25,8 @@
 //     buildMJPromptString başa ekliyor)
 //   ◦ omni-ref drag-drop bin (premium V7+; orta effort)
 
-import { mkdir } from "node:fs/promises";
+import { mkdir, unlink } from "node:fs/promises";
+import { join } from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import type { BridgeDriver, DriverProgressCallback } from "./types.js";
 import type { CreateJobRequest, JobBlockReason } from "../types.js";
@@ -98,6 +99,19 @@ export class PlaywrightDriver implements BridgeDriver {
   async init(): Promise<void> {
     await mkdir(this.cfg.profileDir, { recursive: true });
     await mkdir(this.cfg.outputsDir, { recursive: true });
+
+    // Pass 44 — stale lock cleanup. Bridge crash veya inspection script
+    // sonrası `SingletonLock`/`SingletonCookie`/`SingletonSocket` kalır;
+    // ikinci başlatma "Failed to create ProcessSingleton" hatasıyla fail
+    // olur. Burada best-effort sil; bir başka Chromium aktif olarak
+    // profile'ı kullanıyorsa Playwright bu durumu yine de yakalar.
+    for (const lockFile of [
+      "SingletonLock",
+      "SingletonCookie",
+      "SingletonSocket",
+    ]) {
+      await unlink(join(this.cfg.profileDir, lockFile)).catch(() => undefined);
+    }
 
     // headless: false — TOS uyumu (Pass 41 doc §8.2). Test ortamı için
     // env override mümkün ama production'da KULLANMA.

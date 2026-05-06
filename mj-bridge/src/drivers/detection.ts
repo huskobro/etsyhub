@@ -90,7 +90,21 @@ export async function detectLoginRequired(
 /**
  * Cloudflare / hCaptcha challenge sayfasında mıyız?
  *
- * URL pattern + iframe selector.
+ * Pass 44 — kapsam genişletildi:
+ *   1. URL pattern (challenges.cloudflare.com, /cdn-cgi/challenge)
+ *   2. Iframe selector (Pass 43 — embedded challenge için)
+ *   3. **Whole-page Cloudflare interstitial** — DOM body içinde
+ *      "verify you are human" / "Just a moment" / "Ray ID" pattern.
+ *      Pass 44 audit'inde MJ tarafı her sayfada full-page CF
+ *      interstitial gösterdi (Türkçe lokalize: "Bir dakika lütfen…"
+ *      + "Güvenlik doğrulaması yapılıyor"); iframe yoktu, eski
+ *      detection bunu yakalamadı.
+ *   4. Title pattern (interstitial title kısa + lokalize "Just a
+ *      moment" / "Bir dakika lütfen" / "Ein Moment bitte" gibi).
+ *
+ * Lokalizasyon: Cloudflare interstitial kullanıcının Accept-Language'ına
+ * göre değişir. Body'deki "cloudflare" string'i ve `cf-` class'lı
+ * elementler genelde sabit kalır — onlar primary anchor.
  */
 export async function detectChallengeRequired(
   page: Page,
@@ -98,7 +112,7 @@ export async function detectChallengeRequired(
 ): Promise<{ challengeRequired: boolean; reason?: string }> {
   const url = page.url();
 
-  // URL pattern.
+  // 1. URL pattern.
   if (url.includes("challenges.cloudflare.com")) {
     return { challengeRequired: true, reason: "Cloudflare challenge URL" };
   }
@@ -109,26 +123,86 @@ export async function detectChallengeRequired(
     };
   }
 
-  // DOM iframe.
-  const cf = await page
+  // 2. Iframe selectors (Pass 43 — embedded challenge).
+  const cfIframe = await page
     .locator(selectors.cloudflareChallenge)
     .first()
     .isVisible()
     .catch(() => false);
-  if (cf) {
+  if (cfIframe) {
     return {
       challengeRequired: true,
       reason: "Cloudflare iframe görünür",
     };
   }
-
-  const hc = await page
+  const hcIframe = await page
     .locator(selectors.hcaptchaChallenge)
     .first()
     .isVisible()
     .catch(() => false);
-  if (hc) {
+  if (hcIframe) {
     return { challengeRequired: true, reason: "hCaptcha iframe görünür" };
+  }
+
+  // 3. Whole-page interstitial — Pass 44 yeni detection.
+  // Cloudflare full-page Ray ID + body lokalize "verify you are human"
+  // pattern'ini içerir. cf- prefix'li selector'lar genelde sabit.
+  // `script[src*="cloudflare"]` veya `link[href*="cloudflare"]` head'de
+  // de var olabilir ama interstitial'a özel: body içinde "cf-mitigated"
+  // veya benzer.
+  const interstitial = await page.evaluate(() => {
+    // Title — kısa ve lokalize "moment / dakika" pattern
+    const titleLower = document.title.toLowerCase();
+    const titlePattern = /just a moment|bir dakika|moment bitte|momento por favor|un moment|поддерживается|wait/i;
+    const titleMatch = titlePattern.test(titleLower);
+
+    // Body — Cloudflare branded pattern (Ray ID, cloudflare.com link,
+    // "verify" lokalize text). Ray ID format: `Ray ID: <hex>`.
+    const bodyText = document.body?.innerText ?? "";
+    const rayIdMatch = /ray id[:\s]*[0-9a-f]+/i.test(bodyText);
+    const cloudflareLink = document.querySelector(
+      'a[href*="cloudflare.com"]',
+    );
+    const verifyText =
+      /verify you are human|verify human|güvenlik doğrulaması|sicherheitsüberprüfung|verificación de seguridad|vérification de sécurité/i.test(
+        bodyText,
+      );
+
+    // cf- class'ları (Cloudflare interstitial template'i)
+    const cfClass = !!document.querySelector(
+      '[class*="cf-"], #cf-spinner, #cf-bubbles',
+    );
+
+    return {
+      titleMatch,
+      rayIdMatch,
+      hasCloudflareLink: !!cloudflareLink,
+      verifyText,
+      cfClass,
+      bodyTextSample: bodyText.slice(0, 200),
+      title: document.title,
+    };
+  });
+
+  // İki güçlü sinyal: (Ray ID + cloudflare link) veya (title + verify).
+  // Tek başına title zayıf (rastgele yan sayfada da olabilir); kombine güvenli.
+  if (interstitial.rayIdMatch && interstitial.hasCloudflareLink) {
+    return {
+      challengeRequired: true,
+      reason: `Cloudflare full-page interstitial (Ray ID + cloudflare link). Title: "${interstitial.title}"`,
+    };
+  }
+  if (interstitial.verifyText && interstitial.hasCloudflareLink) {
+    return {
+      challengeRequired: true,
+      reason: `Cloudflare full-page interstitial (verify text + cloudflare link). Title: "${interstitial.title}"`,
+    };
+  }
+  if (interstitial.titleMatch && interstitial.cfClass) {
+    return {
+      challengeRequired: true,
+      reason: `Cloudflare interstitial (title pattern + cf-class). Title: "${interstitial.title}"`,
+    };
   }
 
   return { challengeRequired: false };

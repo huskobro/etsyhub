@@ -96,6 +96,31 @@ export default async function AdminMidjourneyPage() {
         </p>
       </div>
 
+      {/* Pass 44 — challenge / login handoff bilgi banner. Bridge sağlıklı
+          ama mjSession.likelyLoggedIn=false ise kullanıcıya manuel
+          intervention notu. */}
+      {healthResult.ok &&
+      healthResult.health &&
+      !healthResult.health.mjSession.likelyLoggedIn ? (
+        <div
+          className="rounded-md border border-warning bg-warning-soft p-3 text-sm text-warning-text"
+          data-testid="bridge-handoff-notice"
+        >
+          <p className="font-semibold">Manuel intervention bekleniyor</p>
+          <p className="mt-1 text-xs">
+            Bridge MJ web&apos;e bağlandı ama login durumu pasif. Bridge
+            browser penceresinde
+            {" "}
+            <strong>Cloudflare doğrulamasını tamamlayın</strong> ve
+            ardından
+            {" "}
+            <strong>Discord/Google ile login olun</strong>. Bridge persistent
+            profile session&apos;ı kaydeder; sonraki turda tekrar login
+            gerekmez.
+          </p>
+        </div>
+      ) : null}
+
       {healthResult.ok && healthResult.health ? (
         <BridgeHealthCard health={healthResult.health} />
       ) : (

@@ -78,7 +78,38 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
-### Pass 43 (bu tur — tamamlanan)
+### Pass 44 (kalibrasyon turu — tamamlanan)
+- ✅ Standalone DOM inspection script (`scripts/inspect-mj-dom.ts`):
+  persistent profile'a bağlanır, MJ home/imagine/archive sayfalarını
+  inspect eder, selector report + Cloudflare interstitial debug JSON
+  yazar (`data/dom-inspection/`).
+- ✅ **CRITICAL bulgu**: MJ web Türkçe lokalize Cloudflare full-page
+  interstitial gösteriyor ("Bir dakika lütfen…" + "Güvenlik doğrulaması
+  yapılıyor"). Pass 43 detection iframe-based'di; full-page interstitial
+  yakalamadı.
+- ✅ `detection.ts` `detectChallengeRequired` upgrade: title pattern
+  (Just a moment / Bir dakika / Moment bitte / Momento por favor /
+  Un moment / wait), Ray ID regex, `a[href*="cloudflare.com"]`,
+  verify text lokalize (Güvenlik doğrulaması, Sicherheitsüberprüfung,
+  Verificación de seguridad, Vérification de sécurité), cf- class.
+  İki güçlü sinyal kombosu (Ray ID + cloudflare link, verify text +
+  cloudflare link, title + cf-class).
+- ✅ Stale lock cleanup: PlaywrightDriver init'inde
+  `SingletonLock`/`SingletonCookie`/`SingletonSocket` best-effort sil
+  (bridge crash veya inspection script profile'ı çökmüş bıraksa bile
+  sonraki başlatma fail olmaz).
+- ✅ tsconfig DOM lib: page.evaluate browser-context callback'leri için
+  `document` global'ı tipler tanır.
+- ✅ **CANLI DOĞRULAMA**: bridge real driver MJ home'a navigate etti +
+  CF interstitial state algıladı + job state `AWAITING_CHALLENGE` +
+  blockReason `challenge-required` + waitForChallengeCleared polling
+  "Bekliyoruz… Ns" message'ı. **Pass 43'te bu state kaybediyordu**
+  (AWAITING_LOGIN'e düşüyordu) — Pass 44 bunu fix etti.
+- ✅ Admin /admin/midjourney: yeni handoff bilgi banner — bridge bağlı
+  ama mjSession pasif ise "Manuel intervention bekleniyor: Cloudflare
+  doğrulamasını tamamlayın + Discord/Google login".
+
+### Pass 43 (önceki tur — tamamlanan)
 - ✅ Selector katmanı: `selectors.ts` (17 key) + URL config + env override
   (`MJ_SELECTOR_OVERRIDES`, `MJ_BASE_URL`)
 - ✅ Detection helpers: `detection.ts` — detectLoginRequired,

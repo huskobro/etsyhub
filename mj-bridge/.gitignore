@@ -8,9 +8,10 @@ dist/
 # Persistent browser profile (kullanıcı oturumu, cookies, çerezler — kişisel)
 profile/
 
-# Job log + indirilen dosyalar
+# Job log + indirilen dosyalar + DOM inspection raporları
 data/jobs/
 data/outputs/
+data/dom-inspection/
 
 # Bridge config (shared secret içerir)
 .env
