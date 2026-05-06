@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { WindowDays } from "@/features/trend-stories/constants";
 import { useFeed, type FeedListing } from "../queries/use-feed";
 import { useCreateTrendBookmark } from "../mutations/use-create-trend-bookmark";
@@ -119,10 +120,22 @@ function FeedPage({
   const isFirstPageEmpty = cursor === null && data.items.length === 0;
   if (isFirstPageEmpty) {
     return (
+      // Pass 34 — Empty state'e yönlendirme. Pre-Pass 34: sadece "farklı
+      // aralık dene" — listing fetch çoğunlukla rakip taranınca üretildiği
+      // için kullanıcı henüz rakip yoksa boşluğun sebebini bilmiyordu.
       <StateMessage
         tone="neutral"
         title="Bu pencerede listing yok"
-        body="Yukarıdaki pencere tab'larından farklı bir aralık dene."
+        body="Pencere aralığını değiştir ya da rakip mağaza ekleyip taramaya başla."
+        action={
+          <Link
+            href="/competitors"
+            className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-foreground hover:opacity-90"
+            data-testid="trend-feed-empty-cta"
+          >
+            Rakiplere git
+          </Link>
+        }
       />
     );
   }

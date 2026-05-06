@@ -100,9 +100,15 @@ export default async function DashboardPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold">Hoş geldin</h1>
+        {/* Pass 34 — Subtitle güncellendi. Pre-Pass 34: "Phase 1 iskeleti
+            — üretim akışı Phase 5+'da açılacak" Phase 1'den kalma metindi
+            (Phase 9 V1'deyiz, üretim akışı + Magic Eraser hattı çalışıyor).
+            Şimdi gerçek özellik haritası: bookmark → referans → üret →
+            karar → seçim → mockup → listing. */}
         <p className="text-sm text-text-muted">
-          Çalışma alanının güncel durumu. Phase 1 iskeleti — üretim akışı Phase 5+&apos;da
-          açılacak.
+          Çalışma alanının güncel durumu. Bookmark topla, referansa taşı,
+          AI veya local kütüphaneden üret, karar atölyesinde onayla, Selection
+          Studio&apos;da düzenle ve listing&apos;e dönüştür.
         </p>
       </div>
 

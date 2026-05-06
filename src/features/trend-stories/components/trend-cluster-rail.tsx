@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useClusters } from "../queries/use-clusters";
 import type { WindowDays } from "@/features/trend-stories/constants";
 import { TrendClusterCard } from "./trend-cluster-card";
@@ -41,10 +42,23 @@ export function TrendClusterRail({ windowDays, onOpenCluster }: Props) {
           body={(query.error as Error).message}
         />
       ) : !query.data || query.data.clusters.length === 0 ? (
+        // Pass 34 — Empty state'e yönlendirme eklendi. Pre-Pass 34: sadece
+        // "farklı bir aralık dene" — ama kullanıcı henüz rakip eklememişse
+        // veya rakipleri taranmamışsa hiç cluster oluşmaz. CTA: Rakiplere
+        // git → mağaza ekle/tara → buradaki feed dolar.
         <StateMessage
           tone="neutral"
           title="Bu pencerede trend kümesi henüz yok"
-          body="Pencere tab'larından farklı bir aralık deneyebilirsin."
+          body="Pencere aralığını değiştir ya da rakip mağaza ekleyip taramaya başla."
+          action={
+            <Link
+              href="/competitors"
+              className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-foreground hover:opacity-90"
+              data-testid="trend-empty-cta"
+            >
+              Rakiplere git
+            </Link>
+          }
         />
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2">

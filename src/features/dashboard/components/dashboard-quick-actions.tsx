@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ImportUrlDialog } from "@/features/bookmarks/components/import-url-dialog";
 import { UploadImageDialog } from "@/features/bookmarks/components/upload-image-dialog";
@@ -46,8 +47,13 @@ export function DashboardQuickActions() {
     <div className="flex flex-col gap-3 rounded-md border border-border bg-surface p-5 shadow-card">
       <div>
         <h2 className="text-sm font-semibold text-text">Hızlı Aksiyonlar</h2>
-        <p className="text-xs text-text-muted">Fikir toplamanın en kısa yolu.</p>
+        <p className="text-xs text-text-muted">
+          Fikir topla, üretime geç ve karar ver.
+        </p>
       </div>
+      {/* Pass 34 — İki sıra: üst (fikir toplama, mevcut), alt (üretim &
+          karar, yeni). Üretim akışı Phase 7+ canlı; dashboard'dan link
+          olmaması discovery sürtünmesiydi. */}
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -73,6 +79,31 @@ export function DashboardQuickActions() {
         >
           Yeni Koleksiyon
         </button>
+      </div>
+      {/* Pass 34 — Production link'leri. Üretim → Karar → Seçim akışına
+          tek tıkla giriş. Aktif sayfaya hover-state ayrı tutuldu. */}
+      <div className="flex flex-wrap gap-2 border-t border-border-subtle pt-3">
+        <Link
+          href="/references"
+          className="rounded-md border border-border bg-bg px-3 py-2 text-sm font-medium text-text hover:border-border-strong hover:bg-surface-muted"
+          data-testid="quick-action-references"
+        >
+          Üret · Referanslar
+        </Link>
+        <Link
+          href="/review"
+          className="rounded-md border border-border bg-bg px-3 py-2 text-sm font-medium text-text hover:border-border-strong hover:bg-surface-muted"
+          data-testid="quick-action-review"
+        >
+          Karar · Review
+        </Link>
+        <Link
+          href="/selection"
+          className="rounded-md border border-border bg-bg px-3 py-2 text-sm font-medium text-text hover:border-border-strong hover:bg-surface-muted"
+          data-testid="quick-action-selection"
+        >
+          Seç · Selection Studio
+        </Link>
       </div>
 
       {urlOpen ? (

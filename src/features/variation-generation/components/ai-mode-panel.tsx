@@ -79,9 +79,35 @@ export function AiModePanel({ referenceId }: { referenceId: string }) {
             {sourceUrl}
           </div>
         ) : (
-          <div className="mt-1 text-xs text-text-muted">
-            Bu reference&apos;ın asset&apos;inde public bir kaynak URL yok. AI
-            mode için URL gerekli.
+          // Pass 34 — "URL yok" durumu daha açık. Pre-Pass 34 mesaj net
+          // değildi: kullanıcı niye dead-end'de olduğunu ve ne yapacağını
+          // bilmiyordu. Şimdi sebep + iki olası çözüm: (1) Local mode'a geç
+          // (lokal kütüphaneden seç), (2) Public URL'li yeni reference yarat
+          // (Bookmark Inbox üzerinden).
+          <div className="mt-2 flex flex-col gap-1 text-xs">
+            <p className="text-text">
+              Bu reference&apos;ın asset&apos;inde public bir kaynak URL yok —
+              AI mode image-to-image için zorunlu.
+            </p>
+            <p className="text-text-muted">
+              Çözümler:
+            </p>
+            <ul className="ml-4 list-disc text-text-muted">
+              <li>
+                Yukarıdaki <strong className="text-text">Local</strong> tab&apos;ına
+                geç — lokal kütüphanen üzerinden devam et.
+              </li>
+              <li>
+                Ya da{" "}
+                <a
+                  href="/bookmarks"
+                  className="text-accent underline hover:no-underline"
+                >
+                  Bookmark Inbox
+                </a>
+                &apos;tan public URL&apos;li bir görsel ekleyip referansa taşı.
+              </li>
+            </ul>
           </div>
         )}
       </div>
