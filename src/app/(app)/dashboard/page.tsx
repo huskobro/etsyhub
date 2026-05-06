@@ -1,5 +1,7 @@
 import { db } from "@/server/db";
 import { requireUser } from "@/server/session";
+import { getStorage } from "@/providers/storage";
+import { logger } from "@/lib/logger";
 import { DashboardQuickActions } from "@/features/dashboard/components/dashboard-quick-actions";
 import { DashboardStatRow } from "@/features/dashboard/components/stat-row";
 import { RecentJobsCard } from "@/features/dashboard/components/recent-jobs-card";
@@ -8,6 +10,11 @@ import {
   type DashboardReference,
 } from "@/features/dashboard/components/recent-references-card";
 import { RecentCollectionsGrid } from "@/features/dashboard/components/recent-collections-grid";
+
+// Pass 37 — Dashboard recent references thumbnail TTL. Server component
+// her render'da yeniden hesaplar (Next.js dynamic rendering). 1h TTL —
+// tek dashboard ziyareti için fazlasıyla yeterli.
+const DASHBOARD_THUMBNAIL_TTL_SECONDS = 3600;
 
 /**
  * Dashboard server page — T-31.
@@ -50,6 +57,9 @@ export default async function DashboardPage() {
         createdAt: true,
         productType: { select: { displayName: true } },
         bookmark: { select: { title: true, sourceUrl: true } },
+        // Pass 37 — Reference asset storageKey thumbnail için. Reference.assetId
+        // zorunlu; storageKey ile signed URL hesaplanır.
+        asset: { select: { id: true, storageKey: true } },
       },
     }),
     db.collection.findMany({
@@ -84,17 +94,39 @@ export default async function DashboardPage() {
     (j) => j.status === "QUEUED" || j.status === "RUNNING",
   ).length;
 
-  const referencesForCard: DashboardReference[] = recentReferences.map((ref) => ({
-    id: ref.id,
-    title:
-      ref.bookmark?.title ??
-      ref.bookmark?.sourceUrl ??
-      ref.notes?.slice(0, 60) ??
-      "Referans",
-    // Asset URL doğrudan elde değil — placeholder fallback (title initial).
-    // Carry-forward: thumbnailAssetIds aggregate'i ile asset URL'i Phase 6+'da.
-    thumbnailUrl: null,
-  }));
+  // Pass 37 — Reference asset signed URL'i paralel batch (Promise.all).
+  // Pre-Pass 37: thumbnailUrl: null hard-coded → harf placeholder. Dashboard'un
+  // tek görsel kör noktasıydı. Storage fail bireysel reference'ta thumbnailUrl: null
+  // bırakır; UI fallback (RecentReferencesCard) ilk harf placeholder gösterir.
+  const storage = getStorage();
+  const referencesForCard: DashboardReference[] = await Promise.all(
+    recentReferences.map(async (ref) => {
+      const title =
+        ref.bookmark?.title ??
+        ref.bookmark?.sourceUrl ??
+        ref.notes?.slice(0, 60) ??
+        "Referans";
+      let thumbnailUrl: string | null = null;
+      if (ref.asset?.storageKey) {
+        try {
+          thumbnailUrl = await storage.signedUrl(
+            ref.asset.storageKey,
+            DASHBOARD_THUMBNAIL_TTL_SECONDS,
+          );
+        } catch (err) {
+          logger.warn(
+            {
+              referenceId: ref.id,
+              assetId: ref.asset.id,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            "dashboard recent reference signed URL failed",
+          );
+        }
+      }
+      return { id: ref.id, title, thumbnailUrl };
+    }),
+  );
 
   return (
     <div className="flex flex-col gap-6">
