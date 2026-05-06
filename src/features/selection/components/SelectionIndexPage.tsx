@@ -139,15 +139,55 @@ export function SelectionIndexPage() {
   );
 }
 
+// Pass 35 — Set thumbnail görseli. listSets payload'ından gelen signed URL.
+// Asset URL var → 40×40 rounded thumb; yok → Layers icon fallback.
+// Tek noktadan refactor için inline component.
+function SetThumb({
+  thumbnailUrl,
+  alt,
+}: {
+  thumbnailUrl: string | null;
+  alt: string;
+}) {
+  if (thumbnailUrl) {
+    return (
+      <div
+        className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-md border border-border bg-surface-2"
+        data-testid="selection-set-thumbnail"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={thumbnailUrl}
+          alt={alt}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent-text">
+      <Layers className="h-4 w-4" aria-hidden />
+    </div>
+  );
+}
+
 function ActiveDraftCard({ set }: { set: SelectionSetListItem }) {
   return (
     <Card className="flex items-center gap-3">
-      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-accent-soft text-accent-text">
-        <Layers className="h-4 w-4" aria-hidden />
-      </div>
+      <SetThumb
+        thumbnailUrl={set.thumbnailUrl}
+        alt={`${set.name} önizleme`}
+      />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="truncate text-sm font-medium text-text">{set.name}</div>
-        <Badge tone="accent">Draft</Badge>
+        <div className="flex items-center gap-2">
+          <Badge tone="accent">Draft</Badge>
+          {/* Pass 35 — Item sayısı görünür. "0 varyant" → boş set sinyali. */}
+          <span className="font-mono text-xs text-text-muted">
+            {set.itemCount} varyant
+          </span>
+        </div>
       </div>
       {/* Button primitive `asChild` desteklemiyor; semantik link için
           Button class'ları yerine tutarlı bir `Link` + Button-stili kullanmak
@@ -182,12 +222,16 @@ function ReadySetRow({ set }: { set: SelectionSetListItem }) {
         data-testid="selection-ready-row"
         className="flex items-center gap-3 rounded-md border border-border bg-surface p-3 shadow-card transition-colors duration-fast ease-out hover:border-border-strong hover:shadow-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
       >
+        <SetThumb
+          thumbnailUrl={set.thumbnailUrl}
+          alt={`${set.name} önizleme`}
+        />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="truncate text-sm font-medium text-text">
             {set.name}
           </span>
           <span className="font-mono text-xs text-text-muted">
-            Finalize: {finalizedLabel}
+            Finalize: {finalizedLabel} · {set.itemCount} varyant
           </span>
         </div>
         <Badge tone="success">Ready</Badge>

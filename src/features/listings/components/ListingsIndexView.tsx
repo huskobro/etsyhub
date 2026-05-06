@@ -15,7 +15,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, ImageOff } from "lucide-react";
 import { useListings } from "@/features/listings/hooks/useListings";
 import type { ListingStatusValue } from "@/features/listings/types";
 import {
@@ -61,8 +61,8 @@ export function ListingsIndexView() {
       <header className="border-b border-border px-6 py-4">
         <h1 className="text-xl font-semibold text-text">Listingler</h1>
         <p className="mt-1 text-sm text-text-muted">
-          Mockup pack'lerinden oluşturulan listing draft'ları ve Etsy gönderim
-          durumları.
+          Mockup pack&apos;lerinden oluşturulan listing draft&apos;ları ve Etsy
+          gönderim durumları.
         </p>
       </header>
 
@@ -114,7 +114,8 @@ export function ListingsIndexView() {
             </p>
             {!activeStatus && (
               <p className="mt-2 text-xs text-text-subtle">
-                Listing draft'ı oluşturmak için Mockup Studio'dan bir pack tamamla.
+                Listing draft&apos;ı oluşturmak için Mockup Studio&apos;dan bir
+                pack tamamla.
               </p>
             )}
           </div>
@@ -128,52 +129,80 @@ export function ListingsIndexView() {
             {listings.map((listing) => (
               <li
                 key={listing.id}
-                className="rounded-md border border-border bg-white p-4 transition hover:border-text"
+                className="overflow-hidden rounded-md border border-border bg-white transition hover:border-text"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <h2 className="text-sm font-medium text-text">
-                    <Link
-                      href={`/listings/draft/${listing.id}`}
-                      className="hover:underline"
+                {/* Pass 35 — Cover thumbnail. Server cover render → signed
+                    URL (1h TTL); render SUCCESS değilse veya storage fail
+                    olursa null → ImageOff fallback. Listing-ağırlıklı SaaS'ta
+                    kart görselsiz ürün hissi vermez. */}
+                <Link
+                  href={`/listings/draft/${listing.id}`}
+                  className="block aspect-card w-full overflow-hidden bg-surface-2"
+                  aria-label={`${listing.title ?? "İsimsiz draft"} — detayı aç`}
+                  data-testid={`listing-thumbnail-${listing.id}`}
+                >
+                  {listing.coverThumbnailUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={listing.coverThumbnailUrl}
+                      alt={`${listing.title ?? "İsimsiz draft"} kapak önizleme`}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-text-muted">
+                      <ImageOff className="h-6 w-6" aria-hidden />
+                      <span className="text-xs">Önizleme yok</span>
+                    </div>
+                  )}
+                </Link>
+
+                <div className="flex flex-col gap-2 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <h2 className="text-sm font-medium text-text">
+                      <Link
+                        href={`/listings/draft/${listing.id}`}
+                        className="hover:underline"
+                      >
+                        {listing.title ?? "İsimsiz draft"}
+                      </Link>
+                    </h2>
+                    <span
+                      data-testid={`listing-status-${listing.id}`}
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        LISTING_STATUS_BADGE_CLASS[listing.status]
+                      }`}
                     >
-                      {listing.title ?? "İsimsiz draft"}
-                    </Link>
-                  </h2>
-                  <span
-                    data-testid={`listing-status-${listing.id}`}
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                      LISTING_STATUS_BADGE_CLASS[listing.status]
-                    }`}
-                  >
-                    {LISTING_STATUS_LABELS[listing.status]}
-                  </span>
-                </div>
+                      {LISTING_STATUS_LABELS[listing.status]}
+                    </span>
+                  </div>
 
-                {listing.priceCents != null && (
-                  <p className="mt-2 text-xs text-text-muted">
-                    ${(listing.priceCents / 100).toFixed(2)}
+                  {listing.priceCents != null && (
+                    <p className="text-xs text-text-muted">
+                      ${(listing.priceCents / 100).toFixed(2)}
+                    </p>
+                  )}
+
+                  <p className="text-xs text-text-muted">
+                    Güncellendi:{" "}
+                    {new Date(listing.updatedAt).toLocaleDateString("tr-TR")}
                   </p>
-                )}
 
-                <p className="mt-3 text-xs text-text-muted">
-                  Güncellendi:{" "}
-                  {new Date(listing.updatedAt).toLocaleDateString("tr-TR")}
-                </p>
-
-                {/* Phase 9 V1 — PUBLISHED listing'lerde Etsy admin URL'ine
-                    direkt deep-link. Outer Link kaldırıldı (nested <a>
-                    HTML invalid), başlık linkine ek olarak ayrı render. */}
-                {listing.status === "PUBLISHED" && listing.etsyListingId && (
-                  <a
-                    href={`https://www.etsy.com/your/shops/me/tools/listings/${listing.etsyListingId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2 inline-flex items-center gap-1 text-xs text-green-700 hover:underline"
-                  >
-                    Etsy'de Aç
-                    <ExternalLink className="h-3 w-3" aria-hidden />
-                  </a>
-                )}
+                  {/* Phase 9 V1 — PUBLISHED listing'lerde Etsy admin URL'ine
+                      direkt deep-link. Outer Link kaldırıldı (nested <a>
+                      HTML invalid), başlık linkine ek olarak ayrı render. */}
+                  {listing.status === "PUBLISHED" && listing.etsyListingId && (
+                    <a
+                      href={`https://www.etsy.com/your/shops/me/tools/listings/${listing.etsyListingId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-green-700 hover:underline"
+                    >
+                      Etsy&apos;de Aç
+                      <ExternalLink className="h-3 w-3" aria-hidden />
+                    </a>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

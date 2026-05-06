@@ -28,6 +28,13 @@ export type SelectionSetListItem = {
   finalizedAt: string | null;
   archivedAt: string | null;
   lastExportedAt: string | null;
+  /**
+   * Pass 35 — Set thumbnail. İlk item'ın aktif asset'inin (editedAssetId ??
+   * sourceAssetId) signed URL'i. Storage fail olduysa veya item yoksa null.
+   */
+  thumbnailUrl: string | null;
+  /** Pass 35 — Set'teki toplam item sayısı (UI'da "N varyant"). */
+  itemCount: number;
 };
 
 export type SelectionSetsResponse = {

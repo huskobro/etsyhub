@@ -28,11 +28,26 @@ import type { SelectionItem, SelectionSet } from "@prisma/client";
 import { JobType } from "@prisma/client";
 import { db } from "@/server/db";
 import { EmptyBatchError, NotFoundError } from "@/lib/errors";
+import { getStorage } from "@/providers/storage";
+import { logger } from "@/lib/logger";
 import { type ActiveExport, getActiveExport } from "./active-export";
 import { requireSetOwnership } from "./authz";
 import { mapReviewToView } from "./review-mapper";
 import { assertCanArchive } from "./state";
 import type { ReviewView } from "./types";
+
+// Pass 35 — Selection index thumbnail. Her set için ilk item'ın aktif
+// asset'inin (editedAssetId ?? sourceAssetId) signed URL'i. 1h TTL —
+// list endpoint'i kullanıcı /selection sayfasında kaldıkça bir defa
+// fetch edilir, görsel browser cache'inde tutulur.
+const SET_THUMBNAIL_TTL_SECONDS = 3600;
+
+export type SelectionSetListView = SelectionSet & {
+  /** İlk item'ın aktif asset'inin signed URL'i — UI thumbnail için. null = hiç item yok veya signed URL üretilemedi. */
+  thumbnailUrl: string | null;
+  /** Toplam item sayısı — UI'da "N varyant" göstermek için. */
+  itemCount: number;
+};
 
 /**
  * Manuel set yarat. status default `draft`.
@@ -64,17 +79,115 @@ export async function createSet(input: {
  *
  * `status` opsiyonel — verilmezse tüm statüler döner. Index ekranı için
  * statü tab'lerine göre filtre uygulanır.
+ *
+ * Pass 35 — Her set için ilk item'ın aktif asset'inin signed URL'i +
+ * itemCount payload'a eklendi (selection index thumbnail). Pre-Pass 35:
+ * sadece SelectionSet entity döndü, kullanıcı index'te hangi setin hangi
+ * tasarımları içerdiğini göremiyordu (text-only kart). Şimdi görsel
+ * önizleme + N varyant sayacı.
+ *
+ * Storage signed URL üretimi best-effort — fail olursa thumbnailUrl null
+ * (set hâlâ listelenir, sadece görsel düşmez). N+1 yerine batch query.
  */
 export async function listSets(input: {
   userId: string;
   status?: "draft" | "ready" | "archived";
-}): Promise<SelectionSet[]> {
-  return db.selectionSet.findMany({
+}): Promise<SelectionSetListView[]> {
+  const sets = await db.selectionSet.findMany({
     where: {
       userId: input.userId,
       ...(input.status ? { status: input.status } : {}),
     },
     orderBy: { updatedAt: "desc" },
+  });
+  if (sets.length === 0) return [];
+
+  // Pass 35 — Tek query: her set için minimum-position item + asset key.
+  // findFirst N+1 olur; bu yüzden tüm set id'lerini findMany ile çek + Map.
+  const setIds = sets.map((s) => s.id);
+  const firstItems = await db.selectionItem.findMany({
+    where: { selectionSetId: { in: setIds } },
+    orderBy: [{ selectionSetId: "asc" }, { position: "asc" }],
+    select: {
+      selectionSetId: true,
+      position: true,
+      sourceAssetId: true,
+      editedAssetId: true,
+    },
+  });
+
+  // Her set için ilk item (en küçük position).
+  const firstItemBySetId = new Map<
+    string,
+    { sourceAssetId: string; editedAssetId: string | null }
+  >();
+  for (const it of firstItems) {
+    if (!firstItemBySetId.has(it.selectionSetId)) {
+      firstItemBySetId.set(it.selectionSetId, {
+        sourceAssetId: it.sourceAssetId,
+        editedAssetId: it.editedAssetId,
+      });
+    }
+  }
+
+  // Item count (set başına).
+  const itemCountBySetId = new Map<string, number>();
+  for (const it of firstItems) {
+    itemCountBySetId.set(
+      it.selectionSetId,
+      (itemCountBySetId.get(it.selectionSetId) ?? 0) + 1,
+    );
+  }
+
+  // Asset storageKey'leri batch fetch.
+  const assetIds = new Set<string>();
+  for (const v of firstItemBySetId.values()) {
+    assetIds.add(v.editedAssetId ?? v.sourceAssetId);
+  }
+  const assets =
+    assetIds.size > 0
+      ? await db.asset.findMany({
+          where: { id: { in: Array.from(assetIds) } },
+          select: { id: true, storageKey: true },
+        })
+      : [];
+  const storageKeyByAssetId = new Map(assets.map((a) => [a.id, a.storageKey]));
+
+  // Signed URL — best-effort; fail thumbnailUrl: null bırakır.
+  const storage = getStorage();
+  const signedUrlByAssetId = new Map<string, string>();
+  await Promise.all(
+    Array.from(assetIds).map(async (assetId) => {
+      const key = storageKeyByAssetId.get(assetId);
+      if (!key) return;
+      try {
+        const url = await storage.signedUrl(key, SET_THUMBNAIL_TTL_SECONDS);
+        signedUrlByAssetId.set(assetId, url);
+      } catch (err) {
+        logger.warn(
+          {
+            assetId,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "selection list set thumbnail signed URL failed",
+        );
+      }
+    }),
+  );
+
+  return sets.map((set) => {
+    const first = firstItemBySetId.get(set.id);
+    const activeAssetId = first
+      ? (first.editedAssetId ?? first.sourceAssetId)
+      : null;
+    const thumbnailUrl = activeAssetId
+      ? (signedUrlByAssetId.get(activeAssetId) ?? null)
+      : null;
+    return {
+      ...set,
+      thumbnailUrl,
+      itemCount: itemCountBySetId.get(set.id) ?? 0,
+    };
   });
 }
 

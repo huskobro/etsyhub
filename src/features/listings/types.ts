@@ -85,6 +85,11 @@ export type ListingDraftView = {
  * Phase 9 V1 — Listing compact index view (GET /api/listings).
  *
  * readiness DÖNMEZ (perf — UI detail view'da çağrılır).
+ *
+ * Pass 35 — coverThumbnailUrl alan eklendi. Server `/api/listings` route'u
+ * cover render → thumbnailKey/outputKey → storage signed URL (1h TTL)
+ * üretir. Render SUCCESS değilse veya storage fail olursa null. UI
+ * thumbnail-yoksa fallback (placeholder + ImageOff icon) render eder.
  */
 export type ListingIndexView = {
   id: string;
@@ -98,5 +103,6 @@ export type ListingIndexView = {
   etsyListingId: string | null;
   createdAt: string;
   updatedAt: string;
+  coverThumbnailUrl: string | null;
 };
 

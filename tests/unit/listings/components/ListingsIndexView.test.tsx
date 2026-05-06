@@ -46,6 +46,7 @@ function makeListing(overrides?: Partial<ListingIndexView>): ListingIndexView {
     etsyListingId: null,
     createdAt: "2026-05-01T00:00:00.000Z",
     updatedAt: "2026-05-02T00:00:00.000Z",
+    coverThumbnailUrl: null,
     ...overrides,
   };
 }
@@ -129,8 +130,15 @@ describe("<ListingsIndexView>", () => {
       error: null,
     };
     render(<ListingsIndexView />, { wrapper });
-    const link = screen.getByRole("link", { name: /Test Listing/ });
-    expect(link).toHaveAttribute("href", "/listings/draft/abc123");
+    // Pass 35 — kart artık iki link içerir: thumbnail aria-label
+    // "Test Listing — detayı aç" + başlık linki "Test Listing".
+    // Her ikisi de aynı href'e gider; test getAllByRole ile her iki linki
+    // doğrular (thumbnail + title aynı listing href'ine işaret eder).
+    const links = screen.getAllByRole("link", { name: /Test Listing/ });
+    expect(links.length).toBeGreaterThanOrEqual(2);
+    for (const link of links) {
+      expect(link).toHaveAttribute("href", "/listings/draft/abc123");
+    }
   });
 
   it("filter button click → router.push çağrılır", () => {
