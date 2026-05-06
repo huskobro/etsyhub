@@ -1,5 +1,9 @@
 import { Card } from "@/components/ui/Card";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import {
+  JOB_STATUS_LABELS,
+  jobTypeLabel,
+} from "@/features/jobs/labels";
 
 /**
  * RecentJobsCard — T-31.
@@ -43,38 +47,8 @@ const statusTone: Record<JobStatus, BadgeTone> = {
   CANCELLED: "neutral",
 };
 
-// Pass 38 — Job status TR label. Raw enum yerine kullanıcı-okur metin.
-const STATUS_LABELS: Record<JobStatus, string> = {
-  QUEUED: "Sırada",
-  RUNNING: "Çalışıyor",
-  SUCCESS: "Tamamlandı",
-  FAILED: "Başarısız",
-  CANCELLED: "İptal",
-};
-
-// Pass 38 — Sık kullanılan JobType'ların TR label'ları. Tüm 21 enum
-// listelenmedi; nadir job'lar raw enum fallback ile gösterilir (kullanıcı
-// title attr ile teknik adı görür).
-const JOB_TYPE_LABELS: Record<string, string> = {
-  ASSET_INGEST_FROM_URL: "URL'den asset",
-  GENERATE_THUMBNAIL: "Thumbnail",
-  BOOKMARK_PREVIEW_METADATA: "Bookmark önizleme",
-  SCRAPE_COMPETITOR: "Rakip taraması",
-  FETCH_NEW_LISTINGS: "Yeni listing taraması",
-  GENERATE_VARIATIONS: "Varyant üretimi",
-  REVIEW_DESIGN: "AI kalite review",
-  REMOVE_BACKGROUND: "Arka plan silme",
-  CREATE_MOCKUP: "Mockup",
-  MOCKUP_RENDER: "Mockup render",
-  MAGIC_ERASER_INPAINT: "Magic Eraser",
-  EXPORT_SELECTION_SET: "Set dışa aktarma",
-  PUSH_ETSY_DRAFT: "Etsy draft gönderim",
-  SCAN_LOCAL_FOLDER: "Lokal klasör taraması",
-};
-
-function jobTypeLabel(type: string): string {
-  return JOB_TYPE_LABELS[type] ?? type;
-}
+// Pass 40 — JOB_TYPE_LABELS + STATUS_LABELS shared modüle taşındı
+// (`@/features/jobs/labels`). Admin /admin/jobs aynı kaynaktan tüketir.
 
 function relativeTime(date: Date): string {
   const diff = Date.now() - date.getTime();
@@ -105,7 +79,7 @@ export function RecentJobsCard({ jobs }: { jobs: DashboardJob[] }) {
           {jobs.map((job) => {
             const label = jobTypeLabel(job.type);
             const isUnmapped = label === job.type;
-            const statusLabel = STATUS_LABELS[job.status];
+            const statusLabelText = JOB_STATUS_LABELS[job.status];
             return (
               <li
                 key={job.id}
@@ -127,7 +101,7 @@ export function RecentJobsCard({ jobs }: { jobs: DashboardJob[] }) {
                     {relativeTime(job.createdAt)}
                   </p>
                 </div>
-                <Badge tone={statusTone[job.status]}>{statusLabel}</Badge>
+                <Badge tone={statusTone[job.status]}>{statusLabelText}</Badge>
               </li>
             );
           })}
