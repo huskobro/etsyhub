@@ -1,3 +1,19 @@
+"use client";
+
+// Pass 39 — "use client" directive eklendi. Table primitive `createContext`
+// + `useContext` kullanır (TableDensityContext). Pre-Pass 39: directive yoktu;
+// Next.js App Router server component'inden import edilince derleme hatası:
+// "You're importing a component that needs createContext. It only works in
+// a Client Component but none of its parents are marked with 'use client'".
+//
+// Etkilenen sayfalar (build error → boş render):
+//   - /admin/jobs (server async function db.findMany)
+//   - /admin/audit-logs (aynı pattern)
+//
+// Diğer 4 tüketici (mockup-templates-manager, flags-table, product-types-manager,
+// users-table) zaten "use client" component'ler; primitive client'a taşıdığında
+// davranış değişmez.
+
 import {
   createContext,
   forwardRef,
