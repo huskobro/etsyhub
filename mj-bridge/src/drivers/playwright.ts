@@ -25,7 +25,7 @@
 //     buildMJPromptString başa ekliyor)
 //   ◦ omni-ref drag-drop bin (premium V7+; orta effort)
 
-import { mkdir, unlink } from "node:fs/promises";
+import { mkdir, unlink, stat, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import type { BridgeDriver, DriverProgressCallback } from "./types.js";
@@ -55,6 +55,18 @@ export type PlaywrightDriverConfig = {
   profileDir: string;
   /** Output dosyaları. */
   outputsDir: string;
+  /**
+   * Pass 45 — Browser kanalı seçimi.
+   *   "chrome": macOS/Windows/Linux'ta yüklü system Google Chrome.
+   *             Playwright `channel: "chrome"` ile launch eder.
+   *             Cloudflare bunu "gerçek Chrome" olarak tanır;
+   *             test Chromium fingerprint sorunu yok.
+   *   "chromium": Playwright bundled Chromium ("Chrome for Testing").
+   *               Test scenario'larda kullanışlı; production önerilmez
+   *               (Cloudflare managed challenge sürekli tetiklenir).
+   * Default `chrome`. Yoksa fallback `chromium`.
+   */
+  channel?: "chrome" | "chromium";
   /** TOS uyumu — production MUTLAKA görünür. Test için bypass etmek
    * isteyen `MJ_BRIDGE_HEADLESS_TEST=1` env'i kullanır (sadece testler;
    * üretimde verilmez). */
@@ -84,11 +96,16 @@ export class PlaywrightDriver implements BridgeDriver {
     signInLinkFound: boolean;
     at: string;
   } | null = null;
+  /** Pass 45 — gerçekten launch edilen kanal (chrome veya chromium fallback). */
+  private launchedChannel: "chrome" | "chromium" = "chromium";
+  /** Pass 45 — profile init anındaki state (fresh/primed). */
+  private profileState: "fresh" | "primed" = "fresh";
 
   constructor(cfg: PlaywrightDriverConfig) {
     this.cfg = {
       profileDir: cfg.profileDir,
       outputsDir: cfg.outputsDir,
+      channel: cfg.channel ?? "chrome",
       headlessForTesting: cfg.headlessForTesting ?? false,
       loginTimeoutMs: cfg.loginTimeoutMs ?? 5 * 60_000,
       challengeTimeoutMs: cfg.challengeTimeoutMs ?? 5 * 60_000,
@@ -99,6 +116,11 @@ export class PlaywrightDriver implements BridgeDriver {
   async init(): Promise<void> {
     await mkdir(this.cfg.profileDir, { recursive: true });
     await mkdir(this.cfg.outputsDir, { recursive: true });
+
+    // Pass 45 — profile state detection. Profile'da "Default" alt-dizini
+    // veya "Local State" dosyası varsa "primed" sayılır (Chrome bir kez
+    // başlatılmış); aksi halde "fresh" (ilk kullanım).
+    this.profileState = await this.detectProfileState();
 
     // Pass 44 — stale lock cleanup. Bridge crash veya inspection script
     // sonrası `SingletonLock`/`SingletonCookie`/`SingletonSocket` kalır;
@@ -113,12 +135,60 @@ export class PlaywrightDriver implements BridgeDriver {
       await unlink(join(this.cfg.profileDir, lockFile)).catch(() => undefined);
     }
 
+    // Pass 45 — Channel selection. System Chrome tercihi:
+    //   1. cfg.channel="chrome" + system Chrome mevcut → channel: "chrome"
+    //   2. cfg.channel="chromium" → bundled (test build)
+    //   3. cfg.channel="chrome" ama Chrome yok → uyarı + bundled fallback
+    // Cloudflare managed challenge döngüsü genelde test build'i
+    // hedefler; system Chrome bu döngüyü kırar.
+    //
+    // Pass 45 — `--enable-automation` flag KAPALI:
+    //   `ignoreDefaultArgs: ["--enable-automation"]` ile Playwright'ın
+    //   default eklediği automation flag'i kaldırılır. Bu **stealth
+    //   plugin değil** — sadece Playwright'ın test-bias'ını kapatmak.
+    //   `navigator.webdriver` undefined olur. Hiçbir bypass kodu yok;
+    //   sadece test-only bir flag'i kapatıyoruz.
+    let channel: "chrome" | undefined;
+    if (this.cfg.channel === "chrome") {
+      channel = "chrome";
+    }
+
     // headless: false — TOS uyumu (Pass 41 doc §8.2). Test ortamı için
     // env override mümkün ama production'da KULLANMA.
-    this.context = await chromium.launchPersistentContext(this.cfg.profileDir, {
-      headless: this.cfg.headlessForTesting,
-      viewport: { width: 1280, height: 900 },
-    });
+    try {
+      this.context = await chromium.launchPersistentContext(
+        this.cfg.profileDir,
+        {
+          channel,
+          headless: this.cfg.headlessForTesting,
+          viewport: { width: 1280, height: 900 },
+          ignoreDefaultArgs: ["--enable-automation"],
+        },
+      );
+      this.launchedChannel = channel ?? "chromium";
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (channel === "chrome") {
+        // System Chrome bulunamadı — bundled Chromium fallback.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[mj-bridge:playwright] system Chrome bulunamadı (${msg}); ` +
+            "bundled Chromium'a düşülüyor. CF managed challenge döngüsü " +
+            "olabilir — system Chrome kurulumu önerilir.",
+        );
+        this.context = await chromium.launchPersistentContext(
+          this.cfg.profileDir,
+          {
+            headless: this.cfg.headlessForTesting,
+            viewport: { width: 1280, height: 900 },
+            ignoreDefaultArgs: ["--enable-automation"],
+          },
+        );
+        this.launchedChannel = "chromium";
+      } else {
+        throw err;
+      }
+    }
 
     // Default page açık tutulur — kullanıcı bu pencerede MJ ile etkileşir.
     const pages = this.context.pages();
@@ -173,7 +243,43 @@ export class PlaywrightDriver implements BridgeDriver {
       activeUrl: pages[0]?.url(),
       mjLikelyLoggedIn: this.mjLikelyLoggedIn,
       lastChecked: this.lastSessionCheck.toISOString(),
+      // Pass 45 — browser/profile mode görünürlüğü
+      channel: this.launchedChannel,
+      profileState: this.profileState,
     };
+  }
+
+  /**
+   * Pass 45 — Profile state detection.
+   *
+   * Chrome persistent profile dizini ilk kez kullanıldığında boş;
+   * launch sonrası `Default/`, `Local State`, `Last Version` gibi
+   * dosyalar oluşur. Bu dosyaların varlığı profile'ın "primed"
+   * olduğunu gösterir — kullanıcı muhtemelen daha önce burada login
+   * olmuştur.
+   *
+   * Sözleşme: launch ÖNCESİ çağrılır. Profile dizini yok veya boş →
+   * "fresh"; içeriği var → "primed".
+   */
+  private async detectProfileState(): Promise<"fresh" | "primed"> {
+    try {
+      const stats = await stat(this.cfg.profileDir);
+      if (!stats.isDirectory()) return "fresh";
+      const entries = await readdir(this.cfg.profileDir);
+      // Chrome'un başlatma sonrası bıraktığı tipik dosya/dizinler.
+      const primedMarkers = [
+        "Default",
+        "Local State",
+        "Last Version",
+        "First Run",
+        "Cookies",
+      ];
+      const hasMarker = entries.some((e) => primedMarkers.includes(e));
+      return hasMarker ? "primed" : "fresh";
+    } catch {
+      // Dizin yoksa fresh.
+      return "fresh";
+    }
   }
 
   async focusBrowser(): Promise<void> {

@@ -5,14 +5,18 @@
 //   $ MJ_BRIDGE_TOKEN=secret123 MJ_BRIDGE_DRIVER=mock npm run dev
 //
 // Env:
-//   MJ_BRIDGE_TOKEN   — shared secret (zorunlu)
-//   MJ_BRIDGE_PORT    — HTTP port (default 8780)
-//   MJ_BRIDGE_DRIVER  — "mock" | "playwright" (default mock; gerçek MJ
-//                        hesabı geldiğinde "playwright")
-//   MJ_BRIDGE_PROFILE — Playwright persistent profile dir
-//                        (default ./profile)
-//   MJ_BRIDGE_OUTPUTS — Job outputs dir (default ./data/outputs)
-//   MJ_BRIDGE_JOBLOG  — Job log dir (default ./data/jobs)
+//   MJ_BRIDGE_TOKEN          — shared secret (zorunlu)
+//   MJ_BRIDGE_PORT           — HTTP port (default 8780)
+//   MJ_BRIDGE_DRIVER         — "mock" | "playwright" (default mock;
+//                                gerçek MJ hesabı için "playwright")
+//   MJ_BRIDGE_PROFILE        — Playwright persistent profile dir
+//                                (default ./profile)
+//   MJ_BRIDGE_OUTPUTS        — Job outputs dir (default ./data/outputs)
+//   MJ_BRIDGE_JOBLOG         — Job log dir (default ./data/jobs)
+//   MJ_BRIDGE_BROWSER_CHANNEL — "chrome" | "chromium" (default "chrome")
+//                                System Chrome veya bundled Chromium.
+//                                Cloudflare managed challenge döngüsü
+//                                varsa "chrome" tercih edilmeli.
 
 import { JobManager } from "./server/job-manager.js";
 import { buildServer } from "./server/http.js";
@@ -40,9 +44,15 @@ async function main(): Promise<void> {
     // TOS uyumu — production headless: false. Test için bypass:
     // MJ_BRIDGE_HEADLESS_TEST=1 (sadece testler; üretimde verilmez).
     const headlessForTesting = process.env["MJ_BRIDGE_HEADLESS_TEST"] === "1";
+    // Pass 45 — channel selection. Default "chrome" (system Chrome);
+    // env override "chromium" (bundled Chrome for Testing).
+    const channelEnv = process.env["MJ_BRIDGE_BROWSER_CHANNEL"];
+    const channel: "chrome" | "chromium" =
+      channelEnv === "chromium" ? "chromium" : "chrome";
     driver = new PlaywrightDriver({
       profileDir,
       outputsDir,
+      channel,
       headlessForTesting,
     });
   } else if (driverKind === "mock") {

@@ -52,6 +52,9 @@ export class MockDriver implements BridgeDriver {
       pageCount: 0,
       mjLikelyLoggedIn: true,
       lastChecked: new Date().toISOString(),
+      // Pass 45 — mock driver ne kanal ne profile kullanır.
+      channel: "mock" as const,
+      profileState: "absent" as const,
     };
   }
 

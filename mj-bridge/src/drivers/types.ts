@@ -67,6 +67,17 @@ export interface BridgeDriver {
     activeUrl?: string;
     mjLikelyLoggedIn: boolean;
     lastChecked: string;
+    /**
+     * Pass 45 — browser channel: real driver "chrome"|"chromium",
+     * mock driver "mock". Admin UI gösterir; CF managed challenge
+     * tanı/teşhis için kritik (chromium = test build = sürekli challenge).
+     */
+    channel: "chrome" | "chromium" | "mock";
+    /**
+     * Pass 45 — profile state: "fresh" (ilk kullanım), "primed" (Chrome
+     * daha önce başlatılmış), "absent" (mock — gerçek profile yok).
+     */
+    profileState: "fresh" | "primed" | "absent";
   }>;
 
   /**

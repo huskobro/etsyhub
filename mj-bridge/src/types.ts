@@ -192,6 +192,20 @@ export type BridgeHealth = {
     pageCount: number;
     /** Aktif tab URL'i. */
     activeUrl?: string;
+    /**
+     * Pass 45 — hangi Chromium kanalı kullanılıyor.
+     * - "chrome": system Google Chrome (Cloudflare daha az tetiklenir)
+     * - "chromium": Playwright bundled (test build; CF agresif)
+     * - "mock": gerçek browser yok
+     */
+    channel?: "chrome" | "chromium" | "mock";
+    /**
+     * Pass 45 — profile dizin durumu.
+     * - "fresh": dizin yeni veya hiç login/cookie yok (ilk kullanım)
+     * - "primed": daha önce başlatılmış, içinde Chrome state var
+     * - "absent": dizin yok / mock
+     */
+    profileState?: "fresh" | "primed" | "absent";
   };
   /**
    * Pass 43 — Boot-time selector smoke (yalnız PlaywrightDriver dolu;

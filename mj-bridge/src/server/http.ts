@@ -75,6 +75,9 @@ export function buildServer(cfg: ServerConfig): FastifyInstance {
         profileDir: browserHealth.profileDir,
         pageCount: browserHealth.pageCount,
         activeUrl: browserHealth.activeUrl,
+        // Pass 45 — channel + profileState forward.
+        channel: browserHealth.channel,
+        profileState: browserHealth.profileState,
       },
       selectorSmoke,
       mjSession: {

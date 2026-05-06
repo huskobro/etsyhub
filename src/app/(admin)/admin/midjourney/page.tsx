@@ -141,7 +141,14 @@ export default async function AdminMidjourneyPage() {
             <pre className="mt-2 overflow-x-auto rounded bg-surface-2 p-3 text-xs text-text">
 {`# Terminal 1 — bridge çalıştır:
 cd mj-bridge
+# Mock akış (UI test için):
 MJ_BRIDGE_TOKEN=$(openssl rand -hex 16) MJ_BRIDGE_DRIVER=mock npm run dev
+
+# Real akış (system Chrome — Pass 45, CF managed challenge için önerilen):
+MJ_BRIDGE_TOKEN=secret \\
+MJ_BRIDGE_DRIVER=playwright \\
+MJ_BRIDGE_BROWSER_CHANNEL=chrome \\
+npm run dev
 
 # Terminal 2 — EtsyHub .env.local:
 MJ_BRIDGE_URL=http://127.0.0.1:8780
@@ -260,6 +267,20 @@ function BridgeHealthCard({ health }: { health: BridgeHealth }) {
           <div className="text-sm">
             {health.browser.launched ? "Açık" : "Kapalı"} ·{" "}
             {health.browser.pageCount} tab
+          </div>
+          {/* Pass 45 — channel + profile state. CF managed challenge
+              döngüsü teşhis için kritik (chromium=test build=sürekli
+              challenge; chrome=system Chrome=tek seferlik). */}
+          <div className="mt-1 text-xs text-text-muted">
+            Kanal:{" "}
+            <span className="font-mono">
+              {health.browser.channel ?? "—"}
+            </span>
+            {" · "}
+            Profile:{" "}
+            <span className="font-mono">
+              {health.browser.profileState ?? "—"}
+            </span>
           </div>
           <div className="mt-1 truncate text-xs text-text-muted">
             {health.browser.activeUrl ?? "—"}

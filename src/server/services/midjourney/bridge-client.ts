@@ -97,6 +97,10 @@ export type BridgeHealth = {
     profileDir: string;
     pageCount: number;
     activeUrl?: string;
+    /** Pass 45 — Chrome kanalı (chrome=system, chromium=test, mock=mock). */
+    channel?: "chrome" | "chromium" | "mock";
+    /** Pass 45 — profile durumu (fresh=ilk kullanım, primed=daha önce başlatılmış, absent=mock). */
+    profileState?: "fresh" | "primed" | "absent";
   };
   /**
    * Pass 43 — selector smoke (yalnız PlaywrightDriver). MockDriver'da null.
