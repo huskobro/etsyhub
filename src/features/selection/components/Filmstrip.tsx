@@ -165,6 +165,11 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
             const isSelected = item.status === "selected";
             const isRejected = item.status === "rejected";
             const isMulti = multiSelectIds.has(item.id);
+            // Pass 33 — edited indicator. Item'ın editedAssetId'si varsa
+            // küçük bir nokta rozeti (sağ üst). Selected check sol üstte;
+            // edited dot sağ üstte → çakışma yok. Kullanıcı hangi varyant
+            // düzenlenmiş hangileri orijinal — bir bakışta görür.
+            const isEdited = item.editedAssetId !== null;
 
             // Class composition: Tailwind ile token-uyumlu, arbitrary yok.
             const classes = [
@@ -182,6 +187,7 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
               : isRejected
                 ? " (reddedildi)"
                 : "";
+            const editedSuffix = isEdited ? " (düzenlenmiş)" : "";
 
             // Wrapping `<div className="relative group">`: checkbox button +
             // ReorderMenu overlay HTML semantik olarak ayrı (button içinde
@@ -192,9 +198,10 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
                   type="button"
                   role="checkbox"
                   aria-checked={isMulti}
-                  aria-label={`Varyant ${pad2(idx + 1)}${ariaSuffix}`}
+                  aria-label={`Varyant ${pad2(idx + 1)}${ariaSuffix}${editedSuffix}`}
                   onClick={(e) => handleItemClick(item, idx, e)}
                   className={classes}
+                  data-edited={isEdited ? "true" : "false"}
                 >
                   <AssetImage
                     assetId={item.editedAssetId ?? item.sourceAssetId}
@@ -208,6 +215,16 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
                     >
                       <Check className="h-2 w-2" />
                     </div>
+                  ) : null}
+                  {/* Pass 33 — edited indicator. Sağ üst köşede 1.5×1.5
+                      success dot. Tooltip "Düzenlenmiş" ile sebep net. */}
+                  {isEdited ? (
+                    <div
+                      aria-hidden
+                      title="Düzenlenmiş"
+                      data-testid="filmstrip-edited-dot"
+                      className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-success ring-2 ring-bg"
+                    />
                   ) : null}
                   {isRejected ? (
                     <div

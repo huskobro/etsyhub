@@ -79,9 +79,24 @@ export function useSelectionSets(status?: SelectionSetStatus) {
  * `types.ts` içindeki `SelectionItemView` placeholder (review opsiyonel,
  * `?:`); route payload'ı `null` döndürdüğü için burada explicit `null`
  * kullanılır — UI tarafında `item.review === null` ile kontrol kolay.
+ *
+ * Pass 33 — sourceAsset/editedAsset metadata projection eklendi
+ * (PreviewCard boyut + before/after compare için). Raw Asset entity
+ * sızmaz; yalnız `width/height/sizeBytes/mimeType` (CLAUDE.md
+ * "no leak" disiplini).
  */
+export type SelectionAssetMetaView = {
+  id: string;
+  width: number | null;
+  height: number | null;
+  sizeBytes: number;
+  mimeType: string;
+};
+
 export type SelectionItemView = SelectionItem & {
   review: ReviewView | null;
+  sourceAsset: SelectionAssetMetaView | null;
+  editedAsset: SelectionAssetMetaView | null;
 };
 
 /**

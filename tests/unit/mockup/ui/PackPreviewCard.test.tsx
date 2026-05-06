@@ -32,6 +32,8 @@ const mockSet: SelectionSetDetailView = {
       createdAt: new Date(),
       updatedAt: new Date(),
       review: null,
+      sourceAsset: null,
+      editedAsset: null,
     },
   ],
   activeExport: null,

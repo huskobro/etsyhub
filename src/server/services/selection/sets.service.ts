@@ -90,6 +90,17 @@ export async function listSets(input: {
  *   `mapReviewToView` ile view-model üretilir. Review yok ise `review: null`.
  *   Mapper Phase 6 entity'lerini SADECE OKUR (read-only köprü).
  */
+// Pass 33 — AssetMeta surface payload'a eklendi (PreviewCard boyut metadata
+// + before/after compare için). Asset entity'sinin client'a sızdırılmasından
+// kaçınmak için sadece `width/height/sizeBytes/mimeType` projection'ı.
+export type AssetMetaView = {
+  id: string;
+  width: number | null;
+  height: number | null;
+  sizeBytes: number;
+  mimeType: string;
+};
+
 export async function getSet(input: {
   userId: string;
   setId: string;
@@ -99,6 +110,8 @@ export async function getSet(input: {
       review: ReviewView | null;
       aspectRatio: string | null;
       productTypeKey: string | null;
+      sourceAsset: AssetMetaView | null;
+      editedAsset: AssetMetaView | null;
     })[];
     activeExport: ActiveExport | null;
   }
@@ -113,6 +126,31 @@ export async function getSet(input: {
       },
     },
   });
+
+  // Pass 33 — Asset metadata batch fetch (PreviewCard boyut + compare).
+  // sourceAssetId her zaman var; editedAssetId opsiyonel. Tek query ile
+  // unique id seti; client'a sadece `AssetMetaView` projection'ı sızar,
+  // raw Asset entity (storageKey, hash, userId) gönderilmez.
+  const assetIds = new Set<string>();
+  for (const r of rows) {
+    if (r.sourceAssetId) assetIds.add(r.sourceAssetId);
+    if (r.editedAssetId) assetIds.add(r.editedAssetId);
+  }
+  const assets =
+    assetIds.size > 0
+      ? await db.asset.findMany({
+          where: { id: { in: Array.from(assetIds) } },
+          select: {
+            id: true,
+            width: true,
+            height: true,
+            sizeBytes: true,
+            mimeType: true,
+          },
+        })
+      : [];
+  const assetById = new Map(assets.map((a) => [a.id, a]));
+
   // Mapper sonucu inject; raw `generatedDesign` payload'ı API yanıtında
   // sızdırılmaz — yalnız `review` (view), `aspectRatio` ve `productTypeKey`
   // resolve edilen primitive'ler eklenir, eklenen include kalkar.
@@ -135,6 +173,12 @@ export async function getSet(input: {
     }),
     aspectRatio: generatedDesign.productType.aspectRatio ?? null,
     productTypeKey: generatedDesign.productType.key ?? null,
+    sourceAsset: item.sourceAssetId
+      ? (assetById.get(item.sourceAssetId) ?? null)
+      : null,
+    editedAsset: item.editedAssetId
+      ? (assetById.get(item.editedAssetId) ?? null)
+      : null,
   }));
   // Phase 7 Task 14 — activeExport (Set GET payload genişletme, design Section 6.6).
   // Additive alan: BullMQ queue'dan en son EXPORT_SELECTION_SET job'unun durumu.
