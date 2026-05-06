@@ -78,6 +78,16 @@ export interface BridgeDriver {
      * daha önce başlatılmış), "absent" (mock — gerçek profile yok).
      */
     profileState: "fresh" | "primed" | "absent";
+    /**
+     * Pass 46 — son driver mesajı (admin debug için). null = henüz
+     * job çalışmadı. Driver state machine ilerledikçe güncellenir.
+     */
+    lastDriverMessage: string | null;
+    /**
+     * Pass 46 — son driver hatası. Recoverable state'lerde
+     * (AWAITING_CHALLENGE/LOGIN) korunur, COMPLETED'da temizlenir.
+     */
+    lastDriverError: string | null;
   }>;
 
   /**

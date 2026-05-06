@@ -100,6 +100,13 @@ export class PlaywrightDriver implements BridgeDriver {
   private launchedChannel: "chrome" | "chromium" = "chromium";
   /** Pass 45 — profile init anındaki state (fresh/primed). */
   private profileState: "fresh" | "primed" = "fresh";
+  /**
+   * Pass 46 — son driver mesajı (executeJob içindeki onProgress + init).
+   * Health endpoint'inde admin gözlem için görünür.
+   */
+  private lastDriverMessage: string | null = null;
+  /** Pass 46 — son driver hatası (selector-mismatch, render-timeout, vb.). */
+  private lastDriverError: string | null = null;
 
   constructor(cfg: PlaywrightDriverConfig) {
     this.cfg = {
@@ -246,6 +253,9 @@ export class PlaywrightDriver implements BridgeDriver {
       // Pass 45 — browser/profile mode görünürlüğü
       channel: this.launchedChannel,
       profileState: this.profileState,
+      // Pass 46 — driver gözlem alanları (admin debug için)
+      lastDriverMessage: this.lastDriverMessage,
+      lastDriverError: this.lastDriverError,
     };
   }
 
@@ -295,9 +305,24 @@ export class PlaywrightDriver implements BridgeDriver {
    */
   async executeJob(
     job: { id: string; request: CreateJobRequest },
-    onProgress: DriverProgressCallback,
+    onProgressOriginal: DriverProgressCallback,
     signal: AbortSignal,
   ): Promise<void> {
+    // Pass 46 — onProgress wrap. Her state transition'ında driver-level
+    // lastDriverMessage + lastDriverError set; admin health endpoint'inde
+    // görünür. Caller (job manager) kontratı bozulmaz.
+    const onProgress: DriverProgressCallback = (update) => {
+      if (update.message) this.lastDriverMessage = update.message;
+      if (update.state === "FAILED") {
+        this.lastDriverError = update.message ?? update.blockReason ?? null;
+      } else if (update.state !== "AWAITING_CHALLENGE" && update.state !== "AWAITING_LOGIN") {
+        // Geçici block durumlarında error temizleme; ama recoverable
+        // state'lerde lastError'u ANADOĞAN tut (kullanıcı sebebi görsün).
+        this.lastDriverError = null;
+      }
+      onProgressOriginal(update);
+    };
+
     if (!this.context) {
       onProgress({
         state: "FAILED",

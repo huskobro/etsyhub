@@ -78,6 +78,36 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 46 (driver gözlem + inspect script kalibrasyon — tamamlanan)
+- ✅ PlaywrightDriver `lastDriverMessage` + `lastDriverError` alanları
+  (state machine progress'i admin debug için yansır).
+- ✅ executeJob içinde onProgress wrap — her transition lastMessage'ı
+  set; AWAITING durumlarında lastError korunur, COMPLETED/yeni
+  job'da temizlenir.
+- ✅ BridgeDriver kontratı + Mock + http forward + EtsyHub bridge-client
+  + admin sayfa hepsi senkron güncellendi.
+- ✅ Admin /admin/midjourney Browser kartında yeni "Driver: ..." +
+  kırmızı "Hata: ..." satırları (lastMessage/Error gösterimi).
+- ✅ Inspect script Pass 45 channel + automation flag fix kullanır
+  (system Chrome default; bundled fallback warning ile).
+- ✅ Inspect script daha agresif DOM probe: `textInputs` (textarea +
+  input[type=text] + role=textbox + contenteditable), `allImages`
+  (src + alt sample), `dataAttrSample` (data-* attribute audit),
+  page structure flags (hasMainNav, buttonCount, imgCount).
+- ✅ Inspect bekleme süresi `MJ_INSPECT_WAIT_MS` env (default 30sn)
+  ile konfigüre edilebilir — uzun manuel CF/login süreci için
+  60sn+ verilebilir.
+- ✅ Mock driver regression yok (canlı doğrulandı: COMPLETED + 4 grid).
+- ⚠ **Pass 46 dürüst sınır**: Cloudflare managed challenge **kullanıcı
+  tarafından manuel olarak** çözülmesi gerek. Bu turun Claude code
+  session'ında manuel intervention yapılamadı; her bridge başlatmada
+  CF interstitial tekrar tetiklendi → logged-in MJ DOM kalibre
+  EDİLEMEDİ → generate flow real DOM'da TEST EDİLEMEDİ.
+  Çözüm pratik: kullanıcı bridge'i kendi terminalinde başlatır,
+  açılan Chrome penceresinde 1 kez manuel CF + Discord/Google login
+  yapar, sonra inspect script tekrar çalıştırılır → MJ DOM görünür
+  olur, selector default'lar kalibre edilebilir.
+
 ### Pass 44 (kalibrasyon turu — tamamlanan)
 - ✅ Standalone DOM inspection script (`scripts/inspect-mj-dom.ts`):
   persistent profile'a bağlanır, MJ home/imagine/archive sayfalarını

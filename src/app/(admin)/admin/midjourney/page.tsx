@@ -285,6 +285,25 @@ function BridgeHealthCard({ health }: { health: BridgeHealth }) {
           <div className="mt-1 truncate text-xs text-text-muted">
             {health.browser.activeUrl ?? "—"}
           </div>
+          {/* Pass 46 — driver gözlem alanları. lastDriverMessage:
+              "render bekleniyor… Ns" / "selector eşleşmedi"; lastDriverError:
+              "render-timeout" / "selector-mismatch". Admin "bridge ne
+              yapıyor?" sorusunu cevaplar. */}
+          {health.browser.lastDriverMessage ? (
+            <div className="mt-1 truncate text-xs text-text-muted">
+              <span className="text-text-muted">Driver:</span>{" "}
+              {health.browser.lastDriverMessage}
+            </div>
+          ) : null}
+          {health.browser.lastDriverError ? (
+            <div
+              className="mt-1 truncate text-xs text-danger"
+              title={health.browser.lastDriverError}
+            >
+              <span className="text-text-muted">Hata:</span>{" "}
+              {health.browser.lastDriverError}
+            </div>
+          ) : null}
         </div>
         <div>
           <div className="text-xs text-text-muted">MJ login</div>

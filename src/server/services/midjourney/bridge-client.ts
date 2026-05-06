@@ -101,6 +101,10 @@ export type BridgeHealth = {
     channel?: "chrome" | "chromium" | "mock";
     /** Pass 45 — profile durumu (fresh=ilk kullanım, primed=daha önce başlatılmış, absent=mock). */
     profileState?: "fresh" | "primed" | "absent";
+    /** Pass 46 — son driver mesajı (debug için admin UI). */
+    lastDriverMessage?: string | null;
+    /** Pass 46 — son driver hatası (recoverable durumlarda korunur). */
+    lastDriverError?: string | null;
   };
   /**
    * Pass 43 — selector smoke (yalnız PlaywrightDriver). MockDriver'da null.

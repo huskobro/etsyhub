@@ -51,6 +51,25 @@ async function inspectPage(
     verifyText: boolean;
     cfClass: boolean;
   };
+  // Pass 46 — agresif DOM probe.
+  probe: {
+    textInputs: Array<{
+      tag: string;
+      id: string | null;
+      placeholder: string | null;
+      ariaLabel: string | null;
+      role: string | null;
+      contentEditable: string | null;
+      classes: string;
+    }>;
+    allImages: Array<{ src: string; alt: string; ariaLabel: string | null }>;
+    dataAttrSample: string[];
+    hasMainNav: boolean;
+    hasMainHeader: boolean;
+    hasMainContent: boolean;
+    buttonCount: number;
+    imgCount: number;
+  };
   selectorReports: SelectorReport[];
   linkSummary: { href: string; text: string }[];
   textareaSummary: { placeholder: string | null; ariaLabel: string | null; id: string | null }[];
@@ -108,6 +127,55 @@ async function inspectPage(
     })),
   );
 
+  // Pass 46 — agresif DOM probe. Login sonrası prompt input + grid +
+  // result surface'lerini bulmak için generic candidate listesi.
+  const probe = await page.evaluate(() => {
+    // Tüm role="textbox" + textarea + input[type=text]
+    const textInputs = Array.from(
+      document.querySelectorAll(
+        'textarea, input[type="text"], [role="textbox"], [contenteditable="true"]',
+      ),
+    )
+      .slice(0, 20)
+      .map((el) => ({
+        tag: el.tagName,
+        id: el.id || null,
+        placeholder: el.getAttribute("placeholder"),
+        ariaLabel: el.getAttribute("aria-label"),
+        role: el.getAttribute("role"),
+        contentEditable: el.getAttribute("contenteditable"),
+        classes: (el.className?.toString() ?? "").slice(0, 80),
+      }));
+    // Tüm img'ler — generated image src pattern bulmak için.
+    const allImages = Array.from(document.querySelectorAll("img"))
+      .slice(0, 30)
+      .map((img) => ({
+        src: (img.getAttribute("src") ?? "").slice(0, 120),
+        alt: (img.getAttribute("alt") ?? "").slice(0, 50),
+        ariaLabel: img.getAttribute("aria-label"),
+      }));
+    // data-* attribute'lı elementlerin attr name'lerini topla — MJ
+    // genelde data-job-id / data-testid kullanıyor olabilir.
+    const dataAttrs = new Set<string>();
+    document.querySelectorAll("*").forEach((el) => {
+      for (const attr of Array.from(el.attributes)) {
+        if (attr.name.startsWith("data-")) dataAttrs.add(attr.name);
+      }
+    });
+    // En sık geçen 30 data-attr.
+    return {
+      textInputs,
+      allImages,
+      dataAttrSample: Array.from(dataAttrs).slice(0, 30),
+      // Sayfa structure debug: ana ana element kategorileri
+      hasMainNav: !!document.querySelector("nav"),
+      hasMainHeader: !!document.querySelector("header"),
+      hasMainContent: !!document.querySelector("main"),
+      buttonCount: document.querySelectorAll("button").length,
+      imgCount: document.querySelectorAll("img").length,
+    };
+  });
+
   // Cloudflare interstitial debug info — Pass 44 detection upgrade için.
   const cloudflareInterstitial = await page.evaluate(() => {
     const titleLower = document.title.toLowerCase();
@@ -132,6 +200,7 @@ async function inspectPage(
     title,
     bodyTextSample: bodyText,
     cloudflareInterstitial,
+    probe,
     selectorReports,
     linkSummary,
     textareaSummary,
@@ -143,10 +212,35 @@ async function main(): Promise<void> {
   const urls = loadUrls();
 
   console.log("[inspect-mj] launching persistent context:", PROFILE_DIR);
-  const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
-    headless: false,
-    viewport: { width: 1280, height: 900 },
-  });
+  // Pass 46 — bridge'le aynı channel + automation flag config kullan
+  // (Pass 45 fix). System Chrome default; MJ_BRIDGE_BROWSER_CHANNEL=chromium
+  // ile bundled override mümkün.
+  const channelEnv = process.env["MJ_BRIDGE_BROWSER_CHANNEL"];
+  const channel: "chrome" | undefined =
+    channelEnv === "chromium" ? undefined : "chrome";
+  let ctx: import("playwright").BrowserContext;
+  try {
+    ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
+      channel,
+      headless: false,
+      viewport: { width: 1280, height: 900 },
+      ignoreDefaultArgs: ["--enable-automation"],
+    });
+  } catch (err) {
+    if (channel === "chrome") {
+      console.warn(
+        "[inspect-mj] system Chrome bulunamadı, bundled Chromium fallback:",
+        err instanceof Error ? err.message : String(err),
+      );
+      ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
+        headless: false,
+        viewport: { width: 1280, height: 900 },
+        ignoreDefaultArgs: ["--enable-automation"],
+      });
+    } else {
+      throw err;
+    }
+  }
   const page = ctx.pages()[0] ?? (await ctx.newPage());
 
   await mkdir(OUTPUT_DIR, { recursive: true });
@@ -213,11 +307,16 @@ async function main(): Promise<void> {
   console.log("archive url:", archiveReport.url);
 
   console.log("\n[inspect-mj] DONE — reports:", OUTPUT_DIR);
-  console.log("Browser açık bırakılıyor (Ctrl+C kapatmaz; pencerini kapat).");
-
-  // Kullanıcı manuel inceleyebilsin — context'i kapatmadan bekle.
-  // 60sn sonra otomatik kapan.
-  await new Promise((r) => setTimeout(r, 60_000));
+  // Pass 46 — bekleme süresi env'le konfigüre edilebilir.
+  // Default 30sn (Pass 44'te 60sn idi, login + manuel CF için yeterli
+  // ama bridge sonradan başlatılacaksa fazla; kısalttık). Kullanıcı
+  // browser tab'ını kendisi kapatabilir; ctx kapatması browser
+  // pencereyi de kapatır.
+  const waitMs = Number(process.env["MJ_INSPECT_WAIT_MS"] ?? "30000");
+  console.log(
+    `Browser ${Math.round(waitMs / 1000)}sn açık kalacak (Ctrl+C ile early exit).`,
+  );
+  await new Promise((r) => setTimeout(r, waitMs));
   await ctx.close();
 }
 

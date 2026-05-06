@@ -55,6 +55,9 @@ export class MockDriver implements BridgeDriver {
       // Pass 45 — mock driver ne kanal ne profile kullanır.
       channel: "mock" as const,
       profileState: "absent" as const,
+      // Pass 46 — mock driver gözlem alanları null (job seq deterministic).
+      lastDriverMessage: null,
+      lastDriverError: null,
     };
   }
 

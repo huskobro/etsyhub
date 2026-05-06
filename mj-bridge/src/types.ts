@@ -206,6 +206,16 @@ export type BridgeHealth = {
      * - "absent": dizin yok / mock
      */
     profileState?: "fresh" | "primed" | "absent";
+    /**
+     * Pass 46 — son driver mesajı (init veya executeJob içinde set).
+     * Admin UI'da debug için görünür. null → henüz iş çalışmadı.
+     */
+    lastDriverMessage?: string | null;
+    /**
+     * Pass 46 — son driver hatası. AWAITING durumlarında korunur,
+     * COMPLETED'da temizlenir. Admin "neden takılı" sorusunu cevaplar.
+     */
+    lastDriverError?: string | null;
   };
   /**
    * Pass 43 — Boot-time selector smoke (yalnız PlaywrightDriver dolu;
