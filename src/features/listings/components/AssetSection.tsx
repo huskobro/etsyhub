@@ -57,9 +57,14 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
           {coverImage && (
             <div className="relative rounded-lg overflow-hidden shadow-lg col-span-1 row-span-2">
               <div className="aspect-square bg-gray-100 flex items-center justify-center border-2 border-accent">
-                {coverImage.outputKey ? (
+                {/* Pass 36 — signedUrl öncelikli (UI display), outputKey
+                    fallback (legacy listing imageOrderJson signedUrl yok).
+                    Pre-Pass 36 outputKey raw storage key olarak verildi
+                    → 404 broken image. */}
+                {coverImage.signedUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={coverImage.outputKey}
+                    src={coverImage.signedUrl}
                     alt={`Kapak görseli (${coverImage.templateName})`}
                     className="w-full h-full object-cover"
                   />
@@ -79,9 +84,10 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
               className="relative rounded-lg overflow-hidden shadow border"
             >
               <div className="aspect-square bg-gray-100 flex items-center justify-center">
-                {img.outputKey ? (
+                {img.signedUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={img.outputKey}
+                    src={img.signedUrl}
                     alt={`Görsel ${img.packPosition + 1} (${img.templateName})`}
                     className="w-full h-full object-cover"
                   />
@@ -106,7 +112,7 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
         )}
         {allImagesReady && (
           <div className="px-3 py-1 bg-green-50 border border-green-200 text-green-700 rounded">
-            ✓ ZIP'e hazır
+            ✓ ZIP&apos;e hazır
           </div>
         )}
         {!allImagesReady && (

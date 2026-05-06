@@ -15,12 +15,22 @@ export type ListingStatusValue = ListingStatus;
  * imageOrderJson içindeki tek entry — handoff anında MockupRender'dan
  * snapshot alınır (Phase 8 packPosition ASC + success render only).
  */
+/**
+ * Pass 36 — `signedUrl` opsiyonel alan eklendi. Pre-Pass 36: AssetSection
+ * `<img src={img.outputKey}>` ile raw storage key kullanıyordu (mockup-renders/...png)
+ * → 404 broken image. JSON snapshot legacy entry'lerinde signedUrl yok
+ * (`undefined`); UI fallback olarak görseli gizler. Yeni listingler route
+ * tarafında signed URL hesaplar.
+ *
+ * outputKey raw kalır (ZIP download endpoint hâlâ kullanır).
+ */
 export type ListingImageOrderEntry = {
   packPosition: number;
   renderId: string;
   outputKey: string;
   templateName: string;
   isCover: boolean;
+  signedUrl?: string | null;
 };
 
 /**

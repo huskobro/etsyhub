@@ -22,6 +22,8 @@ const mockListing: ListingDraftView = {
       isCover: true,
       packPosition: 0,
       outputKey: "/images/cover.png",
+      // Pass 36 — signedUrl UI display için (outputKey raw key, ZIP için).
+      signedUrl: "/images/cover.png",
       templateName: "canvas_a4",
     },
     {
@@ -29,6 +31,7 @@ const mockListing: ListingDraftView = {
       isCover: false,
       packPosition: 1,
       outputKey: "/images/img1.png",
+      signedUrl: "/images/img1.png",
       templateName: "canvas_a4",
     },
     {
@@ -36,6 +39,7 @@ const mockListing: ListingDraftView = {
       isCover: false,
       packPosition: 2,
       outputKey: "/images/img2.png",
+      signedUrl: "/images/img2.png",
       templateName: "canvas_a4",
     },
   ],

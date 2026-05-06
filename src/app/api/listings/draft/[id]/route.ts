@@ -14,6 +14,8 @@ import { requireUser } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
 import { ValidationError, AppError } from "@/lib/errors";
 import { db } from "@/server/db";
+import { getStorage } from "@/providers/storage";
+import { logger } from "@/lib/logger";
 import {
   ListingDraftPathSchema,
   UpdateListingMetaSchema,
@@ -25,6 +27,10 @@ import type {
 import { computeReadiness } from "@/features/listings/server/readiness.service";
 import { isListingEditable } from "@/features/listings/server/state";
 import type { EtsyConnection, Listing } from "@prisma/client";
+
+// Pass 36 — Listing detail görsel signed URL TTL. Display-only; ZIP download
+// endpoint outputKey'i ayrı kanaldan kullanır (auth bound).
+const LISTING_DETAIL_IMAGE_TTL_SECONDS = 3600;
 
 /**
  * Phase 9 V1 — Listing fetch için store→etsyConnection nested type.
@@ -58,10 +64,10 @@ export class ListingNotEditableError extends AppError {
 // Helper: Listing → ListingDraftView mapper (DRY için)
 // ────────────────────────────────────────────────────────────
 
-function buildListingDraftView(
+async function buildListingDraftView(
   listing: Listing,
   etsyConnection: EtsyConnection | null = null,
-): ListingDraftView {
+): Promise<ListingDraftView> {
   const readiness = computeReadiness(listing);
   // Phase 9 V1 — Submit sonrası UX paketi: shopId varsa shop bilgisi expose;
   // shopId null veya connection yoksa null (kullanıcı bağlantı kurmadı /
@@ -70,13 +76,45 @@ function buildListingDraftView(
     etsyConnection && etsyConnection.shopId
       ? { shopId: etsyConnection.shopId, shopName: etsyConnection.shopName }
       : null;
+
+  // Pass 36 — imageOrder entry'lerinin signedUrl'i hesaplanır (UI display).
+  // Pre-Pass 36: AssetSection `<img src={img.outputKey}>` raw storage key
+  // ile 404 broken image alıyordu. Şimdi her outputKey için 1h TTL signed
+  // URL paralel batch (Promise.all). Best-effort: storage fail bireysel
+  // entry'de signedUrl: null bırakır; UI fallback "Görsel yok" gösterir.
+  const rawImageOrder =
+    (listing.imageOrderJson as ListingImageOrderEntry[] | null) ?? [];
+  const storage = getStorage();
+  const imageOrder = await Promise.all(
+    rawImageOrder.map(async (entry) => {
+      if (!entry.outputKey) return entry;
+      try {
+        const url = await storage.signedUrl(
+          entry.outputKey,
+          LISTING_DETAIL_IMAGE_TTL_SECONDS,
+        );
+        return { ...entry, signedUrl: url };
+      } catch (err) {
+        logger.warn(
+          {
+            listingId: listing.id,
+            renderId: entry.renderId,
+            outputKey: entry.outputKey,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "listing detail image signed URL failed",
+        );
+        return { ...entry, signedUrl: null };
+      }
+    }),
+  );
+
   return {
     id: listing.id,
     status: listing.status,
     mockupJobId: listing.mockupJobId,
     coverRenderId: listing.coverRenderId,
-    imageOrder:
-      (listing.imageOrderJson as ListingImageOrderEntry[] | null) ?? [],
+    imageOrder,
     title: listing.title,
     description: listing.description,
     tags: listing.tags,
@@ -126,7 +164,7 @@ export const GET = withErrorHandling(
     }
 
     return NextResponse.json({
-      listing: buildListingDraftView(
+      listing: await buildListingDraftView(
         listing,
         listing.store?.etsyConnection ?? null,
       ),
@@ -173,6 +211,6 @@ export const PATCH = withErrorHandling(
       data: body.data,
     });
 
-    return NextResponse.json({ listing: buildListingDraftView(updated) });
+    return NextResponse.json({ listing: await buildListingDraftView(updated) });
   },
 );
