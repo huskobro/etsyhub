@@ -70,21 +70,56 @@ kovaya ayırır** ve roadmap'e bağlar.
 
 ## C. Roadmap'e bağlama
 
-### Pass 42 (bu tur — tamamlanan)
+### Pass 42 (tamamlanan)
 - ✅ `mj-bridge/` package + HTTP server + auth + lifecycle types
 - ✅ Mock driver — `generate` job için end-to-end (4 grid PNG fixture)
-- ✅ Playwright driver shell — visible browser bootstrap, MJ login heuristic
+- ✅ Playwright driver SHELL — visible browser bootstrap, MJ login heuristic
 - ✅ EtsyHub: MidjourneyJob + MidjourneyAsset Prisma modelleri + migration
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
-### V1.0 (kullanıcı üyelik aldıktan sonra ilk tur — Playwright real driver)
-1. **Login flow** — kullanıcı browser'da MJ'ye login eder; session persistent profile'da kalır
-2. **Prompt submit (`generate`)** — Playwright DOM otomasyonu (input + Enter)
-3. **Render polling** — DOM mutation observer; grid 4-up hazır olunca capture
-4. **Download** — 4 image URL fetch (page request — same session cookie)
-5. **Challenge detection** — Cloudflare/hCaptcha selector + AWAITING_CHALLENGE state
-6. **Manual handoff UX** — `/admin/midjourney` "Bridge'i öne getir" butonu zaten kurulu
+### Pass 43 (bu tur — tamamlanan)
+- ✅ Selector katmanı: `selectors.ts` (17 key) + URL config + env override
+  (`MJ_SELECTOR_OVERRIDES`, `MJ_BASE_URL`)
+- ✅ Detection helpers: `detection.ts` — detectLoginRequired,
+  detectChallengeRequired, waitForChallengeCleared, waitForLogin,
+  smokeCheckSelectors
+- ✅ Generate flow helpers: `generate-flow.ts` — buildMJPromptString
+  (--ar / --v / --style raw / --stylize / --chaos / --sref / --oref / --ow
+  flag desteği), submitPrompt (Cmd+A clear + char-by-char type + jitter
+  + Enter), waitForRender (DOM polling + baselineCount), downloadGridImages
+  (page.request.get aynı session)
+- ✅ PlaywrightDriver real — shell yerine: launchPersistentContext +
+  visible Chromium + selector smoke + executeJob gerçek lifecycle:
+  OPENING_BROWSER → AWAITING_CHALLENGE? → AWAITING_LOGIN? →
+  SUBMITTING_PROMPT → WAITING_FOR_RENDER → COLLECTING_OUTPUTS →
+  DOWNLOADING → COMPLETED. Hata yolları: SelectorMismatchError →
+  selector-mismatch, render timeout → render-timeout, login timeout →
+  login-required.
+- ✅ Health endpoint genişletildi: driver kimliği + selectorSmoke
+  (PlaywrightDriver: prompt/loginIndicator/signInLink found durumu)
+- ✅ EtsyHub admin /admin/midjourney: driver + selector smoke kart
+- ✅ Mock + real driver birlikte yaşıyor (config: MJ_BRIDGE_DRIVER env)
+- ✅ Canlı doğrulama: real driver MJ web'e gitti, login-required state'e
+  doğru geçti
+
+### V1.0 (Pass 43 ile büyük kısmı INDIRILDI — kullanıcı login akışıyla son kalibre)
+1. **Login flow** — Pass 43 ✅ AWAITING_LOGIN state'i ve waitForLogin polling
+   yazıldı; gerçek MJ ana sayfasında doğru detect ediyor (selectorSmoke
+   `signInLinkFound: true`). Kullanıcının ilk gerçek login'de session
+   persistent profile'a kaydolacak.
+2. **Prompt submit (`generate`)** — Pass 43 ✅ submitPrompt + buildMJPromptString
+   yazıldı. Selector default'lar logged-in kullanıcı testinde DOĞRULANACAK
+   (V1.0 kalibrasyon turu).
+3. **Render polling** — Pass 43 ✅ waitForRender (baselineCount + DOM polling +
+   4 img bekleme). Selector kalibrasyonu logged-in test ile.
+4. **Download** — Pass 43 ✅ downloadGridImages (page.request.get — aynı
+   session cookie). Full-resolution upgrade (thumbnail → original) V1.1.
+5. **Challenge detection** — Pass 43 ✅ Cloudflare + hCaptcha iframe + URL
+   pattern detect, waitForChallengeCleared polling. Logged-in oturumda
+   gerçek challenge testi V1.0 kalibrasyon turu.
+6. **Manual handoff UX** — Pass 42'de admin sayfasında zaten kurulu;
+   Pass 43'te selector smoke + driver kimliği eklendi.
 
 ### V1.1 (Worth adapting)
 - **Image prompt** (`imagePromptUrls`) — bridge zaten kontratta; Playwright tarafında prompt başına URL paste

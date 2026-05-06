@@ -180,6 +180,8 @@ export type BridgeHealth = {
   /** Bridge çalışıyor mu — her zaman true (yanıt geliyorsa). */
   ok: true;
   version: string;
+  /** Pass 43 — driver kimliği: "mock" | "playwright". Admin UI gösterir. */
+  driver: string;
   /** Browser durumu. */
   browser: {
     /** Playwright Chromium başlatıldı mı. */
@@ -191,6 +193,17 @@ export type BridgeHealth = {
     /** Aktif tab URL'i. */
     activeUrl?: string;
   };
+  /**
+   * Pass 43 — Boot-time selector smoke (yalnız PlaywrightDriver dolu;
+   * MockDriver null). MJ web UI değiştiyse bridge selector_overrides ile
+   * kalibre edilmeli.
+   */
+  selectorSmoke?: {
+    promptInputFound: boolean;
+    loginIndicatorFound: boolean;
+    signInLinkFound: boolean;
+    at: string;
+  } | null;
   /** MJ login durumu — DOM heuristic'ine göre. */
   mjSession: {
     likelyLoggedIn: boolean;

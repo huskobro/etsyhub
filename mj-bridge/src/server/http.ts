@@ -57,15 +57,26 @@ export function buildServer(cfg: ServerConfig): FastifyInstance {
       state: j.state,
       enqueuedAt: j.enqueuedAt,
     }));
+    // Pass 43 — selector smoke yalnız PlaywrightDriver'da dolu.
+    // Driver type guard: getSelectorSmoke method'u varsa çağır.
+    let selectorSmoke: BridgeHealth["selectorSmoke"] = null;
+    const driverWithSmoke = cfg.driver as unknown as {
+      getSelectorSmoke?: () => BridgeHealth["selectorSmoke"];
+    };
+    if (typeof driverWithSmoke.getSelectorSmoke === "function") {
+      selectorSmoke = driverWithSmoke.getSelectorSmoke();
+    }
     return {
       ok: true,
       version: cfg.version,
+      driver: cfg.driver.id,
       browser: {
         launched: browserHealth.launched,
         profileDir: browserHealth.profileDir,
         pageCount: browserHealth.pageCount,
         activeUrl: browserHealth.activeUrl,
       },
+      selectorSmoke,
       mjSession: {
         likelyLoggedIn: browserHealth.mjLikelyLoggedIn,
         lastChecked: browserHealth.lastChecked,

@@ -17,10 +17,11 @@
 import { JobManager } from "./server/job-manager.js";
 import { buildServer } from "./server/http.js";
 import { MockDriver } from "./drivers/mock.js";
-import { PlaywrightDriverShell } from "./drivers/playwright.js";
+import { PlaywrightDriver } from "./drivers/playwright.js";
 import type { BridgeDriver } from "./drivers/types.js";
 
-const VERSION = "0.1.0"; // package.json ile senkron
+// Pass 43 — version bumped (real driver ilk versiyon).
+const VERSION = "0.2.0"; // package.json ile senkron
 
 async function main(): Promise<void> {
   const token = process.env["MJ_BRIDGE_TOKEN"];
@@ -36,9 +37,13 @@ async function main(): Promise<void> {
 
   let driver: BridgeDriver;
   if (driverKind === "playwright") {
-    driver = new PlaywrightDriverShell({
+    // TOS uyumu — production headless: false. Test için bypass:
+    // MJ_BRIDGE_HEADLESS_TEST=1 (sadece testler; üretimde verilmez).
+    const headlessForTesting = process.env["MJ_BRIDGE_HEADLESS_TEST"] === "1";
+    driver = new PlaywrightDriver({
       profileDir,
       outputsDir,
+      headlessForTesting,
     });
   } else if (driverKind === "mock") {
     driver = new MockDriver(outputsDir);

@@ -90,12 +90,24 @@ export type BridgeJobSnapshot = {
 export type BridgeHealth = {
   ok: true;
   version: string;
+  /** Pass 43 — driver kimliği: "mock" | "playwright". */
+  driver: string;
   browser: {
     launched: boolean;
     profileDir: string;
     pageCount: number;
     activeUrl?: string;
   };
+  /**
+   * Pass 43 — selector smoke (yalnız PlaywrightDriver). MockDriver'da null.
+   * MJ web UI değiştiyse bridge selector_overrides ile kalibre edilmeli.
+   */
+  selectorSmoke?: {
+    promptInputFound: boolean;
+    loginIndicatorFound: boolean;
+    signInLinkFound: boolean;
+    at: string;
+  } | null;
   mjSession: {
     likelyLoggedIn: boolean;
     lastChecked: string;

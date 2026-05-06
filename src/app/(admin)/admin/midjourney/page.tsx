@@ -208,49 +208,83 @@ MJ_BRIDGE_TOKEN=<aynı token>
 }
 
 function BridgeHealthCard({ health }: { health: BridgeHealth }) {
+  const smoke = health.selectorSmoke;
+  // Pass 43 — selector smoke yalnız PlaywrightDriver'da. Mock'ta null.
+  const smokeWarn =
+    smoke &&
+    !smoke.promptInputFound &&
+    !smoke.loginIndicatorFound &&
+    !smoke.signInLinkFound;
   return (
-    <div
-      className="grid gap-3 rounded-md border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4"
-      data-testid="bridge-health"
-    >
-      <div>
-        <div className="text-xs text-text-muted">Bridge</div>
-        <div className="text-sm font-semibold text-success">
-          ✓ Bağlı (v{health.version})
+    <div className="flex flex-col gap-3" data-testid="bridge-health">
+      <div className="grid gap-3 rounded-md border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <div className="text-xs text-text-muted">Bridge</div>
+          <div className="text-sm font-semibold text-success">
+            ✓ Bağlı (v{health.version})
+          </div>
+          <div className="mt-1 text-xs text-text-muted">
+            Driver: <span className="font-mono">{health.driver}</span>
+          </div>
+          <div className="text-xs text-text-muted">
+            Started: {new Date(health.startedAt).toLocaleString("tr-TR")}
+          </div>
         </div>
-        <div className="mt-1 text-xs text-text-muted">
-          Started: {new Date(health.startedAt).toLocaleString("tr-TR")}
+        <div>
+          <div className="text-xs text-text-muted">Browser</div>
+          <div className="text-sm">
+            {health.browser.launched ? "Açık" : "Kapalı"} ·{" "}
+            {health.browser.pageCount} tab
+          </div>
+          <div className="mt-1 truncate text-xs text-text-muted">
+            {health.browser.activeUrl ?? "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-text-muted">MJ login</div>
+          <div className="text-sm">
+            {health.mjSession.likelyLoggedIn ? "Aktif" : "Pasif"}
+          </div>
+          <div className="mt-1 text-xs text-text-muted">
+            {new Date(health.mjSession.lastChecked).toLocaleString("tr-TR")}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-text-muted">Job sayaçları</div>
+          <div className="text-sm">
+            {health.jobs.queued} sırada · {health.jobs.running} çalışıyor ·{" "}
+            {health.jobs.blocked} blok
+          </div>
+          <div className="mt-1 text-xs text-text-muted">
+            {health.jobs.completed} tamam · {health.jobs.failed} fail
+          </div>
         </div>
       </div>
-      <div>
-        <div className="text-xs text-text-muted">Browser</div>
-        <div className="text-sm">
-          {health.browser.launched ? "Açık" : "Kapalı"} ·{" "}
-          {health.browser.pageCount} tab
+      {smoke ? (
+        <div
+          className={
+            smokeWarn
+              ? "rounded-md border border-warning bg-warning-soft p-3 text-xs text-warning-text"
+              : "rounded-md border border-border bg-surface-2 p-3 text-xs text-text-muted"
+          }
+          data-testid="bridge-selector-smoke"
+        >
+          <div className="font-semibold">
+            Selector smoke ({new Date(smoke.at).toLocaleString("tr-TR")})
+          </div>
+          <div className="mt-1">
+            promptInput: {smoke.promptInputFound ? "✓" : "✗"} · loginIndicator:{" "}
+            {smoke.loginIndicatorFound ? "✓" : "✗"} · signInLink:{" "}
+            {smoke.signInLinkFound ? "✓" : "✗"}
+          </div>
+          {smokeWarn ? (
+            <div className="mt-1">
+              ⚠ MJ web tarafında selector eşleşmedi. Bridge MJ_SELECTOR_OVERRIDES
+              env ile kalibre edilmeli.
+            </div>
+          ) : null}
         </div>
-        <div className="mt-1 truncate text-xs text-text-muted">
-          {health.browser.activeUrl ?? "—"}
-        </div>
-      </div>
-      <div>
-        <div className="text-xs text-text-muted">MJ login</div>
-        <div className="text-sm">
-          {health.mjSession.likelyLoggedIn ? "Aktif" : "Pasif"}
-        </div>
-        <div className="mt-1 text-xs text-text-muted">
-          {new Date(health.mjSession.lastChecked).toLocaleString("tr-TR")}
-        </div>
-      </div>
-      <div>
-        <div className="text-xs text-text-muted">Job sayaçları</div>
-        <div className="text-sm">
-          {health.jobs.queued} sırada · {health.jobs.running} çalışıyor ·{" "}
-          {health.jobs.blocked} blok
-        </div>
-        <div className="mt-1 text-xs text-text-muted">
-          {health.jobs.completed} tamam · {health.jobs.failed} fail
-        </div>
-      </div>
+      ) : null}
     </div>
   );
 }
