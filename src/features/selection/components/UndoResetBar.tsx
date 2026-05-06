@@ -41,7 +41,11 @@ import {
 const SECTION_LABEL_CLASS =
   "font-mono text-xs uppercase tracking-meta text-text-muted";
 
-type EditOp = "crop" | "transparent-check" | "background-remove";
+type EditOp =
+  | "crop"
+  | "transparent-check"
+  | "background-remove"
+  | "magic-eraser";
 
 type EditHistoryEntry = {
   op: EditOp;
@@ -52,10 +56,13 @@ type EditHistoryEntry = {
   reason?: string;
 };
 
+// Pass 32 — magic-eraser eklendi. Pre-Pass 32: history listesinde raw
+// "magic-eraser" string görünüyordu (yarı-deneysel hissi). Şimdi TR label.
 const OP_LABELS: Record<EditOp, string> = {
   crop: "Crop",
   "transparent-check": "Transparent kontrol",
   "background-remove": "Background remove",
+  "magic-eraser": "Magic Eraser",
 };
 
 /**

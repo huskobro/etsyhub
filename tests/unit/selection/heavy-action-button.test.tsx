@@ -93,7 +93,7 @@ describe("HeavyActionButton — read-only set", () => {
 });
 
 describe("HeavyActionButton — isProcessing (activeHeavyJobId set)", () => {
-  it("activeHeavyJobId set → 'İşleniyor...' label + spinner + disabled + hint", () => {
+  it("activeHeavyJobId set (başka job) → 'Bir işlem sürüyor…' op-agnostic label + spinner + disabled + hint", () => {
     wrapper(
       <HeavyActionButton
         setId="set-1"
@@ -101,10 +101,14 @@ describe("HeavyActionButton — isProcessing (activeHeavyJobId set)", () => {
         isReadOnly={false}
       />,
     );
-    // Label "İşleniyor..."
-    const btn = screen.getByRole("button", { name: /işleniyor/i });
+    // Pass 32 — op-agnostic label. Pre-Pass 32: "İşleniyor..." + bg-remove'a
+    // atfediyordu (Magic Eraser job aktifken bile). Şimdi kendi mutation
+    // pending değilse label "Bir işlem sürüyor…" + aria-label "Başka bir
+    // işlem sürüyor".
+    const btn = screen.getByRole("button", { name: /başka bir işlem sürüyor/i });
     expect(btn).toBeInTheDocument();
     expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("title", "Bu öğede başka bir işlem sürüyor");
     // Spinner aria-label "Yükleniyor"
     expect(screen.getByLabelText(/yükleniyor/i)).toBeInTheDocument();
     // Hint

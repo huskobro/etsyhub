@@ -221,12 +221,22 @@ export function QuickActions({ setId, item, setStatus }: QuickActionsProps) {
 
         {/* Pass 29 — Magic Eraser. Heavy op (BullMQ MAGIC_ERASER_INPAINT).
             Lock state HeavyActionButton emsali activeHeavyJobId tarafından
-            yönetilir; UI tarafında button basit aç/kapat + modal. */}
+            yönetilir; UI tarafında button basit aç/kapat + modal.
+            Pass 32 — disabledReason: kullanıcı niye basamadığını görür. */}
         <ActionButton
           label="Magic Eraser"
           icon={<Eraser className="h-3.5 w-3.5" />}
           onClick={openMagicEraser}
           disabled={isReadOnly || isPending || item.activeHeavyJobId !== null}
+          disabledReason={
+            isReadOnly
+              ? "Set finalize edildi, düzenleme kapalı"
+              : item.activeHeavyJobId !== null
+                ? "Bu öğede başka bir işlem sürüyor"
+                : isPending
+                  ? "Başka bir işlem yapılıyor"
+                  : undefined
+          }
         />
         {magicEraserUrl ? (
           <MagicEraserModal
@@ -327,6 +337,9 @@ type ActionButtonProps = {
   loading?: boolean;
   ariaHaspopup?: "menu";
   ariaExpanded?: boolean;
+  // Pass 32 — disabled iken sebebi açıklayan tooltip; kullanıcı niye
+  // basamadığını görür ("başka bir işlem sürüyor", "set finalize edildi" vs).
+  disabledReason?: string;
 };
 
 function ActionButton({
@@ -337,12 +350,14 @@ function ActionButton({
   loading,
   ariaHaspopup,
   ariaExpanded,
+  disabledReason,
 }: ActionButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled || loading}
+      title={disabled && disabledReason ? disabledReason : undefined}
       aria-haspopup={ariaHaspopup}
       aria-expanded={ariaExpanded}
       className="flex h-control-md w-full items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm text-text transition-colors hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50"

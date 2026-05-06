@@ -88,7 +88,8 @@ describe("useHeavyEditCompletionToast — completion transitions", () => {
     const toasts = useSelectionStudioToasts.getState().toasts;
     expect(toasts).toHaveLength(1);
     expect(toasts[0]!.tone).toBe("success");
-    expect(toasts[0]!.message).toContain("Background remove");
+    // Pass 31 — op-aware TR label: "background-remove" → "Arka plan silme".
+    expect(toasts[0]!.message).toContain("Arka plan silme");
     expect(toasts[0]!.source).toBe("heavy-edit");
   });
 

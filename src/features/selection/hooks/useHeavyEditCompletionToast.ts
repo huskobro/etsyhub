@@ -41,6 +41,32 @@ function opLabel(op: string | undefined): string {
   return OP_LABELS[op] ?? op;
 }
 
+// Pass 32 — Worker fail reason'ı kullanıcıya friendly mesaja çevir.
+// Pre-Pass 32: reason teknik geliyordu (örn "Python runner spawn failed:
+// spawn python3 ENOENT") ve kullanıcı setup-friction olduğunu anlayamıyordu.
+// Şimdi tipik setup hatalarını yakalayıp net Türkçe açıklama dönüyor.
+function friendlyFailureMessage(reason: string | undefined): string {
+  if (!reason) return "bilinmeyen hata";
+  const r = reason.toLowerCase();
+  if (r.includes("enoent") || r.includes("spawn") && r.includes("python")) {
+    return "Python yüklü değil veya MAGIC_ERASER_PYTHON yolu hatalı (setup gerekli)";
+  }
+  if (r.includes("pillow") || r.includes("pil ")) {
+    return "Pillow Python paketi yüklü değil (pip install Pillow)";
+  }
+  if (r.includes("simple-lama") || r.includes("lama") && r.includes("install")) {
+    return "LaMa modeli yüklü değil (mock runner için MAGIC_ERASER_RUNNER_OVERRIDE kullanın)";
+  }
+  if (r.includes("mask boyutu") || r.includes("500kb")) {
+    return "Mask çok büyük (500KB üstü); fırça ile daha az alan işaretleyin";
+  }
+  if (r.includes("≤50mb") || r.includes("50mb")) {
+    return "Görsel dosyası 50MB'tan büyük; daha küçük görsel kullanın";
+  }
+  // Fallback — uzun reason'ı ilk 120 karakterle kes
+  return reason.length > 120 ? reason.slice(0, 117) + "…" : reason;
+}
+
 export function useHeavyEditCompletionToast(
   item: SelectionItemView | null,
 ): void {
@@ -67,9 +93,7 @@ export function useHeavyEditCompletionToast(
       if (isFailure) {
         push({
           tone: "error",
-          message: `${label} başarısız: ${
-            lastEntry?.reason ?? "bilinmeyen hata"
-          }`,
+          message: `${label} başarısız: ${friendlyFailureMessage(lastEntry?.reason)}`,
           source: "heavy-edit",
         });
       } else {

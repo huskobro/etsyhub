@@ -128,6 +128,39 @@ npm run worker
 
 Admin girişi için `.env.local` dosyasındaki `ADMIN_EMAIL` / `ADMIN_PASSWORD` değerlerini kullan.
 
+### Magic Eraser kurulumu (opsiyonel)
+
+Selection Studio'daki Magic Eraser (LaMa inpainting) Python subprocess gerektirir. Worker `MAGIC_ERASER_INPAINT` job'unu picked up ettikten sonra runner'ı çağırır.
+
+**Production (gerçek LaMa):**
+
+```bash
+pip install simple-lama-inpainting Pillow
+# .env.local
+# MAGIC_ERASER_PYTHON=python3   # default; LaMa'nın yüklü olduğu Python'a yönlendir
+```
+
+İlk çağrı ~5-15 saniye (model lazy load); sonraki çağrılar ~1-3 saniye. Worker concurrency 1 (4096×4096 ~1-2GB RAM peak).
+
+**QA / mock (LaMa kurulu değil):**
+
+```bash
+pip install Pillow
+# .env.local
+# MAGIC_ERASER_RUNNER_OVERRIDE=$(pwd)/scripts/magic-eraser-mock-runner.py
+```
+
+Mock runner maskelenen alanı **gri** ile boyar (gerçek inpainting değil — UI smoke için yeterli sinyal).
+
+**QA fixture seed** (admin için draft Selection Set + 1 editable item):
+
+```bash
+npx tsx scripts/seed-magic-eraser-fixture.ts
+# → /selection/sets/<id> adresinden Magic Eraser akışını test edebilirsiniz
+```
+
+Kurulum hatalarında UI op-aware toast verir (örn. "Magic Eraser başarısız: Python yüklü değil veya MAGIC_ERASER_PYTHON yolu hatalı (setup gerekli)").
+
 ## Komutlar
 
 | Komut | Açıklama |

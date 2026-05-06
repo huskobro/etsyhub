@@ -118,6 +118,29 @@ export function HeavyActionButton({
 
   const showSpinner = isProcessing || heavyMutation.isPending;
   const disabled = isReadOnly || isProcessing || heavyMutation.isPending;
+  // Pass 32 — Bu buton sadece kendi mutation pending iken bg-remove'u temsil
+  // ettiğini bilir. `activeHeavyJobId` herhangi bir heavy op'a aittir
+  // (Magic Eraser de heavy). DB'de activeHeavyOpType field'ı olmadığı için
+  // bu butonda "Background remove işleniyor" demek yanıltıcıydı (Magic
+  // Eraser job aktifken bile aynı text görünüyordu). Çözüm: op-agnostic
+  // text "Bir işlem sürüyor..." — kullanıcı yanıltılmaz, görünürlük korunur.
+  const ownMutationActive = heavyMutation.isPending;
+  const otherJobActive = isProcessing && !ownMutationActive;
+  const labelText = ownMutationActive
+    ? "Background remove…"
+    : otherJobActive
+      ? "Bir işlem sürüyor…"
+      : "Background remove";
+  const ariaLabel = ownMutationActive
+    ? "Background remove işleniyor"
+    : otherJobActive
+      ? "Başka bir işlem sürüyor"
+      : "Background remove";
+  const disabledTitle = isReadOnly
+    ? "Set finalize edildi, düzenleme kapalı"
+    : otherJobActive
+      ? "Bu öğede başka bir işlem sürüyor"
+      : undefined;
 
   return (
     <div className="flex flex-col gap-1">
@@ -125,19 +148,14 @@ export function HeavyActionButton({
         type="button"
         onClick={handleClick}
         disabled={disabled}
+        title={disabledTitle}
         className="flex h-control-md w-full items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm text-text transition-colors hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50"
-        aria-label={
-          isProcessing
-            ? "Background remove işleniyor"
-            : "Background remove"
-        }
+        aria-label={ariaLabel}
       >
         <span className="text-text-muted">
           <ImageOff className="h-3.5 w-3.5" />
         </span>
-        <span className="flex-1 text-left">
-          {isProcessing ? "İşleniyor..." : "Background remove"}
-        </span>
+        <span className="flex-1 text-left">{labelText}</span>
         {showSpinner ? (
           <span
             className="h-3 w-3 animate-spin rounded-full border-2 border-text-muted border-t-transparent"
