@@ -142,17 +142,20 @@ describe("RecentJobsCard", () => {
     const rows = screen.getAllByTestId("recent-jobs-row");
     expect(rows).toHaveLength(5);
 
+    // Pass 38 — Status badge'ler raw enum yerine TR label gösterir.
+    // QUEUED → "Sırada" · RUNNING → "Çalışıyor" · SUCCESS → "Tamamlandı"
+    // FAILED → "Başarısız" · CANCELLED → "İptal".
     // Tone matrisi (Badge primitive class'ları üzerinden):
     // QUEUED neutral → bg-surface-2
     // RUNNING accent → bg-accent-soft
     // SUCCESS success → bg-success-soft
     // FAILED danger → bg-danger-soft
     // CANCELLED neutral → bg-surface-2
-    const queuedBadge = within(rows[0]!).getByText("QUEUED");
-    const runningBadge = within(rows[1]!).getByText("RUNNING");
-    const successBadge = within(rows[2]!).getByText("SUCCESS");
-    const failedBadge = within(rows[3]!).getByText("FAILED");
-    const cancelledBadge = within(rows[4]!).getByText("CANCELLED");
+    const queuedBadge = within(rows[0]!).getByText("Sırada");
+    const runningBadge = within(rows[1]!).getByText("Çalışıyor");
+    const successBadge = within(rows[2]!).getByText("Tamamlandı");
+    const failedBadge = within(rows[3]!).getByText("Başarısız");
+    const cancelledBadge = within(rows[4]!).getByText("İptal");
 
     expect(queuedBadge.className).toMatch(/bg-surface-2/);
     expect(runningBadge.className).toMatch(/bg-accent-soft/);

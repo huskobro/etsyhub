@@ -7,6 +7,18 @@ import { Badge, type BadgeTone } from "@/components/ui/Badge";
  * Son işler kartı. Mevcut `recentJobs` (5 satır) listesini Card içinde render eder.
  * Status badge tone matrisi: QUEUED neutral · RUNNING accent · SUCCESS success ·
  * FAILED danger · CANCELLED neutral (dashboard-widgets.md kilitli karar).
+ *
+ * Pass 38 — Türkçe label.
+ * Pre-Pass 38: raw enum ("SCRAPE_COMPETITOR", "QUEUED") gösteriyordu —
+ * ürün-içi tutarsızlık (Bookmark/Selection/Listings hep Türkçe). Şimdi:
+ *   - JobType enum → TR label (sık kullanılan 14 type; bilinmeyen raw fallback)
+ *   - JobStatus → TR label (5 status)
+ *   - Raw type/status/id title attr (debug için fare ile görünür)
+ *
+ * Row tıklanmaz — `/admin/jobs/[id]` detail page yok ve `/admin/jobs`
+ * index page mevcut codebase'de build error veriyor (Table primitive
+ * createContext + server component karışımı). Detail link
+ * carry-forward: `dashboard-recent-jobs-detail-link`.
  */
 
 export type JobStatus =
@@ -30,6 +42,39 @@ const statusTone: Record<JobStatus, BadgeTone> = {
   FAILED: "danger",
   CANCELLED: "neutral",
 };
+
+// Pass 38 — Job status TR label. Raw enum yerine kullanıcı-okur metin.
+const STATUS_LABELS: Record<JobStatus, string> = {
+  QUEUED: "Sırada",
+  RUNNING: "Çalışıyor",
+  SUCCESS: "Tamamlandı",
+  FAILED: "Başarısız",
+  CANCELLED: "İptal",
+};
+
+// Pass 38 — Sık kullanılan JobType'ların TR label'ları. Tüm 21 enum
+// listelenmedi; nadir job'lar raw enum fallback ile gösterilir (kullanıcı
+// title attr ile teknik adı görür).
+const JOB_TYPE_LABELS: Record<string, string> = {
+  ASSET_INGEST_FROM_URL: "URL'den asset",
+  GENERATE_THUMBNAIL: "Thumbnail",
+  BOOKMARK_PREVIEW_METADATA: "Bookmark önizleme",
+  SCRAPE_COMPETITOR: "Rakip taraması",
+  FETCH_NEW_LISTINGS: "Yeni listing taraması",
+  GENERATE_VARIATIONS: "Varyant üretimi",
+  REVIEW_DESIGN: "AI kalite review",
+  REMOVE_BACKGROUND: "Arka plan silme",
+  CREATE_MOCKUP: "Mockup",
+  MOCKUP_RENDER: "Mockup render",
+  MAGIC_ERASER_INPAINT: "Magic Eraser",
+  EXPORT_SELECTION_SET: "Set dışa aktarma",
+  PUSH_ETSY_DRAFT: "Etsy draft gönderim",
+  SCAN_LOCAL_FOLDER: "Lokal klasör taraması",
+};
+
+function jobTypeLabel(type: string): string {
+  return JOB_TYPE_LABELS[type] ?? type;
+}
 
 function relativeTime(date: Date): string {
   const diff = Date.now() - date.getTime();
@@ -57,21 +102,35 @@ export function RecentJobsCard({ jobs }: { jobs: DashboardJob[] }) {
         <p className="text-sm text-text-muted">Henüz job çalışmadı.</p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {jobs.map((job) => (
-            <li
-              key={job.id}
-              className="flex items-center justify-between gap-3 rounded-md border border-border bg-bg px-3 py-2 text-sm"
-              data-testid="recent-jobs-row"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-text">{job.type}</p>
-                <p className="text-xs text-text-muted">
-                  {relativeTime(job.createdAt)}
-                </p>
-              </div>
-              <Badge tone={statusTone[job.status]}>{job.status}</Badge>
-            </li>
-          ))}
+          {jobs.map((job) => {
+            const label = jobTypeLabel(job.type);
+            const isUnmapped = label === job.type;
+            const statusLabel = STATUS_LABELS[job.status];
+            return (
+              <li
+                key={job.id}
+                title={`${job.type} · ${job.status} · ${job.id}`}
+                className="flex items-center justify-between gap-3 rounded-md border border-border bg-bg px-3 py-2 text-sm"
+                data-testid="recent-jobs-row"
+              >
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={
+                      isUnmapped
+                        ? "truncate font-mono text-text"
+                        : "truncate text-text"
+                    }
+                  >
+                    {label}
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    {relativeTime(job.createdAt)}
+                  </p>
+                </div>
+                <Badge tone={statusTone[job.status]}>{statusLabel}</Badge>
+              </li>
+            );
+          })}
         </ul>
       )}
     </Card>
