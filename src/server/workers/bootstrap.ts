@@ -16,6 +16,7 @@ import { handleSelectionExport } from "./selection-export.worker";
 import { handleSelectionExportCleanup } from "./selection-export-cleanup.worker";
 import { handleMockupRender } from "./mockup-render.worker";
 import { handleMagicEraser } from "./magic-eraser.worker";
+import { handleMidjourneyBridge } from "./midjourney-bridge.worker";
 
 /** Günlük FETCH_NEW_LISTINGS repeat için sabit scheduler ID. */
 export const FETCH_NEW_LISTINGS_SCHEDULE_ID = "fetch-new-listings-daily";
@@ -68,6 +69,11 @@ export async function startWorkers() {
     // start ~5-15s. Daha fazla concurrency OOM riski yaratır;
     // serileştirme güvenli.
     { name: JobType.MAGIC_ERASER_INPAINT, handler: handleMagicEraser },
+    // Pass 42 — Midjourney Web Bridge polling worker. Concurrency 1:
+    // bridge tek browser + tek MJ oturumu ile çalışır; paralel polling
+    // worker'lar bridge'i strain etmez ama gereksiz (her job kendi
+    // bridgeJobId'si ile zaten ayrı).
+    { name: JobType.MIDJOURNEY_BRIDGE, handler: handleMidjourneyBridge },
   ] as const;
 
   for (const s of specs) {

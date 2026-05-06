@@ -80,6 +80,10 @@ enum JobType {
   // Pattern: REMOVE_BACKGROUND emsali; input asset + mask buffer →
   // Python subprocess (LaMa) → output Asset (non-destructive).
   MAGIC_ERASER_INPAINT
+  // Pass 42 — Midjourney Web Bridge job. EtsyHub ↔ local mj-bridge servisi.
+  // Worker bridge'e HTTP enqueue, polling state senkronize. Detail Pass 41
+  // doc: docs/plans/2026-05-06-midjourney-web-bridge-design.md
+  MIDJOURNEY_BRIDGE
 }
 
 enum VariationState {
@@ -182,6 +186,7 @@ model User {
   settings           UserSetting[]
   selectionSets      SelectionSet[]
   mockupJobs         MockupJob[]
+  midjourneyJobs     MidjourneyJob[]
 
   @@index([deletedAt])
 }
@@ -365,6 +370,8 @@ model Asset {
   selectionItemsAsEdited   SelectionItem[] @relation("SelectionItemEditedAsset")
   selectionItemsAsUndoable SelectionItem[] @relation("SelectionItemUndoableAsset")
 
+  midjourneyAsset          MidjourneyAsset?
+
   @@index([userId])
   @@index([hash])
 }
@@ -421,6 +428,7 @@ model ProductType {
   listings         Listing[]
   recipes          Recipe[]
   trendClusters    TrendCluster[]
+  midjourneyJobs   MidjourneyJob[]
 }
 
 model Bookmark {
@@ -490,6 +498,7 @@ model Reference {
 
   tags             ReferenceTag[]
   generatedDesigns GeneratedDesign[]
+  midjourneyJobs   MidjourneyJob[]
 
   @@index([userId])
   @@index([productTypeId])
@@ -609,10 +618,11 @@ model GeneratedDesign {
   // "medium" | "high"; provider opsiyonel field — null ise undefined geçer.
   quality        String?
 
-  review         DesignReview?
-  mockups        Mockup[]
-  listings       Listing[]
-  selectionItems SelectionItem[]
+  review          DesignReview?
+  mockups         Mockup[]
+  listings        Listing[]
+  selectionItems  SelectionItem[]
+  midjourneyAsset MidjourneyAsset?
 
   @@index([userId])
   @@index([referenceId])
@@ -714,6 +724,7 @@ model Job {
   updatedAt    DateTime  @updatedAt
 
   generatedDesigns GeneratedDesign[]
+  midjourneyJob    MidjourneyJob?
 
   @@index([userId])
   @@index([status])
@@ -1132,3 +1143,120 @@ model MockupRender {
   @@index([jobId, packPosition])
   @@index([jobId, status])
 }
+
+
+// ────────────────────────────────────────────────────────────
+// Pass 42 — Midjourney Web Bridge integration
+// ────────────────────────────────────────────────────────────
+//
+// Bridge ile EtsyHub arasındaki köprü. Local `mj-bridge` servisi
+// (Node.js + Playwright + visible browser) tarafından üretilen MJ
+// outputs'unu EtsyHub'a Asset + GeneratedDesign bridging ile bağlar.
+// Detail: docs/plans/2026-05-06-midjourney-web-bridge-design.md
+
+enum MidjourneyJobState {
+  QUEUED
+  OPENING_BROWSER
+  AWAITING_LOGIN
+  AWAITING_CHALLENGE
+  SUBMITTING_PROMPT
+  WAITING_FOR_RENDER
+  COLLECTING_OUTPUTS
+  DOWNLOADING
+  IMPORTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum MidjourneyJobKind {
+  GENERATE   // /imagine prompt
+  DESCRIBE   // image -> 4 prompt suggestions (V1.x)
+  UPSCALE    // U1-U4 button (V1.x)
+  VARIATION  // V1-V4 button (V1.x)
+}
+
+enum MJVariantKind {
+  GRID       // İlk 4-grid render'ın bir parçası
+  UPSCALE    // U1/U2/U3/U4 sonucu
+  VARIATION  // V1/V2/V3/V4 sonucu
+  DESCRIBE   // Describe çıktısı (image yok, sadece metadata)
+}
+
+model MidjourneyJob {
+  id              String              @id @default(cuid())
+  userId          String
+  user            User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  /// EtsyHub Job entity'si — admin/jobs sayfasında görünür.
+  jobId           String?             @unique
+  job             Job?                @relation(fields: [jobId], references: [id])
+
+  /// Opsiyonel: Reference (image-to-image akışı için).
+  referenceId     String?
+  reference       Reference?          @relation(fields: [referenceId], references: [id])
+
+  productTypeId   String?
+  productType     ProductType?        @relation(fields: [productTypeId], references: [id])
+
+  /// Bridge tarafı UUID — bridge `POST /jobs` cevabıyla gelir.
+  bridgeJobId     String              @unique
+  kind            MidjourneyJobKind   @default(GENERATE)
+  state           MidjourneyJobState  @default(QUEUED)
+  blockReason     String?             // 'challenge-required' | 'login-required' | ...
+
+  /// Prompt + parametreler snapshot — runtime değişiklik etkilemez.
+  prompt          String              @db.Text
+  promptParams    Json                // { aspectRatio, version, stylize, chaos, oref, sref, ... }
+  referenceUrls   String[]            @default([]) // image prompt URLs (HTTPS only)
+
+  /// MJ-side capture — DOM/URL'den parse.
+  mjJobId         String?
+  mjGridUrl       String?
+  mjMetadata      Json?
+
+  /// Lifecycle timestamps.
+  enqueuedAt      DateTime            @default(now())
+  submittedAt     DateTime?
+  renderedAt      DateTime?
+  completedAt     DateTime?
+  failedAt        DateTime?
+  failedReason    String?
+
+  /// Output asset'lere bağlama.
+  generatedAssets MidjourneyAsset[]
+
+  @@index([userId, state])
+  @@index([bridgeJobId])
+  @@index([userId, enqueuedAt])
+}
+
+model MidjourneyAsset {
+  id              String          @id @default(cuid())
+  midjourneyJob   MidjourneyJob   @relation(fields: [midjourneyJobId], references: [id], onDelete: Cascade)
+  midjourneyJobId String
+
+  gridIndex       Int             // 0..3
+  variantKind     MJVariantKind   @default(GRID)
+  parentAssetId   String?         // upscale/variation lineage (self-reference)
+  parent          MidjourneyAsset? @relation("Lineage", fields: [parentAssetId], references: [id])
+  children        MidjourneyAsset[] @relation("Lineage")
+
+  /// EtsyHub Asset model'ine bağlanma — bridge indirdi, MinIO'ya upload, Asset row.
+  assetId         String          @unique
+  asset           Asset           @relation(fields: [assetId], references: [id])
+
+  /// Opsiyonel: GeneratedDesign'a bağlanma (review queue'ya import edilirse).
+  generatedDesignId String?       @unique
+  generatedDesign GeneratedDesign? @relation(fields: [generatedDesignId], references: [id])
+
+  /// MJ-side capture — lineage debug için.
+  mjActionLabel   String?         // 'U1', 'U2', 'V3', vb.
+  mjImageUrl      String?         // MJ CDN URL (kayıt için, indirilmiş asset ayrı)
+  importedAt      DateTime        @default(now())
+
+  @@index([midjourneyJobId])
+  @@index([variantKind])
+  @@index([assetId])
+}
+

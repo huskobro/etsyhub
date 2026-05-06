@@ -52,6 +52,7 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   SELECTION_EXPORT_CLEANUP: "Set export temizliği",
   MOCKUP_RENDER: "Mockup render",
   MAGIC_ERASER_INPAINT: "Magic Eraser",
+  MIDJOURNEY_BRIDGE: "Midjourney köprüsü",
 };
 
 export function jobTypeLabel(type: string): string {

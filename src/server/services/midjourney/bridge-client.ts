@@ -1,0 +1,266 @@
+// EtsyHub ↔ MJ Bridge HTTP client.
+//
+// Bridge ayrı paket (`mj-bridge/`) — cross-package import yok. Tipler
+// bu dosyada manuel kopyalanır; bridge tarafı (`mj-bridge/src/types.ts`)
+// ile SENKRON tutmak zorunlu (kontrat değişimi her iki tarafı kırar).
+//
+// Pass 41 doc §3.3:
+//   - Loopback only (127.0.0.1:8780)
+//   - Auth: X-Bridge-Token header
+//   - JSON body
+//
+// Settings:
+//   MJ_BRIDGE_URL    — http://127.0.0.1:8780 (default)
+//   MJ_BRIDGE_TOKEN  — shared secret (kullanıcı `.env.local`'den okur;
+//                        bridge ayrı dotenv ile aynı token'ı bilir)
+
+import { env } from "@/lib/env";
+
+export type BridgeJobState =
+  | "QUEUED"
+  | "OPENING_BROWSER"
+  | "AWAITING_LOGIN"
+  | "AWAITING_CHALLENGE"
+  | "SUBMITTING_PROMPT"
+  | "WAITING_FOR_RENDER"
+  | "COLLECTING_OUTPUTS"
+  | "DOWNLOADING"
+  | "IMPORTING"
+  | "COMPLETED"
+  | "FAILED"
+  | "CANCELLED";
+
+export type BridgeJobBlockReason =
+  | "challenge-required"
+  | "login-required"
+  | "render-timeout"
+  | "browser-crashed"
+  | "selector-mismatch"
+  | "rate-limited"
+  | "user-cancelled"
+  | "internal-error";
+
+export type BridgeAspectRatio =
+  | "1:1"
+  | "2:3"
+  | "3:2"
+  | "4:3"
+  | "3:4"
+  | "16:9"
+  | "9:16";
+
+export type BridgeGenerateRequest = {
+  kind: "generate";
+  params: {
+    prompt: string;
+    aspectRatio: BridgeAspectRatio;
+    version?: string;
+    styleRaw?: boolean;
+    stylize?: number;
+    chaos?: number;
+    imagePromptUrls?: string[];
+    styleReferenceUrls?: string[];
+    omniReferenceUrl?: string;
+    omniWeight?: number;
+  };
+  etsyhubJobId?: string;
+};
+
+export type BridgeJobOutput = {
+  gridIndex: number;
+  localPath: string;
+  fetchUrl: string;
+  sourceUrl?: string;
+};
+
+export type BridgeJobSnapshot = {
+  id: string;
+  state: BridgeJobState;
+  blockReason?: BridgeJobBlockReason;
+  request: BridgeGenerateRequest;
+  mjJobId?: string;
+  mjMetadata?: Record<string, unknown>;
+  outputs?: BridgeJobOutput[];
+  enqueuedAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  lastMessage?: string;
+};
+
+export type BridgeHealth = {
+  ok: true;
+  version: string;
+  browser: {
+    launched: boolean;
+    profileDir: string;
+    pageCount: number;
+    activeUrl?: string;
+  };
+  mjSession: {
+    likelyLoggedIn: boolean;
+    lastChecked: string;
+  };
+  jobs: {
+    queued: number;
+    running: number;
+    blocked: number;
+    completed: number;
+    failed: number;
+  };
+  recentJobs: Array<Pick<BridgeJobSnapshot, "id" | "state" | "enqueuedAt">>;
+  startedAt: string;
+};
+
+export class BridgeUnreachableError extends Error {
+  constructor(reason: string) {
+    super(`MJ Bridge erişilemiyor: ${reason}`);
+    this.name = "BridgeUnreachableError";
+  }
+}
+
+export class BridgeAuthError extends Error {
+  constructor() {
+    super("MJ Bridge auth fail (X-Bridge-Token yanlış / eksik)");
+    this.name = "BridgeAuthError";
+  }
+}
+
+export type BridgeClientConfig = {
+  url: string;
+  token: string;
+  /** Default 5sn — health & cancel için kısa; ingest stream için longer override. */
+  timeoutMs?: number;
+};
+
+export class BridgeClient {
+  private cfg: BridgeClientConfig;
+
+  constructor(cfg: BridgeClientConfig) {
+    this.cfg = { timeoutMs: 5000, ...cfg };
+  }
+
+  /** Bridge sağlık raporu — admin sayfası bu endpoint'i kullanır. */
+  async health(): Promise<BridgeHealth> {
+    return this.json<BridgeHealth>("GET", "/health");
+  }
+
+  /** Yeni job enqueue — bridgeJobId döner. */
+  async enqueueJob(req: BridgeGenerateRequest): Promise<BridgeJobSnapshot> {
+    return this.json<BridgeJobSnapshot>("POST", "/jobs", req);
+  }
+
+  /** Job snapshot — worker polling'i bu endpoint'i çağırır. */
+  async getJob(bridgeJobId: string): Promise<BridgeJobSnapshot> {
+    return this.json<BridgeJobSnapshot>("GET", `/jobs/${bridgeJobId}`);
+  }
+
+  /** Job iptal — manuel cancel veya timeout. */
+  async cancelJob(bridgeJobId: string): Promise<BridgeJobSnapshot> {
+    return this.json<BridgeJobSnapshot>("POST", `/jobs/${bridgeJobId}/cancel`);
+  }
+
+  /** Browser pencerini öne getir — UI'dan tetiklenir (challenge / login). */
+  async focusBrowser(): Promise<{ ok: boolean }> {
+    return this.json<{ ok: boolean }>("POST", "/focus");
+  }
+
+  /**
+   * Output stream fetch — ingest worker'ı PNG bytes'ı buradan alır.
+   *
+   * Caller bunu MinIO'ya upload eder. Bridge dosyayı diskinde tutar; EtsyHub
+   * upload sonrası bridge'den silmeyi `cancelJob` veya housekeeping
+   * kararına bırakır (V1: bridge kendi cleanup yok).
+   */
+  async fetchOutput(
+    bridgeJobId: string,
+    gridIndex: number,
+  ): Promise<Buffer> {
+    const url = `${this.cfg.url}/jobs/${bridgeJobId}/outputs/${gridIndex}`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(
+      () => ctrl.abort(),
+      this.cfg.timeoutMs! * 6, // ingest 30sn
+    );
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { "X-Bridge-Token": this.cfg.token },
+        signal: ctrl.signal,
+      });
+      if (res.status === 401) throw new BridgeAuthError();
+      if (!res.ok) {
+        throw new BridgeUnreachableError(
+          `output fetch ${res.status}: ${await res.text().catch(() => "")}`,
+        );
+      }
+      const ab = await res.arrayBuffer();
+      return Buffer.from(ab);
+    } catch (err) {
+      if (err instanceof BridgeAuthError) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BridgeUnreachableError(msg);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async json<T>(
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
+    const url = `${this.cfg.url}${path}`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.cfg.timeoutMs!);
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: {
+          "X-Bridge-Token": this.cfg.token,
+          ...(body ? { "Content-Type": "application/json" } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: ctrl.signal,
+      });
+      if (res.status === 401) throw new BridgeAuthError();
+      const text = await res.text();
+      if (!res.ok) {
+        throw new BridgeUnreachableError(
+          `${method} ${path} → ${res.status}: ${text.slice(0, 200)}`,
+        );
+      }
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        throw new BridgeUnreachableError(
+          `Bridge JSON parse fail: ${text.slice(0, 200)}`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof BridgeAuthError) throw err;
+      if (err instanceof BridgeUnreachableError) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BridgeUnreachableError(msg);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+/**
+ * Default client factory — env'den config'i alır.
+ *
+ * Çağrı: `getBridgeClient()`
+ *
+ * Env yok / token boş → BridgeUnreachableError fırlatır (caller fallback yazsın).
+ */
+export function getBridgeClient(): BridgeClient {
+  const url = env.MJ_BRIDGE_URL ?? "http://127.0.0.1:8780";
+  const token = env.MJ_BRIDGE_TOKEN ?? "";
+  if (!token) {
+    throw new BridgeUnreachableError(
+      "MJ_BRIDGE_TOKEN env tanımsız — bridge yapılandırılmamış.",
+    );
+  }
+  return new BridgeClient({ url, token });
+}

@@ -26,6 +26,12 @@ const schema = z.object({
   STORAGE_SECRET_KEY: z.string().min(1),
   STORAGE_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
   STORAGE_PUBLIC_URL: z.string().url().optional(),
+
+  // Pass 42 — Midjourney Web Bridge (mj-bridge/ ayrı paket).
+  // Bridge çalışmıyorsa bu env yok; provider/worker BridgeUnreachableError
+  // fırlatır ve user'a explicit hata mesajı gösterir.
+  MJ_BRIDGE_URL: z.string().url().default("http://127.0.0.1:8780"),
+  MJ_BRIDGE_TOKEN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;
