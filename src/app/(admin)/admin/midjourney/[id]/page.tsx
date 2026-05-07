@@ -25,6 +25,7 @@ import { AssetThumb } from "../AssetThumb";
 import { JobActionBar } from "./JobActionBar";
 import { BlockedGuidance } from "./BlockedGuidance";
 import { CopyButton } from "./CopyButton";
+import { PromoteToReview } from "./PromoteToReview";
 
 const STATE_LABELS: Record<string, string> = {
   QUEUED: "Sırada",
@@ -75,6 +76,9 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
           variantKind: true,
           assetId: true,
           mjImageUrl: true,
+          // Pass 55 — Review handoff sinyali. Doluysa GeneratedDesign
+          // var → Review queue'da (badge + checkbox disabled).
+          generatedDesignId: true,
           asset: {
             select: { mimeType: true, sizeBytes: true, storageKey: true },
           },
@@ -285,23 +289,50 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
               : "Henüz görsel üretilmedi. Pipeline tamamlanınca burada 4 grid görüntülenir."}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {job.generatedAssets.map((a) => (
-              <div key={a.id} className="flex flex-col gap-1">
-                <AssetThumb
-                  assetId={a.assetId}
-                  alt={`Grid ${a.gridIndex}`}
-                  square
-                />
-                <div className="text-xs text-text-muted">
-                  Grid {a.gridIndex} · {a.variantKind}
-                  {a.asset?.sizeBytes
-                    ? ` · ${Math.round(a.asset.sizeBytes / 1024)}KB`
-                    : ""}
+          <>
+            {/* Pass 55 — MJ output → Review handoff. Asset'ler MJ üretti
+                ama EtsyHub Review queue'ya bağlı değiller; promote
+                paneli operatör Reference + ProductType seçip 1 tıkla
+                Review'a gönderir. */}
+            <PromoteToReview
+              midjourneyJobId={job.id}
+              assets={job.generatedAssets.map((a) => ({
+                midjourneyAssetId: a.id,
+                gridIndex: a.gridIndex,
+                alreadyPromoted: a.generatedDesignId !== null,
+              }))}
+              defaultReferenceId={job.referenceId}
+              defaultProductTypeId={job.productTypeId}
+            />
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {job.generatedAssets.map((a) => (
+                <div key={a.id} className="flex flex-col gap-1">
+                  <AssetThumb
+                    assetId={a.assetId}
+                    alt={`Grid ${a.gridIndex}`}
+                    square
+                  />
+                  <div className="flex items-center justify-between text-xs text-text-muted">
+                    <span>
+                      Grid {a.gridIndex} · {a.variantKind}
+                      {a.asset?.sizeBytes
+                        ? ` · ${Math.round(a.asset.sizeBytes / 1024)}KB`
+                        : ""}
+                    </span>
+                    {a.generatedDesignId ? (
+                      <Link
+                        href={`/review/${a.generatedDesignId}`}
+                        className="rounded bg-success-soft px-1.5 py-0.5 text-xs text-success"
+                        title="Review queue'da"
+                      >
+                        ✓ Review
+                      </Link>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </section>
     </div>

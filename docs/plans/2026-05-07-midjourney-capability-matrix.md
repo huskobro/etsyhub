@@ -78,6 +78,122 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 55 (MJ → Review handoff — tamamlanan) 🟢
+
+Pass 51-54 boyunca MJ generate hattı tam çalışıyordu **ama**
+EtsyHub'ın asıl üretim hattına (Reference → GeneratedDesign → Review
+→ Selection → Mockup → Listing) **doğal bağ yoktu**. MJ Job tamamlanıyor,
+4 webp MinIO'ya iniyor, 4 MidjourneyAsset row'u oluşuyordu, ama
+`MidjourneyAsset.generatedDesignId` field'ı schema'da var olduğu halde
+hiç dolduruluyor değildi → MJ output'lar Review queue'ya hiç düşmüyordu.
+
+**Audit + paket seçimi**:
+
+Pass 54 sonrası 3 büyük ürün boşluğu kaldı:
+1. MJ output'lar Review/Selection pipeline'a bağlanmıyor (en kritik)
+2. AWAITING_LOGIN/CHALLENGE blocked state canlı doğrulanmadı
+3. Auto-promote (job reference'lıysa CompletedAt'te otomatik) yok
+
+Build now: **MJ → Review handoff** (en yüksek değer; geri kalan
+pipeline zaten çalışıyor, tek aralık adımı bu). Strong follow-up:
+auto-promote (referenceId'li job'larda), Selection direct entry
+(GeneratedDesign üzerinden zaten erişilebiliyor). Useful later:
+Mockup/Listing direct handoff, batch promote across jobs. Do not
+now: yeni capability (upscale/variation/describe).
+
+**Uygulanan**:
+
+- ✅ `src/server/services/midjourney/promote.ts` — service:
+  - `promoteMidjourneyAssetToGeneratedDesign(input)` — idempotent
+    (zaten promote'sa mevcut id döner, yeni row YARATMAZ).
+  - `bulkPromoteMidjourneyAssets(input)` — toplu wrapper.
+  - Cross-user kontrolü: Reference.userId === MJ Job.userId değilse
+    `ValidationError`.
+  - Asset KOPYASI yapılmaz — `MidjourneyAsset.assetId` aynı asset
+    `GeneratedDesign.assetId` olarak kullanılır.
+  - Default `reviewStatus: PENDING` → Review queue'ya otomatik düşer.
+  - Transactional create + bağ.
+- ✅ `POST /api/admin/midjourney/[id]/promote` — admin scope:
+  - Body: `{ midjourneyAssetIds[], referenceId, productTypeId }`
+  - Cross-job promote engeli (asset id'leri bu job'a ait olmalı)
+  - Audit log `MIDJOURNEY_PROMOTE_TO_REVIEW` + `assetCount`,
+    `createdCount`, `alreadyPromotedCount`, refId, ptId
+- ✅ `PromoteToReview.tsx` — client component:
+  - Promote panel: 4 checkbox (gridIndex sıralı), "Hepsini seç"
+    toggle, Reference + ProductType select, "→ Review'a gönder"
+  - Reference/ProductType lazy fetch (`/api/references` +
+    `/api/admin/product-types`)
+  - Reference seçildiğinde productType auto-fill (Reference.productTypeId)
+  - Zaten promote edilmiş asset'ler checkbox disabled + "✓ Review'da"
+  - "Tüm asset'ler Review'da" success badge'i (idempotent UX)
+  - Submit success'te `router.refresh()` → per-thumb badge'leri yenilenir
+- ✅ Detail page entegrasyonu:
+  - Outputs section başında promote panel
+  - Her thumb altında "✓ Review" badge'i (varsa) → GeneratedDesign'a
+    link (`/review/{id}`)
+
+**Canlı E2E doğrulaması (gerçek attach Chrome admin session)**:
+
+```
+[pass55] detail: /admin/midjourney/cmouwn0xn000a149lhkosthsn
+[pass55] promote panel visible: true ✓
+[pass55] reference: cmorqzny0003 productType: cmoqwkfm3000
+[pass55] success: ✓ 4 yeni Review (0 mevcut)
+[pass55] ✓ Review badge count: 4
+```
+
+DB doğrulama:
+```
+4 MidjourneyAsset.generatedDesignId hepsi dolu ✓
+4 GeneratedDesign reviewStatus=PENDING, ref=cmorqzny0003,
+  pt=cmoqwkfm3000 ✓
+audit: MIDJOURNEY_PROMOTE_TO_REVIEW, createdCount: 4 ✓
+```
+
+Screenshot `/tmp/mj-pass55-promoted.png`: tam ürün UX — promote
+panel "✓ Tüm asset'ler Review'da" badge'i, 4 grid thumbnail her
+birinin altında "✓ Review" badge'i.
+
+**EtsyHub akışına bağlanma**:
+
+Önce: MJ Job tamamlanıyor → 4 webp MinIO'da → asset count "4" →
+**ölü uç**, başka hiçbir yere bağlanmıyordu. Operatör eliyle
+Reference oluştur → GeneratedDesign manuel insert → Review queue
+zorundaydı (yapılmıyordu).
+
+Şimdi: MJ Job tamamlanıyor → operatör detail page'de Reference
+seçer → tek tık Promote → 4 GeneratedDesign PENDING reviewStatus →
+**Review queue'ya doğal akış** (Phase 6 review pipeline zaten
+çalışıyor). Selection items `generatedDesignId` üzerinden bu MJ
+çıktılarını da kabul eder.
+
+**Capability roadmap güncellemesi**:
+
+1. **next immediate (Pass 56)**:
+   - Auto-promote: MJ Job referenceId'liyse `pollAndUpdate` terminal
+     COMPLETED'da otomatik `bulkPromote` → operatör manuel buton
+     gerekmez (sadece test render gibi reference'sız job'larda)
+   - Reference search/filter modal'da çok reference olan kullanıcılar
+     için
+   - Promote sonrası "Selection set'e ekle" hızlı linki
+2. **after handoff stabilizes**:
+   - `--sref` / `--oref` UI: TestRenderForm'a reference URL paste
+   - `kind: "describe"` admin button (image upload + 4 prompt scrape)
+3. **later**:
+   - Upscale/variation buton click pipeline (yeni promoted designs'ı
+     temel alır)
+   - Batch download / `/archive` history import
+4. **do not build now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 55 dürüst sınır**:
+- Manuel promote — auto-promote Pass 56 hedefi.
+- Reference picker basit select; arama yok (50 limit).
+- Promote sonrası Selection direct entry için ek tıklama gerekiyor
+  (Selection items endpoint generatedDesignId zaten kabul ediyor;
+  sadece UI link'i eksik).
+- AWAITING_LOGIN/CHALLENGE blocked state hâlâ canlı doğrulanmadı.
+
 ### Pass 54 (Failure UX polish + retry-with-edit — tamamlanan) 🟢
 
 Pass 53'ün control layer'ının üstüne **operator ergonomisi** geldi:
