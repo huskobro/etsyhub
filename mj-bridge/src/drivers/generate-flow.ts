@@ -1164,59 +1164,172 @@ export async function waitForJobReadyViaApi(
   // hepsini beklemek tutarlı bir tamamlanma sinyali.
   const indices = [0, 1, 2, 3];
 
+  // Pass 77 — Hibrit polling: user-queue API primary + CDN HEAD confirm.
+  //
+  // Pass 77 canlı CDP probe kanıtı (HEAD e8a7ddd üstüne): MJ V8 web
+  // `/api/user-queue?userId=<userId>` endpoint'i job lifecycle'ını
+  // deterministic gösteriyor:
+  //   - Submit edildikten ~3sn sonra `running[]` array'ine job_id düşüyor
+  //   - Render bitene kadar `running[].id === jobId` görünüyor
+  //   - Render bittiğinde job running'den DÜŞÜYOR (`running:[]` boş)
+  //   - waiting[] queue rate-limit durumunda dolar (pratikte boş)
+  //
+  // Pass 72 sadece CDN HEAD kullanıyordu; bazı durumlarda CDN cache
+  // gecikmesi veya MJ lazy-publish yüzünden 200'leri geç dönüyordu
+  // (Pass 76 oref smoke 180sn timeout sebebi). Pass 77 hibrit yaklaşım:
+  //   1. Her tur user-queue probe → job hâlâ running'de mi?
+  //   2. Running'den düştüyse → CDN HEAD ile 4 grid'i confirm et
+  //   3. CDN'de hepsi 200 → READY; aksi halde polling'e devam (CDN'in
+  //      yetişmesini bekle)
+  //   4. user-queue çağrılamıyorsa (network/auth) → CDN HEAD'a düş
+  //      (Pass 72 yolu, geriye uyumlu)
+  //
+  // AutoSail eklentisi de aynı user-queue endpoint'ini kullanıyor
+  // (Pass 77 audit: main.js `info()` helper). Bu pattern MJ'in resmi
+  // tek-job-takip mekanizması.
+  let userIdCache: string | null = null;
+  let userQueueAvailable = true; // false = ilk denemede fail → fallback
+  // Pass 77 — Job lifecycle tracker. user-queue ilk turda boş running
+  // dönerse bu job'un henüz queue'ya düşmediğini (submit propagation
+  // gecikmesi) gösterir; "queue-done" yanlış pozitifi engellemek için
+  // önce job'un running'de görüldüğünü onaylamamız gerek.
+  let everSeenInRunning = false;
+  // CDN HEAD confirm grace counter — queue-done sonrası kaç tur CDN
+  // hâlâ 0/4 ise CDN cache gecikmesini kabul edip running-completion'ı
+  // "render-done" olarak yorumla (CDN URL'leri yine de döndürülür;
+  // downloadGridImages page.evaluate ile cookie bağlamında erişir).
+  let cdnGraceCount = 0;
+
   while (Date.now() - start < options.timeoutMs) {
-    const probe = await page.evaluate(
-      async (input: { jobId: string; indices: number[]; timeoutMs: number }) => {
-        // tsx/esbuild __name helper stub (Pass 68 keşfi)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (globalThis as any).__name = (globalThis as any).__name ?? ((x: unknown) => x);
-        const checks: Array<{ idx: number; status: number }> = [];
-        for (const n of input.indices) {
-          const ctrl = new AbortController();
-          const t = setTimeout(() => ctrl.abort(), input.timeoutMs);
-          try {
-            const r = await fetch(
-              `https://cdn.midjourney.com/${input.jobId}/0_${n}_640_N.webp`,
-              { method: "HEAD", signal: ctrl.signal },
-            );
-            checks.push({ idx: n, status: r.status });
-          } catch {
-            checks.push({ idx: n, status: 0 });
-          } finally {
-            clearTimeout(t);
+    // Adım 1: user-queue probe (varsa)
+    let runningContainsJob = true; // varsayılan: hâlâ çalışıyor (CDN'e bakma)
+    if (userQueueAvailable) {
+      try {
+        type QueueProbe =
+          | { ok: false; reason: string; userId: string | null; running: string[] }
+          | { ok: true; userId: string; running: string[] };
+        const queueProbe: QueueProbe = await page.evaluate(
+          async (input: { jobId: string; userIdHint: string | null }) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (globalThis as any).__name = (globalThis as any).__name ?? ((x: unknown) => x);
+            // mjUserDefer.promise ile userId çöz (cached olabilir)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const w = window as any;
+            let userId = input.userIdHint;
+            if (!userId) {
+              const u = await Promise.race([
+                w.mjUserDefer?.promise,
+                new Promise((_, rej) => setTimeout(() => rej(new Error("mjUserDefer timeout")), 5000)),
+              ]).catch(() => null);
+              userId = (u as { id?: string } | null)?.id ?? null;
+            }
+            if (!userId) {
+              return { ok: false, reason: "no-userId", userId: null, running: [] as string[] };
+            }
+            const r = await fetch(`/api/user-queue?userId=${userId}`, {
+              headers: { "X-Csrf-Protection": "1" },
+              credentials: "include",
+            });
+            if (!r.ok) {
+              return { ok: false, reason: `HTTP ${r.status}`, userId, running: [] as string[] };
+            }
+            const j = (await r.json()) as {
+              running?: Array<{ id?: string }>;
+              waiting?: Array<{ id?: string }>;
+            };
+            const running = (j.running ?? []).map((x) => x.id ?? "").filter(Boolean);
+            return { ok: true, userId, running };
+          },
+          { jobId: mjJobId, userIdHint: userIdCache },
+        );
+        if (queueProbe.ok && queueProbe.userId) {
+          userIdCache = queueProbe.userId;
+          runningContainsJob = queueProbe.running.includes(mjJobId);
+          if (runningContainsJob) {
+            everSeenInRunning = true;
           }
+          // Pass 77 — queue-done yanlış pozitif koruması: job HENÜZ
+          // running'e düşmemişse (submit propagation gecikmesi),
+          // running'i "boş" görüp queue-done sanmamalıyız. Ancak
+          // running'de bir kez gördükten SONRA boş running gerçek
+          // completion sinyalidir.
+          if (!runningContainsJob && !everSeenInRunning) {
+            // Submit propagation bekleniyor; runningContainsJob=true gibi davran
+            runningContainsJob = true;
+          }
+        } else {
+          // user-queue ilk denemede fail → kalan polling sırasında atla
+          // (CDN HEAD primary'e dön)
+          userQueueAvailable = false;
         }
-        return checks;
-      },
-      { jobId: mjJobId, indices, timeoutMs: 8_000 },
-    );
-    const ready = probe.filter((p) => p.status === 200).length;
-    if (options.onPoll) {
-      options.onPoll(
-        Date.now() - start,
-        ready === indices.length ? "READY" : `${ready}/${indices.length}`,
-      );
+      } catch {
+        userQueueAvailable = false;
+      }
     }
-    if (ready === indices.length) {
-      // Render hazır — CDN URL'leri inşa et.
-      //
-      // Pass 72 audit (live probe): MJ /jobs/<id> route'unu fetch ettim,
-      // HTML'de servis edilen tek URL pattern:
-      //   cdn.midjourney.com/<jobId>/0_<n>_640_N.webp (640px preview)
-      // Yeni job'larda full-res `0_<n>.png` mevcut DEĞİL (404).
-      //
-      // imageUrls[] => webp preview URL'leri. Caller (executeJob) bu
-      // URL'leri downloadGridImages helper'ına geçirir; helper yeni-tab
-      // + page.goto ile bytes alır (Pass 49 pattern, CF-safe).
-      const imageUrls = indices.map(
-        (n) => `https://cdn.midjourney.com/${mjJobId}/0_${n}_640_N.webp`,
+
+    // Adım 2: user-queue running'den düştü VEYA user-queue erişilemiyor →
+    // CDN HEAD ile 4 grid'i confirm et.
+    if (!runningContainsJob) {
+      const probe = await page.evaluate(
+        async (input: { jobId: string; indices: number[]; timeoutMs: number }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (globalThis as any).__name = (globalThis as any).__name ?? ((x: unknown) => x);
+          const checks: Array<{ idx: number; status: number }> = [];
+          for (const n of input.indices) {
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), input.timeoutMs);
+            try {
+              const r = await fetch(
+                `https://cdn.midjourney.com/${input.jobId}/0_${n}_640_N.webp`,
+                { method: "HEAD", signal: ctrl.signal },
+              );
+              checks.push({ idx: n, status: r.status });
+            } catch {
+              checks.push({ idx: n, status: 0 });
+            } finally {
+              clearTimeout(t);
+            }
+          }
+          return checks;
+        },
+        { jobId: mjJobId, indices, timeoutMs: 8_000 },
       );
-      return { mjJobId, imageUrls };
+      const ready = probe.filter((p) => p.status === 200).length;
+      // Pass 77 — CDN HEAD grace: queue-done geldikten sonra CDN cache
+      // 5 tur (≈20sn @ pollInterval=4000) yetişmezse user-queue
+      // sinyaline güven, URL'leri yine de döndür (downloadGridImages
+      // cookie bağlamında erişebilir; bridge'in `page.evaluate` HEAD'ı
+      // bazı durumlarda 403 dönüyor ama actual GET cookies+referer ile
+      // 200 dönüyor — Pass 77 audit kanıtı).
+      if (userQueueAvailable && everSeenInRunning) {
+        cdnGraceCount += 1;
+      }
+      if (options.onPoll) {
+        options.onPoll(
+          Date.now() - start,
+          ready === indices.length
+            ? "READY"
+            : userQueueAvailable
+              ? `queue-done, cdn ${ready}/${indices.length} (grace ${cdnGraceCount}/5)`
+              : `${ready}/${indices.length}`,
+        );
+      }
+      const cdnGraceExceeded =
+        userQueueAvailable && everSeenInRunning && cdnGraceCount >= 5;
+      if (ready === indices.length || cdnGraceExceeded) {
+        const imageUrls = indices.map(
+          (n) => `https://cdn.midjourney.com/${mjJobId}/0_${n}_640_N.webp`,
+        );
+        return { mjJobId, imageUrls };
+      }
+    } else if (options.onPoll) {
+      // Hâlâ running, sadece progress raporu
+      options.onPoll(Date.now() - start, "running (queue)");
     }
     await new Promise((r) => setTimeout(r, interval));
   }
   throw new Error(
-    `CDN polling timeout (${options.timeoutMs}ms): Job ${mjJobId} 4 grid hazır olmadı`,
+    `Polling timeout (${options.timeoutMs}ms): Job ${mjJobId} hazır olmadı (user-queue available: ${userQueueAvailable})`,
   );
 }
 

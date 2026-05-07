@@ -78,6 +78,123 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 77 (Render polling AutoSail user-queue modeline geçti — hibrit primary+confirm) 🟢
+
+**Hedef:** Pass 76 sref kanıtı tamamdı ama oref+ow render polling DOM
+watcher bug'ı yüzünden timeout olmuştu (Pass 71/72'den beri carry).
+Kullanıcı önerisi: "autosailin yaptığı gibi yapabilirsin daha sorunsuzsa".
+Pass 77 görevi: AutoSail'in user-queue tabanlı render polling modelini
+native bridge'e taşı, sref şüphesini ikinci kez kapat, oref+ow ve cref
+real smoke recovery yap.
+
+**Pass 77 audit kanıtları:**
+
+1. **AutoSail main.js inventory**: `/api/storage-upload-file`,
+   `/api/submit-jobs`, `/api/user-queue`, `/api/recent-jobs` (V8 web'de
+   404), `/api/explore-user-jobs` (auth/missing param 422), `/api/imagine`
+   (403). MJ V8 web'de **`/api/user-queue` aktif tek polling endpoint**.
+
+2. **Live CDP capture (kullanıcı eklenti üzerinden sref + auto imagine)**:
+   ```
+   t=0    POST /api/storage-upload-file → {shortUrl, bucketPathname}
+   t=18s  POST /api/submit-jobs → {job_id: "1f3cdf28-..."}
+   ```
+   `prompt-session-log` telemetry call MJ tarafında (bizim için scope
+   dışı). Auto imagine = sadece tek submit-jobs çağrısı.
+
+3. **Live user-queue probe (CDP Runtime.evaluate ile)**: bridge job
+   submit + 5sn aralıklı user-queue polling kanıtı:
+   ```
+   t=0    submit-jobs → job_id 1f3cdf28-...
+   t=3s   user-queue {"running":[],"waiting":[]}    ← submit propagation
+   t=8s   user-queue {"running":[{"id":"1f3cdf28-...", ...}]}  ← düştü
+   t=...  running'de görünür ~30sn
+   t=33s  user-queue {"running":[],"waiting":[]}    ← render done
+   ```
+   Job lifecycle deterministic: submit → ~3sn propagation → running →
+   render → düşer (completion sinyali).
+
+4. **CDN HEAD davranışı**: MJ V8'de yeni jobs için `cdn.midjourney.com/<jobId>/0_X_640_N.webp`
+   - direct curl HEAD → 403 Forbidden
+   - cookie-bound page.evaluate → bazen 200, bazen 403 (CDN cache
+     gecikmesi). Pass 76'da çalışıyordu, Pass 77 v1 smoke'ta 0/4 stuck.
+   - Pass 77 v2 yaklaşımı: CDN HEAD'i opsiyonel "confirm" yap, gerçek
+     completion sinyali user-queue.
+
+**Pass 77 native bridge düzeltmesi:**
+
+`mj-bridge/src/drivers/generate-flow.ts` `waitForJobReadyViaApi`
+helper'ı hibrit polling modeline çevrildi:
+
+1. **user-queue API primary**: her tur `GET /api/user-queue?userId=<id>`
+   çağır, `running[].id === mjJobId` mı kontrol et
+2. **everSeenInRunning tracker**: ilk tur boş running'i "queue-done"
+   yorumlama yanlış pozitifini engelle. Job en az bir kez running'de
+   görüldükten SONRA boş running gerçek completion sinyali sayılır.
+3. **CDN HEAD confirm**: queue-done sonrası 4 grid CDN URL'lerini HEAD
+   probe et (bridge cookie bağlamında); 4/4 200 → READY
+4. **CDN grace counter (5 tur ≈20sn)**: queue-done geldikten sonra CDN
+   cache geç yetişiyorsa user-queue sinyaline güven, URL'leri yine de
+   döndür (downloadGridImages cookie+referer bağlamında 200 alabiliyor;
+   HEAD bazı durumlarda 403 dönüyor).
+5. **user-queue erişilemiyorsa fallback**: CDN HEAD primary (Pass 72
+   yolu, geriye uyumlu).
+
+**Pass 77 canlı smoke kanıtları (5 capability — TÜMÜ COMPLETED):**
+
+| # | Capability | Süre | mjJobId | Outputs |
+|---|---|---|---|---|
+| 1 | sref `URL ::200` | 61s | `249b4dbe-653e-...` | ✅ 4 |
+| 2 | oref + ow 400 | 120s | `b1d6f14f-c33c-...` | ✅ 4 |
+| 3 | cref V6 | 70s | `a9cb2d69-1e79-...` | ✅ 4 |
+| 4 | generate text-only | ~70s | `8e2bfcb8-...` | ✅ 4 |
+| 5 | describe | 4s | (api-only) | ✅ 4 prompt |
+
+Pass 76'da timeout olan oref+ow Pass 77'de 120sn'de tamamlandı, 4 grid
+CDN URL'leri toplandı. Pass 76'da hiç gerçek smoke alınmamış olan
+cref V6 de Pass 77'de 70sn'de tamamlandı.
+
+**Capability map (Pass 77 sonrası):**
+
+| Capability | Strategy | API yolu | DOM yolu | Polling | Status |
+|---|---|---|---|---|---|
+| sref (per-URL `URL ::N`) | api-first | ✅ | ✅ Pass 49 | hibrit | 🟢 production (real render kanıt) |
+| sref (global `--sw N`) | api-first | ✅ | ✅ | hibrit | 🟢 production |
+| oref + ow | api-first | ✅ | ✅ | hibrit | 🟢 **Pass 77 real render kanıt** |
+| cref (V6) | api-first | ✅ | ✅ | hibrit | 🟢 **Pass 77 real render kanıt** |
+| image-prompt | api-first | ✅ Pass 74 | ✅ | hibrit | 🟢 production |
+| describe | api-only | ✅ | – | – | 🟢 production |
+| generate (text-only) | api-first | ✅ | ✅ | hibrit | 🟢 production |
+
+**Standardize edilmiş accepted fixture set:**
+
+Pass 77 deneyimi → MJ tarafının kabul ettiği reference URL formatları:
+- ✅ `s.mj.run/<shortId>` (AutoSail tercihi; en kısa, en sağlam)
+- ✅ `cdn.midjourney.com/u/<userId>/<sha256>.<ext>` (Pass 74 fallback)
+- ✅ `cdn.midjourney.com/<jobId>/0_<n>.<ext>` (önceki render output'u
+  yeniden ref olarak)
+- 🔴 Dış URL (Wikipedia, Imgur vs.) → MJ "Invalid image link" reddi
+  (storage-upload-file ile önce MJ'e yüklemeli — Pass 76 buna geçti)
+
+**Pass 77 dürüst sınırlar:**
+
+- user-queue API rate-limit'e takılırsa fallback CDN HEAD primary'e dönüyor
+  (Pass 72 yolu); yine de ghost-job senaryosunda timeout olabilir
+- CDN grace 5 tur (≈20sn) — daha düşük tutarsa MJ'in slow CDN cache'inde
+  yetiştiğini kaçırırsak hâlâ user-queue sinyaliyle doğru sonucu veririz;
+  daha yüksek tutarsak gerçekten render fail olduğunda timeout daha geç gelir
+- everSeenInRunning tracker submit propagation çok yavaş ise (>30sn)
+  yanlış sinyale gidebilir (örn. MJ rate-limit ile job'un running'e
+  hiç düşmemesi). Bu durumda timeout normal devam eder
+- DOM watcher (Pass 49) tamamen kaldırılmadı; submit DOM-first stratejisi
+  hâlâ DOM watcher kullanıyor (Pass 77 sadece API submit yolundaki
+  polling'i değiştirdi)
+
+**Pass 77 dosya değişiklik blast radius:**
+- 1 dosya değişti: `mj-bridge/src/drivers/generate-flow.ts`
+- Minimal patch (waitForJobReadyViaApi helper'ı içinde hibrit logic)
+- API yüzeyi aynı: caller (playwright.ts) hiç değişmedi
+
 ### Pass 76 (sref kesin doğrulama: reference URL upload + AutoSail-uyumlu submit body) 🟢
 
 **Hedef:** Pass 75'te `--sref URL ::N` syntax'ı doğrulandı ama gerçek
