@@ -30,6 +30,7 @@ import { AddToSelection } from "./AddToSelection";
 import { FailureDetail } from "./FailureDetail";
 import { UpscaleButton } from "./UpscaleButton";
 import { ExportButtons } from "./ExportButtons";
+import { AssetBatchPanel } from "./AssetBatchPanel";
 
 const STATE_LABELS: Record<string, string> = {
   QUEUED: "Sırada",
@@ -113,6 +114,39 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
   });
 
   if (!job) notFound();
+
+  // Pass 63 — Per-asset export audit (downloaded badge + bulk panel için).
+  const allAssetIds = job.generatedAssets.map((a) => a.id);
+  const exportAudits = allAssetIds.length
+    ? await db.auditLog.findMany({
+        where: {
+          action: "MIDJOURNEY_ASSET_EXPORT",
+          targetId: { in: allAssetIds },
+        },
+        select: { targetId: true, metadata: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+      })
+    : [];
+  const exportByAsset = new Map<
+    string,
+    { count: number; formats: Set<string>; lastAt: Date }
+  >();
+  for (const e of exportAudits) {
+    if (!e.targetId) continue;
+    const existing = exportByAsset.get(e.targetId);
+    const fmt =
+      (e.metadata as { format?: string } | null)?.format ?? "unknown";
+    if (existing) {
+      existing.count += 1;
+      existing.formats.add(fmt);
+    } else {
+      exportByAsset.set(e.targetId, {
+        count: 1,
+        formats: new Set([fmt]),
+        lastAt: e.createdAt,
+      });
+    }
+  }
 
   // Promptu satırlardan ayır: "<prompt> --ar 1:1 --v 7" → prompt + flags.
   const promptString =
@@ -327,6 +361,19 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
                 </div>
               );
             })()}
+            {/* Pass 63 — Asset batch panel (toplu seç + bulk export ZIP). */}
+            {job.state === "COMPLETED" ? (
+              <div className="mt-2">
+                <AssetBatchPanel
+                  assets={job.generatedAssets.map((a) => ({
+                    midjourneyAssetId: a.id,
+                    gridIndex: a.gridIndex,
+                    variantKind: a.variantKind,
+                    alreadyDownloaded: exportByAsset.has(a.id),
+                  }))}
+                />
+              </div>
+            ) : null}
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {job.generatedAssets.map((a) => (
                 <div key={a.id} className="flex flex-col gap-1">
@@ -335,22 +382,39 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
                     alt={`Grid ${a.gridIndex}`}
                     square
                   />
-                  <div className="flex items-center justify-between text-xs text-text-muted">
+                  <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-text-muted">
                     <span>
                       Grid {a.gridIndex} · {a.variantKind}
                       {a.asset?.sizeBytes
                         ? ` · ${Math.round(a.asset.sizeBytes / 1024)}KB`
                         : ""}
                     </span>
-                    {a.generatedDesignId ? (
-                      <Link
-                        href={`/review/${a.generatedDesignId}`}
-                        className="rounded bg-success-soft px-1.5 py-0.5 text-xs text-success"
-                        title="Review queue'da"
-                      >
-                        ✓ Review
-                      </Link>
-                    ) : null}
+                    <div className="flex items-center gap-1">
+                      {/* Pass 63 — Audit-derived "indirildi" badge. */}
+                      {(() => {
+                        const stat = exportByAsset.get(a.id);
+                        if (!stat) return null;
+                        const formats = Array.from(stat.formats).join(", ");
+                        return (
+                          <span
+                            className="rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-text"
+                            title={`${stat.count} export · formats: ${formats} · son: ${stat.lastAt.toLocaleString("tr-TR")}`}
+                            data-testid={`mj-asset-downloaded-${a.id}`}
+                          >
+                            ↓ {stat.count}
+                          </span>
+                        );
+                      })()}
+                      {a.generatedDesignId ? (
+                        <Link
+                          href={`/review/${a.generatedDesignId}`}
+                          className="rounded bg-success-soft px-1.5 py-0.5 text-xs text-success"
+                          title="Review queue'da"
+                        >
+                          ✓ Review
+                        </Link>
+                      ) : null}
+                    </div>
                   </div>
                   {/* Pass 60 — Sadece COMPLETED parent + GRID variant'lar
                       için Upscale (Subtle) buton. Upscale child'larda

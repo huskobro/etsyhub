@@ -7,6 +7,7 @@
 // olarak eklenecek.
 
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
@@ -17,6 +18,7 @@ import {
 } from "@/server/services/midjourney/bridge-client";
 import { TestRenderForm } from "./TestRenderForm";
 import { AssetThumb } from "./AssetThumb";
+import { JobListFilters } from "./JobListFilters";
 
 function stateTone(state: string): BadgeTone {
   if (state === "COMPLETED") return "success";
@@ -73,10 +75,80 @@ async function fetchHealth(): Promise<{
   }
 }
 
-export default async function AdminMidjourneyPage() {
+type SearchParams = {
+  days?: string;
+  q?: string;
+};
+
+// Pass 63 — gün bazlı filter chip'leri.
+// "today" / "yesterday" / "7d" / "all" — URL'de ?days= olarak persistent.
+const DAY_FILTERS = ["today", "yesterday", "7d", "all"] as const;
+type DayFilter = (typeof DAY_FILTERS)[number];
+
+function parseDayFilter(raw: string | undefined): DayFilter {
+  if (raw && (DAY_FILTERS as readonly string[]).includes(raw)) {
+    return raw as DayFilter;
+  }
+  return "all";
+}
+
+function dayFilterToWhere(
+  filter: DayFilter,
+): Prisma.MidjourneyJobWhereInput {
+  if (filter === "all") return {};
+  const now = new Date();
+  if (filter === "today") {
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    return { enqueuedAt: { gte: startOfDay } };
+  }
+  if (filter === "yesterday") {
+    const startOfYesterday = new Date(now);
+    startOfYesterday.setDate(now.getDate() - 1);
+    startOfYesterday.setHours(0, 0, 0, 0);
+    const endOfYesterday = new Date(startOfYesterday);
+    endOfYesterday.setHours(23, 59, 59, 999);
+    return { enqueuedAt: { gte: startOfYesterday, lte: endOfYesterday } };
+  }
+  if (filter === "7d") {
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(now.getDate() - 7);
+    return { enqueuedAt: { gte: sevenDaysAgo } };
+  }
+  return {};
+}
+
+export default async function AdminMidjourneyPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
+  // Pass 63 — URL state'ten filter'lar.
+  const dayFilter = parseDayFilter(searchParams?.days);
+  const keyword = (searchParams?.q ?? "").trim();
+
+  const where: Prisma.MidjourneyJobWhereInput = {
+    ...dayFilterToWhere(dayFilter),
+    ...(keyword
+      ? {
+          OR: [
+            { prompt: { contains: keyword, mode: "insensitive" as const } },
+            { mjJobId: { contains: keyword, mode: "insensitive" as const } },
+            {
+              bridgeJobId: {
+                contains: keyword,
+                mode: "insensitive" as const,
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+
   const [healthResult, recentJobs] = await Promise.all([
     fetchHealth(),
     db.midjourneyJob.findMany({
+      where,
       orderBy: { enqueuedAt: "desc" },
       take: 50,
       include: {
@@ -85,11 +157,65 @@ export default async function AdminMidjourneyPage() {
         // Tüm asset'leri çekmek yerine sadece sayı + ilk asset id.
         generatedAssets: {
           orderBy: { gridIndex: "asc" },
-          select: { id: true, gridIndex: true, assetId: true },
+          select: {
+            id: true,
+            gridIndex: true,
+            assetId: true,
+            // Pass 63 — Review/Selection durumu badge için.
+            generatedDesignId: true,
+          },
         },
       },
     }),
   ]);
+
+  // Pass 63 — Per-job export count (audit log derived). Tek query'de
+  // tüm görünür asset id'leri için groupBy.
+  const allAssetIds = recentJobs.flatMap((j) =>
+    j.generatedAssets.map((a) => a.id),
+  );
+  const exportAudits = allAssetIds.length
+    ? await db.auditLog.groupBy({
+        by: ["targetId"],
+        where: {
+          action: "MIDJOURNEY_ASSET_EXPORT",
+          targetId: { in: allAssetIds },
+        },
+        _count: { targetId: true },
+        _max: { createdAt: true },
+      })
+    : [];
+  const exportByAsset = new Map<
+    string,
+    { count: number; lastAt: Date | null }
+  >();
+  for (const e of exportAudits) {
+    if (!e.targetId) continue;
+    exportByAsset.set(e.targetId, {
+      count: e._count.targetId,
+      lastAt: e._max.createdAt,
+    });
+  }
+  // Per-job aggregation
+  const jobExportSummary = new Map<
+    string,
+    { totalExports: number; downloadedAssetCount: number }
+  >();
+  for (const j of recentJobs) {
+    let totalExports = 0;
+    let downloaded = 0;
+    for (const a of j.generatedAssets) {
+      const stat = exportByAsset.get(a.id);
+      if (stat) {
+        totalExports += stat.count;
+        downloaded += 1;
+      }
+    }
+    jobExportSummary.set(j.id, {
+      totalExports,
+      downloadedAssetCount: downloaded,
+    });
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -199,11 +325,21 @@ MJ_BRIDGE_TOKEN=<aynı token>
       )}
 
       <div>
-        <h2 className="text-lg font-semibold">Son 50 job</h2>
+        <h2 className="text-lg font-semibold">
+          Son 50 job
+          {dayFilter !== "all" || keyword ? (
+            <span className="ml-2 text-xs font-normal text-text-muted">
+              ({recentJobs.length} sonuç · filtreli)
+            </span>
+          ) : null}
+        </h2>
         <p className="text-xs text-text-muted">
           MJ jobs DB&apos;den; bridge çalışmıyor olsa bile geçmiş listelenir.
         </p>
       </div>
+
+      {/* Pass 63 — Date chip + keyword arama (URL state). */}
+      <JobListFilters />
 
       {/* Pass 50 — operator Test Render tetikleyici. Bridge sağlıklı
           değilse form disabled ama görünür kalır (operator
@@ -223,14 +359,19 @@ MJ_BRIDGE_TOKEN=<aynı token>
             <TH>State</TH>
             <TH>Sebep</TH>
             <TH>Asset</TH>
+            {/* Pass 63 — Audit-derived: indirildi sayısı + Review sayısı. */}
+            <TH>İndirme</TH>
+            <TH>Review</TH>
             <TH>MJ Job ID</TH>
           </TR>
         </THead>
         <TBody>
           {recentJobs.length === 0 ? (
             <TR>
-              <TD colSpan={8} align="center" muted>
-                Henüz MJ job yok.
+              <TD colSpan={10} align="center" muted>
+                {dayFilter !== "all" || keyword
+                  ? "Filtreye uyan MJ job yok."
+                  : "Henüz MJ job yok."}
               </TD>
             </TR>
           ) : (
@@ -284,6 +425,44 @@ MJ_BRIDGE_TOKEN=<aynı token>
                       : "—"}
                   </TD>
                   <TD muted>{j.generatedAssets.length}</TD>
+                  {/* Pass 63 — Audit-derived export sayacı. */}
+                  <TD className="text-xs">
+                    {(() => {
+                      const stat = jobExportSummary.get(j.id);
+                      if (!stat || stat.totalExports === 0) {
+                        return <span className="text-text-muted">—</span>;
+                      }
+                      return (
+                        <span
+                          className="rounded bg-accent-soft px-1.5 py-0.5 text-accent-text"
+                          title={`${stat.downloadedAssetCount}/${j.generatedAssets.length} asset için ${stat.totalExports} format export edildi`}
+                          data-testid={`mj-list-downloaded-${j.id}`}
+                        >
+                          ↓ {stat.totalExports}
+                        </span>
+                      );
+                    })()}
+                  </TD>
+                  {/* Pass 63 — Review queue badge (generatedDesignId dolu sayısı). */}
+                  <TD className="text-xs">
+                    {(() => {
+                      const promoted = j.generatedAssets.filter(
+                        (a) => a.generatedDesignId !== null,
+                      ).length;
+                      if (promoted === 0) {
+                        return <span className="text-text-muted">—</span>;
+                      }
+                      return (
+                        <span
+                          className="rounded bg-success-soft px-1.5 py-0.5 text-success"
+                          title={`${promoted}/${j.generatedAssets.length} asset Review queue'da`}
+                          data-testid={`mj-list-review-${j.id}`}
+                        >
+                          ✓ {promoted}
+                        </span>
+                      );
+                    })()}
+                  </TD>
                   <TD className="font-mono text-xs">{j.mjJobId ?? "—"}</TD>
                 </TR>
               );

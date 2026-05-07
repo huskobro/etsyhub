@@ -78,6 +78,123 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 63 (Batch operations + filtering + downloaded badges — tamamlanan) 🟢
+
+Pass 62'nin export endpoint'inin üstüne **toplu operasyonlar + filtre +
+işlenmişlik görünürlüğü** katmanı geldi. Operatör artık tekrar tekrar
+indirme/inceleme yapmıyor; daha önce indirilenler kart üstünde net
+işaretli.
+
+**Audit + paket seçimi**:
+
+Pass 62 sonrası 5 boşluk:
+1. Tüm joblar tek liste (filter yok)
+2. Daha önce indirilen/promote edilen asset belirsiz
+3. Toplu işlem (bulk export) yok
+4. Toplu upscale gelecek hazırlık yok
+5. URL paylaşımı yok (filter state)
+
+Build now: **(a) List filter (date+keyword+URL state) + (b) List row
+badges (downloaded count + promoted count) + (c) Detail asset-level
+batch panel + bulk export ZIP + (d) Per-thumb downloaded badge +
+(e) Future-safe upscale placeholder**.
+
+Strong follow-up: List job-level batch (Pass 64). Useful later:
+"sadece review olmayanlar" filter + custom date range. Do not now:
+upscale/variation/describe.
+
+**Uygulanan**:
+
+- ✅ `JobListFilters.tsx` client component:
+  - 4 chip: Tümü / Bugün / Dün / Son 7 gün
+  - Keyword search input + Ara/Temizle butonları
+  - `useSearchParams` + `router.push` URL state persistent
+  - Test ID'leri: `mj-filter-day-{key}`, `mj-filter-q-input`,
+    `mj-filter-q-submit`, `mj-filter-clear`
+- ✅ List page server component:
+  - `searchParams` parse → `dayFilterToWhere()` (Today/Yesterday/7d
+    enqueuedAt window) + `OR: [prompt, mjJobId, bridgeJobId]
+    contains insensitive`
+  - Job row export aggregation: tek `groupBy({by: targetId, action:
+    MIDJOURNEY_ASSET_EXPORT})` query, per-job `totalExports +
+    downloadedAssetCount`
+  - Yeni 2 sütun: **İndirme** (audit count badge `↓ N`) + **Review**
+    (promoted asset count `✓ N`)
+  - Filter empty result: "Filtreye uyan MJ job yok" mesajı
+- ✅ `POST /api/admin/midjourney/asset/bulk-export`:
+  - Body `{ midjourneyAssetIds[], format, size? }` (max 50)
+  - Sharp paralel dönüşüm + `archiver` ZIP stream
+  - Per-asset audit `MIDJOURNEY_ASSET_EXPORT` (bulkBatchTs +
+    bulkBatchSize metadata)
+  - Filename `mj-bulk-{ts}.zip`; içinde `mj-{mjJobId}-grid{N}-{size}.{ext}`
+- ✅ `AssetBatchPanel.tsx` client component (detail page):
+  - Per-asset checkbox (4 grid + child upscale'ler)
+  - "Hepsini seç / Seçimi temizle" toggle
+  - "↓ Sadece indirilmeyenler" smart selector (audit-derived)
+  - 3 ZIP buton (PNG/JPEG/WebP) → fetch → blob → download dialog
+  - **Future-safe placeholder**: "⤴ Toplu upscale (yakında)" disabled
+    chip — Pass 60-61 native upscale park notu + Gigapixel research
+    işareti
+- ✅ Detail page upgrade:
+  - Audit log query (per-asset export count + format set + lastAt)
+  - AssetBatchPanel COMPLETED job'larda görünür
+  - Per-thumb badge: `↓ N` (count + format tooltip + son tarih)
+  - Mevcut Review badge yanında
+
+**Canlı E2E doğrulaması**:
+
+```
+[pass63] filters visible: true
+[pass63] URL after 'today' click: /admin/midjourney?days=today
+[pass63] URL after q='pass51': /admin/midjourney?days=today&q=pass51
+[pass63] list downloaded badge for Pass 51 job: ↓ 3 (Pass 62'deki 3 export)
+[pass63] batch panel visible: true · 4 checkbox · 3 ZIP buton
+[pass63] toplu upscale placeholder visible: true (yakında)
+[pass63] per-thumb downloaded badge: ↓ 3
+[pass63] selected after 'hepsini seç': 4
+[pass63] PNG ZIP response: 200 application/zip 1714387 bytes
+         filename "mj-bulk-1778154227737.zip"
+```
+
+Screenshots:
+- `/tmp/mj-pass63-list.png` — Tarih chips + Arama + tablo
+- `/tmp/mj-pass63-batch.png` — Detail page Toplu işlem panel + ZIP
+  butonları + Toplu upscale (yakında) + per-thumb ↓3 badge
+
+**"Daha önce indirildi" hesabı** = `AuditLog` `action="MIDJOURNEY_ASSET_EXPORT"` `targetId in [asset id'leri]`. Per-asset count + format set + son tarih. List page job-level aggregation `groupBy` ile (tek query, N+1 yok).
+
+**Future-safe upscale**:
+- AssetBatchPanel'da disabled chip "⤴ Toplu upscale (yakında)"
+- Pass 60-61 MJ native upscale park notu açık
+- Pass 63+ research adayı: **Topaz Gigapixel** desktop automation
+- Operatör batch select state korunacak; capability hazır olunca
+  gerçek batch upscale aksiyon olur
+
+**Capability matrix güncellemesi**:
+
+1. **next immediate (Pass 64)**:
+   - List page job-level batch (multiple job'u toplu select →
+     "tüm asset'lerini ZIP indir")
+   - Custom date range filter (date picker)
+   - "sadece indirilmeyenler" / "sadece review olmayanlar" job filter
+2. **strong follow-up**:
+   - Topaz Gigapixel research + desktop automation prototipi
+   - Eski Pass 49-61 webp asset'leri canonical PNG'ye backfill script
+3. **useful later**:
+   - Variation capability (Vary Subtle/Strong selectors hazır)
+   - Mockup direct entry shortcut
+4. **do not now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 63 dürüst sınır**:
+- List filter "today/yesterday/7d/all" 4 chip; custom date range
+  Pass 64 hedefi.
+- Bulk export max 50 asset/request (ZIP boyutu güvenliği).
+- Toplu upscale **placeholder** — gerçek capability Pass 60-61'in
+  taze parent test'i veya Gigapixel research sonrasında.
+- List page job-level batch yok (sadece per-job export count
+  badge); job-level batch action Pass 64.
+
 ### Pass 62 (Format flexibility + asset export endpoint — tamamlanan) 🟢
 
 Rota değişikliği: upscale Pass 60-61'de **PARK EDİLDİ** (ileride
