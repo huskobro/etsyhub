@@ -78,6 +78,114 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 57 (Selection direct entry — MJ → Selection handoff — tamamlanan) 🟢
+
+Pass 55-56 ile MJ output'lar Review queue'ya doğal akışla bağlanmıştı,
+ama operatör bir tasarımı Selection Studio'ya almak istediğinde
+manuel yol uzundu (detail → /review → her birini approve → Selection
+Studio → set seç → drawer aç → designları ara/seç → ekle).
+
+Pass 57 detail sayfasında **tek tıkla Selection set'e ekleme**
+kısa yolu kurar — yeni endpoint gerekmedi, mevcut Selection
+sets/items API'leri reuse edildi.
+
+**Audit + paket seçimi**:
+
+Pass 56 sonrası 3 büyük boşluk:
+1. MJ → Selection geçişi hâlâ uzun yol
+2. AWAITING_LOGIN/CHALLENGE blocked state hâlâ canlı doğrulanmadı
+3. Reference picker basit select (50 limit, arama yok)
+
+Build now: **MJ → Selection direct entry**. Mevcut endpoint reuse,
+yeni schema yok, küçük scope, yüksek günlük değer (operatörün
+doğal sonraki adımı). Strong follow-up: Reference search/filter,
+Mockup direct handoff. Useful later: blocked state real validation
+(login geçerli olduğu sürece doğal olarak gelmiyor). Do not now:
+yeni capability (upscale/variation/describe).
+
+**Uygulanan**:
+
+- ✅ `AddToSelection.tsx` — client component:
+  - Mevcut Selection API'leri reuse: `GET /api/selection/sets?status=draft`
+    + `POST /api/selection/sets` (yeni set) + `POST /api/selection/sets/[setId]/items`
+    (batch ekle, mevcut sözleşme: `{ items: [{ generatedDesignId }] }`).
+  - Mode picker: "Mevcut set" (lazy fetch draft listesi) veya "Yeni set"
+    (inline name input).
+  - "Yeni set" mode submit'te önce set yarat, sonra batch items ekle —
+    iki çağrı tek operatör akışında.
+  - Success: `✓ N item eklendi · Set'i aç ↗` + `/selection/{setId}` link.
+  - Yeni yaratılan set picker listesine eklenir (sonraki tıklamalar için).
+  - Duplicate generatedDesignId silent skip (selection items endpoint
+    sözleşmesi).
+- ✅ Detail page entegrasyonu: `PromoteToReview` panelinden hemen
+  sonra `AddToSelection` panel. Sadece **en az bir GeneratedDesign
+  varsa** görünür (yarısı promoted'a half-set ekleme problemini önler).
+  4 GeneratedDesign hazır olunca tek tıkla Selection set'e geçer.
+
+**Canlı E2E doğrulaması (Pass 56'dan auto-promoted job
+`cmov06na50016149lfncr8m8u`)**:
+
+```
+[pass57] add-to-selection panel visible: true ✓
+[pass57] mode → new
+[pass57] new set name: pass57-mj-29689991
+[pass57] submit clicked
+[pass57] success: ✓ 4 item eklendi · Set'i aç ↗
+[pass57] set link: /selection/cmov0ia370019149ljyu7divh
+```
+
+DB doğrulama:
+```
+SelectionSet: pass57-mj-29689991  status=draft
+Items: 4 (hepsi reviewStatus=PENDING)
+Lineage korundu: 4 grid → aynı mjJob=cmov06na5001
+```
+
+Screenshot `/tmp/mj-pass57-after-submit.png`: detail sayfa tam
+ürün UX — Promote panel "✓ Tüm asset'ler Review'da" + Selection
+panel "✓ 4 item eklendi · Set'i aç ↗" + 4 grid (PASS5/araba).
+
+**EtsyHub akışına bağlanma derinleştirildi**:
+
+Pass 56 hattı: Test Render (Reference seç) → render + auto-promote
+→ 4 GeneratedDesign Review queue.
+
+Pass 57 hattı: Test Render (Reference seç) → render + auto-promote
+→ 4 GeneratedDesign Review queue → **detail page'de tek tık** →
+4 SelectionItem Selection Studio'da hazır.
+
+Yani MJ generate-first hattı artık **uçtan uca prodüksiyon
+pipeline'ına bağlı**:
+  attach → generate → poll → download → ingest → auto-promote →
+  Review queue → Selection Studio (tek tıklama).
+
+**Capability roadmap güncellemesi**:
+
+1. **next immediate (Pass 58)**:
+   - Reference search/filter (çok ref'li kullanıcılar — basit `?q=`
+     query parametresi mevcut listReferences zaten destekliyor)
+   - failedReason multi-line / stack trace formatlama
+   - Detail page'de "Mockup'a gönder" hızlı linki (mockup pipeline'ın
+     üst seviye API'leri ile tutarlı; mevcut Mockup studio entry yolu)
+2. **after handoff stabilizes**:
+   - `--sref` / `--oref` UI: TestRenderForm'a reference URL paste
+   - `kind: "describe"` admin button (image upload + 4 prompt scrape)
+3. **later**:
+   - Upscale/variation buton click pipeline (yeni promoted designs'ı
+     temel alır)
+   - Batch download / `/archive` history import
+4. **do not build now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 57 dürüst sınır**:
+- Sadece "auto-promote olmuş" job'larda Selection panel görünür;
+  yarısı promoted için panel görünmez (PromoteToReview ile önce
+  tamamla → Selection panel açılır).
+- AWAITING_LOGIN/CHALLENGE blocked state hâlâ canlı doğrulanmadı.
+- Selection picker mevcut **draft** set'leri listeler; "ready" veya
+  "archived" set'lere ekleme service `assertSetMutable` tarafından
+  zaten engelleniyor (UI bilinçli olarak draft'a sınırladı).
+
 ### Pass 56 (Auto-promote + Test Render Reference picker — tamamlanan) 🟢
 
 Pass 55'te manuel "Review'a gönder" panel kuruldu — operatörün

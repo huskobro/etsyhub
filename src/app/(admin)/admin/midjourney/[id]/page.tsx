@@ -26,6 +26,7 @@ import { JobActionBar } from "./JobActionBar";
 import { BlockedGuidance } from "./BlockedGuidance";
 import { CopyButton } from "./CopyButton";
 import { PromoteToReview } from "./PromoteToReview";
+import { AddToSelection } from "./AddToSelection";
 
 const STATE_LABELS: Record<string, string> = {
   QUEUED: "Sırada",
@@ -304,6 +305,21 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
               defaultReferenceId={job.referenceId}
               defaultProductTypeId={job.productTypeId}
             />
+            {/* Pass 57 — Selection direct entry. Sadece tüm asset'ler
+                promote olduğunda görünür (yoksa Selection'a half-set
+                eklenir; kullanıcı önce promote'u tamamlasın). Mevcut
+                selection sets/items endpoint'lerini reuse eder. */}
+            {(() => {
+              const designIds = job.generatedAssets
+                .map((a) => a.generatedDesignId)
+                .filter((id): id is string => !!id);
+              if (designIds.length === 0) return null;
+              return (
+                <div className="mt-2">
+                  <AddToSelection generatedDesignIds={designIds} />
+                </div>
+              );
+            })()}
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {job.generatedAssets.map((a) => (
                 <div key={a.id} className="flex flex-col gap-1">
