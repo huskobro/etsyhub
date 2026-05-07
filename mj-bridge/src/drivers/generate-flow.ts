@@ -81,6 +81,282 @@ function randInt(min: number, max: number): number {
 }
 
 /**
+ * Pass 66 — Describe akışı (MJ V8 web).
+ *
+ * Pass 65 audit "describe yok" sonucu YANLIŞTI — kullanıcı ekran görüntüleri
+ * (Desktop/describe_three-dots.png + describe_surukle_bırak.png) ve canlı
+ * probe'lar gösterdi:
+ *   1. Drop zone synthetic event'leri trust filtreliyor → güvenilmez
+ *   2. **Three-dots menü %100 çalışıyor**: yüklü thumbnail HOVER → vertical
+ *      dots tıkla → "Describe" menü öğesi → 4 prompt aynı sayfada inline
+ *
+ * Akış:
+ *   1. Add Images popover aç (idempotent) + Image Prompts tab seç
+ *   2. URL'den image indir (Pass 49 yeni-tab pattern; CF-safe)
+ *   3. setInputFiles ile yükle
+ *   4. Yüklü thumbnail koordinatını bul (s.mj.run thumbnail src pattern)
+ *   5. Thumbnail'e mouse hover (vertical-dots butonu hover-state'te görünür)
+ *   6. Vertical-dots SVG path'iyle butonu bul (thumbnail img'den DOM
+ *      ata-traverse) ve tıkla → dropdown menü açılır
+ *   7. "Describe" menü öğesini tıkla
+ *   8. 4 prompt önerisi inline gelene kadar bekle (60sn)
+ *   9. `<p>` tag'lerinden prompt'ları scrape (MJ-flag içeren, dedupe)
+ *
+ * Çıktı: 4 prompt string. Caller (job manager) bunları
+ * `mjMetadata.describePrompts[]` olarak kaydeder.
+ */
+export async function describeImage(
+  page: Page,
+  selectors: Record<MJSelectorKey, string>,
+  imageUrl: string,
+  options: { resultTimeoutMs?: number } = {},
+): Promise<{ prompts: string[]; thumbSrc: string }> {
+  const resultTimeoutMs = options.resultTimeoutMs ?? 90_000;
+
+  // 1) Add Images popover idempotent open
+  let fileInput = page.locator(selectors.addImagesFileInput).first();
+  let alreadyOpen = false;
+  try {
+    await fileInput.waitFor({ state: "attached", timeout: 500 });
+    alreadyOpen = true;
+  } catch {
+    alreadyOpen = false;
+  }
+  if (!alreadyOpen) {
+    const addBtn = page.locator(selectors.addImagesButton).first();
+    const visible = await addBtn
+      .isVisible({ timeout: 5_000 })
+      .catch(() => false);
+    if (!visible) {
+      throw new SelectorMismatchError(
+        "addImagesButton",
+        selectors.addImagesButton,
+      );
+    }
+    await addBtn.click();
+    await page.waitForTimeout(1500);
+    fileInput = page.locator(selectors.addImagesFileInput).first();
+    try {
+      await fileInput.waitFor({ state: "attached", timeout: 8_000 });
+    } catch {
+      throw new SelectorMismatchError(
+        "addImagesFileInput",
+        selectors.addImagesFileInput,
+      );
+    }
+  }
+
+  // 2) Image Prompts tab seç (Start Frame değil — describe için image
+  // tipi prompt slot'a yüklenir; tab seçimi describe sonucunu etkilemez
+  // ama Start Frame'de yüklü görsel three-dots menüsü farklı olabilir;
+  // Image Prompts en güvenilir).
+  const tab = page.locator(selectors.addImagesTabImagePrompts).first();
+  try {
+    await tab.waitFor({ state: "visible", timeout: 5_000 });
+    await tab.click({ timeout: 5_000, force: true });
+    await page.waitForTimeout(500);
+  } catch {
+    throw new SelectorMismatchError(
+      "addImagesTabImagePrompts",
+      selectors.addImagesTabImagePrompts,
+    );
+  }
+
+  // 3) URL'den image indir (Pass 49 pattern: yeni tab + page.goto;
+  // CF korumalı endpoint'lerde ctx.request.get 403 döner)
+  const ctx = page.context();
+  const dlPage = await ctx.newPage();
+  let buf: Buffer;
+  let mime = "image/png";
+  try {
+    const resp = await dlPage.goto(imageUrl, {
+      waitUntil: "load",
+      timeout: 30_000,
+    });
+    if (!resp || !resp.ok()) {
+      throw new Error(
+        `Describe image fetch ${imageUrl} → HTTP ${resp?.status() ?? "no resp"}`,
+      );
+    }
+    buf = Buffer.from(await resp.body());
+    const ct = resp.headers()["content-type"]?.split(";")[0]?.trim();
+    if (ct && /^image\//.test(ct)) mime = ct;
+  } finally {
+    await dlPage.close().catch(() => undefined);
+  }
+  // Magic bytes fallback (Content-Type yoksa)
+  if (mime === "image/png") {
+    if (buf[0] === 0xff && buf[1] === 0xd8) mime = "image/jpeg";
+    else if (
+      buf[0] === 0x52 &&
+      buf[1] === 0x49 &&
+      buf[2] === 0x46 &&
+      buf[3] === 0x46
+    )
+      mime = "image/webp";
+  }
+  const ext =
+    mime === "image/jpeg"
+      ? "jpg"
+      : mime === "image/webp"
+        ? "webp"
+        : "png";
+
+  // 4) setInputFiles
+  await fileInput.setInputFiles({
+    name: `describe-source.${ext}`,
+    mimeType: mime,
+    buffer: buf,
+  });
+  // MJ React state'in image'ı işlemesi + popover'da thumbnail'in
+  // belirmesi için bekleme. Probe gözlemi: 2.5sn yeterli.
+  await page.waitForTimeout(3000);
+
+  // 5) Yüklü thumbnail'i bul. Probe v2/v3 öğrenmesi: yeni yüklenen image
+  // popover'da `s.mj.run/<id>?thumb=true` URL pattern'iyle 48-64×48-64
+  // boyutunda görünür (cdn.midjourney.com değil — MJ kendi proxy'sine
+  // upload eder ve `s.mj.run` ile expose eder).
+  const thumb = await page.evaluate(() => {
+    const imgs = Array.from(document.querySelectorAll("img"))
+      .filter((img) => {
+        const r = img.getBoundingClientRect();
+        const src = img.getAttribute("src") ?? "";
+        return (
+          /s\.mj\.run\/[^?]+(\?|$)/.test(src) &&
+          r.width >= 30 &&
+          r.width <= 100
+        );
+      })
+      .sort((a, b) => {
+        // En son eklenen genelde en altta/sağda
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return br.y - ar.y || br.x - ar.x;
+      });
+    if (imgs.length === 0) return null;
+    const r = imgs[0]!.getBoundingClientRect();
+    return {
+      src: imgs[0]!.getAttribute("src") ?? "",
+      cx: r.x + r.width / 2,
+      cy: r.y + r.height / 2,
+    };
+  });
+  if (!thumb) {
+    throw new Error(
+      "Describe yüklü thumbnail bulunamadı (s.mj.run pattern eşleşmedi)",
+    );
+  }
+
+  // 6) Hover thumbnail (vertical-dots hover-state'te görünür hale gelir)
+  await page.mouse.move(thumb.cx, thumb.cy);
+  await page.waitForTimeout(800);
+
+  // 7) Vertical-dots butonunu bul ve tıkla. Strategy: thumbnail img'den
+  // DOM ata traverse (climbDepth max 8); fallback en yakın koordinattaki
+  // dots-path'li button.
+  const dotsClicked = await page.evaluate((thumbSrc: string) => {
+    const img = Array.from(document.querySelectorAll("img")).find(
+      (i) => i.getAttribute("src") === thumbSrc,
+    );
+    if (!img) return { ok: false, reason: "thumb img not found" };
+    let cur: HTMLElement | null = img.parentElement;
+    for (let i = 0; i < 8 && cur; i++) {
+      const buttons = Array.from(cur.querySelectorAll("button"));
+      for (const b of buttons) {
+        const path = b.querySelector("svg path");
+        const d = path?.getAttribute("d") ?? "";
+        if (
+          /M12\s*5v\.?01.*M12\s*12v\.?01.*M12\s*19v\.?01/.test(d)
+        ) {
+          (b as HTMLElement).click();
+          return { ok: true, climbDepth: i };
+        }
+      }
+      cur = cur.parentElement;
+    }
+    // Fallback: tüm sayfada thumbnail rect'ine en yakın
+    const tr = img.getBoundingClientRect();
+    const candidates = Array.from(document.querySelectorAll("button"))
+      .filter((b) => {
+        const d = b.querySelector("svg path")?.getAttribute("d") ?? "";
+        return /M12\s*5v\.?01.*M12\s*12v\.?01.*M12\s*19v\.?01/.test(d);
+      })
+      .map((b) => {
+        const r = b.getBoundingClientRect();
+        return {
+          btn: b as HTMLElement,
+          dist: Math.hypot(
+            r.x + r.width / 2 - (tr.x + tr.width / 2),
+            r.y + r.height / 2 - (tr.y + tr.height / 2),
+          ),
+        };
+      })
+      .sort((a, b) => a.dist - b.dist);
+    if (candidates.length > 0 && candidates[0]!.dist < 200) {
+      candidates[0]!.btn.click();
+      return { ok: true, fallback: true };
+    }
+    return { ok: false, reason: "no dots btn near thumb" };
+  }, thumb.src);
+  if (!dotsClicked.ok) {
+    throw new SelectorMismatchError(
+      "thumbnailMenuVerticalDots",
+      selectors.thumbnailMenuVerticalDots,
+    );
+  }
+  await page.waitForTimeout(800);
+
+  // 8) "Describe" menü öğesini tıkla
+  const describeMenuItem = page.locator(selectors.menuItemDescribe).first();
+  try {
+    await describeMenuItem.waitFor({ state: "visible", timeout: 5_000 });
+    await describeMenuItem.click({ timeout: 5_000 });
+  } catch {
+    throw new SelectorMismatchError(
+      "menuItemDescribe",
+      selectors.menuItemDescribe,
+    );
+  }
+
+  // 9) 4 prompt sonucu beklenir (inline aynı sayfada). MJ describe
+  // tipik olarak 4 farklı prompt önerisi üretir; her birinin sonunda
+  // `--ar W:H` flag'i bulunur. Probe v3'ün gerçek çıktısı: her prompt
+  // hem `<div>` hem `<p>` olarak iki kere geçiyor (dedupe gerek).
+  const startedAt = Date.now();
+  let prompts: string[] = [];
+  while (Date.now() - startedAt < resultTimeoutMs) {
+    await page.waitForTimeout(2000);
+    const found = await page.evaluate(() => {
+      const seen = new Set<string>();
+      const out: string[] = [];
+      const candidates = Array.from(document.querySelectorAll("p"));
+      for (const el of candidates) {
+        if (el.children.length > 1) continue;
+        const t = (el.textContent ?? "").trim();
+        if (t.length < 60 || t.length > 1500) continue;
+        // MJ describe çıktısı genelde `--ar W:H` ile biter.
+        if (!/--ar\s+\d+:\d+/.test(t)) continue;
+        if (seen.has(t)) continue;
+        seen.add(t);
+        out.push(t);
+      }
+      return out;
+    });
+    if (found.length >= 4) {
+      prompts = found.slice(0, 4);
+      break;
+    }
+  }
+  if (prompts.length < 4) {
+    throw new Error(
+      `Describe sonucu timeout: ${resultTimeoutMs / 1000}s içinde 4 prompt bulunamadı (gelen: ${prompts.length})`,
+    );
+  }
+
+  return { prompts, thumbSrc: thumb.src };
+}
+
+/**
  * Prompt'u Imagine bar'a yaz + Enter.
  *
  * - Mevcut text'i temizle (Cmd+A → Delete)

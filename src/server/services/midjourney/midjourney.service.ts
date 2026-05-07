@@ -28,6 +28,7 @@ import {
   BridgeUnreachableError,
   getBridgeClient,
   type BridgeClient,
+  type BridgeDescribeRequest,
   type BridgeGenerateRequest,
   type BridgeJobSnapshot,
   type BridgeJobState,
@@ -192,6 +193,112 @@ export async function createMidjourneyJob(
       bridgeJobId: snapshot.id,
     },
     "midjourney job created (bridge accepted + worker enqueued)",
+  );
+
+  return {
+    midjourneyJob: result.mjJob,
+    jobId: result.job.id,
+    bridgeJobId: snapshot.id,
+  };
+}
+
+/**
+ * Pass 66 — Describe job enqueue (Pass 65 audit'in düzeltmesi).
+ *
+ * Akış:
+ *   1. imageUrl HTTPS validation (R17.2)
+ *   2. Bridge'e POST /jobs (kind="describe", imageUrl)
+ *   3. EtsyHub Job + MidjourneyJob (kind=DESCRIBE) row açılır
+ *   4. BullMQ MIDJOURNEY_BRIDGE worker poll'a alır
+ *   5. Driver describe akışını çalıştırır → COMPLETED state'te
+ *      mjMetadata.describePrompts[] dolar (pollAndUpdate snapshot'ı yansıtır)
+ *
+ * Describe çıktısı GÖRSEL DEĞİL prompt — ingestOutputs çağrılmaz
+ * (snapshot.outputs boş). MidjourneyAsset row açılmaz.
+ *
+ * NOT: Pass 42 schema MidjourneyJobKind.DESCRIBE enum'unu zaten içeriyordu;
+ * Pass 65 audit'te describe yok sanılmıştı, Pass 66 audit gerçek DOM yolunu
+ * doğruladı. mjMetadata.describePrompts[] ile saklanır.
+ */
+export type CreateMidjourneyDescribeJobInput = {
+  userId: string;
+  imageUrl: string;
+  /** Opsiyonel: hangi MidjourneyAsset'ten describe edildi (lineage). */
+  sourceAssetId?: string;
+};
+
+export type CreateMidjourneyDescribeJobResult = {
+  midjourneyJob: MidjourneyJob;
+  jobId: string;
+  bridgeJobId: string;
+};
+
+export async function createMidjourneyDescribeJob(
+  input: CreateMidjourneyDescribeJobInput,
+  bridgeClient: BridgeClient = getBridgeClient(),
+): Promise<CreateMidjourneyDescribeJobResult> {
+  // R17.2 — HTTPS only
+  const url = input.imageUrl.trim();
+  if (!url.startsWith("https://")) {
+    throw new Error(
+      `Describe imageUrl SADECE HTTPS kabul eder (R17.2). Hatalı: ${url.slice(0, 80)}`,
+    );
+  }
+
+  // 1) Bridge enqueue
+  const bridgeReq: BridgeDescribeRequest = {
+    kind: "describe",
+    imageUrl: url,
+  };
+  const snapshot = await bridgeClient.enqueueJob(bridgeReq);
+
+  // 2-3) DB rows — atomic
+  const result = await db.$transaction(async (tx) => {
+    const job = await tx.job.create({
+      data: {
+        userId: input.userId,
+        type: JobType.MIDJOURNEY_BRIDGE,
+        status: JobStatus.QUEUED,
+        metadata: {
+          bridgeJobId: snapshot.id,
+          kind: "describe",
+          imageUrl: url.slice(0, 200),
+          sourceAssetId: input.sourceAssetId ?? null,
+        },
+      },
+    });
+    const mjJob = await tx.midjourneyJob.create({
+      data: {
+        userId: input.userId,
+        jobId: job.id,
+        bridgeJobId: snapshot.id,
+        kind: MidjourneyJobKind.DESCRIBE,
+        state: STATE_MAP[snapshot.state],
+        // Prompt alanı describe için imageUrl olarak doldurulur (display)
+        prompt: `[describe] ${url.slice(0, 200)}`,
+        // promptParams: bridge'e iletilen (kind + imageUrl)
+        promptParams: bridgeReq as unknown as Prisma.InputJsonValue,
+      },
+    });
+    return { job, mjJob };
+  });
+
+  // 4) BullMQ enqueue
+  const payload: MidjourneyBridgeJobPayload = {
+    userId: input.userId,
+    midjourneyJobId: result.mjJob.id,
+    jobId: result.job.id,
+  };
+  await enqueue(JobType.MIDJOURNEY_BRIDGE, payload as unknown as Record<string, unknown>);
+
+  logger.info(
+    {
+      userId: input.userId,
+      midjourneyJobId: result.mjJob.id,
+      bridgeJobId: snapshot.id,
+      sourceAssetId: input.sourceAssetId ?? null,
+    },
+    "midjourney describe job created",
   );
 
   return {

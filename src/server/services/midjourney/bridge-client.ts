@@ -84,7 +84,29 @@ export type BridgeUpscaleRequest = {
   etsyhubJobId?: string;
 };
 
-export type BridgeJobRequest = BridgeGenerateRequest | BridgeUpscaleRequest;
+/**
+ * Pass 66 — Describe request kontrat (Pass 65 audit'in düzeltmesi).
+ *
+ * Bridge driver imageUrl'i indirir, /imagine "Add Images → Image Prompts"
+ * popover'ından upload eder, yüklü thumbnail üzerine hover edip
+ * vertical-dots menüden "Describe" tetikler. Sonuç: 4 prompt önerisi.
+ *
+ * Sözleşme:
+ *   - imageUrl HTTPS olmak zorunda (R17.2)
+ *   - Public erişilebilir (browser context auth/cookie'siz fetch eder)
+ *   - Çıktı görsel YOK; mjMetadata.describePrompts[] ve
+ *     mjMetadata.sourceImageUrl + mjMetadata.thumbnailSrc dolar
+ */
+export type BridgeDescribeRequest = {
+  kind: "describe";
+  imageUrl: string;
+  etsyhubJobId?: string;
+};
+
+export type BridgeJobRequest =
+  | BridgeGenerateRequest
+  | BridgeUpscaleRequest
+  | BridgeDescribeRequest;
 
 export type BridgeJobOutput = {
   gridIndex: number;

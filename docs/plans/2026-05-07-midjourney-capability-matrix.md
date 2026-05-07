@@ -78,6 +78,179 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 66 (Describe capability — Pass 65 audit'in düzeltmesi — tamamlanan) 🟢
+
+**Pass 65 audit'in YANLIŞ olduğu kanıtlandı.** Kullanıcının paylaştığı
+2 ekran görüntüsü (`describe_three-dots.png` + `describe_surukle_bırak.png`)
+MJ V8 web'de describe'ın **gerçekten var** olduğunu gösterdi:
+
+1. **Drag-drop describe drop zone** — sayfa-wide dragenter event'iyle
+   "Describe" overlay otomatik beliriyor ("Add Images" tuşu gerekmez)
+2. **Three-dots menü** — yüklü thumbnail HOVER → vertical-dots tıkla →
+   "Describe" / Edit / Remove dropdown menü
+
+**Pass 65 audit neden eksik kaldı:**
+- Sadece ÜST kategori sekmelerine baktım (Start Frame / Image Prompts /
+  Style References / Omni Reference); altta dedicated Describe drop
+  zone'u görmedim
+- Three-dots menüsü **hover state** ile dynamically appear ediyor;
+  default DOM probe'umda yoktu
+- `/describe` URL probesi 404 döndüğü için "yok" sonucuna atladım —
+  oysa describe **Add Images popover'ına entegre edilmiş**, ayrı
+  sayfa değil
+
+**Audit (4 ardışık probe scripti, gerçek browser):**
+- `probe-describe-dropzone.ts` — synthetic dragenter → describe overlay
+  DOM'a geliyor (`afterDescribeCount: 4`, "Describe" elementi 1143×141px
+  görünür)
+- `probe-describe-drop-result.ts` — synthetic drop event MJ tarafından
+  **trust filtreleniyor** (`isTrusted=false` React handler skip);
+  `numericListCount: 0` çıktı yok
+- `probe-describe-three-dots.ts` v1 — three-dots butonları default DOM'da
+  yok (hover gerekli)
+- `probe-describe-three-dots-v2.ts` — hover sonrası 5 SVG ortaya çıktı:
+  Reload / TextIcon / Trash / **Vertical-dots** (path `d="M12 5v.01M12
+  12v.01M12 19v.01..."` unique)
+- `probe-describe-end-to-end.ts` v3 — **4 GERÇEK prompt scrape edildi**
+  (climbDepth=6, Image Prompts tab → setInputFiles → hover → vertical-dots
+  → Describe → 4 `<p>` tag --ar 1:1 flag'iyle, dedupe)
+
+**Karar:** Three-dots menü yolu (drop synthetic event trust kaybı
+nedeniyle güvenilmez; three-dots %100 çalışıyor — gerçek user click,
+trust OK).
+
+**Eklenti etkisi YOK doğrulaması:**
+İlk e2e probe `5725b749/0_3` (boho wall art reference) ile yapıldı,
+çıktı **"happy new year" temasıydı** (görselle ilgisi yoktu — kullanıcı
+Chrome eklentisinin describe'ı background'da otomatik tetikliyor
+olabileceğini söyledi). MJ tab reset + farklı görsel (`c2edd80b/0_2`,
+abstract test pattern) ile **temaya uygun describe çıktısı geldi**:
+"abstract geometric composition / weathered grunge / rectangular
+shapes". Sonuç: describe gerçekten MJ native UI'sı ile çalışıyor;
+eklentinin müdahalesi yok.
+
+**Uygulanan:**
+
+- ✅ Bridge selectors (Pass 65 selector seti üstüne):
+  - `thumbnailMenuVerticalDots` (xpath: button içinde SVG path
+    `M12 5v.01...M12 12v.01...M12 19v.01` triple-match)
+  - `menuItemDescribe` (xpath: text="Describe")
+- ✅ `generate-flow.ts describeImage(page, selectors, imageUrl)` helper:
+  - Add Images popover idempotent open (Pass 65)
+  - Image Prompts tab seç (Pass 65)
+  - URL fetch yeni-tab + page.goto (Pass 49 CF-safe pattern)
+  - setInputFiles + 3sn bekle (MJ React state işlesin)
+  - Yüklü thumbnail bul (`s.mj.run/<id>?thumb=true` URL pattern)
+  - mouse.move ile hover
+  - Vertical-dots butonu DOM ata-traverse (max 8 climbDepth) +
+    fallback: thumbnail rect'ine en yakın dots-path-li button
+  - "Describe" menü öğesini tıkla
+  - 4 prompt sonucu poll (`<p>` tag, --ar flag içeren, dedupe,
+    90sn timeout)
+- ✅ `playwright.ts executeJob` `kind="describe"` branch:
+  - `executeDescribeJob` private method
+  - challenge/login probe (mevcut akış)
+  - describeImage helper çağrısı
+  - COMPLETED + outputs:[] + mjMetadata.describePrompts[] +
+    mjMetadata.sourceImageUrl + mjMetadata.thumbnailSrc
+- ✅ EtsyHub `bridge-client.ts` — `BridgeDescribeRequest` tipi +
+  `BridgeJobRequest` discriminated union'a eklendi
+- ✅ EtsyHub `midjourney.service.ts` — `createMidjourneyDescribeJob`:
+  - HTTPS validation (R17.2)
+  - Bridge enqueue (kind="describe")
+  - Atomic DB rows (Job + MidjourneyJob.kind=DESCRIBE)
+  - `prompt` alanı `[describe] {imageUrl}` (display)
+  - BullMQ MIDJOURNEY_BRIDGE worker enqueue
+  - `pollAndUpdate` mevcut akışı describe için no-op değişiklik
+    (snapshot.outputs boş → ingestOutputs çağrılmaz; mjMetadata
+    update zaten güncel akışta)
+- ✅ API route `/api/admin/midjourney/describe`:
+  - Zod: imageUrl HTTPS + sourceAssetId opsiyonel
+  - Lineage cross-check (admin sahipliği)
+  - Audit log: MIDJOURNEY_DESCRIBE
+- ✅ Admin UI:
+  - `DescribeButton` per-asset client component (`a.mjImageUrl` →
+    POST /describe → toast)
+  - `DescribeResults` panel (mjMetadata.describePrompts[] render +
+    Copy butonu + "Test Render'da kullan" link `?reusePrompt=...`)
+  - Detail page'de:
+    - kind=DESCRIBE job için DescribeResults panel render
+    - kind=GENERATE COMPLETED asset için DescribeButton (per-asset
+      ExportButtons hemen altında)
+- ✅ Bridge contract (`mj-bridge/src/types.ts`) — `kind: "describe"`
+  Pass 42'den vardı; driver branch boştu, Pass 66'da doldu
+
+**Doğrulama (gerçek MJ smoke — eklenti etkisi YOK):**
+
+| Smoke | Sonuç |
+|---|---|
+| TS check (EtsyHub + bridge) | ✅ Yeşil |
+| Token guard | ✅ Yeşil |
+| UI test suite | ✅ 946/946 |
+| Bridge enqueue + state machine | ✅ QUEUED → OPENING_BROWSER → SUBMITTING_PROMPT → COMPLETED |
+| **Real MJ describe (job 0d4a76b3-81e6-..., abstract test pattern)** | ✅ **~26 saniyede COMPLETED**, 4 prompt scrape edildi |
+| Tema doğruluğu | ✅ "abstract geometric composition / rectangular shapes / weathered grunge texture" — `c2edd80b/0_2` görseliyle uyumlu |
+| Eklenti müdahalesi | ❌ Yok (farklı görsel → farklı tema → eklenti olsaydı statik kalırdı) |
+| mjMetadata persist | ✅ `describePrompts[4]` + `sourceImageUrl` + `thumbnailSrc` snapshot'ta tam |
+
+**Pass 66 dürüst sınırlar:**
+
+- ✅ Describe end-to-end gerçek doğrulandı (Pass 65 v2 image-prompt'ta
+  yaşadığım "MJ tarafı tamam, bridge state stuck" sorunu burada YOK —
+  describe'da `waitForRender` çağrılmadığı için baseline UUID stuck
+  problemi düşmüyor)
+- 🟡 EtsyHub UI smoke (DescribeButton tıklama → pending state →
+  COMPLETED → DescribeResults render) **bu turda yapılmadı** (gerçek
+  bridge job + DOM doğrulaması bridge tarafında); EtsyHub UI tarafı
+  sadece TS+test gates'te doğrulandı, browser preview smoke Pass 67'ye
+- 🟡 `?reusePrompt=...` URL parametresi TestRenderForm'da henüz
+  okunmuyor — DescribeResults link'i çalışıyor ama Test Render formu
+  pre-fill yapmıyor. Pass 67'de `useSearchParams("reusePrompt")` ile
+  prompt input'a default value
+- 🟡 Drop-zone yolu **implement edilmedi** — synthetic event trust
+  problemi nedeniyle. Real hardware drag-drop için CDP üzerinden
+  `Input.dispatchDragEvent` denenebilir (Pass 67+ research adayı,
+  gerekirse)
+- 🟡 Bridge state polling stuck Pass 65'ten kalan sorun (image-prompt
+  generate akışında); describe etkilenmiyor ama image-prompt'ı
+  düzeltmek hâlâ Pass 67 hedefi
+- 🟡 **Animate / Start Frame korundu** (Pass 65'ten devralınmış kod
+  yolu) — Pass 65 v1 smoke'unda video render kanıtlandı; gelecek
+  pass'lerde `kind=animate` capability açılacak
+
+**Pass 65 yanılması neden vardı:**
+
+Hızlı audit + dar selector cover. Kullanıcının ekran görüntüleri ile
+düzeltildi. Kayıt: capability audit'lerinde dedicated drop-zone +
+hover-only menü öğeleri için **multi-pattern probe** zorunlu (CSS-only
+selector yetmez — interactive state'lere bakılmalı).
+
+**Capability matrix güncellemesi:**
+
+1. **next immediate (Pass 67)**:
+   - EtsyHub browser preview smoke: DescribeButton tıkla → spawn job →
+     DescribeResults render
+   - `?reusePrompt=...` URL parametresi TestRenderForm pre-fill
+   - Image-prompt waitForRender stuck fix (Pass 65'ten devralınan)
+2. **strong follow-up**:
+   - Animate / Start Frame `kind=animate` capability (kod yolu Pass
+     65'ten korundu)
+   - Reference Board "Bunun gibi varyasyonlar" → image-prompt entegrasyonu
+   - Style References + Omni Reference (selectors hazır)
+   - Drop-zone yolu real hardware drag-drop ile (CDP `Input.dispatchDragEvent`)
+3. **useful later**:
+   - Topaz Gigapixel research + desktop automation prototipi
+4. **do not now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Audit script'leri (Pass 67+ referans):**
+- `probe-describe-dropzone.ts` — drop overlay synthetic dragenter probe
+- `probe-describe-drop-result.ts` — synthetic drop trust fail kanıtı
+- `probe-describe-three-dots.ts` v1+v2 — hover-state SVG keşfi
+- `probe-describe-end-to-end.ts` v3 — gerçek 4 prompt scrape
+- `peek-add-images-state.ts` — Pass 65'ten korundu, live state peek
+- `reset-mj-tab.ts` — MJ tab reset (probe'lar arası clean state)
+
 ### Pass 65 (Describe pivot → Image-prompt akışı — kısmi 🟡) 🟡
 
 **Hedeflenen:** MJ `describe` capability (görsel → 4 prompt önerisi).

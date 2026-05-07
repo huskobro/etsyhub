@@ -46,6 +46,7 @@ import {
   attachImagePrompts,
   buildMJPromptString,
   captureBaselineUuids,
+  describeImage,
   downloadGridImages,
   SelectorMismatchError,
   submitPrompt,
@@ -609,6 +610,13 @@ export class PlaywrightDriver implements BridgeDriver {
       return;
     }
 
+    // Pass 66 — kind="describe" (Pass 65 audit'in düzeltmesi). Three-dots
+    // menü üzerinden 4 prompt önerisi scrape eder.
+    if (job.request.kind === "describe") {
+      await this.executeDescribeJob(job, onProgress, signal);
+      return;
+    }
+
     if (job.request.kind !== "generate") {
       onProgress({
         state: "FAILED",
@@ -1086,6 +1094,173 @@ export class PlaywrightDriver implements BridgeDriver {
       outputs,
       mjJobId: result.mjJobId,
       message: `Upscale ${mode} tamamlandı`,
+    });
+  }
+
+  /**
+   * Pass 66 — Describe executor (kind="describe").
+   *
+   * Pass 65 audit'in YANLIŞ "describe yok" sonucunun düzeltmesi:
+   * Kullanıcı ekran görüntüleri + canlı probe doğrulaması (e2e probe v3)
+   * gösterdi ki MJ V8 web'de describe **var** — three-dots menü üzerinden
+   * yüklü thumbnail'in dropdown'undan tetikleniyor.
+   *
+   * Akış:
+   *   1. /imagine sayfasına navigate (login/challenge probe)
+   *   2. describeImage helper çağrısı (Add Images popover → Image Prompts
+   *      tab → setInputFiles → hover thumbnail → vertical-dots → "Describe"
+   *      → 4 prompt scrape)
+   *   3. COMPLETED state + mjMetadata.describePrompts[]
+   *
+   * Çıktı kontratı: outputs[] BOŞ (describe görsel üretmez, prompt verir).
+   * mjMetadata.describePrompts[] dolu, mjMetadata.sourceImageUrl dolu.
+   * Caller (EtsyHub midjourney.service) bu metadata'yı saklayıp UI'da
+   * gösterir; MidjourneyAsset row açılmaz.
+   */
+  private async executeDescribeJob(
+    job: { id: string; request: CreateJobRequest },
+    onProgress: DriverProgressCallback,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (job.request.kind !== "describe") return; // type-narrow guard
+    if (!this.context) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "browser-crashed",
+        message: "Bridge init() henüz çağrılmadı",
+      });
+      return;
+    }
+    const { imageUrl } = job.request;
+    if (!imageUrl || !imageUrl.startsWith("https://")) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "internal-error",
+        message: `Describe imageUrl geçersiz (HTTPS şart): ${imageUrl?.slice(0, 80)}`,
+      });
+      return;
+    }
+
+    onProgress({ state: "OPENING_BROWSER", message: "Browser hazırlanıyor" });
+
+    const page = this.pickMjPage() ?? (await this.context.newPage());
+    await page.bringToFront().catch(() => undefined);
+
+    // /imagine sayfasına navigate (zaten oradaysa idempotent)
+    if (!page.url().startsWith(this.urls.imagine)) {
+      try {
+        await page.goto(this.urls.imagine, {
+          waitUntil: "domcontentloaded",
+          timeout: 30_000,
+        });
+      } catch (err) {
+        onProgress({
+          state: "FAILED",
+          blockReason: "browser-crashed",
+          message: `MJ ${this.urls.imagine} navigate fail: ${err instanceof Error ? err.message : "unknown"}`,
+        });
+        return;
+      }
+    }
+
+    // Challenge?
+    {
+      const ch = await detectChallengeRequired(page, this.selectors);
+      if (ch.challengeRequired) {
+        onProgress({
+          state: "AWAITING_CHALLENGE",
+          blockReason: "challenge-required",
+          message: ch.reason ?? "Challenge tespit edildi",
+        });
+        const cleared = await waitForChallengeCleared(page, this.selectors, {
+          timeoutMs: this.cfg.challengeTimeoutMs,
+          onPoll: (ms) => {
+            if (signal.aborted) return;
+            onProgress({
+              state: "AWAITING_CHALLENGE",
+              blockReason: "challenge-required",
+              message: `Bekliyoruz… ${Math.floor(ms / 1000)}s`,
+            });
+          },
+        });
+        if (signal.aborted) return;
+        if (!cleared.cleared) {
+          onProgress({
+            state: "FAILED",
+            blockReason: "challenge-required",
+            message: `Challenge ${this.cfg.challengeTimeoutMs / 1000}s içinde çözülmedi`,
+          });
+          return;
+        }
+      }
+    }
+
+    // Login?
+    {
+      const lg = await detectLoginRequired(page, this.selectors);
+      if (lg.loginRequired) {
+        onProgress({
+          state: "AWAITING_LOGIN",
+          blockReason: "login-required",
+          message: lg.reason,
+        });
+        const ok = await waitForLogin(page, this.selectors, {
+          timeoutMs: this.cfg.loginTimeoutMs,
+          onPoll: (ms) => {
+            if (signal.aborted) return;
+            onProgress({
+              state: "AWAITING_LOGIN",
+              blockReason: "login-required",
+              message: `Bekliyoruz… ${Math.floor(ms / 1000)}s`,
+            });
+          },
+        });
+        if (signal.aborted) return;
+        if (!ok.loggedIn) {
+          onProgress({
+            state: "FAILED",
+            blockReason: "login-required",
+            message: `Login ${this.cfg.loginTimeoutMs / 1000}s içinde tamamlanmadı`,
+          });
+          return;
+        }
+      }
+    }
+
+    onProgress({
+      state: "SUBMITTING_PROMPT",
+      message: "Describe için image yükleniyor + tetikleniyor",
+    });
+
+    let describeResult;
+    try {
+      describeResult = await describeImage(page, this.selectors, imageUrl, {
+        resultTimeoutMs: this.cfg.renderTimeoutMs,
+      });
+    } catch (err) {
+      const reason: JobBlockReason =
+        err instanceof SelectorMismatchError
+          ? "selector-mismatch"
+          : "internal-error";
+      onProgress({
+        state: "FAILED",
+        blockReason: reason,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
+    if (signal.aborted) return;
+
+    onProgress({
+      state: "COMPLETED",
+      outputs: [], // describe görsel üretmez
+      mjMetadata: {
+        kind: "describe",
+        sourceImageUrl: imageUrl,
+        thumbnailSrc: describeResult.thumbSrc,
+        describePrompts: describeResult.prompts,
+      },
+      message: `Describe tamamlandı: ${describeResult.prompts.length} prompt`,
     });
   }
 

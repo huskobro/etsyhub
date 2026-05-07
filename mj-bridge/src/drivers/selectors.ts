@@ -49,6 +49,18 @@ export type MJSelectorKey =
   | "addImagesTabImagePrompts"
   | "addImagesTabStyleReferences"
   | "addImagesTabOmniReference"
+  // Pass 66 — Describe akışı (Pass 65 audit'in düzeltmesi).
+  // Add Images popover'ında yüklü thumbnail HOVER edilince thumbnail
+  // üstünde 4 küçük buton görünür: Rerun / TextIcon / Trash /
+  // **Vertical-dots** (more options). Vertical-dots tıklanınca dropdown
+  // menü: "Describe / Edit / Remove". "Describe" tıklanınca aynı sayfada
+  // 4 prompt önerisi inline görünür (her prompt yanında "Use" butonu).
+  //
+  // Vertical-dots SVG path'i unique işaretle:
+  // `M12 5v.01M12 12v.01M12 19v.01` (3 nokta dikey).
+  // Selector aria-label/data-testid YOK; SVG path content ile ayırılır.
+  | "thumbnailMenuVerticalDots"
+  | "menuItemDescribe"
   | "cloudflareChallenge"
   | "hcaptchaChallenge"
   | "loginIndicator"
@@ -218,6 +230,23 @@ export const DEFAULT_SELECTORS: Record<MJSelectorKey, string> = {
     'xpath=//div[contains(@class, "border-r") ' +
     'and contains(., "Omni Reference") ' +
     'and contains(., "Use a person")]',
+
+  // Pass 66 — Vertical-dots SVG path'iyle ayırılan "More options" buton.
+  // SVG path content unique. Playwright'ın CSS engine'i SVG path filtresini
+  // doğrudan desteklemediği için xpath:
+  //   //button[.//svg/path[contains(@d, "M12 5v.01") and ...]]
+  // Probe v3 doğrulaması: thumbnail img'den 6 ata seviye climbDepth ile
+  // bulundu — SVG path en güvenilir.
+  thumbnailMenuVerticalDots:
+    'xpath=//button[.//svg/path[contains(@d, "M12 5v.01") ' +
+    'and contains(@d, "M12 12v.01") ' +
+    'and contains(@d, "M12 19v.01")]]',
+
+  // Pass 66 — Dropdown menüde "Describe" öğesi (vertical-dots tıklandıktan
+  // sonra). MJ menüsü "Describe / Edit / Remove" sırasıyla. Probe v3'te
+  // `text=/^Describe$/` çalıştı.
+  menuItemDescribe:
+    'xpath=//*[normalize-space(text())="Describe"]',
 
   // Cloudflare challenge iframe — URL pattern kontrol.
   cloudflareChallenge: 'iframe[src*="challenges.cloudflare.com"]',

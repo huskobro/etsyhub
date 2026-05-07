@@ -31,6 +31,8 @@ import { FailureDetail } from "./FailureDetail";
 import { UpscaleButton } from "./UpscaleButton";
 import { ExportButtons } from "./ExportButtons";
 import { AssetBatchPanel } from "./AssetBatchPanel";
+import { DescribeButton } from "./DescribeButton";
+import { DescribeResults } from "./DescribeResults";
 
 const STATE_LABELS: Record<string, string> = {
   QUEUED: "Sırada",
@@ -347,6 +349,38 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
         />
       ) : null}
 
+      {/* Pass 66 — Describe-tipi job için 4 prompt önerisi paneli.
+          mjMetadata.describePrompts[] driver tarafından scrape edilir +
+          pollAndUpdate ile DB'ye yazılır. Generate-tipi job'larda görünmez. */}
+      {(() => {
+        if (job.kind !== "DESCRIBE") return null;
+        const md = job.mjMetadata as
+          | {
+              describePrompts?: string[];
+              sourceImageUrl?: string;
+            }
+          | null;
+        const prompts = md?.describePrompts ?? [];
+        if (prompts.length === 0) {
+          return (
+            <div
+              className="rounded-md border border-border bg-surface p-4 text-sm text-text-muted"
+              data-testid="mj-describe-pending"
+            >
+              {job.state === "FAILED"
+                ? "Describe başarısız."
+                : `Describe çalışıyor (${STATE_LABELS[job.state] ?? job.state})…`}
+            </div>
+          );
+        }
+        return (
+          <DescribeResults
+            prompts={prompts}
+            sourceImageUrl={md?.sourceImageUrl ?? null}
+          />
+        );
+      })()}
+
       <section data-testid="mj-job-outputs">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold">
@@ -473,6 +507,17 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
                       sharp ile istenen format'a dönüşür. */}
                   {job.state === "COMPLETED" ? (
                     <ExportButtons midjourneyAssetId={a.id} />
+                  ) : null}
+                  {/* Pass 66 — Describe (Pass 65 audit'in düzeltmesi):
+                      bu asset'in MJ CDN URL'inden 4 prompt önerisi çıkar.
+                      Tıklanınca yeni kind=DESCRIBE job tetiklenir; sonuç
+                      ayrı detail page'inde görünür. mjImageUrl null ise
+                      buton disabled. */}
+                  {job.state === "COMPLETED" ? (
+                    <DescribeButton
+                      sourceAssetId={a.id}
+                      imageUrl={a.mjImageUrl}
+                    />
                   ) : null}
                   {/* Pass 60 — Per-asset upscale child'ları (lineage). */}
                   {a.children.length > 0 ? (
