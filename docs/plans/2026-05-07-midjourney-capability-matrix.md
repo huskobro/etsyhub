@@ -78,6 +78,204 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 70 (AutoSail derin audit + 2 carry-over bug fix + preferences katmanı + capability map) 🟢
+
+**Pass 69 carry-over bug'lar tamir edildi:**
+
+#### Bug fix #1 — BullMQ MIDJOURNEY_BRIDGE worker bootstrap
+
+**Sorun:** `startWorkers` (src/server/workers/bootstrap.ts) hiçbir yerde
+çağrılmıyor; dev server'da worker yok → kuyrukta birikme. Pass 69'da
+bridge tarafı COMPLETED'a gidiyor ama EtsyHub DB sync olmuyor (Pass 69
+manuel pollAndUpdate workaround).
+
+**İlk deneme: Next.js 14 instrumentation hook** (`src/instrumentation.ts`)
++ `experimental.instrumentationHook: true`. Sonuç: BullMQ + bridge
+handler `node:crypto`, `node:path` import ediyor → webpack bundle'a
+alıyor → Module not found. `serverComponentsExternalPackages` ve manuel
+webpack externals denedim, hala bundle'a giriyordu (instrumentation
+chunk'ı external'a uymuyor).
+
+**Final çözüm: lazy idempotent worker init.**
+- `src/server/workers/midjourney-bridge.bootstrap.ts`:
+  `ensureMidjourneyBridgeWorker()` — ilk çağrıda Worker oluşturur, sonraki
+  çağrılarda no-op
+- `midjourney.service.ts` — `createMidjourneyJob` ve
+  `createMidjourneyDescribeJob` enqueue ÖNCESİ ensure çağrısı
+
+Avantajlar:
+- Webpack bundle dışı (her API route Node runtime'da çalışır, dynamic
+  import sorunu yok)
+- Idempotent
+- Sadece kullanılan kod yolu tetikler (lazy)
+- Diğer worker'lar (selection/mockup/magic-eraser) etkilenmez
+
+**Kanıt:** Dev server restart sonrası DescribeButton tıklama →
+- `MIDJOURNEY_BRIDGE worker started (lazy ensure)` log'u
+- `cmovpii7...` job ~30 sn içinde DB'ye yansıdı (`state: COMPLETED`,
+  `describeMethod: api`, `promptCount: 4`)
+
+#### Bug fix #2 — DescribeButton client tetikleme
+
+**Sorun:** `startTransition(async () => ...)` — React/Next 14 useTransition
+async function'ı sessiz drop ediyor; fetch hiç tetiklenmiyor.
+
+**Fix:** `useTransition` → plain `async function handleClick()` + manuel
+`useState<boolean>(false)` for pending. `try/finally` ile clean.
+
+**Kanıt:** Dev server'da DescribeButton tıklama → API call → success
+toast `"✓ Describe job tetiklendi · cmovpii7…"` UI'da görünür.
+
+---
+
+**Pass 70 ana paket: AutoSail derin audit + ürünleştirme**
+
+#### Aşama A: AutoSail derin audit
+
+Pass 67/68/69'dan farklı olarak bu turda **eklentinin tüm konfigürasyon
+yüzeyi**ni canlı dump ettim (CDP via WebSocket → Runtime.evaluate →
+`localStorage.getItem("TAMPER_MIDJOURNEY_STORAGE_SETTINGS")`):
+
+**100+ ayar field'ı** (kategorize):
+
+| Kategori | Field'lar |
+|---|---|
+| Send/Queue | sendMode, tasksPerRound `[7,10]`, intervalTime `[30,45]`, roundIntervalTime `[2,3]`, waitQueueTime, scheduledSend, sendRandomMessage |
+| Describe | describeSendMode, describeIntervalTime `[15,25]`, clearDescribeAfterSend, useFirstPartOfPromptAfterDescribe, **promptsSendAfterDescribe: 4** (otomatik 4 prompt → 4 generate) |
+| Download | downloadFolder, autoCutAndDownloadImage, downloadUpscaleImage, downloadImageFormat, autoFolder, autoFolderValue `["category","channel"]`, useDownloader |
+| Rename rules | 10 farklı rule (datetime/title/imagetitle/filefolder/filename/username/prompt/jobid/random/custom), 3'ü default checked |
+| Generate | imagesUpscaleAfterImagine: 4, imagesDownloadAfterImagine: 4, customImagesDownloadAfterImagine |
+| Risk/safety | autoRiskNotification + email, enableBannedWordsDetect, customBannedWords, useDefaultBannedWords, addRandomSeed |
+| Auto recovery | autoRetry, autoRetryTimes, autoRefresh, autoRefreshTimeout, autoResumeUnfinishedTasks, saveFailedTasks |
+| Random pre/suffix | enableRandomPreSuffix, useDifferentRandomPreSuffixOnBatch, useDifferentRandomPreSuffixOnDescribe |
+| **apiMode** | **3rd-party API gateway** (kendi MJ aboneliği yerine API key) — bizim için ALAKASIZ |
+
+**Dexie (IndexedDB) tabloları:**
+- `templates`, `variables` (`@var` syntax + tags), `variableTags`,
+  `uploadedImages`, `uploadedFiles`, `tmpUploadedFiles`
+
+**Window globals (sayfa context'ine expose):**
+- `__GET_AUTOJOURNEY_SETTINGS__()`, `autojourneyLocalStorage`,
+  `autojourneyRenameImage`
+
+**DOM injection:** `autojourney-mentions-*` (prompt textarea autocomplete),
+`aj-prompt-match-button`
+
+#### Aşama B: 4 kova karar matrisi
+
+**Build now (Pass 70):**
+- ✅ Pass 69 carry-over bug fix #1 + #2
+- ✅ **Preferences typed registry + UI panel** (AutoSail-inspired ürün
+  katmanı)
+- ✅ **Service capability map** (app-agnostic MJ servis yüzeyi tasarımı)
+
+**Strong follow-up (Pass 71+):**
+- Generate API helper (`POST /api/submit-jobs`) — channelId/userId
+  resolution + render polling endpoint live capture
+- Pre/Suffix prompt enhance + Random pre/suffix (variation diversity)
+- Variables (`@var` syntax)
+- Filename rename rules (selection-export'a entegre)
+- Auto-retry / auto-refresh worker davranışı
+- Sref/oref/cref UI input alanları (TestRenderForm)
+- `--cref` MjGenerateParams field
+- Auto-expand-promote preference detail page'e bağlama
+
+**Useful later:**
+- Banned words detect (Negative Library zaten var; sadece UI hook)
+- Scheduled send (BullMQ delayed)
+- Risk notification
+
+**Do not now:**
+- ❌ apiMode (3rd-party API key gateway)
+- ❌ autojourney `apijourney.*` backend
+- ❌ Discord support
+- ❌ Translate prompts (`${Dx}/api/translate/prompts`)
+- ❌ Email cache
+
+#### Aşama C: Implementation
+
+**Yeni dosyalar:**
+- `src/app/(admin)/admin/midjourney/preferences.ts` — typed preference
+  registry. 2 field (default-export-format Pass 64'ten taşındı +
+  autoExpandPromoteAfterCompletion yeni). Her preference için: storageKey,
+  default, parse, serialize, label, description.
+- `src/app/(admin)/admin/midjourney/MidjourneyPreferencesPanel.tsx` —
+  collapse panel UI. `<details>` summary "⚙ Tercihler (N ayar · cihazda
+  saklanır)". Cross-tab sync `storage` event ile.
+- `src/server/workers/midjourney-bridge.bootstrap.ts` — lazy idempotent
+  worker init.
+- `docs/plans/2026-05-07-mj-service-capability-map.md` — app-agnostic
+  servis yüzeyi tasarımı (15 capability satırı + 6 endpoint öneri:
+  generate/describe/upscale/jobs[id]/jobs[id]/outputs/jobs[id]/cancel).
+
+**Değişen dosyalar:**
+- `src/app/(admin)/admin/midjourney/page.tsx` — MidjourneyPreferencesPanel
+  mount (ListBatchPanel altı, TestRenderForm üstü).
+- `src/app/(admin)/admin/midjourney/[id]/PromoteToReview.tsx` — `autoExpand`
+  prop eklendi (default true tarihsel uyumlu; şimdilik kullanılmıyor,
+  Pass 71'de detail page'den preference'a bağlanır).
+- `src/app/(admin)/admin/midjourney/[id]/DescribeButton.tsx` — useTransition
+  → plain async (Pass 69 bug fix #2).
+- `src/server/services/midjourney/midjourney.service.ts` —
+  `ensureMidjourneyBridgeWorker()` enqueue öncesi (Pass 69 bug fix #1).
+
+**Capability map ana 6 endpoint önerisi (Pass 72+ kapsamı):**
+```
+POST /v1/mj/generate
+POST /v1/mj/describe
+POST /v1/mj/upscale
+GET  /v1/mj/jobs/{jobId}
+GET  /v1/mj/jobs/{jobId}/outputs/{gridIndex}.{format}
+POST /v1/mj/jobs/{jobId}/cancel
+```
+
+#### Doğrulama
+
+| Smoke | Sonuç |
+|---|---|
+| TS check (EtsyHub + bridge) | ✅ |
+| Token guard | ✅ |
+| UI test 946/946 | ✅ |
+| Dev server boot (instrumentation hook geri alındı, lazy ensure) | ✅ Temiz, 307/200 |
+| MidjourneyPreferencesPanel render | ✅ 2 ayar, summary metni doğru |
+| Preferences localStorage cross-tab sync | ✅ Manuel test (storage event) |
+| **DescribeButton tıklama** | ✅ POST tetiklendi, success toast UI'da görünür |
+| **MIDJOURNEY_BRIDGE worker lazy ensure** | ✅ Log: "MIDJOURNEY_BRIDGE worker started (lazy ensure)" |
+| **End-to-end describe job DB sync** | ✅ `cmovpii7...` ~30 sn'de COMPLETED, describeMethod=api, 4 prompt |
+
+#### Pass 70 dürüst sınırlar
+
+- ✅ Pass 68/69 describe API path **regresyon yok** — yeni job aynı
+  hız + describeMethod=api sonucu
+- 🟡 **Generate API helper Pass 71'e** — channelId/userId resolution
+  belirsizliği (live capture v2 gerek), DOM-less submission ghost-job
+  riski test edilmedi
+- 🟡 `autoExpandPromoteAfterCompletion` toggle UI'da görünür ve
+  saklanıyor AMA **detail page tarafında henüz davranışa bağlı değil**
+  (yapısal hazırlık; Pass 71 detail page wrapper'da bağlar)
+- 🟡 **Sadece MIDJOURNEY_BRIDGE worker lazy ensure**; diğer worker'lar
+  (selection-edit, mockup-render, magic-eraser, vb.) hâlâ
+  bootstrap.ts'in `startWorkers` üzerinden — bu fonksiyon HİÇ
+  ÇAĞRILMIYOR (mevcut sistemdeki başka standalone runner var mı
+  bilmiyorum). Pass 71+ kapsamı: tüm worker'ları lazy-ensure
+  pattern'iyle veya per-API-route bootstrap'le düzelt.
+- 🟡 Generate hattı hâlâ DOM-tabanlı (Pass 49 typing+Enter); API path
+  Pass 71+'da
+
+#### AutoSail'den alınacak en değerli özelliklerin sıralaması (Pass 71+ roadmap)
+
+1. **Generate API path** — kanıt güçlü (Pass 69 capture), hız 4-6× +
+   DOM-less + bot-algı azalır
+2. **`@var` variable substitution** — batch generate için çok değerli
+   (örn. "@color sunset bird" + variables [orange,purple,gold] → 3 job)
+3. **Pre/Suffix prompt enhance** — operatör productivity
+4. **Filename rename rules** — selection-export ile entegre (operatör
+   download UX)
+5. **Sref/oref/cref UI** — bridge zaten destekliyor, sadece input alanı
+   ekle
+6. **Auto-retry / auto-refresh-when-stuck** — worker davranışı
+7. **Image-prompt waitForRender stuck fix** (Pass 65 carry-over)
+
 ### Pass 69 (Describe reverify + Generate API endpoint kanıtı — audit-only) 🟢
 
 **Aşama 1: Describe API path tekrar doğrulama**

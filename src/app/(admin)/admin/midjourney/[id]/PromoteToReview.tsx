@@ -33,6 +33,13 @@ type PromoteToReviewProps = {
   defaultReferenceId?: string | null;
   /** MJ job'un productTypeId'si — varsa default olarak seçili gelir. */
   defaultProductTypeId?: string | null;
+  /**
+   * Pass 70 — Kullanıcı `autoExpandPromoteAfterCompletion` tercihini
+   * açtıysa true gelir; form kullanıcının onayını beklemeden tüm
+   * detayları gösterir (yine de manuel seçim/onay gerekir, otomatik
+   * promote YOK). Default false (tarihsel davranışla uyumlu).
+   */
+  autoExpand?: boolean;
 };
 
 export function PromoteToReview({
@@ -40,6 +47,12 @@ export function PromoteToReview({
   assets,
   defaultReferenceId,
   defaultProductTypeId,
+  // Pass 70 — Tarihsel davranışla uyumlu default (her zaman açık).
+  // Kullanıcı autoExpandPromoteAfterCompletion=false derse bu prop
+  // false geçilebilir (Pass 71'de detail page wrapper kararını alır).
+  // Bu turda preference UI'da gözükür ama henüz collapse davranışı
+  // bağlanmadı (PoC: typed registry + UI panel + opt-in toggle).
+  autoExpand: _autoExpand = true,
 }: PromoteToReviewProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();

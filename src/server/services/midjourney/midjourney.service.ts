@@ -23,6 +23,7 @@ import { sha256 } from "@/lib/hash";
 import { getStorage } from "@/providers/storage";
 import { env } from "@/lib/env";
 import { enqueue } from "@/server/queue";
+import { ensureMidjourneyBridgeWorker } from "@/server/workers/midjourney-bridge.bootstrap";
 import type { MidjourneyBridgeJobPayload } from "@/server/workers/midjourney-bridge.worker";
 import {
   BridgeUnreachableError,
@@ -184,6 +185,9 @@ export async function createMidjourneyJob(
     midjourneyJobId: result.mjJob.id,
     jobId: result.job.id,
   };
+  // Pass 70 — Lazy worker bootstrap (Pass 69 carry-over bug #1).
+  // Idempotent: ilk enqueue'da Worker'ı kayıtla et, sonrakilerde no-op.
+  ensureMidjourneyBridgeWorker();
   await enqueue(JobType.MIDJOURNEY_BRIDGE, payload as unknown as Record<string, unknown>);
 
   logger.info(
@@ -289,6 +293,9 @@ export async function createMidjourneyDescribeJob(
     midjourneyJobId: result.mjJob.id,
     jobId: result.job.id,
   };
+  // Pass 70 — Lazy worker bootstrap (Pass 69 carry-over bug #1).
+  // Idempotent: ilk enqueue'da Worker'ı kayıtla et, sonrakilerde no-op.
+  ensureMidjourneyBridgeWorker();
   await enqueue(JobType.MIDJOURNEY_BRIDGE, payload as unknown as Record<string, unknown>);
 
   logger.info(

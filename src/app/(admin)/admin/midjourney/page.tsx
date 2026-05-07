@@ -20,6 +20,7 @@ import { TestRenderForm } from "./TestRenderForm";
 import { AssetThumb } from "./AssetThumb";
 import { JobListFilters } from "./JobListFilters";
 import { ListBatchPanel } from "./ListBatchPanel";
+import { MidjourneyPreferencesPanel } from "./MidjourneyPreferencesPanel";
 
 function stateTone(state: string): BadgeTone {
   if (state === "COMPLETED") return "success";
@@ -399,6 +400,11 @@ MJ_BRIDGE_TOKEN=<aynı token>
           üzerinde akıllı seçim + bulk export ZIP. Sticky top-0 — filtre
           değişince anında ne seçileceği netleşsin. */}
       <ListBatchPanel visibleAssets={visibleAssets} />
+
+      {/* Pass 70 — MJ kullanıcı tercihleri (typed registry, AutoSail
+          audit'inden ilham). Tek panelde default-export-format +
+          auto-expand-promote-after-completion. */}
+      <MidjourneyPreferencesPanel />
 
       {/* Pass 50 — operator Test Render tetikleyici. Bridge sağlıklı
           değilse form disabled ama görünür kalır (operator

@@ -10,7 +10,7 @@
 // Bridge yoksa banner zaten parent sayfada gösteriliyor; burada UI
 // minimum: button → API → toast.
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 type DescribeButtonProps = {
@@ -28,48 +28,49 @@ export function DescribeButton({
   bridgeOk = true,
 }: DescribeButtonProps) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  // Pass 70 fix: useTransition `async () =>` callback'i sessiz drop ediyordu
+  // (Pass 69 carry-over bug). Plain async + manuel pending state daha güvenli.
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const disabled = !bridgeOk || !imageUrl || pending;
 
-  function handleClick() {
+  async function handleClick() {
     if (!imageUrl) return;
     setError(null);
     setSuccess(null);
-    startTransition(async () => {
-      try {
-        const res = await fetch("/api/admin/midjourney/describe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imageUrl, sourceAssetId }),
-        });
-        const json = (await res.json().catch(() => null)) as
-          | {
-              ok: true;
-              jobId: string;
-              midjourneyJobId: string;
-              bridgeJobId: string;
-            }
-          | { ok: false; error: string; code?: string }
-          | null;
-        if (!res.ok || !json || json.ok !== true) {
-          setError(
-            (json && json.ok === false && json.error) || `HTTP ${res.status}`,
-          );
-          return;
-        }
-        setSuccess(
-          `Describe job tetiklendi · ${json.midjourneyJobId.slice(0, 8)}…`,
+    setPending(true);
+    try {
+      const res = await fetch("/api/admin/midjourney/describe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl, sourceAssetId }),
+      });
+      const json = (await res.json().catch(() => null)) as
+        | {
+            ok: true;
+            jobId: string;
+            midjourneyJobId: string;
+            bridgeJobId: string;
+          }
+        | { ok: false; error: string; code?: string }
+        | null;
+      if (!res.ok || !json || json.ok !== true) {
+        setError(
+          (json && json.ok === false && json.error) || `HTTP ${res.status}`,
         );
-        // Parent server component'i yenile — yeni describe job listede
-        // görünmez (ayrı sayfa, ama parent refresh state'i tazeler)
-        router.refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Bilinmeyen hata");
+        return;
       }
-    });
+      setSuccess(
+        `Describe job tetiklendi · ${json.midjourneyJobId.slice(0, 8)}…`,
+      );
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bilinmeyen hata");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
