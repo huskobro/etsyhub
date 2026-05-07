@@ -71,13 +71,16 @@ export type BridgeGenerateRequest = {
     characterReferenceUrls?: string[];
     /**
      * Pass 71 — API-first submit opt-in flag (deneysel).
-     * Bridge driver kontratı `mj-bridge/src/types.ts` ile senkron tutulmalı.
-     * Default false: bridge DOM submit (Pass 49 production-grade).
-     * true: bridge önce `POST /api/submit-jobs` dener; ghost-job riski
-     * (kullanıcının MJ tab React store güncellenmiyor) yüzünden Pass 71'de
-     * deneysel; Pass 72+ render polling endpoint kanıtlanırsa default'a alınır.
+     * @deprecated Pass 74 — `submitStrategy` field'ı tercih edilir.
      */
     preferApiSubmit?: boolean;
+    /**
+     * Pass 74 — Submit strategy preference.
+     * "auto" (default): bridge capability bazında en sağlam yolu seçer.
+     * "api-first": önce API yolunu dener, fail olursa DOM fallback.
+     * "dom-first": önce DOM, fail olursa API fallback.
+     */
+    submitStrategy?: "auto" | "api-first" | "dom-first";
   };
   etsyhubJobId?: string;
 };

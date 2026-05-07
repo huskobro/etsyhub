@@ -53,6 +53,7 @@ import {
   submitPrompt,
   submitPromptViaApi,
   triggerUpscale,
+  uploadImagePromptsViaApi,
   waitForJobReadyViaApi,
   waitForRender,
   waitForUpscaleResult,
@@ -717,34 +718,16 @@ export class PlaywrightDriver implements BridgeDriver {
       }
     }
 
-    // Pass 65 — Image-prompt akışı: submit ÖNCESİ "Add Images → Image
-    // Prompts" popover'ından file input'a referans görselleri yükle.
-    // MJ V8 web'de URL paste-as-image-prompt çalışmıyor; gerçek upload
-    // şart. Reference URL'leri yoksa adım atlanır (no-op).
+    // Pass 74 — Image-prompt akışı strategy-aware oldu.
+    // - DOM submit yolu (Pass 49): mevcut `attachImagePrompts` (Pass 65)
+    //   "Add Images → Image Prompts" popover + setInputFiles
+    // - API submit yolu (Pass 74): `uploadImagePromptsViaApi` (storage
+    //   -upload-file → cdn URL'ler) + submit-jobs body'sinde prompt
+    //   ön-eki olarak URL'ler
+    //
+    // Image-prompt yükleme stratejiyi takip eder; karar `wantApiFirst`
+    // hesaplandıktan sonra yapılır (aşağıda).
     const referenceUrls = job.request.params.imagePromptUrls ?? [];
-    if (referenceUrls.length > 0) {
-      onProgress({
-        state: "SUBMITTING_PROMPT",
-        message: `${referenceUrls.length} referans görsel yükleniyor`,
-      });
-      try {
-        await attachImagePrompts(page, this.selectors, referenceUrls);
-      } catch (err) {
-        const reason: JobBlockReason =
-          err instanceof SelectorMismatchError
-            ? "selector-mismatch"
-            : "internal-error";
-        onProgress({
-          state: "FAILED",
-          blockReason: reason,
-          message:
-            err instanceof Error
-              ? `Image-prompt upload fail: ${err.message}`
-              : String(err),
-        });
-        return;
-      }
-    }
 
     // Pass 71 — Submit strategy.
     //
@@ -770,8 +753,33 @@ export class PlaywrightDriver implements BridgeDriver {
     let knownMjJobId: string | null = null;
     let submitMethod: "api" | "dom" = "dom";
     let apiSubmitError: string | null = null;
+    // Pass 74 — Submit strategy resolution.
+    //
+    //   "auto" (default): capability bazlı en sağlam yol.
+    //     Generate için: image-prompt YOK → API; varsa → DOM (Pass 73
+    //     guard mantığı). Bu otomatik karar matrisi gelecekte
+    //     genişletilecek (örn. /api/storage-upload-file PoC kanıtlanırsa
+    //     image-prompt'lı `auto` da API'ye yönlendirilir).
+    //
+    //   "api-first": önce API; fail → DOM fallback. Image-prompt varsa
+    //     hâlâ DOM'a düşer (Pass 73 guard hâlâ uygulanır).
+    //
+    //   "dom-first": her zaman DOM (Pass 49 production-grade). API
+    //     fallback Pass 74 V1'de eklenmiyor (DOM stable; nadir fail).
+    //
+    // Geriye uyumlu: `preferApiSubmit: true` (Pass 71) →
+    // `submitStrategy: "api-first"`. Service tarafı bu mapping'i yapıyor;
+    // bridge tarafı da burada redundant kabul ediyor.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const preferApiSubmit = (job.request.params as any).preferApiSubmit === true;
+    const requestParams = job.request.params as any;
+    const requestedStrategy: "auto" | "api-first" | "dom-first" =
+      requestParams.submitStrategy === "api-first" ||
+      requestParams.submitStrategy === "dom-first" ||
+      requestParams.submitStrategy === "auto"
+        ? requestParams.submitStrategy
+        : requestParams.preferApiSubmit === true
+          ? "api-first"
+          : "auto";
     // Pass 73 — Image-prompt + API-first guard.
     //
     // attachImagePrompts (Pass 65) DOM-tabanlı: "Add Images → Image Prompts"
@@ -785,23 +793,37 @@ export class PlaywrightDriver implements BridgeDriver {
     // DOM submit'e düş. Pass 74 alternatif: `/api/storage-upload-file`
     // ile API-tabanlı upload + submit body'sine bucketPathname ekleme.
     const hasImagePrompt = referenceUrls.length > 0;
-    const apiSubmitAllowed = preferApiSubmit && !hasImagePrompt;
-    if (preferApiSubmit && hasImagePrompt) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        "[generate] preferApiSubmit ignored: image-prompt mevcut → DOM submit'e düşülüyor (Pass 73 guard).",
-      );
+
+    // Strategy → wantApiFirst boolean.
+    //
+    // Pass 74 önemli değişim: image-prompt + API-first ARTIK UYUMLU.
+    // Pass 74 capture kanıtladı (kullanıcının manuel image-prompt
+    // submit'i): MJ V8 web image-prompt'u submit body'sinde
+    //   `prompt: "<cdn_url> <user_prompt> --flags"` + `metadata.imagePrompts: N`
+    // formatında işliyor. Önce `/api/storage-upload-file` ile MJ kendi
+    // storage'a upload, sonra CDN URL'leri prompt ön-eki. Pass 73 guard
+    // (image-prompt → DOM zorla) kaldırıldı.
+    let wantApiFirst: boolean;
+    if (requestedStrategy === "api-first") {
+      wantApiFirst = true;
+    } else if (requestedStrategy === "dom-first") {
+      wantApiFirst = false;
+    } else {
+      // "auto": Pass 74'ten sonra image-prompt API'ye uyumlu →
+      // her durumda API tercih edilir. DOM fallback fail durumunda devreye
+      // girer.
+      wantApiFirst = true;
     }
 
-    if (apiSubmitAllowed) {
+    if (wantApiFirst) {
       onProgress({
         state: "SUBMITTING_PROMPT",
-        message: "Prompt API yolu deneniyor (opt-in)",
+        message:
+          requestedStrategy === "api-first"
+            ? "Prompt API yolu deneniyor"
+            : "Prompt API yolu deneniyor (auto)",
       });
       try {
-        // Pass 73 — submitPromptViaApi metadata.* count'ları net ilet.
-        // Image-prompt count guard'a girmediği durumda (yani 0) imagePromptCount=0;
-        // sref + cref URL count'ları submit body'sinin metadata'sına yansıt.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const params = job.request.params as any;
         const styleCount = Array.isArray(params.styleReferenceUrls)
@@ -810,9 +832,28 @@ export class PlaywrightDriver implements BridgeDriver {
         const charCount = Array.isArray(params.characterReferenceUrls)
           ? params.characterReferenceUrls.length
           : 0;
+
+        // Pass 74 — Image-prompt API upload (Pass 74 kapsamı).
+        // referenceUrls dışsal URL'ler; her birini /api/storage-upload-file
+        // ile MJ storage'a yükle, cdn URL listesini al. submitPromptViaApi
+        // bunu prompt ön-eki olarak kullanacak.
+        let imagePromptCdnUrls: string[] = [];
+        if (hasImagePrompt) {
+          onProgress({
+            state: "SUBMITTING_PROMPT",
+            message: `${referenceUrls.length} image-prompt yükleniyor (API)`,
+          });
+          imagePromptCdnUrls = await uploadImagePromptsViaApi(
+            page,
+            referenceUrls,
+            { fetchTimeoutMs: 60_000 },
+          );
+        }
+        if (signal.aborted) return;
+
         const apiResult = await submitPromptViaApi(page, promptString, {
           mode: "relaxed",
-          imagePromptCount: 0, // Pass 73 — image-prompt API path'te yasak (yukarıdaki guard)
+          imagePromptCdnUrls, // Pass 74: prompt ön-eki + metadata.imagePrompts
           imageReferenceCount: styleCount,
           characterReferenceCount: charCount,
         });
@@ -832,11 +873,44 @@ export class PlaywrightDriver implements BridgeDriver {
     let baselineUuids: Set<string> = new Set<string>();
 
     if (knownMjJobId === null) {
+      const apiTried = wantApiFirst && apiSubmitError !== null;
+
+      // Pass 65/74 — DOM submit yolunda image-prompt'lar popover üzerinden
+      // yüklenir (DOM-tabanlı `attachImagePrompts`). API submit yolunda
+      // upload zaten `uploadImagePromptsViaApi` ile yapıldı; oraya
+      // gerek yok.
+      if (hasImagePrompt) {
+        onProgress({
+          state: "SUBMITTING_PROMPT",
+          message: `${referenceUrls.length} image-prompt yükleniyor (DOM)`,
+        });
+        try {
+          await attachImagePrompts(page, this.selectors, referenceUrls);
+        } catch (err) {
+          const reason: JobBlockReason =
+            err instanceof SelectorMismatchError
+              ? "selector-mismatch"
+              : "internal-error";
+          onProgress({
+            state: "FAILED",
+            blockReason: reason,
+            message:
+              err instanceof Error
+                ? `Image-prompt DOM upload fail: ${err.message}`
+                : String(err),
+          });
+          return;
+        }
+        if (signal.aborted) return;
+      }
+
       onProgress({
         state: "SUBMITTING_PROMPT",
-        message: preferApiSubmit
+        message: apiTried
           ? `Prompt DOM (API fail: ${apiSubmitError?.slice(0, 80) ?? "bilinmiyor"})`
-          : "Prompt gönderiliyor",
+          : requestedStrategy === "dom-first"
+            ? "Prompt gönderiliyor (DOM-first)"
+            : "Prompt gönderiliyor",
       });
       baselineUuids = await captureBaselineUuids(
         page,
@@ -855,7 +929,7 @@ export class PlaywrightDriver implements BridgeDriver {
           blockReason: reason,
           message:
             err instanceof Error
-              ? preferApiSubmit
+              ? apiTried
                 ? `API fail (${apiSubmitError?.slice(0, 60)}); DOM submit fail: ${err.message}`
                 : err.message
               : String(err),
@@ -941,6 +1015,11 @@ export class PlaywrightDriver implements BridgeDriver {
         version: job.request.params.version,
         // Pass 71 — submit yolunu işaretle (admin UI gözlem için)
         submitMethod,
+        // Pass 74 — kullanıcının/preferences'in seçtiği strategy
+        // (auto / api-first / dom-first). Admin UI'da "ne istendi"
+        // ile "ne yapıldı" karşılaştırması (örn. auto + image-prompt
+        // → submitMethod=dom, kullanıcı için açık).
+        submitStrategy: requestedStrategy,
         ...(apiSubmitError ? { apiSubmitFallbackReason: apiSubmitError } : {}),
       },
     });

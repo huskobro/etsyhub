@@ -785,6 +785,138 @@ export async function attachImagePrompts(
  *   - HTTP non-200 / response.failure[].length > 0 → throw
  *   - Network fail → throw
  */
+/**
+ * Pass 74 — Image-prompt upload via MJ internal API.
+ *
+ * Pass 73 image-prompt + API-first uyumsuzluğunu çözen helper. Pass 74
+ * live capture (kullanıcı manuel image-prompt + submit yaptı) MJ'nin
+ * gerçek contract'ını kanıtladı:
+ *
+ *   1. Image-prompt URL'leri MJ'nin kendi storage'ına `/api/storage-upload-file`
+ *      ile yüklenir (multipart, `version: 2` + `X-Csrf-Protection: 1` header)
+ *   2. Response `{ shortUrl, bucketPathname }` döner; bucketPathname
+ *      `<userId>/<sha>.jpg` formatında
+ *   3. CDN URL'i `https://cdn.midjourney.com/u/<bucketPathname>` olarak
+ *      inşa edilir (örn. `cdn.midjourney.com/u/b8c2.../ef14...jpg`)
+ *   4. submit-jobs body'sinde `prompt` field'ının BAŞINA bu URL'leri
+ *      space-separated ekle (Discord pattern, MJ V8 web'de korundu)
+ *   5. `metadata.imagePrompts: N` ile saydır
+ *
+ * Bu helper sadece adım 1-3'ü yapar (URL list'i URL list'e dönüştürür);
+ * adım 4-5 submit-jobs body'sini inşa ederken yapılır (submitPromptViaApi
+ * `imagePromptCdnUrls` opsiyonu ile).
+ *
+ * Sözleşme:
+ *   - Input URL'ler HTTPS olmalı (R17.2)
+ *   - Public erişilebilir olmalı (page.context fetch + auth/cookie'siz)
+ *   - cdn.midjourney.com / s.mj.run URL'leri zaten MJ storage'da; o
+ *     durumda upload bypass + URL'i olduğu gibi geri ver
+ *   - Aksi halde fetch → blob → multipart form-data → upload-file
+ *
+ * Hata davranışı:
+ *   - Upload fail (any URL) → throw (caller fallback'a düşer)
+ *   - URL fetch fail → throw
+ */
+export async function uploadImagePromptsViaApi(
+  page: Page,
+  imageUrls: string[],
+  options: { fetchTimeoutMs?: number } = {},
+): Promise<string[]> {
+  if (imageUrls.length === 0) return [];
+  const fetchTimeoutMs = options.fetchTimeoutMs ?? 30_000;
+
+  const cdnUrls = await page.evaluate(
+    async (input: { urls: string[]; timeoutMs: number }) => {
+      // tsx/esbuild __name helper stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).__name = (globalThis as any).__name ?? ((x: unknown) => x);
+      const results: string[] = [];
+      for (const sourceUrl of input.urls) {
+        // Step A: Pass through if already on MJ storage (cdn.midjourney.com/u/...
+        // veya s.mj.run/...). Submit body'sinde `prompt` ön-eki olarak
+        // doğrudan kullanılabilir (Pass 74 capture: shortUrl da işliyor).
+        if (
+          /^https?:\/\/(cdn\.midjourney\.com\/u\/|s\.mj\.run\/)/i.test(sourceUrl)
+        ) {
+          results.push(sourceUrl);
+          continue;
+        }
+        // Step B: Fetch source bytes (extension'lı CF-safe yol için browser
+        // context fetch yeterli; cdn.midjourney.com/<jobId>/0_n.png kendi
+        // domain'i, public). Kullanıcı eklenti üzerinden gelen rastgele
+        // public HTTPS URL'leri de buraya düşer.
+        const dlCtrl = new AbortController();
+        const dlT = setTimeout(() => dlCtrl.abort(), input.timeoutMs);
+        let dl: Response;
+        try {
+          dl = await fetch(sourceUrl, { signal: dlCtrl.signal });
+        } finally {
+          clearTimeout(dlT);
+        }
+        if (!dl.ok) {
+          throw new Error(`Image fetch ${sourceUrl} → HTTP ${dl.status}`);
+        }
+        const blob = await dl.blob();
+        const ext =
+          blob.type.includes("png")
+            ? "png"
+            : blob.type.includes("webp")
+              ? "webp"
+              : "jpg";
+        const filename = `imageprompt-${Date.now()}.${ext}`;
+        const file = new File([blob], filename, {
+          type: blob.type || "image/png",
+        });
+        const fd = new FormData();
+        fd.append("file", file);
+        // Step C: POST /api/storage-upload-file (Pass 67 describe + Pass 74
+        // image-prompt için aynı endpoint).
+        const upCtrl = new AbortController();
+        const upT = setTimeout(() => upCtrl.abort(), input.timeoutMs);
+        let up: Response;
+        try {
+          up = await fetch(
+            `${window.location.origin}/api/storage-upload-file`,
+            {
+              method: "POST",
+              headers: {
+                "X-Csrf-Protection": "1",
+                version: "2",
+              },
+              credentials: "include",
+              body: fd,
+              signal: upCtrl.signal,
+            },
+          );
+        } finally {
+          clearTimeout(upT);
+        }
+        if (!up.ok) {
+          throw new Error(
+            `Upload fail ${up.status}: ${(await up.text()).slice(0, 200)}`,
+          );
+        }
+        const upJson = (await up.json()) as {
+          shortUrl?: string;
+          bucketPathname?: string;
+        };
+        if (!upJson.bucketPathname) {
+          throw new Error(
+            `Upload response: bucketPathname yok — ${JSON.stringify(upJson).slice(0, 200)}`,
+          );
+        }
+        // Step D: cdn.midjourney.com/u/<bucketPathname> URL'sini inşa.
+        // Pass 74 capture'da kullanıcının manuel submit'i bu pattern'i
+        // kullandı: prompt ön-eki "https://cdn.midjourney.com/u/<userId>/<sha>.jpg".
+        results.push(`https://cdn.midjourney.com/u/${upJson.bucketPathname}`);
+      }
+      return results;
+    },
+    { urls: imageUrls, timeoutMs: fetchTimeoutMs },
+  );
+  return cdnUrls;
+}
+
 export type SubmitPromptApiResult = {
   /** MJ tarafı job UUID — `cdn.midjourney.com/<jobId>/...` URL pattern'i. */
   mjJobId: string;
@@ -808,15 +940,37 @@ export async function submitPromptViaApi(
     imageReferenceCount?: number;
     /** cref count (metadata.characterReferences). 0 default. */
     characterReferenceCount?: number;
+    /**
+     * Pass 74 — Image-prompt CDN URL'leri. Verilirse promptString'in
+     * BAŞINA space-separated eklenir (Pass 74 capture pattern: MJ V8
+     * Discord image-prompt davranışını korumuş, ama URL MJ kendi
+     * storage'ına yüklenmiş olmalı). `uploadImagePromptsViaApi` ile
+     * önce upload edilmiş `cdn.midjourney.com/u/...` URL'leri burada
+     * geçilir; metadata.imagePrompts da otomatik bu listenin uzunluğuna
+     * eşitlenir (caller imagePromptCount geçmemeli).
+     */
+    imagePromptCdnUrls?: string[];
     /** Network/page.evaluate timeout. Default 30sn. */
     fetchTimeoutMs?: number;
   } = {},
 ): Promise<SubmitPromptApiResult> {
   const fetchTimeoutMs = options.fetchTimeoutMs ?? 30_000;
   const mode = options.mode ?? "relaxed";
-  const imagePromptCount = options.imagePromptCount ?? 0;
+  const imagePromptCdnUrls = options.imagePromptCdnUrls ?? [];
+  // Pass 74 — imagePromptCdnUrls verilirse imagePromptCount otomatik;
+  // explicit imagePromptCount geçilmişse onu kullan (geriye uyumlu).
+  const imagePromptCount =
+    imagePromptCdnUrls.length > 0
+      ? imagePromptCdnUrls.length
+      : (options.imagePromptCount ?? 0);
   const imageReferenceCount = options.imageReferenceCount ?? 0;
   const characterReferenceCount = options.characterReferenceCount ?? 0;
+  // Pass 74 — Final prompt string: image-prompt URL'leri prompt'un
+  // BAŞINA gelir (Pass 74 capture pattern).
+  const finalPromptString =
+    imagePromptCdnUrls.length > 0
+      ? `${imagePromptCdnUrls.join(" ")} ${promptString}`
+      : promptString;
 
   const result = await page.evaluate(
     async (input: {
@@ -891,7 +1045,7 @@ export async function submitPromptViaApi(
       }
     },
     {
-      promptString,
+      promptString: finalPromptString,
       mode,
       imagePromptCount,
       imageReferenceCount,
@@ -929,7 +1083,7 @@ export async function submitPromptViaApi(
   }
   return {
     mjJobId: success.job_id,
-    mjPrompt: success.prompt ?? promptString,
+    mjPrompt: success.prompt ?? finalPromptString,
     userId: result.userId,
     method: "api",
   };

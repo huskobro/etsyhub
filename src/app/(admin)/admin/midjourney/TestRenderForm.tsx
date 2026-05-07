@@ -47,8 +47,13 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
   // Pass 73 — Character reference (--cref) V6-only. URL list, weight YOK.
   // oref ile mutually-exclusive (service-level guard + UI-level uyarı).
   const [characterRefUrlsRaw, setCharacterRefUrlsRaw] = useState<string>("");
-  // Pass 71 — API-first submit opt-in (deneysel; default DOM).
-  const [preferApiSubmit, setPreferApiSubmit] = useState<boolean>(false);
+  // Pass 74 — Submit strategy preference (auto / api-first / dom-first).
+  // Default "auto": bridge capability bazında en sağlam yolu seçer
+  // (Pass 74'ten itibaren image-prompt + API-first uyumlu, "auto"
+  // her durumda API tercih ediyor; fail → DOM fallback).
+  const [submitStrategy, setSubmitStrategy] = useState<
+    "auto" | "api-first" | "dom-first"
+  >("auto");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -183,7 +188,7 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
             ...(characterReferenceUrls.length > 0
               ? { characterReferenceUrls }
               : {}),
-            ...(preferApiSubmit ? { preferApiSubmit: true } : {}),
+            ...(submitStrategy !== "auto" ? { submitStrategy } : {}),
           }),
         });
         const json = (await res.json().catch(() => null)) as
@@ -348,30 +353,34 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
         </span>
       </label>
 
-      {/* Pass 71 — API-first submit opt-in (deneysel; default DOM).
-          Ghost-job riski (kullanıcının MJ tab'ı React store güncellenmiyor)
-          — gelecek render polling endpoint kanıtı sonra default'a alınacak. */}
-      <label
-        className="flex items-start gap-2 text-xs"
-        data-testid="mj-test-render-prefer-api-submit"
-      >
-        <input
-          type="checkbox"
-          checked={preferApiSubmit}
-          onChange={(e) => setPreferApiSubmit(e.target.checked)}
+      {/* Pass 74 — Submit strategy selector (auto / api-first / dom-first).
+          Pass 71'in `preferApiSubmit` checkbox'ı genişletildi. "auto"
+          bridge'de capability bazında en sağlam yolu seçer; Pass 74
+          sonrası image-prompt da API-first uyumlu (storage-upload-file
+          + prompt ön-eki). */}
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="font-semibold text-text">Submit strategy</span>
+        <select
+          value={submitStrategy}
+          onChange={(e) =>
+            setSubmitStrategy(
+              e.target.value as "auto" | "api-first" | "dom-first",
+            )
+          }
           disabled={disabled}
-          className="mt-0.5"
-        />
-        <span className="flex flex-col gap-0.5">
-          <span className="font-semibold text-text">
-            API-first submit (deneysel · opt-in)
-          </span>
-          <span className="text-text-muted">
-            POST /api/submit-jobs → DOM typing yok (3-5sn kazanım). UYARI:
-            Şu an ghost-job riski (kullanıcının MJ tab&apos;ı job&apos;u
-            görmüyor); render polling timeout olabilir. Pass 72+ render
-            polling endpoint kanıtı sonra default&apos;a alınacak.
-          </span>
+          className="rounded-md border border-border bg-bg px-2 py-1 disabled:opacity-50"
+          data-testid="mj-test-render-submit-strategy"
+        >
+          <option value="auto">Auto (önerilen)</option>
+          <option value="api-first">API-first</option>
+          <option value="dom-first">DOM-first</option>
+        </select>
+        <span className="text-text-muted">
+          <strong>Auto</strong>: bridge en sağlam yolu seçer (Pass 74
+          sonrası image-prompt dahil API). <strong>API-first</strong>:
+          POST /api/submit-jobs → DOM yok (görünmez, hızlı). Fail →
+          DOM fallback. <strong>DOM-first</strong>: Pass 49 typing +
+          submit; sayfada görünür akış (manuel takip).
         </span>
       </label>
 

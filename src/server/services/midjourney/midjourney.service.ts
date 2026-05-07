@@ -107,13 +107,22 @@ export type CreateMidjourneyJobInput = {
    */
   characterReferenceUrls?: string[];
   /**
-   * Pass 71 — API-first submit opt-in flag. Default false (DOM submit
-   * production-grade). API path bridge driver'ında implementasyonu var
-   * ama gerçek smoke ghost-job problemi gösterdi (submit OK ama MJ tab
-   * React store güncellenmiyor); bu flag deneysel. Pass 72+'da
-   * `/api/recent-jobs` polling endpoint kanıtlanırsa default'a alınır.
+   * Pass 71 — API-first submit opt-in flag.
+   * @deprecated Pass 74 — `submitStrategy` field'ı tercih edilir.
+   * `preferApiSubmit: true` → `submitStrategy: "api-first"` ile aynı.
    */
   preferApiSubmit?: boolean;
+  /**
+   * Pass 74 — Submit strategy preference.
+   * "auto" (default): bridge capability bazında en sağlam yolu seçer.
+   *   Generate için: image-prompt yoksa API-first; varsa DOM (Pass 73
+   *   guard mantığı `auto` ile aynı sonuca varır).
+   * "api-first": önce API; fail → DOM fallback.
+   * "dom-first": önce DOM; fail → API fallback.
+   * Kullanıcı UI'dan per-job override eder; preferences.defaultSubmitStrategy
+   * varsayılanı belirler.
+   */
+  submitStrategy?: "auto" | "api-first" | "dom-first";
 };
 
 /** Pass 65 — image-prompt URL kontratı (R17.2). */
@@ -262,8 +271,16 @@ export async function createMidjourneyJob(
       ...(characterReferenceUrls.length > 0
         ? { characterReferenceUrls }
         : {}),
-      // Pass 71 — API-first submit opt-in (deneysel).
+      // Pass 71 — API-first submit opt-in (deprecated, Pass 74 strategy).
       ...(input.preferApiSubmit ? { preferApiSubmit: true } : {}),
+      // Pass 74 — Submit strategy. preferApiSubmit ile birlikte verilirse
+      // submitStrategy önceliklidir; preferApiSubmit:true + submitStrategy
+      // verilmezse "api-first" (geriye uyumlu) olarak yorumlanır.
+      ...(input.submitStrategy
+        ? { submitStrategy: input.submitStrategy }
+        : input.preferApiSubmit
+          ? { submitStrategy: "api-first" as const }
+          : {}),
     },
   };
   const snapshot = await bridgeClient.enqueueJob(bridgeReq);

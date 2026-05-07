@@ -78,6 +78,135 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 74 (Submit strategy preference + Image-prompt API-first PoC) 🟢
+
+**Hedef:** MJ servisini API-first merkezli hale getir. Submit strategy
+preference (`auto | api-first | dom-first`) + image-prompt API-first
+uyum çözümü.
+
+**Audit:** Hâlâ API-first OLMAYAN yüzeyler:
+1. Image-prompt (Pass 73 guard'ı: image-prompt varsa DOM zorla)
+2. Generate DOM fallback (bilinçli)
+3. Describe DOM fallback (bilinçli)
+4. Upscale / variation (kapsam dışı)
+5. Worker bootstrap (Pass 70'ten carry-over)
+
+**Pass 74 ana paket: image-prompt API-first PoC + strategy preference.**
+
+**Live capture (Pass 74) — image-prompt API contract KANITLANDI:**
+
+Kullanıcı manuel image-prompt + prompt + submit yaptı, 12 exchange yakalandı:
+
+| # | Method | URL | İçerik |
+|---|---|---|---|
+| 1-2 | POST | `/api/storage-upload-file` | multipart upload → `{ shortUrl, bucketPathname }` |
+| 3-4 | GET | `/api/storage` | uploaded files library |
+| 5-6 | POST | `/api/storage-upload-file` | (tekrar yükleme) |
+| 9 | POST | `/api/prompt-session-log` | telemetry |
+| **10** | **POST** | **`/api/submit-jobs`** | image-prompt + prompt body |
+| 12 | RES 200 | | `{ success: [{ job_id, ... }] }` |
+
+**KRİTİK BULGU — submit-jobs body:**
+```json
+{
+  "metadata": { "imagePrompts": 1, ... },
+  "prompt": "https://cdn.midjourney.com/u/<userId>/<sha>.jpg pass74 image prompt manual test --v 7"
+}
+```
+
+MJ V8 web Discord'un image-prompt davranışını **korumuş**: prompt'un
+**BAŞINA `cdn.midjourney.com/u/<bucketPathname>` URL'si space-separated
+eklenir** + `metadata.imagePrompts: N` saydırılır.
+
+Pass 65 audit'inde "URL paste-as-image-prompt çalışmıyor" bulgusu
+**doğruydu** ama eksikti — random external URL çalışmıyor (`upload.wikimedia.org/...`),
+ama **MJ kendi storage'ına yüklenmiş URL** (`cdn.midjourney.com/u/<userId>/...`)
+**işliyor**. Yani 2 adımlık akış: (1) `/api/storage-upload-file` → (2)
+`/api/submit-jobs` body prompt ön-eki.
+
+**Uygulanan:**
+
+- ✅ `mj-bridge/src/types.ts`: `submitStrategy?: "auto" | "api-first" | "dom-first"`
+  field + `preferApiSubmit` deprecated
+- ✅ `mj-bridge/src/drivers/generate-flow.ts`:
+  - **`uploadImagePromptsViaApi(page, urls)`** helper:
+    - `cdn.midjourney.com/u/...` veya `s.mj.run/...` → upload bypass
+    - Aksi → `fetch(url) → blob → multipart fd → POST /api/storage-upload-file
+      → bucketPathname → cdn.midjourney.com/u/<bucketPathname>` URL inşa
+  - `submitPromptViaApi`'ye **`imagePromptCdnUrls?: string[]`** opt:
+    - URL'ler `prompt` field'ının BAŞINA space-separated eklenir
+    - `metadata.imagePrompts` otomatik bu listenin uzunluğuna eşitlenir
+- ✅ `mj-bridge/src/drivers/playwright.ts executeJob` generate:
+  - Pass 73 image-prompt + API-first guard'ı **KALDIRILDI**
+  - Strategy resolution: `auto` → image-prompt dahil her durumda API
+    tercih eder (Pass 74 PoC kanıtı)
+  - API path'te: `uploadImagePromptsViaApi` → `submitPromptViaApi
+    { imagePromptCdnUrls }` → `waitForJobReadyViaApi` (Pass 72 CDN
+    polling) → `downloadGridImages`
+  - DOM path'te: `attachImagePrompts` (Pass 65 popover) → `submitPrompt`
+    (Pass 49 typing) → `waitForRender` (baseline UUID polling)
+  - mjMetadata.submitStrategy field'ı eklendi (admin UI gözlem)
+- ✅ EtsyHub `bridge-client.ts` + `midjourney.service.ts`:
+  - `submitStrategy?: "auto" | "api-first" | "dom-first"` input
+  - Geriye uyumlu mapping: `preferApiSubmit: true` → `submitStrategy: "api-first"`
+  - Bridge request'e ilet
+- ✅ API route Zod: `submitStrategy: z.enum([...])` + audit metadata
+- ✅ TestRenderForm: **`<select>` strategy selector** (auto/api-first/dom-first)
+  + uzun açıklama (önceki preferApiSubmit checkbox'ı kaldırıldı)
+
+**Doğrulama (gerçek MJ smoke):**
+
+| Smoke | Sonuç |
+|---|---|
+| TS check (EtsyHub + bridge) | ✅ |
+| Token guard | ✅ |
+| UI test 946/946 | ✅ |
+| **Image-prompt + API-first end-to-end** (`090d4250 → fcee23e9-...`) | ✅ **191 saniyede COMPLETED**, submitMethod=api, submitStrategy=api-first, **apiSubmitFallbackReason=null** (DOM'a düşmedi), 4 output |
+| Describe regression (`e245e106`) | ✅ 8sn COMPLETED, describeMethod=api, 4 prompt |
+| Pass 72 generate API regression | ✅ Korundu (auto strategy default) |
+| Pass 73 cref smoke regression | ✅ Korundu (DOM submit yolu değişmedi) |
+
+**Capability map refresh (Pass 74 sonrası):**
+
+| Capability | Strategy | API path | DOM fallback | Status |
+|---|---|---|---|---|
+| Generate (text-only) | auto / api-first / dom-first | ✅ Pass 72 | ✅ Pass 49 | 🟢 production |
+| Generate (image-prompt) | auto / api-first / dom-first | ✅ **Pass 74** | ✅ Pass 65 | 🟢 production |
+| Generate (sref/oref/cref) | auto / api-first / dom-first | ✅ prompt-flag (Pass 65/71/73) | ✅ aynı | 🟢 production |
+| Describe | (her zaman API-first) | ✅ Pass 68 | ✅ Pass 66 DOM | 🟢 production |
+| Upscale | DOM-only | ❌ | ✅ Pass 60 | 🟡 park (Pass 60-61) |
+| Variation | (yok) | ❌ | ❌ | 🔴 Pass 75+ |
+
+**Pass 74 net kazanımlar:**
+
+1. ✅ **Image-prompt API-first** capability açıldı (Pass 73 guard kaldırıldı)
+2. ✅ **Submit strategy preference** ürünleştirildi (auto / api-first / dom-first)
+3. ✅ **`auto` default'ta API tercih** ediyor (Pass 74'ten itibaren image-prompt
+   dahil her durumda)
+4. ✅ Geriye uyumlu (`preferApiSubmit: true` hâlâ çalışır, deprecated)
+5. ✅ Describe + DOM generate + Pass 72/73 capability'ler regresyon yok
+
+**Pass 74 dürüst sınırlar:**
+
+- 🟡 **Strategy preference per-job override yapılıyor** (TestRenderForm
+  selector); **global preferences** ekleme Pass 75+ (`defaultSubmitStrategy`
+  preferences panelinde — Pass 70'teki preferences zemini kullanılır)
+- 🟡 **`--sref` weight (`URL::N`)** Pass 75+
+- 🟡 **Sref/oref görsel smoke** (Pass 72'den devralınan; Pass 73 cref
+  smoke yapıldı, sref/oref kod yolu kanıtlı)
+- 🟡 **Upscale / variation API-first audit** Pass 75+
+- 🟡 BullMQ worker bootstrap dar kapsamlı (Pass 70'ten)
+
+**Pass 75 ana hedefler:**
+
+1. **Global preferences `defaultSubmitStrategy`** — `useLocalStoragePref`
+   pattern'iyle (Pass 70 zemini) + TestRenderForm fallback davranışı
+2. **`--sref` weight (`URL::N`)** support (AutoSail audit kanıtı)
+3. **Sref/oref/cref görsel smoke** (gerçek MJ output review)
+4. **Upscale / variation API-first audit** — submit-jobs body'sinde
+   parent_id pattern (Pass 69 capture'da `parent_id: null`, parent
+   olduğunda nasıl gözüküyor kanıt gerek)
+
 ### Pass 73 (Reference capability paketi: --cref tam stack + image-prompt API guard + smoke) 🟢
 
 **Hedef:** Reference-aware generate ailesini hızla ürünleştir. `cref`

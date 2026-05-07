@@ -69,8 +69,13 @@ const body = z.object({
     .array(z.string().url().startsWith("https://"))
     .max(5)
     .optional(),
-  // Pass 71 — API-first submit opt-in (deneysel; default DOM submit).
+  /**
+   * Pass 71 — API-first submit opt-in.
+   * @deprecated Pass 74 — submitStrategy tercih edilir.
+   */
   preferApiSubmit: z.boolean().optional(),
+  // Pass 74 — Submit strategy preference (auto / api-first / dom-first).
+  submitStrategy: z.enum(["auto", "api-first", "dom-first"]).optional(),
 });
 
 export const POST = withErrorHandling(async (req: Request) => {
@@ -121,6 +126,8 @@ export const POST = withErrorHandling(async (req: Request) => {
       // Pass 73 — cref (V6-only)
       characterReferenceUrls: parsed.data.characterReferenceUrls,
       preferApiSubmit: parsed.data.preferApiSubmit,
+      // Pass 74 — Submit strategy (auto / api-first / dom-first).
+      submitStrategy: parsed.data.submitStrategy,
     });
 
     await audit({
@@ -144,6 +151,7 @@ export const POST = withErrorHandling(async (req: Request) => {
         // Pass 73 — cref count
         characterRefCount: parsed.data.characterReferenceUrls?.length ?? 0,
         preferApiSubmit: !!parsed.data.preferApiSubmit,
+        submitStrategy: parsed.data.submitStrategy ?? "auto",
       },
     });
 

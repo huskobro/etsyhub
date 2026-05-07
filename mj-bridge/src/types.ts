@@ -122,9 +122,31 @@ export type MjGenerateParams = {
   /**
    * Pass 71 — API-first submit opt-in flag (deneysel).
    * Default false → bridge DOM submit (Pass 49 production-grade).
-   * true → bridge önce `POST /api/submit-jobs` dener (ghost-job riski).
+   * true → bridge önce `POST /api/submit-jobs` dener.
+   *
+   * @deprecated Pass 74 — `submitStrategy` field'ı tercih edilir.
+   * `preferApiSubmit: true` → `submitStrategy: "api-first"` ile uyumlu;
+   * geriye dönük destek için bırakıldı.
    */
   preferApiSubmit?: boolean;
+  /**
+   * Pass 74 — Submit strategy preference.
+   *
+   *   - "auto" (default): Bridge capability bazında en sağlam yolu seçer.
+   *     Generate için: image-prompt YOK ise API-first (Pass 72 native
+   *     pipeline, hızlı + görünmez); image-prompt varsa DOM (Pass 65
+   *     `attachImagePrompts` form-state günceller, Pass 73 guard'ın
+   *     mantığı `auto` ile aynı sonuca varır).
+   *   - "api-first": Önce API yolunu dener, fail olursa DOM fallback.
+   *     Image-prompt varsa Pass 74 PoC ile API upload denenir (kanıt
+   *     varsa); fail → DOM fallback.
+   *   - "dom-first": Önce DOM (Pass 49 production-grade); DOM fail
+   *     olursa API fallback (nadir, kullanıcı tab'ında DOM kırılırsa).
+   *
+   * Caller (EtsyHub service) preferences.defaultSubmitStrategy ile
+   * varsayılan veriyor; UI'da per-job override mümkün.
+   */
+  submitStrategy?: "auto" | "api-first" | "dom-first";
 };
 
 /**
