@@ -16,6 +16,7 @@ import {
   type BridgeHealth,
 } from "@/server/services/midjourney/bridge-client";
 import { TestRenderForm } from "./TestRenderForm";
+import { AssetThumb } from "./AssetThumb";
 
 function stateTone(state: string): BadgeTone {
   if (state === "COMPLETED") return "success";
@@ -80,7 +81,12 @@ export default async function AdminMidjourneyPage() {
       take: 50,
       include: {
         user: { select: { email: true } },
-        generatedAssets: { select: { id: true } },
+        // Pass 52 — listede ilk grid (gridIndex=0) thumbnail için.
+        // Tüm asset'leri çekmek yerine sadece sayı + ilk asset id.
+        generatedAssets: {
+          orderBy: { gridIndex: "asc" },
+          select: { id: true, gridIndex: true, assetId: true },
+        },
       },
     }),
   ]);
@@ -210,6 +216,7 @@ MJ_BRIDGE_TOKEN=<aynı token>
       <Table density="admin">
         <THead>
           <TR>
+            <TH>Önizleme</TH>
             <TH>Tarih</TH>
             <TH>Kullanıcı</TH>
             <TH>Prompt</TH>
@@ -222,34 +229,65 @@ MJ_BRIDGE_TOKEN=<aynı token>
         <TBody>
           {recentJobs.length === 0 ? (
             <TR>
-              <TD colSpan={7} align="center" muted>
+              <TD colSpan={8} align="center" muted>
                 Henüz MJ job yok.
               </TD>
             </TR>
           ) : (
-            recentJobs.map((j) => (
-              <TR key={j.id} title={`bridgeJobId: ${j.bridgeJobId}`}>
-                <TD muted className="whitespace-nowrap">
-                  {j.enqueuedAt.toLocaleString("tr-TR")}
-                </TD>
-                <TD>{j.user?.email ?? "—"}</TD>
-                <TD className="max-w-md truncate text-xs">{j.prompt}</TD>
-                <TD>
-                  <Badge tone={stateTone(j.state)}>
-                    {STATE_LABELS[j.state] ?? j.state}
-                  </Badge>
-                </TD>
-                <TD className="text-xs text-text-muted">
-                  {j.blockReason
-                    ? BLOCK_REASON_LABELS[j.blockReason] ?? j.blockReason
-                    : "—"}
-                </TD>
-                <TD muted>{j.generatedAssets.length}</TD>
-                <TD className="font-mono text-xs">
-                  {j.mjJobId ?? "—"}
-                </TD>
-              </TR>
-            ))
+            recentJobs.map((j) => {
+              const firstAsset = j.generatedAssets[0];
+              return (
+                <TR key={j.id} title={`bridgeJobId: ${j.bridgeJobId}`}>
+                  <TD className="w-12">
+                    {firstAsset ? (
+                      <Link
+                        href={`/admin/midjourney/${j.id}`}
+                        className="block w-10"
+                      >
+                        <AssetThumb
+                          assetId={firstAsset.assetId}
+                          alt={`MJ ${j.id} grid 0`}
+                        />
+                      </Link>
+                    ) : (
+                      <div
+                        className="aspect-square w-10 rounded-md border border-border bg-surface-2"
+                        title="Asset henüz yok"
+                      />
+                    )}
+                  </TD>
+                  <TD muted className="whitespace-nowrap">
+                    <Link
+                      href={`/admin/midjourney/${j.id}`}
+                      className="hover:text-text"
+                    >
+                      {j.enqueuedAt.toLocaleString("tr-TR")}
+                    </Link>
+                  </TD>
+                  <TD>{j.user?.email ?? "—"}</TD>
+                  <TD className="max-w-md truncate text-xs">
+                    <Link
+                      href={`/admin/midjourney/${j.id}`}
+                      className="hover:text-text"
+                    >
+                      {j.prompt}
+                    </Link>
+                  </TD>
+                  <TD>
+                    <Badge tone={stateTone(j.state)}>
+                      {STATE_LABELS[j.state] ?? j.state}
+                    </Badge>
+                  </TD>
+                  <TD className="text-xs text-text-muted">
+                    {j.blockReason
+                      ? BLOCK_REASON_LABELS[j.blockReason] ?? j.blockReason
+                      : "—"}
+                  </TD>
+                  <TD muted>{j.generatedAssets.length}</TD>
+                  <TD className="font-mono text-xs">{j.mjJobId ?? "—"}</TD>
+                </TR>
+              );
+            })
           )}
         </TBody>
       </Table>

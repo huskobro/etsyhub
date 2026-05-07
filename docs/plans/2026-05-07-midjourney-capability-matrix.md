@@ -78,6 +78,98 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 52 (Admin observability layer — tamamlanan) 🟢
+
+Pass 51 ile çalışan pipeline'ın üstüne **operatör görünürlüğü**
+katmanı eklendi. En büyük operatör sürtünmesi olan "asset count var
+ama içerik göremiyorum" kalıbı tablo + detay sayfasında thumbnail
+preview'larıyla çözüldü.
+
+**Audit + paket seçimi**:
+
+Pass 51 sonrası 4 büyük sürtünme tespit edildi:
+1. Tabloda asset count var ama thumbnail yok
+2. Job detay sayfası yok
+3. mjMetadata / lastMessage / lifecycle timestamps yüzeyde değil
+4. failedReason tabloda kısa, detayda yok
+
+Build now paketi: **detail page + thumb column + admin signed URL**.
+Strong follow-up: retry/cancel butonları, copy-to-clipboard,
+auto-refresh interval'ı detail sayfaya da. Useful later: timeline
+visualization (gradient bar). Do not now: image edit/regen actions.
+
+**Uygulanan**:
+
+- ✅ `GET /api/admin/assets/[id]/signed-url` — admin scope cross-user
+  signed URL endpoint (`requireAdmin`, NotFoundError, 5dk TTL).
+  Mevcut `/api/assets/[id]/signed-url` user-bound olduğu için admin
+  başka kullanıcının asset'ini gösteremiyordu.
+- ✅ `AssetThumb.tsx` — client component reusable thumb. Mount'ta
+  signed URL fetch eder, square aspect-cover img render eder, fail/
+  loading state'leri görsel olarak ayrılır.
+- ✅ `/admin/midjourney/[id]` job detay sayfası:
+  - Başlık + state badge + blockReason badge
+  - Meta grid (sm:2 col): prompt (kullanıcı) / bridge prompt string
+    + flag chip'leri / bridgeJobId / mjJobId / lifecycle (sıraya/
+    submit/tamamlandı + elapsed) / EtsyHub Job status + bullJobId
+  - failedReason banner (varsa)
+  - 4 grid thumbnail (gridIndex sıralı) + her birinde size KB,
+    variant kind
+  - "MJ web'de aç ↗" external link (mjJobId varsa)
+- ✅ Tablo enhancement: yeni "Önizleme" kolonu (1. grid 40px thumb),
+  Tarih/Prompt sütunları detail page'e link, 8. kolon yapısı.
+
+**Browser smoke (gerçekten doğrulandı)**:
+
+```
+[detail-smoke] tablo header: ['Önizleme','Tarih','Kullanıcı','Prompt',
+                              'State','Sebep','Asset','MJ Job ID']
+[detail-smoke] row count: 3
+[detail-smoke] first row href: /admin/midjourney/cmouwn0xn000a149lhkosthsn
+[detail-smoke] meta visible: true
+[detail-smoke] outputs visible: true
+[detail-smoke] thumbs total=4 loaded=4 failed=0
+  img: w=640 src=http://localhost:9000/etsyhub/midjourney/...
+  (×4 — MinIO signed URL'lerinden gerçek webp serve ediliyor)
+```
+
+Screenshots kaydedildi: `/tmp/mj-admin-list.png` (335KB),
+`/tmp/mj-admin-detail.png` (1.7MB) — 4 grid gerçekten render
+ediliyor (Pass 51'in canlı üretimi `c2edd80b-b2ad-...`).
+
+**Operatör açısından kazanım**: artık `/admin/midjourney`'i açtığında
+hangi job'ın ne ürettiğini tabloda küçük thumb'la anlar; tıklayınca
+detay sayfasında prompt string + tüm flag'ler + bridge UUID + 4
+büyük preview + lifecycle timeline tek sayfada görünür.
+
+**Capability roadmap güncellemesi**:
+
+1. **next immediate (Pass 53)**:
+   - Retry / Cancel butonları (server action + audit)
+   - Detail sayfasına auto-refresh interval (in-progress
+     state'lerinde)
+   - failedReason copy-to-clipboard
+2. **after admin polish stabilizes**:
+   - `--sref` / `--oref` UI ekleyerek Test Render formuna
+     reference URL paste
+   - `kind: "describe"` admin button (image upload + 4 prompt
+     scrape)
+3. **later**:
+   - Upscale/variation buton click pipeline
+   - Batch download / `/archive` history import
+   - Selection/Reference panellerinden MJ job'a hızlı access
+4. **do not build now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 52 dürüst sınır**:
+- Detail sayfası read-only — retry/cancel butonları Pass 53.
+- Detail sayfasında auto-refresh yok (form bazlı interval Pass 51'de
+  liste için kondu); detail sayfası in-progress state'ler için manuel
+  reload gerek.
+- Pass 42 fixture mock job (mock-job-001) için thumb fail (asset
+  MinIO'da yok); UI bunu broken-image yerine "⚠" gösteriyor — kabul
+  edilebilir.
+
 ### Pass 51 (UI-triggered tam E2E ürün akışı — tamamlanan) 🟢
 
 **Browser üzerinden gerçek admin UI E2E ÇALIŞIYOR.** Aynı attach
