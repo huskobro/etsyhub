@@ -28,6 +28,8 @@ const body = z.object({
   // Opsiyonel: hangi MidjourneyAsset'ten describe edildi (lineage).
   // Server-side cross-check: admin sahipliği + asset varlığı.
   sourceAssetId: z.string().min(1).optional(),
+  // Pass 78 — Universal submit strategy
+  submitStrategy: z.enum(["auto", "api-first", "dom-first"]).optional(),
 });
 
 export const POST = withErrorHandling(async (req: Request) => {
@@ -59,6 +61,8 @@ export const POST = withErrorHandling(async (req: Request) => {
       userId: admin.id,
       imageUrl: parsed.data.imageUrl,
       sourceAssetId: parsed.data.sourceAssetId,
+      // Pass 78 — strategy forward
+      submitStrategy: parsed.data.submitStrategy,
     });
 
     await audit({

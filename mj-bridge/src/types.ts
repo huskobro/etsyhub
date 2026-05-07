@@ -163,7 +163,7 @@ export type MjGenerateParams = {
    * Caller (EtsyHub service) preferences.defaultSubmitStrategy ile
    * varsayılan veriyor; UI'da per-job override mümkün.
    */
-  submitStrategy?: "auto" | "api-first" | "dom-first";
+  submitStrategy?: SubmitStrategy;
 };
 
 /**
@@ -172,6 +172,25 @@ export type MjGenerateParams = {
  * `kind` field'ı ileride `describe`, `upscale`, `variation` action'larını
  * ayırır — V1 yalnız `generate`.
  */
+/**
+ * Pass 78 — Universal submit strategy preference (tüm kind'lar için).
+ *
+ * Pass 74'te `kind: "generate"` için tanıtıldı (`MjGenerateParams.submitStrategy`),
+ * Pass 77'te user-queue polling production-ready oldu. Pass 78'de
+ * **describe + upscale** kind'ları da aynı stratejiyi kabul eder; bu
+ * sayede preferences panel'inden gelen `defaultSubmitStrategy` tek bir
+ * davranış modeline dönüşür.
+ *
+ * - "auto"      : capability bazında en sağlam yol (API tercih edilir,
+ *                 fail/yetersizlik durumunda DOM'a düşer)
+ * - "api-first" : önce API; fail → DOM fallback
+ * - "dom-first" : önce DOM; fail → API fallback (Pass 78 simetri)
+ *
+ * Default: "auto". Per-job override (request body) preferences default'unu
+ * geçer.
+ */
+export type SubmitStrategy = "auto" | "api-first" | "dom-first";
+
 export type CreateJobRequest =
   | {
       kind: "generate";
@@ -183,6 +202,8 @@ export type CreateJobRequest =
       kind: "describe";
       /** Describe edilecek görselin HTTPS URL'i. */
       imageUrl: string;
+      /** Pass 78 — submit strategy (describe API + DOM fallback için). */
+      submitStrategy?: SubmitStrategy;
       etsyhubJobId?: string;
     }
   | {
@@ -197,6 +218,13 @@ export type CreateJobRequest =
       gridIndex: 0 | 1 | 2 | 3;
       /** Pass 60 — MVP "subtle" desteklenir; "creative" ileride. */
       mode: "subtle" | "creative";
+      /**
+       * Pass 78 — submit strategy. Upscale şu an DOM-only (Pass 61); API
+       * yolu Pass 79+ scope. Strategy parametresi bugün sadece
+       * `metadata.submitStrategy` raporlama için saklanır + ileride API
+       * yolu eklenince native davranışı tetikler. Geriye uyumlu: opsiyonel.
+       */
+      submitStrategy?: SubmitStrategy;
       etsyhubJobId?: string;
     }
   | {
@@ -205,6 +233,7 @@ export type CreateJobRequest =
       parentMjJobId: string;
       gridIndex: 0 | 1 | 2 | 3;
       mode: "subtle" | "strong";
+      submitStrategy?: SubmitStrategy;
       etsyhubJobId?: string;
     };
 

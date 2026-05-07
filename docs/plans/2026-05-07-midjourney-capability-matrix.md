@@ -78,6 +78,127 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 78 (Strategy productization: describe + upscale `submitStrategy` + dom-first symmetry) 🟢
+
+**Hedef:** Pass 77'de reference-aware generate ailesi ve user-queue
+polling ürünleşti; ama `submitStrategy` parametresi **yalnız `kind: "generate"`** için aktifti. Pass 78 görevi: MJ servis motorunu sistematikleştir —
+strategy'i tüm kind'lara taşı, generate'teki **dom-first asimetri**'yi
+düzelt, metadata visibility konsolide et.
+
+**Pass 78 audit özeti:**
+
+1. **Non-API-first yüzeyler envanteri**:
+   | # | Yüzey | Durum |
+   |---|---|---|
+   | upscale | DOM-only (Pass 61); strategy parametresi yok | 🟡 Pass 78: strategy metadata eklendi (API yolu Pass 79+) |
+   | variation | hiç implementasyon yok | 🔴 Pass 79+ scope |
+   | generate DOM-first | DOM submit, API fallback YOK (asimetri!) | ✅ Pass 78: API fallback eklendi |
+   | describe DOM fallback | API + DOM hibrit (Pass 68) ama strategy parametresi yok | ✅ Pass 78: strategy + dom-first symmetry eklendi |
+   | DOM watcher | generate dom-first + upscale'de hâlâ kullanılıyor | 🟡 Pass 78 emekliye ayrılmadı (DOM-first opt-in için kullanıcıya açık) |
+
+2. **Strategy davranışı (Pass 77 öncesi → Pass 78 sonrası):**
+   - `auto`: API → fail → DOM fallback (mevcut, doğru)
+   - `api-first`: API → fail → DOM fallback (mevcut, doğru)
+   - `dom-first`: DOM → fail → ❌ FAILED (Pass 77 öncesi) → ✅ **DOM → fail → API fallback** (Pass 78)
+
+3. **Karar**: kullanıcı önceliği "API sonra DOM" → bu zaten `auto`/`api-first` davranışı. `dom-first` kullanıcı bilinçli seçim; **fail durumunda API fallback** eklendi (simetri).
+
+**Pass 78 native bridge düzeltmeleri:**
+
+`mj-bridge/src/types.ts`:
+- Yeni `SubmitStrategy` union type (`auto | api-first | dom-first`)
+- `MjGenerateParams.submitStrategy: SubmitStrategy` (Pass 74'ten yükseltildi)
+- `kind: "describe"` ve `kind: "upscale"` request'lerine `submitStrategy?: SubmitStrategy` eklendi
+
+`mj-bridge/src/drivers/playwright.ts`:
+- **Generate `dom-first` symmetric fallback**: DOM submit fail olursa
+  API submit'i sonradan dene (mevcut Pass 76 sref/oref/cref upload
+  pipeline aynısı; image-prompt varsa upload, sonra `submitPromptViaApi`).
+  Başarılı olursa `submitMethod=api`, `metadata.domFallbackReason=<msg>`.
+- **`executeDescribeJob` strategy resolution**:
+  - `auto`/`api-first`: API → fail → DOM fallback (Pass 68 yolu)
+  - `dom-first`: DOM popover → fail → API fallback (Pass 78 simetri)
+  - `metadata.submitStrategy` (chosen) + `describeMethod` (actual) +
+    `apiFallbackReason` / `domFallbackReason`
+- **`executeUpscaleJob` strategy capture**: parametreyi metadata'ya
+  yansıt (`submitStrategy: requestedUpscaleStrategy`,
+  `submitMethod: "dom"`). Bugün her strategy DOM-only (Pass 61);
+  metadata kullanıcının seçimini gösteriyor.
+
+`src/server/services/midjourney/`:
+- `bridge-client.ts` `BridgeDescribeRequest` + `BridgeUpscaleRequest`
+  type'larına `submitStrategy?` eklendi
+- `midjourney.service.ts` `CreateMidjourneyDescribeJobInput` +
+  `upscale.ts` `CreateUpscaleInput`: `submitStrategy?` field + bridge
+  body forward
+- `src/app/api/admin/midjourney/describe/route.ts` +
+  `src/app/api/admin/midjourney/upscale/route.ts`: Zod `submitStrategy`
+  enum + service forward
+
+**Pass 78 davranış matrisi (post-değişiklik):**
+
+| Capability | auto | api-first | dom-first |
+|---|---|---|---|
+| generate | API → DOM | API → DOM | DOM → API ⭐ Pass 78 symmetry |
+| describe | API → DOM | API → DOM | DOM → API ⭐ Pass 78 symmetry |
+| upscale | DOM (kayıt) | DOM (kayıt) | DOM (kayıt) — API yolu Pass 79+ |
+| image-prompt | API → DOM | API → DOM | DOM → API ⭐ |
+| sref/oref/cref | API → DOM | API → DOM | DOM → API ⭐ |
+
+Tüm capability'lerde kullanıcı `dom-first` seçince artık otomatik FAIL
+yerine API fallback alacak — preferences default `auto` ise davranış
+hiç değişmez.
+
+**Pass 78 metadata visibility:**
+
+Her job COMPLETED stage'inde `mjMetadata` içinde:
+- `submitStrategy` (chosen — kullanıcının istediği)
+- `submitMethod` veya `describeMethod` (actual — gerçekten ne yapıldı)
+- `apiSubmitFallbackReason` (API fail → DOM denendi)
+- `domFallbackReason` (DOM fail → API denendi) ⭐ Pass 78
+
+Admin/User UI bu iki field'ı yan yana göstererek "ne istendi vs ne
+yapıldı" karşılaştırması yapabilir.
+
+**Pass 78 regresyon kanıtları:**
+
+- ✅ describe (api-first) → COMPLETED 4 prompt
+- ✅ generate (api-first, text-only) → COMPLETED 4 outputs (~50sn)
+- ✅ TS clean (bridge + EtsyHub)
+- ✅ ESLint EtsyHub clean
+
+sref/oref/cref real smoke'ları Pass 77'de dökümante edildi; Pass 78
+kod yolu sadece dom-first asimetri'yi düzeltti, başarılı `auto`/`api-first`
+yolları aynı kaldı (regresyon riski yok).
+
+**Pass 78 incomplete & dürüst sınırlar:**
+
+- **Variation kind**: hâlâ unimplemented; type union'da var, branch yok
+- **Upscale API yolu**: AutoSail main.js'te upscale endpoint discovery
+  yapılmadı (Pass 79+ audit konusu); şu an strategy=api-first/dom-first
+  hâlâ DOM yolunu kullanıyor (metadata sadece kullanıcı tercihini
+  yansıtıyor, native davranışı değiştirmiyor)
+- **DOM watcher**: tamamen emekliye ayrılmadı; DOM-first generate +
+  upscale hâlâ baselineUuids + waitForRender kullanıyor
+- **dom-first symmetric API fallback gerçek smoke**: bu turda alınmadı
+  (kod yolu TS-clean; production'da dom-first nadir kullanılır;
+  unit test yapılmadı)
+- **TestRenderForm/preferences UI strategy**: zaten Pass 75/76'da
+  ürünleşti; describe/upscale UI'ları Pass 78 değişikliklerini henüz
+  yansıtmıyor (ileri tarihli eksiklik — UI'larda strategy dropdown'u
+  generate'den kopyalanabilir)
+
+**Pass 78 dosya değişiklik blast radius:**
+- 6 dosya:
+  - `mj-bridge/src/types.ts` (SubmitStrategy union + describe/upscale)
+  - `mj-bridge/src/drivers/playwright.ts` (dom-first symmetry +
+    describe strategy + upscale metadata)
+  - `src/server/services/midjourney/bridge-client.ts` (type sync)
+  - `src/server/services/midjourney/midjourney.service.ts` (describe input)
+  - `src/server/services/midjourney/upscale.ts` (upscale input)
+  - `src/app/api/admin/midjourney/{describe,upscale}/route.ts` (Zod + forward)
+- API yüzeyi geriye uyumlu — `submitStrategy` her yerde optional
+
 ### Pass 77 (Render polling AutoSail user-queue modeline geçti — hibrit primary+confirm) 🟢
 
 **Hedef:** Pass 76 sref kanıtı tamamdı ama oref+ow render polling DOM

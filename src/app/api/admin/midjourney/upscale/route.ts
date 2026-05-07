@@ -23,6 +23,8 @@ import { BridgeUnreachableError } from "@/server/services/midjourney/bridge-clie
 const body = z.object({
   midjourneyAssetId: z.string().min(1),
   mode: z.enum(["subtle", "creative"]).default("subtle"),
+  // Pass 78 — Universal submit strategy
+  submitStrategy: z.enum(["auto", "api-first", "dom-first"]).optional(),
 });
 
 export const POST = withErrorHandling(async (req: Request) => {
@@ -48,6 +50,8 @@ export const POST = withErrorHandling(async (req: Request) => {
       actorUserId: admin.id,
       parentMidjourneyAssetId: parsed.data.midjourneyAssetId,
       mode: parsed.data.mode,
+      // Pass 78 — strategy forward
+      submitStrategy: parsed.data.submitStrategy,
     });
 
     await audit({

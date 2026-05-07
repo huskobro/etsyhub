@@ -112,6 +112,12 @@ export type BridgeUpscaleRequest = {
   parentMjJobId: string;
   gridIndex: 0 | 1 | 2 | 3;
   mode: "subtle" | "creative";
+  /**
+   * Pass 78 — Universal submit strategy (auto/api-first/dom-first).
+   * Upscale şu an DOM-only; bu alan metadata'ya raporlama için saklanır
+   * + ileride API yolu eklenince native davranışı tetikler. Geriye uyumlu.
+   */
+  submitStrategy?: "auto" | "api-first" | "dom-first";
   etsyhubJobId?: string;
 };
 
@@ -131,6 +137,12 @@ export type BridgeUpscaleRequest = {
 export type BridgeDescribeRequest = {
   kind: "describe";
   imageUrl: string;
+  /**
+   * Pass 78 — Universal submit strategy. Describe Pass 68'den beri
+   * API + DOM fallback hibrit; bu alan ile kullanıcı strict yol seçebilir
+   * (örn. dom-first → API yolunu atla, sadece DOM popover kullan).
+   */
+  submitStrategy?: "auto" | "api-first" | "dom-first";
   etsyhubJobId?: string;
 };
 

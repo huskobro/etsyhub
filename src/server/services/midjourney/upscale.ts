@@ -53,6 +53,11 @@ export type CreateUpscaleInput = {
   parentMidjourneyAssetId: string;
   /** MVP: "subtle" varsayılan. */
   mode?: "subtle" | "creative";
+  /**
+   * Pass 78 — Universal submit strategy. Upscale şu an DOM-only (Pass 61);
+   * bu alan metadata'da raporlama için saklanır. Default "auto".
+   */
+  submitStrategy?: "auto" | "api-first" | "dom-first";
 };
 
 export type CreateUpscaleResult = {
@@ -110,6 +115,8 @@ export async function createMidjourneyUpscaleJob(
     parentMjJobId,
     gridIndex,
     mode,
+    // Pass 78 — strategy forward (geriye uyumlu, opsiyonel)
+    ...(input.submitStrategy ? { submitStrategy: input.submitStrategy } : {}),
   };
   const snapshot = await bridgeClient.enqueueJob(bridgeReq);
 

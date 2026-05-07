@@ -424,6 +424,12 @@ export type CreateMidjourneyDescribeJobInput = {
   imageUrl: string;
   /** Opsiyonel: hangi MidjourneyAsset'ten describe edildi (lineage). */
   sourceAssetId?: string;
+  /**
+   * Pass 78 — Universal submit strategy. Describe Pass 68'den beri
+   * API + DOM fallback hibrit; bu alan ile kullanıcı strict yol seçebilir.
+   * Default "auto" (mevcut Pass 68 davranışı).
+   */
+  submitStrategy?: "auto" | "api-first" | "dom-first";
 };
 
 export type CreateMidjourneyDescribeJobResult = {
@@ -448,6 +454,8 @@ export async function createMidjourneyDescribeJob(
   const bridgeReq: BridgeDescribeRequest = {
     kind: "describe",
     imageUrl: url,
+    // Pass 78 — strategy forward (geriye uyumlu, opsiyonel)
+    ...(input.submitStrategy ? { submitStrategy: input.submitStrategy } : {}),
   };
   const snapshot = await bridgeClient.enqueueJob(bridgeReq);
 

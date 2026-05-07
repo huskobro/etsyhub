@@ -843,6 +843,9 @@ export class PlaywrightDriver implements BridgeDriver {
     let knownMjJobId: string | null = null;
     let submitMethod: "api" | "dom" = "dom";
     let apiSubmitError: string | null = null;
+    // Pass 78 — symmetry tracking: dom-first DOM fail olursa API fallback
+    // denenir, başardığında metadata'ya `domFallbackReason` yazılır.
+    let domFallbackReason: string | null = null;
     // Pass 74 — Submit strategy resolution.
     //
     //   "auto" (default): capability bazlı en sağlam yol.
@@ -1006,27 +1009,80 @@ export class PlaywrightDriver implements BridgeDriver {
         page,
         this.selectors,
       ).catch(() => new Set<string>());
+      let domSubmitError: string | null = null;
       try {
         await submitPrompt(page, this.selectors, promptString);
         submitMethod = "dom";
       } catch (err) {
-        const reason: JobBlockReason =
-          err instanceof SelectorMismatchError
-            ? "selector-mismatch"
-            : "internal-error";
+        domSubmitError = err instanceof Error ? err.message : String(err);
+      }
+      if (signal.aborted) return;
+
+      // Pass 78 — symmetry: dom-first DOM submit fail olursa API fallback dene.
+      // Mevcut Pass 74 davranışı: api-first/auto API → fail → DOM fallback (var).
+      // Pass 78 eki: dom-first DOM → fail → API fallback (kullanıcı global önceliği
+      // "API sonra DOM" olduğu halde dom-first seçtiyse, en azından her iki yol
+      // bir arada — api-first deneme zaten yapılmadı → şimdi dene).
+      if (
+        domSubmitError !== null &&
+        requestedStrategy === "dom-first" &&
+        !apiTried
+      ) {
+        onProgress({
+          state: "SUBMITTING_PROMPT",
+          message: `Prompt API fallback (DOM fail: ${domSubmitError.slice(0, 80)})`,
+        });
+        try {
+          // Pass 76 — sref/oref/cref upload
+          if (hasImagePrompt) {
+            // image-prompt API upload (Pass 74)
+            const imagePromptCdnUrls = await uploadImagePromptsViaApi(
+              page,
+              referenceUrls,
+              { fetchTimeoutMs: 60_000 },
+            );
+            const apiResult = await submitPromptViaApi(page, promptString, {
+              mode: "relaxed",
+              imagePromptCdnUrls,
+              imageReferenceCount: 0,
+              characterReferenceCount: 0,
+            });
+            knownMjJobId = apiResult.mjJobId;
+          } else {
+            const apiResult = await submitPromptViaApi(page, promptString, {
+              mode: "relaxed",
+              imageReferenceCount: 0,
+              characterReferenceCount: 0,
+            });
+            knownMjJobId = apiResult.mjJobId;
+          }
+          submitMethod = "api";
+          // Pass 78 symmetry: API fallback başardı; domSubmitError'i metadata'ya
+          // domFallbackReason olarak yansıt (apiSubmitFallbackReason simetrisi).
+          domFallbackReason = domSubmitError;
+          apiSubmitError = null;
+        } catch (err) {
+          const apiFallbackError =
+            err instanceof Error ? err.message : String(err);
+          onProgress({
+            state: "FAILED",
+            blockReason: "internal-error",
+            message: `DOM fail (${domSubmitError.slice(0, 60)}); API fallback fail: ${apiFallbackError}`,
+          });
+          return;
+        }
+        if (signal.aborted) return;
+      } else if (domSubmitError !== null) {
+        // dom-first değilse veya API zaten denenmişse — FAILED
         onProgress({
           state: "FAILED",
-          blockReason: reason,
-          message:
-            err instanceof Error
-              ? apiTried
-                ? `API fail (${apiSubmitError?.slice(0, 60)}); DOM submit fail: ${err.message}`
-                : err.message
-              : String(err),
+          blockReason: "internal-error",
+          message: apiTried
+            ? `API fail (${apiSubmitError?.slice(0, 60)}); DOM submit fail: ${domSubmitError}`
+            : domSubmitError,
         });
         return;
       }
-      if (signal.aborted) return;
     }
 
     // Pass 72 — Render polling strategy.
@@ -1111,6 +1167,9 @@ export class PlaywrightDriver implements BridgeDriver {
         // → submitMethod=dom, kullanıcı için açık).
         submitStrategy: requestedStrategy,
         ...(apiSubmitError ? { apiSubmitFallbackReason: apiSubmitError } : {}),
+        // Pass 78 — symmetry: dom-first → API fallback başardığında
+        // metadata'da DOM submit fail nedenini sakla.
+        ...(domFallbackReason ? { domFallbackReason } : {}),
       },
     });
 
@@ -1184,6 +1243,17 @@ export class PlaywrightDriver implements BridgeDriver {
       return;
     }
     const { parentMjJobId, gridIndex, mode } = job.request;
+    // Pass 78 — strategy resolution (upscale).
+    // Upscale şu an DOM-only (Pass 61). Pass 78'de strategy parametresi
+    // metadata'ya raporlama için saklanır + ileride API yolu eklenince
+    // native davranışı tetikler. Bugün her strategy aynı DOM yolunu
+    // kullanır ama UI/admin için "kullanıcının seçimi" görünür.
+    const requestedUpscaleStrategy: "auto" | "api-first" | "dom-first" =
+      job.request.submitStrategy === "api-first" ||
+      job.request.submitStrategy === "dom-first" ||
+      job.request.submitStrategy === "auto"
+        ? job.request.submitStrategy
+        : "auto";
     if (gridIndex < 0 || gridIndex > 3) {
       onProgress({
         state: "FAILED",
@@ -1349,6 +1419,9 @@ export class PlaywrightDriver implements BridgeDriver {
         upscaleMode: mode,
         parentMjJobId,
         parentGridIndex: gridIndex,
+        // Pass 78 — strategy görünürlüğü (kullanıcı seçimi vs. actual yol)
+        submitStrategy: requestedUpscaleStrategy,
+        submitMethod: "dom" as const,
       },
     });
 
@@ -1541,38 +1614,87 @@ export class PlaywrightDriver implements BridgeDriver {
     // MJ aboneliği yeterli (Pass 67 doğrulaması). Eklenti olmasa bile
     // çalışır; tek olası risk CSP block ama PoC'de eklenti CSP siliyordu —
     // canlı doğrulamayı gerçek smoke'da göreceğiz.
-    onProgress({
-      state: "SUBMITTING_PROMPT",
-      message: "Describe API yolu deneniyor",
-    });
+    // Pass 78 — Universal strategy resolution (describe).
+    // Pass 68'den beri describe API + DOM fallback hibrit. Pass 78'de
+    // strategy parametresi gerçek davranışı yönlendiriyor:
+    //   - "auto" / "api-first": API → fail → DOM fallback (mevcut Pass 68 yolu)
+    //   - "dom-first": DOM → fail → API fallback (Pass 78 simetri)
+    const requestedDescribeStrategy: "auto" | "api-first" | "dom-first" =
+      job.request.submitStrategy === "api-first" ||
+      job.request.submitStrategy === "dom-first" ||
+      job.request.submitStrategy === "auto"
+        ? job.request.submitStrategy
+        : "auto";
+    const describeApiFirst = requestedDescribeStrategy !== "dom-first";
 
     let describePrompts: string[] = [];
     let describeMethod: "api" | "dom" = "api";
     let resolvedImageUrl: string | null = null;
     let thumbnailSrc: string | null = null;
     let apiError: string | null = null;
+    let domError: string | null = null;
 
-    try {
-      const apiResult = await describeImageViaApi(page, imageUrl, {
-        fetchTimeoutMs: 60_000,
-      });
-      describePrompts = apiResult.prompts;
-      describeMethod = "api";
-      resolvedImageUrl = apiResult.resolvedImageUrl;
-    } catch (err) {
-      apiError = err instanceof Error ? err.message : String(err);
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[describe] API path fail (fallback'a düşülüyor): ${apiError}`,
-      );
-    }
-    if (signal.aborted) return;
-
-    if (describePrompts.length === 0) {
-      // Fallback: DOM yolu (Pass 66)
+    if (describeApiFirst) {
       onProgress({
         state: "SUBMITTING_PROMPT",
-        message: `Describe DOM fallback (API fail: ${apiError?.slice(0, 80) ?? "bilinmiyor"})`,
+        message:
+          requestedDescribeStrategy === "api-first"
+            ? "Describe API yolu deneniyor"
+            : "Describe API yolu deneniyor (auto)",
+      });
+      try {
+        const apiResult = await describeImageViaApi(page, imageUrl, {
+          fetchTimeoutMs: 60_000,
+        });
+        describePrompts = apiResult.prompts;
+        describeMethod = "api";
+        resolvedImageUrl = apiResult.resolvedImageUrl;
+      } catch (err) {
+        apiError = err instanceof Error ? err.message : String(err);
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[describe] API path fail (DOM fallback'a düşülüyor): ${apiError}`,
+        );
+      }
+      if (signal.aborted) return;
+
+      if (describePrompts.length === 0) {
+        onProgress({
+          state: "SUBMITTING_PROMPT",
+          message: `Describe DOM fallback (API fail: ${apiError?.slice(0, 80) ?? "bilinmiyor"})`,
+        });
+        try {
+          const domResult = await describeImage(
+            page,
+            this.selectors,
+            imageUrl,
+            { resultTimeoutMs: this.cfg.renderTimeoutMs },
+          );
+          describePrompts = domResult.prompts;
+          describeMethod = "dom";
+          thumbnailSrc = domResult.thumbSrc;
+        } catch (err) {
+          const reason: JobBlockReason =
+            err instanceof SelectorMismatchError
+              ? "selector-mismatch"
+              : "internal-error";
+          onProgress({
+            state: "FAILED",
+            blockReason: reason,
+            message:
+              err instanceof Error
+                ? `API fail (${apiError?.slice(0, 60)}); DOM fallback fail: ${err.message}`
+                : String(err),
+          });
+          return;
+        }
+        if (signal.aborted) return;
+      }
+    } else {
+      // dom-first: önce DOM popover, fail → API fallback
+      onProgress({
+        state: "SUBMITTING_PROMPT",
+        message: "Describe DOM yolu deneniyor (dom-first)",
       });
       try {
         const domResult = await describeImage(
@@ -1585,21 +1707,37 @@ export class PlaywrightDriver implements BridgeDriver {
         describeMethod = "dom";
         thumbnailSrc = domResult.thumbSrc;
       } catch (err) {
-        const reason: JobBlockReason =
-          err instanceof SelectorMismatchError
-            ? "selector-mismatch"
-            : "internal-error";
-        onProgress({
-          state: "FAILED",
-          blockReason: reason,
-          message:
-            err instanceof Error
-              ? `API fail (${apiError?.slice(0, 60)}); DOM fallback fail: ${err.message}`
-              : String(err),
-        });
-        return;
+        domError = err instanceof Error ? err.message : String(err);
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[describe] DOM path fail (API fallback'a düşülüyor): ${domError}`,
+        );
       }
       if (signal.aborted) return;
+
+      if (describePrompts.length === 0) {
+        onProgress({
+          state: "SUBMITTING_PROMPT",
+          message: `Describe API fallback (DOM fail: ${domError?.slice(0, 80) ?? "bilinmiyor"})`,
+        });
+        try {
+          const apiResult = await describeImageViaApi(page, imageUrl, {
+            fetchTimeoutMs: 60_000,
+          });
+          describePrompts = apiResult.prompts;
+          describeMethod = "api";
+          resolvedImageUrl = apiResult.resolvedImageUrl;
+        } catch (err) {
+          apiError = err instanceof Error ? err.message : String(err);
+          onProgress({
+            state: "FAILED",
+            blockReason: "internal-error",
+            message: `DOM fail (${domError?.slice(0, 60)}); API fallback fail: ${apiError}`,
+          });
+          return;
+        }
+        if (signal.aborted) return;
+      }
     }
 
     onProgress({
@@ -1611,8 +1749,11 @@ export class PlaywrightDriver implements BridgeDriver {
         resolvedImageUrl: resolvedImageUrl ?? imageUrl,
         thumbnailSrc,
         describePrompts,
-        describeMethod, // Pass 68 — hangi yol kullanıldı (admin UI gözlem için)
+        describeMethod, // Pass 68 — actual yol
+        // Pass 78 — strategy görünürlüğü: kullanıcının istediği vs. ne yapıldı
+        submitStrategy: requestedDescribeStrategy,
         ...(apiError ? { apiFallbackReason: apiError } : {}),
+        ...(domError ? { domFallbackReason: domError } : {}),
       },
       message: `Describe tamamlandı: ${describePrompts.length} prompt (${describeMethod})`,
     });
