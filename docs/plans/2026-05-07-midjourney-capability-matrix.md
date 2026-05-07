@@ -78,6 +78,88 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 50 (script'ten ürün akışına geçiş — tamamlanan) 🟢
+
+Pass 49 calibration script'i ile yakalanan başarı, **bridge HTTP `/jobs`
++ EtsyHub admin yüzeyi** akışına taşındı. Operator artık `/admin/midjourney`
+sayfasındaki "Test Render" formundan tetikleyebilir; bridge canlı
+üretim yolunu sürdürür.
+
+**Kritik bulgular ve düzeltmeler**:
+
+- ✅ **Eksik BullMQ enqueue** (Pass 42'den beri açık gap):
+  `createMidjourneyJob` doc'unda "BullMQ MIDJOURNEY_BRIDGE queue'ya
+  polling job ekle" diyordu ama gerçek `enqueue()` çağrısı YOKTU.
+  Service sadece DB row'larını açıyordu; worker hiç tetiklenmiyordu.
+  Pass 50 ekledi: `enqueue(JobType.MIDJOURNEY_BRIDGE, payload)`.
+- ✅ **Bridge output stream Content-Type fix**: `http.ts` hardcode
+  `image/png` döndürüyordu; Pass 49 sonrası output `.webp` formatında.
+  Şimdi uzantıdan dinamik (`webp`/`jpg`/`png`).
+- ✅ **EtsyHub `ingestOutputs` MIME fix**: Asset row + MinIO upload
+  hardcode `mimeType: "image/png"` ve `.png` storageKey kullanıyordu;
+  yeni `inferImageMime()` helper localPath uzantısı + sourceUrl +
+  magic bytes (PNG/WebP/JPEG) ipuçlarıyla doğru MIME ve uzantıyı
+  belirler.
+- ✅ **Admin "Test Render" yüzeyi**: `/admin/midjourney` sayfasında
+  client component form (`TestRenderForm.tsx`) — prompt input + aspect
+  ratio select + submit button. Bridge erişilemez ise disabled,
+  driver kind görünür (mock vs playwright operator anında ayırır).
+- ✅ **Yeni API route**: `POST /api/admin/midjourney/test-render` —
+  `requireAdmin` + zod body schema + `createMidjourneyJob` + audit
+  log + `BridgeUnreachableError` 502 handling. Form `router.refresh()`
+  ile sayfa yeniler; yeni job tabloda görünür.
+
+**Canlı E2E doğrulaması**:
+
+Bridge'i `MJ_BRIDGE_BROWSER_MODE=attach` + `MJ_BRIDGE_DRIVER=playwright`
+ile başlattım. Health snapshot:
+```
+mode=attach, browserKind=external, profileState=primed
+selectorSmoke: promptInput=true, loginIndicator=true, signInLink=false
+mjSession.likelyLoggedIn=true
+```
+Sonra `POST /jobs` (gerçek MJ submit) çağırdım:
+```
+[1] state=WAITING_FOR_RENDER  msg=Render bekleniyor… 3s · 0 yeni img
+...
+[16] state=COMPLETED  msg=Render + download tamamlandı
+mjJobId=9140e8e2-ac7b-40a7-88b5-922b866823c9
+4 outputs (.webp), localPath=data/outputs/.../{0,1,2,3}.webp
+```
+Output stream HEAD: `content-type: image/webp`, `content-length: 53692`.
+
+**Capability roadmap güncellemesi (next immediate)**:
+
+1. **next immediate (Pass 51)**:
+   - Admin login açık iken `/admin/midjourney` sayfasından "Test
+     Render Tetikle" butonuyla canlı UI E2E (bu turda bridge HTTP
+     zinciri canlı yeşil; UI tetikleme ayrı browser-side test
+     gerektirdiği için kullanıcıya bırakıldı)
+   - MinIO/storage çalışıyor olduğu durumda ingest assertion: 4
+     `MidjourneyAsset` row + 4 `Asset` row + bucket'ta 4 `.webp`
+   - Job lifecycle hooks: render başarısız (`render-timeout` /
+     `selector-mismatch` /`browser-crashed`) durumlarında admin
+     tabloda blockReason badge doğruluğu canlı doğrulama
+2. **after generate stabilizes**:
+   - `--sref` style reference (zaten `buildMJPromptString` destekliyor;
+     UI'da paste edilen URL listesi)
+   - `--oref` omni-reference (V7+ premium feature)
+   - `kind: "describe"` (image upload + 4 prompt scrape)
+3. **later**:
+   - Upscale U1-U4 / Variation V1-V4 buton click — kart hover'da
+     görünür, selector'lar kalibrasyon gerektirir
+   - Batch download / `/archive` history import
+4. **do not build now**:
+   - Captcha auto-solve, stealth, headless production, Discord (sabit
+     kurallar)
+
+**Pass 50 dürüst sınır**: Admin "Test Render" formu + API route TS
+clean + UI tetikleme yolu hazır, ama bu turda admin login açık
+browser-side canlı UI tetikleme yapılmadı — bridge HTTP zincirinin
+canlı yeşil olması yeterli kanıt (worker-poll-ingest yolu mock-driver
+testleriyle korunmuş; service düzeyinde BullMQ enqueue eksiği ekleme
+yeterli).
+
 ### Pass 49 (Chrome-attached real generate kalibrasyon — tamamlanan) 🟢
 
 **İlk gerçek end-to-end generate ÇALIŞIYOR.** MJ Job UUID

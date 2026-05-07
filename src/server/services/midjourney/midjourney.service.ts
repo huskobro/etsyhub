@@ -22,6 +22,8 @@ import { logger } from "@/lib/logger";
 import { sha256 } from "@/lib/hash";
 import { getStorage } from "@/providers/storage";
 import { env } from "@/lib/env";
+import { enqueue } from "@/server/queue";
+import type { MidjourneyBridgeJobPayload } from "@/server/workers/midjourney-bridge.worker";
 import {
   BridgeUnreachableError,
   getBridgeClient,
@@ -133,13 +135,22 @@ export async function createMidjourneyJob(
     return { job, mjJob };
   });
 
+  // Pass 50 — eksik BullMQ enqueue. Bridge job kabul etti; şimdi
+  // EtsyHub worker'ı polling'e yönelik tetikle.
+  const payload: MidjourneyBridgeJobPayload = {
+    userId: input.userId,
+    midjourneyJobId: result.mjJob.id,
+    jobId: result.job.id,
+  };
+  await enqueue(JobType.MIDJOURNEY_BRIDGE, payload as unknown as Record<string, unknown>);
+
   logger.info(
     {
       userId: input.userId,
       midjourneyJobId: result.mjJob.id,
       bridgeJobId: snapshot.id,
     },
-    "midjourney job created (bridge accepted)",
+    "midjourney job created (bridge accepted + worker enqueued)",
   );
 
   return {
@@ -310,10 +321,15 @@ async function ingestOutputs(
       out.gridIndex,
     );
 
-    // Asset row + MinIO upload (Pass 24 source clarity pattern'i).
-    const storageKey = `midjourney/${mjJob.userId}/${mjJob.id}/${out.gridIndex}.png`;
+    // Pass 50 — MIME/uzantı dinamik tespit. Pass 49 sonrası bridge
+    // outputları .webp formatında geliyor (cdn.midjourney.com webp);
+    // mimeType "image/png" hardcode storage policy'lerini ve UI image
+    // viewer'ları kırardı.
+    const { mime, ext } = inferImageMime(out.localPath, out.sourceUrl, buffer);
+
+    const storageKey = `midjourney/${mjJob.userId}/${mjJob.id}/${out.gridIndex}${ext}`;
     const stored = await storage.upload(storageKey, buffer, {
-      contentType: "image/png",
+      contentType: mime,
     });
 
     // Asset modelinde JSON sourceMetadata yok — `sourceUrl` (MJ CDN) +
@@ -325,7 +341,7 @@ async function ingestOutputs(
         storageProvider: env.STORAGE_PROVIDER,
         storageKey: stored.key,
         bucket: stored.bucket,
-        mimeType: "image/png",
+        mimeType: mime,
         sizeBytes: stored.size,
         hash: sha256(buffer),
         sourceUrl: out.sourceUrl ?? null,
@@ -348,4 +364,50 @@ async function ingestOutputs(
     { midjourneyJobId, count: snapshot.outputs.length },
     "midjourney outputs ingested",
   );
+}
+
+/**
+ * Pass 50 — image MIME + uzantı tespiti.
+ *
+ * Sıralı ipuçları:
+ *   1. localPath uzantısı (driver kontrol etti)
+ *   2. sourceUrl uzantısı (MJ CDN)
+ *   3. Magic bytes (PNG: 89 50, WebP: RIFF...WEBP, JPEG: FF D8)
+ *   4. Default png (kontratla uyumlu)
+ */
+function inferImageMime(
+  localPath: string,
+  sourceUrl: string | null | undefined,
+  buffer: Buffer,
+): { mime: string; ext: string } {
+  const tryExt = (s: string | null | undefined): string | null => {
+    if (!s) return null;
+    if (/\.webp(\?|$)/i.test(s)) return "webp";
+    if (/\.png(\?|$)/i.test(s)) return "png";
+    if (/\.(jpe?g)(\?|$)/i.test(s)) return "jpg";
+    return null;
+  };
+  let kind = tryExt(localPath) ?? tryExt(sourceUrl ?? null);
+  if (!kind && buffer.length >= 12) {
+    const b = buffer;
+    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
+      kind = "png";
+    } else if (
+      b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+      b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50
+    ) {
+      kind = "webp";
+    } else if (b[0] === 0xff && b[1] === 0xd8) {
+      kind = "jpg";
+    }
+  }
+  switch (kind) {
+    case "webp":
+      return { mime: "image/webp", ext: ".webp" };
+    case "jpg":
+      return { mime: "image/jpeg", ext: ".jpg" };
+    case "png":
+    default:
+      return { mime: "image/png", ext: ".png" };
+  }
 }

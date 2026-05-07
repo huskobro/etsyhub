@@ -15,6 +15,7 @@ import {
   BridgeUnreachableError,
   type BridgeHealth,
 } from "@/server/services/midjourney/bridge-client";
+import { TestRenderForm } from "./TestRenderForm";
 
 function stateTone(state: string): BadgeTone {
   if (state === "COMPLETED") return "success";
@@ -197,6 +198,14 @@ MJ_BRIDGE_TOKEN=<aynı token>
           MJ jobs DB&apos;den; bridge çalışmıyor olsa bile geçmiş listelenir.
         </p>
       </div>
+
+      {/* Pass 50 — operator Test Render tetikleyici. Bridge sağlıklı
+          değilse form disabled ama görünür kalır (operator
+          kurulum ipucundan sonra direkt buradan tetikleyebilsin). */}
+      <TestRenderForm
+        bridgeOk={healthResult.ok}
+        driverKind={healthResult.health?.driver}
+      />
 
       <Table density="admin">
         <THead>

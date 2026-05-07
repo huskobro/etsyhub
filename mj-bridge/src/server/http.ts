@@ -171,7 +171,16 @@ export function buildServer(cfg: ServerConfig): FastifyInstance {
       }
       try {
         const stat = statSync(out.localPath);
-        reply.header("Content-Type", "image/png");
+        // Pass 50 — uzantıya göre Content-Type. Pass 49 driver outputu
+        // .webp; eski hardcode "image/png" EtsyHub ingest tarafında
+        // sorunlara yol açıyordu.
+        const lower = out.localPath.toLowerCase();
+        const mime = lower.endsWith(".webp")
+          ? "image/webp"
+          : lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+            ? "image/jpeg"
+            : "image/png";
+        reply.header("Content-Type", mime);
         reply.header("Content-Length", stat.size.toString());
         return reply.send(createReadStream(out.localPath));
       } catch (err) {
