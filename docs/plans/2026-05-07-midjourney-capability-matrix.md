@@ -78,6 +78,172 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 69 (Describe reverify + Generate API endpoint kanıtı — audit-only) 🟢
+
+**Aşama 1: Describe API path tekrar doğrulama**
+
+3 ardışık kanıt:
+
+| Test | Sonuç |
+|---|---|
+| Bridge taze describe (`abe2f3ee-740e-...`, `5725b749/0_1`) | ✅ 6sn COMPLETED, `describeMethod=api`, no fallback, 4 prompt |
+| EtsyHub end-to-end (POST `/api/admin/midjourney/describe` doğrudan) | ✅ MidjourneyJob row açıldı (`cmovo5tnv...`), bridge `3213ebab-...` enqueue, COMPLETED, `describeMethod=api`, 4 prompt |
+| Admin UI detail page (`/admin/midjourney/cmovo5tnv...`) | ✅ DescribeResults panel render, **⚡ API badge** görünür, 4 prompt liste, `panelTitle: "Describe önerileri (4)"`, ilk prompt görsel ile uyumlu |
+
+**Pass 69 keşfedilen 2 ek bug (Pass 70 carry-over):**
+
+- 🐛 **BullMQ MIDJOURNEY_BRIDGE worker** dev server'da bootstrap edilmemiş;
+  kuyrukta `waiting: 1` job birikmiş, hiç çekilmiyor. Bridge tarafı
+  COMPLETED ama EtsyHub DB sync olmuyor. Pass 69'da workaround: bridge
+  snapshot'ı manuel olarak DB'ye yazdım (sadece test için). Pass 70 ana
+  hedef #1: worker bootstrap fix.
+- 🐛 **DescribeButton client tıklama** API fetch atmıyor (`useTransition`
+  içinde async function'ın server action mismatch riski). Doğrudan
+  `fetch('/api/admin/midjourney/describe', ...)` çalışıyor. Pass 70 ana
+  hedef #2: button bug fix.
+
+**Aşama 2: Generate / sref / oref / cref endpoint kanıt seviyesi audit**
+
+`main.js` endpoint host mapping (Pass 67/68'den genişletildi):
+
+| Endpoint | Host helper | Gerçek host | Anlam |
+|---|---|---|---|
+| `/api/describe` | `${t}` literal | **MJ kendi** | ✅ Pass 68 implementasyon |
+| `/api/storage-upload-file` | `${r}` literal | **MJ kendi** | ✅ describe upload bypass için kullanıldı |
+| `/api/jobs/submit` | `${hse()}` | autojourney 3rd-party | ❌ paywall, kullanmayız |
+| `/api/jobs/total` | `${hse()}` | autojourney 3rd-party | ❌ quota tracking |
+| `/api/email`, `/api/midjourney/prompts`, `/api/translate/prompts` | `${Dx}` | autojourney 3rd-party | ❌ eklenti VIP |
+| `/api/v9/channels/`, `/api/v9/guilds/` | `${Ts}` | Discord | ❌ kullanmıyoruz |
+| `/api/imagine` | (yok) | — | ❌ string'de var ama eklenti FETCH ETMİYOR |
+
+**Sref / cref / oref:** `main.js` literal kanıt:
+```js
+xUe = ["--sref", "--cref"];
+v.push(`--cref ${...}`);
+v.push(`--oref ${...}`);
+t.push(`--sref ${a}`);
+```
+Hepsi **prompt string flag**. Ayrı endpoint yok. **`buildMJPromptString`
+zaten destekliyor** (Pass 65'ten beri `--sref`, `--oref`, `--ow` var).
+Eksik: `--cref` (character reference) bridge'de yok; EtsyHub UI'da
+sref/oref/cref input alanları yok.
+
+**🎯 LIVE NETWORK CAPTURE — Generate için MJ kendi endpoint KANITLANDI**
+
+Kullanıcı MJ tab'ında **"pass69 audit test minimal"** prompt'unu yazıp
+Enter'a bastı. Capture 6 exchange yakaladı:
+
+| # | Method | URL | Anlam |
+|---|---|---|---|
+| 1 | POST `apijourney.autojourney.top/api/checkAuth/isMember` | Eklenti VIP check (3rd-party) | Bizim yapmayacağız |
+| 3 | POST `https://www.midjourney.com/api/prompt-session-log` | MJ telemetry | Opsiyonel |
+| **4** | **POST `https://www.midjourney.com/api/submit-jobs`** | **🎯 GERÇEK GENERATE ENDPOINT** | MJ kendi |
+| 6 | RES 200 + `{ success: [{ job_id, ... }] }` | Synchronous job acceptance | |
+
+**Pass 67/68 audit yanılgım:** `${hse()}/api/jobs/submit` autojourney
+3rd-party'ye gidiyor; **AMA MJ web UI'sının kendisi `/api/submit-jobs`
+endpoint'ine** (kendi domain) POST atıyor. **Path'ler isim-benzer ama
+farklı:**
+- `/api/jobs/submit` → autojourney (paywall)
+- `/api/submit-jobs` → MJ kendi (kullanıcı aboneliği yeterli) ← bizim için
+
+### Generate API tam contract (canlı yakalama)
+
+```http
+POST https://www.midjourney.com/api/submit-jobs
+Headers:
+  Content-Type: application/json
+  X-Csrf-Protection: 1
+  X-MJ-Traceparent: 00-...   (opsiyonel OpenTelemetry trace)
+
+Body:
+{
+  "f": { "mode": "relaxed", "private": false },
+  "channelId": "singleplayer_<userId>",
+  "metadata": {
+    "isMobile": null,
+    "imagePrompts": 0,
+    "imageReferences": 0,
+    "characterReferences": 0,
+    "depthReferences": 0,
+    "lightboxOpen": null
+  },
+  "t": "imagine",
+  "prompt": "pass69 audit test minimal --v 7"
+}
+
+Response (sync):
+{
+  "success": [{
+    "job_id": "66fb4969-0a1d-4a08-91ef-3a802509bdff",
+    "prompt": "...",
+    "is_queued": false,
+    "event_type": "diffusion",
+    "job_type": "v7_diffusion",
+    "flags": { "mode": "relaxed", "visibility": "public" },
+    "meta": { "height": 1024, "width": 1024, "batch_size": 4, "parent_id": null, "parent_grid": null },
+    "optimisticJobIndex": 0
+  }],
+  "failure": []
+}
+```
+
+**Notlar:**
+- `channelId: "singleplayer_<userId>"` — kullanıcı UUID format. UserId
+  Pass 67'de görüldü `b8c2ce27-9075-41d9-bc01-556c5e5d82f4`.
+- Prompt'a `--v 7` MJ tarafı otomatik ekledi.
+- `metadata.imagePrompts/imageReferences/characterReferences/depthReferences`
+  yapısal sayım field'ları — submit edilen ek ref sayısı.
+
+### Pass 70 öncesi belirsizlikler (kanıt eksik kısımlar)
+
+Bu yüzden **Pass 69'da implementasyon yapılmadı**:
+
+1. **`channelId` userId nereden alınır?** — `/api/auth/session` endpoint'inde
+   user UUID döner mi (Pass 70 capture)
+2. **Render polling pattern?** — `submit-jobs` job_id döner ama 4-grid
+   image'ları hangi endpoint poll edilir? `/api/recent-jobs` veya
+   `/api/user-queue`?
+3. **DOM-less submission gözlem etkisi?** — sayfa context'inde fetch
+   atılan job kullanıcının ekranında görünür mü, yoksa MJ React store
+   güncellenmediği için "ghost job" mı olur?
+
+### Karar
+
+**Pass 69 = audit + describe reverify (no new code).**
+**Pass 70 = generate PoC + implementation karar.**
+
+Pass 70 plan:
+1. **BullMQ worker bootstrap fix** (öncelik #1) + **DescribeButton client
+   tetikleme fix** (öncelik #2)
+2. **Generate API live capture v2** — render polling endpoint pattern
+   keşfi (`/api/recent-jobs`, `/api/user-queue` veya WebSocket)
+3. **`channelId` userId resolution** — `/api/auth/session` test
+4. **PoC: bridge'de `submitGenerateViaApi(page, params)` helper** (Pass 68
+   describe pattern'iyle aynı)
+5. **DOM-less submission gözlem etkisi test** — MJ tab'ında ghost job
+   testi
+6. Tutarlı çıkarsa: API-first + DOM fallback strategy generate'e taşı
+
+**Strong follow-up:**
+- Sref/oref/cref UI ekleme (TestRenderForm'a opsiyonel input'lar);
+  bridge zaten destekliyor, sadece UI eksik
+- `--cref` MjGenerateParams'a ekleme
+
+**Useful later:**
+- `/api/prompt-session-log` MJ telemetry replication (low priority)
+- Image-prompt ve depth-ref'in `metadata.*` yapısal field'larıyla submit
+
+**Do not now:**
+- autojourney 3rd-party kullanma
+- Discord API kullanma
+- Eklentiyi runtime dependency yapma
+
+**Audit script (worktree-only):**
+- `mj-bridge/scripts/capture-mj-generate-network.ts` — MJ generate trafiği
+  live sniffer (Pass 67'deki capture-mj-network.ts'in generate odaklı
+  varyantı). 6 exchange yakaladı.
+
 ### Pass 68 (Describe API-first + DOM fallback — extension-inspired — tamamlanan) 🟢
 
 **Hedef:** Pass 67 araştırma sonucunu (AutoSail eklenti `/api/describe` synchronous)
