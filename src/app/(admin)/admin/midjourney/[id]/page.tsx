@@ -24,6 +24,7 @@ import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { AssetThumb } from "../AssetThumb";
 import { JobActionBar } from "./JobActionBar";
 import { BlockedGuidance } from "./BlockedGuidance";
+import { CopyButton } from "./CopyButton";
 
 const STATE_LABELS: Record<string, string> = {
   QUEUED: "Sırada",
@@ -125,16 +126,29 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
             </Badge>
           ) : null}
         </div>
-        <p className="mt-1 text-sm text-text-muted">
-          Kullanıcı:{" "}
-          <span className="font-mono">{job.user?.email ?? "—"}</span> · ID:{" "}
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
+          <span>
+            Kullanıcı:{" "}
+            <span className="font-mono">{job.user?.email ?? "—"}</span>
+          </span>
+          <span>·</span>
+          <span>ID:</span>
           <span className="font-mono">{job.id}</span>
+          <CopyButton value={job.id} label="ID" />
         </p>
       </div>
 
-      {/* Pass 53 — state-aware action bar (cancel/retry/focus) +
-          auto-refresh (in-progress'te 4sn). */}
-      <JobActionBar midjourneyJobId={job.id} state={job.state} />
+      {/* Pass 53/54 — state-aware action bar (cancel/retry/focus) +
+          auto-refresh (in-progress'te 4sn) + Pass 54 düzenleyip retry
+          modal'ı için basePrompt/baseAspectRatio. */}
+      <JobActionBar
+        midjourneyJobId={job.id}
+        state={job.state}
+        basePrompt={job.prompt}
+        baseAspectRatio={
+          (job.promptParams as { aspectRatio?: string } | null)?.aspectRatio
+        }
+      />
 
       {/* Pass 53 — login/challenge bekleyen job'lar için adım rehberi. */}
       <BlockedGuidance state={job.state} />
@@ -148,7 +162,10 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
           <div className="text-sm">{promptCore.trim()}</div>
         </div>
         <div>
-          <div className="text-xs text-text-muted">Bridge prompt string</div>
+          <div className="flex items-center gap-2 text-xs text-text-muted">
+            <span>Bridge prompt string</span>
+            <CopyButton value={promptString} label="prompt" />
+          </div>
           <div className="font-mono text-xs">{promptString}</div>
           {flags.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">
@@ -164,11 +181,19 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
           ) : null}
         </div>
         <div>
-          <div className="text-xs text-text-muted">bridgeJobId</div>
+          <div className="flex items-center gap-2 text-xs text-text-muted">
+            <span>bridgeJobId</span>
+            <CopyButton value={job.bridgeJobId} label="ID" />
+          </div>
           <div className="font-mono text-xs">{job.bridgeJobId}</div>
         </div>
         <div>
-          <div className="text-xs text-text-muted">mjJobId (UUID)</div>
+          <div className="flex items-center gap-2 text-xs text-text-muted">
+            <span>mjJobId (UUID)</span>
+            {job.mjJobId ? (
+              <CopyButton value={job.mjJobId} label="UUID" />
+            ) : null}
+          </div>
           <div className="font-mono text-xs">{job.mjJobId ?? "—"}</div>
         </div>
         <div>
@@ -227,7 +252,10 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
           className="rounded-md border border-danger bg-danger-soft p-4 text-sm text-danger-text"
           data-testid="mj-job-failed-reason"
         >
-          <div className="font-semibold">Başarısızlık nedeni</div>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">Başarısızlık nedeni</span>
+            <CopyButton value={job.failedReason} label="hata" />
+          </div>
           <div className="mt-1 whitespace-pre-wrap font-mono text-xs">
             {job.failedReason}
           </div>

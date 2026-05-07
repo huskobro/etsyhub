@@ -13,6 +13,7 @@
 // retry parent ID'sini saklar.
 
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { MidjourneyJobState, type Prisma } from "@prisma/client";
 import { requireAdmin } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
@@ -41,11 +42,42 @@ const VALID_RATIOS: ReadonlyArray<BridgeAspectRatio> = [
   "9:16",
 ];
 
+// Pass 54 — opsiyonel edit body. Boşluksuz body veya hiç body
+// gönderilmezse eski Pass 53 davranışı (aynı prompt + params).
+// Edit verilirse prompt + aspectRatio override; diğer params'lar
+// (version, styleRaw, stylize, chaos) eski job'dan miras kalır.
+const editBody = z
+  .object({
+    prompt: z.string().min(3).max(800).optional(),
+    aspectRatio: z.enum(VALID_RATIOS as readonly [BridgeAspectRatio, ...BridgeAspectRatio[]]).optional(),
+  })
+  .optional();
+
 type Ctx = { params: { id: string } };
 
-export const POST = withErrorHandling(async (_req: Request, ctx: Ctx) => {
+export const POST = withErrorHandling(async (req: Request, ctx: Ctx) => {
   const admin = await requireAdmin();
   const { id } = ctx.params;
+
+  // Body parse — boş body / fetch JSON parse fail / valid body hepsi
+  // güvenle ele alınır.
+  let edit: z.infer<typeof editBody> = undefined;
+  try {
+    const text = await req.text();
+    if (text.trim()) {
+      const parsed = editBody.safeParse(JSON.parse(text));
+      if (!parsed.success) {
+        throw new ValidationError(
+          "Geçersiz retry body",
+          parsed.error.flatten().fieldErrors,
+        );
+      }
+      edit = parsed.data;
+    }
+  } catch (err) {
+    if (err instanceof ValidationError) throw err;
+    // JSON parse fail → boş body kabul et.
+  }
 
   const oldJob = await db.midjourneyJob.findUnique({
     where: { id },
@@ -70,17 +102,25 @@ export const POST = withErrorHandling(async (_req: Request, ctx: Ctx) => {
   // {aspectRatio, version, stylize, chaos, ...}. Default'lara düşelim.
   const params = (oldJob.promptParams as Prisma.JsonObject) ?? {};
   const rawRatio = (params["aspectRatio"] as string | undefined) ?? "1:1";
-  const aspectRatio: BridgeAspectRatio = (
+  const fallbackRatio: BridgeAspectRatio = (
     VALID_RATIOS as ReadonlyArray<string>
   ).includes(rawRatio)
     ? (rawRatio as BridgeAspectRatio)
     : "1:1";
 
+  // Pass 54 — edit override.
+  const finalPrompt = edit?.prompt?.trim() || oldJob.prompt;
+  const finalAspectRatio = edit?.aspectRatio ?? fallbackRatio;
+  const isEdited =
+    !!edit &&
+    ((edit.prompt !== undefined && edit.prompt.trim() !== oldJob.prompt) ||
+      (edit.aspectRatio !== undefined && edit.aspectRatio !== fallbackRatio));
+
   try {
     const result = await createMidjourneyJob({
       userId: admin.id, // retry'i tetikleyen admin sahip
-      prompt: oldJob.prompt,
-      aspectRatio,
+      prompt: finalPrompt,
+      aspectRatio: finalAspectRatio,
       version: params["version"] as string | undefined,
       styleRaw: params["styleRaw"] as boolean | undefined,
       stylize: params["stylize"] as number | undefined,
@@ -96,8 +136,10 @@ export const POST = withErrorHandling(async (_req: Request, ctx: Ctx) => {
       targetId: result.midjourneyJob.id,
       metadata: {
         retryOf: oldJob.id,
+        edited: isEdited,
         bridgeJobId: result.bridgeJobId,
-        prompt: oldJob.prompt.slice(0, 200),
+        prompt: finalPrompt.slice(0, 200),
+        aspectRatio: finalAspectRatio,
       },
     });
 

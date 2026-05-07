@@ -78,6 +78,107 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 54 (Failure UX polish + retry-with-edit — tamamlanan) 🟢
+
+Pass 53'ün control layer'ının üstüne **operator ergonomisi** geldi:
+copy butonları (id'leri eliyle seçmeden) + "düzenleyip retry" modal
+(operatör genelde aynı prompt değil, küçük tweak ile retry istiyor).
+
+**Audit + paket seçimi**:
+
+Pass 53 sonrası 3 büyük operator sürtünmesi kaldı:
+1. bridgeJobId / mjJobId / failedReason eliyle seçilip kopyalanıyordu
+2. Retry "same prompt only" — küçük tweak için sadece bu yetersiz
+3. AWAITING_LOGIN/CHALLENGE banner var ama canlı doğrulanmadı (Pass 51-53'te login geçerliydi, blocked state ortaya çıkmadı)
+
+Build now: **CopyButton primitive + 4 strategic copy point + retry
+edit modal + retry API edit body desteği**. Strong follow-up: focus
+button confirmation timeout, raw bridge error formatlama. Useful
+later: timeline visualization gradient bar. Do not now: yeni
+capability (upscale/variation/describe).
+
+**Uygulanan**:
+
+- ✅ `CopyButton.tsx` — reusable primitive: clipboard write +
+  "✓ kopyalandı" feedback (1.5sn) / "✗ hata". Detail header,
+  bridge prompt string, bridgeJobId, mjJobId, failedReason'da
+  4 noktada kullanılıyor.
+- ✅ Retry API edit body desteği — body opsiyonel
+  `{ prompt?: string, aspectRatio?: BridgeAspectRatio }`. Verilmezse
+  Pass 53 davranışı (aynı prompt + params); verilirse override.
+  Audit log `metadata: { edited: boolean, aspectRatio, prompt }`.
+- ✅ JobActionBar edit modal — terminal state'te "↻ Aynı promptla
+  tekrar dene" + "✎ Düzenleyip retry" iki buton. Modal: textarea
+  + aspect ratio select + submit. Submit → API'ye edit body POST
+  → yeni job oluşur → router.push yeni job sayfasına.
+- ✅ Detail page entegrasyon — header'da ID kopya, meta grid'de
+  prompt+bridgeJobId+mjJobId yanında copy buttons, failedReason
+  banner'ında copy button. ActionBar `basePrompt` +
+  `baseAspectRatio` prop'larını alıyor (modal default değerleri).
+
+**Canlı E2E doğrulaması (gerçek attach Chrome admin session)**:
+
+```
+[pass54] detail: /admin/midjourney/cmouwn0xn000a149lhkosthsn
+[pass54] copy buttons count: 4 ✓
+[pass54] retry-edit button visible: true ✓
+[pass54] edit form visible: true ✓
+[pass54] original prompt: ui-e2e pass 51 abstract test pattern minimalist
+[pass54] aspect ratio → 2:3
+[pass54] submit clicked
+[pass54] new URL: /admin/midjourney/cmouz7idp000n149luzmb6o96
+[pass54] new job prompt contains 'pass54-edited': true
+```
+
+DB doğrulama:
+```
+state: WAITING_FOR_RENDER
+prompt: "ui-e2e pass 51 abstract test pattern minimalist pass54-edited"
+promptParams.aspectRatio: 2:3
+audit: { edited: true, aspectRatio: 2:3 }
+```
+
+Screenshot `/tmp/mj-pass54-edit-modal.png`: tam ürün UX — header
+ID + 📋, "Aynı promptla" + "Düzenleyip retry" iki buton yan yana,
+açık modal (textarea + 2:3 select + Yeni job tetikle butonu),
+meta grid'deki tüm copy butonları, 4 grid thumbnail.
+
+**Operatör açısından kazanım**:
+
+Önce: "bridgeJobId'i kopyalamak için fareyi tam o satıra getir,
+3 tıklamayla seç..." → şimdi: tek 📋 buton + "kopyalandı"
+feedback. Önce: "Aynı prompt değil, küçük bir kelime ekleyip
+retry edeceğim" → terminal'e in, prisma query ile prompt al,
+manuel UI'dan Test Render formuna yeniden gir, yeni prompt yaz...
+→ şimdi: detail sayfasında "✎ Düzenleyip retry" → modal otomatik
+prompt+aspectRatio dolu → düzenle → submit → yeni job sayfası.
+
+**Capability roadmap güncellemesi**:
+
+1. **next immediate (Pass 55)**:
+   - Asset handoff: completed MJ job'dan Review/Selection'a hızlı
+     gönderim (Generated Designs pipeline'a köprü)
+   - Focus button confirmation timeout (browser-less ortamlar)
+   - Raw bridge error formatlama (multi-line stack trace okunur)
+2. **after operator UX stabilizes**:
+   - `--sref` / `--oref` UI: TestRenderForm'a reference URL paste
+   - `kind: "describe"` admin button (image upload + 4 prompt scrape)
+3. **later**:
+   - Upscale/variation buton click pipeline
+   - Batch download / `/archive` history import
+4. **do not build now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 54 dürüst sınır**:
+- AWAITING_LOGIN/CHALLENGE blocked state hâlâ canlı doğrulanmadı
+  (login geçerli olduğu sürece bu state tetiklenmez); banner +
+  focus button hazır, gerçek state'te otomatik aktif olur.
+- Browser smoke'da yeni retry-edit job sayfasında `2:3` flag'i
+  text içerikte görünmedi çünkü pipeline henüz `WAITING_FOR_RENDER`
+  durumunda; bridge `mjMetadata.promptString` tamamlandığında
+  flag chip'leri sayfaya yansır (DB'de `promptParams.aspectRatio:
+  2:3` doğru).
+
 ### Pass 53 (Admin operator control layer — tamamlanan) 🟢
 
 Pass 52'nin observability'sinin üstüne **kontrol** katmanı geldi.
