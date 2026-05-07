@@ -31,6 +31,14 @@ import {
   type ExportFormatPref,
 } from "./useLocalStoragePref";
 
+/** Pass 75 — Submit strategy preference değerleri. Bridge contract ile
+ * senkron tutulmalı (mj-bridge/src/types.ts SubmitStrategy). */
+export const SUBMIT_STRATEGY_VALUES = ["auto", "api-first", "dom-first"] as const;
+export type SubmitStrategyPref = (typeof SUBMIT_STRATEGY_VALUES)[number];
+export function isSubmitStrategy(raw: string): raw is SubmitStrategyPref {
+  return (SUBMIT_STRATEGY_VALUES as readonly string[]).includes(raw);
+}
+
 /**
  * MJ admin scope'unda saklanan kullanıcı tercihleri tipi.
  *
@@ -55,11 +63,26 @@ export type MJPreferences = {
    * Review queue'yu kirletir.
    */
   autoExpandPromoteAfterCompletion: boolean;
+  /**
+   * Pass 75 — Generate submit varsayılan stratejisi.
+   *
+   *   "auto" (default): bridge capability bazında en sağlam yolu seçer.
+   *     Pass 74 sonrası image-prompt dahil her durumda API tercih ediyor;
+   *     fail → DOM fallback.
+   *   "api-first": her job için önce API; fail → DOM fallback.
+   *   "dom-first": her job için Pass 49 DOM typing+submit (sayfada görünür).
+   *
+   * TestRenderForm bu default'u baz alır; kullanıcı per-job override
+   * yapabilir. Job metadata'da `submitStrategy` (chosen) + `submitMethod`
+   * (actual) ayrı görünür.
+   */
+  defaultSubmitStrategy: SubmitStrategyPref;
 };
 
 export const DEFAULT_MJ_PREFERENCES: MJPreferences = {
   defaultExportFormat: "png",
   autoExpandPromoteAfterCompletion: false,
+  defaultSubmitStrategy: "auto",
 };
 
 /**
@@ -105,6 +128,16 @@ export const MJ_PREFERENCE_DEFS = {
     description:
       "Generate tamamlandığında detail page'de Promote to Review paneli otomatik açık gelsin (opt-in; operatör hâlâ Reference + ProductType seçer ve manuel onaylar).",
   } satisfies PrefDef<"autoExpandPromoteAfterCompletion">,
+  defaultSubmitStrategy: {
+    key: "defaultSubmitStrategy" as const,
+    storageKey: "default-submit-strategy",
+    default: DEFAULT_MJ_PREFERENCES.defaultSubmitStrategy,
+    parse: (raw: string) => (isSubmitStrategy(raw) ? raw : null),
+    serialize: (v: SubmitStrategyPref) => v,
+    label: "Varsayılan submit stratejisi",
+    description:
+      "Yeni generate job'larda kullanılacak submit yolu. Auto: bridge en sağlamı seçer (Pass 74'ten itibaren image-prompt dahil API tercih). API-first: önce API; fail → DOM fallback. DOM-first: Pass 49 typing+submit, sayfada görünür akış.",
+  } satisfies PrefDef<"defaultSubmitStrategy">,
 } as const;
 
 export const ALL_PREFERENCE_KEYS = Object.keys(

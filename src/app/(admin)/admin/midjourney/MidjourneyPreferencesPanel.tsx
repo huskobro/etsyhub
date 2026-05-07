@@ -15,8 +15,10 @@ import {
   ALL_PREFERENCE_KEYS,
   EXPORT_FORMAT_VALUES,
   MJ_PREFERENCE_DEFS,
+  SUBMIT_STRATEGY_VALUES,
   type ExportFormatPref,
   type MJPreferences,
+  type SubmitStrategyPref,
 } from "./preferences";
 
 /**
@@ -166,6 +168,32 @@ export function MidjourneyPreferencesPanel() {
               }
             </span>
           </span>
+        </label>
+
+        {/* Pass 75 — defaultSubmitStrategy */}
+        <label
+          className="flex flex-col gap-1 text-xs"
+          data-testid="mj-pref-defaultSubmitStrategy"
+        >
+          <span className="font-semibold text-text">
+            {MJ_PREFERENCE_DEFS.defaultSubmitStrategy.label}
+          </span>
+          <span className="text-text-muted">
+            {MJ_PREFERENCE_DEFS.defaultSubmitStrategy.description}
+          </span>
+          <select
+            value={prefs.defaultSubmitStrategy}
+            onChange={(e) =>
+              set("defaultSubmitStrategy", e.target.value as SubmitStrategyPref)
+            }
+            className="w-44 rounded-md border border-border bg-bg px-2 py-1 text-xs"
+          >
+            {SUBMIT_STRATEGY_VALUES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
     </details>

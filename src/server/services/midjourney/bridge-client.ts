@@ -59,7 +59,19 @@ export type BridgeGenerateRequest = {
     stylize?: number;
     chaos?: number;
     imagePromptUrls?: string[];
-    styleReferenceUrls?: string[];
+    /**
+     * Pass 75 / 75.1 — Style reference. Backward-compatible:
+     *   - `string` (Pass 71): `--sref URL` (weight=1)
+     *   - `{ url, weight? }` (Pass 75): weight verilirse `--sref URL ::N`
+     *     (Pass 75.1: AutoSail literal pattern — BOŞLUKLU `::`),
+     *     yoksa `--sref URL`
+     */
+    styleReferenceUrls?: Array<string | { url: string; weight?: number }>;
+    /**
+     * Pass 75.1 — Global style weight (`--sw N`, range 0-1000).
+     * Per-URL `::N` ile ortogonal — MJ UI'da "Style Weight" etiketi.
+     */
+    styleWeight?: number;
     omniReferenceUrl?: string;
     omniWeight?: number;
     /**

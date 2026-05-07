@@ -49,12 +49,22 @@ const body = z.object({
     .array(z.string().url().startsWith("https://"))
     .max(10)
     .optional(),
-  // Pass 71 — Style reference (--sref) URL'leri. Prompt-string flag
-  // (ayrı endpoint yok; AutoSail audit literal kanıtı). Max 5.
+  // Pass 71/75 — Style reference (--sref). Pass 75: backward-compatible
+  // weight (`URL::N`) modeli — string veya { url, weight? }.
   styleReferenceUrls: z
-    .array(z.string().url().startsWith("https://"))
+    .array(
+      z.union([
+        z.string().url().startsWith("https://"),
+        z.object({
+          url: z.string().url().startsWith("https://"),
+          weight: z.number().int().min(0).max(1000).optional(),
+        }),
+      ]),
+    )
     .max(5)
     .optional(),
+  // Pass 75.1 — Global style weight (--sw N) 0-1000.
+  styleWeight: z.number().int().min(0).max(1000).optional(),
   // Pass 71 — Omni reference (V7+ premium) tek URL + omniWeight 0-1000.
   omniReferenceUrl: z
     .string()
@@ -121,6 +131,8 @@ export const POST = withErrorHandling(async (req: Request) => {
       referenceUrls: parsed.data.referenceUrls,
       // Pass 71 — sref / oref / preferApiSubmit
       styleReferenceUrls: parsed.data.styleReferenceUrls,
+      // Pass 75.1 — global --sw N
+      styleWeight: parsed.data.styleWeight,
       omniReferenceUrl: parsed.data.omniReferenceUrl,
       omniWeight: parsed.data.omniWeight,
       // Pass 73 — cref (V6-only)
@@ -146,6 +158,8 @@ export const POST = withErrorHandling(async (req: Request) => {
           parsed.data.referenceUrls?.[0]?.slice(0, 80) ?? null,
         // Pass 71 — sref/oref count + opt-in flag (audit log)
         styleRefCount: parsed.data.styleReferenceUrls?.length ?? 0,
+        // Pass 75.1 — global --sw N
+        styleWeight: parsed.data.styleWeight ?? null,
         omniRef: !!parsed.data.omniReferenceUrl,
         omniWeight: parsed.data.omniWeight ?? null,
         // Pass 73 — cref count

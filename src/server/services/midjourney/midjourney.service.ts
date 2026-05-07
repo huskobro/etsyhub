@@ -85,12 +85,22 @@ export type CreateMidjourneyJobInput = {
    */
   referenceUrls?: string[];
   /**
-   * Pass 71 — `--sref URL [URL ...]` style reference URL'leri.
-   * `buildMJPromptString` (Pass 65) prompt string'e flag olarak ekler.
-   * AutoSail audit (Pass 70) literal kanıtladı: --sref MJ tarafında
-   * prompt-string flag (ayrı endpoint yok). Max 5 URL.
+   * Pass 71/75 — `--sref URL [URL ...]` style reference. Pass 75'te
+   * weight desteği eklendi (`URL::N` AutoSail pattern).
+   *
+   * Backward-compatible:
+   *   - `string`: `--sref URL`
+   *   - `{ url, weight? }`: weight!=1 ise `--sref URL::N`
+   * Service validator HTTPS-only + max 5 + weight 0-1000 kontrol.
    */
-  styleReferenceUrls?: string[];
+  styleReferenceUrls?: Array<string | { url: string; weight?: number }>;
+  /**
+   * Pass 75.1 — Global `--sw N` style weight (0-1000). Per-URL `::N`
+   * weight ile ortogonal — MJ UI'da "Style Weight" etiketi bunu
+   * yansıtır. AutoSail main.js literal kanıt:
+   * `["ow","sw","cw","chaos","stylize","weird","sv"]`.
+   */
+  styleWeight?: number;
   /**
    * Pass 71 — `--oref URL` omni reference (V7+ premium). Tek URL.
    * `buildMJPromptString` Pass 65'ten beri destekliyor; sadece UI/service
@@ -145,21 +155,59 @@ function validateReferenceUrls(raw: string[] | undefined): string[] {
   }
   return cleaned;
 }
-/** Pass 71 — Style reference URL kontratı (--sref). HTTPS-only + max 5. */
-function validateStyleReferenceUrls(raw: string[] | undefined): string[] {
+/**
+ * Pass 71/75 — Style reference URL kontratı (--sref).
+ *
+ * Backward-compatible: string veya `{ url, weight? }` mix kabul eder.
+ * HTTPS-only + max 5 + weight (verilirse) 0-1000 integer.
+ *
+ * Output: bridge'e Array<string | { url, weight }> olarak iletilir;
+ * weight verilmediyse veya weight=1 ise saf string'e dönüştürülür
+ * (bridge buildMJPromptString iki tipi de handle eder ama saflaştırma
+ * audit log + DB representation'ı düzgün tutar).
+ */
+function validateStyleReferenceUrls(
+  raw: Array<string | { url: string; weight?: number }> | undefined,
+): Array<string | { url: string; weight: number }> {
   if (!raw || raw.length === 0) return [];
-  const cleaned = raw.map((u) => u.trim()).filter((u) => u.length > 0);
+  const cleaned: Array<string | { url: string; weight: number }> = [];
+  for (const entry of raw) {
+    const url = typeof entry === "string" ? entry.trim() : entry.url.trim();
+    if (url.length === 0) continue;
+    if (!url.startsWith("https://")) {
+      throw new Error(
+        `styleReferenceUrls SADECE HTTPS kabul eder (R17.2). Hatalı: ${url.slice(0, 80)}`,
+      );
+    }
+    if (typeof entry === "string") {
+      cleaned.push(url);
+      continue;
+    }
+    const weight = entry.weight;
+    if (typeof weight === "number") {
+      if (
+        !Number.isInteger(weight) ||
+        weight < 0 ||
+        weight > 1000
+      ) {
+        throw new Error(
+          `styleReferenceUrls weight 0-1000 arası tam sayı olmalı. Hatalı: ${weight}`,
+        );
+      }
+      // Pass 75 — weight=1 default; saf string'e indir
+      if (weight === 1) {
+        cleaned.push(url);
+      } else {
+        cleaned.push({ url, weight });
+      }
+    } else {
+      cleaned.push(url);
+    }
+  }
   if (cleaned.length > STYLE_REFERENCE_URLS_MAX) {
     throw new Error(
       `styleReferenceUrls max ${STYLE_REFERENCE_URLS_MAX} (geçen: ${cleaned.length})`,
     );
-  }
-  for (const u of cleaned) {
-    if (!u.startsWith("https://")) {
-      throw new Error(
-        `styleReferenceUrls SADECE HTTPS kabul eder (R17.2). Hatalı: ${u.slice(0, 80)}`,
-      );
-    }
   }
   return cleaned;
 }
@@ -233,6 +281,13 @@ export async function createMidjourneyJob(
     input.omniWeight <= 1000
       ? Math.round(input.omniWeight)
       : undefined;
+  // Pass 75.1 — Global style weight (--sw N), 0-1000 integer.
+  const styleWeight =
+    typeof input.styleWeight === "number" &&
+    input.styleWeight >= 0 &&
+    input.styleWeight <= 1000
+      ? Math.round(input.styleWeight)
+      : undefined;
   // Pass 73 — Character reference (V6-only) validation.
   const characterReferenceUrls = validateCharacterReferenceUrls(
     input.characterReferenceUrls,
@@ -266,6 +321,8 @@ export async function createMidjourneyJob(
         : {}),
       ...(omniReferenceUrl ? { omniReferenceUrl } : {}),
       ...(omniWeight !== undefined ? { omniWeight } : {}),
+      // Pass 75.1 — Global --sw N
+      ...(styleWeight !== undefined ? { styleWeight } : {}),
       // Pass 73 — Character reference (V6-only). buildMJPromptString
       // `--cref URL list` flag eklemesi yapar.
       ...(characterReferenceUrls.length > 0

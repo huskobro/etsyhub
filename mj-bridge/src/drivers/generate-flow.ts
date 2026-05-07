@@ -61,7 +61,30 @@ export function buildMJPromptString(params: MjGenerateParams): string {
     parts.push(`--chaos ${params.chaos}`);
   }
   if (params.styleReferenceUrls && params.styleReferenceUrls.length > 0) {
-    parts.push(`--sref ${params.styleReferenceUrls.join(" ")}`);
+    // Pass 75.1 — AutoSail main.js (offset 2320888) literal pattern:
+    //   v.push(`--sref ${o.map(y=>`${y.content}${y.weight!=1?` ::${y.weight}`:""}`).join(" ")}`)
+    // Yani per-URL weight syntax'ı **boşluklu** `URL ::N` (BOŞLUK var,
+    // `URL::N` değil). Pass 75 V0 yanlış implementasyondu (boşluksuz
+    // gönderiyordu, MJ UI'da etiket düşmedi). Bu commit ile düzeltiliyor.
+    const sref = params.styleReferenceUrls
+      .map((entry) => {
+        if (typeof entry === "string") return entry;
+        const w = entry.weight;
+        if (typeof w === "number" && w !== 1 && Number.isFinite(w)) {
+          return `${entry.url} ::${w}`;
+        }
+        return entry.url;
+      })
+      .join(" ");
+    parts.push(`--sref ${sref}`);
+  }
+  // Pass 75.1 — Global style weight `--sw N`. AutoSail main.js'in
+  // `["ow","sw","cw","chaos","stylize","weird","sv"]` known-flag
+  // listesinde literal kanıt; per-URL `::N` ile beraber kullanılabilir
+  // (farklı semantik: `::N` tek URL, `--sw N` tüm sref+oref karışımı için
+  // global style etkisi). MJ UI'da "Style Weight" etiketi bunu yansıtır.
+  if (typeof params.styleWeight === "number") {
+    parts.push(`--sw ${params.styleWeight}`);
   }
   if (params.omniReferenceUrl) {
     parts.push(`--oref ${params.omniReferenceUrl}`);

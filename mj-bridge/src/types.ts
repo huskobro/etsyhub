@@ -97,13 +97,30 @@ export type MjGenerateParams = {
    */
   imagePromptUrls?: string[];
   /**
-   * Style reference — `--sref URL [URL ...]`. Pass 71'de UI/service
-   * input alanları geldi. Pass 73 audit notu: AutoSail audit kanıtı
-   * `--sref` weight pattern destekliyor (`URL::N`); Pass 73 V1
-   * scope'unda weight desteği YOK (sadece URL list). Pass 74+'da
-   * weight eklenebilir.
+   * Style reference — `--sref URL [URL ::N ...]`. Pass 71'de UI/service
+   * input alanları geldi. Pass 75'te per-URL weight desteği eklendi.
+   * Pass 75.1'de syntax düzeltildi (AutoSail main.js literal kanıt:
+   * `${y.content}${y.weight!=1?` ::${y.weight}`:""}` → boşluklu inline).
+   *
+   * Backward-compatible:
+   *   - `string` (eski): `--sref URL` (weight=1, default)
+   *   - `{ url, weight? }`: weight verilirse `--sref URL ::N` (BOŞLUKLU),
+   *     yoksa `--sref URL`
+   * İki form aynı array içinde mix edilebilir.
+   *
+   * `buildMJPromptString` her iki tipi handle eder.
    */
-  styleReferenceUrls?: string[];
+  styleReferenceUrls?: Array<string | { url: string; weight?: number }>;
+  /**
+   * Pass 75.1 — Global style weight (`--sw N`). AutoSail main.js'in
+   * `["ow","sw","cw","chaos","stylize","weird","sv"]` known-flag
+   * listesinden literal kanıt. Per-URL `::N` ile ortogonal: `--sw N`
+   * tüm sref+oref karışımına global etki yapar (MJ UI'da "Style Weight"
+   * etiketi bunu yansıtır).
+   *
+   * MJ V7+ default 100; range 0-1000.
+   */
+  styleWeight?: number;
   /**
    * Omni reference (V7+) — `--oref URL --ow N`. Pass 71'de UI/service
    * input alanları geldi. cref ile mutually exclusive (V7+ only).

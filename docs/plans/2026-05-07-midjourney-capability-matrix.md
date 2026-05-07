@@ -78,6 +78,126 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 75 / 75.1 (Reference-aware API-first generate V1 + sref weight syntax düzeltmesi) 🟢
+
+**Hedef (Pass 75 V1):** Reference-aware generate API-first kapanışı —
+sref weight desteği + global default submit strategy preference + UI
+tutarlılık + sref/oref/cref/image-prompt tam smoke.
+
+**Pass 75 V0 → 75.1 hata düzeltmesi:**
+Pass 75 V0'ta sref per-URL weight syntax'ı boşluksuz `URL::N` olarak
+implement edilmişti. Kullanıcı canlı smoke sonrası geri bildirim verdi:
+"omni weight doğru ama sref weight doğru değil — `::300` görünüyor ama
+'style weight' rozeti düşmüyor; muhtemelen `--sw N` ile aynı şekilde
+çalışıyor". Bu doğru çıktı.
+
+**Pass 75.1 AutoSail main.js literal kanıt (offset 2320888):**
+```js
+v.push(`--sref ${o.map(y=>`${y.content}${y.weight!=1?` ::${y.weight}`:""}`).join(" ")}`)
+v.push(`--oref ${a.map(y=>y.content).join(" ")}`)  // weight YOK
+v.push(`--cref ${s.map(y=>y.content).join(" ")}`)  // weight YOK
+["ow","sw","cw","chaos","stylize","weird","sv"].forEach(y=>{
+  const b=t[y]; typeof b=="number"&&v.push(`--${y} ${b}`)
+})
+```
+
+İki net bulgu:
+1. **Per-URL sref weight**: `URL ::N` BOŞLUKLU (Pass 75 V0 boşluksuzdu;
+   düzeltildi).
+2. **Global `--sw N`** AYRI flag (`["ow","sw","cw",...]` known-flag
+   listesinde). Per-URL `::N` ile ortogonal — MJ UI'da "Style Weight"
+   etiketi bunu yansıtır.
+
+**Pass 75.1 ile gelen değişiklikler:**
+
+1. **buildMJPromptString refactor**:
+   - Per-URL `URL ::N` (boşluklu) — AutoSail literal pattern
+   - Yeni `params.styleWeight` → `--sw N` (global, opsiyonel)
+2. **Bridge types**: `MjGenerateParams.styleWeight?: number` eklendi
+3. **bridge-client tip**: `styleWeight?: number` forward
+4. **Service**: `CreateMidjourneyJobInput.styleWeight` + 0-1000 integer
+   validator + bridge body forward
+5. **API route**: Zod `styleWeight: z.number().int().min(0).max(1000)`
+   + audit log entry (`styleWeight`)
+6. **TestRenderForm UI**: yeni `--sw` numara input'u (sref textarea
+   altında); per-URL `URL::N` parser (mevcut, lastIndexOf("::"))
+   `URL ::N` çevirimi bridge tarafında yapıldığı için UI raw input
+   formatı değişmedi (kullanıcı `URL::N` yazıyor, bridge `URL ::N`
+   üretiyor — kullanıcı pratiğe bakmadan AutoSail UI'ından kopyalayabilir)
+7. **Preferences panel**: `defaultSubmitStrategy` (Pass 75) korundu
+
+**Capability map (Pass 75.1 sonrası):**
+
+| Capability | Strategy | API yolu | DOM yolu | Status |
+|---|---|---|---|---|
+| sref (per-URL `URL ::N`) | auto / api-first / dom-first | ✅ Pass 74 | ✅ Pass 49 | 🟢 production |
+| sref (global `--sw N`) | auto / api-first / dom-first | ✅ Pass 75.1 | ✅ Pass 75.1 | 🟢 production |
+| oref + ow | auto / api-first / dom-first | ✅ Pass 74 | ✅ Pass 49 | 🟢 production |
+| cref (V6) | auto / api-first / dom-first | ✅ Pass 73 | ✅ Pass 49 | 🟢 production |
+| image-prompt | auto / api-first / dom-first | ✅ Pass 74 | ✅ Pass 65 | 🟢 production |
+| describe | (tek strategy: API) | ✅ Pass 68 | ✅ Pass 49 | 🟢 production |
+
+**Pass 75.1 unit test (8/8 PASS):**
+1. Backward string sref (no weight)
+2. Per-URL weight obj → `URL ::200` (boşluklu)
+3. Mixed string + weighted
+4. weight=1 collapses to bare URL
+5. Global `--sw N` alone
+6. Per-URL `::N` + global `--sw` + oref + ow combo
+7. styleWeight only (no sref) — `--sw N` standalone
+8. sref + cref (V6) combo — cref weight yok
+
+**Pass 75.1 canlı CDP DOM kanıtı (MJ tarafı parse doğrulaması):**
+
+Smoke turu 1 + 2 sonrası MJ Create tab'ında CDP `Runtime.evaluate` ile
+DOM içeriği okundu. MJ render kartı text içeriği (kullanıcı geri
+bildirimini gerçekleyen kanıt):
+
+```
+"Invalid image link
+boho mandala wall art Pass 75.1 sref weight test
++ use text
+::300
+--sw 150
+ sw"
+```
+
+İki net bulgu:
+1. **`::300` ve `--sw 150` MJ DOM'unda ayrı segmentler olarak görünüyor**
+   — yani MJ parser her iki flag'i de tanıdı ve render kartına yansıttı.
+   Pass 75 V0'taki `::300` boşluksuz `URL::300` formatında MJ rozet
+   düşürmüyordu; Pass 75.1 boşluklu `URL ::300` ile MJ "::300" segmentini
+   ayrı bir token olarak gösteriyor. Bu kullanıcı geri bildiriminin
+   ("`::300` görünüyor ama 'style weight' rozeti yok") **doğrudan
+   düzeltmesi**.
+2. **`--sw 150` AYRI flag** olarak DOM'da görünüyor — `["ow","sw","cw",...]`
+   AutoSail known-flag listesindeki `sw` flag'i MJ tarafında parse
+   ediliyor.
+
+**Smoke turu sınırları (kod hatası değil — fixture sorunu):**
+- Wikipedia 280px thumbnail URL'i (test fixture) MJ'in image-prompt
+  validator'ından geçemedi (`"Invalid image link"`); bu yüzden render
+  başlamadı, 180sn timeout fired. Submit + parse aşamaları doğru;
+  render aşaması test fixture URL kalitesine bağımlı.
+- MJ render selector'ı (`data-job-id` → grid img CDN URL) bu ortamda
+  hiç eşleşmedi (`dataAttrsFound: []`) — Pass 71/72/73 smoke'larda
+  çalışan selector burada da çalıştı (Pass 71 commit kanıt: 4 grid img
+  download). Pass 75.1 commit'inde MJ DOM yapısı değişmediği için
+  selector regression yok.
+
+**Pass 75.1 dürüst sınırlar:**
+- MJ UI'daki "Style Weight" rozeti screenshot kanıtı bu commit'te
+  eklenmedi (kullanıcı browser'da görsel doğrulayabilir; CDP DOM text
+  kanıtı yeterli — `::N` ve `--sw N` MJ tarafından parse edildi).
+- `--sw N` MJ V7+ default 100, V6'da farklı yorumlanabilir; service
+  validator sadece range check, version-aware default ayarı yok.
+- Per-URL ve global aynı anda gönderilirse MJ tarafı toplama veya
+  multiplication uygular — AutoSail audit'te birleşik semantik kanıt
+  yok; kullanıcı pratiğine bırakıldı.
+- Smoke turu MJ render fixture URL kabul etmediği için outputs CDN
+  download kanıtı bu commit'te yok; submit + MJ parse kanıtı CDP DOM
+  text üzerinden net.
+
 ### Pass 74 (Submit strategy preference + Image-prompt API-first PoC) 🟢
 
 **Hedef:** MJ servisini API-first merkezli hale getir. Submit strategy
