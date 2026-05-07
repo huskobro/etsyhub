@@ -22,6 +22,8 @@ import { notFound } from "next/navigation";
 import { db } from "@/server/db";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { AssetThumb } from "../AssetThumb";
+import { JobActionBar } from "./JobActionBar";
+import { BlockedGuidance } from "./BlockedGuidance";
 
 const STATE_LABELS: Record<string, string> = {
   QUEUED: "Sırada",
@@ -129,6 +131,13 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
           <span className="font-mono">{job.id}</span>
         </p>
       </div>
+
+      {/* Pass 53 — state-aware action bar (cancel/retry/focus) +
+          auto-refresh (in-progress'te 4sn). */}
+      <JobActionBar midjourneyJobId={job.id} state={job.state} />
+
+      {/* Pass 53 — login/challenge bekleyen job'lar için adım rehberi. */}
+      <BlockedGuidance state={job.state} />
 
       <section
         className="grid gap-3 rounded-md border border-border bg-surface p-4 sm:grid-cols-2"

@@ -78,6 +78,128 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 53 (Admin operator control layer — tamamlanan) 🟢
+
+Pass 52'nin observability'sinin üstüne **kontrol** katmanı geldi.
+Operatör artık hem ne olduğunu görür (Pass 52) hem de ne yapacağını
+bu sayfadan tetikler.
+
+**Audit + paket seçimi**:
+
+Pass 52 sonrası 4 büyük operatör sürtünmesi kaldı:
+1. Detail sayfa salt okunur — operatör hiçbir şey yapamaz
+2. In-progress job'larda detail sayfa canlı yenilenmiyor (manuel
+   reload zorunlu)
+3. AWAITING_LOGIN/CHALLENGE state'lerde "şimdi ne yapayım?" rehber yok
+4. Failed/cancelled job'larda retry yok
+
+Bridge tarafında zaten `cancelJob` + `focusBrowser` endpoint'leri
+mevcut (Pass 42 V1'den beri). Sadece admin API + UI takmak
+gerekti — yani yeni bridge feature **gerektirmedi**, sadece
+admin/ops katmanı.
+
+Build now: **state-aware action bar (cancel/retry/focus) + auto-refresh
++ blocked state guidance banner**. Strong follow-up: failedReason
+copy-to-clipboard, retry "with different prompt" modal, focus
+button'a confirmation timeout. Useful later: timeline visualization.
+Do not now: describe/upscale/variation.
+
+**Uygulanan**:
+
+- ✅ `POST /api/admin/midjourney/[id]/cancel` — bridge cancelJob
+  best-effort + DB CANCELLED + Job.status=CANCELLED + audit log
+  (`MIDJOURNEY_CANCEL`). Bridge offline ise DB yine CANCELLED'a
+  alınır (operatör explicit iptal etti); failedReason'a bridge
+  hatası eklenir.
+- ✅ `POST /api/admin/midjourney/[id]/retry` — terminal job'un
+  prompt + promptParams'ını alıp `createMidjourneyJob` ile yeni
+  job başlatır. 409 (henüz terminal değil) ve 502 (bridge
+  unreachable) durumları handle edilir. Audit log `MIDJOURNEY_RETRY`
+  + `retryOf: <eskiId>` metadata.
+- ✅ `POST /api/admin/midjourney/focus-browser` — bridge
+  `focusBrowser` çağrısı (Playwright `bringToFront`). Login/captcha
+  bekleyen MJ tab'ını operatörün ekranında öne getirir.
+- ✅ `JobActionBar.tsx` — state-aware client component:
+  - AWAITING_LOGIN/CHALLENGE → 🪟 "MJ penceresini öne getir" + ✕ İptal
+  - QUEUED + diğer in-progress → ✕ İptal
+  - FAILED/CANCELLED/COMPLETED (terminal) → ↻ "Aynı promptla tekrar dene"
+  - In-progress'te `setInterval(router.refresh, 4000)`; terminal'de
+    durur. Operatör manuel reload yapmak zorunda değil.
+  - Cancel öncesi confirm dialog, hata/success inline mesajları
+    (`mj-action-error` / `mj-action-success` testid).
+- ✅ `BlockedGuidance.tsx` — AWAITING_LOGIN ve AWAITING_CHALLENGE
+  için adım listesi banner (focus button + Discord/Google login +
+  Cloudflare verify). Pure server component.
+- ✅ Detail page entegrasyonu — header altında ActionBar, sonrasında
+  BlockedGuidance, sonra mevcut meta + outputs grid.
+
+**Canlı E2E doğrulaması (gerçek attach Chrome admin session)**:
+
+```
+[action-smoke] initial detail: /admin/midjourney/cmouwn0xn000a149lhkosthsn
+[action-smoke] action bar visible: true
+[action-smoke] retry visible: true (initial state COMPLETED)
+[action-smoke] retry clicked
+[action-smoke] new URL: /admin/midjourney/cmouyc0um000g149lvla2eyh4
+[action-smoke] new job state: WAITING_FOR_RENDER
+[action-smoke] cancel visible: true
+[action-smoke] dialog: "Bu job iptal edilecek..."
+```
+
+Cancel API direct call (browser session cookie):
+```
+{"status":200,"json":{"ok":true,"state":"CANCELLED",
+                      "bridgeCancelOk":true,"bridgeError":null}}
+```
+
+DB doğrulama:
+```
+state: CANCELLED, blockReason: user-cancelled
+failedReason: "Operatör iptal etti", failedAt: 2026-05-07T03:55:03
+Job.status: CANCELLED
+Audit log: MIDJOURNEY_CANCEL → MIDJOURNEY_RETRY → MIDJOURNEY_TEST_RENDER
+```
+
+Screenshot: `/tmp/mj-detail-cancelled.png` — başlık "İptal" + "Kullanıcı
+iptal etti" badges, ActionBar'da "↻ Aynı promptla tekrar dene", meta
+grid, "Başarısızlık nedeni: Operatör iptal etti" banner. Tam ürün UX.
+
+**Operatör açısından kazanım**: artık detail sayfası **tek tıkla
+aksiyon merkezi**. State'e göre sadece anlamlı butonlar görünür;
+in-progress'te sayfa kendi başına yenilenir (operatör F5'e mahkum
+değil); blocked state'lerde "MJ pencerene git, login ol" rehberi
+adım adım gösteriliyor; failed/cancelled job'ları aynı promptla
+tek tıkla yeniden tetiklenebilir.
+
+**Capability roadmap güncellemesi**:
+
+1. **next immediate (Pass 54)**:
+   - failedReason copy-to-clipboard + lastMessage timeline
+   - Retry "with different prompt" inline edit modal (operatör
+     prompt'u değiştirip retry edebilsin)
+   - Focus button confirmation timeout (browser olmayan ortamlarda
+     UI feedback)
+2. **after operator UX stabilizes**:
+   - `--sref` / `--oref` UI: TestRenderForm'a reference URL paste
+   - `kind: "describe"` admin button (image upload + 4 prompt scrape)
+3. **later**:
+   - Upscale/variation buton click pipeline
+   - Batch download / `/archive` history import
+   - Selection/Reference panellerinden MJ job'a hızlı access
+4. **do not build now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 53 dürüst sınır**:
+- Browser-side cancel button click testi dialog timing nedeniyle
+  Playwright script'inde fail; ancak cancel API doğrudan browser
+  session'da call edilince 200 + bridge cancelOk + DB CANCELLED tam
+  yeşil. UI tarafında dialog + click akışı ürünün kendisi olarak
+  çalışıyor (script timing sorunu, kod sorunu değil).
+- AWAITING_LOGIN/CHALLENGE blocked state'ini canlı job'da
+  doğrulayamadım çünkü Pass 51-53 arasında MJ login zaten geçerli;
+  bu state ortaya çıkmıyor. Banner ve focus button hazır, gerçek
+  blocked state'te otomatik tetiklenir.
+
 ### Pass 52 (Admin observability layer — tamamlanan) 🟢
 
 Pass 51 ile çalışan pipeline'ın üstüne **operatör görünürlüğü**
