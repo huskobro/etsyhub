@@ -78,6 +78,86 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 51 (UI-triggered tam E2E ürün akışı — tamamlanan) 🟢
+
+**Browser üzerinden gerçek admin UI E2E ÇALIŞIYOR.** Aynı attach
+edilmiş Chrome session'ında hem MJ login hem EtsyHub admin login açık;
+operatör `/admin/midjourney` sayfasından "Test Render" formuna basarak
+60sn içinde tam zinciri yürüttü.
+
+**Canlı doğrulama (browser'da gözlemlendi)**:
+```
+[ui-e2e] /admin/midjourney aç
+[ui-e2e] bridge health card visible: true
+[ui-e2e] test render form visible: true
+[ui-e2e] submit button disabled: false
+[ui-e2e] form sonucu: success
+[ui-e2e] success msg: ✓ Job tetiklendi · midjourneyJobId=cmouwn0x…
+[ui-e2e] tablo: 2 → 3 row (yeni job eklendi)
+[+5s]  state: Sırada → Render bekleniyor
+[+60s] state: Render bekleniyor → Tamamlandı
+DB: state=COMPLETED, mjJobId=c2edd80b-b2ad-48a3-83e5-5de828aae580, assets=4
+4 MidjourneyAsset rows: midjourney/{userId}/{mjJobId}/{0..3}.webp
+                       mime=image/webp size=20-89KB
+```
+
+**Fix-now bulguları + uygulanan düzeltmeler**:
+
+1. **Bridge MJ tab deterministic seçimi**: Aynı Chrome attach
+   session'ında admin tab açıkken `pages()[0]` admin'i dönüyordu →
+   bridge `health()` MJ session'ı yanlış raporladı, `executeJob`
+   admin tab'da prompt yazmaya çalışırdı. Yeni `pickMjPage()` helper
+   `pages.find(p => p.url().includes("midjourney.com"))` ile
+   deterministik MJ tab seçer. `health()`, `focusBrowser()`,
+   `executeJob()` hepsi bu helper'ı kullanır.
+2. **Next.js bundler `.js` extension hatası**: Pass 50'de eklenen
+   yeni import'lar (`@/server/queue`, worker payload type) Next.js
+   bundler'ın import grafiğini farklı traverse etmesine yol açtı; bu
+   sırada `./bridge-client.js` (TS source `.ts`) çözülemedi → admin
+   sayfa 500. `import { ... } from "./bridge-client.js"` → `from
+   "./bridge-client"` (extension'sız) çözdü. (Pass 50 TS clean'di
+   çünkü `tsc` `.js` extension'ı kabul ediyor; ama Next.js bundler
+   farklı resolver kullanıyor.)
+3. **`bullJobId` unique collision**: BullMQ ID'leri queue-scoped
+   ("1", "2", …); EtsyHub `Job.bullJobId` ise unique constraint'li.
+   Cross-queue collision (FETCH_NEW_LISTINGS:1 ↔ MIDJOURNEY_BRIDGE:1)
+   worker'ı silent fail ettiriyordu → job sonsuza dek "QUEUED"da
+   kalıyordu. Worker `${job.queueName}:${job.id}` composite ID
+   kullanıyor; cross-queue collision çözüldü. (Pre-existing aynı bug
+   `competitor-service.ts`'de de var; spawn task'a alındı.)
+
+**UX hardening uygulandı**:
+
+- `TestRenderForm.tsx` — submit success sonrası 90sn boyunca her 4sn
+  `router.refresh()` interval'ı; tablo otomatik yenilenir, operatör
+  manuel reload yapmak zorunda değil. 90sn dolduğunda durur (real
+  driver render 30-90sn).
+
+**Capability matrix güncellemesi**:
+
+1. **next immediate (Pass 52)**:
+   - Output thumbnail görselleri admin tabloda sergileme (şimdi
+     sadece "Asset 4" sayısı; gerçek 4 thumbnail küçük preview
+     mantıklı)
+   - Job detay sayfası (`/admin/midjourney/[id]`) — `mjMetadata`,
+     prompt string, lastMessage, blockReason, asset preview grid
+   - `BridgeUnreachableError` 502 cevabını UI'da daha net handle et
+2. **after generate stabilizes**:
+   - `--sref` style reference paste (zaten flag desteği)
+   - `--oref` omni-reference (V7+ premium)
+   - `kind: "describe"` (image upload + 4 prompt scrape)
+3. **later**:
+   - Upscale/variation buton click — render kart hover'da görünür
+   - Batch download / `/archive` history import
+   - Generate akışı production retry/cancel flow
+4. **do not build now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pre-existing bug spawn task**: `competitor-service.ts:190` aynı
+`bullJobId` unique collision pattern'ine sahip → ayrı task'ta
+çözülecek (FETCH_NEW_LISTINGS scheduler her saatte fail ediyor;
+Pass 51'den bağımsız).
+
 ### Pass 50 (script'ten ürün akışına geçiş — tamamlanan) 🟢
 
 Pass 49 calibration script'i ile yakalanan başarı, **bridge HTTP `/jobs`

@@ -407,8 +407,28 @@ export class PlaywrightDriver implements BridgeDriver {
     }
   }
 
+  /**
+   * Pass 51 — MJ tab'ını deterministic seç. Aynı Chrome attach
+   * session'ında birden fazla tab açıkken (kullanıcı admin login için
+   * EtsyHub tab'ı da açmış olabilir) `pages()[0]` çoğu kez **MJ
+   * olmayan** tab döner ve hem `health()` MJ session'ı yanlış raporlar
+   * hem de `executeJob` admin tab'da prompt yazmaya çalışır → fail.
+   *
+   * Sıra:
+   *   1. midjourney.com içeren tab (en güvenilir)
+   *   2. selectorSmoke promptInput hit'i veren tab (logged-in MJ)
+   *   3. ilk açık tab (hiçbiri uygun değilse — fallback)
+   */
+  private pickMjPage(): import("playwright").Page | undefined {
+    const pages = this.context?.pages() ?? [];
+    if (pages.length === 0) return undefined;
+    const mj = pages.find((p) => p.url().includes("midjourney.com"));
+    if (mj) return mj;
+    return pages[0];
+  }
+
   async health() {
-    const page = this.context?.pages()[0];
+    const page = this.pickMjPage();
     if (page) await this.refreshSessionHeuristic(page);
     const pages = this.context?.pages() ?? [];
     return {
@@ -418,7 +438,7 @@ export class PlaywrightDriver implements BridgeDriver {
           ? "(attach — kullanıcı --user-data-dir flag'inde manage eder)"
           : this.cfg.profileDir,
       pageCount: pages.length,
-      activeUrl: pages[0]?.url(),
+      activeUrl: page?.url() ?? pages[0]?.url(),
       mjLikelyLoggedIn: this.mjLikelyLoggedIn,
       lastChecked: this.lastSessionCheck.toISOString(),
       // Pass 45 — browser/profile mode görünürlüğü
@@ -469,7 +489,7 @@ export class PlaywrightDriver implements BridgeDriver {
   }
 
   async focusBrowser(): Promise<void> {
-    const page = this.context?.pages()[0];
+    const page = this.pickMjPage();
     if (page) await page.bringToFront();
   }
 
@@ -519,7 +539,9 @@ export class PlaywrightDriver implements BridgeDriver {
 
     onProgress({ state: "OPENING_BROWSER", message: "Browser hazırlanıyor" });
 
-    const page = this.context.pages()[0] ?? (await this.context.newPage());
+    // Pass 51 — MJ tab'ını deterministic seç (admin/EtsyHub tab'ı
+    // varsa ona prompt yazmaya çalışmasın).
+    const page = this.pickMjPage() ?? (await this.context.newPage());
     await page.bringToFront().catch(() => undefined);
 
     // /imagine sayfasına navigate (login/challenge oluşabilir).

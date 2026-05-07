@@ -31,7 +31,7 @@ import {
   type BridgeGenerateRequest,
   type BridgeJobSnapshot,
   type BridgeJobState,
-} from "./bridge-client.js";
+} from "./bridge-client";
 
 /**
  * Bridge → DB state map (string identical, ama Prisma enum tip'ine cast).

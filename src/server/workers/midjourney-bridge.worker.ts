@@ -37,9 +37,13 @@ export async function handleMidjourneyBridge(
   );
 
   // BullMQ job → EtsyHub Job link.
+  // Pass 51 — `bullJobId` Job tablosunda unique; BullMQ ID'leri ise
+  // queue-scoped ("1", "2"…) dolayısıyla cross-queue collision olur.
+  // `${queueName}:${job.id}` ile global unique yapıyoruz.
+  const compositeBullId = `${job.queueName}:${job.id}`;
   await db.job.update({
     where: { id: jobId },
-    data: { bullJobId: String(job.id), startedAt: new Date() },
+    data: { bullJobId: compositeBullId, startedAt: new Date() },
   });
 
   for (let attempt = 0; attempt < POLL_MAX; attempt++) {

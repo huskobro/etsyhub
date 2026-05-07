@@ -13,7 +13,7 @@
 //  • Submit sırasında button loading; double-submit engelli.
 //  • Bridge unreachable cevabı net mesajla gösterilir.
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 const ASPECT_RATIOS = ["1:1", "2:3", "3:2", "4:3", "3:4", "16:9", "9:16"] as const;
@@ -37,6 +37,24 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
   const [pending, startTransition] = useTransition();
 
   const disabled = !bridgeOk || pending;
+
+  // Pass 51 — submit success sonrası tabloyu auto-refresh et.
+  // Server component sayfa state-driven olduğu için router.refresh()
+  // tablo'yu yeniden render eder. 90sn boyunca her 4sn refresh; süre
+  // dolduğunda durur (operatör manuel reload yapabilir). Mock driver'da
+  // job 5sn'de complete olabilir; real driver'da 30-90sn.
+  useEffect(() => {
+    if (!success) return;
+    const startedAt = Date.now();
+    const id = window.setInterval(() => {
+      if (Date.now() - startedAt > 90_000) {
+        window.clearInterval(id);
+        return;
+      }
+      router.refresh();
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [success, router]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
