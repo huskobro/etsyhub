@@ -438,6 +438,88 @@ function BridgeHealthCard({ health }: { health: BridgeHealth }) {
           ) : null}
         </div>
       ) : null}
+      {health.browser.sessionProbe ? (
+        <SessionWatchdogBadge probe={health.browser.sessionProbe} />
+      ) : null}
+    </div>
+  );
+}
+
+// Pass 59 — Bridge session watchdog görüntüsü.
+// Periyodik MJ login probe geçmişini sergiler; en son probe yaşı,
+// başarısız probe sayısı, ve son N tick'in mini timeline'ı.
+function SessionWatchdogBadge({
+  probe,
+}: {
+  probe: NonNullable<BridgeHealth["browser"]["sessionProbe"]>;
+}) {
+  const last = probe.history[probe.history.length - 1];
+  const lastAt = last ? new Date(last.at) : null;
+  const ageSec = lastAt
+    ? Math.round((Date.now() - lastAt.getTime()) / 1000)
+    : null;
+  // Stale = son probe son 2 interval'dan eski.
+  const staleThresholdSec = (probe.intervalMs / 1000) * 2;
+  const stale = ageSec !== null && ageSec > staleThresholdSec;
+  const failedCount = probe.history.filter(
+    (p) => !p.likelyLoggedIn || !p.selectorPromptInputFound,
+  ).length;
+  const tone =
+    last === undefined
+      ? "muted"
+      : !last.likelyLoggedIn
+        ? "warning"
+        : stale
+          ? "warning"
+          : "ok";
+  const cls =
+    tone === "warning"
+      ? "rounded-md border border-warning bg-warning-soft p-3 text-xs text-warning-text"
+      : "rounded-md border border-border bg-surface-2 p-3 text-xs text-text-muted";
+
+  return (
+    <div className={cls} data-testid="bridge-session-watchdog">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold">Session watchdog</span>
+        <span>
+          interval: {Math.round(probe.intervalMs / 1000)}sn · {probe.probeCount}{" "}
+          probe
+        </span>
+        {ageSec !== null ? (
+          <span>
+            son probe: <span className="font-mono">{ageSec}sn önce</span>
+          </span>
+        ) : null}
+        {failedCount > 0 ? (
+          <span data-testid="watchdog-failed-count">
+            ⚠ son {probe.history.length}/{failedCount} probe başarısız
+          </span>
+        ) : null}
+        {stale ? (
+          <span data-testid="watchdog-stale">⚠ stale (probe geç)</span>
+        ) : null}
+      </div>
+      {probe.history.length > 0 ? (
+        <div
+          className="mt-1 flex items-center gap-0.5"
+          aria-label="probe history mini timeline"
+          data-testid="watchdog-timeline"
+        >
+          {probe.history.map((p, i) => {
+            const ok = p.likelyLoggedIn && p.selectorPromptInputFound;
+            return (
+              <span
+                key={i}
+                title={`${new Date(p.at).toLocaleTimeString("tr-TR")} · ${ok ? "OK" : "FAIL"}`}
+                className={
+                  "inline-block h-2 w-2 rounded-full " +
+                  (ok ? "bg-success" : "bg-danger")
+                }
+              />
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

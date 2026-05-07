@@ -106,6 +106,21 @@ export interface BridgeDriver {
      *   "mock":     mock driver
      */
     browserKind: "chrome" | "brave" | "chromium" | "external" | "mock";
+    /**
+     * Pass 59 — Watchdog session probe geçmişi. Bridge ayakta kaldığı
+     * sürece periyodik MJ login probe yapar; admin UI canlı badge
+     * gösterir ("X dk önce probe", session düşüşünü erken yakala).
+     * Real driver dolar, mock driver opsiyonel.
+     */
+    sessionProbe?: {
+      intervalMs: number;
+      probeCount: number;
+      history: Array<{
+        at: string;
+        likelyLoggedIn: boolean;
+        selectorPromptInputFound: boolean;
+      }>;
+    };
   }>;
 
   /**

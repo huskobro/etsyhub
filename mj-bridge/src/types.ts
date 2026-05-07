@@ -232,6 +232,20 @@ export type BridgeHealth = {
      *   "mock": mock driver
      */
     browserKind?: "chrome" | "brave" | "chromium" | "external" | "mock";
+    /**
+     * Pass 59 — Watchdog session probe geçmişi. Bridge ayakta kaldığı
+     * sürece periyodik MJ login probe yapar (default 60sn). Admin UI
+     * canlı badge gösterir; sessiz session düşüşlerini yakalar.
+     */
+    sessionProbe?: {
+      intervalMs: number;
+      probeCount: number;
+      history: Array<{
+        at: string;
+        likelyLoggedIn: boolean;
+        selectorPromptInputFound: boolean;
+      }>;
+    };
   };
   /**
    * Pass 43 — Boot-time selector smoke (yalnız PlaywrightDriver dolu;

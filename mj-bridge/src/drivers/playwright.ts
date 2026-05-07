@@ -145,6 +145,22 @@ export class PlaywrightDriver implements BridgeDriver {
   private lastDriverMessage: string | null = null;
   /** Pass 46 — son driver hatası (selector-mismatch, render-timeout, vb.). */
   private lastDriverError: string | null = null;
+  /**
+   * Pass 59 — Session watchdog. Bridge ayakta kaldığı sürece periyodik
+   * MJ login probe yapar (default 60sn). Sessiz session düşüşlerini
+   * yakalar (kullanıcı MJ'den çıktıysa, CF challenge geldiyse, vs).
+   * `lastSessionCheck` zaten her health() çağrısında güncellenir;
+   * watchdog **çağrı olmadan** da periyodik probe sağlar → admin live
+   * "X dk önce probe" badge'i her zaman güncel kalır.
+   */
+  private watchdogTimer: NodeJS.Timeout | null = null;
+  private watchdogIntervalMs = 60_000;
+  /** Pass 59 — Watchdog gözlemi: son N probe sonucu (queue, max 10). */
+  private probeHistory: Array<{
+    at: string;
+    likelyLoggedIn: boolean;
+    selectorPromptInputFound: boolean;
+  }> = [];
 
   constructor(cfg: PlaywrightDriverConfig) {
     this.cfg = {
@@ -172,6 +188,49 @@ export class PlaywrightDriver implements BridgeDriver {
       await this.initAttach();
     } else {
       await this.initLaunch();
+    }
+
+    // Pass 59 — Periyodik session probe başlat (default 60sn).
+    // Bridge ayakta kaldığı sürece sessiz session düşüşlerini yakalar
+    // (kullanıcı MJ logout, CF challenge, vs).
+    this.startWatchdog();
+  }
+
+  /**
+   * Pass 59 — Periyodik MJ login probe loop başlatır.
+   *
+   * Her tick'te aktif MJ tab'ında login indicator + selector smoke probe.
+   * Sonuç `lastSessionCheck` + `probeHistory`'e yazılır → admin sayfada
+   * "X dk önce probe" badge canlı görünür.
+   *
+   * Hata durumunda probe sessiz fail; bir sonraki tick'te tekrar dener
+   * (timer iptal edilmez).
+   */
+  private startWatchdog(): void {
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+    this.watchdogTimer = setInterval(() => {
+      void this.runSessionProbe().catch(() => undefined);
+    }, this.watchdogIntervalMs);
+    // İlk probe'u init sonrası hemen tetikle (queue history doldurmak için).
+    void this.runSessionProbe().catch(() => undefined);
+  }
+
+  private async runSessionProbe(): Promise<void> {
+    const page = this.pickMjPage();
+    if (!page) return;
+    try {
+      await this.refreshSessionHeuristic(page);
+      const smoke = await smokeCheckSelectors(page, this.selectors);
+      this.lastSelectorSmoke = { ...smoke, at: new Date().toISOString() };
+      this.probeHistory.push({
+        at: new Date().toISOString(),
+        likelyLoggedIn: this.mjLikelyLoggedIn,
+        selectorPromptInputFound: smoke.promptInputFound,
+      });
+      // FIFO max 10
+      if (this.probeHistory.length > 10) this.probeHistory.shift();
+    } catch {
+      // sessiz fail; bir sonraki tick'te tekrar dener
     }
   }
 
@@ -396,6 +455,12 @@ export class PlaywrightDriver implements BridgeDriver {
   }
 
   async shutdown(): Promise<void> {
+    // Pass 59 — Watchdog timer'ı temiz kapat (bridge restart sırasında
+    // dangling timer kalmasın).
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
     if (this.context) {
       // Pass 47 — attach modunda context'i KAPATMA. Kullanıcının kendi
       // browser penceresine bağlıyız; close() pencereyi öldürür ve
@@ -452,6 +517,13 @@ export class PlaywrightDriver implements BridgeDriver {
       mode: this.actualMode,
       cdpUrl: this.actualMode === "attach" ? this.cfg.cdpUrl : undefined,
       browserKind: this.actualBrowserKind,
+      // Pass 59 — Watchdog probe geçmişi (admin canlı badge için).
+      // probeHistory FIFO (max 10); en yeni en sonda.
+      sessionProbe: {
+        intervalMs: this.watchdogIntervalMs,
+        probeCount: this.probeHistory.length,
+        history: this.probeHistory,
+      },
     };
   }
 

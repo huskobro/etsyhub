@@ -116,6 +116,20 @@ export type BridgeHealth = {
     cdpUrl?: string;
     /** Pass 47 — Browser binary kind (admin teşhis için). */
     browserKind?: "chrome" | "brave" | "chromium" | "external" | "mock";
+    /**
+     * Pass 59 — Watchdog session probe geçmişi. Bridge ayakta kaldığı
+     * sürece periyodik MJ login probe yapar (default 60sn). Admin UI
+     * canlı badge gösterir; sessiz session düşüşlerini yakalar.
+     */
+    sessionProbe?: {
+      intervalMs: number;
+      probeCount: number;
+      history: Array<{
+        at: string;
+        likelyLoggedIn: boolean;
+        selectorPromptInputFound: boolean;
+      }>;
+    };
   };
   /**
    * Pass 43 — selector smoke (yalnız PlaywrightDriver). MockDriver'da null.
@@ -217,6 +231,7 @@ export class BridgeClient {
         method: "GET",
         headers: { "X-Bridge-Token": this.cfg.token },
         signal: ctrl.signal,
+        cache: "no-store",
       });
       if (res.status === 401) throw new BridgeAuthError();
       if (!res.ok) {
@@ -252,6 +267,10 @@ export class BridgeClient {
         },
         body: body ? JSON.stringify(body) : undefined,
         signal: ctrl.signal,
+        // Pass 59 — Next.js fetch cache'i bridge'in canlı state'ini
+        // (sessionProbe history, lastDriverMessage, vs) eski tutar.
+        // Bridge çağrıları ALWAYS fresh; cache yok.
+        cache: "no-store",
       });
       if (res.status === 401) throw new BridgeAuthError();
       const text = await res.text();

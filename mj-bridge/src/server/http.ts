@@ -85,6 +85,8 @@ export function buildServer(cfg: ServerConfig): FastifyInstance {
         mode: browserHealth.mode,
         cdpUrl: browserHealth.cdpUrl,
         browserKind: browserHealth.browserKind,
+        // Pass 59 — Watchdog session probe geçmişi forward.
+        sessionProbe: browserHealth.sessionProbe,
       },
       selectorSmoke,
       mjSession: {

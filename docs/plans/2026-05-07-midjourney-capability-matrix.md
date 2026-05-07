@@ -78,6 +78,129 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 59 (Bridge session watchdog + admin live probe badge — tamamlanan) 🟢
+
+Pass 58'in operatör ergonomisi tamamlandıktan sonra audit iki yola
+yönlendirdi:
+1. Blocked state hardening — yapay simülasyon gerektirir, gerçek ürün
+   değeri düşük (login geçerli olduğu sürece state ortaya çıkmıyor).
+2. Next capability (upscale/variation) — DOM kalibrasyonu gerek
+   (V7 alpha'da U1-U4 buton yok; "More → Subtle/Creative" 2-step
+   flow), tek pass'te gerçek MJ render testi + lineage + UI = yüksek
+   risk + scope.
+
+Audit sonucu **dürüst karar**: ikisi de bu turun mantıklı paketi
+değil. **Aralık adımı**: Bridge'in ayakta kaldığı sürece sessiz
+session düşüşlerini erken yakalayan **periyodik watchdog**. Küçük
+scope, gerçek operasyonel değer (uzun süre ayakta bridge için MJ
+session düştüğünde admin hemen görür), risksiz (generate hattını
+hiç etkilemez).
+
+**Audit + paket seçimi**:
+
+Pass 58 sonrası 5 boşluk:
+1. AWAITING_LOGIN/CHALLENGE blocked state canlı doğrulanmadı (yapay)
+2. Upscale/variation capability (geniş scope + DOM riski)
+3. Bridge session sessiz düşüşü tespit yok (watchdog)
+4. Mockup direct shortcut (Selection üzerinden zaten çalışıyor)
+5. Reference picker UX (Pass 58'de zaten arama eklendi)
+
+Build now: **(3) Session watchdog + admin live badge**. Strong
+follow-up: upscale capability (kendi audit'iyle Pass 60), Mockup
+shortcut. Useful later: blocked state injection script (yapay).
+Do not now: variation, describe.
+
+**Uygulanan**:
+
+- ✅ `PlaywrightDriver` watchdog: `init()` sonrası `setInterval(60s)`
+  ile periyodik `runSessionProbe`:
+  - `refreshSessionHeuristic` (login indicator probe) +
+    `smokeCheckSelectors` (promptInput/loginIndicator/signInLink)
+  - `probeHistory` FIFO (max 10 entry; her biri `at`,
+    `likelyLoggedIn`, `selectorPromptInputFound`)
+  - `shutdown()` timer'ı temiz iptal eder
+- ✅ Bridge `health()` response'a `sessionProbe` field:
+  `{ intervalMs, probeCount, history[] }`. `BridgeDriver` interface,
+  `mj-bridge/src/types.ts` BridgeHealth + EtsyHub bridge-client.ts
+  BridgeHealth tipinde paralel güncelleme.
+- ✅ `mj-bridge/src/server/http.ts` `/health` endpoint'i `sessionProbe`
+  forward.
+- ✅ EtsyHub `bridge-client.ts` `cache: "no-store"` (bug fix):
+  Next.js fetch default cache, bridge'in canlı `sessionProbe`/
+  `lastDriverMessage` field'larını eski tutuyordu. Detail page
+  hot-reload sonrası tüm dynamic field'lar gerçek-zamanlı güncellenir.
+- ✅ `SessionWatchdogBadge` component (admin/midjourney/page.tsx):
+  - "Session watchdog" başlık + interval + probe count + son probe yaşı
+  - `failedCount` (likelyLoggedIn=false veya promptInput=false sayısı)
+  - `stale` indicator (son probe son 2 interval'dan eski)
+  - Mini timeline: probe history için 10 yeşil/kırmızı nokta
+    (hover title: zaman + OK/FAIL durum)
+  - tone: warning (likelyLoggedIn=false veya stale) / muted (OK)
+
+**Canlı E2E doğrulaması (gerçek attach Chrome admin session)**:
+
+Bridge restart sonrası ilk probe:
+```
+sessionProbe.intervalMs: 60000
+sessionProbe.probeCount: 1
+  06:53:27 loggedIn=True prompt=True
+```
+
+Admin sayfası 5 probe sonrası:
+```
+'Session watchdog' string in HTML: true
+watchdog visible: true
+text: Session watchdog
+      interval: 60sn · 5 probe
+      son probe: 17sn önce
+timeline dots: 5
+```
+
+Screenshot `/tmp/mj-pass59-watchdog.png`: tam ürün UX — Bridge
+health card altında watchdog panel "5 probe · son probe 17sn önce"
++ 5 yeşil dot (hepsi OK).
+
+**Operatör açısından kazanım**:
+
+Önce: bridge ayakta ama MJ session sessiz düştüyse (ör. kullanıcı MJ
+logout, CF challenge background'da geldi, vs), operatör ancak ilk
+job submit ettiğinde fark ediyordu (FAILED + AWAITING_LOGIN). Şimdi:
+admin sayfası canlı badge ile "son probe 17sn önce, son 5 probe
+yeşil" bilgisini gösterir; session düşerse sonraki probe kırmızı
+nokta + "⚠ son N probe başarısız" badge ile uyarır.
+
+**Capability roadmap güncellemesi**:
+
+1. **next immediate (Pass 60)**:
+   - Upscale capability (audit'ini Pass 59'da kısmen yaptım: V7
+     alpha'da "More → Subtle/Creative" 2-step flow var; selectors
+     kalibre edilmeli). Tek capability paketi olarak ele alınmalı —
+     EtsyHub service + admin API + ingestOutputs lineage + detail
+     UI per-grid buton + browser smoke.
+   - Bridge session watchdog interval env'den config'lenebilir
+     (`MJ_BRIDGE_PROBE_INTERVAL_MS`, default 60sn)
+2. **after capability stabilizes**:
+   - Variation capability (upscale ile aynı UI patterni)
+   - Blocked state injection script (yapay simülasyon, tek seferlik
+     test için)
+3. **later**:
+   - Describe capability
+   - Batch download / `/archive` history import
+   - Mockup direct shortcut
+4. **do not build now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 59 dürüst sınır**:
+- Watchdog interval şu anda hardcoded 60sn (env override yok); Pass 60
+  config'lenebilir yapılmalı.
+- AWAITING_LOGIN durumu `runSessionProbe` ile yakalanır ama otomatik
+  job'a yansıtılmaz (mevcut job state machine `executeJob` içinde
+  detect ediyor; watchdog **bridge-level** observasyon, job-level
+  değil).
+- "Upscale capability" audit'i yapıldı ama implementasyon Pass 60'a
+  kaldı — DOM yapısı net (`More` → `Subtle`/`Creative`), ama tek
+  pass'te tam zincir riski yüksek.
+
 ### Pass 58 (Reference search + Failure detail panel — tamamlanan) 🟢
 
 Pass 55-57 ile MJ → Review → Selection ana üretim hattı bağlandı.
