@@ -518,6 +518,104 @@ export async function createMidjourneyDescribeJob(
   };
 }
 
+// ============================================================================
+// Pass 79 — Prompt Template + Variables wrapper.
+//
+// Domain-bağımsız `expandPromptTemplate` (src/lib/prompt-template.ts)
+// üzerine MJ-spesifik wrapper. Operatör template + variables map'ini
+// gönderir; service expand eder, sonra mevcut `createMidjourneyJob`'i
+// çağırır. Tek yeni fonksiyon — bridge tarafı dokunulmadı.
+//
+// Tasarım hedefleri:
+//   - createMidjourneyJob ile aynı kontrat (sadece prompt = expanded text)
+//   - Eksik variable → ValidationError (gümbürtü olmasın)
+//   - Audit metadata'ya template + variables yansır (sonradan re-run /
+//     re-expand için kanıt)
+//   - Provider-bağımsız (yarın DALL-E motorla aynı template)
+//   - Geriye uyumlu: createMidjourneyJob hâlâ doğrudan kullanılabilir
+//
+// Kullanım örneği:
+//   await createMidjourneyJobFromTemplate({
+//     userId: admin.id,
+//     promptTemplate: "{{subject}} in {{style}} style, {{palette}} palette",
+//     promptVariables: {
+//       subject: "boho mandala",
+//       style: "minimalist",
+//       palette: "earth tones",
+//     },
+//     aspectRatio: "1:1",
+//     submitStrategy: "api-first",
+//   });
+//   → expanded: "boho mandala in minimalist style, earth tones palette"
+// ============================================================================
+
+export type CreateMidjourneyJobFromTemplateInput = Omit<
+  CreateMidjourneyJobInput,
+  "prompt"
+> & {
+  /** Mustache-uyumlu template, `{{variableName}}` syntax. */
+  promptTemplate: string;
+  /** Template'teki tüm `{{name}}`'ler için string değerler. */
+  promptVariables: Record<string, string>;
+};
+
+export type CreateMidjourneyJobFromTemplateResult =
+  CreateMidjourneyJobResult & {
+    /** Expand sonucu (audit + UI gösterimi için). */
+    expandedPrompt: string;
+    /** Template'te bulunan ve değiştirilen variable'lar. */
+    usedVariables: string[];
+    /** variables map'inde olup template'te kullanılmamışlar (uyarı). */
+    unusedVariables: string[];
+  };
+
+/**
+ * Prompt template'i variables ile expand eder, sonra normal job oluşturur.
+ *
+ * Eksik variable → ValidationError (HTTP 400 mantığı).
+ * Mevcut `createMidjourneyJob` davranışı aynen korunur (referenceId,
+ * styleReferenceUrls, omniReferenceUrl, characterReferenceUrls, vs).
+ */
+export async function createMidjourneyJobFromTemplate(
+  input: CreateMidjourneyJobFromTemplateInput,
+  bridgeClient: BridgeClient = getBridgeClient(),
+): Promise<CreateMidjourneyJobFromTemplateResult> {
+  // Lazy import — domain-bağımsız helper
+  const { expandPromptTemplate } = await import("@/lib/prompt-template");
+
+  let expansion;
+  try {
+    expansion = expandPromptTemplate(
+      input.promptTemplate,
+      input.promptVariables,
+      { onMissing: "throw" },
+    );
+  } catch (err) {
+    throw new Error(
+      `Prompt template expansion fail: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // Mevcut createMidjourneyJob'i çağır — diğer tüm field'lar aynen korunur
+  const { promptTemplate: _t, promptVariables: _v, ...rest } = input;
+  void _t;
+  void _v;
+  const baseResult = await createMidjourneyJob(
+    {
+      ...rest,
+      prompt: expansion.expanded,
+    },
+    bridgeClient,
+  );
+
+  return {
+    ...baseResult,
+    expandedPrompt: expansion.expanded,
+    usedVariables: expansion.usedVariables,
+    unusedVariables: expansion.unusedVariables,
+  };
+}
+
 /**
  * Worker polling step — bridge state → DB.
  *

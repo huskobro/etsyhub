@@ -78,6 +78,136 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 79 (Prompt Template + Variables servis katmanı — taşınabilir) 🟢
+
+**Hedef:** Pass 78'de strategy productization tamamlandı. Pass 79
+kullanıcı önceliği: native upscale **park** (daha sonra Gigapixel local
+automation), MJ servis çekirdeğini olgunlaştır + başka uygulamalara
+taşınabilir bir katman ekle.
+
+**Pass 79 audit özeti:**
+
+| # | Yüzey | Durum | Pass 79 değer |
+|---|---|---|---|
+| 1 | Variation kind | Type union'da var, branch yok. AutoSail Discord-pattern, V8 web'de kanıtsız | 🟡 Pass 80+ audit |
+| 2 | Animate / Video | Type union'da yok. AutoSail'de çok geniş | 🔴 Scope geniş |
+| 3 | **Prompt templates + variables** | YOK | 🟢 **YÜKSEK — seçildi** |
+| 4 | Batch / queue orchestration | EtsyHub MidjourneyJob queue var, "batch generation" yok | 🟢 Pass 80+ (template ile birlikte) |
+| 5 | Auto-download / naming | Bridge basic `outputsDir` | 🟡 Production hardening |
+| 6 | Native upscale | DOM-only (Pass 61) | 🅿️ **Park** (Gigapixel later) |
+| 7 | UI strategy override (describe/upscale) | Pass 78 service tarafı, UI yok | 🔴 UI cila |
+
+**Karar — Pass 79 seçimi:**
+
+> **Prompt Template + Variables servis katmanı**
+
+**Neden:**
+1. **Kullanıcı değeri en yüksek**: POD üretimi senaryosunda operatör
+   "Boho Wall Art Set" şablonundan 8 farklı varyant otomatik üretmek
+   istiyor. Şu an her prompt elle yazılıyor — en ağır dert.
+2. **Domain-bağımsız** (taşınabilir): MJ + DALL-E + Recraft + diğer
+   provider'lar aynı template'i kullanabilir. Provider-spesifik flag'ler
+   ayrı kaldı.
+3. **Bir sonraki capability ailesinin temeli**: batch queue (Pass 80)
+   bu helper'ın üzerine kurulur — template × variables kombinasyonu →
+   bulk generate.
+4. **Bridge tarafına dokunmuyor**: prompt expansion EtsyHub'da yapılıyor,
+   bridge'e zaten düz string gidiyor (geriye uyumlu).
+5. **Pass 76/77/78 omurgayı bozmuyor**: çekirdek `createMidjourneyJob`
+   davranışı aynı — yeni `createMidjourneyJobFromTemplate` wrapper.
+
+**Pass 79 implementasyonu:**
+
+1. **`src/lib/prompt-template.ts` — domain-bağımsız core helper**:
+   - `expandPromptTemplate(template, variables, options)`:
+     - Mustache-uyumlu `{{name}}` syntax
+     - Variable name whitelist: `[a-zA-Z][a-zA-Z0-9_]*` (regex/script
+       injection riski sıfır)
+     - Eksik variable davranışı: `throw` (default), `leave`, `empty`
+     - Used / missing / unused variables raporlama
+   - `extractTemplateVariables(template)` — UI form için
+   - `validatePromptTemplate(template, variables)` — pre-flight
+   - `buildMjPromptFromTemplate(template, variables)` — convenience
+
+2. **`src/server/services/midjourney/midjourney.service.ts`**:
+   - `createMidjourneyJobFromTemplate` wrapper:
+     - `Omit<CreateMidjourneyJobInput, "prompt"> & { promptTemplate, promptVariables }`
+     - Eksik variable → ValidationError
+     - Mevcut `createMidjourneyJob` reuse (sref/oref/cref/strategy aynen geçer)
+     - Sonuç: `expandedPrompt` + `usedVariables` + `unusedVariables` +
+       baz `{ midjourneyJob, jobId, bridgeJobId }`
+
+3. **`src/app/api/admin/midjourney/test-render-from-template/route.ts`**:
+   - Yeni endpoint: `POST /api/admin/midjourney/test-render-from-template`
+   - Zod body: `promptTemplate` + `promptVariables` (max 30 var, var per max 200 char) +
+     mevcut generate field'ları (aspectRatio, version, sref/oref/cref, strategy)
+   - Audit log: `MIDJOURNEY_TEMPLATE_RENDER` action +
+     `{ promptTemplate, promptVariables, expandedPrompt, usedVariables, unusedVariables }`
+   - 400 response: `TEMPLATE_EXPANSION_FAIL` (template yanlış)
+   - 502 response: `BRIDGE_UNREACHABLE` (mevcut pattern)
+
+**Pass 79 kanıtları:**
+
+- ✅ **Unit test 15/15 PASS** (`src/lib/prompt-template.ts`):
+  1. Basic substitution
+  2. Whitespace tolerant (`{{ var }}`)
+  3. Repeated variable
+  4. Missing variable throws (default)
+  5. `onMissing: "leave"` mode
+  6. `onMissing: "empty"` mode
+  7. Unused variable warning
+  8. Invalid variable name (`1invalid`) throws
+  9. Non-string variable throws
+  10. `extractTemplateVariables` unique
+  11. `validatePromptTemplate` detects missing
+  12. `validatePromptTemplate` ok path
+  13. `buildMjPromptFromTemplate` convenience
+  14. Empty template (no variables)
+  15. Underscore + numeric in name valid (`var_1`, `var_2`)
+
+- ✅ **E2E real smoke**:
+  - Template: `{{subject}} in {{style}} style, {{mood}} mood`
+  - Variables: `{subject: "boho mandala wall art", style: "watercolor", mood: "calming"}`
+  - Expanded: `boho mandala wall art in watercolor style, calming mood`
+  - Bridge: api-first → mjJobId `d71ac3ef-7082-4a8f-bb47-08810a14319c`
+  - Süre: ~53sn
+  - **state: COMPLETED, outputs: 4** (CDN'den indirildi)
+
+- ✅ **TS clean** (bridge + EtsyHub)
+- ✅ **ESLint clean** (yeni dosyalar dahil)
+
+**Pass 79 ürün değeri:**
+- Operatör template'i bir kez yazar, variables ile defalarca kullanır
+- POD ürün setleri için "{{subject}} in {{style}}" gibi şablonlar
+  saklanabilir (Pass 80 batch ile bulk generate hızlı olur)
+- Variation/Animate gibi kanıt gerektiren capability'lerden uzak
+  (sadece text manipülasyonu)
+
+**Pass 79 servis değeri (taşınabilirlik):**
+- `src/lib/prompt-template.ts` saf TypeScript, hiç dependency'si yok
+- `expandPromptTemplate` → DALL-E, Recraft, Stability, Flux gibi
+  başka provider'larda aynen kullanılabilir
+- Bridge + provider abstraction'a hiç dokunmadı
+
+**Pass 79 dürüst sınırlar:**
+- **Conditional / loop syntax yok** (`{{#if}}`, `{{#each}}`) — Pass 80+
+  scope (batch için gerekli)
+- **Default value yok** (`{{style|minimalist}}`) — Pass 80+
+- **PromptTemplate Prisma modeli zaten var** ama Pass 79 onu **kullanmadı**;
+  service tek-shot template + variables alıyor (lineage audit log'da).
+  Persisted templates Pass 80'de eklenecek (template CRUD + UI)
+- **TestRenderForm UI'sına template dropdown taşınmadı**: yeni endpoint
+  curl/API client tüketicisine yönelik (UI Pass 80+)
+- **Native upscale park edildi** (Gigapixel local automation later)
+
+**Pass 79 dosya değişiklik blast radius:**
+- 3 dosya:
+  - `src/lib/prompt-template.ts` (yeni, 195 satır)
+  - `src/server/services/midjourney/midjourney.service.ts` (wrapper +97 satır)
+  - `src/app/api/admin/midjourney/test-render-from-template/route.ts` (yeni, 156 satır)
+- Geriye uyumlu — `createMidjourneyJob` aynen çalışıyor
+- Bridge tarafı sıfır değişiklik
+
 ### Pass 78 (Strategy productization: describe + upscale `submitStrategy` + dom-first symmetry) 🟢
 
 **Hedef:** Pass 77'de reference-aware generate ailesi ve user-queue
