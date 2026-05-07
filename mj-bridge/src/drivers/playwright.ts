@@ -978,13 +978,19 @@ export class PlaywrightDriver implements BridgeDriver {
     let result;
     try {
       result = await waitForUpscaleResult(page, this.selectors, {
+        // Pass 61 — parentMjJobId polling stratejisinin temel sinyali:
+        // page.url() parent UUID'den farklı bir UUID'e değiştiğinde
+        // upscale çıktı UUID'ini tespit eder.
+        parentMjJobId,
         baselineUuids,
         timeoutMs: this.cfg.renderTimeoutMs,
-        onPoll: (ms) => {
+        onPoll: (ms, currentUrl) => {
           if (signal.aborted) return;
+          // currentUrl logla — debug için
+          const urlTail = currentUrl.split("/").pop()?.slice(0, 30);
           onProgress({
             state: "WAITING_FOR_RENDER",
-            message: `Upscale bekleniyor… ${Math.floor(ms / 1000)}s`,
+            message: `Upscale bekleniyor… ${Math.floor(ms / 1000)}s · url=${urlTail}`,
           });
         },
       });

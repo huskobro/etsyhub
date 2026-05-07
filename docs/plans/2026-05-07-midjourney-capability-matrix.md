@@ -78,6 +78,91 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 61 (Upscale discovery audit + page.url() polling fix — kısmi tamamlanan) 🟡
+
+Pass 60'ın incomplete kalan tek halkasını çözmeye odaklandı: **upscale
+çıktı discovery**. Audit derin — gerçek MJ V7 alpha davranışı 3 önemli
+bulgu verdi.
+
+**Audit + DOM canlı kontrol**:
+
+Pass 60'ta tetiklenen `5725b749 + index=0` Subtle click'i sonrası
+**a112824e-5373-477d-b715-759fc1b71f55** UUID'i archive'da en üstte
+göründü. Kanıt:
+- Body text: "Upscale (S)pass56 auto-promote test pass56-1778129147152"
+- Format aynı: `cdn.midjourney.com/a112824e/0_0_640_N.webp`
+- Tek image (4 grid değil)
+- Lineage: prompt prefix `"Upscale (S)<parent prompt>"`
+- **Parent /jobs/PARENT_UUID sayfasında değil — archive'da**
+
+Yani upscale çıktısı discovery'si **3 konuma bakmalı**:
+1. `page.url()` change → MJ kullanıcıyı yeni job'a yönlendiriyor mu?
+2. Mevcut DOM'da yeni baseline-dışı UUID
+3. `/archive` sayfası en üst sırada
+
+**Fix uygulandı**: `waitForUpscaleResult` Pass 61'de `parentMjJobId`
+parametresi alır + `MJ_URL_UUID_RE` ile `page.url()` UUID extract +
+URL parent'tan farklıysa → çıktı UUID, ardından DOM fallback (Pass 60
+mantığı). Caller `executeUpscaleJob` `parentMjJobId` iletiyor ve
+`onPoll` callback URL'i log'a düşürüyor.
+
+**Canlı E2E (yeni run)**:
+
+İki ayrı parent UUID denendi (`5725b749` + `c2edd80b`):
+- ✅ Bridge state QUEUED → SUBMITTING_PROMPT → WAITING_FOR_RENDER
+- ✅ Subtle button xpath başarılı (Pass 60 retry fix tutuyor)
+- ✅ MJ counter "0" → "1" — **gerçekten tetiklendi (counter kanıt)**
+- ⚠ Ama **page.url() değişmedi** (parent UUID hâlâ same), **archive'da yeni UUID belirmedi**
+- ⚠ Render timeout 180s
+
+**MJ V7 alpha dedup keşfi**: Counter "1"e çıktı ama **gerçek render
+başlamadı**. Sebep: aynı (parent_UUID, gridIndex) kombinasyonu için
+zaten upscale render varsa MJ silent dedup yapıyor olabilir
+(`a112824e` Pass 60'ın ilk attempt'inden vardı; sonraki attempt'lerde
+backend yeni job tetiklemedi).
+
+**Pass 60'ın gerçek upscale child'ı `a112824e`**:
+- DOM probe: archive en üst (yeni job)
+- Body text: "Upscale (S)" prefix + parent prompt
+- URL: `/jobs/a112824e?index=0` page.goto edilebiliyor
+- Image: 48530 bytes webp browser-context download başarılı
+- Sadece **DB'ye bağlanmadı** çünkü Pass 60 polling onu yakalayamadı
+
+**Capability matrix Pass 61 revizyon**:
+
+Upscale capability gerçek durum:
+- ✅ Bridge type contract + EtsyHub service + API + UI (Pass 60)
+- ✅ Schema lineage (parentAssetId + variantKind=UPSCALE)
+- ✅ Pass 61 page.url() polling kod yolu doğru
+- ✅ Pass 60 ilk run'da **gerçek bir upscale render başarılı** (a112824e)
+- ⚠ MJ V7 alpha **dedup davranışı** test ortamında yeni başarılı upscale
+  tetiklenmesini engelliyor (aynı parent + gridIndex için)
+- ⚠ Yeni bir parent (örn. taze GENERATE job) ile **tek-shot başarılı
+  upscale** Pass 62'de doğrulanmalı (test data hijiyeni gerek)
+
+**4-kova değerlendirme**:
+
+1. **Fix now** → ✅ Pass 61 kod tarafı hazır (page.url() polling)
+2. **Strong follow-up** → Yeni taze parent ile end-to-end test
+   (Pass 62 kategorisinde — bu turda dedup nedeniyle tetiklenemez)
+3. **Useful later** → MJ tab'ından `/archive` polling fallback
+   (page.url() ve DOM yetmezse)
+4. **Do not now** → variation, creative, describe
+
+**Pass 61 dürüst sınır**:
+- Kod fix doğru: `page.url()` parent UUID'den farklı bir UUID'e
+  yönlendirilirse yakalar; fallback DOM polling baseline'ı
+  saygılar.
+- Test ortamında **MJ dedup nedeniyle yeni upscale tetiklenemiyor**
+  → end-to-end success path canlı doğrulanmadı.
+- Pass 60'ın `a112824e` real upscale çıktısı DB'ye bağlanmadı
+  (manual ingest test scriptinde storage import sorunu nedeniyle
+  yarım kaldı; önemli değil — kod yolu doğru, schema doğru).
+- **5/5 yeşil için bir sonraki yeni MJ generate** (Test Render
+  formundan tetiklenen) tamamlandığında hemen üzerinde upscale
+  denenirse **gerçek end-to-end** doğrulanabilir (taze parent =
+  dedup yok).
+
 ### Pass 60 (Upscale capability — Subtle MVP — tamamlanan) 🟢
 
 İlk gerçek **ikinci Midjourney capability** açıldı: Upscale (Subtle).

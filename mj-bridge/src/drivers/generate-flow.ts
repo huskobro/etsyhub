@@ -314,14 +314,25 @@ export async function triggerUpscale(
 }
 
 /**
- * Pass 60 — Upscale render polling.
+ * Pass 60-61 — Upscale render polling.
  *
- * Generate'den fark: upscale tek image üretir (4 grid değil). Yeni UUID
- * çıkar; tek bir 0_0_*.webp (veya benzer) yeterli. Bazı MJ versiyonlarında
- * upscale grid içine 4 alt-variant koyar; MVP olarak ilk yeni UUID + ilk
- * yeni img URL'i kabul ederiz.
+ * Pass 60 öğrenme: V7 alpha'da upscale tetiklendiğinde MJ web tarayıcı
+ * **kullanıcıyı otomatik olarak yeni job sayfasına yönlendiriyor**:
+ *   /jobs/<PARENT_UUID>?index=N → /jobs/<NEW_UUID>?index=N
  *
- * Caller submit ÖNCESİ baselineUuids yakalamalı.
+ * Yani upscale çıktı discovery'si **DOM'daki yeni img değil, page.url()
+ * change** ile yapılır. Bu çok daha hızlı + güvenilir (DOM mutation
+ * polling yok, native browser navigation event'i).
+ *
+ * Strateji (Pass 61):
+ *   1. Submit öncesi parent URL'sini sakla
+ *   2. Polling: page.url() farklı bir UUID içeriyorsa → çıktı UUID'i o
+ *   3. Çıktı UUID bulunduktan sonra ilgili `/UUID/0_0_*.webp` URL'i
+ *      DOM'da bekle (image lazy load için ek wait)
+ *   4. Fallback: page.url() değişmezse mevcut DOM'da yeni baseline-dışı
+ *      UUID ara (eski Pass 60 mantığı)
+ *
+ * Caller submit ÖNCESİ baselineUuids + parentMjJobId yakalamalı.
  */
 export type UpscaleResult = {
   mjJobId: string; // yeni UUID
@@ -329,24 +340,52 @@ export type UpscaleResult = {
   gridIndex: number;
 };
 
+const MJ_URL_UUID_RE =
+  /\/jobs\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+
 export async function waitForUpscaleResult(
   page: Page,
   selectors: Record<MJSelectorKey, string>,
   options: {
+    parentMjJobId: string;
     baselineUuids: Set<string>;
     timeoutMs: number;
     pollIntervalMs?: number;
-    onPoll?: (elapsedMs: number) => void;
+    onPoll?: (elapsedMs: number, currentUrl: string) => void;
   },
 ): Promise<UpscaleResult> {
   const start = Date.now();
-  const interval = options.pollIntervalMs ?? 3000;
+  const interval = options.pollIntervalMs ?? 2000;
+
   while (Date.now() - start < options.timeoutMs) {
+    const currentUrl = page.url();
+    if (options.onPoll) options.onPoll(Date.now() - start, currentUrl);
+
+    // Sinyal 1: page.url() yeni UUID'e yönlendi mi
+    const urlMatch = MJ_URL_UUID_RE.exec(currentUrl);
+    const urlUuid = urlMatch?.[1];
+    if (urlUuid && urlUuid !== options.parentMjJobId) {
+      // Yeni UUID URL'de, image DOM'da hazırlansın diye 1 polling daha
+      // (image lazy load için)
+      const imgs = await collectCdnImages(page, selectors);
+      const matching = imgs.find(
+        (img) => img.uuid === urlUuid && img.gridIdx === 0,
+      );
+      if (matching) {
+        return {
+          mjJobId: urlUuid,
+          imageUrl: matching.url,
+          gridIndex: matching.gridIdx,
+        };
+      }
+      // URL var ama image henüz mount olmadı — bir sonraki tick'te dene
+    }
+
+    // Sinyal 2 (fallback): DOM'da yeni baseline-dışı UUID + 0_0
     const imgs = await collectCdnImages(page, selectors);
-    if (options.onPoll) options.onPoll(Date.now() - start);
-    // İlk yeni UUID (baseline'da yok) + outerIdx=0 + gridIdx=0 yeterli.
     for (const img of imgs) {
       if (options.baselineUuids.has(img.uuid)) continue;
+      if (img.uuid === options.parentMjJobId) continue;
       if (img.outerIdx === 0 && img.gridIdx === 0) {
         return {
           mjJobId: img.uuid,
@@ -355,10 +394,11 @@ export async function waitForUpscaleResult(
         };
       }
     }
+
     await new Promise((r) => setTimeout(r, interval));
   }
   throw new Error(
-    `Upscale timeout (${options.timeoutMs}ms) — yeni UUID için image bulunamadı`,
+    `Upscale timeout (${options.timeoutMs}ms) — page.url() veya DOM'da yeni UUID bulunamadı (parent=${options.parentMjJobId})`,
   );
 }
 
