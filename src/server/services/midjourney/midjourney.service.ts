@@ -84,10 +84,34 @@ export type CreateMidjourneyJobInput = {
    * `imagePromptUrls` olarak iletilir.
    */
   referenceUrls?: string[];
+  /**
+   * Pass 71 — `--sref URL [URL ...]` style reference URL'leri.
+   * `buildMJPromptString` (Pass 65) prompt string'e flag olarak ekler.
+   * AutoSail audit (Pass 70) literal kanıtladı: --sref MJ tarafında
+   * prompt-string flag (ayrı endpoint yok). Max 5 URL.
+   */
+  styleReferenceUrls?: string[];
+  /**
+   * Pass 71 — `--oref URL` omni reference (V7+ premium). Tek URL.
+   * `buildMJPromptString` Pass 65'ten beri destekliyor; sadece UI/service
+   * input alanı eksikti (Pass 71'de eklendi).
+   */
+  omniReferenceUrl?: string;
+  /** Pass 71 — `--ow N` omni weight (0-1000). */
+  omniWeight?: number;
+  /**
+   * Pass 71 — API-first submit opt-in flag. Default false (DOM submit
+   * production-grade). API path bridge driver'ında implementasyonu var
+   * ama gerçek smoke ghost-job problemi gösterdi (submit OK ama MJ tab
+   * React store güncellenmiyor); bu flag deneysel. Pass 72+'da
+   * `/api/recent-jobs` polling endpoint kanıtlanırsa default'a alınır.
+   */
+  preferApiSubmit?: boolean;
 };
 
 /** Pass 65 — image-prompt URL kontratı (R17.2). */
 const REFERENCE_URLS_MAX = 10;
+const STYLE_REFERENCE_URLS_MAX = 5; // MJ pratiği: --sref 5+ URL'de truncate
 function validateReferenceUrls(raw: string[] | undefined): string[] {
   if (!raw || raw.length === 0) return [];
   const cleaned = raw.map((u) => u.trim()).filter((u) => u.length > 0);
@@ -102,6 +126,36 @@ function validateReferenceUrls(raw: string[] | undefined): string[] {
         `referenceUrls SADECE HTTPS kabul eder (R17.2). Hatalı: ${u.slice(0, 80)}`,
       );
     }
+  }
+  return cleaned;
+}
+/** Pass 71 — Style reference URL kontratı (--sref). HTTPS-only + max 5. */
+function validateStyleReferenceUrls(raw: string[] | undefined): string[] {
+  if (!raw || raw.length === 0) return [];
+  const cleaned = raw.map((u) => u.trim()).filter((u) => u.length > 0);
+  if (cleaned.length > STYLE_REFERENCE_URLS_MAX) {
+    throw new Error(
+      `styleReferenceUrls max ${STYLE_REFERENCE_URLS_MAX} (geçen: ${cleaned.length})`,
+    );
+  }
+  for (const u of cleaned) {
+    if (!u.startsWith("https://")) {
+      throw new Error(
+        `styleReferenceUrls SADECE HTTPS kabul eder (R17.2). Hatalı: ${u.slice(0, 80)}`,
+      );
+    }
+  }
+  return cleaned;
+}
+/** Pass 71 — Omni reference URL kontratı (--oref). Tek HTTPS URL. */
+function validateOmniReferenceUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const cleaned = raw.trim();
+  if (cleaned.length === 0) return undefined;
+  if (!cleaned.startsWith("https://")) {
+    throw new Error(
+      `omniReferenceUrl SADECE HTTPS kabul eder (R17.2). Hatalı: ${cleaned.slice(0, 80)}`,
+    );
   }
   return cleaned;
 }
@@ -130,6 +184,17 @@ export async function createMidjourneyJob(
 ): Promise<CreateMidjourneyJobResult> {
   // Pass 65 — Image-prompt URL validation (R17.2 HTTPS-only + max 10).
   const referenceUrls = validateReferenceUrls(input.referenceUrls);
+  // Pass 71 — Style + Omni reference validation.
+  const styleReferenceUrls = validateStyleReferenceUrls(
+    input.styleReferenceUrls,
+  );
+  const omniReferenceUrl = validateOmniReferenceUrl(input.omniReferenceUrl);
+  const omniWeight =
+    typeof input.omniWeight === "number" &&
+    input.omniWeight >= 0 &&
+    input.omniWeight <= 1000
+      ? Math.round(input.omniWeight)
+      : undefined;
 
   // 1) Bridge enqueue.
   const bridgeReq: BridgeGenerateRequest = {
@@ -143,6 +208,15 @@ export async function createMidjourneyJob(
       chaos: input.chaos,
       // Pass 65 — bridge "Add Images → Image Prompts" popover üzerinden upload eder.
       ...(referenceUrls.length > 0 ? { imagePromptUrls: referenceUrls } : {}),
+      // Pass 71 — sref / oref MJ tarafında prompt-string flag (--sref/--oref).
+      // bridge `buildMJPromptString` Pass 65'ten beri destekliyor.
+      ...(styleReferenceUrls.length > 0
+        ? { styleReferenceUrls }
+        : {}),
+      ...(omniReferenceUrl ? { omniReferenceUrl } : {}),
+      ...(omniWeight !== undefined ? { omniWeight } : {}),
+      // Pass 71 — API-first submit opt-in (deneysel).
+      ...(input.preferApiSubmit ? { preferApiSubmit: true } : {}),
     },
   };
   const snapshot = await bridgeClient.enqueueJob(bridgeReq);

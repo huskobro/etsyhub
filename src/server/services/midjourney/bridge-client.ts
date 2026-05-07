@@ -62,6 +62,15 @@ export type BridgeGenerateRequest = {
     styleReferenceUrls?: string[];
     omniReferenceUrl?: string;
     omniWeight?: number;
+    /**
+     * Pass 71 — API-first submit opt-in flag (deneysel).
+     * Bridge driver kontratı `mj-bridge/src/types.ts` ile senkron tutulmalı.
+     * Default false: bridge DOM submit (Pass 49 production-grade).
+     * true: bridge önce `POST /api/submit-jobs` dener; ghost-job riski
+     * (kullanıcının MJ tab React store güncellenmiyor) yüzünden Pass 71'de
+     * deneysel; Pass 72+ render polling endpoint kanıtlanırsa default'a alınır.
+     */
+    preferApiSubmit?: boolean;
   };
   etsyhubJobId?: string;
 };

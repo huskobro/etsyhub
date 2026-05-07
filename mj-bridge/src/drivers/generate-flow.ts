@@ -738,6 +738,194 @@ export async function attachImagePrompts(
   return { attachedCount: filePayloads.length };
 }
 
+/**
+ * Pass 71 — Generate via MJ internal API (eklentiden öğrenildi,
+ * Pass 69 live capture ile contract çıkartıldı).
+ *
+ * Pass 69 capture (kullanıcı MJ tab'ında "pass69 audit test minimal"
+ * + Enter):
+ *   POST https://www.midjourney.com/api/submit-jobs
+ *   Headers: X-Csrf-Protection: 1, Content-Type: application/json
+ *   Body: {
+ *     f: { mode: "relaxed" | "fast", private: false },
+ *     channelId: "singleplayer_<userId>",
+ *     metadata: { isMobile, imagePrompts, imageReferences,
+ *                 characterReferences, depthReferences, lightboxOpen },
+ *     t: "imagine",
+ *     prompt: "..."
+ *   }
+ *   Response (sync): { success: [{ job_id, prompt, batch_size, ... }],
+ *                      failure: [] }
+ *
+ * Pass 71 ek keşif: window.mjUserDefer.promise (sayfa-state'inde MJ
+ * kullanıcının kendi user objesi: { id, name, email, ... }). channelId
+ * = "singleplayer_${user.id}". /api/auth/session bu kullanıcıyı
+ * vermiyor (401), ama mjUserDefer cookie session'ından yine kendisi
+ * resolve ediyor. Bu sayfa zaten authenticated olduğu için stable.
+ *
+ * Avantajlar (DOM submit'e göre):
+ *   - DOM typing yok (60+ char × 50ms ≈ 3-5sn kazanım)
+ *   - Synchronous job_id response → waitForRender targetMjJobId
+ *     optimizasyonu (Pass 71) ile baseline UUID gereksiz
+ *   - image-prompt'lı job'larda Pass 65 baseline stuck bug bypass
+ *   - Görünmez (sayfa user'ın açık tab'ında değişmiyor)
+ *
+ * Hata davranışı:
+ *   - mjUserDefer çözülmediyse / userId yoksa → throw (caller fallback'a
+ *     düşer)
+ *   - HTTP non-200 / response.failure[].length > 0 → throw
+ *   - Network fail → throw
+ */
+export type SubmitPromptApiResult = {
+  /** MJ tarafı job UUID — `cdn.midjourney.com/<jobId>/...` URL pattern'i. */
+  mjJobId: string;
+  /** MJ tarafı parse ettiği prompt (--v 7 vs gibi MJ tarafı eklemeleri görünür). */
+  mjPrompt: string;
+  /** Submit eden user'ın MJ id'si (channelId resolution için kullanıldı). */
+  userId: string;
+  /** Method işareti — caller mjMetadata'da işaret eder. */
+  method: "api";
+};
+
+export async function submitPromptViaApi(
+  page: Page,
+  promptString: string,
+  options: {
+    /** Pass 71 — relaxed (free) / fast (paid) mode. Default "relaxed". */
+    mode?: "relaxed" | "fast";
+    /** Pass 71 — image prompt sayısı (metadata.imagePrompts). 0 default. */
+    imagePromptCount?: number;
+    /** sref count (metadata.imageReferences). 0 default. */
+    imageReferenceCount?: number;
+    /** cref count (metadata.characterReferences). 0 default. */
+    characterReferenceCount?: number;
+    /** Network/page.evaluate timeout. Default 30sn. */
+    fetchTimeoutMs?: number;
+  } = {},
+): Promise<SubmitPromptApiResult> {
+  const fetchTimeoutMs = options.fetchTimeoutMs ?? 30_000;
+  const mode = options.mode ?? "relaxed";
+  const imagePromptCount = options.imagePromptCount ?? 0;
+  const imageReferenceCount = options.imageReferenceCount ?? 0;
+  const characterReferenceCount = options.characterReferenceCount ?? 0;
+
+  const result = await page.evaluate(
+    async (input: {
+      promptString: string;
+      mode: "relaxed" | "fast";
+      imagePromptCount: number;
+      imageReferenceCount: number;
+      characterReferenceCount: number;
+      timeoutMs: number;
+    }) => {
+      // tsx/esbuild __name helper stub (Pass 68 keşfi).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).__name = (globalThis as any).__name ?? ((x: unknown) => x);
+      // 1) Sayfa state'inden user resolution. mjUserDefer.promise sayfa
+      // hidratlandıktan sonra MJ kullanıcı user objesi döner.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const defer = (window as any).mjUserDefer;
+      if (!defer || typeof defer.promise?.then !== "function") {
+        throw new Error(
+          "window.mjUserDefer yok — MJ sayfa state'i hazır değil",
+        );
+      }
+      const userPromise: Promise<{ id?: string }> = defer.promise;
+      let user: { id?: string };
+      try {
+        user = await Promise.race([
+          userPromise,
+          new Promise<{ id?: string }>((_, rej) =>
+            setTimeout(() => rej(new Error("mjUserDefer timeout 8sn")), 8000),
+          ),
+        ]);
+      } catch (err) {
+        throw new Error(
+          `mjUserDefer resolve fail: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      const userId = user?.id;
+      if (typeof userId !== "string" || userId.length === 0) {
+        throw new Error("mjUserDefer.promise resolved ama user.id boş");
+      }
+      // 2) Submit fetch
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), input.timeoutMs);
+      try {
+        const res = await fetch(`${window.location.origin}/api/submit-jobs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Csrf-Protection": "1",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            f: { mode: input.mode, private: false },
+            channelId: `singleplayer_${userId}`,
+            metadata: {
+              isMobile: null,
+              imagePrompts: input.imagePromptCount,
+              imageReferences: input.imageReferenceCount,
+              characterReferences: input.characterReferenceCount,
+              depthReferences: 0,
+              lightboxOpen: null,
+            },
+            t: "imagine",
+            prompt: input.promptString,
+          }),
+          signal: ctrl.signal,
+        });
+        const text = await res.text();
+        return { ok: res.ok, status: res.status, body: text, userId };
+      } finally {
+        clearTimeout(t);
+      }
+    },
+    {
+      promptString,
+      mode,
+      imagePromptCount,
+      imageReferenceCount,
+      characterReferenceCount,
+      timeoutMs: fetchTimeoutMs,
+    },
+  );
+
+  if (!result.ok) {
+    throw new Error(
+      `/api/submit-jobs HTTP ${result.status}: ${result.body.slice(0, 300)}`,
+    );
+  }
+  let parsed: {
+    success?: Array<{ job_id?: string; prompt?: string }>;
+    failure?: Array<{ reason?: string; error?: string }>;
+  };
+  try {
+    parsed = JSON.parse(result.body);
+  } catch {
+    throw new Error(
+      `/api/submit-jobs JSON parse fail: ${result.body.slice(0, 300)}`,
+    );
+  }
+  if (parsed.failure && parsed.failure.length > 0) {
+    throw new Error(
+      `/api/submit-jobs failure[]: ${JSON.stringify(parsed.failure).slice(0, 300)}`,
+    );
+  }
+  const success = parsed.success?.[0];
+  if (!success || typeof success.job_id !== "string") {
+    throw new Error(
+      `/api/submit-jobs success[].job_id beklenmiyor: ${result.body.slice(0, 300)}`,
+    );
+  }
+  return {
+    mjJobId: success.job_id,
+    mjPrompt: success.prompt ?? promptString,
+    userId: result.userId,
+    method: "api",
+  };
+}
+
 export async function submitPrompt(
   page: Page,
   selectors: Record<MJSelectorKey, string>,
@@ -854,6 +1042,14 @@ export async function waitForRender(
     submitBaselineCount?: number;
     /** Pass 49 — submit öncesi yakalanan UUID set'i. */
     baselineUuids?: Set<string>;
+    /**
+     * Pass 71 — bilinen target MJ job UUID. API-first submit
+     * (`POST /api/submit-jobs` response → `job_id`) bu UUID'yi sağlar
+     * ve render polling sadece bu UUID için 4 grid bekler. Baseline
+     * gereksiz hale gelir; image-prompt'ta yaşanan stuck bug
+     * (Pass 65'ten devralınmıştı) bu yolla çözülür.
+     */
+    targetMjJobId?: string;
     timeoutMs: number;
     pollIntervalMs?: number;
     onPoll?: (elapsedMs: number, newImageCount: number) => void;
@@ -862,10 +1058,37 @@ export async function waitForRender(
   const start = Date.now();
   const interval = options.pollIntervalMs ?? 3000;
   const baseline = options.baselineUuids ?? new Set<string>();
+  const target = options.targetMjJobId?.toLowerCase();
 
   while (Date.now() - start < options.timeoutMs) {
     const imgs = await collectCdnImages(page, selectors);
-    // Yeni UUID'leri grup'la (UUID -> grid index'lerine map'le)
+    // Pass 71 — Target UUID modu: bilinen job_id varsa o UUID için
+    // 4 grid bekle (baseline ignore). API-first submit'ten sonra
+    // submit response'undan gelen job_id geçirilir.
+    if (target) {
+      const gridMap = new Map<number, string>();
+      for (const img of imgs) {
+        if (img.uuid.toLowerCase() === target && img.outerIdx === 0) {
+          gridMap.set(img.gridIdx, img.url);
+        }
+      }
+      if (options.onPoll) options.onPoll(Date.now() - start, gridMap.size);
+      if (
+        gridMap.has(0) &&
+        gridMap.has(1) &&
+        gridMap.has(2) &&
+        gridMap.has(3)
+      ) {
+        return {
+          jobCardSelector: selectors.renderImage,
+          mjJobId: options.targetMjJobId!,
+          imageUrls: [0, 1, 2, 3].map((g) => gridMap.get(g)!),
+        };
+      }
+      await new Promise((r) => setTimeout(r, interval));
+      continue;
+    }
+    // Klasik baseline modu (DOM submit yolu için).
     const byUuid = new Map<string, Map<number, string>>();
     for (const img of imgs) {
       if (baseline.has(img.uuid)) continue;
@@ -907,7 +1130,9 @@ export async function waitForRender(
   }
 
   throw new Error(
-    `Render timeout (${options.timeoutMs}ms) — yeni UUID için 4 grid image bulunamadı`,
+    target
+      ? `Render timeout (${options.timeoutMs}ms) — target UUID ${target} için 4 grid image bulunamadı`
+      : `Render timeout (${options.timeoutMs}ms) — yeni UUID için 4 grid image bulunamadı`,
   );
 }
 

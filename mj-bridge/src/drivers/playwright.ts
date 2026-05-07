@@ -51,6 +51,7 @@ import {
   downloadGridImages,
   SelectorMismatchError,
   submitPrompt,
+  submitPromptViaApi,
   triggerUpscale,
   waitForRender,
   waitForUpscaleResult,
@@ -744,58 +745,112 @@ export class PlaywrightDriver implements BridgeDriver {
       }
     }
 
-    // Submit prompt.
-    onProgress({
-      state: "SUBMITTING_PROMPT",
-      message:
-        referenceUrls.length > 0
-          ? `Prompt + ${referenceUrls.length} referans gönderiliyor`
-          : "Prompt gönderiliyor",
-    });
-
-    // Pass 49 — submit ÖNCESİ mevcut UUID'leri yakala (baseline).
-    // waitForRender bu set'in DIŞINDA bir UUID'in 4 grid image'ı görünene
-    // kadar bekleyecek. data-job-id artık DOM'da yok (Pass 43 stratejisi
-    // geçersiz); image URL pattern'i tek güvenilir yol.
-    const baselineUuids = await captureBaselineUuids(
-      page,
-      this.selectors,
-    ).catch(() => new Set<string>());
-
+    // Pass 71 — Submit strategy.
+    //
+    // İlk hedef: API-first (eklentiden öğrenildi, Pass 69 live capture).
+    // GERÇEK SMOKE BULGUSU: API submit MJ tarafında ghost job yaratıyor
+    // — `/api/submit-jobs` 200 OK + job_id döner ama MJ tab'ının React
+    // store'u güncellenmiyor → DOM scrape ile image yakalamak imkansız
+    // (`441db0a0-...` UUID kullanıcının DOM'una hiç eklenmedi).
+    //
+    // Bu yüzden Pass 71 default davranış DOM submit (production-grade,
+    // Pass 49). API submit OPT-IN feature flag (`preferApiSubmit`).
+    // Gelecekte alternatif render polling endpoint (örn. /api/recent-jobs)
+    // kanıtlanırsa API path tekrar default'a alınabilir (Pass 72+).
+    //
+    // YİNE DE Pass 71 katkısı:
+    //   - `submitPromptViaApi` helper ürünleştirildi (Pass 71 commit'te)
+    //   - `waitForRender targetMjJobId` opsiyonu eklendi (image-prompt
+    //     baseline stuck bug fix; DOM submit + known job_id ile çalışır)
+    //   - User'ın MJ user.id resolution `window.mjUserDefer.promise` keşfi
+    //
+    // `params.preferApiSubmit?: true` ile opt-in kullanılır; default DOM.
     const promptString = buildMJPromptString(job.request.params);
-    try {
-      await submitPrompt(page, this.selectors, promptString);
-    } catch (err) {
-      const reason: JobBlockReason =
-        err instanceof SelectorMismatchError
-          ? "selector-mismatch"
-          : "internal-error";
+    let knownMjJobId: string | null = null;
+    let submitMethod: "api" | "dom" = "dom";
+    let apiSubmitError: string | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const preferApiSubmit = (job.request.params as any).preferApiSubmit === true;
+
+    if (preferApiSubmit) {
       onProgress({
-        state: "FAILED",
-        blockReason: reason,
-        message: err instanceof Error ? err.message : String(err),
+        state: "SUBMITTING_PROMPT",
+        message: "Prompt API yolu deneniyor (opt-in)",
       });
-      return;
+      try {
+        const apiResult = await submitPromptViaApi(page, promptString, {
+          mode: "relaxed",
+          imagePromptCount: referenceUrls.length,
+        });
+        knownMjJobId = apiResult.mjJobId;
+        submitMethod = "api";
+      } catch (err) {
+        apiSubmitError = err instanceof Error ? err.message : String(err);
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[generate] API submit fail (DOM submit'e düşülüyor): ${apiSubmitError}`,
+        );
+      }
+      if (signal.aborted) return;
     }
 
-    if (signal.aborted) return;
+    // Pass 49 — DOM submit (default, production-grade). Baseline UUID'ler:
+    let baselineUuids: Set<string> = new Set<string>();
 
-    // Render polling.
+    if (knownMjJobId === null) {
+      onProgress({
+        state: "SUBMITTING_PROMPT",
+        message: preferApiSubmit
+          ? `Prompt DOM (API fail: ${apiSubmitError?.slice(0, 80) ?? "bilinmiyor"})`
+          : "Prompt gönderiliyor",
+      });
+      baselineUuids = await captureBaselineUuids(
+        page,
+        this.selectors,
+      ).catch(() => new Set<string>());
+      try {
+        await submitPrompt(page, this.selectors, promptString);
+        submitMethod = "dom";
+      } catch (err) {
+        const reason: JobBlockReason =
+          err instanceof SelectorMismatchError
+            ? "selector-mismatch"
+            : "internal-error";
+        onProgress({
+          state: "FAILED",
+          blockReason: reason,
+          message:
+            err instanceof Error
+              ? preferApiSubmit
+                ? `API fail (${apiSubmitError?.slice(0, 60)}); DOM submit fail: ${err.message}`
+                : err.message
+              : String(err),
+        });
+        return;
+      }
+      if (signal.aborted) return;
+    }
+
+    // Render polling — API path ise targetMjJobId, DOM path ise baseline.
     onProgress({
       state: "WAITING_FOR_RENDER",
-      message: `Render bekleniyor (30-90sn) · baseline=${baselineUuids.size} UUID`,
+      message: knownMjJobId
+        ? `Render bekleniyor (target=${knownMjJobId.slice(0, 8)}…)`
+        : `Render bekleniyor (30-90sn) · baseline=${baselineUuids.size} UUID`,
     });
 
     let render;
     try {
       render = await waitForRender(page, this.selectors, {
-        baselineUuids,
+        ...(knownMjJobId
+          ? { targetMjJobId: knownMjJobId }
+          : { baselineUuids }),
         timeoutMs: this.cfg.renderTimeoutMs,
         onPoll: (ms, n) => {
           if (signal.aborted) return;
           onProgress({
             state: "WAITING_FOR_RENDER",
-            message: `Render bekleniyor… ${Math.floor(ms / 1000)}s · ${n} yeni img`,
+            message: `Render bekleniyor… ${Math.floor(ms / 1000)}s · ${n} img${knownMjJobId ? "" : " yeni"}`,
           });
         },
       });
@@ -818,6 +873,9 @@ export class PlaywrightDriver implements BridgeDriver {
         promptString,
         aspectRatio: job.request.params.aspectRatio,
         version: job.request.params.version,
+        // Pass 71 — submit yolunu işaretle (admin UI gözlem için)
+        submitMethod,
+        ...(apiSubmitError ? { apiSubmitFallbackReason: apiSubmitError } : {}),
       },
     });
 

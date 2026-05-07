@@ -49,6 +49,21 @@ const body = z.object({
     .array(z.string().url().startsWith("https://"))
     .max(10)
     .optional(),
+  // Pass 71 — Style reference (--sref) URL'leri. Prompt-string flag
+  // (ayrı endpoint yok; AutoSail audit literal kanıtı). Max 5.
+  styleReferenceUrls: z
+    .array(z.string().url().startsWith("https://"))
+    .max(5)
+    .optional(),
+  // Pass 71 — Omni reference (V7+ premium) tek URL + omniWeight 0-1000.
+  omniReferenceUrl: z
+    .string()
+    .url()
+    .startsWith("https://")
+    .optional(),
+  omniWeight: z.number().int().min(0).max(1000).optional(),
+  // Pass 71 — API-first submit opt-in (deneysel; default DOM submit).
+  preferApiSubmit: z.boolean().optional(),
 });
 
 export const POST = withErrorHandling(async (req: Request) => {
@@ -92,6 +107,11 @@ export const POST = withErrorHandling(async (req: Request) => {
       productTypeId,
       // Pass 65 — image-prompt URL'leri.
       referenceUrls: parsed.data.referenceUrls,
+      // Pass 71 — sref / oref / preferApiSubmit
+      styleReferenceUrls: parsed.data.styleReferenceUrls,
+      omniReferenceUrl: parsed.data.omniReferenceUrl,
+      omniWeight: parsed.data.omniWeight,
+      preferApiSubmit: parsed.data.preferApiSubmit,
     });
 
     await audit({
@@ -108,6 +128,11 @@ export const POST = withErrorHandling(async (req: Request) => {
         referenceUrlCount: parsed.data.referenceUrls?.length ?? 0,
         referenceUrlsHead:
           parsed.data.referenceUrls?.[0]?.slice(0, 80) ?? null,
+        // Pass 71 — sref/oref count + opt-in flag (audit log)
+        styleRefCount: parsed.data.styleReferenceUrls?.length ?? 0,
+        omniRef: !!parsed.data.omniReferenceUrl,
+        omniWeight: parsed.data.omniWeight ?? null,
+        preferApiSubmit: !!parsed.data.preferApiSubmit,
       },
     });
 

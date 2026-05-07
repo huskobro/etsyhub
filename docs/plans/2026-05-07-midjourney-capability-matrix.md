@@ -78,6 +78,140 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 71 (Generate API helper + reference UI genişleme + render polling hardening) 🟡
+
+**Hedef:** AutoSail-inspired generate API-first hattını ürünleştirmek.
+Pass 69 capture endpoint (`POST /api/submit-jobs`) ve Pass 70 audit
+gerçeklerinden yola çıkarak.
+
+**Aşama A — Audit derinleşme (Pass 69 üstüne):**
+
+- **`channelId / userId` resolution çözüldü** — `window.mjUserDefer.promise`
+  sayfa-state'inde MJ user objesi (`{ id, name, email, displayName,
+  bindEmail }`). `singleplayer_${user.id}` formatında channelId. Pass 69'da
+  `/api/auth/session` 401 dönüyordu; mjUserDefer cookie session'ından
+  resolve ediyor (sayfa zaten authenticated). Stable.
+- **Sref / cref / oref**: prompt-string flag (Pass 70 audit kanıtı
+  doğrulandı). `buildMJPromptString` Pass 65'ten beri sref/oref/ow
+  destekliyor — eksik tek şey UI input alanları (Pass 71'de eklendi).
+
+**Aşama B — Implementation:**
+
+- ✅ `mj-bridge/src/drivers/generate-flow.ts`:
+  - **Yeni `submitPromptViaApi(page, promptString, options)` helper**:
+    1. `window.mjUserDefer.promise` resolve → `user.id`
+    2. `POST ${origin}/api/submit-jobs` body `{ f: { mode, private },
+       channelId, metadata, t: "imagine", prompt }` headers
+       `X-Csrf-Protection: 1`
+    3. Response → `{ mjJobId, mjPrompt, userId, method: "api" }`
+    4. tsx/esbuild `__name` stub (Pass 68 keşfi)
+  - **`waitForRender` opsiyon: `targetMjJobId`** — bilinen UUID
+    verilirse baseline ignore + sadece o UUID için 4 grid bekle.
+    Image-prompt baseline stuck bug fix (Pass 65'ten devralındı).
+
+- ✅ `mj-bridge/src/types.ts` + EtsyHub `bridge-client.ts`: yeni alan
+  `params.preferApiSubmit?: boolean`
+
+- ✅ `mj-bridge/src/drivers/playwright.ts executeJob` (kind=generate):
+  - **`preferApiSubmit: true`** → `submitPromptViaApi` dener
+  - Default (false) → mevcut DOM submit (Pass 49)
+  - API path fail → DOM submit fallback
+  - `mjMetadata.submitMethod = "api" | "dom"` işareti
+  - `mjMetadata.apiSubmitFallbackReason` debug için
+
+- ✅ `src/server/services/midjourney/midjourney.service.ts`:
+  - Yeni input fields: `styleReferenceUrls?: string[]` (max 5),
+    `omniReferenceUrl?: string`, `omniWeight?: number` (0-1000),
+    `preferApiSubmit?: boolean`
+  - Validators: `validateStyleReferenceUrls`, `validateOmniReferenceUrl`
+  - Bridge request'e ilet (Pass 65'ten beri bridge contract'ta hazırdı)
+
+- ✅ `src/app/api/admin/midjourney/test-render/route.ts`:
+  - Zod genişlemesi: styleReferenceUrls, omniReferenceUrl, omniWeight,
+    preferApiSubmit
+  - Audit metadata: styleRefCount, omniRef, omniWeight, preferApiSubmit
+
+- ✅ `src/app/(admin)/admin/midjourney/TestRenderForm.tsx`:
+  - Yeni textarea: "Style reference URL'leri (--sref · max 5)"
+  - Yeni input pair: "Omni reference URL (--oref · V7+)" + `--ow (0-1000)`
+  - Yeni checkbox: "API-first submit (deneysel · opt-in)" with warning
+  - Frontend pre-validation (HTTPS, max sayı, weight 0-1000)
+
+**Aşama C — Doğrulama (gerçek MJ smoke):**
+
+| Smoke | Sonuç |
+|---|---|
+| TS check (EtsyHub + bridge) | ✅ |
+| Token guard | ✅ |
+| UI test 946/946 | ✅ |
+| **Describe regression** (`f3e68b18-...`) | ✅ ~6sn COMPLETED, describeMethod=api, 4 prompt — Pass 68/69/70 hattı bozulmadı |
+| **Generate DOM default** (`21c049b4-...`) | ✅ ~120sn COMPLETED, submitMethod=dom, 4 output |
+| **Generate API-first opt-in** (`ae3ea827-...`) | ❌ submit OK (`441db0a0-...` mjJobId döndü) ama waitForRender 180sn timeout — **ghost-job kanıtlandı** |
+
+**🚨 Ghost-job bulgusu (Pass 71 kritik öğrenme):**
+
+`submitPromptViaApi` MJ tarafında job kabul ediliyor (200 OK + job_id
+synchronous), ama **kullanıcının MJ tab'ının React store'u güncellenmiyor
+→ DOM scrape'in yakalayabileceği `cdn.midjourney.com/<jobId>/...` image
+src'leri sayfaya hiç eklenmiyor**. Live DOM probe doğruladı: target
+UUID `441db0a0-...` user'ın açık tab'ında 180sn boyunca DOM'a hiç
+gelmedi (sayfa 7 başka UUID render etti ama bizim job yok).
+
+**Çözüm: Pass 71'de API-first opt-in olarak bırakıldı (default DOM).**
+Pass 72+ hedefi: `/api/recent-jobs` veya `/api/user-queue` polling
+endpoint'i için live capture v3 + WebSocket subscription audit. Doğru
+polling endpoint'iyle API submit sonrası sonuç DOM'a bağımlı olmaz.
+
+**Pass 71 net kazanımlar:**
+
+1. ✅ `submitPromptViaApi` helper hazır, kod yolu canlı doğrulandı
+2. ✅ `waitForRender targetMjJobId` opsiyonu hazır (image-prompt baseline
+   stuck bug için gelecek kullanım)
+3. ✅ `window.mjUserDefer.promise.id` keşfi
+4. ✅ Sref / oref / ow UI alanları (operatör productivity)
+5. ✅ `preferApiSubmit` opt-in flag (kullanıcı isterse deneysel API path)
+6. ✅ Describe regression yok (Pass 68 hattı sağlam)
+7. ✅ DOM default generate regression yok (Pass 49 hattı sağlam,
+   `submitMethod=dom` marker doğru)
+
+**Pass 71 dürüst sınırlar:**
+
+- 🟡 **Generate end-to-end API-first çalışmıyor** — submit OK ama render
+  polling DOM-bağımlı, ghost-job riski. Pass 72+ ana hedef.
+- 🟡 Sref/oref UI alanları **bridge tarafına geçiyor + buildMJPromptString
+  flag olarak prompt'a ekliyor**, ama gerçek MJ render'da bu flag'lerin
+  beklenen davranışı ürettiği **smoke ile doğrulanmadı** (smoke gerek:
+  bir sref + oref ile generate çalıştırıp MJ output'unun referans
+  görseli yansıttığı görsel inceleme). Pass 72+ smoke
+- 🟡 BullMQ MIDJOURNEY_BRIDGE worker hâlâ **lazy ensure pattern'iyle**
+  (Pass 70 fix). Diğer worker'lar (selection-edit, mockup-render, vb.)
+  hâlâ bootstrap.ts'in startWorkers'ı üzerinden — startWorkers HİÇ
+  ÇAĞRILMIYOR (Pass 71'de etkilemiyor ama Pass 72+ kapsamı)
+- 🟡 `--cref` (character reference) bridge'de field yok ama AutoSail
+  audit'inde --sref ile aynı pattern kanıtı vardı; Pass 72+'da
+  ekleyebiliriz
+
+**Service capability map güncellemesi:**
+
+Pass 70'te yazılmıştı (`docs/plans/2026-05-07-mj-service-capability-map.md`).
+Pass 71'de:
+- **Generate**: hâlâ DOM submit (production); API path opt-in deneysel
+- **Sref/oref/cref**: prompt-flag (UI ekledik, --cref Pass 72+)
+- **Render polling**: known-jobId optimizasyonu hazır
+
+App-agnostic 6 endpoint öneri (`/v1/mj/*`) Pass 70'ten devralındı,
+Pass 71 değişmedi.
+
+**Pass 71 carry-forward / Pass 72 ana hedefler:**
+
+1. **`/api/recent-jobs` (veya benzeri) live capture** — submit sonrası
+   render sonucu polling endpoint pattern (kullanıcı yeni bir prompt
+   yazıp 30sn beklerken capture)
+2. **API-first generate end-to-end fix** (recent-jobs poll ile)
+3. **Sref/oref smoke** (UI'dan job tetikle + MJ output inceleme)
+4. **`--cref` MjGenerateParams field + UI**
+5. Image-prompt + sref kombinasyonu test (gerçek senaryo)
+
 ### Pass 70 (AutoSail derin audit + 2 carry-over bug fix + preferences katmanı + capability map) 🟢
 
 **Pass 69 carry-over bug'lar tamir edildi:**

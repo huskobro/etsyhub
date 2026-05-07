@@ -38,6 +38,14 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
   // submit'te split + filter. Frontend pre-validation: HTTPS-only,
   // max 10 URL (server-side z.array().max(10) ile çift kontrol).
   const [referenceUrlsRaw, setReferenceUrlsRaw] = useState<string>("");
+  // Pass 71 — Style reference (--sref) URL'leri. HTTPS, max 5.
+  // Prompt-string flag (AutoSail audit kanıtı), ayrı endpoint yok.
+  const [styleRefUrlsRaw, setStyleRefUrlsRaw] = useState<string>("");
+  // Pass 71 — Omni reference (--oref) tek URL + omni weight (0-1000).
+  const [omniRefUrl, setOmniRefUrl] = useState<string>("");
+  const [omniWeightRaw, setOmniWeightRaw] = useState<string>("");
+  // Pass 71 — API-first submit opt-in (deneysel; default DOM).
+  const [preferApiSubmit, setPreferApiSubmit] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -91,6 +99,43 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
       return;
     }
 
+    // Pass 71 — Style reference (--sref) URL'leri (max 5).
+    const styleReferenceUrls = styleRefUrlsRaw
+      .split(/\s*\n\s*/)
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0);
+    if (styleReferenceUrls.length > 5) {
+      setError(
+        `Style reference URL maksimum 5 (geçen: ${styleReferenceUrls.length}).`,
+      );
+      return;
+    }
+    const sNonHttps = styleReferenceUrls.find(
+      (u) => !u.startsWith("https://"),
+    );
+    if (sNonHttps) {
+      setError(
+        `Style reference URL'leri SADECE HTTPS (R17.2). Hatalı: ${sNonHttps.slice(0, 60)}…`,
+      );
+      return;
+    }
+    // Pass 71 — Omni reference (--oref) tek URL.
+    const omniRefTrim = omniRefUrl.trim();
+    if (omniRefTrim.length > 0 && !omniRefTrim.startsWith("https://")) {
+      setError(`Omni reference SADECE HTTPS (R17.2).`);
+      return;
+    }
+    const omniWeightTrim = omniWeightRaw.trim();
+    let omniWeight: number | undefined;
+    if (omniWeightTrim.length > 0) {
+      const parsed = Number(omniWeightTrim);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 1000) {
+        setError("Omni weight 0-1000 arası tam sayı olmalı.");
+        return;
+      }
+      omniWeight = parsed;
+    }
+
     startTransition(async () => {
       try {
         const res = await fetch("/api/admin/midjourney/test-render", {
@@ -101,6 +146,10 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
             aspectRatio,
             ...(referenceId ? { referenceId } : {}),
             ...(referenceUrls.length > 0 ? { referenceUrls } : {}),
+            ...(styleReferenceUrls.length > 0 ? { styleReferenceUrls } : {}),
+            ...(omniRefTrim.length > 0 ? { omniReferenceUrl: omniRefTrim } : {}),
+            ...(omniWeight !== undefined ? { omniWeight } : {}),
+            ...(preferApiSubmit ? { preferApiSubmit: true } : {}),
           }),
         });
         const json = (await res.json().catch(() => null)) as
@@ -186,6 +235,86 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
         <span className="text-text-muted">
           MJ V8 &quot;Add Images → Image Prompts&quot; üzerinden upload edilir.
           Public erişilebilir HTTPS URL gerek (R17.2). Max 10 URL.
+        </span>
+      </label>
+
+      {/* Pass 71 — Style reference (--sref) URL'leri.
+          AutoSail audit (Pass 70) literal kanıtladı: sref MJ tarafında
+          prompt-string flag (ayrı endpoint yok). buildMJPromptString
+          (Pass 65) prompt başına --sref URL [URL ...] ekler. Max 5. */}
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="text-text-muted">
+          Style reference URL&apos;leri (--sref · opsiyonel · HTTPS · max 5)
+        </span>
+        <textarea
+          value={styleRefUrlsRaw}
+          onChange={(e) => setStyleRefUrlsRaw(e.target.value)}
+          disabled={disabled}
+          rows={2}
+          maxLength={2000}
+          className="rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-xs disabled:opacity-50"
+          placeholder={"https://.../style-ref-1.png"}
+          data-testid="mj-test-render-style-ref-urls"
+        />
+      </label>
+
+      {/* Pass 71 — Omni reference (--oref --ow N). V7+ premium feature.
+          Tek URL + opsiyonel weight (0-1000). */}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-1 flex-col gap-1 text-xs">
+          <span className="text-text-muted">
+            Omni reference URL (--oref · V7+ · opsiyonel)
+          </span>
+          <input
+            type="text"
+            value={omniRefUrl}
+            onChange={(e) => setOmniRefUrl(e.target.value)}
+            disabled={disabled}
+            maxLength={500}
+            className="rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-xs disabled:opacity-50"
+            placeholder="https://.../character-ref.png"
+            data-testid="mj-test-render-omni-ref-url"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-text-muted">--ow (0-1000)</span>
+          <input
+            type="number"
+            value={omniWeightRaw}
+            onChange={(e) => setOmniWeightRaw(e.target.value)}
+            disabled={disabled}
+            min={0}
+            max={1000}
+            className="w-24 rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-xs disabled:opacity-50"
+            data-testid="mj-test-render-omni-weight"
+          />
+        </label>
+      </div>
+
+      {/* Pass 71 — API-first submit opt-in (deneysel; default DOM).
+          Ghost-job riski (kullanıcının MJ tab'ı React store güncellenmiyor)
+          — gelecek render polling endpoint kanıtı sonra default'a alınacak. */}
+      <label
+        className="flex items-start gap-2 text-xs"
+        data-testid="mj-test-render-prefer-api-submit"
+      >
+        <input
+          type="checkbox"
+          checked={preferApiSubmit}
+          onChange={(e) => setPreferApiSubmit(e.target.checked)}
+          disabled={disabled}
+          className="mt-0.5"
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="font-semibold text-text">
+            API-first submit (deneysel · opt-in)
+          </span>
+          <span className="text-text-muted">
+            POST /api/submit-jobs → DOM typing yok (3-5sn kazanım). UYARI:
+            Şu an ghost-job riski (kullanıcının MJ tab&apos;ı job&apos;u
+            görmüyor); render polling timeout olabilir. Pass 72+ render
+            polling endpoint kanıtı sonra default&apos;a alınacak.
+          </span>
         </span>
       </label>
 

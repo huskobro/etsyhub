@@ -101,10 +101,17 @@ export type MjGenerateParams = {
    */
   styleReferenceUrls?: string[];
   /**
-   * Omni reference (V7+) — `--oref URL --ow N`. V1.x'te aktif edilecek.
+   * Omni reference (V7+) — `--oref URL --ow N`. Pass 71'de UI/service
+   * input alanları geldi.
    */
   omniReferenceUrl?: string;
   omniWeight?: number;
+  /**
+   * Pass 71 — API-first submit opt-in flag (deneysel).
+   * Default false → bridge DOM submit (Pass 49 production-grade).
+   * true → bridge önce `POST /api/submit-jobs` dener (ghost-job riski).
+   */
+  preferApiSubmit?: boolean;
 };
 
 /**
