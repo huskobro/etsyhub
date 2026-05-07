@@ -78,6 +78,123 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 62 (Format flexibility + asset export endpoint — tamamlanan) 🟢
+
+Rota değişikliği: upscale Pass 60-61'de **PARK EDİLDİ** (ileride
+ele alınacak; iptal değil). Bu turun odağı **format çeşitlendirmesi**.
+
+**🅿 Upscale park notu**:
+- MJ native upscale Pass 60'ta kuruldu, Pass 61'de discovery fix
+  uygulandı; ama V7 alpha discovery/dedup davranışı kırılgan:
+  - Pass 60 ilk attempt başarılı (a112824e UUID üretildi, archive'da)
+  - Sonraki attempt'ler MJ silent dedup nedeniyle yeni job tetiklemedi
+- Kod yolu (selectors + executeUpscaleJob + service + API + UI buton)
+  doğru ve canlı.
+- 5/5 yeşil için **taze parent** üzerinde tek-shot test gerek (yeni
+  Test Render → bekle → hemen üzerinde upscale = dedup yok).
+- **Alternatif yol araştırma adayı (Pass 63+)**: yerel desktop app
+  automation — özellikle **Topaz Gigapixel** gibi desktop uygulama
+  üzerinden Playwright/system automation yolu. Bu MJ V7 alpha
+  kırılganlığını bypass eder ve daha sağlam bir upscale pipeline
+  sağlayabilir. Sadece research note — Pass 62'de implement değil.
+
+**Pass 62 audit + canlı keşifler**:
+
+URL semantics live audit (`c2edd80b` GENERATE job üzerinde):
+- `/jobs/{uuid}` (index'siz) → hero img **`0_0.jpeg` 1024×1024**
+  (full-res JPEG, 200KB)
+- `/jobs/{uuid}?index=N` → hero img **`0_<N>_640_N.webp` 640×640**
+  (preview WebP, 50KB)
+- **Kalite farkı VAR**: indexless = full-res, indexed = preview
+- `?index=N` deterministik grid seçimi sağlar (hangi grid hero
+  olduğunu netleştirir) ama **kaynak format preview kalitesinde**
+  geliyor
+
+Source format reality (HEAD probes, c2edd80b):
+- `0_0.jpeg` → 201KB image/jpeg
+- `0_0.png` → **1046KB image/png** (lossless, full-res 1024×1024)
+- `0_0.webp` → 212KB image/webp
+- `0_0_2048_N.webp` → 106KB
+- `0_0_640_N.webp` → ~50KB (Pass 49-61 ingest pattern)
+
+**Sonuç**: MJ CDN her grid için 3 native format expose ediyor
+(`.jpeg`, `.png`, `.webp`) + suffix variants. Pass 49'dan beri
+`_640_N.webp` (preview) ingest ediyorduk → **kayıp kalite**.
+
+**Build now paketi**:
+
+- ✅ `bridge/generate-flow.ts` `toCanonicalFullResUrl()` helper:
+  - Pattern: `/UUID/0_<N>_640_N.webp?...` → `/UUID/0_<N>.png`
+  - `downloadGridImages` artık önce canonical PNG dener, fail durumunda
+    preview URL'e fallback (idempotent + dürüst — ingest çalışır
+    ama canonical kalite kaybolursa loglanır)
+  - `sourceUrl` field hâlâ preview URL (debug+admin link için);
+    `localPath` canonical full-res
+  - **Pass 62 sonrası YENİ ingest'ler PNG kalitesinde**; eski
+    Pass 49-61 webp asset'ler dönüştürülmez (export endpoint
+    onları sharp ile derived format'a çevirir)
+- ✅ `GET /api/admin/midjourney/asset/[id]/export?format=jpeg|png|webp&size=full|web`:
+  - sharp pipeline (jpeg quality 92, png compression 6, webp quality 90)
+  - size="web" 1024×1024 fit:inside (resize)
+  - Content-Disposition attachment + filename `mj-{mjJobId}-grid{N}-{size}.{ext}`
+  - Audit `MIDJOURNEY_ASSET_EXPORT` (sourceMime + format + size + bytesOut)
+- ✅ `ExportButtons.tsx` per-thumb component:
+  - 3 anchor tag (`PNG / JPEG / WebP`) + `download` attribute
+  - data-testid `mj-export-{format}-{assetId}` (test için)
+- ✅ Detail page entegrasyonu: COMPLETED job'da her grid altında
+  Upscale buton (Pass 60) + Export butonlar (Pass 62) yan yana
+
+**Canlı E2E doğrulaması (Pass 51 c2edd80b webp source)**:
+
+```
+PNG buton: true · JPEG buton: true · WebP buton: true
+[png]  status=200 ctype=image/png  bytes=279737   filename="mj-c2edd80b-grid0-full.png"
+[jpeg] status=200 ctype=image/jpeg bytes=43648    filename="mj-c2edd80b-grid0-full.jpeg"
+[webp] status=200 ctype=image/webp bytes=25458    filename="mj-c2edd80b-grid0-full.webp"
+Audit log: 3 MIDJOURNEY_ASSET_EXPORT (format/size/bytesOut/sourceMime)
+```
+
+Sharp 28KB webp source → 280KB PNG (lossless), 44KB JPEG, 25KB WebP
+— hepsi gerçek dönüşüm. Screenshot `/tmp/mj-pass62-export.png` —
+4 grid altında "⤴ Upscale" + "↓ PNG / ↓ JPEG / ↓ WebP" butonları.
+
+**Format tradeoff & varsayılan kararlar**:
+
+1. **Storage canonical (yeni ingest'ler)**: **PNG**
+   - Lossless, ~1MB/grid, transparent destek
+   - Sharp ile her formata dönüştürülebilir (kayıp olmadan)
+   - Baskı/clipart için ideal (Etsy POD)
+2. **Etsy listing default**: **JPEG** (~200KB, en iyi uyumluluk)
+3. **Web preview/thumbnail**: **WebP** (modern, ~25KB)
+4. **Eski Pass 49-61 webp asset'leri**: olduğu gibi kalır;
+   export sharp ile dönüştürür (kalite source seviyesinde sınırlı)
+
+**Capability matrix güncellemesi**:
+
+1. **next immediate (Pass 63)**:
+   - Pass 49-61 webp asset'leri için bir-time backfill script
+     (canonical PNG'ye yükselt — opsiyonel)
+   - Export endpoint'e `size=web` (1024 cap) ek varyantları test et
+   - **Topaz Gigapixel research** (yerel desktop automation candidate)
+2. **strong follow-up**:
+   - Variation capability (V7 alpha "Vary Subtle/Strong" — selectors
+     Pass 60'ta hazır)
+   - Upscale capability **gerçek end-to-end** — taze parent ile
+3. **useful later**:
+   - Batch export (4 grid hepsini ZIP olarak)
+   - Mockup direct entry shortcut
+4. **do not now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 62 dürüst sınır**:
+- Eski Pass 49-61 ingest'leri webp source (preview quality 640px);
+  yeni ingest'ler canonical PNG (1024px). Backfill Pass 63 hedefi
+  (opsiyonel — eski jobs operatör için yeterli olabilir).
+- `toCanonicalFullResUrl` MJ CDN URL pattern'ine bağımlı; MJ pattern
+  değişirse fallback preview URL devreye girer.
+- Export `size=web` resize sharp `fit: inside` — orijinal zaten 1024
+  olduğu için çoğunlukla no-op.
+
 ### Pass 61 (Upscale discovery audit + page.url() polling fix — kısmi tamamlanan) 🟡
 
 Pass 60'ın incomplete kalan tek halkasını çözmeye odaklandı: **upscale

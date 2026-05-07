@@ -413,6 +413,31 @@ export async function waitForUpscaleResult(
  * `page.request.get(url)` aynı session cookie'siyle çalışır (login
  * gerektirir).
  */
+/**
+ * Pass 62 — MJ CDN URL'i full-res canonical URL'e çevir.
+ *
+ * MJ CDN her grid için 3 native format expose ediyor:
+ *   `0_<n>.png`   — lossless, ~1MB, 1024×1024 (canonical baskı/clipart)
+ *   `0_<n>.jpeg`  — lossy ~200KB, 1024×1024 (Etsy listing default)
+ *   `0_<n>.webp`  — lossy ~200KB, 1024×1024 (modern web preview)
+ *
+ * Pass 49'dan beri ingest ettiğimiz `_640_N.webp` PREVIEW QUALITY
+ * (640×640, ~50KB). Pass 62: ingest **canonical PNG** olarak yapılır;
+ * derived format'lar (jpeg/webp) export endpoint'inde sharp ile üretilir.
+ *
+ * Pattern: `cdn.midjourney.com/{UUID}/0_<n>_640_N.webp?method=shortest`
+ *        → `cdn.midjourney.com/{UUID}/0_<n>.png`
+ *
+ * Upscale (kind=UPSCALE) çıktıları aynı pattern'i kullanır.
+ */
+export function toCanonicalFullResUrl(previewUrl: string): string {
+  // /UUID/<outerIdx>_<gridIdx>_640_N.webp?... → /UUID/<outerIdx>_<gridIdx>.png
+  return previewUrl.replace(
+    /\/(\d+)_(\d+)_\d+_N\.webp(\?[^/]*)?$/i,
+    "/$1_$2.png",
+  );
+}
+
 export async function downloadGridImages(
   page: Page,
   imageUrls: string[],
@@ -445,29 +470,49 @@ export async function downloadGridImages(
   // Çözüm: yeni tab aç, image URL'ine goto et, response.body() ile
   // bytes'ı yakala, tab'ı kapat. Yeni tab session ve cookie'leri context
   // ile paylaşır; CF challenge tetiklenmez.
+  //
+  // Pass 62 — preview `_640_N.webp` URL'lerini full-res `.png`'ye çevir
+  // (canonical kayıt). Fail → preview URL'e fallback (ingest yine de
+  // çalışır, ama canonical kalite kaybolur).
   const ctx = page.context();
   for (let i = 0; i < imageUrls.length && i < 4; i++) {
-    const url = imageUrls[i]!;
-    const dlPage = await ctx.newPage();
-    try {
-      const resp = await dlPage.goto(url, {
-        waitUntil: "load",
-        timeout: 30_000,
-      });
-      if (!resp || !resp.ok()) {
-        throw new Error(
-          `Image download fail (${resp?.status() ?? "no response"}): ${url}`,
-        );
+    const previewUrl = imageUrls[i]!;
+    const canonicalUrl = toCanonicalFullResUrl(previewUrl);
+    const tryUrls = canonicalUrl !== previewUrl ? [canonicalUrl, previewUrl] : [previewUrl];
+    let saved: { body: Buffer; usedUrl: string; mime: string } | null = null;
+    for (const url of tryUrls) {
+      const dlPage = await ctx.newPage();
+      try {
+        const resp = await dlPage.goto(url, {
+          waitUntil: "load",
+          timeout: 30_000,
+        });
+        if (resp && resp.ok()) {
+          saved = {
+            body: await resp.body(),
+            usedUrl: url,
+            mime: resp.headers()["content-type"] ?? "",
+          };
+          break;
+        }
+      } catch {
+        // try next URL
+      } finally {
+        await dlPage.close().catch(() => undefined);
       }
-      const body = await resp.body();
-      const ext = guessImageExtension(url, resp.headers()["content-type"]);
-      const localPath = join(jobDir, `${i}${ext}`);
-      await mkdir(dirname(localPath), { recursive: true });
-      await writeFile(localPath, body);
-      results.push({ gridIndex: i, localPath, sourceUrl: url });
-    } finally {
-      await dlPage.close().catch(() => undefined);
     }
+    if (!saved) {
+      throw new Error(
+        `Image download fail for grid ${i}: ${tryUrls.join(", ")}`,
+      );
+    }
+    const ext = guessImageExtension(saved.usedUrl, saved.mime);
+    const localPath = join(jobDir, `${i}${ext}`);
+    await mkdir(dirname(localPath), { recursive: true });
+    await writeFile(localPath, saved.body);
+    // sourceUrl olarak preview URL'i kaydet (debug + admin link için);
+    // localPath canonical full-res içerir.
+    results.push({ gridIndex: i, localPath, sourceUrl: previewUrl });
   }
 
   return results;

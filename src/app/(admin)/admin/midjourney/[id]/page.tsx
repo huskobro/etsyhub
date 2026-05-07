@@ -29,6 +29,7 @@ import { PromoteToReview } from "./PromoteToReview";
 import { AddToSelection } from "./AddToSelection";
 import { FailureDetail } from "./FailureDetail";
 import { UpscaleButton } from "./UpscaleButton";
+import { ExportButtons } from "./ExportButtons";
 
 const STATE_LABELS: Record<string, string> = {
   QUEUED: "Sırada",
@@ -355,9 +356,20 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
                       için Upscale (Subtle) buton. Upscale child'larda
                       kendisi UPSCALE variantı olduğu için tekrar buton
                       gösterilmez (kind=UPSCALE detail page'inde
-                      generatedAssets array boş veya 1 item). */}
+                      generatedAssets array boş veya 1 item).
+                      Pass 60-61 PARK NOTU: MJ V7 alpha discovery/dedup
+                      kırılgan; gerçek end-to-end başarı yapay test data
+                      hijiyeni gerektiriyor. Capability matrix'te
+                      işaretli. Alternatif: Topaz Gigapixel desktop
+                      automation (research candidate, Pass 63+). */}
                   {job.state === "COMPLETED" && a.variantKind === "GRID" ? (
                     <UpscaleButton midjourneyAssetId={a.id} />
+                  ) : null}
+                  {/* Pass 62 — Format export butonları (PNG/JPEG/WebP).
+                      Source MinIO'da canonical (PNG yeni ingest'ler için);
+                      sharp ile istenen format'a dönüşür. */}
+                  {job.state === "COMPLETED" ? (
+                    <ExportButtons midjourneyAssetId={a.id} />
                   ) : null}
                   {/* Pass 60 — Per-asset upscale child'ları (lineage). */}
                   {a.children.length > 0 ? (
