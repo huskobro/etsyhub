@@ -358,6 +358,9 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
           | {
               describePrompts?: string[];
               sourceImageUrl?: string;
+              // Pass 68 — driver hangi yolu kullandı + fallback nedeni
+              describeMethod?: "api" | "dom";
+              apiFallbackReason?: string;
             }
           | null;
         const prompts = md?.describePrompts ?? [];
@@ -377,6 +380,8 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
           <DescribeResults
             prompts={prompts}
             sourceImageUrl={md?.sourceImageUrl ?? null}
+            method={md?.describeMethod ?? null}
+            apiFallbackReason={md?.apiFallbackReason ?? null}
           />
         );
       })()}

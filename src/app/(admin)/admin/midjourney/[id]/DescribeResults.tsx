@@ -16,11 +16,18 @@ import { useState } from "react";
 type DescribeResultsProps = {
   prompts: string[];
   sourceImageUrl?: string | null;
+  /** Pass 68 — bridge driver hangi yolu kullandı: "api" (hızlı,
+   * görünmez) veya "dom" (Pass 66 fallback). Admin gözlem için. */
+  method?: "api" | "dom" | null;
+  /** API path fail olduysa fallback nedeni — admin debug için. */
+  apiFallbackReason?: string | null;
 };
 
 export function DescribeResults({
   prompts,
   sourceImageUrl,
+  method,
+  apiFallbackReason,
 }: DescribeResultsProps) {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
@@ -45,6 +52,30 @@ export function DescribeResults({
         <span className="rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-text">
           MJ describe
         </span>
+        {/* Pass 68 — Hangi yol kullanıldı badge.
+            "api" = MJ internal /api/describe (hızlı, DOM dokunmadan)
+            "dom" = Pass 66 three-dots menü fallback (yavaş, görünür) */}
+        {method === "api" ? (
+          <span
+            className="rounded bg-success-soft px-1.5 py-0.5 text-xs text-success"
+            title="MJ internal API — sayfaya dokunmadan"
+            data-testid="mj-describe-method-api"
+          >
+            ⚡ API
+          </span>
+        ) : method === "dom" ? (
+          <span
+            className="rounded bg-warning-soft px-1.5 py-0.5 text-xs text-warning-text"
+            title={
+              apiFallbackReason
+                ? `API fail (fallback'a düştü): ${apiFallbackReason.slice(0, 200)}`
+                : "DOM fallback (Pass 66 yolu)"
+            }
+            data-testid="mj-describe-method-dom"
+          >
+            🐢 DOM fallback
+          </span>
+        ) : null}
         {sourceImageUrl ? (
           <a
             href={sourceImageUrl}

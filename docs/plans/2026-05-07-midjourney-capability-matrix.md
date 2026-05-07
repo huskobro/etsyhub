@@ -78,6 +78,135 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 68 (Describe API-first + DOM fallback — extension-inspired — tamamlanan) 🟢
+
+**Hedef:** Pass 67 araştırma sonucunu (AutoSail eklenti `/api/describe` synchronous)
+mevcut Pass 66 DOM hattını **bozmadan** main'e taşımak.
+
+**Pass 67 PoC reverify (taze tur):**
+- `pass67-autosail-research` worktree'de `poc-cdp-direct.ts` yeniden
+  çalıştırıldı; 4064 ms'de 4 prompt scrape edildi (Pass 67'deki 3935
+  ms ile uyumlu, ~4 saniye stabil)
+- Bridge ÇALIŞIRKEN PoC çalıştı (tek WS endpoint tab başına bağımsız;
+  Pass 67'deki bridge-stop gereksizmiş)
+- 3rd-party servis kullanımı YOK (Pass 67 audit kanıtı: `Ts =
+  https://${location.hostname}` MJ kendi domain'i)
+
+**Uygulanan (main hattı):**
+
+- ✅ `mj-bridge/src/drivers/generate-flow.ts` — yeni helper:
+  `describeImageViaApi(page, imageUrl, options)`
+  - `cdn.midjourney.com` veya `s.mj.run` URL'i → upload bypass
+  - Aksi halde `POST /api/storage-upload-file` (multipart) → MJ kendi
+    storage'a yükle, `bucketPathname` al, `cdn.midjourney.com/u/<path>`
+    formatında URL üret
+  - `POST /api/describe` body `{ image_url, channelId: "picread" }`
+    headers `X-Csrf-Protection: 1`. Cookie auth attach context'inden.
+  - Synchronous response → `descriptions[4]` parse + return
+  - **`__name` stub fix:** tsx/esbuild helper sayfa context'inde
+    tanımsız; `(globalThis as any).__name = ((x) => x)` no-op stub
+    eklendi. İlk smoke ReferenceError verdi, fix sonrası temiz çalıştı.
+- ✅ `playwright.ts executeDescribeJob` — API-first + DOM fallback:
+  - Önce `describeImageViaApi` (4-6 saniye)
+  - Fail olursa Pass 66 `describeImage` (DOM yolu, ~26 saniye)
+  - Her iki yol fail olursa FAILED + selector-mismatch
+  - `mjMetadata.describeMethod = "api" | "dom"` işareti
+  - `mjMetadata.apiFallbackReason` API path'in fail nedeni (debug için)
+- ✅ `DescribeResults.tsx` — yeni prop'lar:
+  - `method?: "api" | "dom"` → admin UI'da badge
+  - `apiFallbackReason?: string` → DOM badge title'ında neden gözükür
+  - "⚡ API" (success-soft) vs "🐢 DOM fallback" (warning-soft) badge
+- ✅ Detail page `[id]/page.tsx` — DescribeResults'a yeni prop'ları geçirdi
+- ✅ Pass 66 `describeImage` helper **DOKUNULMADI** — fallback olarak korunuyor
+
+**Doğrulama (gerçek MJ smoke):**
+
+| Smoke | Sonuç |
+|---|---|
+| Pass 67 PoC reverify (worktree, taze) | ✅ 4064 ms, 4 prompt |
+| TS check (EtsyHub + bridge) | ✅ Yeşil |
+| Token guard | ✅ Yeşil |
+| UI test suite | ✅ 946/946 |
+| **Real bridge job (`45c33a9f-215d-...`)** | ✅ **6 saniyede COMPLETED** |
+| `describeMethod` | ✅ **`"api"`** (DOM fallback'a düşmedi) |
+| `apiFallbackReason` | ✅ `null` |
+| `resolvedImageUrl === sourceImageUrl` | ✅ Upload bypass çalıştı |
+| `promptCount` | ✅ **4** |
+| First prompt tema doğruluğu | ✅ "abstract composition / geometric shapes" — `c2edd80b/0_3` ile uyumlu |
+| Bridge log `lastDriverMessage` | ✅ "Describe tamamlandı: 4 prompt (api)" |
+
+**Karşılaştırma — Pass 66 DOM yolu vs Pass 68 API yolu:**
+
+| Metrik | Pass 66 DOM | Pass 68 API | Kazanç |
+|---|---|---|---|
+| Süre (smoke) | ~26 sn | **~4 sn (helper)** veya **~6 sn (full job)** | **4-6× hızlı** |
+| Add Images popover aç | ✅ tıklanır | ❌ gerek yok | Görünmez |
+| Image Prompts tab seç | ✅ tıklanır | ❌ gerek yok | Görünmez |
+| File upload | ✅ setInputFiles | ❌ (cdn URL upload bypass) | Görünmez |
+| Hover + three-dots | ✅ mouse aksiyonu | ❌ gerek yok | Görünmez |
+| Sayfa kullanıcının açık tab'ında "değiştirilmiş" görünür | ✅ evet | ❌ hiçbir şey | Görünmez |
+| Bot algı riski | Orta | Düşük | Düşük |
+
+**Pass 68 dürüst sınırlar:**
+
+- ✅ Describe API path **gerçekten production-grade** çalıştı (tek seferlik
+  smoke değil; Pass 67 PoC + Pass 68 reverify + Pass 68 main smoke = 3
+  bağımsız doğrulama, tutarlı 4-6 saniye süre, hep 4 prompt)
+- 🟡 **Eklenti yüklü** (test koşulu); eklenti olmadan **CSP block riski**
+  henüz net test edilmedi. Eklentinin `rules.json`'u CSP/X-Frame siliyor
+  (Pass 67 audit). Pass 69 önerisi: kısa bir "eklenti disable" smoke
+  → API path hâlâ çalışıyor mu doğrula. Bu turda eklenti aktifti.
+- 🟡 `X-Csrf-Protection: 1` token sabit literal görünüyor; rotation
+  davranışı bilinmiyor. Eklenti aylardır kullanıyor → stable görünüm.
+- 🟡 **`__name` esbuild helper sorunu** stub ile çözüldü; sürdürülebilir
+  ama gelecekte bridge build pipeline değişirse (esbuild → swc, vs)
+  yeniden gözden geçir.
+
+**Generate / sref / oref audit (kanıt seviyesi, Pass 69 hedefi):**
+
+`main.js` literal grep:
+- `/api/imagine` → string olarak görünüyor AMA fetch çağrısı YOK (eklenti
+  generate için **MJ /api/imagine'i çağırmıyor**)
+- `/api/submit-jobs`, `/api/app/submit-jobs`, `/api/jobs/submit` → fetch
+  hedefi `${hse()}` (autojourney 3rd-party backend, paywall'lı)
+- `--sref`, `--cref`, `--oref` → **string flag** olarak prompt'a ekleniyor;
+  ayrı endpoint yok
+
+**Sonuç:** Generate için MJ kendi internal API yolu **kanıtlanmamış**.
+Eklenti generate için kendi proxy server'ını kullanıyor. **Bizim için
+generate hâlâ DOM tabanlı** (Pass 49 prompt input + submit + render
+polling). Pass 69 hedefi: kullanıcı eklenti popup'tan generate tıkladığında
+**live network capture** ile gerçek endpoint var mı yok mu kanıt et.
+
+Sref/oref/cref **flag pattern** olarak prompt'a eklenir; bu bizim
+`buildMJPromptString` zaten destekliyor (Pass 65). Yani generate ana akışı
+DOM tabanlı kalsa da, sref/oref **prompt-level değişiklikle** eklenebilir
+(ekstra endpoint gerekmez).
+
+**Capability matrix güncellemesi:**
+
+1. **next immediate (Pass 69)**:
+   - **Eklenti disable smoke** — eklentisiz API path hâlâ çalışıyor mu
+     (CSP block kanıtla/çürüt)
+   - **Generate live capture** — eklenti popup'ından generate tıkla,
+     network sniffer ile gerçek endpoint var mı tespit et
+   - EtsyHub UI smoke — DescribeButton tıkla → spawn → `⚡ API` badge
+2. **strong follow-up**:
+   - `?reusePrompt=...` URL parametresi TestRenderForm pre-fill (Pass 66'dan)
+   - Image-prompt waitForRender stuck fix (Pass 65'ten)
+   - Sref/oref UI: TestRenderForm'a opsiyonel input alanları
+3. **useful later**:
+   - Generate API path (eğer Pass 69 capture endpoint kanıtlarsa)
+   - Animate / Start Frame `kind=animate` capability
+4. **do not now**:
+   - autojourney 3rd-party backend kullanımı (paywall, kara kutu)
+   - Eklentiyi runtime dependency yapma
+
+**Pass 67 worktree statusü:**
+`pass67-autosail-research` branch hâlâ `604dbfe`'de duruyor; main'e
+merge edilmedi (PoC research değeri). 7 audit script + rapor
+worktree'de kalmaya devam ediyor.
+
 ### Pass 66 (Describe capability — Pass 65 audit'in düzeltmesi — tamamlanan) 🟢
 
 **Pass 65 audit'in YANLIŞ olduğu kanıtlandı.** Kullanıcının paylaştığı

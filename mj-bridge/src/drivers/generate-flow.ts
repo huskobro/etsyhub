@@ -81,7 +81,209 @@ function randInt(min: number, max: number): number {
 }
 
 /**
- * Pass 66 — Describe akışı (MJ V8 web).
+ * Pass 68 — Describe via MJ internal API (eklenti audit'ten öğrenildi).
+ *
+ * Pass 67 araştırması: AutoSail/AutoJourney eklentisi MJ describe'ı tek
+ * `fetch("/api/describe")` ile yapıyor. PoC bridge tarafında 4 saniyede
+ * 4 prompt doğruladı (DOM yolu ~26 saniye → 6.6× hızlı).
+ *
+ * Akış:
+ *   1. `cdn.midjourney.com` veya `s.mj.run` URL'i ise upload bypass
+ *   2. Aksi halde `/api/storage-upload-file` (multipart) ile MJ kendi
+ *      storage'a yükle, `bucketPathname` al, `cdn.midjourney.com/u/<path>`
+ *      formatında URL üret
+ *   3. `POST /api/describe` body `{ image_url, channelId: "picread" }`
+ *      headers `X-Csrf-Protection: 1`. Cookie auth attach context'inden.
+ *   4. Synchronous response: `{ success, data: { descriptions: [4] } }`
+ *
+ * Avantajlar:
+ *   - DOM hiç dokunulmuyor (popover yok, hover yok, tıklama yok)
+ *   - 4 saniye (DOM yolu ~26 saniye)
+ *   - Sayfa user'ın açık tab'ında olduğu gibi kalıyor
+ *   - Bot algı riski çok daha düşük
+ *
+ * Hata davranışı:
+ *   - Network fail / status !== 200 / response.success !== true → throw
+ *   - Caller (executeDescribeJob) yakalayıp DOM fallback'a düşer
+ *
+ * 3rd-party servis YOK — describe MJ kendi domain'inde, kullanıcının
+ * MJ aboneliği yeterli (Pass 67 audit doğrulaması).
+ */
+export type DescribeApiResult = {
+  prompts: string[];
+  /** Yüklü görselin MJ tarafındaki URL'i (cdn.midjourney.com/u/...). */
+  resolvedImageUrl: string;
+  /** Hangi yol kullanıldı: "api". DOM yolu için "dom". */
+  method: "api";
+};
+
+export async function describeImageViaApi(
+  page: Page,
+  imageUrl: string,
+  options: { fetchTimeoutMs?: number } = {},
+): Promise<DescribeApiResult> {
+  const fetchTimeoutMs = options.fetchTimeoutMs ?? 60_000;
+
+  // 1) Image URL hazır mı? cdn.midjourney.com / s.mj.run zaten MJ kendi
+  // storage'da; upload bypass. Aksi halde upload gerek (Pass 68 V1
+  // scope: upload PATH'i implement edilmiş ama bizim use case'imizde
+  // (EtsyHub generate çıktıları zaten cdn.midjourney.com'da) upload
+  // bypass çalışacak — ekstra HTTP yok).
+  //
+  // NOT: page.evaluate body'sinde tsx/esbuild "named helper" üretmez
+  // (`__name`/`__defProp` Node-side helper'ları sayfa context'ine
+  // serialize edilemez); bu yüzden BU HELPER İÇİNDE NAMED INNER
+  // FUNCTION YAZMA — sadece arrow body inline expression'lar.
+  const resolvedImageUrl = await page.evaluate(
+    async (input: { url: string; timeoutMs: number }) => {
+      // tsx/esbuild __name helper sayfa context'inde tanımsız;
+      // serialize edilirken transformer arada Reference üretiyor.
+      // Stub ekle ki "ReferenceError: __name is not defined" gelmesin.
+      // (no-op identity function)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).__name = (globalThis as any).__name ?? ((x: unknown) => x);
+      const url = input.url;
+      const timeoutMs = input.timeoutMs;
+
+      // cdn.midjourney.com veya s.mj.run → upload skip
+      if (
+        /^https?:\/\/(cdn\.midjourney\.com|s\.mj\.run)\//i.test(url)
+      ) {
+        return url;
+      }
+
+      // Upload gerekli — görseli fetch et → blob → multipart form-data →
+      // POST /api/storage-upload-file
+      const dlCtrl = new AbortController();
+      const dlT = setTimeout(() => dlCtrl.abort(), timeoutMs);
+      let dl: Response;
+      try {
+        dl = await fetch(url, { signal: dlCtrl.signal });
+      } finally {
+        clearTimeout(dlT);
+      }
+      if (!dl.ok) {
+        throw new Error(`Image fetch ${url} → HTTP ${dl.status}`);
+      }
+      const blob = await dl.blob();
+      const ext =
+        blob.type.includes("png")
+          ? "png"
+          : blob.type.includes("webp")
+            ? "webp"
+            : "jpg";
+      const filename = `describe-source-${Date.now()}.${ext}`;
+      const file = new File([blob], filename, {
+        type: blob.type || "image/png",
+      });
+      const fd = new FormData();
+      fd.append("file", file);
+      const upCtrl = new AbortController();
+      const upT = setTimeout(() => upCtrl.abort(), timeoutMs);
+      let up: Response;
+      try {
+        up = await fetch(
+          `${window.location.origin}/api/storage-upload-file`,
+          {
+            method: "POST",
+            headers: {
+              "X-Csrf-Protection": "1",
+              // version header eklenti capture'ında görüldü; MJ tarafı
+              // string '2' bekliyor (live capture).
+              version: "2",
+            },
+            credentials: "include",
+            body: fd,
+            signal: upCtrl.signal,
+          },
+        );
+      } finally {
+        clearTimeout(upT);
+      }
+      if (!up.ok) {
+        throw new Error(
+          `Upload fail ${up.status}: ${(await up.text()).slice(0, 200)}`,
+        );
+      }
+      const upJson = (await up.json()) as {
+        shortUrl?: string;
+        bucketPathname?: string;
+      };
+      if (!upJson.bucketPathname) {
+        throw new Error(
+          `Upload response: bucketPathname yok — ${JSON.stringify(upJson).slice(0, 200)}`,
+        );
+      }
+      // bucketPathname = "<userId>/<sha>.jpg" → cdn URL
+      return `https://cdn.midjourney.com/u/${upJson.bucketPathname}`;
+    },
+    { url: imageUrl, timeoutMs: fetchTimeoutMs },
+  );
+
+  // 2) /api/describe çağrısı (synchronous — polling yok)
+  const result = await page.evaluate(
+    async (input: { url: string; timeoutMs: number }) => {
+      // tsx/esbuild __name helper stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).__name = (globalThis as any).__name ?? ((x: unknown) => x);
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), input.timeoutMs);
+      try {
+        const res = await fetch(`${window.location.origin}/api/describe`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Csrf-Protection": "1",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            image_url: input.url,
+            channelId: "picread",
+          }),
+          signal: ctrl.signal,
+        });
+        const text = await res.text();
+        return { status: res.status, ok: res.ok, body: text };
+      } finally {
+        clearTimeout(t);
+      }
+    },
+    { url: resolvedImageUrl, timeoutMs: fetchTimeoutMs },
+  );
+
+  if (!result.ok) {
+    throw new Error(
+      `/api/describe HTTP ${result.status}: ${result.body.slice(0, 200)}`,
+    );
+  }
+
+  let parsed: { success?: boolean; data?: { descriptions?: string[] } };
+  try {
+    parsed = JSON.parse(result.body);
+  } catch {
+    throw new Error(
+      `/api/describe JSON parse fail: ${result.body.slice(0, 200)}`,
+    );
+  }
+  if (!parsed.success || !Array.isArray(parsed.data?.descriptions)) {
+    throw new Error(
+      `/api/describe success=false veya descriptions array değil: ${result.body.slice(0, 200)}`,
+    );
+  }
+  const prompts = parsed.data.descriptions.filter(
+    (p): p is string => typeof p === "string" && p.trim().length > 0,
+  );
+  if (prompts.length < 1) {
+    throw new Error(
+      `/api/describe descriptions array boş: ${result.body.slice(0, 200)}`,
+    );
+  }
+
+  return { prompts, resolvedImageUrl, method: "api" };
+}
+
+/**
+ * Pass 66 — Describe akışı (MJ V8 web) — DOM fallback.
  *
  * Pass 65 audit "describe yok" sonucu YANLIŞTI — kullanıcı ekran görüntüleri
  * (Desktop/describe_three-dots.png + describe_surukle_bırak.png) ve canlı
@@ -89,6 +291,9 @@ function randInt(min: number, max: number): number {
  *   1. Drop zone synthetic event'leri trust filtreliyor → güvenilmez
  *   2. **Three-dots menü %100 çalışıyor**: yüklü thumbnail HOVER → vertical
  *      dots tıkla → "Describe" menü öğesi → 4 prompt aynı sayfada inline
+ *
+ * Pass 68'den itibaren bu helper SADECE FALLBACK olarak kullanılır.
+ * Birincil yol `describeImageViaApi` (yukarıda).
  *
  * Akış:
  *   1. Add Images popover aç (idempotent) + Image Prompts tab seç

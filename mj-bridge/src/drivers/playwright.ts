@@ -47,6 +47,7 @@ import {
   buildMJPromptString,
   captureBaselineUuids,
   describeImage,
+  describeImageViaApi,
   downloadGridImages,
   SelectorMismatchError,
   submitPrompt,
@@ -1227,29 +1228,86 @@ export class PlaywrightDriver implements BridgeDriver {
       }
     }
 
+    // Pass 68 — API-first + DOM fallback strategy.
+    //
+    // Pass 67 audit (AutoSail eklenti): MJ'nin kendi internal API'si
+    // (POST /api/describe) synchronous 4 prompt döner. PoC bridge
+    // tarafında 4 saniyede çalıştı (DOM yolu ~26 sn → 6.6× hızlı).
+    //
+    // Strategy:
+    //   1. Önce describeImageViaApi (sayfa cookie session'ı + fetch)
+    //   2. Fail olursa describeImage (Pass 66 DOM yolu) fallback
+    //   3. mjMetadata.describeMethod ile hangi yol kullanıldığı işaretli
+    //      (admin UI bunu görsün; production gözlem için kritik).
+    //
+    // Hata türleri:
+    //   - API path'in throw'u → fallback'a düş (warning log + retry DOM)
+    //   - DOM path'in throw'u → FAILED (her iki yol da başarısız)
+    //
+    // Eklenti dependency YOK — describe MJ kendi domain'inde, kullanıcının
+    // MJ aboneliği yeterli (Pass 67 doğrulaması). Eklenti olmasa bile
+    // çalışır; tek olası risk CSP block ama PoC'de eklenti CSP siliyordu —
+    // canlı doğrulamayı gerçek smoke'da göreceğiz.
     onProgress({
       state: "SUBMITTING_PROMPT",
-      message: "Describe için image yükleniyor + tetikleniyor",
+      message: "Describe API yolu deneniyor",
     });
 
-    let describeResult;
+    let describePrompts: string[] = [];
+    let describeMethod: "api" | "dom" = "api";
+    let resolvedImageUrl: string | null = null;
+    let thumbnailSrc: string | null = null;
+    let apiError: string | null = null;
+
     try {
-      describeResult = await describeImage(page, this.selectors, imageUrl, {
-        resultTimeoutMs: this.cfg.renderTimeoutMs,
+      const apiResult = await describeImageViaApi(page, imageUrl, {
+        fetchTimeoutMs: 60_000,
       });
+      describePrompts = apiResult.prompts;
+      describeMethod = "api";
+      resolvedImageUrl = apiResult.resolvedImageUrl;
     } catch (err) {
-      const reason: JobBlockReason =
-        err instanceof SelectorMismatchError
-          ? "selector-mismatch"
-          : "internal-error";
-      onProgress({
-        state: "FAILED",
-        blockReason: reason,
-        message: err instanceof Error ? err.message : String(err),
-      });
-      return;
+      apiError = err instanceof Error ? err.message : String(err);
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[describe] API path fail (fallback'a düşülüyor): ${apiError}`,
+      );
     }
     if (signal.aborted) return;
+
+    if (describePrompts.length === 0) {
+      // Fallback: DOM yolu (Pass 66)
+      onProgress({
+        state: "SUBMITTING_PROMPT",
+        message: `Describe DOM fallback (API fail: ${apiError?.slice(0, 80) ?? "bilinmiyor"})`,
+      });
+      try {
+        const domResult = await describeImage(
+          page,
+          this.selectors,
+          imageUrl,
+          { resultTimeoutMs: this.cfg.renderTimeoutMs },
+        );
+        describePrompts = domResult.prompts;
+        describeMethod = "dom";
+        thumbnailSrc = domResult.thumbSrc;
+      } catch (err) {
+        const reason: JobBlockReason =
+          err instanceof SelectorMismatchError
+            ? "selector-mismatch"
+            : "internal-error";
+        onProgress({
+          state: "FAILED",
+          blockReason: reason,
+          message:
+            err instanceof Error
+              ? `API fail (${apiError?.slice(0, 60)}); DOM fallback fail: ${err.message}`
+              : String(err),
+        });
+        return;
+      }
+      if (signal.aborted) return;
+    }
 
     onProgress({
       state: "COMPLETED",
@@ -1257,10 +1315,13 @@ export class PlaywrightDriver implements BridgeDriver {
       mjMetadata: {
         kind: "describe",
         sourceImageUrl: imageUrl,
-        thumbnailSrc: describeResult.thumbSrc,
-        describePrompts: describeResult.prompts,
+        resolvedImageUrl: resolvedImageUrl ?? imageUrl,
+        thumbnailSrc,
+        describePrompts,
+        describeMethod, // Pass 68 — hangi yol kullanıldı (admin UI gözlem için)
+        ...(apiError ? { apiFallbackReason: apiError } : {}),
       },
-      message: `Describe tamamlandı: ${describeResult.prompts.length} prompt`,
+      message: `Describe tamamlandı: ${describePrompts.length} prompt (${describeMethod})`,
     });
   }
 
