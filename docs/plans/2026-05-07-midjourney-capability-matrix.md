@@ -78,6 +78,124 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 58 (Reference search + Failure detail panel — tamamlanan) 🟢
+
+Pass 55-57 ile MJ → Review → Selection ana üretim hattı bağlandı.
+Pass 58 hattın **iki günlük UX problemini** kapatır:
+1. Reference picker basit `<select>` idi — büyük listede arama yoktu.
+2. failedReason raw `pre` bloğuydu — operatör "şimdi ne yapayım?"
+   sorusunu kendisi çıkartmak zorundaydı.
+
+**Audit + paket seçimi**:
+
+Pass 57 sonrası 4 büyük boşluk:
+1. AWAITING_LOGIN/CHALLENGE blocked state hâlâ canlı doğrulanmadı
+2. failedReason multi-line/stack trace formatlama yok (Pass 53'ten beri açık)
+3. Reference picker basit select (50 limit, arama yok)
+4. Mockup direct entry (Selection üzerinden zaten erişilebiliyor)
+
+(1) yapay simülasyon gerektiriyor (login zaten geçerli — bu state
+ortaya çıkmıyor); (4) Selection Studio kendi pipeline'ından zaten
+Mockup'a geçiyor. (2) ve (3) günlük operatör kullanım UX'ini
+güçlendiriyor — bu turun en yüksek değer/risk oranı bunlar.
+
+Build now: **(1) ReferencePicker arama destekli + (2) FailureDetail
+structured panel**. Strong follow-up: blocked state injection
+script, Mockup direct shortcut. Useful later: timeline visualization.
+Do not now: yeni capability (upscale/variation/describe).
+
+**Uygulanan**:
+
+- ✅ `ReferencePicker.tsx` — reusable client component:
+  - Search input (300ms debounce) + `?q=...&limit=50` API arama
+  - Race guard (`fetchSeq` ref) — paralel fetch'lerde son cevap kazanır
+  - Option label "ProductType.displayName · notes" (mevcut format)
+  - `allowEmpty` prop — TestRenderForm'da "yok" default option,
+    PromoteToReview'da ilk gerçek reference auto-select
+  - `onChange(refId, opt)` — caller productTypeId auto-fill için
+    option referansını alır
+- ✅ `PromoteToReview` ve `TestRenderForm` ReferencePicker'a refactor.
+  Eski inline `useEffect` + dropdown markup'ları kaldırıldı; ortak
+  arama UX. `PromoteToReview` ProductType select aynen kalıyor
+  (manuel override için).
+- ✅ `FailureDetail.tsx` — structured failure panel:
+  - Üstte özet: "⚠ Başarısızlık nedeni" + blockReason badge + 📋 kopya
+  - Mono tek-satır summary (ilk satır)
+  - **`ACTION_HINTS`** — blockReason'a göre 8 actionable mesaj:
+    challenge-required, login-required, render-timeout,
+    selector-mismatch, browser-crashed, rate-limited, user-cancelled,
+    internal-error
+  - Multi-line / stack trace `<details>` collapse içinde
+    (`max-h-64 overflow-auto whitespace-pre-wrap`)
+- ✅ Detail page eski `pre`-blok failedReason banner'ı `FailureDetail`
+  ile replace edildi.
+
+**Canlı E2E doğrulaması (gerçek attach Chrome admin session)**:
+
+Reference search:
+```
+[pass58] reference search input visible ✓
+[pass58] initial option count: 4
+[pass58] 'wall' option count: 1   (Wall Art reference'larına filtrelenmiş)
+[pass58] 'asla-yok' option count: 1   (sadece "yok" default)
+[pass58] cleared option count: 4   (search clear → liste geri yüklendi)
+```
+
+FailureDetail (Pass 53'ten kalan CANCELLED job
+`cmouyc0um000g149lvla2eyh4`, blockReason=user-cancelled):
+```
+[pass58] FailureDetail visible: true
+[pass58] action hint visible: true
+[pass58] hint: Önerilen aksiyon: Operatör manuel iptal etti.
+              Aynı promptla retry uygun.
+[pass58] blockReason badge present: true
+```
+
+Screenshot `/tmp/mj-pass58-failure-detail.png`: tam ürün UX —
+"⚠ Başarısızlık nedeni" başlık + `user-cancelled` kırmızı badge +
+"Önerilen aksiyon" highlight kutusu.
+
+**Operatör açısından kazanım**:
+
+Önce: 50+ reference olan kullanıcı, Reference picker'ı açıp dropdown
+içinde scroll etmek zorundaydı. Şimdi: tek input → debounce ile
+canlı filtrelenmiş liste.
+
+Önce: failed/cancelled job detail sayfasında raw `pre` blok —
+operatör mesajı kendisi yorumlayıp "şimdi ne yapayım?" sorusunu
+çıkartmak zorundaydı. Şimdi: blockReason badge + tek-satır özet +
+**Önerilen aksiyon kutusu** (her blockReason için spesifik mesaj) +
+multi-line ise collapse stack trace.
+
+**Capability roadmap güncellemesi**:
+
+1. **next immediate (Pass 59)**:
+   - AWAITING_LOGIN/CHALLENGE blocked state injection script
+     (real driver mock'lanarak gerçek banner + focus button + auto-
+     refresh canlı doğrulansın — şu an sadece kod yolu test edildi,
+     kullanıcı UI'ı görmedi)
+   - failedReason raw bridge error multi-line gerçek örnek üretimi
+     (selector-mismatch simulation)
+   - Mockup direct entry shortcut (Selection üzerinden geçişe
+     ek olarak)
+2. **after operator UX stabilizes**:
+   - `--sref` / `--oref` UI (TestRenderForm'a reference URL paste)
+   - `kind: "describe"` admin button
+3. **later**:
+   - Upscale/variation buton click pipeline
+   - Batch download / `/archive` history import
+4. **do not build now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 58 dürüst sınır**:
+- ReferencePicker `q` query parametresi `notes contains insensitive`
+  arıyor (mevcut listReferences sözleşmesi); ProductType.displayName
+  arama desteği yok — eklenmesi listReferences extension gerek.
+- AWAITING_LOGIN/CHALLENGE blocked state hâlâ canlı doğrulanmadı.
+- FailureDetail action hint'leri operatör manuel okur — auto-action
+  (örn. selector-mismatch'te inspect script'i tetikle) yok; bilinçli
+  konservatif tasarım.
+
 ### Pass 57 (Selection direct entry — MJ → Selection handoff — tamamlanan) 🟢
 
 Pass 55-56 ile MJ output'lar Review queue'ya doğal akışla bağlanmıştı,

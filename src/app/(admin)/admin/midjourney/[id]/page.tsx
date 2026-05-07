@@ -27,6 +27,7 @@ import { BlockedGuidance } from "./BlockedGuidance";
 import { CopyButton } from "./CopyButton";
 import { PromoteToReview } from "./PromoteToReview";
 import { AddToSelection } from "./AddToSelection";
+import { FailureDetail } from "./FailureDetail";
 
 const STATE_LABELS: Record<string, string> = {
   QUEUED: "Sırada",
@@ -253,18 +254,10 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
       </section>
 
       {job.failedReason ? (
-        <section
-          className="rounded-md border border-danger bg-danger-soft p-4 text-sm text-danger-text"
-          data-testid="mj-job-failed-reason"
-        >
-          <div className="flex items-center gap-2">
-            <span className="font-semibold">Başarısızlık nedeni</span>
-            <CopyButton value={job.failedReason} label="hata" />
-          </div>
-          <div className="mt-1 whitespace-pre-wrap font-mono text-xs">
-            {job.failedReason}
-          </div>
-        </section>
+        <FailureDetail
+          failedReason={job.failedReason}
+          blockReason={job.blockReason}
+        />
       ) : null}
 
       <section data-testid="mj-job-outputs">

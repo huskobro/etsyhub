@@ -15,6 +15,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ReferencePicker } from "./ReferencePicker";
 
 type AssetItem = {
   midjourneyAssetId: string;
@@ -22,7 +23,6 @@ type AssetItem = {
   alreadyPromoted: boolean;
 };
 
-type ReferenceOption = { id: string; productTypeId: string; label: string };
 type ProductTypeOption = { id: string; label: string };
 
 type PromoteToReviewProps = {
@@ -55,7 +55,6 @@ export function PromoteToReview({
     () => new Set(promotable.map((a) => a.midjourneyAssetId)),
   );
 
-  const [refOptions, setRefOptions] = useState<ReferenceOption[] | null>(null);
   const [ptOptions, setPtOptions] = useState<ProductTypeOption[] | null>(null);
   const [referenceId, setReferenceId] = useState<string>(
     defaultReferenceId ?? "",
@@ -64,38 +63,15 @@ export function PromoteToReview({
     defaultProductTypeId ?? "",
   );
 
-  // Lookup'ları lazy fetch — panel ilk render'da.
+  // ProductType lookup'ı lazy fetch — Reference picker arama'yı kendisi
+  // yönetir; ProductType'a override olarak hâlâ tam liste gerek.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [refRes, ptRes] = await Promise.all([
-          fetch("/api/references?limit=50"),
-          fetch("/api/admin/product-types"),
-        ]);
-        const refJson: unknown = await refRes.json().catch(() => null);
+        const ptRes = await fetch("/api/admin/product-types");
         const ptJson: unknown = await ptRes.json().catch(() => null);
         if (cancelled) return;
-
-        // Reference list shape: { items: [{ id, productTypeId, productType: { label } }] } veya array
-        const refItems = extractList(refJson);
-        const refMapped: ReferenceOption[] = refItems
-          .map((r) => {
-            const pt = r["productType"] as
-              | { displayName?: string; key?: string }
-              | undefined;
-            const ptLabel = pt?.displayName ?? pt?.key ?? "?";
-            const note =
-              (r["notes"] as string | undefined)?.slice(0, 30) || "—";
-            return {
-              id: String(r["id"] ?? ""),
-              productTypeId: String(r["productTypeId"] ?? ""),
-              label: `${ptLabel} · ${note}`,
-            };
-          })
-          .filter((r) => r.id);
-        setRefOptions(refMapped);
-
         const ptItems = extractList(ptJson);
         const ptMapped: ProductTypeOption[] = ptItems
           .map((p) => ({
@@ -110,19 +86,13 @@ export function PromoteToReview({
           }))
           .filter((p) => p.id);
         setPtOptions(ptMapped);
-
-        // Default'lar yoksa ilk option'a düş.
-        if (!referenceId && refMapped.length > 0) {
-          setReferenceId(refMapped[0]!.id);
-          if (!productTypeId) setProductTypeId(refMapped[0]!.productTypeId);
-        }
-        if (!productTypeId && ptMapped.length > 0 && !refMapped.length) {
+        if (!productTypeId && ptMapped.length > 0) {
           setProductTypeId(ptMapped[0]!.id);
         }
       } catch (err) {
         if (!cancelled) {
           setError(
-            `Reference/ProductType yüklenemedi: ${err instanceof Error ? err.message : "?"}`,
+            `ProductType yüklenemedi: ${err instanceof Error ? err.message : "?"}`,
           );
         }
       }
@@ -150,10 +120,13 @@ export function PromoteToReview({
   }
 
   // Reference seçildiğinde productType auto-fill (Reference.productTypeId).
-  function handleRefChange(newRefId: string) {
+  // ReferencePicker option'ı 2. parametre olarak iletir.
+  function handleRefChange(
+    newRefId: string,
+    opt: { id: string; productTypeId: string; label: string } | null,
+  ) {
     setReferenceId(newRefId);
-    const found = refOptions?.find((r) => r.id === newRefId);
-    if (found) setProductTypeId(found.productTypeId);
+    if (opt?.productTypeId) setProductTypeId(opt.productTypeId);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -277,28 +250,15 @@ export function PromoteToReview({
             ))}
           </div>
           <div className="flex flex-wrap items-end gap-2">
-            <label className="flex flex-col gap-1 text-xs">
-              <span className="text-text-muted">Reference</span>
-              <select
+            <div className="flex flex-col gap-1 text-xs">
+              <span className="text-text-muted">Reference (arama destekli)</span>
+              <ReferencePicker
                 value={referenceId}
-                onChange={(e) => handleRefChange(e.target.value)}
-                disabled={pending || !refOptions}
-                className="rounded-md border border-border bg-bg px-2 py-1 text-xs disabled:opacity-50"
-                data-testid="mj-promote-ref"
-              >
-                {!refOptions ? (
-                  <option value="">Yükleniyor…</option>
-                ) : refOptions.length === 0 ? (
-                  <option value="">Reference yok — önce ekle</option>
-                ) : (
-                  refOptions.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.label}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
+                onChange={handleRefChange}
+                disabled={pending}
+                testIdPrefix="mj-promote-ref"
+              />
+            </div>
             <label className="flex flex-col gap-1 text-xs">
               <span className="text-text-muted">ProductType</span>
               <select
