@@ -78,6 +78,55 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 48 (attach mode hardening — tamamlanan)
+- ✅ `mj-bridge/scripts/check-cdp.ts` — yeni standalone CDP precheck:
+  Browser çalışıyor mu, doğru port mu, MJ tab açık mı net teşhis.
+  Connection refused durumunda Brave/Chrome başlatma komutu gösterir.
+- ✅ `PlaywrightDriver.initAttach()` pre-flight: `connectOverCDP`'den
+  ÖNCE `/json/version` HTTP fetch ile endpoint doğrulanır. Browser
+  bilgisi (`Browser: Chrome/...`) `lastDriverMessage`'a yazılır
+  (admin gözlem). Generic `connectOverCDP` timeout error'u yerine
+  human-readable "Browser şu komutla başlatılmalı: ..." + check-cdp.ts
+  referansı.
+- ✅ `inspect-mj-dom.ts` attach mode desteği — yeni env `MJ_INSPECT_MODE`
+  ("attach" | "launch", default "attach"). Attach modunda
+  `connectOverCDP` ile mevcut Brave/Chrome'a bağlanır, MJ tab'ını
+  bulur, **kullanıcının logged-in DOM'unu** inspect eder. Script
+  sonunda ctx.close() YAPMAZ (sadece browser disconnect; kullanıcı
+  pencereleri açık kalır).
+- ✅ `selectors.ts` defense-in-depth genişletme:
+    - `promptInput`: textarea + role=textbox + role=combobox +
+      contenteditable + #imagine-bar (12 candidate)
+    - `submitButton`: type=submit + data-testid + 7 aria-label varyantı
+    - `renderGrid` / `renderJobCard`: data-job-id + data-testid + class
+      "job"/"render"/"result" + role=article (8 candidate)
+    - `renderImage`: img src "midjourney"/"midjourneyusercontent"/
+      "cdn.midjourney" + data-testid + alt (8 candidate)
+    - `loginIndicator`: avatar + user-menu + account/billing/
+      personalize linkleri (10 candidate)
+    - `signInLink`: 5 dilde lokalize Sign In varyantları (TR/EN/DE/ES)
+    - `userAvatar`: 6 candidate (avatar/profile-image patterns)
+- ✅ Mock driver regression yok (canlı doğrulandı).
+- ✅ Attach pre-flight error path canlı doğrulandı (browser kapalıyken
+  bridge clean fail eder; kullanıcıya komut önerir).
+
+⚠ **Pass 48 dürüst sınır**: Kullanıcı browser'ı `--remote-debugging-port`
+flag'iyle Pass 48 turunda başlatmadı — `curl http://127.0.0.1:9222`
+connection refused. Bu nedenle:
+  • Logged-in MJ DOM kalibre EDİLEMEDİ (inspect script CDP'ye bağlanamadı)
+  • Generate flow real test EDİLEMEDİ
+  • Yeni selector default'ları gerçek DOM'a karşı doğrulanmadı
+
+Pass 48 katkısı: **kullanıcı browser'ı doğru komutla başlattığı an
+attach + inspect + generate flow tek seferde çalışacak şekilde** tüm
+pre-flight + error message + script + selector defense katmanları
+hazırlandı. CDP endpoint canlı olduğunda:
+  1. `npx tsx scripts/check-cdp.ts` → MJ tab gözükmeli
+  2. Bridge attach modunda başlat → admin'de "Mod: attach"
+  3. `MJ_INSPECT_MODE=attach npx tsx scripts/inspect-mj-dom.ts` →
+     logged-in MJ DOM dump
+  4. Selector default'ları rapor sonucuna göre kalibre
+
 ### Pass 47 (attached browser model — tamamlanan)
 - ✅ **Stratejik karar**: manual generate + import REDDEDİLDİ. Hedef
   model **attached browser profile + automated workflow** —

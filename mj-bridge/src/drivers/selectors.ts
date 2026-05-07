@@ -37,55 +37,90 @@ export type MJSelectorKey =
 
 /**
  * Default selector seti — MJ V8 Alpha + V7 web UI gözlem ve docs (2026
- * Mayıs). Üyelik aldıktan sonra ilk gerçek kalibre edilen tur'da
- * güncellenir.
+ * Mayıs). Pass 48 — defense-in-depth genişletme: 2026 community pattern'leri
+ * ve docs'taki "Imagine bar" terimine göre daha geniş candidate listesi.
  *
  * Sözleşme:
  *   • virgülle ayrılmış candidate'lar — Playwright ilk eşleşeni seçer
  *   • ARIA / role / aria-label öncelikli (DOM yapı değişimine dayanıklı)
  *   • :has-text ikinci tercih (i18n'a duyarlı; MJ default English)
+ *   • Logged-in MJ DOM'u Pass 48'de hâlâ inspect edilmedi (CDP attach
+ *     kullanıcı manuel adımı bekliyor); selector default'lar 2026 community
+ *     gözlemleri + MJ docs'tan türetildi. Mismatch durumunda
+ *     `MJ_SELECTOR_OVERRIDES` env JSON ile per-key override mümkün.
  */
 export const DEFAULT_SELECTORS: Record<MJSelectorKey, string> = {
-  // Imagine bar / prompt input. MJ docs "Imagine bar" der.
-  // Adaylar: textarea[placeholder*="prompt"] | role=textbox aria-label
-  // | id="imagine-bar".
+  // Imagine bar / prompt input — MJ web'in ana giriş noktası.
+  // 2026 May community pattern'leri:
+  //   - textarea (en yaygın) placeholder veya aria-label "prompt"/"imagine"
+  //   - contenteditable div (yeni V8 alpha denemesi)
+  //   - role="textbox"
   promptInput:
     'textarea[placeholder*="prompt" i], ' +
+    'textarea[placeholder*="imagine" i], ' +
+    'textarea[placeholder*="describe" i], ' +
     '[role="textbox"][aria-label*="prompt" i], ' +
+    '[role="textbox"][aria-label*="imagine" i], ' +
+    '[role="combobox"][aria-label*="prompt" i], ' +
     'textarea[aria-label*="imagine" i], ' +
+    'textarea[aria-label*="prompt" i], ' +
+    '[contenteditable="true"][aria-label*="prompt" i], ' +
+    '[contenteditable="true"][data-placeholder*="prompt" i], ' +
     '#imagine-bar textarea, ' +
+    '#imagine-bar [contenteditable], ' +
     'textarea[name="prompt"]',
 
-  // Submit button — Imagine bar'ın yanında. Genelde icon button.
-  // Ana yol Enter tuşu (MJ docs); fallback olarak buton.
+  // Submit button — Imagine bar'ın yanında icon button.
+  // Pass 48: MJ web'de Enter tuşu ana submit yolu (`MJ docs Prompt Basics`).
+  // Buton fallback olarak ele alınır; ana akış Enter kullanır.
   submitButton:
     'button[aria-label*="submit" i], ' +
     'button[aria-label*="generate" i], ' +
     'button[aria-label*="send" i], ' +
-    'button[type="submit"]',
+    'button[aria-label*="imagine" i], ' +
+    'button[aria-label*="create" i], ' +
+    'button[type="submit"], ' +
+    'button[data-testid*="submit" i], ' +
+    'button[data-testid*="generate" i]',
 
   // Render grid container — yeni job render edildiğinde DOM'a eklenen
-  // kart. Adaylar: data-job-id attr | class*="job" | role grid.
+  // kart. 2026 May pattern adayları:
+  //   - data-job-id attr (MJ kendi pattern'i)
+  //   - data-testid="job-*"
+  //   - class içinde "job" / "render" / "result"
+  //   - article role
   renderGrid:
     '[data-job-id], ' +
     '[data-testid*="job" i], ' +
+    '[data-testid*="render" i], ' +
     'div[class*="job-card" i], ' +
-    'article[class*="job" i]',
+    'div[class*="render-card" i], ' +
+    'article[class*="job" i], ' +
+    'article[class*="result" i], ' +
+    '[role="article"][data-job-id]',
 
-  // Tek job kartı — render grid içinde. UpscaleU1...U4 + variation
+  // Tek job kartı — render grid içinde. Upscale U1...U4 + variation
   // V1...V4 butonları bu kartın içinde.
   renderJobCard:
     '[data-job-id], ' +
     '[data-testid*="job-result" i], ' +
-    'article[class*="job" i]',
+    '[data-testid*="job-card" i], ' +
+    'article[class*="job" i], ' +
+    'div[role="article"][data-job-id]',
 
   // Job kartı içindeki 4 grid image. Render tamamlandığında 4 thumbnail
   // gösterilir.
+  // 2026 May MJ CDN URL pattern: cdn.midjourney.com/* veya
+  // img-stage*.midjourneyusercontent.com/*.
   renderImage:
     'img[src*="midjourney" i], ' +
+    'img[src*="midjourneyusercontent" i], ' +
+    'img[src*="cdn.midjourney" i], ' +
     'img[data-testid*="grid" i], ' +
+    'img[data-testid*="image" i], ' +
     '[data-testid*="image-result" i] img, ' +
-    'img[alt*="generated" i]',
+    'img[alt*="generated" i], ' +
+    'img[alt*="result" i]',
 
   // Upscale U1-U4 butonları — render tamamlanan job kartının altında.
   // MJ V7+ "Upscale (Subtle)" / "Upscale (Creative)" varyantları.
@@ -111,25 +146,43 @@ export const DEFAULT_SELECTORS: Record<MJSelectorKey, string> = {
   hcaptchaChallenge: 'iframe[src*="hcaptcha.com"]',
 
   // Login indicator — kullanıcı oturumu olduğunu gösteren element.
-  // Adaylar: kullanıcı avatarı, "Settings" linki, profile menu.
+  // Pass 48 — daha geniş aday: avatar, settings/account/billing linkleri.
+  // Logged-in kullanıcının MJ web'de gördüğü "Personalize", "Settings"
+  // gibi linkler de ipucu.
   loginIndicator:
     '[data-testid*="user-avatar" i], ' +
+    '[data-testid*="user-menu" i], ' +
     'button[aria-label*="account" i], ' +
+    'button[aria-label*="profile" i], ' +
     'a[href="/settings"], ' +
-    'a[href*="/profile"]',
+    'a[href*="/account"], ' +
+    'a[href*="/billing"], ' +
+    'a[href*="/profile"], ' +
+    'a[href*="/personalize"]',
 
   // Sign In linki — yokluğu logged-in heuristic'i.
+  // Pass 48 — Türkçe/Almanca/İspanyolca lokalize "Sign In" türevleri.
   signInLink:
     'a[href*="auth"]:has-text("Sign In"), ' +
     'a[href*="login"]:has-text("Sign In"), ' +
+    'a[href*="auth"]:has-text("Sign in"), ' +
+    'a[href*="auth"]:has-text("Giriş yap"), ' +
+    'a[href*="auth"]:has-text("Anmelden"), ' +
+    'a[href*="auth"]:has-text("Iniciar sesión"), ' +
     'button:has-text("Sign In"), ' +
-    'button:has-text("Log In")',
+    'button:has-text("Sign in"), ' +
+    'button:has-text("Log In"), ' +
+    'button:has-text("Log in"), ' +
+    'button:has-text("Giriş yap")',
 
   // User avatar — login indicator'ın spesifik versiyonu.
   userAvatar:
     'img[alt*="avatar" i], ' +
+    'img[alt*="profile" i], ' +
     '[data-testid*="user-avatar" i], ' +
-    'button[aria-label*="profile" i] img',
+    '[data-testid*="profile-image" i], ' +
+    'button[aria-label*="profile" i] img, ' +
+    'button[aria-label*="account" i] img',
 };
 
 /**

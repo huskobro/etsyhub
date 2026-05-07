@@ -175,7 +175,7 @@ export class PlaywrightDriver implements BridgeDriver {
   }
 
   /**
-   * Pass 47 — Attach modu init.
+   * Pass 47 — Attach modu init. Pass 48 — pre-flight CDP version check.
    *
    * `chromium.connectOverCDP(cdpUrl)` ile kullanıcının kendi terminal'inde
    * başlattığı Brave/Chrome'a bağlanır. Yeni pencere AÇMAZ; mevcut
@@ -189,6 +189,11 @@ export class PlaywrightDriver implements BridgeDriver {
    *     boşsa yeni tab oluşturur.
    *   • Bridge shutdown context'i KAPATMAZ — kullanıcının pencerelerini
    *     etkilemesin (kapatma kullanıcı sorumluluğunda).
+   *
+   * Pass 48 pre-flight: connectOverCDP'den önce `/json/version` HTTP
+   * fetch ile endpoint'in CDP olduğunu doğrula ve Brave/Chrome bilgisini
+   * health'e taşı. Endpoint yoksa açık `Connection refused` hatası
+   * vermek connectOverCDP'nin generic timeout error'undan iyidir.
    */
   private async initAttach(): Promise<void> {
     this.actualMode = "attach";
@@ -198,6 +203,33 @@ export class PlaywrightDriver implements BridgeDriver {
     this.profileState = "primed"; // attach = mutlaka mevcut çalışan browser
     this.actualBrowserKind = "external";
 
+    // Pass 48 — Pre-flight: /json/version HTTP fetch
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5_000);
+      const res = await fetch(`${this.cfg.cdpUrl}/json/version`, {
+        signal: ctrl.signal,
+      }).finally(() => clearTimeout(timer));
+      if (!res.ok) {
+        throw new Error(
+          `${this.cfg.cdpUrl}/json/version cevabı ${res.status} ${res.statusText}`,
+        );
+      }
+      const version = (await res.json()) as { Browser?: string };
+      this.lastDriverMessage = `CDP pre-flight OK · ${version.Browser ?? "unknown"}`;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Attach modu pre-flight fail: ${this.cfg.cdpUrl} ulaşılamıyor.\n\n` +
+          `Browser şu komutla başlatılmalı:\n` +
+          `  "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \\\n` +
+          `    --remote-debugging-port=9222 \\\n` +
+          `    --user-data-dir="$HOME/.mj-bridge-brave-profile"\n\n` +
+          `Teşhis: \`npx tsx scripts/check-cdp.ts\` (mj-bridge/ içinde)\n` +
+          `Detay: ${msg}`,
+      );
+    }
+
     let browser: import("playwright").Browser;
     try {
       browser = await chromium.connectOverCDP(this.cfg.cdpUrl, {
@@ -206,12 +238,8 @@ export class PlaywrightDriver implements BridgeDriver {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(
-        `Attach modu fail: ${this.cfg.cdpUrl} CDP endpoint'ine bağlanılamadı. ` +
-          `Brave/Chrome'u şu komutla başlatın:\n` +
-          `  /Applications/Brave\\ Browser.app/Contents/MacOS/Brave\\ Browser \\\n` +
-          `    --remote-debugging-port=9222 \\\n` +
-          `    --user-data-dir="$HOME/.mj-bridge-brave-profile"\n` +
-          `Detay: ${msg}`,
+        `Attach modu connectOverCDP fail: ${msg}. CDP endpoint hazır ama ` +
+          `Playwright bağlantısı başarısız (firewall, proxy, browser version?).`,
       );
     }
 

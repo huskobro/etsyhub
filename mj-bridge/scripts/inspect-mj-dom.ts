@@ -211,37 +211,85 @@ async function main(): Promise<void> {
   const selectors = loadSelectors();
   const urls = loadUrls();
 
-  console.log("[inspect-mj] launching persistent context:", PROFILE_DIR);
-  // Pass 46 — bridge'le aynı channel + automation flag config kullan
-  // (Pass 45 fix). System Chrome default; MJ_BRIDGE_BROWSER_CHANNEL=chromium
-  // ile bundled override mümkün.
-  const channelEnv = process.env["MJ_BRIDGE_BROWSER_CHANNEL"];
-  const channel: "chrome" | undefined =
-    channelEnv === "chromium" ? undefined : "chrome";
+  // Pass 48 — mode dispatch. Attach default (Pass 47 ile uyumlu);
+  // launch eski davranış. Attach modunda kullanıcının kendi başlattığı
+  // Brave/Chrome'a CDP ile bağlanır ve onun MJ tab'ını inspect eder.
+  // Kullanıcı zaten login olduğu için logged-in DOM görülür.
+  const inspectMode: "attach" | "launch" =
+    process.env["MJ_INSPECT_MODE"] === "launch" ? "launch" : "attach";
+  const cdpUrl = process.env["MJ_BRIDGE_CDP_URL"] ?? "http://127.0.0.1:9222";
+
   let ctx: import("playwright").BrowserContext;
-  try {
-    ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
-      channel,
-      headless: false,
-      viewport: { width: 1280, height: 900 },
-      ignoreDefaultArgs: ["--enable-automation"],
-    });
-  } catch (err) {
-    if (channel === "chrome") {
-      console.warn(
-        "[inspect-mj] system Chrome bulunamadı, bundled Chromium fallback:",
-        err instanceof Error ? err.message : String(err),
+  let isAttached = false;
+  let browserToDisconnect: import("playwright").Browser | null = null;
+
+  if (inspectMode === "attach") {
+    console.log("[inspect-mj] connecting to existing browser:", cdpUrl);
+    let browser: import("playwright").Browser;
+    try {
+      browser = await chromium.connectOverCDP(cdpUrl, { timeout: 10_000 });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[inspect-mj] CDP bağlantı fail: ${msg}`);
+      console.error(
+        "Önce browser'ı --remote-debugging-port flag'iyle başlatın " +
+          "(scripts/check-cdp.ts ile teşhis edin).",
       );
+      process.exit(1);
+    }
+    browserToDisconnect = browser;
+    const contexts = browser.contexts();
+    if (contexts.length === 0) {
+      console.error(
+        "[inspect-mj] CDP bağlandı ama browser context yok. Browser'da " +
+          "en az bir pencere açık olmalı.",
+      );
+      process.exit(1);
+    }
+    ctx = contexts[0]!;
+    isAttached = true;
+  } else {
+    console.log("[inspect-mj] launching persistent context:", PROFILE_DIR);
+    const channelEnv = process.env["MJ_BRIDGE_BROWSER_CHANNEL"];
+    const channel: "chrome" | undefined =
+      channelEnv === "chromium" ? undefined : "chrome";
+    try {
       ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
+        channel,
         headless: false,
         viewport: { width: 1280, height: 900 },
         ignoreDefaultArgs: ["--enable-automation"],
       });
-    } else {
-      throw err;
+    } catch (err) {
+      if (channel === "chrome") {
+        console.warn(
+          "[inspect-mj] system Chrome bulunamadı, bundled Chromium fallback:",
+          err instanceof Error ? err.message : String(err),
+        );
+        ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
+          headless: false,
+          viewport: { width: 1280, height: 900 },
+          ignoreDefaultArgs: ["--enable-automation"],
+        });
+      } else {
+        throw err;
+      }
     }
   }
-  const page = ctx.pages()[0] ?? (await ctx.newPage());
+
+  // Pass 48 — Attach modunda mevcut MJ tab'ını seç (varsa); yoksa yeni tab.
+  // Launch modunda her zaman yeni tab.
+  const pages = ctx.pages();
+  let page: import("playwright").Page;
+  if (isAttached) {
+    const mjPage = pages.find((p) => p.url().includes("midjourney.com"));
+    page = mjPage ?? pages[0] ?? (await ctx.newPage());
+    console.log(
+      `[inspect-mj] ${pages.length} tab'tan ${mjPage ? "mevcut MJ" : "ilk"} tab seçildi: ${page.url().slice(0, 80)}`,
+    );
+  } else {
+    page = pages[0] ?? (await ctx.newPage());
+  }
 
   await mkdir(OUTPUT_DIR, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -307,17 +355,23 @@ async function main(): Promise<void> {
   console.log("archive url:", archiveReport.url);
 
   console.log("\n[inspect-mj] DONE — reports:", OUTPUT_DIR);
-  // Pass 46 — bekleme süresi env'le konfigüre edilebilir.
-  // Default 30sn (Pass 44'te 60sn idi, login + manuel CF için yeterli
-  // ama bridge sonradan başlatılacaksa fazla; kısalttık). Kullanıcı
-  // browser tab'ını kendisi kapatabilir; ctx kapatması browser
-  // pencereyi de kapatır.
-  const waitMs = Number(process.env["MJ_INSPECT_WAIT_MS"] ?? "30000");
-  console.log(
-    `Browser ${Math.round(waitMs / 1000)}sn açık kalacak (Ctrl+C ile early exit).`,
-  );
-  await new Promise((r) => setTimeout(r, waitMs));
-  await ctx.close();
+  if (isAttached) {
+    // Pass 48 — attach modunda ctx KAPATMA (kullanıcının pencerelerini
+    // öldürmemek için). Sadece CDP bağlantısını disconnect eder.
+    if (browserToDisconnect) {
+      await browserToDisconnect.close().catch(() => undefined);
+    }
+    console.log("Attach modu — browser pencereleri açık bırakıldı.");
+  } else {
+    // Pass 46 — launch modunda kullanıcı browser tab'ını kendisi
+    // kapatabilsin diye env'le konfigüre edilebilir wait.
+    const waitMs = Number(process.env["MJ_INSPECT_WAIT_MS"] ?? "30000");
+    console.log(
+      `Browser ${Math.round(waitMs / 1000)}sn açık kalacak (Ctrl+C ile early exit).`,
+    );
+    await new Promise((r) => setTimeout(r, waitMs));
+    await ctx.close();
+  }
 }
 
 main().catch((err) => {
