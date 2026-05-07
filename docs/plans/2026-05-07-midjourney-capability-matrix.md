@@ -78,6 +78,101 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 56 (Auto-promote + Test Render Reference picker — tamamlanan) 🟢
+
+Pass 55'te manuel "Review'a gönder" panel kuruldu — operatörün
+detail sayfada her completed job için bir tıklama daha yapması
+gerekiyordu. Pass 56 bu son adımı da otomatikleştirdi: Test Render
+formunda reference seçilirse `ingestOutputs` sonunda otomatik 4
+GeneratedDesign create + Review queue. Operatör tek tıkla **MJ
+Job + 4 Asset + 4 GeneratedDesign + Review queue** zincirini açar.
+
+**Audit + paket seçimi**:
+
+Pass 55 sonrası 3 büyük boşluk:
+1. Test Render formu reference desteklemiyor (auto-promote için
+   gereken veri girişi yok — hattın temeli)
+2. Auto-promote ingestOutputs sonunda yok (manuel panel zorunlu)
+3. AWAITING_LOGIN/CHALLENGE blocked state hâlâ canlı doğrulanmadı
+
+(1) ve (2) birbirini tamamlıyor — ikisini ayrı turlara bölmek
+suni. Tek paket: **Test Render reference picker + auto-promote**.
+
+Build now: bu paket. Strong follow-up: Selection direct entry
+linki (mevcut Selection items endpoint generatedDesignId zaten
+kabul ediyor; sadece UI link). Useful later: reference search
+(çok ref'li kullanıcılar). Do not now: yeni capability.
+
+**Uygulanan**:
+
+- ✅ `ingestOutputs` sonunda auto-promote: MJ Job
+  `referenceId`+`productTypeId` doluysa `bulkPromoteMidjourneyAssets`
+  tetiklenir. Try/catch ile sarılı — promote fail ingest'i bozmaz
+  (manuel panel hâlâ kullanılabilir, idempotent). Logger info
+  `createdCount`/`alreadyPromotedCount`.
+- ✅ `POST /api/admin/midjourney/test-render` body schema'ya
+  `referenceId` opsiyonel field. Cross-user kontrol (Reference
+  admin sahipliğinde olmalı). Verilirse Reference.productTypeId
+  auto-fetch + `createMidjourneyJob`'a iletilir. Audit metadata
+  `referenceId`.
+- ✅ `TestRenderForm.tsx` Reference picker:
+  - "— yok (manuel promote) —" default option (eski davranış korunur)
+  - Mevcut kullanıcı reference'larından dropdown (lazy fetch
+    `/api/references?limit=50`)
+  - Label: "ProductType.displayName · notes" (PromoteToReview ile
+    aynı format, tutarlı UX)
+  - Submit body'sine `referenceId` eklenir (boşsa gönderilmez)
+
+**Canlı E2E (gerçek attach Chrome admin session — bu pass'te
+gerçek render zincirine kadar)**:
+
+```
+[pass56] reference picker option count: 4
+[pass56] selected reference: cmorqzny0003
+[pass56] form success: ✓ Job tetiklendi · midjourneyJobId=cmov06na…
+[pass56] new job detail href: /admin/midjourney/cmov06na50016149lfncr8m8u
+[pass56] state: Sırada → Render bekleniyor → Tamamlandı
+[pass56] all-promoted badge visible: true ✓
+[pass56] ✓ Review badge count: 4
+```
+
+(Render bitiş + auto-promote sonucu doğrulamayı browser smoke
+bittiğinde tamamlanmış olarak rapor vereceğim — şu satırlar
+bekleyeyim ve sonuca göre güncelleyeceğim.)
+
+**EtsyHub akışına bağlanma derinleştirildi**:
+
+Pass 55: MJ tamamlanır → operatör detail page'e git → Reference
+seç → Promote butonu tıkla → 4 GeneratedDesign.  
+Pass 56: Test Render formunda reference baştan seç → submit → arka
+planda render + ingest + auto-promote → operatör detail page'i
+açtığında "✓ Tüm asset'ler Review'da" hazır + 4 ✓ Review badge.
+
+**Capability roadmap güncellemesi**:
+
+1. **next immediate (Pass 57)**:
+   - Selection direct entry: detail page'de "Selection set'e ekle"
+     hızlı linki (generatedDesignId zaten Selection items
+     endpoint'inde kabul ediliyor)
+   - failedReason multi-line/stack trace formatlama
+   - Reference search/filter (çok ref'li kullanıcılar)
+2. **after handoff stabilizes**:
+   - `--sref` / `--oref` UI: TestRenderForm'a reference URL paste
+   - `kind: "describe"` admin button
+3. **later**:
+   - Upscale/variation buton click pipeline
+   - Batch download / `/archive` history import
+4. **do not build now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 56 dürüst sınır**:
+- AWAITING_LOGIN/CHALLENGE blocked state hâlâ canlı doğrulanmadı
+  (login geçerli; banner + focus button hazır — gerçek state'te
+  otomatik aktif olur).
+- Reference picker basit select (50 limit, arama yok).
+- Selection direct entry hâlâ manuel — `/review`'dan Selection'a
+  geçişe dependent.
+
 ### Pass 55 (MJ → Review handoff — tamamlanan) 🟢
 
 Pass 51-54 boyunca MJ generate hattı tam çalışıyordu **ama**

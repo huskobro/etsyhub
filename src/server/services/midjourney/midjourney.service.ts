@@ -32,6 +32,7 @@ import {
   type BridgeJobSnapshot,
   type BridgeJobState,
 } from "./bridge-client";
+import { bulkPromoteMidjourneyAssets } from "./promote";
 
 /**
  * Bridge → DB state map (string identical, ama Prisma enum tip'ine cast).
@@ -364,6 +365,46 @@ async function ingestOutputs(
     { midjourneyJobId, count: snapshot.outputs.length },
     "midjourney outputs ingested",
   );
+
+  // Pass 56 — Auto-promote: MJ Job referenceId+productTypeId'liyse
+  // 4 MidjourneyAsset'i otomatik GeneratedDesign'a bağla → Review queue'ya
+  // doğal akış. Operatör manuel "Review'a gönder" panelinden tasarruf.
+  // Reference'sız job'larda (ör. admin Test Render default) atlanır;
+  // operatör manuel promote eder.
+  // Try/catch — promote fail ingest sonucu bozmasın (manuel promote
+  // hâlâ yapılabilir; idempotent).
+  if (mjJob.referenceId && mjJob.productTypeId) {
+    try {
+      const ids = await db.midjourneyAsset.findMany({
+        where: { midjourneyJobId },
+        select: { id: true },
+      });
+      const result = await bulkPromoteMidjourneyAssets({
+        midjourneyAssetIds: ids.map((a) => a.id),
+        referenceId: mjJob.referenceId,
+        productTypeId: mjJob.productTypeId,
+        actorUserId: mjJob.userId,
+      });
+      logger.info(
+        {
+          midjourneyJobId,
+          createdCount: result.createdCount,
+          alreadyPromotedCount: result.alreadyPromotedCount,
+        },
+        "midjourney auto-promote OK",
+      );
+    } catch (err) {
+      // Auto-promote opsiyonel — fail ingest'i bozmasın. Operatör
+      // detail page'den manuel promote edebilir.
+      logger.warn(
+        {
+          midjourneyJobId,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "midjourney auto-promote failed (manuel fallback mümkün)",
+      );
+    }
+  }
 }
 
 /**

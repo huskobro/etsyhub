@@ -17,8 +17,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
-import { ValidationError } from "@/lib/errors";
+import { NotFoundError, ValidationError } from "@/lib/errors";
 import { audit } from "@/server/audit";
+import { db } from "@/server/db";
 import { createMidjourneyJob } from "@/server/services/midjourney/midjourney.service";
 import { BridgeUnreachableError } from "@/server/services/midjourney/bridge-client";
 
@@ -36,6 +37,10 @@ const body = z.object({
   prompt: z.string().min(3).max(800),
   aspectRatio: aspectRatioEnum.default("1:1"),
   version: z.string().regex(/^\d+(\.\d+)?$/).optional(),
+  // Pass 56 — opsiyonel reference: seçilirse auto-promote tetiklenir
+  // (ingestOutputs sonunda 4 GeneratedDesign auto-create). Boşsa eski
+  // davranış (operatör manuel promote eder).
+  referenceId: z.string().min(1).optional(),
 });
 
 export const POST = withErrorHandling(async (req: Request) => {
@@ -49,12 +54,34 @@ export const POST = withErrorHandling(async (req: Request) => {
     );
   }
 
+  // Pass 56 — referenceId verildiyse cross-user kontrolü + productType lookup.
+  // Reference admin sahipliğinde olmalı (admin = MJ Job sahibi, Pass 51-55).
+  let productTypeId: string | undefined;
+  if (parsed.data.referenceId) {
+    const ref = await db.reference.findFirst({
+      where: {
+        id: parsed.data.referenceId,
+        userId: admin.id,
+        deletedAt: null,
+      },
+      select: { id: true, productTypeId: true },
+    });
+    if (!ref) {
+      throw new NotFoundError(
+        "Reference bulunamadı veya admin sahipliğinde değil",
+      );
+    }
+    productTypeId = ref.productTypeId;
+  }
+
   try {
     const result = await createMidjourneyJob({
       userId: admin.id,
       prompt: parsed.data.prompt,
       aspectRatio: parsed.data.aspectRatio,
       version: parsed.data.version,
+      referenceId: parsed.data.referenceId,
+      productTypeId,
     });
 
     await audit({
@@ -66,6 +93,7 @@ export const POST = withErrorHandling(async (req: Request) => {
         bridgeJobId: result.bridgeJobId,
         prompt: parsed.data.prompt.slice(0, 200),
         aspectRatio: parsed.data.aspectRatio,
+        referenceId: parsed.data.referenceId ?? null,
       },
     });
 

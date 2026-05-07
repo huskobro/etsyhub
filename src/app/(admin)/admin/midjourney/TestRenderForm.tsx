@@ -28,13 +28,61 @@ type TestRenderFormProps = {
   driverKind?: string;
 };
 
+type ReferenceOption = { id: string; label: string };
+
+function extractList(json: unknown): Record<string, unknown>[] {
+  if (Array.isArray(json)) return json as Record<string, unknown>[];
+  if (json && typeof json === "object" && "items" in json) {
+    const items = (json as { items: unknown }).items;
+    if (Array.isArray(items)) return items as Record<string, unknown>[];
+  }
+  return [];
+}
+
 export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
   const router = useRouter();
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
+  const [referenceId, setReferenceId] = useState<string>("");
+  const [refOptions, setRefOptions] = useState<ReferenceOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // Pass 56 — Reference picker (opsiyonel; boş bırakılırsa eski davranış,
+  // operatör detail page'den manuel promote eder. Seçilirse ingestOutputs
+  // sonunda auto-promote → 4 GeneratedDesign Review queue'ya doğal akış).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/references?limit=50");
+        const json: unknown = await res.json().catch(() => null);
+        if (cancelled) return;
+        const items = extractList(json);
+        const mapped: ReferenceOption[] = items
+          .map((r) => {
+            const pt = r["productType"] as
+              | { displayName?: string; key?: string }
+              | undefined;
+            const ptLabel = pt?.displayName ?? pt?.key ?? "?";
+            const note =
+              (r["notes"] as string | undefined)?.slice(0, 30) || "—";
+            return {
+              id: String(r["id"] ?? ""),
+              label: `${ptLabel} · ${note}`,
+            };
+          })
+          .filter((r) => r.id);
+        setRefOptions(mapped);
+      } catch {
+        if (!cancelled) setRefOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const disabled = !bridgeOk || pending;
 
@@ -65,7 +113,11 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
         const res = await fetch("/api/admin/midjourney/test-render", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, aspectRatio }),
+          body: JSON.stringify({
+            prompt,
+            aspectRatio,
+            ...(referenceId ? { referenceId } : {}),
+          }),
         });
         const json = (await res.json().catch(() => null)) as
           | {
@@ -139,6 +191,28 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
             {ASPECT_RATIOS.map((r) => (
               <option key={r} value={r}>
                 {r}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* Pass 56 — Reference seçilirse ingestOutputs sonunda
+            auto-promote tetiklenir; boş bırakılırsa eski davranış. */}
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-text-muted">
+            Reference (opsiyonel · auto-promote)
+          </span>
+          <select
+            value={referenceId}
+            onChange={(e) => setReferenceId(e.target.value)}
+            disabled={disabled || !refOptions}
+            className="rounded-md border border-border bg-bg px-3 py-1.5 text-xs disabled:opacity-50"
+            data-testid="mj-test-render-ref"
+          >
+            <option value="">— yok (manuel promote) —</option>
+            {(refOptions ?? []).map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}
               </option>
             ))}
           </select>
