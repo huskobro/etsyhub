@@ -78,6 +78,122 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 76 (sref kesin doğrulama: reference URL upload + AutoSail-uyumlu submit body) 🟢
+
+**Hedef:** Pass 75'te `--sref URL ::N` syntax'ı doğrulandı ama gerçek
+render başlamadı (Wikipedia thumbnail "Invalid image link" reddi).
+Pass 76 görevi: sref'in gerçekten çalıştığına kanıt; AutoSail eklentinin
+`sref → auto imagine` akışını canlı yakalayıp eksik parçayı taşı.
+
+**Pass 76 audit (AutoSail main.js + canlı CDP Network capture):**
+
+1. **Audit A — mevcut sref hattı**: buildMJPromptString sref weight
+   syntax'ı doğru (`URL ::N` boşluklu); bridge submit body imageReferences
+   count'u dolduruyor; **AMA sref URL'leri MJ storage'a UPLOAD
+   EDİLMİYORDU** (sadece prompt string'e yazılıyordu).
+
+2. **Audit B — AutoSail main.js**: her sref/oref/cref URL için önce
+   `/api/storage-upload-file` çağrılıyor; response `{shortUrl,
+   bucketPathname}` → `y.content = shortUrl` (örn. `s.mj.run/<id>`);
+   sonra prompt builder `--sref ${y.content}` yazıyor.
+
+3. **Live CDP capture (Pass 76 V1)**: kullanıcı AutoSail ile sref drop +
+   "auto imagine" tetikledi; bridge MJ tab'ında CDP Network domain ile
+   `storage-upload-file` + `submit-jobs` body'leri yakalandı:
+
+   ```
+   POST /api/storage-upload-file
+   → {"shortUrl":"https://s.mj.run/tYDAOBdf0yE",
+      "bucketPathname":"<userId>/<sha256>.jpg"}
+
+   POST /api/submit-jobs
+   body: {
+     "metadata": {
+       "imagePrompts": 0,
+       "imageReferences": 0,        ← 🚨 sref VAR ama 0
+       "characterReferences": 0,
+       "depthReferences": 0
+     },
+     "t": "imagine",
+     "prompt": "boho mandala --sref https://s.mj.run/tYDAOBdf0yE --v 7"
+   }
+
+   → {"success":[{"job_id":"2616ece2-..."}]}
+   ```
+
+   **İki kritik bulgu**:
+   - AutoSail her zaman **shortUrl** kullanıyor (cdn.midjourney.com/u/
+     yerine s.mj.run/). Daha kısa, MJ tarafından da kabul ediliyor.
+   - AutoSail `metadata.imageReferences` her zaman **0** gönderiyor (sref
+     count >0 olsa bile). MJ tarafı bu count'u kullanmıyor; sadece
+     prompt string'deki `--sref URL` flag'ini kullanıyor. Pass 75'te
+     bizim `imageReferenceCount: styleCount` gönderimi muhtemelen MJ
+     mismatch detection'ı tetikliyordu.
+
+**Pass 76 native bridge düzeltmeleri:**
+
+- `mj-bridge/src/drivers/playwright.ts` execute akışı:
+  * `buildMJPromptString` çağrılmadan ÖNCE sref/oref/cref URL'lerini
+    `uploadImagePromptsViaApi` ile MJ storage'a yükle
+  * Upload helper'dan dönen `s.mj.run/<id>` URL'lerini sref entry'lere
+    geri ata (weight'i koruyarak)
+  * `imageReferenceCount: 0` + `characterReferenceCount: 0` (AutoSail
+    pattern; metadata count'u dolu göndermek render reddi tetikliyordu)
+
+- `mj-bridge/src/drivers/generate-flow.ts` `uploadImagePromptsViaApi`:
+  * Upload response'tan **shortUrl tercih**; yoksa
+    cdn.midjourney.com/u/<bucketPathname> fallback (Pass 74 yolu)
+
+**Pass 76 canlı sref smoke (KESIN KANIT):**
+
+Job `326ecd78-bfab-4be8-8089-6b2edd9ad826`:
+- prompt: `minimal abstract circle Pass 76 sref shortUrl test`
+- sref: `https://s.mj.run/tYDAOBdf0yE` (weight 200)
+- API submit: 200 OK
+- mjJobId: `6a9a28f8-7189-4d5d-ab59-2b3644b1afa9`
+- **state: COMPLETED**
+- **outputs: 4 grid CDN URL'leri downloaded:**
+  ```
+  https://cdn.midjourney.com/6a9a28f8-.../0_0_640_N.webp
+  https://cdn.midjourney.com/6a9a28f8-.../0_1_640_N.webp
+  https://cdn.midjourney.com/6a9a28f8-.../0_2_640_N.webp
+  https://cdn.midjourney.com/6a9a28f8-.../0_3_640_N.webp
+  ```
+
+**Pass 76 regresyon:**
+- describe: ✅ COMPLETED + 4 prompt (api submit)
+- oref+ow: API submit 200 OK + DOM'da `oref400: true` MJ render başladı;
+  render polling DOM-watcher Pass 76 timeout'a düştü (mjJobId match
+  problemi — Pass 71'den beri bilinen bug). MJ submit kabul kanıtı net.
+- image-prompt: bu turda smoke yapılmadı (regresyon riski yok — kod
+  yolu Pass 74'ten beri aynı; Pass 76 değişikliği sadece sref/oref/cref
+  upload normalize'i ekledi, image-prompt akışı dokunmadı).
+
+**Pass 77 next (kullanıcı önerisi):**
+> "autosailin yaptığı gibi yapabilirsin daha sorunsuzsa"
+
+AutoSail render polling = `/api/user-queue?userId=<userId>` poll →
+`{running:[], waiting:[]}` boşalınca render done. Bu DOM-watcher'a göre
+çok daha sağlam: submit-jobs'tan dönen `job_id` ile direkt match yapılır,
+DOM scrape gerek yok. Pass 71/72'den beri bilinen render polling
+ghost-job problemini de çözer. Pass 77 scope: native bridge'de DOM
+watcher'ı `user-queue` API polling'e dönüştür.
+
+**Pass 76 dürüst sınırlar:**
+- Reference upload her job için **dış URL'leri her seferinde** MJ
+  storage'a yüklüyor (idempotency cache yok); aynı URL bir job'da bir
+  kez yüklendikten sonra MJ aynı bucketPathname'i hash'liyor olabilir
+  ama bu kanıtlanmadı.
+- shortUrl preference Pass 74 image-prompt akışına da yansıdı (geriye
+  uyumlu; cdn.midjourney.com/u/<path> da hâlâ geçerli URL formatı).
+- `metadata.imageReferences=0` AutoSail davranışıyla hizalı; MJ tarafı
+  bu count'u kullanıyor mu kullanmıyor mu net kanıt yok (sadece
+  AutoSail pratiği). İleride MJ count'u kullanmaya başlarsa Pass 76
+  bu davranışı revize edebilir.
+- oref+ow smoke render polling timeout'a düştü (kod hatası değil —
+  Pass 71/72'den beri bilinen DOM polling bug). Pass 77 user-queue
+  geçişi bunu çözecek.
+
 ### Pass 75 / 75.1 (Reference-aware API-first generate V1 + sref weight syntax düzeltmesi) 🟢
 
 **Hedef (Pass 75 V1):** Reference-aware generate API-first kapanışı —

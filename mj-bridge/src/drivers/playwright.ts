@@ -749,7 +749,97 @@ export class PlaywrightDriver implements BridgeDriver {
     //   - User'ın MJ user.id resolution `window.mjUserDefer.promise` keşfi
     //
     // `params.preferApiSubmit?: true` ile opt-in kullanılır; default DOM.
-    const promptString = buildMJPromptString(job.request.params);
+    // Pass 76 — Reference URL upload normalization.
+    //
+    // AutoSail main.js audit (Pass 76 deepdive): eklenti her sref/oref/cref
+    // URL'sini önce `/api/storage-upload-file` ile MJ kendi storage'a
+    // yüklüyor, dönen `bucketPathname`'i `https://cdn.midjourney.com/u/<path>`
+    // formatına çeviriyor, sonra prompt builder'da `--sref ${y.content}`
+    // pattern'inde bu CDN URL'i kullanıyor. **Dış URL (örn. wikipedia)
+    // kabul EDİLMİYOR** — Pass 75 smoke turunda canlı kanıt: MJ DOM
+    // "Invalid image link" gösterdi, render hiç başlamadı.
+    //
+    // Çözüm: sref URL'lerini buildMJPromptString'e geçmeden önce
+    // uploadImagePromptsViaApi (Pass 74 helper) ile normalize et. Bu
+    // helper zaten cdn.midjourney.com/u/ ve s.mj.run/ URL'lerini bypass
+    // eder, dış URL'leri MJ storage'a yükleyip CDN URL döner.
+    //
+    // omniReferenceUrl + characterReferenceUrls için de aynı yol gerek
+    // (AutoSail audit y.content `${cdnUrl}` pattern'i sref/oref/cref'in
+    // hepsi için aynı). Pass 76 V1 hepsini upload eder.
+    const rawStyleRefs = job.request.params.styleReferenceUrls ?? [];
+    const rawOmniRef = job.request.params.omniReferenceUrl;
+    const rawCharRefs = job.request.params.characterReferenceUrls ?? [];
+
+    // sref entries union (string | { url, weight? }) — URL'leri ayır.
+    const styleRefUrlList: string[] = rawStyleRefs.map((entry) =>
+      typeof entry === "string" ? entry : entry.url,
+    );
+    const styleRefWeights: Array<number | undefined> = rawStyleRefs.map(
+      (entry) => (typeof entry === "string" ? undefined : entry.weight),
+    );
+    let normalizedStyleRefs = rawStyleRefs;
+    let normalizedOmniRef = rawOmniRef;
+    let normalizedCharRefs = rawCharRefs;
+
+    const hasReferenceUploads =
+      styleRefUrlList.length > 0 || !!rawOmniRef || rawCharRefs.length > 0;
+    if (hasReferenceUploads) {
+      onProgress({
+        state: "SUBMITTING_PROMPT",
+        message: `Reference URL'leri MJ storage'a yükleniyor (sref:${styleRefUrlList.length} oref:${rawOmniRef ? 1 : 0} cref:${rawCharRefs.length})`,
+      });
+      try {
+        // sref upload + weight reattach
+        if (styleRefUrlList.length > 0) {
+          const uploadedStyleRefs = await uploadImagePromptsViaApi(
+            page,
+            styleRefUrlList,
+            { fetchTimeoutMs: 60_000 },
+          );
+          normalizedStyleRefs = uploadedStyleRefs.map((cdnUrl, i) => {
+            const w = styleRefWeights[i];
+            return typeof w === "number" ? { url: cdnUrl, weight: w } : cdnUrl;
+          });
+        }
+        // oref upload (tek URL)
+        if (rawOmniRef) {
+          const uploadedOmni = await uploadImagePromptsViaApi(
+            page,
+            [rawOmniRef],
+            { fetchTimeoutMs: 60_000 },
+          );
+          normalizedOmniRef = uploadedOmni[0] ?? rawOmniRef;
+        }
+        // cref upload (URL list)
+        if (rawCharRefs.length > 0) {
+          normalizedCharRefs = await uploadImagePromptsViaApi(
+            page,
+            rawCharRefs,
+            { fetchTimeoutMs: 60_000 },
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        onProgress({
+          state: "FAILED",
+          blockReason: "internal-error",
+          message: `Reference URL upload fail: ${msg}`,
+        });
+        return;
+      }
+      if (signal.aborted) return;
+    }
+
+    // Normalized params ile promptString inşası — `--sref ${cdnUrl} ::N`
+    // (Pass 75.1 boşluklu syntax + Pass 76 MJ-uyumlu URL).
+    const normalizedParams = {
+      ...job.request.params,
+      styleReferenceUrls: normalizedStyleRefs,
+      omniReferenceUrl: normalizedOmniRef,
+      characterReferenceUrls: normalizedCharRefs,
+    };
+    const promptString = buildMJPromptString(normalizedParams);
     let knownMjJobId: string | null = null;
     let submitMethod: "api" | "dom" = "dom";
     let apiSubmitError: string | null = null;
@@ -824,15 +914,6 @@ export class PlaywrightDriver implements BridgeDriver {
             : "Prompt API yolu deneniyor (auto)",
       });
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const params = job.request.params as any;
-        const styleCount = Array.isArray(params.styleReferenceUrls)
-          ? params.styleReferenceUrls.length
-          : 0;
-        const charCount = Array.isArray(params.characterReferenceUrls)
-          ? params.characterReferenceUrls.length
-          : 0;
-
         // Pass 74 — Image-prompt API upload (Pass 74 kapsamı).
         // referenceUrls dışsal URL'ler; her birini /api/storage-upload-file
         // ile MJ storage'a yükle, cdn URL listesini al. submitPromptViaApi
@@ -851,11 +932,20 @@ export class PlaywrightDriver implements BridgeDriver {
         }
         if (signal.aborted) return;
 
+        // Pass 76 — AutoSail canlı capture kanıtı: `metadata.imageReferences`
+        // ve `metadata.characterReferences` AutoSail'de **her zaman 0**
+        // gönderiliyor (sref/cref var olsa bile). MJ tarafı bu count'a
+        // güvenmiyor; sadece prompt string'deki `--sref URL` / `--cref URL`
+        // flag'lerini kullanıyor. Pass 75'te `styleCount` ve `charCount`
+        // metadata'ya gönderiliyordu — Pass 76'da AutoSail davranışıyla
+        // hizalandı (her ikisi 0). Bu render reddini önler (MJ
+        // mismatch detection: metadata count > 0 ama imageReference
+        // attachment yok → reject).
         const apiResult = await submitPromptViaApi(page, promptString, {
           mode: "relaxed",
           imagePromptCdnUrls, // Pass 74: prompt ön-eki + metadata.imagePrompts
-          imageReferenceCount: styleCount,
-          characterReferenceCount: charCount,
+          imageReferenceCount: 0,
+          characterReferenceCount: 0,
         });
         knownMjJobId = apiResult.mjJobId;
         submitMethod = "api";

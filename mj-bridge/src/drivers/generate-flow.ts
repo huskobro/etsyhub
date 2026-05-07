@@ -923,15 +923,21 @@ export async function uploadImagePromptsViaApi(
           shortUrl?: string;
           bucketPathname?: string;
         };
-        if (!upJson.bucketPathname) {
+        if (!upJson.bucketPathname && !upJson.shortUrl) {
           throw new Error(
-            `Upload response: bucketPathname yok — ${JSON.stringify(upJson).slice(0, 200)}`,
+            `Upload response: shortUrl/bucketPathname yok — ${JSON.stringify(upJson).slice(0, 200)}`,
           );
         }
-        // Step D: cdn.midjourney.com/u/<bucketPathname> URL'sini inşa.
-        // Pass 74 capture'da kullanıcının manuel submit'i bu pattern'i
-        // kullandı: prompt ön-eki "https://cdn.midjourney.com/u/<userId>/<sha>.jpg".
-        results.push(`https://cdn.midjourney.com/u/${upJson.bucketPathname}`);
+        // Step D: shortUrl tercih edilir (`s.mj.run/<id>`), AutoSail Pass 76
+        // canlı capture kanıtı: eklenti bu kısaltılmış formu kullanıyor;
+        // submit-jobs body prompt'ında `--sref https://s.mj.run/...` gönderdi
+        // ve MJ render başlattı (job_id döndü, "is_queued":false). Fallback:
+        // shortUrl yoksa cdn.midjourney.com/u/<bucketPathname> (Pass 74 yolu).
+        if (upJson.shortUrl) {
+          results.push(upJson.shortUrl);
+        } else {
+          results.push(`https://cdn.midjourney.com/u/${upJson.bucketPathname}`);
+        }
       }
       return results;
     },
