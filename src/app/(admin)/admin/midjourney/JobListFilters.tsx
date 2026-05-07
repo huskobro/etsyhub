@@ -15,10 +15,21 @@ const DAY_CHIPS: Array<{ key: "today" | "yesterday" | "7d" | "all"; label: strin
   { key: "7d", label: "Son 7 gün" },
 ];
 
+// Pass 64 — Asset durumu filter chip'leri (audit-derived).
+const STATUS_CHIPS: Array<{
+  key: "all" | "undownloaded" | "unreviewed";
+  label: string;
+}> = [
+  { key: "all", label: "Tümü" },
+  { key: "undownloaded", label: "Yalnız indirilmeyenler" },
+  { key: "unreviewed", label: "Yalnız review olmayanlar" },
+];
+
 export function JobListFilters() {
   const router = useRouter();
   const params = useSearchParams();
   const currentDays = params.get("days") ?? "all";
+  const currentStatus = params.get("status") ?? "all";
   const [keyword, setKeyword] = useState(params.get("q") ?? "");
   const [pending, startTransition] = useTransition();
 
@@ -26,6 +37,15 @@ export function JobListFilters() {
     const sp = new URLSearchParams(params.toString());
     if (days === "all") sp.delete("days");
     else sp.set("days", days);
+    startTransition(() => {
+      router.push(`/admin/midjourney?${sp.toString()}`);
+    });
+  }
+
+  function setStatus(status: string) {
+    const sp = new URLSearchParams(params.toString());
+    if (status === "all") sp.delete("status");
+    else sp.set("status", status);
     startTransition(() => {
       router.push(`/admin/midjourney?${sp.toString()}`);
     });
@@ -49,7 +69,10 @@ export function JobListFilters() {
     });
   }
 
-  const hasFilter = currentDays !== "all" || (params.get("q") ?? "").length > 0;
+  const hasFilter =
+    currentDays !== "all" ||
+    currentStatus !== "all" ||
+    (params.get("q") ?? "").length > 0;
 
   return (
     <div
@@ -71,6 +94,26 @@ export function JobListFilters() {
                 : "border-border bg-bg text-text-muted hover:border-border-strong hover:text-text")
             }
             data-testid={`mj-filter-day-${c.key}`}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-text-muted">Durum:</span>
+        {STATUS_CHIPS.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => setStatus(c.key)}
+            disabled={pending}
+            className={
+              "rounded-full border px-2 py-0.5 text-xs transition disabled:opacity-50 " +
+              (currentStatus === c.key
+                ? "border-accent bg-accent text-on-accent font-semibold"
+                : "border-border bg-bg text-text-muted hover:border-border-strong hover:text-text")
+            }
+            data-testid={`mj-filter-status-${c.key}`}
           >
             {c.label}
           </button>

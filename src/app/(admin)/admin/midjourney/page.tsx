@@ -19,6 +19,7 @@ import {
 import { TestRenderForm } from "./TestRenderForm";
 import { AssetThumb } from "./AssetThumb";
 import { JobListFilters } from "./JobListFilters";
+import { ListBatchPanel } from "./ListBatchPanel";
 
 function stateTone(state: string): BadgeTone {
   if (state === "COMPLETED") return "success";
@@ -78,7 +79,24 @@ async function fetchHealth(): Promise<{
 type SearchParams = {
   days?: string;
   q?: string;
+  status?: string;
 };
+
+// Pass 64 — Asset durum filtresi (audit-derived).
+// "undownloaded" = en az bir asset MIDJOURNEY_ASSET_EXPORT audit'i yok
+// "unreviewed"   = en az bir asset generatedDesignId NULL
+// Job-level "en az bir asset uyuyorsa görünür" mantığı: tablo eksiltilmez
+// ama tamamen tamamlanmış joblar gizlenir. visibleAssets array'i ayrıca
+// asset-level post-filter ile ListBatchPanel'a verilir.
+const STATUS_FILTERS = ["all", "undownloaded", "unreviewed"] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
+
+function parseStatusFilter(raw: string | undefined): StatusFilter {
+  if (raw && (STATUS_FILTERS as readonly string[]).includes(raw)) {
+    return raw as StatusFilter;
+  }
+  return "all";
+}
 
 // Pass 63 — gün bazlı filter chip'leri.
 // "today" / "yesterday" / "7d" / "all" — URL'de ?days= olarak persistent.
@@ -123,12 +141,22 @@ export default async function AdminMidjourneyPage({
 }: {
   searchParams?: SearchParams;
 }) {
-  // Pass 63 — URL state'ten filter'lar.
+  // Pass 63/64 — URL state'ten filter'lar.
   const dayFilter = parseDayFilter(searchParams?.days);
   const keyword = (searchParams?.q ?? "").trim();
+  const statusFilter = parseStatusFilter(searchParams?.status);
+
+  // Pass 64 — Status "unreviewed" job-level Prisma where ile (relation
+  // exists). "undownloaded" audit log relation Prisma'da modellenmediği
+  // için post-fetch filter (aşağıda).
+  const unreviewedWhere: Prisma.MidjourneyJobWhereInput =
+    statusFilter === "unreviewed"
+      ? { generatedAssets: { some: { generatedDesignId: null } } }
+      : {};
 
   const where: Prisma.MidjourneyJobWhereInput = {
     ...dayFilterToWhere(dayFilter),
+    ...unreviewedWhere,
     ...(keyword
       ? {
           OR: [
@@ -216,6 +244,32 @@ export default async function AdminMidjourneyPage({
       downloadedAssetCount: downloaded,
     });
   }
+
+  // Pass 64 — Status "undownloaded" job-level post-filter (audit log
+  // Prisma'da modelli olmadığından SQL where'de uygulanamaz).
+  // En az bir asset henüz export edilmediyse job görünür.
+  const filteredJobs =
+    statusFilter === "undownloaded"
+      ? recentJobs.filter((j) =>
+          j.generatedAssets.some((a) => !exportByAsset.has(a.id)),
+        )
+      : recentJobs;
+
+  // Pass 64 — List-level batch için tüm görünen asset'lerin flat listesi.
+  // ListBatchPanel client component bu array'i alır + akıllı seçim
+  // filter'ları (downloaded/promoted/hepsi/temizle) için audit-derived
+  // state'leri kullanır.
+  const visibleAssets = filteredJobs.flatMap((j) =>
+    j.generatedAssets.map((a) => ({
+      midjourneyAssetId: a.id,
+      midjourneyJobId: j.id,
+      gridIndex: a.gridIndex,
+      jobPrompt: j.prompt.slice(0, 80),
+      mjJobId: j.mjJobId,
+      isDownloaded: exportByAsset.has(a.id),
+      isPromoted: a.generatedDesignId !== null,
+    })),
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -327,9 +381,9 @@ MJ_BRIDGE_TOKEN=<aynı token>
       <div>
         <h2 className="text-lg font-semibold">
           Son 50 job
-          {dayFilter !== "all" || keyword ? (
+          {dayFilter !== "all" || keyword || statusFilter !== "all" ? (
             <span className="ml-2 text-xs font-normal text-text-muted">
-              ({recentJobs.length} sonuç · filtreli)
+              ({filteredJobs.length} sonuç · filtreli)
             </span>
           ) : null}
         </h2>
@@ -338,8 +392,13 @@ MJ_BRIDGE_TOKEN=<aynı token>
         </p>
       </div>
 
-      {/* Pass 63 — Date chip + keyword arama (URL state). */}
+      {/* Pass 63/64 — Date + status chip + keyword arama (URL state). */}
       <JobListFilters />
+
+      {/* Pass 64 — List-level asset batch panel. Görünen tüm asset'ler
+          üzerinde akıllı seçim + bulk export ZIP. Sticky top-0 — filtre
+          değişince anında ne seçileceği netleşsin. */}
+      <ListBatchPanel visibleAssets={visibleAssets} />
 
       {/* Pass 50 — operator Test Render tetikleyici. Bridge sağlıklı
           değilse form disabled ama görünür kalır (operator
@@ -366,16 +425,18 @@ MJ_BRIDGE_TOKEN=<aynı token>
           </TR>
         </THead>
         <TBody>
-          {recentJobs.length === 0 ? (
+          {filteredJobs.length === 0 ? (
             <TR>
               <TD colSpan={10} align="center" muted>
-                {dayFilter !== "all" || keyword
+                {dayFilter !== "all" ||
+                keyword ||
+                statusFilter !== "all"
                   ? "Filtreye uyan MJ job yok."
                   : "Henüz MJ job yok."}
               </TD>
             </TR>
           ) : (
-            recentJobs.map((j) => {
+            filteredJobs.map((j) => {
               const firstAsset = j.generatedAssets[0];
               return (
                 <TR key={j.id} title={`bridgeJobId: ${j.bridgeJobId}`}>

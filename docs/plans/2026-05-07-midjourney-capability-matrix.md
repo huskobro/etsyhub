@@ -78,6 +78,168 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 64 (List-level asset batch + status filter + format prefs — tamamlanan) 🟢
+
+Pass 63'ün detail-page batch katmanını **list page seviyesine** taşıdı,
+**audit-derived status filter**'ı server-side wire etti ve
+**default download format** tercihini kullanıcıya devretti
+(localStorage cross-tab sync).
+
+**Audit + paket seçimi**:
+
+Pass 63 kapanışında 4 boşluk:
+1. List page'de filtreli sonuç kümesi üzerinde toplu seçim yok —
+   detail page'e tıklamadan operatör batch yapamıyor
+2. "Yalnız indirilmeyenler" / "Yalnız review olmayanlar" filter'ı
+   sadece detail-page selector'ında — list seviyesinde değil
+3. Kullanıcı her seferinde format seçmek zorunda — tercih persist yok
+4. Detail + list arası tutarsız default davranış riski
+
+Build now: **(a) `useLocalStoragePref` hook (SSR-safe + cross-tab
+storage event sync) + (b) `ListBatchPanel` (sticky top, görünen
+asset'ler üzerinde 4 akıllı seçim + bulk export ZIP) + (c) status
+chip'leri JobListFilters'a + (d) Prisma where (`unreviewed`) +
+post-fetch filter (`undownloaded`) + (e) ExportButtons /
+AssetBatchPanel default format ★ vurgusu**.
+
+Strong follow-up: auto-download davranışı (kullanıcı seçince anında
+indirme başlasın opt-in) Pass 65. Useful later: custom date range
+picker, embed-based duplicate detection. Do not now: variation,
+upscale aktif (Pass 60-61 park).
+
+**Uygulanan**:
+
+- ✅ `useLocalStoragePref.ts` (yeni):
+  - SSR-safe: ilk render `defaultValue`, mount sonrası `localStorage`
+  - Cross-tab sync: `storage` event listener
+  - Validator opsiyonel (tip-güvenli `ExportFormatPref` guard)
+  - Scope key prefix: `mj-pref:` (collision-free)
+  - Exports: `useLocalStoragePref<T>`, `EXPORT_FORMAT_VALUES`,
+    `isExportFormat`, `ExportFormatPref`
+- ✅ `ListBatchPanel.tsx` (yeni — list page client component):
+  - Sticky `top-0 z-10` border-accent panel
+  - Sayaç: `N/M seçili · K indirilmiş · L review'da`
+  - 4 akıllı seçim chip:
+    - Görünenlerin tümü (M) → tüm `visibleAssets`
+    - Yalnız indirilmeyenler (count) → audit log'da export entry yok
+    - Yalnız review olmayanlar (count) → `generatedDesignId === null`
+    - Seçimi temizle (sadece seçim varken)
+  - Varsayılan format `<select>` (PNG/JPEG/WebP) — `useLocalStoragePref`
+  - Submit buton: `↓ {N} asset → {FORMAT} ZIP`
+  - Reuses `POST /api/admin/midjourney/asset/bulk-export` (Pass 63)
+  - Max 50 asset uyarısı + filename `mj-bulk-{ts}.zip`
+  - Future-safe: "⤴ Toplu upscale (yakında)" placeholder
+  - Test ID'leri: `mj-list-batch-panel`, `mj-list-batch-select-all`,
+    `mj-list-batch-select-undownloaded`, `mj-list-batch-select-unreviewed`,
+    `mj-list-batch-clear`, `mj-list-batch-default-format`,
+    `mj-list-batch-export-submit`, `mj-list-batch-error`,
+    `mj-list-batch-success`
+- ✅ `JobListFilters.tsx` upgrade:
+  - 2. satır: "Durum: Tümü / Yalnız indirilmeyenler / Yalnız review olmayanlar"
+  - URL state: `?status=undownloaded|unreviewed`
+  - Test ID'leri: `mj-filter-status-{key}`
+- ✅ List page server component:
+  - `searchParams.status` parse → `parseStatusFilter`
+  - `unreviewed` → Prisma where `generatedAssets: { some: { generatedDesignId: null } }`
+  - `undownloaded` → audit log Prisma relation modelli olmadığı için
+    **post-fetch job filter** (en az 1 asset export edilmemişse görünür)
+  - `filteredJobs` array tabloyu + ListBatchPanel'i besler
+  - `visibleAssets` flat array (post-filter): `{ midjourneyAssetId,
+    midjourneyJobId, gridIndex, jobPrompt, mjJobId, isDownloaded, isPromoted }`
+- ✅ `ExportButtons.tsx` rewrite:
+  - `useLocalStoragePref` ile default format okur
+  - Default buton ★ marker + `border-accent bg-accent-soft font-semibold`
+  - Tooltip "varsayılan · full-res 1024px"
+- ✅ `AssetBatchPanel.tsx` upgrade:
+  - 3 ZIP butonundan default olan `border-2 border-accent bg-accent` + ★
+  - `handleBulkExport` typed `ExportFormatPref`
+
+**Canlı E2E doğrulaması** (browser smoke 1440×900):
+
+```
+[pass64] mj-list-batch-panel mounted: true
+[pass64] mj-filter-status-* chips: all, undownloaded, unreviewed
+[pass64] click 'Yalnız indirilmeyenler' → URL: /admin/midjourney?status=undownloaded
+         (50 → 2 sonuç · filtreli)
+[pass64] ListBatchPanel: 8 görünür asset · 8 undownloaded · 4 unreviewed
+[pass64] 'Yalnız indirilmeyenler' click → 8/12 seçili · submit '↓ 8 asset → PNG ZIP'
+[pass64] 'Yalnız review olmayanlar' click → 4/12 seçili · submit '↓ 4 asset → PNG ZIP'
+[pass64] format select → JPEG: localStorage 'mj-pref:default-export-format' = jpeg
+         submit anında '↓ 4 asset → JPEG ZIP'
+[pass64] navigate detail page (cmov06na50016149lfncr8m8u, COMPLETED, 4 grid):
+         12 ExportButton (4 asset × 3 format), 4'ü JPEG ★
+         AssetBatchPanel ZIP butonları: PNG/JPEG★/WebP — cross-tab sync ✓
+[pass64] console.error: yok
+```
+
+Screenshot:
+- (1) `[admin/midjourney?status=undownloaded&Yalnız indirilmeyenler aktif]` —
+  Tarih/Durum/Arama chip'leri + Toplu işlem panel'i (8/8 seçili, akıllı
+  seçim chip'leri, varsayılan format PNG, "↓ 8 asset → PNG ZIP", Toplu
+  upscale (yakında))
+
+**Status filter mimarisi**:
+
+| Filter | Strateji | Sebep |
+|---|---|---|
+| `unreviewed` | Prisma where (job-level) | `generatedDesignId` Prisma relation, `some` ile job-level filter SQL'de |
+| `undownloaded` | Post-fetch filter | `MIDJOURNEY_ASSET_EXPORT` audit log Prisma relation modelli değil — `targetId in [...]` groupBy zaten yapılıyor, JS'de filter cheap |
+
+Job-level "en az 1 asset koşula uyuyorsa görünür" davranışı: tablo
+hiç eksiltilmez (tüm asset'ler görünür), ListBatchPanel görünen
+asset'ler üzerinde post-filter. Operatör tabloyu okurken state
+kaybetmez.
+
+**Cross-tab sync semantics**:
+
+- localStorage key: `mj-pref:default-export-format`
+- Set: `localStorage.setItem(...)` (sade)
+- Listen: window `storage` event — **tarayıcı spec'i: setItem yapan
+  tab event almaz, sadece DİĞER tab'lar alır**
+- Pratikte: list page'de değişen tercih, **detail page yeni navigate
+  edilince** (mount-time `localStorage.getItem`) doğru okunur — smoke
+  test bunu doğruladı (JPEG seçildi → detail page'e geçildi → 12 buton
+  ve 3 ZIP butonu JPEG ★ ile geldi). Açık ikinci tab anında günceller.
+- **Sınır**: aynı tab içinde aynı anda mount'lu iki ListBatchPanel
+  olsa anlık sync olmaz (gerçek senaryoda aynı sayfada tek instance,
+  sorun değil). Custom event dispatch ileride gerekirse kolay eklenir.
+- SSR-safe: `useState` initializer `defaultValue`, `useEffect` mount
+  sonrası `localStorage` okuma — hydration mismatch yok
+
+**Capability matrix güncellemesi**:
+
+1. **next immediate (Pass 65)**:
+   - Auto-download opt-in ("Promote sonrası anında indir" toggle)
+   - Custom date range picker (date input + URL param)
+   - Bulk export ZIP filename'e `mj-{filter-context}-{N}assets-{ts}.zip`
+2. **strong follow-up**:
+   - Topaz Gigapixel research + desktop automation prototipi
+   - Eski Pass 49-61 webp asset'leri canonical PNG'ye backfill script
+   - Embedding-based duplicate detection
+3. **useful later**:
+   - Variation capability (Vary Subtle/Strong selectors hazır)
+   - Mockup direct entry shortcut
+4. **do not now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 64 dürüst sınır**:
+
+- **Auto-download yok**: Kullanıcı tercih ettiği format'ı default seçer
+  ama tıklamadan indirme başlamaz. "Otomatik indirme" Pass 65'e
+  bırakıldı (opt-in toggle gerekiyor — surprise UX riski).
+- **Custom date range yok**: Hâlâ sadece chip'ler (today/yesterday/7d/all);
+  date picker Pass 65 hedefi.
+- **Status filter audit log post-fetch**: 50 job × 4 asset = 200 audit
+  query target. `groupBy` zaten tek query, post-filter JS'de O(N)
+  cheap. 1000+ visible asset olursa indeks değerlendirilebilir
+  (şu an gereksiz).
+- **Toplu upscale hâlâ placeholder** (Pass 60-61 V7 alpha dedup +
+  Gigapixel research bekleniyor).
+- **List page job seviyesi multi-select yok** — bilinçli karar:
+  asset-level model gerçeği yansıtıyor (job grupludur, asset üründür).
+  Operatör 50 job'u "tümünü seç" yerine "8 görünür asset'in 4 unreviewed
+  olanını" seçiyor — daha doğru abstraction.
+
 ### Pass 63 (Batch operations + filtering + downloaded badges — tamamlanan) 🟢
 
 Pass 62'nin export endpoint'inin üstüne **toplu operasyonlar + filtre +

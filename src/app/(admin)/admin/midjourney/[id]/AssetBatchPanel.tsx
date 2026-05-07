@@ -12,6 +12,11 @@
 // scope'u küçük, in-memory yeterli).
 
 import { useState } from "react";
+import {
+  isExportFormat,
+  useLocalStoragePref,
+  type ExportFormatPref,
+} from "../useLocalStoragePref";
 
 type BatchAsset = {
   midjourneyAssetId: string;
@@ -24,7 +29,7 @@ type AssetBatchPanelProps = {
   assets: BatchAsset[];
 };
 
-const FORMATS: Array<{ key: "png" | "jpeg" | "webp"; label: string }> = [
+const FORMATS: Array<{ key: ExportFormatPref; label: string }> = [
   { key: "png", label: "PNG" },
   { key: "jpeg", label: "JPEG" },
   { key: "webp", label: "WebP" },
@@ -32,7 +37,13 @@ const FORMATS: Array<{ key: "png" | "jpeg" | "webp"; label: string }> = [
 
 export function AssetBatchPanel({ assets }: AssetBatchPanelProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [exporting, setExporting] = useState<null | "png" | "jpeg" | "webp">(null);
+  const [exporting, setExporting] = useState<null | ExportFormatPref>(null);
+  // Pass 64 — Default format tercihi (cross-tab sync).
+  const [defaultFormat] = useLocalStoragePref<ExportFormatPref>(
+    "default-export-format",
+    "png",
+    isExportFormat,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const allIds = assets.map((a) => a.midjourneyAssetId);
@@ -62,7 +73,7 @@ export function AssetBatchPanel({ assets }: AssetBatchPanelProps) {
     setSelectedIds(next);
   }
 
-  async function handleBulkExport(format: "png" | "jpeg" | "webp") {
+  async function handleBulkExport(format: ExportFormatPref) {
     setError(null);
     setExporting(format);
     try {
@@ -154,18 +165,32 @@ export function AssetBatchPanel({ assets }: AssetBatchPanelProps) {
         <span className="text-xs font-semibold text-text-muted">
           Toplu indir (ZIP):
         </span>
-        {FORMATS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            onClick={() => handleBulkExport(f.key)}
-            disabled={selectedIds.size === 0 || exporting !== null}
-            className="rounded-md border border-accent bg-accent px-2 py-0.5 text-xs font-semibold text-on-accent transition hover:opacity-90 disabled:opacity-40"
-            data-testid={`mj-batch-export-${f.key}`}
-          >
-            {exporting === f.key ? "Hazırlanıyor…" : `↓ ${f.label} ZIP`}
-          </button>
-        ))}
+        {FORMATS.map((f) => {
+          const isDefault = f.key === defaultFormat;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => handleBulkExport(f.key)}
+              disabled={selectedIds.size === 0 || exporting !== null}
+              className={
+                isDefault
+                  ? "rounded-md border-2 border-accent bg-accent px-2 py-0.5 text-xs font-semibold text-on-accent transition hover:opacity-90 disabled:opacity-40"
+                  : "rounded-md border border-accent bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent-text transition hover:opacity-90 disabled:opacity-40"
+              }
+              data-testid={`mj-batch-export-${f.key}`}
+              title={
+                isDefault
+                  ? `${f.label} (varsayılan format) ZIP indir`
+                  : `${f.label} ZIP indir`
+              }
+            >
+              {exporting === f.key
+                ? "Hazırlanıyor…"
+                : `↓ ${f.label} ZIP${isDefault ? " ★" : ""}`}
+            </button>
+          );
+        })}
         <span
           className="ml-2 rounded-md border border-border bg-bg px-2 py-0.5 text-xs text-text-muted opacity-60"
           title="Pass 60-61: MJ native upscale park; Pass 63+: Topaz Gigapixel desktop automation araştırması"
