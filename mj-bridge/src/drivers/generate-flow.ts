@@ -268,6 +268,101 @@ export async function waitForRender(
 }
 
 /**
+ * Pass 60 — Upscale tetikleme: parent /jobs/UUID?index=N sayfasında
+ * "Upscale Subtle" veya "Upscale Creative" butonuna tıkla.
+ *
+ * Sayfa zaten parent'ın detail sayfasındaysa direkt buton click; değilse
+ * caller önce navigasyon yapmalı (`page.goto(/jobs/UUID?index=N)`).
+ *
+ * UI feedback: tıklamadan sonra sayfa upscale render başlatır; URL aynı
+ * kalır ama yeni bir UUID başlar. Sonuç polling için `waitForUpscaleResult`.
+ */
+export async function triggerUpscale(
+  page: Page,
+  selectors: Record<MJSelectorKey, string>,
+  mode: "subtle" | "creative",
+): Promise<void> {
+  const selectorKey: MJSelectorKey =
+    mode === "subtle" ? "upscaleSubtle" : "upscaleCreative";
+  const button = page.locator(selectors[selectorKey]);
+
+  // Pass 60 — React lazy mount: button DOM'a domcontentloaded sonrası
+  // geç gelebilir. Timeout uzun + scroll into view + click retry.
+  try {
+    await button.first().waitFor({ state: "visible", timeout: 15_000 });
+  } catch {
+    throw new SelectorMismatchError(selectorKey, selectors[selectorKey]);
+  }
+  await button.first().scrollIntoViewIfNeeded().catch(() => undefined);
+  // Click retry — overlay/popup intercept sorunlarına karşı (Pass 49 audit
+  // notu: overflow-y-hidden div pointer events intercept ediyor).
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await button.first().click({ timeout: 5_000 });
+      return;
+    } catch (err) {
+      lastErr = err;
+      await page.waitForTimeout(500);
+    }
+  }
+  throw new Error(
+    `Upscale button click fail after 3 retries: ${
+      lastErr instanceof Error ? lastErr.message : String(lastErr)
+    }`,
+  );
+}
+
+/**
+ * Pass 60 — Upscale render polling.
+ *
+ * Generate'den fark: upscale tek image üretir (4 grid değil). Yeni UUID
+ * çıkar; tek bir 0_0_*.webp (veya benzer) yeterli. Bazı MJ versiyonlarında
+ * upscale grid içine 4 alt-variant koyar; MVP olarak ilk yeni UUID + ilk
+ * yeni img URL'i kabul ederiz.
+ *
+ * Caller submit ÖNCESİ baselineUuids yakalamalı.
+ */
+export type UpscaleResult = {
+  mjJobId: string; // yeni UUID
+  imageUrl: string;
+  gridIndex: number;
+};
+
+export async function waitForUpscaleResult(
+  page: Page,
+  selectors: Record<MJSelectorKey, string>,
+  options: {
+    baselineUuids: Set<string>;
+    timeoutMs: number;
+    pollIntervalMs?: number;
+    onPoll?: (elapsedMs: number) => void;
+  },
+): Promise<UpscaleResult> {
+  const start = Date.now();
+  const interval = options.pollIntervalMs ?? 3000;
+  while (Date.now() - start < options.timeoutMs) {
+    const imgs = await collectCdnImages(page, selectors);
+    if (options.onPoll) options.onPoll(Date.now() - start);
+    // İlk yeni UUID (baseline'da yok) + outerIdx=0 + gridIdx=0 yeterli.
+    for (const img of imgs) {
+      if (options.baselineUuids.has(img.uuid)) continue;
+      if (img.outerIdx === 0 && img.gridIdx === 0) {
+        return {
+          mjJobId: img.uuid,
+          imageUrl: img.url,
+          gridIndex: img.gridIdx,
+        };
+      }
+    }
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  throw new Error(
+    `Upscale timeout (${options.timeoutMs}ms) — yeni UUID için image bulunamadı`,
+  );
+}
+
+/**
  * Grid img URL'lerinden full-resolution image indir.
  *
  * MJ web img tag'leri **thumbnail** olabilir (e.g. `_N.webp` suffix'i).

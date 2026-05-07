@@ -128,16 +128,24 @@ export type CreateJobRequest =
     }
   | {
       kind: "upscale";
-      /** Hedef render'ın bridge job id'si. */
-      parentBridgeJobId: string;
-      /** Grid içindeki pozisyon (U1=0, U2=1, U3=2, U4=3). */
+      /**
+       * Pass 60 — MJ web tarafı parent job UUID'si (cdn.midjourney.com'daki).
+       * Bridge `/jobs/{parentMjJobId}?index={gridIndex}` URL'ine navigate
+       * edip "Upscale Subtle/Creative" butonuna tıklar.
+       */
+      parentMjJobId: string;
+      /** Grid içindeki pozisyon (0..3) — generate'den gelen 4 grid'den biri. */
       gridIndex: 0 | 1 | 2 | 3;
+      /** Pass 60 — MVP "subtle" desteklenir; "creative" ileride. */
+      mode: "subtle" | "creative";
       etsyhubJobId?: string;
     }
   | {
       kind: "variation";
-      parentBridgeJobId: string;
+      /** Pass 60 — variation için aynı pattern (ama bu turda implementasyon yok). */
+      parentMjJobId: string;
       gridIndex: 0 | 1 | 2 | 3;
+      mode: "subtle" | "strong";
       etsyhubJobId?: string;
     };
 

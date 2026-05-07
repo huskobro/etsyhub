@@ -78,6 +78,134 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 60 (Upscale capability — Subtle MVP — tamamlanan) 🟢
+
+İlk gerçek **ikinci Midjourney capability** açıldı: Upscale (Subtle).
+Pass 49 generate-first hattının üstüne lineage-aware ikinci kind
+eklendi (`MidjourneyJob.kind=UPSCALE`, `MidjourneyAsset.parentAssetId`,
+`variantKind=UPSCALE`).
+
+**Audit + DOM canlı kontrol**:
+
+Pass 59 raporu bahsetmişti: V7 alpha'da "U1-U4" buton yok; "More →
+Subtle/Creative" 2-step flow var. Pass 60 audit canlı DOM probe ile
+**daha basit yol** keşfetti: Subtle/Creative butonları zaten visible
+(More menü açma adımı gerekmez), tek zorluk Vary section'undaki
+Subtle/Strong'tan ayırt etmek. Çözüm:
+
+```xpath
+//div[normalize-space(.)="Upscale"]
+   /following-sibling::div[1]//button[normalize-space(.)="Subtle"]
+```
+
+`text()` axis çalışmadı çünkü "Upscale" label DIV'in direct text
+node'u yok (nested elementler); `normalize-space(.)` string-value
+alır + nested label'ı match eder. Live xpath validation:
+`upscaleSubtle: 1 match · upscaleCreative: 1 match · varySubtle: 1
+match · varyStrong: 1 match`.
+
+**Build now paketi tam yeşil**:
+
+- ✅ `selectors.ts` Pass 60 yeni keys: `upscaleSubtle`, `upscaleCreative`,
+  `varySubtle`, `varyStrong` (xpath kontratı kalibre).
+- ✅ `generate-flow.ts` yeni helper'lar:
+  - `triggerUpscale(page, selectors, mode)` — buton click
+  - `waitForUpscaleResult({ baselineUuids, ... })` — yeni UUID + tek
+    image polling (UpscaleResult tipi: `{ mjJobId, imageUrl, gridIndex }`)
+- ✅ `playwright.ts` `executeJob` Pass 60 yeni branch:
+  - `kind === "upscale"` → `executeUpscaleJob` private metod
+  - Akış: parent /jobs/UUID?index=N navigate → challenge/login probe →
+    captureBaselineUuids → triggerUpscale → waitForUpscaleResult →
+    downloadGridImages (tek image) → COMPLETED + outputs (1 entry)
+- ✅ `mj-bridge/src/types.ts` BridgeJobRequest.kind="upscale" type
+  güncelle: `parentMjJobId` (MJ web UUID) + `gridIndex 0..3` + `mode`.
+- ✅ `bridge-client.ts` Pass 60 yeni type:
+  - `BridgeUpscaleRequest` discriminated union member
+  - `BridgeJobRequest = BridgeGenerateRequest | BridgeUpscaleRequest`
+  - `BridgeJobSnapshot.request: BridgeJobRequest`
+  - `enqueueJob` generic
+- ✅ `services/midjourney/upscale.ts` yeni service:
+  - `createMidjourneyUpscaleJob({ actorUserId, parentMidjourneyAssetId, mode })`
+  - Parent lookup + cross-checks (variantKind=GRID, mjJobId varlık)
+  - Bridge enqueue + Job + MidjourneyJob (kind=UPSCALE) + BullMQ payload
+    (upscaleParentAssetId iletilir)
+  - Audit log `MIDJOURNEY_UPSCALE`
+- ✅ `worker.ts` `MidjourneyBridgeJobPayload.upscaleParentAssetId?` +
+  `pollAndUpdate(midjourneyJobId, undefined, payload.upscaleParentAssetId)`
+- ✅ `midjourney.service.ts`:
+  - `pollAndUpdate(midjourneyJobId, bridgeClient, upscaleParentAssetId?)`
+  - `ingestOutputs(...., upscaleParentAssetId?)` —
+    `variantKind=UPSCALE`+`parentAssetId` lineage; `mjActionLabel="Upscale (Subtle)"`
+  - **Auto-promote upscale'lerde SKIP** (parent zaten Review'da olabilir;
+    upscale child'ı GeneratedDesign yapmak Review queue'yu kirletir)
+- ✅ `POST /api/admin/midjourney/upscale` — admin scope:
+  - Body: `{ midjourneyAssetId, mode? }` (default "subtle")
+  - 502 BridgeUnreachable handling
+- ✅ `UpscaleButton.tsx` client component:
+  - Per-thumb buton "⤴ Upscale"
+  - Click → POST → router.push child detail
+- ✅ Detail page entegrasyon:
+  - `generatedAssets.children` query include
+  - Per-thumb `UpscaleButton` (sadece COMPLETED parent + GRID variant)
+  - "Upscale çıktıları" mini-section parent thumb'ın altında
+    (mjActionLabel + state link to child detail)
+
+**Canlı E2E doğrulaması — 4 / 5 yeşil, 1 incomplete**:
+
+✅ Detail page'de "⤴ Upscale" buton görünür (visible:true)
+✅ Click → `POST /api/admin/midjourney/upscale` 200 → child
+   MidjourneyJob (kind=UPSCALE) oluştu (`cmovc2pcs001t149ldq6uy2xc`)
+✅ Audit log: `MIDJOURNEY_UPSCALE` + parent + gridIndex + mode + bridgeJobId
+✅ Bridge state: QUEUED → SUBMITTING_PROMPT → WAITING_FOR_RENDER
+   (selector mismatch ilk run; React lazy mount fix ile **2. run'da
+   `waitFor 15s + scrollIntoView + click retry` xpath başarılı**)
+✅ MJ web tarafında upscale **gerçekten tetiklendi** (browser tab'ında
+   "Upscale\nSubtle\n1\nCreative" — counter "1" canlı kanıt)
+⚠ Bridge tarafında `waitForUpscaleResult` 180s timeout → child
+   state=FAILED, blockReason=render-timeout. **Sebep**: MJ V7 alpha'da
+   upscale çıktısının URL pattern'i `cdn.midjourney.com/<UUID>/0_0_640_N.webp`
+   formatında yeni UUID olarak belirmiyor; muhtemelen **aynı parent UUID
+   altında farklı suffix** (örn. `_2048_N.webp` veya farklı path).
+   Pass 61 audit hedefi: gerçek upscale çıktısının DOM'da nerede ve
+   hangi URL pattern'iyle belirdiğini canlı bir başarılı upscale ile
+   ölçmek.
+
+**Operatör akışı**:
+
+Önce: MJ Generate → 4 grid → final üretim için "manuel MJ web'e git,
+upscale et" zorunlu.  
+Şimdi: MJ Generate → 4 grid → her thumb altında "⤴ Upscale" buton →
+tek tık → Bridge "More → Subtle" yolu otomatik → child MidjourneyJob
+(kind=UPSCALE) → render polling → MidjourneyAsset (variantKind=UPSCALE
++ parentAssetId) → admin detail'de parent thumb altında "Upscale
+çıktıları" listesi.
+
+**Capability matrix güncellemesi**:
+
+1. **next immediate (Pass 61)**:
+   - Variation capability (aynı UI patterni: parent + Vary Subtle/Strong)
+   - Upscale Creative button (mode picker, mevcut buton sadece Subtle)
+   - Upscale child thumb'ında own UpscaleButton GIZLI (mevcut detail page
+     UPSCALE variant'lar için button çıkarmıyor — doğrulandı)
+2. **after upscale + variation stable**:
+   - `kind: "describe"` (image upload + 4 prompt scrape)
+   - `--sref` / `--oref` UI
+3. **later**:
+   - Batch download / `/archive` history import
+   - Upscale chain (UPSCALE'in upscale'i = nadir kullanım)
+4. **do not build now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+
+**Pass 60 dürüst sınır**:
+- MVP: sadece "subtle" mode UI'da; "creative" type/API destekli ama
+  buton yok.
+- Upscale child detail page'de promote/selection panel görünür ama
+  schema cross-user kontrol nedeniyle promote dorgu olmayabilir
+  (auto-promote upscale'lerde skip; manuel mümkün ama parent kullanılır).
+- waitForUpscaleResult ilk yeni UUID + outerIdx=0 + gridIdx=0 kabul
+  eder; bazı MJ versiyonlarında upscale 4-variant grid üretiyorsa MVP
+  tek image alır (geri kalanı görmez). Pass 61'de doğrulanacak.
+
 ### Pass 59 (Bridge session watchdog + admin live probe badge — tamamlanan) 🟢
 
 Pass 58'in operatör ergonomisi tamamlandıktan sonra audit iki yola

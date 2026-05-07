@@ -29,6 +29,13 @@ export type MJSelectorKey =
   | "variationV2"
   | "variationV3"
   | "variationV4"
+  // Pass 60 — V7 alpha "More → Subtle/Creative" actions.
+  // U1-U4 button konsepti yok; tek bir grid sayfasında Upscale section'unda
+  // Subtle/Creative + Vary section'unda Subtle/Strong butonları var.
+  | "upscaleSubtle"
+  | "upscaleCreative"
+  | "varySubtle"
+  | "varyStrong"
   | "cloudflareChallenge"
   | "hcaptchaChallenge"
   | "loginIndicator"
@@ -141,6 +148,28 @@ export const DEFAULT_SELECTORS: Record<MJSelectorKey, string> = {
     'button[aria-label*="V3" i], button[aria-label*="variation 3" i]',
   variationV4:
     'button[aria-label*="V4" i], button[aria-label*="variation 4" i]',
+
+  // Pass 60 — V7 alpha /jobs/UUID?index=N sayfasındaki Upscale section.
+  // Pass 59 audit'inde "Upscale Subtle Creative" container ve "Vary Subtle
+  // Strong" container var. Aynı text "Subtle" iki yerde geçiyor (vary'de bir,
+  // upscale'de bir). Ayırt etmek için container scope'u parent text'e göre
+  // filtre:
+  //   xpath=//div[contains(., 'Upscale') and contains(., 'Subtle')
+  //                and contains(., 'Creative')]
+  //              //button[normalize-space(text())='Subtle']
+  // Playwright text-engine üzerinden basit hâli:
+  //   container = "Upscale Subtle Creative" yakın ata
+  // Pattern: <div text="Upscale">…</div><div>{Subtle, Creative buttons}</div>
+  // text() axis çalışmaz çünkü label div'in direct text node'u yok;
+  // normalize-space(.) string-value alır ve nested label'ı match eder.
+  upscaleSubtle:
+    'xpath=//div[normalize-space(.)="Upscale"]/following-sibling::div[1]//button[normalize-space(.)="Subtle"]',
+  upscaleCreative:
+    'xpath=//div[normalize-space(.)="Upscale"]/following-sibling::div[1]//button[normalize-space(.)="Creative"]',
+  varySubtle:
+    'xpath=//div[normalize-space(.)="Vary"]/following-sibling::div[1]//button[normalize-space(.)="Subtle"]',
+  varyStrong:
+    'xpath=//div[normalize-space(.)="Vary"]/following-sibling::div[1]//button[normalize-space(.)="Strong"]',
 
   // Cloudflare challenge iframe — URL pattern kontrol.
   cloudflareChallenge: 'iframe[src*="challenges.cloudflare.com"]',

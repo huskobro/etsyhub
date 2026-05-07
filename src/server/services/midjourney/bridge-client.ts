@@ -66,6 +66,26 @@ export type BridgeGenerateRequest = {
   etsyhubJobId?: string;
 };
 
+/**
+ * Pass 60 — Upscale request kontrat.
+ *
+ * Parent job MJ web tarafında zaten render edildi (bizim
+ * MidjourneyJob.mjJobId'miz). Bridge `/jobs/{parentMjJobId}?index={gridIndex}`
+ * sayfasına gider, "Upscale Subtle/Creative" buton tıklar, render bekler.
+ *
+ * MVP: mode="subtle"; "creative" type'ta destek var ama UI'da Pass 60'da
+ * sadece subtle button gösterilir.
+ */
+export type BridgeUpscaleRequest = {
+  kind: "upscale";
+  parentMjJobId: string;
+  gridIndex: 0 | 1 | 2 | 3;
+  mode: "subtle" | "creative";
+  etsyhubJobId?: string;
+};
+
+export type BridgeJobRequest = BridgeGenerateRequest | BridgeUpscaleRequest;
+
 export type BridgeJobOutput = {
   gridIndex: number;
   localPath: string;
@@ -77,7 +97,8 @@ export type BridgeJobSnapshot = {
   id: string;
   state: BridgeJobState;
   blockReason?: BridgeJobBlockReason;
-  request: BridgeGenerateRequest;
+  /** Pass 60 — generate veya upscale (BridgeJobRequest discriminated union). */
+  request: BridgeJobRequest;
   mjJobId?: string;
   mjMetadata?: Record<string, unknown>;
   outputs?: BridgeJobOutput[];
@@ -189,8 +210,9 @@ export class BridgeClient {
     return this.json<BridgeHealth>("GET", "/health");
   }
 
-  /** Yeni job enqueue — bridgeJobId döner. */
-  async enqueueJob(req: BridgeGenerateRequest): Promise<BridgeJobSnapshot> {
+  /** Yeni job enqueue — bridgeJobId döner.
+   * Pass 60 — generate veya upscale (BridgeJobRequest discriminated union). */
+  async enqueueJob(req: BridgeJobRequest): Promise<BridgeJobSnapshot> {
     return this.json<BridgeJobSnapshot>("POST", "/jobs", req);
   }
 

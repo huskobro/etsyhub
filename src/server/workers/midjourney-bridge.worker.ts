@@ -22,6 +22,13 @@ export type MidjourneyBridgeJobPayload = {
   userId: string;
   midjourneyJobId: string;
   jobId: string; // EtsyHub Job entity id (bullJobId crosslink)
+  /**
+   * Pass 60 — Upscale lineage. createMidjourneyUpscaleJob bunu set eder;
+   * generate akışında undefined. `pollAndUpdate` → `ingestOutputs`'a
+   * iletilir; orada yeni MidjourneyAsset.parentAssetId + variantKind=UPSCALE
+   * yazılır.
+   */
+  upscaleParentAssetId?: string;
 };
 
 const POLL_INTERVAL_MS = 3000;
@@ -48,7 +55,13 @@ export async function handleMidjourneyBridge(
 
   for (let attempt = 0; attempt < POLL_MAX; attempt++) {
     // Worker abort'a duyarlı — BullMQ token-based cancellation V1'de yok.
-    const result = await pollAndUpdate(midjourneyJobId);
+    // Pass 60 — upscaleParentAssetId payload'dan iletilir; ingestOutputs
+    // upscale-aware (variantKind=UPSCALE + parentAssetId).
+    const result = await pollAndUpdate(
+      midjourneyJobId,
+      undefined,
+      job.data.upscaleParentAssetId,
+    );
     if (result.isTerminal) {
       logger.info(
         { midjourneyJobId, finalState: result.state, attempts: attempt + 1 },

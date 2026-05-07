@@ -28,6 +28,7 @@ import { CopyButton } from "./CopyButton";
 import { PromoteToReview } from "./PromoteToReview";
 import { AddToSelection } from "./AddToSelection";
 import { FailureDetail } from "./FailureDetail";
+import { UpscaleButton } from "./UpscaleButton";
 
 const STATE_LABELS: Record<string, string> = {
   QUEUED: "Sırada",
@@ -83,6 +84,18 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
           generatedDesignId: true,
           asset: {
             select: { mimeType: true, sizeBytes: true, storageKey: true },
+          },
+          // Pass 60 — Per-asset upscale child'ları (variantKind=UPSCALE +
+          // parentAssetId === bu asset.id). Detail page'de "Upscale çıktıları"
+          // section'unda parent grid altında listelenir.
+          children: {
+            select: {
+              id: true,
+              assetId: true,
+              variantKind: true,
+              mjActionLabel: true,
+              midjourneyJob: { select: { id: true, state: true } },
+            },
           },
         },
       },
@@ -338,6 +351,38 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
                       </Link>
                     ) : null}
                   </div>
+                  {/* Pass 60 — Sadece COMPLETED parent + GRID variant'lar
+                      için Upscale (Subtle) buton. Upscale child'larda
+                      kendisi UPSCALE variantı olduğu için tekrar buton
+                      gösterilmez (kind=UPSCALE detail page'inde
+                      generatedAssets array boş veya 1 item). */}
+                  {job.state === "COMPLETED" && a.variantKind === "GRID" ? (
+                    <UpscaleButton midjourneyAssetId={a.id} />
+                  ) : null}
+                  {/* Pass 60 — Per-asset upscale child'ları (lineage). */}
+                  {a.children.length > 0 ? (
+                    <div className="mt-1 flex flex-col gap-1 rounded border border-border bg-surface-2 p-1">
+                      <div className="text-xs text-text-muted">
+                        Upscale çıktıları ({a.children.length})
+                      </div>
+                      {a.children.map((c) => (
+                        <Link
+                          key={c.id}
+                          href={`/admin/midjourney/${c.midjourneyJob.id}`}
+                          className="flex items-center justify-between text-xs text-text-muted hover:text-text"
+                          data-testid={`mj-upscale-child-${c.id}`}
+                        >
+                          <span>
+                            ⤴ {c.mjActionLabel ?? c.variantKind}
+                          </span>
+                          <span className="font-mono">
+                            {STATE_LABELS[c.midjourneyJob.state] ??
+                              c.midjourneyJob.state}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

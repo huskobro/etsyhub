@@ -172,6 +172,11 @@ export async function createMidjourneyJob(
 export async function pollAndUpdate(
   midjourneyJobId: string,
   bridgeClient: BridgeClient = getBridgeClient(),
+  /**
+   * Pass 60 — Upscale lineage. Worker payload'dan iletilir; ingestOutputs
+   * yeni asset'i bu parent'la bağlar (variantKind=UPSCALE + parentAssetId).
+   */
+  upscaleParentAssetId?: string,
 ): Promise<{ state: MidjourneyJobState; isTerminal: boolean }> {
   const mjJob = await db.midjourneyJob.findUniqueOrThrow({
     where: { id: midjourneyJobId },
@@ -264,7 +269,12 @@ export async function pollAndUpdate(
   // olabilir — V1.x'te değerlendirilir.
   if (newState === "COMPLETED" && snapshot.outputs && snapshot.outputs.length > 0) {
     try {
-      await ingestOutputs(midjourneyJobId, snapshot, bridgeClient);
+      await ingestOutputs(
+        midjourneyJobId,
+        snapshot,
+        bridgeClient,
+        upscaleParentAssetId,
+      );
     } catch (err) {
       logger.error(
         {
@@ -297,6 +307,12 @@ async function ingestOutputs(
   midjourneyJobId: string,
   snapshot: BridgeJobSnapshot,
   bridgeClient: BridgeClient,
+  /**
+   * Pass 60 — Upscale lineage. Verilirse yeni MidjourneyAsset row'ları
+   * variantKind=UPSCALE + parentAssetId ile yazılır. Auto-promote
+   * (Reference handoff) upscale'lerde devre dışı (parent zaten promoted).
+   */
+  upscaleParentAssetId?: string,
 ): Promise<void> {
   if (!snapshot.outputs || snapshot.outputs.length === 0) return;
 
@@ -354,9 +370,17 @@ async function ingestOutputs(
       data: {
         midjourneyJobId,
         gridIndex: out.gridIndex,
-        variantKind: MJVariantKind.GRID,
+        // Pass 60 — Upscale lineage: parent verilirse UPSCALE variant +
+        // parentAssetId; aksi halde GRID (mevcut generate akışı).
+        variantKind: upscaleParentAssetId
+          ? MJVariantKind.UPSCALE
+          : MJVariantKind.GRID,
+        parentAssetId: upscaleParentAssetId ?? null,
         assetId: asset.id,
         mjImageUrl: out.sourceUrl ?? null,
+        mjActionLabel: upscaleParentAssetId
+          ? `Upscale (Subtle)`
+          : null,
       },
     });
   }
@@ -373,7 +397,14 @@ async function ingestOutputs(
   // operatör manuel promote eder.
   // Try/catch — promote fail ingest sonucu bozmasın (manuel promote
   // hâlâ yapılabilir; idempotent).
-  if (mjJob.referenceId && mjJob.productTypeId) {
+  // Pass 60 — Upscale ingest'te auto-promote SKIP. Parent zaten Review'a
+  // alınmış olabilir; upscale child'ı ayrı GeneratedDesign yapmak Review
+  // queue'yu kirletir. Operatör isterse manuel promote panel kullanır.
+  if (
+    !upscaleParentAssetId &&
+    mjJob.referenceId &&
+    mjJob.productTypeId
+  ) {
     try {
       const ids = await db.midjourneyAsset.findMany({
         where: { midjourneyJobId },

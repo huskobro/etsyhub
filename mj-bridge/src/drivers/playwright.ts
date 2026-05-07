@@ -48,7 +48,9 @@ import {
   downloadGridImages,
   SelectorMismatchError,
   submitPrompt,
+  triggerUpscale,
   waitForRender,
+  waitForUpscaleResult,
 } from "./generate-flow.js";
 
 export type PlaywrightDriverConfig = {
@@ -600,11 +602,17 @@ export class PlaywrightDriver implements BridgeDriver {
       return;
     }
 
+    // Pass 60 — kind="upscale" ayrı executor; kind="generate" mevcut akış.
+    if (job.request.kind === "upscale") {
+      await this.executeUpscaleJob(job, onProgress, signal);
+      return;
+    }
+
     if (job.request.kind !== "generate") {
       onProgress({
         state: "FAILED",
         blockReason: "internal-error",
-        message: `kind="${job.request.kind}" Pass 43 V1'de henüz desteklenmiyor (capability matrix V1.x)`,
+        message: `kind="${job.request.kind}" henüz desteklenmiyor (V1.x)`,
       });
       return;
     }
@@ -805,6 +813,237 @@ export class PlaywrightDriver implements BridgeDriver {
       outputs,
       mjJobId: render.mjJobId ?? undefined,
       message: "Render + download tamamlandı",
+    });
+  }
+
+  /**
+   * Pass 60 — Upscale executor (kind="upscale").
+   *
+   * Akış:
+   *   1. Parent /jobs/UUID?index=N sayfasına navigate
+   *   2. Challenge / login probe (mevcut akış)
+   *   3. Baseline UUIDs yakala
+   *   4. triggerUpscale("subtle") buton click
+   *   5. waitForUpscaleResult — yeni UUID + tek image
+   *   6. Download (image-URL-based, browser-context fetch)
+   *   7. COMPLETED + outputs (1 entry, gridIndex=0)
+   *
+   * Çıktı kontratı: outputs.length === 1 (upscale 4 grid değil, 1 image).
+   * Caller (EtsyHub ingest) variantKind=UPSCALE + parentAssetId yazar.
+   */
+  private async executeUpscaleJob(
+    job: { id: string; request: CreateJobRequest },
+    onProgress: DriverProgressCallback,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (job.request.kind !== "upscale") return; // type-narrow guard
+    if (!this.context) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "browser-crashed",
+        message: "Bridge init() henüz çağrılmadı",
+      });
+      return;
+    }
+    const { parentMjJobId, gridIndex, mode } = job.request;
+    if (gridIndex < 0 || gridIndex > 3) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "internal-error",
+        message: `Invalid gridIndex: ${gridIndex} (0..3 beklenir)`,
+      });
+      return;
+    }
+
+    onProgress({ state: "OPENING_BROWSER", message: "Browser hazırlanıyor" });
+    const page = this.pickMjPage() ?? (await this.context.newPage());
+    await page.bringToFront().catch(() => undefined);
+
+    // Parent /jobs/UUID?index=N sayfasına git
+    const parentUrl = `${this.urls.base}/jobs/${parentMjJobId}?index=${gridIndex}`;
+    try {
+      await page.goto(parentUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30_000,
+      });
+      // Pass 60 — React lazy mount: domcontentloaded yetmiyor; networkidle
+      // veya minimum 3sn wait lazım ki Subtle/Creative butonları DOM'a
+      // gelsin. networkidle MJ'de uzun sürebilir; karma yaklaşım:
+      // networkidle 5sn timeout + ardından sabit 1sn buffer.
+      await page
+        .waitForLoadState("networkidle", { timeout: 5_000 })
+        .catch(() => undefined);
+      await page.waitForTimeout(1_000);
+    } catch (err) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "browser-crashed",
+        message: `Parent /jobs navigate fail: ${err instanceof Error ? err.message : "unknown"}`,
+      });
+      return;
+    }
+
+    // Challenge?
+    {
+      const ch = await detectChallengeRequired(page, this.selectors);
+      if (ch.challengeRequired) {
+        onProgress({
+          state: "AWAITING_CHALLENGE",
+          blockReason: "challenge-required",
+          message: ch.reason ?? "Challenge tespit edildi",
+        });
+        const cleared = await waitForChallengeCleared(page, this.selectors, {
+          timeoutMs: this.cfg.challengeTimeoutMs,
+          onPoll: (ms) => {
+            if (signal.aborted) return;
+            onProgress({
+              state: "AWAITING_CHALLENGE",
+              blockReason: "challenge-required",
+              message: `Bekliyoruz… ${Math.floor(ms / 1000)}s`,
+            });
+          },
+        });
+        if (signal.aborted) return;
+        if (!cleared.cleared) {
+          onProgress({
+            state: "FAILED",
+            blockReason: "challenge-required",
+            message: `Challenge ${this.cfg.challengeTimeoutMs / 1000}s içinde çözülmedi`,
+          });
+          return;
+        }
+      }
+    }
+
+    // Login?
+    {
+      const lg = await detectLoginRequired(page, this.selectors);
+      if (lg.loginRequired) {
+        onProgress({
+          state: "AWAITING_LOGIN",
+          blockReason: "login-required",
+          message: lg.reason,
+        });
+        const ok = await waitForLogin(page, this.selectors, {
+          timeoutMs: this.cfg.loginTimeoutMs,
+          onPoll: (ms) => {
+            if (signal.aborted) return;
+            onProgress({
+              state: "AWAITING_LOGIN",
+              blockReason: "login-required",
+              message: `Bekliyoruz… ${Math.floor(ms / 1000)}s`,
+            });
+          },
+        });
+        if (signal.aborted) return;
+        if (!ok.loggedIn) {
+          onProgress({
+            state: "FAILED",
+            blockReason: "login-required",
+            message: `Login ${this.cfg.loginTimeoutMs / 1000}s içinde tamamlanmadı`,
+          });
+          return;
+        }
+      }
+    }
+
+    // Baseline UUID'ler — sayfada zaten parent + diğer önceki render'lar var
+    onProgress({ state: "SUBMITTING_PROMPT", message: `Upscale ${mode} tetikleniyor` });
+    const baselineUuids = await captureBaselineUuids(page, this.selectors).catch(
+      () => new Set<string>(),
+    );
+
+    // Trigger Upscale Subtle/Creative
+    try {
+      await triggerUpscale(page, this.selectors, mode);
+    } catch (err) {
+      const reason: JobBlockReason =
+        err instanceof SelectorMismatchError
+          ? "selector-mismatch"
+          : "internal-error";
+      onProgress({
+        state: "FAILED",
+        blockReason: reason,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
+    if (signal.aborted) return;
+
+    onProgress({
+      state: "WAITING_FOR_RENDER",
+      message: `Upscale render bekleniyor · baseline=${baselineUuids.size} UUID`,
+    });
+
+    let result;
+    try {
+      result = await waitForUpscaleResult(page, this.selectors, {
+        baselineUuids,
+        timeoutMs: this.cfg.renderTimeoutMs,
+        onPoll: (ms) => {
+          if (signal.aborted) return;
+          onProgress({
+            state: "WAITING_FOR_RENDER",
+            message: `Upscale bekleniyor… ${Math.floor(ms / 1000)}s`,
+          });
+        },
+      });
+    } catch (err) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "render-timeout",
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
+    if (signal.aborted) return;
+
+    onProgress({
+      state: "COLLECTING_OUTPUTS",
+      mjJobId: result.mjJobId,
+      mjMetadata: {
+        upscaleMode: mode,
+        parentMjJobId,
+        parentGridIndex: gridIndex,
+      },
+    });
+
+    // Download (single image, gridIndex=0)
+    onProgress({
+      state: "DOWNLOADING",
+      message: "Upscale çıktısı indiriliyor",
+    });
+
+    let downloaded;
+    try {
+      downloaded = await downloadGridImages(
+        page,
+        [result.imageUrl],
+        this.cfg.outputsDir,
+        job.id,
+      );
+    } catch (err) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "internal-error",
+        message: `Upscale download fail: ${err instanceof Error ? err.message : "unknown"}`,
+      });
+      return;
+    }
+    if (signal.aborted) return;
+
+    const outputs = downloaded.map((d) => ({
+      gridIndex: d.gridIndex,
+      localPath: d.localPath,
+      fetchUrl: `/jobs/${job.id}/outputs/${d.gridIndex}`,
+      sourceUrl: d.sourceUrl,
+    }));
+
+    onProgress({
+      state: "COMPLETED",
+      outputs,
+      mjJobId: result.mjJobId,
+      message: `Upscale ${mode} tamamlandı`,
     });
   }
 
