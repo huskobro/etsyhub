@@ -88,6 +88,24 @@ export interface BridgeDriver {
      * (AWAITING_CHALLENGE/LOGIN) korunur, COMPLETED'da temizlenir.
      */
     lastDriverError: string | null;
+    /**
+     * Pass 47 — Browser yaşam döngüsü modu.
+     *   "attach":  kullanıcının var olan Brave/Chrome'una CDP ile bağlı
+     *   "launch":  bridge yeni Chromium/Chrome açtı
+     *   "mock":    mock driver (browser yok)
+     */
+    mode: "attach" | "launch" | "mock";
+    /** Pass 47 — Attach modunda CDP endpoint URL (yalnız attach'te dolu). */
+    cdpUrl?: string;
+    /**
+     * Pass 47 — Browser binary kind.
+     *   "chrome":   system Google Chrome (launch modu)
+     *   "brave":    system Brave (launch modu)
+     *   "chromium": Playwright bundled (launch modu — test build)
+     *   "external": kullanıcı tarafından başlatılmış (attach modu)
+     *   "mock":     mock driver
+     */
+    browserKind: "chrome" | "brave" | "chromium" | "external" | "mock";
   }>;
 
   /**

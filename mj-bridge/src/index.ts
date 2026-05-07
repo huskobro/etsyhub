@@ -5,18 +5,31 @@
 //   $ MJ_BRIDGE_TOKEN=secret123 MJ_BRIDGE_DRIVER=mock npm run dev
 //
 // Env:
-//   MJ_BRIDGE_TOKEN          — shared secret (zorunlu)
-//   MJ_BRIDGE_PORT           — HTTP port (default 8780)
-//   MJ_BRIDGE_DRIVER         — "mock" | "playwright" (default mock;
+//   MJ_BRIDGE_TOKEN           — shared secret (zorunlu)
+//   MJ_BRIDGE_PORT            — HTTP port (default 8780)
+//   MJ_BRIDGE_DRIVER          — "mock" | "playwright" (default mock;
 //                                gerçek MJ hesabı için "playwright")
-//   MJ_BRIDGE_PROFILE        — Playwright persistent profile dir
-//                                (default ./profile)
-//   MJ_BRIDGE_OUTPUTS        — Job outputs dir (default ./data/outputs)
-//   MJ_BRIDGE_JOBLOG         — Job log dir (default ./data/jobs)
-//   MJ_BRIDGE_BROWSER_CHANNEL — "chrome" | "chromium" (default "chrome")
-//                                System Chrome veya bundled Chromium.
-//                                Cloudflare managed challenge döngüsü
-//                                varsa "chrome" tercih edilmeli.
+//   MJ_BRIDGE_PROFILE         — Persistent profile dir (sadece launch
+//                                modunda; attach modunda kullanıcı
+//                                browser'ı kendi --user-data-dir flag'iyle
+//                                manage eder). Default ./profile
+//   MJ_BRIDGE_OUTPUTS         — Job outputs dir (default ./data/outputs)
+//   MJ_BRIDGE_JOBLOG          — Job log dir (default ./data/jobs)
+//   MJ_BRIDGE_BROWSER_MODE    — "attach" | "launch" (default "attach" —
+//                                Pass 47 önerilen). "attach": kullanıcının
+//                                başlattığı browser'a CDP ile bağlan.
+//                                "launch": bridge yeni browser açar.
+//   MJ_BRIDGE_CDP_URL         — Attach modunda CDP endpoint
+//                                (default http://127.0.0.1:9222)
+//   MJ_BRIDGE_BROWSER_KIND    — Launch modunda binary seçimi:
+//                                "chrome" | "brave" | "chromium"
+//                                (default "chrome"). Attach modunda
+//                                anlamı yok.
+//   MJ_BRIDGE_BROWSER_CHANNEL — DEPRECATED — _BROWSER_KIND ile değiştirildi.
+//                                Geriye uyumlu olarak hâlâ okunuyor.
+//   MJ_BRIDGE_BRAVE_PATH      — Launch + browserKind=brave durumunda
+//                                Brave binary path override
+//                                (default macOS standard).
 
 import { JobManager } from "./server/job-manager.js";
 import { buildServer } from "./server/http.js";
@@ -44,15 +57,27 @@ async function main(): Promise<void> {
     // TOS uyumu — production headless: false. Test için bypass:
     // MJ_BRIDGE_HEADLESS_TEST=1 (sadece testler; üretimde verilmez).
     const headlessForTesting = process.env["MJ_BRIDGE_HEADLESS_TEST"] === "1";
-    // Pass 45 — channel selection. Default "chrome" (system Chrome);
-    // env override "chromium" (bundled Chrome for Testing).
+    // Pass 47 — mode selection. Default "attach" (önerilen).
+    const modeEnv = process.env["MJ_BRIDGE_BROWSER_MODE"];
+    const mode: "attach" | "launch" =
+      modeEnv === "launch" ? "launch" : "attach";
+    const cdpUrl = process.env["MJ_BRIDGE_CDP_URL"] ?? "http://127.0.0.1:9222";
+    // Pass 47 — browserKind seçimi (launch modunda kullanılır).
+    // Pass 45 _BROWSER_CHANNEL geriye uyumlu mapping.
+    const kindEnv = process.env["MJ_BRIDGE_BROWSER_KIND"];
     const channelEnv = process.env["MJ_BRIDGE_BROWSER_CHANNEL"];
-    const channel: "chrome" | "chromium" =
-      channelEnv === "chromium" ? "chromium" : "chrome";
+    const browserKind: "chrome" | "brave" | "chromium" =
+      kindEnv === "brave"
+        ? "brave"
+        : kindEnv === "chromium" || channelEnv === "chromium"
+          ? "chromium"
+          : "chrome";
     driver = new PlaywrightDriver({
+      mode,
+      cdpUrl,
+      browserKind,
       profileDir,
       outputsDir,
-      channel,
       headlessForTesting,
     });
   } else if (driverKind === "mock") {

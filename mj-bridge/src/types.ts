@@ -216,6 +216,22 @@ export type BridgeHealth = {
      * COMPLETED'da temizlenir. Admin "neden takılı" sorusunu cevaplar.
      */
     lastDriverError?: string | null;
+    /**
+     * Pass 47 — Browser yaşam döngüsü modu.
+     *   "attach": kullanıcı browser'ına CDP ile bağlandı (önerilen)
+     *   "launch": bridge yeni browser açtı (test/dev)
+     *   "mock":   browser yok
+     */
+    mode?: "attach" | "launch" | "mock";
+    /** Pass 47 — Attach modunda kullanılan CDP URL (admin teşhis için). */
+    cdpUrl?: string;
+    /**
+     * Pass 47 — Browser binary kind (admin teşhis için).
+     *   "external": kullanıcı tarafından başlatılmış (attach)
+     *   "chrome" / "brave" / "chromium": launch modunda hangisi
+     *   "mock": mock driver
+     */
+    browserKind?: "chrome" | "brave" | "chromium" | "external" | "mock";
   };
   /**
    * Pass 43 — Boot-time selector smoke (yalnız PlaywrightDriver dolu;

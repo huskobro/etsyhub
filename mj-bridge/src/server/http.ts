@@ -81,6 +81,10 @@ export function buildServer(cfg: ServerConfig): FastifyInstance {
         // Pass 46 — driver gözlem alanları forward.
         lastDriverMessage: browserHealth.lastDriverMessage,
         lastDriverError: browserHealth.lastDriverError,
+        // Pass 47 — mode + cdpUrl + browserKind forward.
+        mode: browserHealth.mode,
+        cdpUrl: browserHealth.cdpUrl,
+        browserKind: browserHealth.browserKind,
       },
       selectorSmoke,
       mjSession: {

@@ -51,25 +51,57 @@ import {
 } from "./generate-flow.js";
 
 export type PlaywrightDriverConfig = {
-  /** Persistent profile path. */
+  /**
+   * Pass 47 — Browser yaşam döngüsü modu.
+   *
+   *   "attach":  ✅ Önerilen (Pass 47). Kullanıcının kendi terminal'inde
+   *              `--remote-debugging-port=N` ile başlattığı Brave/Chrome'a
+   *              `chromium.connectOverCDP(cdpUrl)` ile bağlanır. Bridge
+   *              **yeni pencere AÇMAZ**; mevcut pencerede çalışır. Tüm
+   *              UI manuel başlatılmış görünür → Cloudflare Turnstile
+   *              loop'u en az tetiklenir. Persistent profile kullanıcının
+   *              `--user-data-dir` flag'ine bırakılır.
+   *
+   *   "launch":  Pass 43-46 davranışı. Playwright `launchPersistentContext`
+   *              ile yeni Chromium/Chrome açar. CDP otomasyonu CF tarafından
+   *              algılanabilir; managed challenge döngüsü riski yüksek.
+   *              Test/dev/CI senaryolarında kullanılır.
+   *
+   * Default "attach" (real production); "launch" explicit env override.
+   */
+  mode?: "attach" | "launch";
+  /**
+   * Pass 47 — Attach modunda CDP endpoint'i. Kullanıcı browser'ı şu
+   * komutla başlatır:
+   *   /Applications/Brave\ Browser.app/Contents/MacOS/Brave\ Browser \
+   *     --remote-debugging-port=9222 \
+   *     --user-data-dir="$HOME/.mj-bridge-brave-profile"
+   *
+   * Default `http://127.0.0.1:9222`. Kullanıcı port'u değiştirirse
+   * `MJ_BRIDGE_CDP_URL` env ile geçilir.
+   */
+  cdpUrl?: string;
+  /**
+   * Pass 47 — Launch modunda hangi browser binary kullanılacak.
+   *   "chrome":  Playwright `channel: "chrome"` (system Google Chrome)
+   *   "brave":   Playwright `executablePath` ile Brave binary
+   *   "chromium": Playwright bundled (test build; CF agresif)
+   * Default "chrome". Attach modunda anlamı yok (browser kullanıcı
+   * tarafından başlatıldı).
+   */
+  browserKind?: "chrome" | "brave" | "chromium";
+  /** Persistent profile path (yalnız launch modunda kullanılır). */
   profileDir: string;
   /** Output dosyaları. */
   outputsDir: string;
   /**
-   * Pass 45 — Browser kanalı seçimi.
-   *   "chrome": macOS/Windows/Linux'ta yüklü system Google Chrome.
-   *             Playwright `channel: "chrome"` ile launch eder.
-   *             Cloudflare bunu "gerçek Chrome" olarak tanır;
-   *             test Chromium fingerprint sorunu yok.
-   *   "chromium": Playwright bundled Chromium ("Chrome for Testing").
-   *               Test scenario'larda kullanışlı; production önerilmez
-   *               (Cloudflare managed challenge sürekli tetiklenir).
-   * Default `chrome`. Yoksa fallback `chromium`.
+   * @deprecated Pass 47 — `browserKind` ile değiştirildi.
+   * Geriye uyumlu: "chrome" → browserKind="chrome", aksi halde "chromium".
    */
   channel?: "chrome" | "chromium";
   /** TOS uyumu — production MUTLAKA görünür. Test için bypass etmek
    * isteyen `MJ_BRIDGE_HEADLESS_TEST=1` env'i kullanır (sadece testler;
-   * üretimde verilmez). */
+   * üretimde verilmez). Attach modunda anlamı yok. */
   headlessForTesting?: boolean;
   /** Login bekleme timeout — kullanıcı browser'da MJ'ye login etmesi
    * için süre. Default 5 dk. */
@@ -98,6 +130,11 @@ export class PlaywrightDriver implements BridgeDriver {
   } | null = null;
   /** Pass 45 — gerçekten launch edilen kanal (chrome veya chromium fallback). */
   private launchedChannel: "chrome" | "chromium" = "chromium";
+  /** Pass 47 — gerçekleşen mode: launch | attach. */
+  private actualMode: "attach" | "launch" = "launch";
+  /** Pass 47 — attach durumunda dış browserKind tespiti zor; cfg'den taşı. */
+  private actualBrowserKind: "chrome" | "brave" | "chromium" | "external" =
+    "chromium";
   /** Pass 45 — profile init anındaki state (fresh/primed). */
   private profileState: "fresh" | "primed" = "fresh";
   /**
@@ -110,6 +147,12 @@ export class PlaywrightDriver implements BridgeDriver {
 
   constructor(cfg: PlaywrightDriverConfig) {
     this.cfg = {
+      mode: cfg.mode ?? "attach",
+      cdpUrl: cfg.cdpUrl ?? "http://127.0.0.1:9222",
+      // browserKind: legacy `channel` field'ından mapping (geriye uyumlu).
+      browserKind:
+        cfg.browserKind ??
+        (cfg.channel === "chromium" ? "chromium" : "chrome"),
       profileDir: cfg.profileDir,
       outputsDir: cfg.outputsDir,
       channel: cfg.channel ?? "chrome",
@@ -121,19 +164,108 @@ export class PlaywrightDriver implements BridgeDriver {
   }
 
   async init(): Promise<void> {
-    await mkdir(this.cfg.profileDir, { recursive: true });
     await mkdir(this.cfg.outputsDir, { recursive: true });
 
-    // Pass 45 — profile state detection. Profile'da "Default" alt-dizini
-    // veya "Local State" dosyası varsa "primed" sayılır (Chrome bir kez
-    // başlatılmış); aksi halde "fresh" (ilk kullanım).
+    // Pass 47 — mode dispatch. Attach default; launch legacy/test.
+    if (this.cfg.mode === "attach") {
+      await this.initAttach();
+    } else {
+      await this.initLaunch();
+    }
+  }
+
+  /**
+   * Pass 47 — Attach modu init.
+   *
+   * `chromium.connectOverCDP(cdpUrl)` ile kullanıcının kendi terminal'inde
+   * başlattığı Brave/Chrome'a bağlanır. Yeni pencere AÇMAZ; mevcut
+   * pencerenin tab'larını paylaşır.
+   *
+   * Sözleşme:
+   *   • Kullanıcı browser'ı `--remote-debugging-port=9222` ile başlatmalı.
+   *   • Kullanıcı `--user-data-dir=...` ile ayrı profile dir vermeli
+   *     (günlük browser'a karışmasın).
+   *   • Bridge bağlandıktan sonra context'in default `pages()`'ini alır;
+   *     boşsa yeni tab oluşturur.
+   *   • Bridge shutdown context'i KAPATMAZ — kullanıcının pencerelerini
+   *     etkilemesin (kapatma kullanıcı sorumluluğunda).
+   */
+  private async initAttach(): Promise<void> {
+    this.actualMode = "attach";
+    // Profile dizini attach modunda Bridge tarafında manage edilmez —
+    // kullanıcı `--user-data-dir` flag'iyle yönetir. Yine de health
+    // alanı için "absent" benzeri sinyal:
+    this.profileState = "primed"; // attach = mutlaka mevcut çalışan browser
+    this.actualBrowserKind = "external";
+
+    let browser: import("playwright").Browser;
+    try {
+      browser = await chromium.connectOverCDP(this.cfg.cdpUrl, {
+        timeout: 10_000,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Attach modu fail: ${this.cfg.cdpUrl} CDP endpoint'ine bağlanılamadı. ` +
+          `Brave/Chrome'u şu komutla başlatın:\n` +
+          `  /Applications/Brave\\ Browser.app/Contents/MacOS/Brave\\ Browser \\\n` +
+          `    --remote-debugging-port=9222 \\\n` +
+          `    --user-data-dir="$HOME/.mj-bridge-brave-profile"\n` +
+          `Detay: ${msg}`,
+      );
+    }
+
+    // İlk context — kullanıcının açtığı pencere(ler)e karşılık gelir.
+    const contexts = browser.contexts();
+    if (contexts.length === 0) {
+      throw new Error(
+        "Attach modu: CDP bağlandı ama browser context yok. Browser'da " +
+          "en az bir pencere açık olmalı.",
+      );
+    }
+    this.context = contexts[0]!;
+
+    // Default page açık tutulur — yoksa yeni tab.
+    const pages = this.context.pages();
+    let page: Page;
+    if (pages.length === 0) {
+      page = await this.context.newPage();
+    } else {
+      // Mevcut bir MJ tab'ı varsa onu seç; yoksa ilk tab + MJ'ye git.
+      const mjPage = pages.find((p) => p.url().includes("midjourney.com"));
+      page = mjPage ?? pages[0]!;
+    }
+    if (!page.url().includes("midjourney.com")) {
+      await page
+        .goto(this.urls.base, {
+          waitUntil: "domcontentloaded",
+          timeout: 30_000,
+        })
+        .catch(() => undefined);
+    }
+
+    // Pass 43 — boot smoke + session heuristic.
+    const smoke = await smokeCheckSelectors(page, this.selectors);
+    this.lastSelectorSmoke = { ...smoke, at: new Date().toISOString() };
+    await this.refreshSessionHeuristic(page);
+
+    this.lastDriverMessage = `Attach hazır (CDP ${this.cfg.cdpUrl}, ${pages.length} tab)`;
+  }
+
+  /**
+   * Pass 47 — Launch modu init (Pass 43-46 davranışı).
+   *
+   * Playwright launchPersistentContext ile yeni Chromium/Chrome açar.
+   * CF managed challenge riski yüksek; sadece test/dev için.
+   */
+  private async initLaunch(): Promise<void> {
+    this.actualMode = "launch";
+    await mkdir(this.cfg.profileDir, { recursive: true });
+
+    // Pass 45 — profile state detection.
     this.profileState = await this.detectProfileState();
 
-    // Pass 44 — stale lock cleanup. Bridge crash veya inspection script
-    // sonrası `SingletonLock`/`SingletonCookie`/`SingletonSocket` kalır;
-    // ikinci başlatma "Failed to create ProcessSingleton" hatasıyla fail
-    // olur. Burada best-effort sil; bir başka Chromium aktif olarak
-    // profile'ı kullanıyorsa Playwright bu durumu yine de yakalar.
+    // Pass 44 — stale lock cleanup.
     for (const lockFile of [
       "SingletonLock",
       "SingletonCookie",
@@ -142,46 +274,45 @@ export class PlaywrightDriver implements BridgeDriver {
       await unlink(join(this.cfg.profileDir, lockFile)).catch(() => undefined);
     }
 
-    // Pass 45 — Channel selection. System Chrome tercihi:
-    //   1. cfg.channel="chrome" + system Chrome mevcut → channel: "chrome"
-    //   2. cfg.channel="chromium" → bundled (test build)
-    //   3. cfg.channel="chrome" ama Chrome yok → uyarı + bundled fallback
-    // Cloudflare managed challenge döngüsü genelde test build'i
-    // hedefler; system Chrome bu döngüyü kırar.
-    //
-    // Pass 45 — `--enable-automation` flag KAPALI:
-    //   `ignoreDefaultArgs: ["--enable-automation"]` ile Playwright'ın
-    //   default eklediği automation flag'i kaldırılır. Bu **stealth
-    //   plugin değil** — sadece Playwright'ın test-bias'ını kapatmak.
-    //   `navigator.webdriver` undefined olur. Hiçbir bypass kodu yok;
-    //   sadece test-only bir flag'i kapatıyoruz.
+    // Browser kind selection (Pass 47).
     let channel: "chrome" | undefined;
-    if (this.cfg.channel === "chrome") {
+    let executablePath: string | undefined;
+    const kind = this.cfg.browserKind;
+    if (kind === "chrome") {
       channel = "chrome";
+      this.actualBrowserKind = "chrome";
+    } else if (kind === "brave") {
+      // Brave macOS standard path — diğer OS'larda env ile override edilebilir.
+      executablePath =
+        process.env["MJ_BRIDGE_BRAVE_PATH"] ??
+        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
+      this.actualBrowserKind = "brave";
+    } else {
+      this.actualBrowserKind = "chromium";
     }
 
-    // headless: false — TOS uyumu (Pass 41 doc §8.2). Test ortamı için
-    // env override mümkün ama production'da KULLANMA.
     try {
       this.context = await chromium.launchPersistentContext(
         this.cfg.profileDir,
         {
           channel,
+          executablePath,
           headless: this.cfg.headlessForTesting,
           viewport: { width: 1280, height: 900 },
           ignoreDefaultArgs: ["--enable-automation"],
         },
       );
-      this.launchedChannel = channel ?? "chromium";
+      this.launchedChannel =
+        kind === "chromium" ? "chromium" : kind === "brave" ? "chromium" : "chrome";
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (channel === "chrome") {
-        // System Chrome bulunamadı — bundled Chromium fallback.
+      if (channel === "chrome" || executablePath) {
+        // System Chrome/Brave bulunamadı — bundled Chromium fallback.
         // eslint-disable-next-line no-console
         console.warn(
-          `[mj-bridge:playwright] system Chrome bulunamadı (${msg}); ` +
+          `[mj-bridge:playwright] ${kind} bulunamadı (${msg}); ` +
             "bundled Chromium'a düşülüyor. CF managed challenge döngüsü " +
-            "olabilir — system Chrome kurulumu önerilir.",
+            "olabilir — attach modu önerilir.",
         );
         this.context = await chromium.launchPersistentContext(
           this.cfg.profileDir,
@@ -192,6 +323,7 @@ export class PlaywrightDriver implements BridgeDriver {
           },
         );
         this.launchedChannel = "chromium";
+        this.actualBrowserKind = "chromium";
       } else {
         throw err;
       }
@@ -234,7 +366,12 @@ export class PlaywrightDriver implements BridgeDriver {
 
   async shutdown(): Promise<void> {
     if (this.context) {
-      await this.context.close();
+      // Pass 47 — attach modunda context'i KAPATMA. Kullanıcının kendi
+      // browser penceresine bağlıyız; close() pencereyi öldürür ve
+      // login session'ı bozar. Sadece referansı bırak.
+      if (this.actualMode === "launch") {
+        await this.context.close();
+      }
       this.context = null;
     }
   }
@@ -245,17 +382,25 @@ export class PlaywrightDriver implements BridgeDriver {
     const pages = this.context?.pages() ?? [];
     return {
       launched: this.context !== null,
-      profileDir: this.cfg.profileDir,
+      profileDir:
+        this.actualMode === "attach"
+          ? "(attach — kullanıcı --user-data-dir flag'inde manage eder)"
+          : this.cfg.profileDir,
       pageCount: pages.length,
       activeUrl: pages[0]?.url(),
       mjLikelyLoggedIn: this.mjLikelyLoggedIn,
       lastChecked: this.lastSessionCheck.toISOString(),
       // Pass 45 — browser/profile mode görünürlüğü
       channel: this.launchedChannel,
-      profileState: this.profileState,
+      profileState:
+        this.actualMode === "attach" ? "primed" : this.profileState,
       // Pass 46 — driver gözlem alanları (admin debug için)
       lastDriverMessage: this.lastDriverMessage,
       lastDriverError: this.lastDriverError,
+      // Pass 47 — attach/launch mode + cdpUrl + browserKind
+      mode: this.actualMode,
+      cdpUrl: this.actualMode === "attach" ? this.cfg.cdpUrl : undefined,
+      browserKind: this.actualBrowserKind,
     };
   }
 

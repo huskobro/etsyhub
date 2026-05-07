@@ -78,6 +78,46 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 47 (attached browser model — tamamlanan)
+- ✅ **Stratejik karar**: manual generate + import REDDEDİLDİ. Hedef
+  model **attached browser profile + automated workflow** —
+  kullanıcı bir kez login olur, bridge oraya bağlanır, generate ve
+  sonrası OTOMATİK.
+- ✅ `PlaywrightDriverConfig` yeni alanlar:
+    `mode: "attach" | "launch"` (default attach)
+    `cdpUrl: string` (default http://127.0.0.1:9222)
+    `browserKind: "chrome" | "brave" | "chromium"` (default chrome)
+- ✅ `initAttach()` — `chromium.connectOverCDP(cdpUrl)` ile mevcut
+  browser'a bağlanır. Yeni pencere AÇMAZ; mevcut tab'lara karışır.
+  Mevcut MJ tab varsa onu seçer, yoksa yeni tab oluşturur. Shutdown
+  attach modunda context'i kapatmaz (kullanıcı pencerelerini bozmaz).
+- ✅ `initLaunch()` — Pass 43-46 davranışı korundu (test/dev için).
+  `browserKind="brave"` Brave binary path desteği eklendi
+  (`MJ_BRIDGE_BRAVE_PATH` env override).
+- ✅ Attach mode error handling: CDP unreachable → human-readable
+  exception (Brave/Chrome başlatma komutu önerisi içinde).
+- ✅ Health endpoint genişletildi: `mode`, `cdpUrl`, `browserKind`
+  alanları (admin teşhis için kritik).
+- ✅ Mock driver kontrat senkron: `mode: "mock"`, `browserKind: "mock"`.
+- ✅ EtsyHub bridge-client + admin sayfa Pass 47 alanlarını forward eder.
+- ✅ Admin /admin/midjourney:
+    - Browser kartında "Mod / Binary / Profile" + (attach ise) "CDP: ...".
+    - Handoff banner attach modunda farklı metin: "Bridge sizin
+      başlattığınız Brave/Chrome penceresine bağlı".
+    - Kurulum ipucu paneli attach komutu varsayılan olarak gösterilir
+      (default expanded), launch alternatifleri yorum olarak.
+- ✅ Bridge index.ts env mapping: `MJ_BRIDGE_BROWSER_MODE`,
+  `MJ_BRIDGE_CDP_URL`, `MJ_BRIDGE_BROWSER_KIND` (Pass 45
+  `_BROWSER_CHANNEL` deprecated ama geriye uyumlu).
+- ✅ Mock regression yok (canlı doğrulandı).
+- ⚠ **Pass 47 dürüst sınır**: Bu turun Claude code session'ında
+  kullanıcının fiziksel olarak Brave/Chrome'u remote-debugging
+  port'uyla başlatması bekleniyor. Test ortamında bu manuel adım
+  yapılamadığı için **attach modu canlı CDP bağlantısı
+  doğrulanamadı**. Tüm kontrat (config, init, health, error message)
+  yazıldı ve bridge tsc temiz; kullanıcı browser'ı manuel başlatınca
+  bağlantı çalışacak.
+
 ### Pass 46 (driver gözlem + inspect script kalibrasyon — tamamlanan)
 - ✅ PlaywrightDriver `lastDriverMessage` + `lastDriverError` alanları
   (state machine progress'i admin debug için yansır).

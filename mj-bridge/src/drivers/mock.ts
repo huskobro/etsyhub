@@ -58,6 +58,9 @@ export class MockDriver implements BridgeDriver {
       // Pass 46 — mock driver gözlem alanları null (job seq deterministic).
       lastDriverMessage: null,
       lastDriverError: null,
+      // Pass 47 — mock driver attach/launch ayrımı yok.
+      mode: "mock" as const,
+      browserKind: "mock" as const,
     };
   }
 

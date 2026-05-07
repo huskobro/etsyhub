@@ -105,6 +105,17 @@ export type BridgeHealth = {
     lastDriverMessage?: string | null;
     /** Pass 46 — son driver hatası (recoverable durumlarda korunur). */
     lastDriverError?: string | null;
+    /**
+     * Pass 47 — Browser yaşam döngüsü modu.
+     *   "attach": kullanıcı browser'ına CDP ile bağlandı (önerilen)
+     *   "launch": bridge yeni browser açtı (test/dev)
+     *   "mock":   browser yok
+     */
+    mode?: "attach" | "launch" | "mock";
+    /** Pass 47 — Attach modunda CDP URL. */
+    cdpUrl?: string;
+    /** Pass 47 — Browser binary kind (admin teşhis için). */
+    browserKind?: "chrome" | "brave" | "chromium" | "external" | "mock";
   };
   /**
    * Pass 43 — selector smoke (yalnız PlaywrightDriver). MockDriver'da null.

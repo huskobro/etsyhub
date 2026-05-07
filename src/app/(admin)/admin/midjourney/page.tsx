@@ -98,7 +98,9 @@ export default async function AdminMidjourneyPage() {
 
       {/* Pass 44 — challenge / login handoff bilgi banner. Bridge sağlıklı
           ama mjSession.likelyLoggedIn=false ise kullanıcıya manuel
-          intervention notu. */}
+          intervention notu. Pass 47 — attach modunda kullanıcı kendi
+          browser'ında login yapar; launch modunda bridge'in açtığı
+          pencerede. */}
       {healthResult.ok &&
       healthResult.health &&
       !healthResult.health.mjSession.likelyLoggedIn ? (
@@ -108,15 +110,26 @@ export default async function AdminMidjourneyPage() {
         >
           <p className="font-semibold">Manuel intervention bekleniyor</p>
           <p className="mt-1 text-xs">
-            Bridge MJ web&apos;e bağlandı ama login durumu pasif. Bridge
-            browser penceresinde
-            {" "}
-            <strong>Cloudflare doğrulamasını tamamlayın</strong> ve
-            ardından
-            {" "}
-            <strong>Discord/Google ile login olun</strong>. Bridge persistent
-            profile session&apos;ı kaydeder; sonraki turda tekrar login
-            gerekmez.
+            {healthResult.health.browser.mode === "attach" ? (
+              <>
+                Bridge sizin başlattığınız Brave/Chrome penceresine bağlı.
+                O pencereye geçip{" "}
+                <strong>Cloudflare doğrulamasını tamamlayın</strong> ve{" "}
+                <strong>Discord/Google ile login olun</strong>. Bridge
+                CDP üzerinden bağlı kaldığı için pencereyi kapatmanız
+                gerekmez.
+              </>
+            ) : (
+              <>
+                Bridge MJ web&apos;e bağlandı ama login durumu pasif.
+                Bridge&apos;in açtığı pencerede{" "}
+                <strong>Cloudflare doğrulamasını tamamlayın</strong> ve
+                ardından{" "}
+                <strong>Discord/Google ile login olun</strong>. Bridge
+                persistent profile session&apos;ı kaydeder; sonraki turda
+                tekrar login gerekmez.
+              </>
+            )}
           </p>
         </div>
       ) : null}
@@ -134,27 +147,39 @@ export default async function AdminMidjourneyPage() {
           <p className="mt-1 text-text-muted">
             {healthResult.error}
           </p>
-          <details className="mt-2">
+          <details className="mt-2" open>
             <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
-              Kurulum ipucu
+              Kurulum ipucu — Attach modeli (Pass 47, önerilen)
             </summary>
             <pre className="mt-2 overflow-x-auto rounded bg-surface-2 p-3 text-xs text-text">
-{`# Terminal 1 — bridge çalıştır:
-cd mj-bridge
-# Mock akış (UI test için):
-MJ_BRIDGE_TOKEN=$(openssl rand -hex 16) MJ_BRIDGE_DRIVER=mock npm run dev
+{`# 1. Brave (veya Chrome) ayrı profile ile başlat (terminal):
+"/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \\
+  --remote-debugging-port=9222 \\
+  --user-data-dir="$HOME/.mj-bridge-brave-profile"
 
-# Real akış (system Chrome — Pass 45, CF managed challenge için önerilen):
+# 2. Açılan pencerede:
+#    a) Cloudflare doğrulamasını çöz (gelirse)
+#    b) midjourney.com → Discord/Google ile login
+#    c) PENCEREYİ AÇIK BIRAK (kapatma)
+
+# 3. Başka terminal — bridge'i attach modunda başlat:
+cd mj-bridge
 MJ_BRIDGE_TOKEN=secret \\
 MJ_BRIDGE_DRIVER=playwright \\
-MJ_BRIDGE_BROWSER_CHANNEL=chrome \\
+MJ_BRIDGE_BROWSER_MODE=attach \\
+MJ_BRIDGE_CDP_URL=http://127.0.0.1:9222 \\
 npm run dev
 
-# Terminal 2 — EtsyHub .env.local:
+# 4. EtsyHub .env.local:
 MJ_BRIDGE_URL=http://127.0.0.1:8780
 MJ_BRIDGE_TOKEN=<aynı token>
 
-# EtsyHub'ı restart et.`}
+# 5. EtsyHub'ı restart et.
+
+# --- Alternatif: Mock (UI test) veya Launch (CF riski yüksek):
+# MJ_BRIDGE_DRIVER=mock npm run dev
+# MJ_BRIDGE_DRIVER=playwright MJ_BRIDGE_BROWSER_MODE=launch \\
+#   MJ_BRIDGE_BROWSER_KIND=chrome npm run dev`}
             </pre>
           </details>
         </div>
@@ -268,13 +293,17 @@ function BridgeHealthCard({ health }: { health: BridgeHealth }) {
             {health.browser.launched ? "Açık" : "Kapalı"} ·{" "}
             {health.browser.pageCount} tab
           </div>
-          {/* Pass 45 — channel + profile state. CF managed challenge
-              döngüsü teşhis için kritik (chromium=test build=sürekli
-              challenge; chrome=system Chrome=tek seferlik). */}
+          {/* Pass 47 — mode + browserKind + (attach ise) cdpUrl.
+              Pass 45 — channel + profile state geriye uyumlu. */}
           <div className="mt-1 text-xs text-text-muted">
-            Kanal:{" "}
+            Mod:{" "}
             <span className="font-mono">
-              {health.browser.channel ?? "—"}
+              {health.browser.mode ?? "—"}
+            </span>
+            {" · "}
+            Binary:{" "}
+            <span className="font-mono">
+              {health.browser.browserKind ?? health.browser.channel ?? "—"}
             </span>
             {" · "}
             Profile:{" "}
@@ -282,6 +311,12 @@ function BridgeHealthCard({ health }: { health: BridgeHealth }) {
               {health.browser.profileState ?? "—"}
             </span>
           </div>
+          {health.browser.mode === "attach" && health.browser.cdpUrl ? (
+            <div className="mt-1 truncate text-xs text-text-muted">
+              CDP:{" "}
+              <span className="font-mono">{health.browser.cdpUrl}</span>
+            </div>
+          ) : null}
           <div className="mt-1 truncate text-xs text-text-muted">
             {health.browser.activeUrl ?? "—"}
           </div>
