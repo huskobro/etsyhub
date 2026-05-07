@@ -78,6 +78,112 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 73 (Reference capability paketi: --cref tam stack + image-prompt API guard + smoke) 🟢
+
+**Hedef:** Reference-aware generate ailesini hızla ürünleştir. `cref`
+eksikti, `image-prompt + API-first` uyumu belirsizdi — Pass 73 ikisini
+de kapsadı.
+
+**Audit (Pass 73 başlangıç):**
+
+- **`--cref`** AutoSail main.js literal kanıtı:
+  - V6-only (`supports V6 model only, not compatible with oref`)
+  - **weight YOK** (`--cw` aranan grep boş; URL'ler space-separated push)
+  - oref ile **mutually-exclusive** (V6 vs V7+)
+- **`--sref` weight** (`URL::N`) AutoSail'de var ama Pass 73 V1 scope
+  dışı (Pass 74+)
+- **Image-prompt + API-first uyumsuz**: `attachImagePrompts` (Pass 65)
+  DOM-tabanlı (form state günceller). API submit (Pass 71/72) sayfa
+  state'i bypass eder → image prompt MJ tarafına ulaşmaz. Pass 73 V1
+  davranışı: image-prompt varsa `preferApiSubmit` ignore + DOM submit'e
+  düş (Pass 74 alternatif: `/api/storage-upload-file` + API submit
+  body'sinde bucketPathname).
+
+**Uygulanan (full --cref stack):**
+
+- ✅ `mj-bridge/src/types.ts`: `characterReferenceUrls?: string[]` field
+  (V6-only, weight YOK)
+- ✅ `mj-bridge/src/drivers/generate-flow.ts buildMJPromptString`:
+  `--cref URL [URL ...]` flag (sref/oref aynı pattern)
+- ✅ EtsyHub `bridge-client.ts BridgeGenerateRequest`: `characterReferenceUrls`
+- ✅ `midjourney.service.ts`:
+  - Yeni input field `characterReferenceUrls?: string[]`
+  - `validateCharacterReferenceUrls` (HTTPS-only + max 5)
+  - **cref/oref mutually-exclusive guard** (servis-level reject)
+  - Bridge request'e ilet
+- ✅ API route Zod: `characterReferenceUrls` (max 5 HTTPS) + audit metadata
+  `characterRefCount`
+- ✅ TestRenderForm: yeni textarea "--cref · V6 only · max 5" + hint
+  "--oref ile birlikte gönderilemez" + frontend pre-check
+  (cref + oref birlikte → setError)
+
+**Image-prompt + API-first guard:**
+
+- ✅ `executeJob` generate kind=API path: `hasImagePrompt =
+  referenceUrls.length > 0` → `preferApiSubmit` ignore + DOM submit'e
+  düş + `console.warn` log
+- ✅ `submitPromptViaApi` metadata.* count'ları:
+  `imagePromptCount=0` (API'de yasak), `imageReferenceCount=sref count`,
+  `characterReferenceCount=cref count` (Pass 71'de yarım kalmıştı,
+  Pass 73'te tamamlandı)
+
+**Doğrulama:**
+
+| Smoke | Sonuç |
+|---|---|
+| TS check (EtsyHub + bridge) | ✅ |
+| Token guard | ✅ |
+| UI test 946/946 | ✅ |
+| **buildMJPromptString unit test (5 kombinasyon)** | ✅ bare / sref / oref+ow / **cref** / **sref+cref combo** — hepsi doğru flag pattern |
+| **Bridge --cref V6 generate end-to-end** (`f56b09cc → eb96ec86-...`) | ✅ **77 saniyede COMPLETED**, promptString=`"... --ar 1:1 --v 6 --cref https://..."`, mjJobId set, 4 output |
+| Describe regression (`e81fd09a`) | ✅ ~6sn COMPLETED, describeMethod=api, 4 prompt |
+| Pass 72 generate DOM regression | ✅ Korundu (kod yolu değişmedi) |
+
+**Pass 73 net kazanımlar:**
+
+1. ✅ **`--cref` capability** uçtan uca tamam (contract → builder →
+   validator → mutually-exclusive guard → Zod → UI → smoke)
+2. ✅ **Reference flag suite tamamlandı**: sref / oref / ow / cref
+3. ✅ **Image-prompt + API-first uyum kararı** (Pass 73 V1: guard;
+   Pass 74+: API upload alternatifi)
+4. ✅ **submitPromptViaApi metadata.* count'ları** doğru (Pass 71'de
+   yarım kalmıştı; Pass 73'te sref/cref dahil)
+5. ✅ Describe + DOM generate + Pass 72 API-first regresyon yok
+
+**Pass 73 dürüst sınırlar:**
+
+- 🟡 **`--sref` weight (`URL::N`) Pass 74+** kapsam dışı
+- 🟡 **Image-prompt + API-first** alternatif (`/api/storage-upload-file`
+  + submit body bucketPathname) live capture audit gerek (Pass 74)
+- 🟡 **sref/oref MJ output görsel smoke** Pass 72'den devralınan; Pass
+  73'te `--cref` smoke yapıldı ama sref/oref sadece kod yolu kanıtlı
+- 🟡 BullMQ worker bootstrap dar kapsamlı (Pass 70'ten)
+- 🟡 `?reusePrompt=...` URL parametresi (Pass 66'dan)
+
+**Service capability map güncellemesi:**
+
+`docs/plans/2026-05-07-mj-service-capability-map.md` Pass 70'te
+yazılmıştı. Pass 73 sonrası reference capability matrix:
+
+| Reference | Type | Format | Bridge | Service | UI | Smoke |
+|---|---|---|---|---|---|---|
+| Image-prompt (`imagePromptUrls`) | DOM upload | popover + setInputFiles | Pass 65 | Pass 65 | Pass 65 | API path: guard (DOM'a düş) |
+| Style (`--sref`) | Prompt flag | `--sref URL [URL ...]` | Pass 65 | Pass 71 | Pass 71 | Kod yolu kanıtlı |
+| Omni (`--oref --ow`) | Prompt flag | `--oref URL --ow N` | Pass 65 | Pass 71 | Pass 71 | Kod yolu kanıtlı |
+| Character (`--cref`) | Prompt flag | `--cref URL [URL ...]` | **Pass 73** | **Pass 73** | **Pass 73** | **Pass 73 end-to-end** |
+
+App-agnostic `/v1/mj/generate` body field surface artık 4 reference
+type'ı destekliyor.
+
+**Pass 74 ana hedefler:**
+
+1. **Image-prompt + API-first uyumu** — `/api/storage-upload-file` live
+   capture + submit body bucketPathname pattern keşfi
+2. **--sref weight (`URL::N`)** support
+3. **Sref/oref görsel smoke** (gerçek MJ output sref'i yansıttığı
+   visual review)
+4. BullMQ worker bootstrap geneli (Pass 70'ten carry-over)
+
 ### Pass 72 (Generate API-first end-to-end TAMAMLANDI — ghost-job ÇÖZÜLDÜ) 🟢
 
 **Hedef:** Pass 71 ghost-job problemini çöz, generate API-first hattını

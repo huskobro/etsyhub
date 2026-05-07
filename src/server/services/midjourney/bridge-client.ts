@@ -63,6 +63,13 @@ export type BridgeGenerateRequest = {
     omniReferenceUrl?: string;
     omniWeight?: number;
     /**
+     * Pass 73 — Character reference (V6-only) — `--cref URL [URL ...]`.
+     * Bridge `buildMJPromptString` `--cref URL list` flag eklemesi yapar.
+     * Weight desteği YOK (AutoSail audit). oref ile mutually-exclusive
+     * (V6 vs V7+) — service tarafı ikisini birden gönderirse reddeder.
+     */
+    characterReferenceUrls?: string[];
+    /**
      * Pass 71 — API-first submit opt-in flag (deneysel).
      * Bridge driver kontratı `mj-bridge/src/types.ts` ile senkron tutulmalı.
      * Default false: bridge DOM submit (Pass 49 production-grade).

@@ -44,6 +44,9 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
   // Pass 71 — Omni reference (--oref) tek URL + omni weight (0-1000).
   const [omniRefUrl, setOmniRefUrl] = useState<string>("");
   const [omniWeightRaw, setOmniWeightRaw] = useState<string>("");
+  // Pass 73 — Character reference (--cref) V6-only. URL list, weight YOK.
+  // oref ile mutually-exclusive (service-level guard + UI-level uyarı).
+  const [characterRefUrlsRaw, setCharacterRefUrlsRaw] = useState<string>("");
   // Pass 71 — API-first submit opt-in (deneysel; default DOM).
   const [preferApiSubmit, setPreferApiSubmit] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +139,34 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
       omniWeight = parsed;
     }
 
+    // Pass 73 — Character reference (--cref) V6-only URL list.
+    const characterReferenceUrls = characterRefUrlsRaw
+      .split(/\s*\n\s*/)
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0);
+    if (characterReferenceUrls.length > 5) {
+      setError(
+        `Character reference URL maksimum 5 (geçen: ${characterReferenceUrls.length}).`,
+      );
+      return;
+    }
+    const cNonHttps = characterReferenceUrls.find(
+      (u) => !u.startsWith("https://"),
+    );
+    if (cNonHttps) {
+      setError(
+        `Character reference URL'leri SADECE HTTPS (R17.2). Hatalı: ${cNonHttps.slice(0, 60)}…`,
+      );
+      return;
+    }
+    // cref/oref mutually-exclusive (V6 vs V7+) frontend pre-check.
+    if (characterReferenceUrls.length > 0 && omniRefTrim.length > 0) {
+      setError(
+        "--cref (V6) ve --oref (V7+) birlikte gönderilemez. İkisinden birini seç.",
+      );
+      return;
+    }
+
     startTransition(async () => {
       try {
         const res = await fetch("/api/admin/midjourney/test-render", {
@@ -149,6 +180,9 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
             ...(styleReferenceUrls.length > 0 ? { styleReferenceUrls } : {}),
             ...(omniRefTrim.length > 0 ? { omniReferenceUrl: omniRefTrim } : {}),
             ...(omniWeight !== undefined ? { omniWeight } : {}),
+            ...(characterReferenceUrls.length > 0
+              ? { characterReferenceUrls }
+              : {}),
             ...(preferApiSubmit ? { preferApiSubmit: true } : {}),
           }),
         });
@@ -290,6 +324,29 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
           />
         </label>
       </div>
+
+      {/* Pass 73 — Character reference (--cref) V6-only URL list.
+          AutoSail audit: weight desteği yok, oref ile mutually-exclusive
+          (V6 vs V7+). Service tarafı redundant check. */}
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="text-text-muted">
+          Character reference URL&apos;leri (--cref · V6 only · max 5)
+        </span>
+        <textarea
+          value={characterRefUrlsRaw}
+          onChange={(e) => setCharacterRefUrlsRaw(e.target.value)}
+          disabled={disabled}
+          rows={2}
+          maxLength={2000}
+          className="rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-xs disabled:opacity-50"
+          placeholder={"https://.../character-ref-1.png"}
+          data-testid="mj-test-render-character-ref-urls"
+        />
+        <span className="text-text-muted">
+          --cref V6 modeli ile çalışır. --oref ile birlikte gönderilemez
+          (V6 vs V7+). Weight desteği yok (URL listesi space-separated).
+        </span>
+      </label>
 
       {/* Pass 71 — API-first submit opt-in (deneysel; default DOM).
           Ghost-job riski (kullanıcının MJ tab'ı React store güncellenmiyor)

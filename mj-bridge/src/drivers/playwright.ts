@@ -772,16 +772,49 @@ export class PlaywrightDriver implements BridgeDriver {
     let apiSubmitError: string | null = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const preferApiSubmit = (job.request.params as any).preferApiSubmit === true;
+    // Pass 73 — Image-prompt + API-first guard.
+    //
+    // attachImagePrompts (Pass 65) DOM-tabanlı: "Add Images → Image Prompts"
+    // popover'ından file input'a setInputFiles. Bu MJ tab'ının form-state'ini
+    // günceller. API submit (Pass 71/72) sayfa state'ini bypass eder; image
+    // prompt yüklemesi MJ tarafına ulaşmaz (`metadata.imagePrompts` sayısı
+    // gönderilse bile, MJ aktüel file'ı görmez → render image-prompt'sız
+    // çalışır veya fail olur).
+    //
+    // Pass 73 V1 davranışı: image-prompt varsa preferApiSubmit yoksay +
+    // DOM submit'e düş. Pass 74 alternatif: `/api/storage-upload-file`
+    // ile API-tabanlı upload + submit body'sine bucketPathname ekleme.
+    const hasImagePrompt = referenceUrls.length > 0;
+    const apiSubmitAllowed = preferApiSubmit && !hasImagePrompt;
+    if (preferApiSubmit && hasImagePrompt) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[generate] preferApiSubmit ignored: image-prompt mevcut → DOM submit'e düşülüyor (Pass 73 guard).",
+      );
+    }
 
-    if (preferApiSubmit) {
+    if (apiSubmitAllowed) {
       onProgress({
         state: "SUBMITTING_PROMPT",
         message: "Prompt API yolu deneniyor (opt-in)",
       });
       try {
+        // Pass 73 — submitPromptViaApi metadata.* count'ları net ilet.
+        // Image-prompt count guard'a girmediği durumda (yani 0) imagePromptCount=0;
+        // sref + cref URL count'ları submit body'sinin metadata'sına yansıt.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const params = job.request.params as any;
+        const styleCount = Array.isArray(params.styleReferenceUrls)
+          ? params.styleReferenceUrls.length
+          : 0;
+        const charCount = Array.isArray(params.characterReferenceUrls)
+          ? params.characterReferenceUrls.length
+          : 0;
         const apiResult = await submitPromptViaApi(page, promptString, {
           mode: "relaxed",
-          imagePromptCount: referenceUrls.length,
+          imagePromptCount: 0, // Pass 73 — image-prompt API path'te yasak (yukarıdaki guard)
+          imageReferenceCount: styleCount,
+          characterReferenceCount: charCount,
         });
         knownMjJobId = apiResult.mjJobId;
         submitMethod = "api";

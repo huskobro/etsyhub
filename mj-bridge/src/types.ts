@@ -97,15 +97,28 @@ export type MjGenerateParams = {
    */
   imagePromptUrls?: string[];
   /**
-   * Style reference — `--sref URL`. V1.x'te aktif edilecek.
+   * Style reference — `--sref URL [URL ...]`. Pass 71'de UI/service
+   * input alanları geldi. Pass 73 audit notu: AutoSail audit kanıtı
+   * `--sref` weight pattern destekliyor (`URL::N`); Pass 73 V1
+   * scope'unda weight desteği YOK (sadece URL list). Pass 74+'da
+   * weight eklenebilir.
    */
   styleReferenceUrls?: string[];
   /**
    * Omni reference (V7+) — `--oref URL --ow N`. Pass 71'de UI/service
-   * input alanları geldi.
+   * input alanları geldi. cref ile mutually exclusive (V7+ only).
    */
   omniReferenceUrl?: string;
   omniWeight?: number;
+  /**
+   * Pass 73 — Character reference (V6-only) — `--cref URL [URL ...]`.
+   * AutoSail audit (Pass 73): cref V6 model gerekli, oref ile mutually
+   * exclusive. Weight desteği YOK (eklenti `--cref URL` URL'leri
+   * space-separated push ediyor; `--cw` flag'i kullanılmıyor).
+   * Service tarafı omniReferenceUrl ile birlikte gönderilirse
+   * mutually-exclusive guard reddeder.
+   */
+  characterReferenceUrls?: string[];
   /**
    * Pass 71 — API-first submit opt-in flag (deneysel).
    * Default false → bridge DOM submit (Pass 49 production-grade).

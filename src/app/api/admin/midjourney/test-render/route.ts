@@ -62,6 +62,13 @@ const body = z.object({
     .startsWith("https://")
     .optional(),
   omniWeight: z.number().int().min(0).max(1000).optional(),
+  // Pass 73 — Character reference (V6-only) `--cref URL [URL ...]`.
+  // Service-level mutually-exclusive guard cref+oref kombinasyonunu
+  // reddeder (V6 vs V7+).
+  characterReferenceUrls: z
+    .array(z.string().url().startsWith("https://"))
+    .max(5)
+    .optional(),
   // Pass 71 — API-first submit opt-in (deneysel; default DOM submit).
   preferApiSubmit: z.boolean().optional(),
 });
@@ -111,6 +118,8 @@ export const POST = withErrorHandling(async (req: Request) => {
       styleReferenceUrls: parsed.data.styleReferenceUrls,
       omniReferenceUrl: parsed.data.omniReferenceUrl,
       omniWeight: parsed.data.omniWeight,
+      // Pass 73 — cref (V6-only)
+      characterReferenceUrls: parsed.data.characterReferenceUrls,
       preferApiSubmit: parsed.data.preferApiSubmit,
     });
 
@@ -132,6 +141,8 @@ export const POST = withErrorHandling(async (req: Request) => {
         styleRefCount: parsed.data.styleReferenceUrls?.length ?? 0,
         omniRef: !!parsed.data.omniReferenceUrl,
         omniWeight: parsed.data.omniWeight ?? null,
+        // Pass 73 — cref count
+        characterRefCount: parsed.data.characterReferenceUrls?.length ?? 0,
         preferApiSubmit: !!parsed.data.preferApiSubmit,
       },
     });

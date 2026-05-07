@@ -100,6 +100,13 @@ export type CreateMidjourneyJobInput = {
   /** Pass 71 — `--ow N` omni weight (0-1000). */
   omniWeight?: number;
   /**
+   * Pass 73 — Character reference (V6-only) `--cref URL [URL ...]`.
+   * AutoSail audit kanıtı: weight yok, max 5 URL pratikte.
+   * `omniReferenceUrl` ile mutually-exclusive (V6 vs V7+) — ikisi
+   * birden geldiyse service ValidationError.
+   */
+  characterReferenceUrls?: string[];
+  /**
    * Pass 71 — API-first submit opt-in flag. Default false (DOM submit
    * production-grade). API path bridge driver'ında implementasyonu var
    * ama gerçek smoke ghost-job problemi gösterdi (submit OK ama MJ tab
@@ -159,6 +166,28 @@ function validateOmniReferenceUrl(raw: string | undefined): string | undefined {
   }
   return cleaned;
 }
+/** Pass 73 — Character reference (V6-only) URL kontratı (--cref).
+ * HTTPS-only + max 5 + weight YOK. */
+const CHARACTER_REFERENCE_URLS_MAX = 5;
+function validateCharacterReferenceUrls(
+  raw: string[] | undefined,
+): string[] {
+  if (!raw || raw.length === 0) return [];
+  const cleaned = raw.map((u) => u.trim()).filter((u) => u.length > 0);
+  if (cleaned.length > CHARACTER_REFERENCE_URLS_MAX) {
+    throw new Error(
+      `characterReferenceUrls max ${CHARACTER_REFERENCE_URLS_MAX} (geçen: ${cleaned.length})`,
+    );
+  }
+  for (const u of cleaned) {
+    if (!u.startsWith("https://")) {
+      throw new Error(
+        `characterReferenceUrls SADECE HTTPS kabul eder (R17.2). Hatalı: ${u.slice(0, 80)}`,
+      );
+    }
+  }
+  return cleaned;
+}
 
 export type CreateMidjourneyJobResult = {
   midjourneyJob: MidjourneyJob;
@@ -195,6 +224,19 @@ export async function createMidjourneyJob(
     input.omniWeight <= 1000
       ? Math.round(input.omniWeight)
       : undefined;
+  // Pass 73 — Character reference (V6-only) validation.
+  const characterReferenceUrls = validateCharacterReferenceUrls(
+    input.characterReferenceUrls,
+  );
+  // Pass 73 — cref / oref mutually-exclusive guard. AutoSail audit
+  // kanıtı: cref V6-only, oref V7+. MJ tarafı ikisini birden kabul
+  // etmez. Frontend pre-validation + service-level redundant check.
+  if (characterReferenceUrls.length > 0 && omniReferenceUrl) {
+    throw new Error(
+      "characterReferenceUrls (--cref) ve omniReferenceUrl (--oref) birlikte gönderilemez. " +
+        "cref V6-only, oref V7+; ikisinden birini seç.",
+    );
+  }
 
   // 1) Bridge enqueue.
   const bridgeReq: BridgeGenerateRequest = {
@@ -215,6 +257,11 @@ export async function createMidjourneyJob(
         : {}),
       ...(omniReferenceUrl ? { omniReferenceUrl } : {}),
       ...(omniWeight !== undefined ? { omniWeight } : {}),
+      // Pass 73 — Character reference (V6-only). buildMJPromptString
+      // `--cref URL list` flag eklemesi yapar.
+      ...(characterReferenceUrls.length > 0
+        ? { characterReferenceUrls }
+        : {}),
       // Pass 71 — API-first submit opt-in (deneysel).
       ...(input.preferApiSubmit ? { preferApiSubmit: true } : {}),
     },

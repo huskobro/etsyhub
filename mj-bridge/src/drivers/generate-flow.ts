@@ -69,6 +69,15 @@ export function buildMJPromptString(params: MjGenerateParams): string {
       parts.push(`--ow ${params.omniWeight}`);
     }
   }
+  // Pass 73 — Character reference (V6-only). AutoSail audit kanıtı:
+  // `--cref URL [URL ...]` URL'ler space-separated, weight yok.
+  // Service tarafı oref ile mutually-exclusive guard ediyor (V6 vs V7+).
+  if (
+    params.characterReferenceUrls &&
+    params.characterReferenceUrls.length > 0
+  ) {
+    parts.push(`--cref ${params.characterReferenceUrls.join(" ")}`);
+  }
 
   return parts.join(" ");
 }
