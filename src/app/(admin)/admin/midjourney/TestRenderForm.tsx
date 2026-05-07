@@ -34,6 +34,10 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
   const [referenceId, setReferenceId] = useState<string>("");
+  // Pass 65 — Image-prompt URL'leri (HTTPS). Newline-separated input,
+  // submit'te split + filter. Frontend pre-validation: HTTPS-only,
+  // max 10 URL (server-side z.array().max(10) ile çift kontrol).
+  const [referenceUrlsRaw, setReferenceUrlsRaw] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -67,6 +71,26 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+
+    // Pass 65 — Image-prompt URL parse + frontend pre-validation
+    const referenceUrls = referenceUrlsRaw
+      .split(/\s*\n\s*/)
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0);
+    if (referenceUrls.length > 10) {
+      setError(
+        `Referans URL maksimum 10 (geçen: ${referenceUrls.length}). Gerekirse iki ayrı job çalıştır.`,
+      );
+      return;
+    }
+    const nonHttps = referenceUrls.find((u) => !u.startsWith("https://"));
+    if (nonHttps) {
+      setError(
+        `Referans URL'leri SADECE HTTPS olabilir (R17.2). Hatalı: ${nonHttps.slice(0, 60)}…`,
+      );
+      return;
+    }
+
     startTransition(async () => {
       try {
         const res = await fetch("/api/admin/midjourney/test-render", {
@@ -76,6 +100,7 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
             prompt,
             aspectRatio,
             ...(referenceId ? { referenceId } : {}),
+            ...(referenceUrls.length > 0 ? { referenceUrls } : {}),
           }),
         });
         const json = (await res.json().catch(() => null)) as
@@ -136,6 +161,32 @@ export function TestRenderForm({ bridgeOk, driverKind }: TestRenderFormProps) {
           className="rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-xs disabled:opacity-50"
           placeholder="abstract wall art..."
         />
+      </label>
+
+      {/* Pass 65 — Image-prompt URL alanı (HTTPS, max 10).
+          Bridge "Add Images → Image Prompts" popover'ından file input'a
+          upload eder. URL paste-as-image-prompt MJ V8 web'de çalışmıyor;
+          gerçek upload ile yapılır. */}
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="text-text-muted">
+          Referans URL&apos;leri (opsiyonel · HTTPS · satır başına 1)
+        </span>
+        <textarea
+          value={referenceUrlsRaw}
+          onChange={(e) => setReferenceUrlsRaw(e.target.value)}
+          disabled={disabled}
+          rows={3}
+          maxLength={4000}
+          className="rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-xs disabled:opacity-50"
+          placeholder={
+            "https://upload.wikimedia.org/.../example1.png\nhttps://.../example2.jpg"
+          }
+          data-testid="mj-test-render-reference-urls"
+        />
+        <span className="text-text-muted">
+          MJ V8 &quot;Add Images → Image Prompts&quot; üzerinden upload edilir.
+          Public erişilebilir HTTPS URL gerek (R17.2). Max 10 URL.
+        </span>
       </label>
 
       <div className="flex flex-wrap items-end gap-3">

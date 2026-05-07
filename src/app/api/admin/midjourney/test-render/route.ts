@@ -41,6 +41,14 @@ const body = z.object({
   // (ingestOutputs sonunda 4 GeneratedDesign auto-create). Boşsa eski
   // davranış (operatör manuel promote eder).
   referenceId: z.string().min(1).optional(),
+  // Pass 65 — Image-prompt URL'leri (R17.2 HTTPS only, max 10).
+  // Bridge "Add Images → Image Prompts" popover'ından file input'a
+  // upload eder. Mevcut auto-promote akışı (referenceId verildiyse)
+  // değişmez.
+  referenceUrls: z
+    .array(z.string().url().startsWith("https://"))
+    .max(10)
+    .optional(),
 });
 
 export const POST = withErrorHandling(async (req: Request) => {
@@ -82,6 +90,8 @@ export const POST = withErrorHandling(async (req: Request) => {
       version: parsed.data.version,
       referenceId: parsed.data.referenceId,
       productTypeId,
+      // Pass 65 — image-prompt URL'leri.
+      referenceUrls: parsed.data.referenceUrls,
     });
 
     await audit({
@@ -94,6 +104,10 @@ export const POST = withErrorHandling(async (req: Request) => {
         prompt: parsed.data.prompt.slice(0, 200),
         aspectRatio: parsed.data.aspectRatio,
         referenceId: parsed.data.referenceId ?? null,
+        // Pass 65 — image-prompt URL count + ilk URL'in 80 karakteri (audit log)
+        referenceUrlCount: parsed.data.referenceUrls?.length ?? 0,
+        referenceUrlsHead:
+          parsed.data.referenceUrls?.[0]?.slice(0, 80) ?? null,
       },
     });
 

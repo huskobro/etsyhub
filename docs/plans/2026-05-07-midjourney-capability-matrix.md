@@ -78,6 +78,173 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 65 (Describe pivot → Image-prompt akışı — kısmi 🟡) 🟡
+
+**Hedeflenen:** MJ `describe` capability (görsel → 4 prompt önerisi).
+
+**Audit bulgusu (yön değişikliği):** **MJ V8 web UI'sında describe YOK.**
+
+3 ardışık probe script ile gerçek browser üzerinden doğrulandı:
+- `inspect-describe-dom.ts` → `/describe` URL **404** ("This page has not
+  been /imagine'd yet"); `/imagine`'de file input yok
+- `inspect-describe-dom-v2.ts` → Explore/Create/Edit/Personalize/Account
+  hiçbirinde file input yok; sol nav: Explore/Create/Edit/Organize/
+  Personalize/Moodboards/Style Creator/Tasks/Help — describe linki yok
+- `inspect-add-images.ts` → "Add Images" tıklayınca açılan menü **describe
+  içermiyor**; 4 kategori: Start Frame / Image Prompts / Style References /
+  Omni Reference (tümü prompt-time görsel-referans, çıktı verir prompt
+  vermez)
+
+**Sonuç:** MJ V8 web'den describe kaldırılmış. Discord'da hâlâ var ama
+bizim mimarimiz Discord'a entegre değil (Pass 41 mimari kararı).
+
+**Yön değişikliği (kullanıcı yetkilendirmesi: "boş dönme, en yüksek
+değerli ikinci adayı seç"):** **Image-prompt akışı**.
+- Bridge contract Pass 42'den `imagePromptUrls[]` field'ını kabul ediyordu
+- `MidjourneyJob.referenceUrls` Prisma alanı zaten şemada
+- "Worth adapting" listesinin başında zaten image-prompt vardı
+- En kritik EtsyHub için: kullanıcının bookmark/reference akışını MJ'ye
+  bağlar (Reference Board → "Bunun gibi varyasyonlar" → 4 grid)
+
+**Audit'in 4. çıktısı (URL paste-as-image-prompt çalışıyor mu?):**
+`probe-image-prompt-url.ts` ile prompt textarea'ya bir URL yapıştırıldı
+ve DOM gözlemlendi. Sonuç: **URL plain text olarak gitti, thumbnail'a
+dönüşmedi** (`formImgs: []`). MJ V8 web'de Discord'un eski "URL paste"
+davranışı kalmadı; **gerçek upload şart**.
+
+**Uygulanan:**
+
+- ✅ `selectors.ts` — yeni anahtarlar:
+  - `addImagesButton` (`button[aria-label="Add Images" i]`)
+  - `addImagesFileInput` (`input[type="file"][accept*="image" i]`)
+  - `addImagesTabImagePrompts` (xpath: outer container `border-r`
+    + içinde "Image Prompts" + "Use the elements of an image")
+  - `addImagesTabStyleReferences`, `addImagesTabOmniReference`
+    (gelecek Pass'lere altyapı; bu turda kullanılmıyor)
+- ✅ `generate-flow.ts` — `attachImagePrompts(page, selectors, urls)`
+  helper:
+  - **Idempotent open** — file input zaten DOM'da varsa popover açık
+    (tekrar tıklamak kapatır), atla
+  - "Add Images" tıkla → 1500ms bekle → file input attached doğrula
+  - **"Image Prompts" tab'ı tıkla** (Pass 65 v2 fix — kullanıcı feedback
+    smoke v1: tab seçilmezse upload **Start Frame** slot'una düşüyor +
+    render-timeout)
+  - URL'leri buffer'a indir — **yeni tab + page.goto** (Pass 49
+    pattern; CF korumalı CDN endpoint'leri için `ctx.request.get` 403
+    döner)
+  - Mime auto-detect (Content-Type → magic bytes fallback)
+  - `setInputFiles(filePayloads)` — multiple destekli
+  - Hata: `addImagesButton` / `addImagesFileInput` /
+    `addImagesTabImagePrompts` mismatch → `SelectorMismatchError`
+- ✅ `playwright.ts executeJob (kind=generate)` — submit ÖNCESİ
+  `attachImagePrompts` çağrısı; failure'da `selector-mismatch` veya
+  `internal-error` blockReason ile FAILED
+- ✅ `buildMJPromptString` — `imagePromptUrls`'leri prompt text'ine
+  EKLEMEZ artık (Pass 65 audit doğrulaması: çalışmıyor); sadece prompt
+  text + flag'ler döner. Eski Discord-uyumlu davranış kaldırıldı.
+- ✅ EtsyHub `bridge-client.ts` — `BridgeGenerateRequest.params.imagePromptUrls`
+  zaten Pass 42'den kontratta vardı; no-op
+- ✅ EtsyHub `midjourney.service.ts` — `CreateMidjourneyJobInput.referenceUrls?: string[]`:
+  - `validateReferenceUrls()`: HTTPS-only (R17.2) + max 10
+  - Bridge request'ine `imagePromptUrls` olarak iletilir
+  - `MidjourneyJob.referenceUrls` Prisma alanına yazılır (kayıt + lineage)
+- ✅ EtsyHub `test-render/route.ts` — Zod genişletme:
+  `referenceUrls: z.array(z.string().url().startsWith("https://")).max(10).optional()`;
+  audit log'a `referenceUrlCount` + `referenceUrlsHead`
+- ✅ Admin UI `TestRenderForm.tsx` — yeni textarea:
+  - "Referans URL'leri (opsiyonel · HTTPS · satır başına 1)"
+  - Frontend pre-validation: HTTPS check + max 10
+  - Hint: "MJ V8 'Add Images → Image Prompts' üzerinden upload edilir"
+  - test-id: `mj-test-render-reference-urls`
+- ✅ Detail page `[id]/page.tsx` — yeni meta hücresi:
+  - "Referans görseller (N) · Image Prompts" badge
+  - Her URL için 12px thumbnail + truncate URL
+  - test-id: `mj-job-reference-urls`
+  - Eski job'larda (`referenceUrls=[]`) gösterilmez
+
+**Doğrulama (gerçek browser smoke):**
+
+| Smoke | Sonuç |
+|---|---|
+| EtsyHub UI render | ✅ TestRenderForm referans URL alanı görünür, placeholder + hint doğru |
+| Frontend pre-validation (HTTP / mixed / >10 / empty / OK) | ✅ Inline validation logic 5/5 doğru |
+| TS check (EtsyHub + bridge) | ✅ Yeşil |
+| Token guard | ✅ Yeşil |
+| UI test suite | ✅ 946/946 |
+| Bridge enqueue + state machine | ✅ QUEUED → SUBMITTING_PROMPT → … |
+| URL fetch (Wikimedia) | ❌ HTTP 400 (bot block) → MJ CDN ile çözüldü |
+| URL fetch (MJ CDN, `ctx.request.get`) | ❌ HTTP 403 (CF) → yeni tab + page.goto ile çözüldü (Pass 49 pattern) |
+| Add Images popover open + file input visible | ✅ |
+| **Smoke v1 (tab seçimi YOK)** | ❌ Upload Start Frame slot'a düştü → MJ tarafı **`/video/UUID/N_640_N.webp?frame=last` çıktısı** üretti (animate, --duration 5.2s); kullanıcı feedback ile teşhis |
+| **Smoke v2 (Image Prompts tab seçimi VAR)** | ✅ MJ tarafı **gerçek 4 grid image render etti** (`cdn.midjourney.com/8559ebde-06c7-47c8-9805-c107046058ce/0_<n>_640_N.webp` — video DEĞİL, image). DOM peek ile direkt doğrulandı |
+| Bridge state polling | 🟡 STUCK on SUBMITTING_PROMPT (driver `waitForRender` image-prompt'lı yeni 4-grid'i baseline'dan ayrıştıramıyor). MJ tarafı tamam ama EtsyHub ingest tetiklenmiyor — Pass 66 fix |
+
+**Pass 65 dürüst sınırlar:**
+
+- ✅ **Image-prompt akışının MJ TARAFI ÇALIŞIYOR** (DOM peek doğrulaması:
+  yeni UUID `8559ebde` 4-grid image, animate değil). v1 fix'in (tab
+  seçimi) gerçek etkisi gözle görüldü.
+- 🟡 **Bridge state polling stuck** — `waitForRender` image-prompt'lı
+  job'ın yeni 4-grid'ini DOM'da bulduğunda çalışmıyor; SUBMITTING_PROMPT
+  state'inde takılı kalıyor. Bunun olası sebebi: MJ tarafı image-prompt
+  job'larında thumbnail render'ı normal generate'ten farklı sırayla
+  ekliyor olabilir, baseline UUIDs'ten ayrıştırma yanlış çalışıyor.
+  **Bu Pass 66 hedefidir** (debug + fix); kod yolu zaten doğru, son
+  ingest adımı eksik.
+- 🟡 Sadece "Image Prompts" tab implement edildi. **Start Frame**
+  selector + animate flow **kasıtlı olarak korundu** (kullanıcı yönü:
+  ileride implement edilecek video capability). Style References ve
+  Omni Reference selectors hazır ama UI/service tarafından
+  tetiklenmiyor — Pass 66+ kapsamı (`--sref`/`--oref` flag pattern'leri
+  bridge'de zaten var).
+- 🟡 Reference Board → "Bunun gibi varyasyonlar" entegrasyonu yok.
+  Operatör URL'leri elle textarea'ya yapıştırır. EtsyHub Reference'tan
+  doğrudan tetikleme Pass 66 hedefi.
+- ❌ MJ describe **bu turda yapılamadı** ve **gelecekte de bu mimaride
+  yapılamayacak** — MJ V8 web'den kaldırılmış. Alternatif: Vision-LLM
+  tabanlı "describe analoğu" (OpenAI Vision/Claude Vision ile referans
+  → prompt önerisi) — apayrı feature, MJ scope dışı.
+
+**Audit script'leri (gelecek pass'ler için referans):**
+- `mj-bridge/scripts/inspect-describe-dom.ts` — `/describe` 404 + `/imagine`
+  file input yok kanıtı
+- `mj-bridge/scripts/inspect-describe-dom-v2.ts` — Explore/Create/Edit/
+  Personalize/Account hiçbirinde file input yok; nav'da describe linki yok
+- `mj-bridge/scripts/inspect-add-images.ts` — Add Images popover içeriği
+  (4 kategori: Start Frame / Image Prompts / Style References / Omni
+  Reference)
+- `mj-bridge/scripts/probe-image-prompt-url.ts` — URL paste-as-image-prompt
+  MJ V8 web'de çalışmıyor kanıtı
+- `mj-bridge/scripts/inspect-add-images-tabs.ts` — 4 tab DOM yapısı
+  (border-r outer + sub-text + inner overlay)
+- `mj-bridge/scripts/debug-add-images-after.ts` — Idempotency probe
+  (popover zaten açıkken tekrar tıklamak kapatır)
+- `mj-bridge/scripts/peek-add-images-state.ts` — Live state peek (Pass 65
+  v2 doğrulamasında image render'ı DOM'da gözle gördük)
+
+**Capability matrix güncellemesi:**
+
+1. **next immediate (Pass 66)**:
+   - **Bridge state polling fix**: image-prompt'lı render'da
+     `waitForRender` UUID detection neden başarısız, debug + düzelt
+   - Real MJ smoke v3 COMPLETED end-to-end doğrulaması
+   - Reference Board "Bunun gibi varyasyonlar" → image-prompt tetikleyici
+   - Multiple URL upload ile aynı tur (1-4 URL test)
+2. **strong follow-up**:
+   - **Animate / Start Frame capability** (kullanıcı yönü: ileride
+     implement edilecek; v1 smoke kanıtladı ki MJ tarafı bridge'in
+     setInputFiles'ını animate olarak kabul ediyor — yeni `kind=animate`
+     bridge contract + `--duration N` flag wiring)
+   - Style References tab + `--sref` flag wire (selectors hazır)
+   - Omni Reference tab + `--oref --ow N` flag wire (selectors hazır)
+   - Topaz Gigapixel research + desktop automation prototipi
+3. **useful later**:
+   - Vision-LLM tabanlı "describe analoğu" — describe artık MJ web'de
+     yok, ama görsel→prompt çevrimi hâlâ değerli
+4. **do not now**:
+   - Captcha auto-solve, stealth, headless, Discord (sabit)
+   - MJ web `describe` — kaldırıldı, mimaride yok
+
 ### Pass 64 (List-level asset batch + status filter + format prefs — tamamlanan) 🟢
 
 Pass 63'ün detail-page batch katmanını **list page seviyesine** taşıdı,

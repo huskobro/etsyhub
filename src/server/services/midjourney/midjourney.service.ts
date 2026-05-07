@@ -69,7 +69,40 @@ export type CreateMidjourneyJobInput = {
   styleRaw?: boolean;
   stylize?: number;
   chaos?: number;
+  /**
+   * Pass 65 — Image-prompt URL'leri. MJ V8 web "Add Images → Image Prompts"
+   * popover'ından file input'a upload edilir (driver attachImagePrompts).
+   *
+   * Sözleşme (R17.2):
+   *   - Sadece HTTPS (R17.2: local file path / data: URI yasak)
+   *   - Public erişilebilir (bridge browser context'i auth/cookie'siz fetch'ler)
+   *   - Max 10 URL (MJ web pratikte 4-5 üstü için backed-up uyarı veriyor)
+   *
+   * `MidjourneyJob.referenceUrls` Prisma alanına yazılır + bridge'e
+   * `imagePromptUrls` olarak iletilir.
+   */
+  referenceUrls?: string[];
 };
+
+/** Pass 65 — image-prompt URL kontratı (R17.2). */
+const REFERENCE_URLS_MAX = 10;
+function validateReferenceUrls(raw: string[] | undefined): string[] {
+  if (!raw || raw.length === 0) return [];
+  const cleaned = raw.map((u) => u.trim()).filter((u) => u.length > 0);
+  if (cleaned.length > REFERENCE_URLS_MAX) {
+    throw new Error(
+      `referenceUrls max ${REFERENCE_URLS_MAX} (geçen: ${cleaned.length})`,
+    );
+  }
+  for (const u of cleaned) {
+    if (!u.startsWith("https://")) {
+      throw new Error(
+        `referenceUrls SADECE HTTPS kabul eder (R17.2). Hatalı: ${u.slice(0, 80)}`,
+      );
+    }
+  }
+  return cleaned;
+}
 
 export type CreateMidjourneyJobResult = {
   midjourneyJob: MidjourneyJob;
@@ -93,6 +126,9 @@ export async function createMidjourneyJob(
   input: CreateMidjourneyJobInput,
   bridgeClient: BridgeClient = getBridgeClient(),
 ): Promise<CreateMidjourneyJobResult> {
+  // Pass 65 — Image-prompt URL validation (R17.2 HTTPS-only + max 10).
+  const referenceUrls = validateReferenceUrls(input.referenceUrls);
+
   // 1) Bridge enqueue.
   const bridgeReq: BridgeGenerateRequest = {
     kind: "generate",
@@ -103,6 +139,8 @@ export async function createMidjourneyJob(
       styleRaw: input.styleRaw,
       stylize: input.stylize,
       chaos: input.chaos,
+      // Pass 65 — bridge "Add Images → Image Prompts" popover üzerinden upload eder.
+      ...(referenceUrls.length > 0 ? { imagePromptUrls: referenceUrls } : {}),
     },
   };
   const snapshot = await bridgeClient.enqueueJob(bridgeReq);
@@ -131,6 +169,8 @@ export async function createMidjourneyJob(
         state: STATE_MAP[snapshot.state],
         prompt: input.prompt,
         promptParams: bridgeReq.params as unknown as Prisma.InputJsonValue,
+        // Pass 65 — Prisma referenceUrls alanı (Pass 42'den şemada yer ayrılı).
+        referenceUrls,
       },
     });
     return { job, mjJob };

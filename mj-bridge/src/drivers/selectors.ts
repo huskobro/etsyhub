@@ -36,6 +36,19 @@ export type MJSelectorKey =
   | "upscaleCreative"
   | "varySubtle"
   | "varyStrong"
+  // Pass 65 — Image-prompt akışı (MJ V8 web).
+  // /imagine'de Imagine bar'ın yanında "Add Images" butonu var. Tıklayınca
+  // popover açılır → 4 sekme (Start Frame / Image Prompts / Style References
+  // / Omni Reference) + altta file input (display:none, accept="image/*",
+  // multiple). DEFAULT AÇILIŞTA "Start Frame" seçili — image-prompt için
+  // önce "Image Prompts" tab'ı tıklanmalı (kullanıcı feedback Pass 65
+  // smoke v1: yapılmazsa upload Start Frame slot'una düşüyor + render
+  // timeout oluyor).
+  | "addImagesButton"
+  | "addImagesFileInput"
+  | "addImagesTabImagePrompts"
+  | "addImagesTabStyleReferences"
+  | "addImagesTabOmniReference"
   | "cloudflareChallenge"
   | "hcaptchaChallenge"
   | "loginIndicator"
@@ -170,6 +183,41 @@ export const DEFAULT_SELECTORS: Record<MJSelectorKey, string> = {
     'xpath=//div[normalize-space(.)="Vary"]/following-sibling::div[1]//button[normalize-space(.)="Subtle"]',
   varyStrong:
     'xpath=//div[normalize-space(.)="Vary"]/following-sibling::div[1]//button[normalize-space(.)="Strong"]',
+
+  // Pass 65 — "Add Images" button (Imagine bar yanında).
+  // aria-label="Add Images" en güvenilir; text fallback geri uyumlu.
+  addImagesButton:
+    'button[aria-label="Add Images" i], ' +
+    'button:has-text("Add Images")',
+
+  // Pass 65 — Add Images popover içindeki file input. Audit: id yok,
+  // accept="image/*", multiple, display:none. Tek file input olduğu için
+  // genel selector güvenli; popover dışında DOM'da başka file input yok
+  // (Pass 65 v2 probe doğruladı — beforeOpen 0, afterOpen 1).
+  addImagesFileInput:
+    'input[type="file"][accept*="image" i]',
+
+  // Pass 65 — Add Images popover sekmeleri (4 kategori, yan yana).
+  // Her kategori `border-r` outer container'da; default açıldığında
+  // **Start Frame** seçili (animate için video — image-prompt DEĞİL).
+  // Image-prompt için "Image Prompts" tab'ını ÖNCE seçmek şart;
+  // kullanıcı feedback (Pass 65 smoke v1): tab seçilmeyince upload
+  // Start Frame slot'una düştü, render-timeout oldu.
+  //
+  // Pattern (Pass 60 Upscale/Vary stratejisinin aynısı): outer container
+  // class+text combine xpath. role/aria/data-testid yok.
+  addImagesTabImagePrompts:
+    'xpath=//div[contains(@class, "border-r") ' +
+    'and contains(., "Image Prompts") ' +
+    'and contains(., "Use the elements of an image")]',
+  addImagesTabStyleReferences:
+    'xpath=//div[contains(@class, "border-r") ' +
+    'and contains(., "Style References") ' +
+    'and contains(., "Use the style of an image")]',
+  addImagesTabOmniReference:
+    'xpath=//div[contains(@class, "border-r") ' +
+    'and contains(., "Omni Reference") ' +
+    'and contains(., "Use a person")]',
 
   // Cloudflare challenge iframe — URL pattern kontrol.
   cloudflareChallenge: 'iframe[src*="challenges.cloudflare.com"]',

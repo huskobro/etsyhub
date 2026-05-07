@@ -40,11 +40,15 @@ import type { MjGenerateParams } from "../types.js";
 export function buildMJPromptString(params: MjGenerateParams): string {
   const parts: string[] = [params.prompt.trim()];
 
-  // Image prompt URL'leri prompt başına gelir (MJ kuralı).
-  if (params.imagePromptUrls && params.imagePromptUrls.length > 0) {
-    // URL'leri başa al; prompt textini sona koy.
-    parts.unshift(...params.imagePromptUrls);
-  }
+  // Pass 65 — Image-prompt URL'leri ARTIK prompt textine eklenmiyor.
+  // MJ V8 web'de "URL'i textarea'ya yazınca image-prompt'a dönüşür"
+  // davranışı kalmadı (Pass 65 audit canlı doğrulaması: URL plain text
+  // olarak gidiyor, thumbnail oluşmuyor). Bunun yerine driver
+  // executeJob ÖNCESİ "Add Images → Image Prompts" popover'ından
+  // file input'a upload eder (attachImagePrompts helper). Bu fonksiyon
+  // sadece prompt text + flag'lerini birleştirir.
+  // Eski Discord-uyumlu davranış buildMJPromptString içinde DEĞİL,
+  // attachImagePrompts içinde mantığa yerleştirildi.
 
   // Param flag'leri.
   parts.push(`--ar ${params.aspectRatio}`);
@@ -92,6 +96,165 @@ export class SelectorMismatchError extends Error {
     );
     this.name = "SelectorMismatchError";
   }
+}
+
+/**
+ * Pass 65 — Image-prompt attachment (MJ V8 web).
+ *
+ * MJ V8 web'de prompt textarea'ya URL paste ETMEK image-prompt'a dönüşmüyor
+ * (Pass 65 audit canlı doğrulama). Gerçek yol: imagine bar yanındaki
+ * "Add Images" butonuna tıkla → popover açıl → file input'a image
+ * buffer'larını set et → popover'ı kapatmaya GEREK YOK (file ilave
+ * edildikten sonra arka planda persist olur, prompt submit'te image-prompt
+ * olarak job'a eklenir).
+ *
+ * URL'den indirme: bridge `page.context().request` API'si — auth/cookie
+ * gerektirmez (R17.2 contract: HTTPS public URL only). Indirilen buffer
+ * `setInputFiles` ile file input'a yazılır (Playwright accepts buffer
+ * via {name, mimeType, buffer} payload).
+ *
+ * Hata davranışı:
+ *   • addImagesButton görünmüyor → SelectorMismatchError("addImagesButton")
+ *   • file input set edilemiyor → SelectorMismatchError("addImagesFileInput")
+ *   • URL fetch fail → throw Error (caller blockReason="internal-error")
+ */
+export async function attachImagePrompts(
+  page: Page,
+  selectors: Record<MJSelectorKey, string>,
+  imageUrls: string[],
+  options: { perImageTimeoutMs?: number } = {},
+): Promise<{ attachedCount: number }> {
+  if (imageUrls.length === 0) return { attachedCount: 0 };
+  const perImageTimeoutMs = options.perImageTimeoutMs ?? 15_000;
+
+  // Idempotent open: File input zaten DOM'da varsa popover hâlâ açık;
+  // tekrar tıklamak popover'ı KAPATIR. Önce var mı kontrol et.
+  let fileInput = page.locator(selectors.addImagesFileInput).first();
+  let alreadyOpen = false;
+  try {
+    await fileInput.waitFor({ state: "attached", timeout: 500 });
+    alreadyOpen = true;
+  } catch {
+    alreadyOpen = false;
+  }
+
+  if (!alreadyOpen) {
+    // 1) Add Images popover'ını aç.
+    const addBtn = page.locator(selectors.addImagesButton).first();
+    const visible = await addBtn
+      .isVisible({ timeout: 5_000 })
+      .catch(() => false);
+    if (!visible) {
+      throw new SelectorMismatchError(
+        "addImagesButton",
+        selectors.addImagesButton,
+      );
+    }
+    await addBtn.click();
+    // Popover'ın render olması için bekleme — file input lazy mount.
+    // Pass 65 audit: 1500ms typical; 3000ms üstü güvenlik payı.
+    await page.waitForTimeout(1500);
+    fileInput = page.locator(selectors.addImagesFileInput).first();
+    try {
+      await fileInput.waitFor({ state: "attached", timeout: 8_000 });
+    } catch {
+      throw new SelectorMismatchError(
+        "addImagesFileInput",
+        selectors.addImagesFileInput,
+      );
+    }
+  }
+
+  // Pass 65 v2 — "Image Prompts" tab'ını seç. DEFAULT AÇILIŞTA "Start Frame"
+  // (animate için video) seçili; tab seçimi yapılmazsa upload Start Frame
+  // slot'una düşer ve render-timeout olur (kullanıcı feedback Pass 65
+  // smoke v1). Pattern Pass 60 Upscale/Vary stratejisinin aynısı:
+  // outer container'a click (force=true ile inner overlay'leri bypass).
+  const imagePromptsTab = page
+    .locator(selectors.addImagesTabImagePrompts)
+    .first();
+  try {
+    await imagePromptsTab.waitFor({ state: "visible", timeout: 5_000 });
+    await imagePromptsTab.click({ timeout: 5_000, force: true });
+    // Tab seçiminin DOM state'ine işlemesi için kısa bekleme.
+    await page.waitForTimeout(500);
+  } catch {
+    throw new SelectorMismatchError(
+      "addImagesTabImagePrompts",
+      selectors.addImagesTabImagePrompts,
+    );
+  }
+
+  // 3) URL'leri buffer'a indir + setInputFiles ile yükle.
+  //
+  // Pass 49 audit'inden öğrenme: CF korumalı endpoint'ler (cdn.midjourney.com,
+  // bazı CDN'ler) Playwright APIRequestContext (`ctx.request.get`) request'lerini
+  // BOT olarak görüp 403 döner. Çözüm: yeni tab aç + `page.goto` ile indir.
+  // Browser'ın gerçek navigation request'inde TLS fingerprint + tüm header
+  // set'i tam — CF challenge tetiklenmez.
+  //
+  // downloadGridImages aynı pattern'i kullanır (Pass 49+).
+  const ctx = page.context();
+  const filePayloads: Array<{
+    name: string;
+    mimeType: string;
+    buffer: Buffer;
+  }> = [];
+  for (const url of imageUrls) {
+    const dlPage = await ctx.newPage();
+    let buf: Buffer | null = null;
+    let mime: string | undefined;
+    try {
+      const resp = await dlPage.goto(url, {
+        waitUntil: "load",
+        timeout: perImageTimeoutMs,
+      });
+      if (!resp || !resp.ok()) {
+        throw new Error(
+          `Image-prompt URL fetch ${url} → HTTP ${resp?.status() ?? "no response"}`,
+        );
+      }
+      buf = Buffer.from(await resp.body());
+      mime = resp.headers()["content-type"]?.split(";")[0]?.trim();
+    } finally {
+      await dlPage.close().catch(() => undefined);
+    }
+    if (!buf) {
+      throw new Error(`Image-prompt URL fetch ${url} → no body`);
+    }
+    if (!mime || !/^image\//.test(mime)) {
+      // Magic bytes fallback
+      if (buf[0] === 0x89 && buf[1] === 0x50) mime = "image/png";
+      else if (buf[0] === 0xff && buf[1] === 0xd8) mime = "image/jpeg";
+      else if (
+        buf[0] === 0x52 &&
+        buf[1] === 0x49 &&
+        buf[2] === 0x46 &&
+        buf[3] === 0x46
+      )
+        mime = "image/webp";
+      else mime = "image/png";
+    }
+    const ext =
+      mime === "image/jpeg"
+        ? "jpg"
+        : mime === "image/webp"
+          ? "webp"
+          : "png";
+    // Filename — MJ side'da log'a yansır; URL'den son segment.
+    const tail =
+      url.split("/").pop()?.split("?")[0]?.slice(0, 60) ?? `ref.${ext}`;
+    const name = /\.[a-z0-9]{2,5}$/i.test(tail) ? tail : `${tail}.${ext}`;
+    filePayloads.push({ name, mimeType: mime, buffer: buf });
+  }
+
+  // setInputFiles tek seferde tüm payload'ları kabul eder (multiple).
+  await fileInput.setInputFiles(filePayloads);
+
+  // MJ React app'inin file'ı state'e işlemesi için kısa buffer.
+  await page.waitForTimeout(1_500);
+
+  return { attachedCount: filePayloads.length };
 }
 
 export async function submitPrompt(

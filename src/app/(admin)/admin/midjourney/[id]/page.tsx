@@ -299,6 +299,45 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
             </div>
           ) : null}
         </div>
+        {/* Pass 65 — Image-prompt referans URL'leri. MJ V8 web'de "Add
+            Images → Image Prompts" üzerinden upload edildi. Boş job'larda
+            (eski Pass 50-64 generate'ler) gösterilmez. */}
+        {job.referenceUrls && job.referenceUrls.length > 0 ? (
+          <div className="sm:col-span-2" data-testid="mj-job-reference-urls">
+            <div className="text-xs text-text-muted">
+              Referans görseller ({job.referenceUrls.length}) ·
+              <span className="ml-1 rounded bg-accent-soft px-1.5 py-0.5 font-semibold text-accent-text">
+                Image Prompts
+              </span>
+            </div>
+            <ul className="mt-1 space-y-1">
+              {job.referenceUrls.map((url, idx) => (
+                <li
+                  key={`${idx}-${url}`}
+                  className="flex items-center gap-2 text-xs"
+                >
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block aspect-square w-12 shrink-0 overflow-hidden rounded border border-border bg-surface-2"
+                    title={url}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt={`Referans ${idx + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </a>
+                  <span className="truncate font-mono text-text-muted">
+                    {url}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       {job.failedReason ? (

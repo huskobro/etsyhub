@@ -43,6 +43,7 @@ import {
   waitForLogin,
 } from "./detection.js";
 import {
+  attachImagePrompts,
   buildMJPromptString,
   captureBaselineUuids,
   downloadGridImages,
@@ -705,8 +706,43 @@ export class PlaywrightDriver implements BridgeDriver {
       }
     }
 
+    // Pass 65 — Image-prompt akışı: submit ÖNCESİ "Add Images → Image
+    // Prompts" popover'ından file input'a referans görselleri yükle.
+    // MJ V8 web'de URL paste-as-image-prompt çalışmıyor; gerçek upload
+    // şart. Reference URL'leri yoksa adım atlanır (no-op).
+    const referenceUrls = job.request.params.imagePromptUrls ?? [];
+    if (referenceUrls.length > 0) {
+      onProgress({
+        state: "SUBMITTING_PROMPT",
+        message: `${referenceUrls.length} referans görsel yükleniyor`,
+      });
+      try {
+        await attachImagePrompts(page, this.selectors, referenceUrls);
+      } catch (err) {
+        const reason: JobBlockReason =
+          err instanceof SelectorMismatchError
+            ? "selector-mismatch"
+            : "internal-error";
+        onProgress({
+          state: "FAILED",
+          blockReason: reason,
+          message:
+            err instanceof Error
+              ? `Image-prompt upload fail: ${err.message}`
+              : String(err),
+        });
+        return;
+      }
+    }
+
     // Submit prompt.
-    onProgress({ state: "SUBMITTING_PROMPT", message: "Prompt gönderiliyor" });
+    onProgress({
+      state: "SUBMITTING_PROMPT",
+      message:
+        referenceUrls.length > 0
+          ? `Prompt + ${referenceUrls.length} referans gönderiliyor`
+          : "Prompt gönderiliyor",
+    });
 
     // Pass 49 — submit ÖNCESİ mevcut UUID'leri yakala (baseline).
     // waitForRender bu set'in DIŞINDA bir UUID'in 4 grid image'ı görünene
