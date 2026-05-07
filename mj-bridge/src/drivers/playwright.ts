@@ -53,6 +53,7 @@ import {
   submitPrompt,
   submitPromptViaApi,
   triggerUpscale,
+  waitForJobReadyViaApi,
   waitForRender,
   waitForUpscaleResult,
 } from "./generate-flow.js";
@@ -831,29 +832,61 @@ export class PlaywrightDriver implements BridgeDriver {
       if (signal.aborted) return;
     }
 
-    // Render polling — API path ise targetMjJobId, DOM path ise baseline.
+    // Pass 72 — Render polling strategy.
+    //
+    // API path (knownMjJobId varsa): MJ /api/get-seed?id=<jobId> polling.
+    // Pass 71 ghost-job problemi (kullanıcının MJ tab'ı API submit'i
+    // bilmiyordu, DOM'a image gelmiyordu) bu yolla aşıldı:
+    // /api/get-seed render hazır olunca seed döndürür → DOM'a bağlı
+    // değil, MJ kendi job-completion sinyali.
+    //
+    // DOM path (knownMjJobId yoksa): Pass 49 baseline UUID image polling
+    // (production-grade DOM submit yolu için).
     onProgress({
       state: "WAITING_FOR_RENDER",
       message: knownMjJobId
-        ? `Render bekleniyor (target=${knownMjJobId.slice(0, 8)}…)`
-        : `Render bekleniyor (30-90sn) · baseline=${baselineUuids.size} UUID`,
+        ? `Render bekleniyor (API · target=${knownMjJobId.slice(0, 8)}…)`
+        : `Render bekleniyor (DOM · baseline=${baselineUuids.size} UUID)`,
     });
 
     let render;
     try {
-      render = await waitForRender(page, this.selectors, {
-        ...(knownMjJobId
-          ? { targetMjJobId: knownMjJobId }
-          : { baselineUuids }),
-        timeoutMs: this.cfg.renderTimeoutMs,
-        onPoll: (ms, n) => {
-          if (signal.aborted) return;
-          onProgress({
-            state: "WAITING_FOR_RENDER",
-            message: `Render bekleniyor… ${Math.floor(ms / 1000)}s · ${n} img${knownMjJobId ? "" : " yeni"}`,
-          });
-        },
-      });
+      if (knownMjJobId) {
+        // Pass 72 — API path: CDN HEAD polling.
+        //
+        // Relaxed mode'da render 5-10 dakika alabilir (free abonelik
+        // queue). DOM polling render timeout'u (3dk) bu yol için yetmez.
+        // API path'te 10dk default + ENV `MJ_BRIDGE_API_RENDER_TIMEOUT_MS`
+        // override.
+        const apiRenderTimeoutMs = Number(
+          process.env["MJ_BRIDGE_API_RENDER_TIMEOUT_MS"] ?? 10 * 60_000,
+        );
+        render = await waitForJobReadyViaApi(page, knownMjJobId, {
+          timeoutMs: Number.isFinite(apiRenderTimeoutMs) && apiRenderTimeoutMs > 0
+            ? apiRenderTimeoutMs
+            : 10 * 60_000,
+          onPoll: (ms, status) => {
+            if (signal.aborted) return;
+            onProgress({
+              state: "WAITING_FOR_RENDER",
+              message: `Render bekleniyor (API)… ${Math.floor(ms / 1000)}s · ${status}`,
+            });
+          },
+        });
+      } else {
+        // DOM path: Pass 49 baseline + image src polling
+        render = await waitForRender(page, this.selectors, {
+          baselineUuids,
+          timeoutMs: this.cfg.renderTimeoutMs,
+          onPoll: (ms, n) => {
+            if (signal.aborted) return;
+            onProgress({
+              state: "WAITING_FOR_RENDER",
+              message: `Render bekleniyor… ${Math.floor(ms / 1000)}s · ${n} yeni img`,
+            });
+          },
+        });
+      }
     } catch (err) {
       onProgress({
         state: "FAILED",

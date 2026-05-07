@@ -78,6 +78,108 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 72 (Generate API-first end-to-end TAMAMLANDI — ghost-job ÇÖZÜLDÜ) 🟢
+
+**Hedef:** Pass 71 ghost-job problemini çöz, generate API-first hattını
+production-ready yap.
+
+**Kök neden tespiti (Pass 72 audit):**
+
+Pass 71 stuck job'ları (`441db0a0-...`, `f867289f-...`) için
+`cdn.midjourney.com/<id>/0_0_640_N.webp` HEAD probe → **200 OK**!
+Yani **MJ render etti**, sadece **kullanıcının açık MJ tab'ının React
+store'u job'u bilmiyor** (optimistic state form-driven). DOM polling
+DOM-bağımlı olduğu için yakalayamıyor.
+
+**Çözüm: CDN HEAD polling + direct download (DOM-bağımsız pipeline).**
+
+Hatalı denemeler:
+1. **`/api/get-seed?id=<jobId>` polling** — Pass 72 ilk hipotezi.
+   Submit edildiği anda seed pre-allocate ediliyor (job kabul edildi
+   sinyali), render tamamlanma sinyali DEĞİL.
+2. **`0_0.png` canonical full-res URL** — Yeni job'lar için 404.
+   MJ sadece `_640_N.webp` (640px webp preview) servis ediyor.
+3. **3dk timeout** — relaxed mode için yetersiz (5-10dk normal).
+
+Doğru çözüm:
+- **CDN HEAD polling**: 4 grid (`0_0_640_N.webp` ... `0_3_640_N.webp`)
+  hepsi 200 OK olduğunda render hazır
+- **10dk default timeout** + `MJ_BRIDGE_API_RENDER_TIMEOUT_MS` ENV
+  override
+- Mevcut `downloadGridImages` (Pass 49 yeni-tab + page.goto, CF-safe)
+  reuse — webp preview URL'lerini browser context üzerinden indir
+
+**Uygulanan:**
+
+- ✅ `mj-bridge/src/drivers/generate-flow.ts`:
+  - `waitForJobReadyViaApi(page, mjJobId, options)` helper:
+    - 4 grid index için `cdn.midjourney.com/<jobId>/0_<n>_640_N.webp`
+      HEAD polling
+    - Hepsi 200 olduğunda `imageUrls[4]` döner
+    - tsx/esbuild __name stub (Pass 68 keşfi)
+
+- ✅ `mj-bridge/src/drivers/playwright.ts executeJob` (kind=generate):
+  - API path: `waitForJobReadyViaApi` + 10dk default timeout
+  - DOM path: mevcut `waitForRender` baseline UUID polling
+  - `downloadGridImages` (Pass 49) iki path için ortak
+
+**Doğrulama (gerçek MJ smoke):**
+
+| Smoke | Sonuç |
+|---|---|
+| TS check (EtsyHub + bridge) | ✅ |
+| Token guard | ✅ |
+| UI test 946/946 | ✅ |
+| **Generate API-first END-TO-END** (`09cd9dbb` → `a87ba92f-...`) | ✅ **191 saniyede COMPLETED**, submitMethod=api, 4 output |
+| `0/4 → 4/4` polling logu | ✅ "Render bekleniyor (API)… 177s · 0/4" → "DOWNLOADING" → "COMPLETED" |
+| **Describe regression** (`8c6a4191`) | ✅ 7sn COMPLETED, describeMethod=api, 4 prompt |
+| Sref/oref bridge işlemesi (buildMJPromptString) | ✅ Kod yolu doğru: `--sref URL`, `--oref URL`, `--ow N` prompt'a flag olarak eklenir |
+| Generate DOM default | ✅ Korundu (Pass 71 hattı sağlam) |
+
+**Pass 72 net kazanımlar:**
+
+1. ✅ **Ghost-job problemi ÇÖZÜLDÜ** — DOM-bağımsız polling pipeline
+2. ✅ **Generate API-first end-to-end COMPLETED** — 191sn'de 4 output
+3. ✅ **`waitForJobReadyViaApi` helper** production-grade
+4. ✅ **CDN HEAD polling** native MJ sinyali (DOM bypass)
+5. ✅ **Describe + DOM generate + sref/oref regresyon yok**
+6. ✅ Bridge konfigürasyon: `MJ_BRIDGE_API_RENDER_TIMEOUT_MS` ENV override
+
+**Pass 72 dürüst sınırlar:**
+
+- 🟡 **API path opt-in olarak kalıyor** (`preferApiSubmit: true`).
+  Default DOM submit hâlâ production-grade çünkü:
+  - Relaxed mode 3-10dk arası süre (DOM submit user'ın kendi tab'ında
+    görünür, sabırsız operatör için zihinsel rahatlık)
+  - Smoke 1/1 başarılı ama daha geniş örneklem ile (10+ job)
+    confidence artırılmalı
+- 🟡 Sref/oref UI'dan girdi alıyor + bridge prompt'a flag ekliyor;
+  **MJ output'unun beklenen davranışı görsel smoke ile doğrulanmadı**
+  (Pass 73+ smoke). Kod yolu kanıtlı (buildMJPromptString).
+- 🟡 `--cref` bridge field hâlâ yok (Pass 73)
+- 🟡 BullMQ MIDJOURNEY_BRIDGE worker dar kapsamlı lazy-ensure
+  (Pass 70'ten); diğer worker'lar inactive (Pass 73+)
+- 🟡 `/api/get-seed` Pass 72 audit'inde yetersiz çıktı; ileride
+  başka use case'ler için (seed-based reproducible generation)
+  kullanılabilir
+- 🟡 Pass 72 image format `_640_N.webp` (640px preview); full-res
+  `0_<n>.png` MJ tarafında ileri zamanda push ediliyor (eski jobs
+  için var, yeni jobs için saatler sonra). EtsyHub ingest sharp ile
+  webp → png/jpeg dönüştürüyor; pratik fark az ama tarih kaybı yok
+
+**Pass 72 carry-forward / Pass 73 ana hedefler:**
+
+1. **Sref/oref görsel smoke** — gerçek MJ output'un sref'i yansıttığı
+   visual review
+2. **`--cref` MjGenerateParams field + bridge driver + UI**
+3. **API-first default kararı** — daha geniş örneklem (10+ job)
+   güvene aldıktan sonra `preferApiSubmit` default'a alınabilir
+4. **Tüm worker'ların lazy-ensure pattern'iyle bootstrap'i** (Pass 70'ten
+   carry-over)
+5. **Image-prompt + API-first kombinasyonu** — image-prompt mevcut
+   `attachImagePrompts` hâlâ DOM tabanlı; API submit'te sayfa state'i
+   güncellenmiyor → image-prompt yapılamayabilir, ayrı capture gerek
+
 ### Pass 71 (Generate API helper + reference UI genişleme + render polling hardening) 🟡
 
 **Hedef:** AutoSail-inspired generate API-first hattını ürünleştirmek.

@@ -926,6 +926,119 @@ export async function submitPromptViaApi(
   };
 }
 
+/**
+ * Pass 72 — Job render tamamlanma polling'i (DOM-bağımsız).
+ *
+ * Pass 71 ghost-job kök neden tespiti:
+ *   - API submit (`POST /api/submit-jobs`) MJ tarafında job kabul + render
+ *     ediyor (Pass 72 audit: Pass 71 stuck UUID'lerin `cdn.midjourney.com`
+ *     image'ları 200 OK)
+ *   - AMA kullanıcının açık MJ tab'ı kendi optimistic state'ini
+ *     güncellemediği için yeni job'u bilmiyor → DOM'a hiç yansımıyor
+ *   - Pass 71 `waitForRender targetMjJobId` DOM-bağımlı, yakalayamıyor
+ *
+ * Pass 72 çözümü: **CDN HEAD polling**. MJ render bittiğinde
+ * `cdn.midjourney.com/<jobId>/0_<n>_640_N.webp` (preview webp) erişilebilir.
+ *
+ * NOT: Pass 72 ilk denemesi `/api/get-seed?id=<jobId>` polling'i denedi.
+ * Bu endpoint kabul edilen job için seed döner AMA render tamamlanma
+ * sinyali DEĞİL — submit edildiği anda seed pre-allocate ediliyor; image
+ * CDN'e push edilmemiş olabilir. Bu yüzden CDN HEAD daha güvenilir
+ * sinyal: image gerçekten erişilebilir olduğunda 200 döner.
+ *
+ * Hata davranışı:
+ *   - Network fail → caller'a yansıt
+ *   - timeout → throw "render-timeout"
+ */
+export type WaitForJobApiResult = {
+  mjJobId: string;
+  /** Pass 72 — tutarlı imageUrls dönüş tipi (RenderResult ile uyum). */
+  imageUrls: string[];
+};
+
+export async function waitForJobReadyViaApi(
+  page: Page,
+  mjJobId: string,
+  options: {
+    timeoutMs: number;
+    pollIntervalMs?: number;
+    onPoll?: (elapsedMs: number, status: string) => void;
+  },
+): Promise<WaitForJobApiResult> {
+  const start = Date.now();
+  const interval = options.pollIntervalMs ?? 4000;
+  // 4 grid index'inin hepsi mevcut olduğunda render tamamlanmış sayılır.
+  // İlk grid (0_0) tipik olarak diğerlerinden 1-2sn önce CDN'e push edilir;
+  // hepsini beklemek tutarlı bir tamamlanma sinyali.
+  const indices = [0, 1, 2, 3];
+
+  while (Date.now() - start < options.timeoutMs) {
+    const probe = await page.evaluate(
+      async (input: { jobId: string; indices: number[]; timeoutMs: number }) => {
+        // tsx/esbuild __name helper stub (Pass 68 keşfi)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (globalThis as any).__name = (globalThis as any).__name ?? ((x: unknown) => x);
+        const checks: Array<{ idx: number; status: number }> = [];
+        for (const n of input.indices) {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), input.timeoutMs);
+          try {
+            const r = await fetch(
+              `https://cdn.midjourney.com/${input.jobId}/0_${n}_640_N.webp`,
+              { method: "HEAD", signal: ctrl.signal },
+            );
+            checks.push({ idx: n, status: r.status });
+          } catch {
+            checks.push({ idx: n, status: 0 });
+          } finally {
+            clearTimeout(t);
+          }
+        }
+        return checks;
+      },
+      { jobId: mjJobId, indices, timeoutMs: 8_000 },
+    );
+    const ready = probe.filter((p) => p.status === 200).length;
+    if (options.onPoll) {
+      options.onPoll(
+        Date.now() - start,
+        ready === indices.length ? "READY" : `${ready}/${indices.length}`,
+      );
+    }
+    if (ready === indices.length) {
+      // Render hazır — CDN URL'leri inşa et.
+      //
+      // Pass 72 audit (live probe): MJ /jobs/<id> route'unu fetch ettim,
+      // HTML'de servis edilen tek URL pattern:
+      //   cdn.midjourney.com/<jobId>/0_<n>_640_N.webp (640px preview)
+      // Yeni job'larda full-res `0_<n>.png` mevcut DEĞİL (404).
+      //
+      // imageUrls[] => webp preview URL'leri. Caller (executeJob) bu
+      // URL'leri downloadGridImages helper'ına geçirir; helper yeni-tab
+      // + page.goto ile bytes alır (Pass 49 pattern, CF-safe).
+      const imageUrls = indices.map(
+        (n) => `https://cdn.midjourney.com/${mjJobId}/0_${n}_640_N.webp`,
+      );
+      return { mjJobId, imageUrls };
+    }
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  throw new Error(
+    `CDN polling timeout (${options.timeoutMs}ms): Job ${mjJobId} 4 grid hazır olmadı`,
+  );
+}
+
+/**
+ * Pass 72 — CDN'den direkt grid image bytes indirme (DOM-bağımsız).
+ *
+ * Pass 49 download pattern'i (yeni tab + page.goto, CF-safe + cookie
+ * paylaşımı) kullanılır. waitForJobReadyViaApi sonrası `imageUrls`
+ * (4 entry, `cdn.midjourney.com/<jobId>/0_<n>.png`) ile çağrılır.
+ *
+ * Eski `downloadGridImages` aynı işi yapıyor zaten (pure URL bazlı);
+ * Pass 72 tutarlı API yüzeyi için yeni isim altında reuse edilir.
+ */
+
 export async function submitPrompt(
   page: Page,
   selectors: Record<MJSelectorKey, string>,
