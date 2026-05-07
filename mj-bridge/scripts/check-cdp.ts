@@ -59,21 +59,25 @@ async function main(): Promise<void> {
       msg.includes("aborted")
     ) {
       console.error(`
-Browser şu komutla başlatılmalı:
+Browser şu komutla başlatılmalı (Pass 49 — Chrome-first):
 
-  # Brave (önerilen — kullanıcı şu an Brave kullanıyor):
-  "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \\
-    --remote-debugging-port=9222 \\
-    --user-data-dir="$HOME/.mj-bridge-brave-profile"
+  # 1) Önce mevcut Chrome'u tamamen kapat (Cmd+Q gerekli):
+  osascript -e 'quit app "Google Chrome"'
 
-  # veya Chrome:
+  # 2) Ayrı profile + remote debugging port ile Chrome aç:
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \\
     --remote-debugging-port=9222 \\
     --user-data-dir="$HOME/.mj-bridge-chrome-profile"
 
-ÖNEMLI: Brave/Chrome'un mevcut tüm pencerelerini Cmd+Q ile tamamen
-kapatın, sonra yukarıdaki komutu çalıştırın. Aynı binary için aynı
-anda iki proses açılamaz.
+  # Brave alternatifi (Pass 47/48 yolu):
+  "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \\
+    --remote-debugging-port=9222 \\
+    --user-data-dir="$HOME/.mj-bridge-brave-profile"
+
+ÖNEMLI:
+  • Aynı binary için iki proses açılamaz; günlük Chrome'unu mutlaka önce kapat.
+  • Ayrı --user-data-dir kullan; günlük profile'ına dokunmasın.
+  • Pencerede MJ'ye git, login ol, challenge çıkarsa çöz, AÇIK BIRAK.
 `);
     }
     process.exit(1);

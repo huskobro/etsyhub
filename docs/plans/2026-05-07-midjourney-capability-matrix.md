@@ -78,6 +78,109 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 49 (Chrome-attached real generate kalibrasyon — tamamlanan) 🟢
+
+**İlk gerçek end-to-end generate ÇALIŞIYOR.** MJ Job UUID
+`a93d7f4f-93dd-4196-8477-779d582af1d2`, 4 grid image (57-162 KB webp)
+indirildi (`mj-bridge/data/calibrate-outputs/`).
+
+- ✅ **Chrome ownership**: Kullanıcı Profile 7 (MJ_Bridge) → ayrı
+  `~/.mj-bridge-chrome-profile/Default/` user-data-dir'e kopyalandı
+  (rsync, Cache/Singleton dışlanarak). Günlük Chrome (PID 7564)
+  bozulmadan ayrı CDP-instance Chrome (PID 15904) ayağa kalktı.
+- ✅ **CDP attach**: `/json/version` OK (Chrome/147.0.7727.138);
+  `connectOverCDP` başarılı. Logged-in MJ tab'ı tespit edildi,
+  challenge yok, login indicator (`a[href*="/personalize"]`) hit.
+- ✅ **Selector kalibrasyonu (gerçek DOM 2026-05-07)**:
+    - `promptInput` → `<textarea id="desktop_input_bar" placeholder=
+      "What will you imagine?">`. Selector default'lara
+      `#desktop_input_bar` ve `placeholder="What will you imagine"`
+      candidate'ları en başa eklendi.
+    - `loginIndicator` → `a[href*="/personalize"]` çalışıyor (Pass 48
+      defense-in-depth eklemesi gerçek DOM'da doğrulandı).
+    - `renderImage` → `cdn.midjourney.com/<UUID>/0_<n>_640_N.webp`
+      pattern'i sağlıyor (28 hit `/imagine` sayfasında).
+- ✅ **Render polling stratejisi yeniden yazıldı (kritik)**:
+  Eski Pass 43 `data-job-id` + `renderJobCard` yaklaşımı GEÇERSİZ —
+  MJ React app DOM'da hiçbir `data-job-id` veya `data-testid="job-*"`
+  attr kullanmıyor (probe sadece `data-active` gördü). Yeni strateji:
+  **image URL'inden UUID parse**. `captureBaselineUuids()` submit
+  öncesi mevcut UUID set'ini yakalar; `waitForRender()` o set'in
+  DIŞINDA bir UUID'in `0_0..0_3` 4 grid index'ini bekler. UUID =
+  mjJobId.
+- ✅ **Download CDN 403 fix**: Cloudflare CDN, Playwright
+  `APIRequestContext` (`page.request.get`) request'lerini fingerprint
+  bazında bot olarak görüp 403 + "Just a moment" döndürüyor (explicit
+  Referer + Cookie header eklenmesine rağmen). Browser'ın gerçek
+  navigation request'i (`page.goto(imageUrl)`) ise CF tarafından
+  OK'lanıyor. `downloadGridImages` artık her image için yeni tab
+  açıyor, navigate ediyor, `response.body()` alıyor, tab'ı kapatıyor.
+- ✅ **Gerçek end-to-end test**:
+    - Submit: `abstract wall art test pattern minimalist orange beige
+      --ar 1:1 --v 7` → Enter
+    - Render polling: 58s'de 4 yeni img tespit
+    - mjJobId parse: `a93d7f4f-93dd-4196-8477-779d582af1d2`
+    - Download: 4/4 webp dosyası başarıyla indirildi
+- ✅ `scripts/calibrate-generate.ts` — yeni standalone test script.
+  Default dry-run (no submit, MJ credit harcamaz); `--submit`
+  flag'iyle gerçek generate, `--download` ile indirme zinciri.
+- ✅ `scripts/check-cdp.ts` ve `playwright.ts` attach pre-flight
+  error mesajları **Chrome-first** (Pass 47 Brave-first'ten dönüş;
+  kullanıcı bu turda Chrome seçti).
+- ✅ `/admin/midjourney` kurulum ipucu metni Chrome-first hale
+  getirildi (`osascript -e 'quit app "Google Chrome"'` + Chrome path).
+
+**Capability matrix güncellemesi (next immediate sıralama)**:
+
+1. **next immediate** (Pass 50 hedefi):
+   - Real driver `executeJob`'da yeni `baselineUuids` API'sini canlı
+     test et (calibrate-generate.ts script'i yerine bridge HTTP
+     server üzerinden create-job → poll → download zinciri)
+   - EtsyHub admin/midjourney sayfasında "Test render" butonuyla
+     gerçek bir submit tetikle, end-to-end UI flow doğrula
+   - Selector smoke surface health endpoint'inde detaylı sergile
+     (`promptInputFound: true, loginIndicatorFound: true, ...`)
+2. **after generate stabilizes**:
+   - `kind: "describe"` — `cdn.midjourney.com/explore` sayfasında
+     image upload + 4 prompt scrape (V1.1)
+   - `--sref` style reference URL paste (zaten `buildMJPromptString`
+     destekliyor; sadece test gerek)
+   - `--oref` omni-reference URL paste (V7+ premium feature; aynı
+     buildMJPromptString flag'i)
+3. **later**:
+   - Image-prompt URL paste (DOM action) — şu anda flag formatında
+     prompt başına ekleniyor; gerçek MJ web image upload UI'ı yok
+     (URL paste primary yol)
+   - Upscale U1-U4 / Variation V1-V4 buton click — MJ V7+ kart
+     hover'ında görünür; selector'lar Pass 48 default'larında
+     placeholder olarak hazır, gerçek DOM'da kalibre edilmesi
+     gerekecek
+   - Batch download / history import (`/archive` sayfasından eski
+     job'ları içeri al)
+4. **do not build now**:
+   - Captcha auto-solve (mevcut kural)
+   - Stealth fingerprint manipulation (mevcut kural)
+   - Headless production (mevcut kural)
+   - Discord-tabanlı flow (kullanıcı ülke kısıtı)
+
+**Generate hâlâ ilk öncelik nedeni**: 4 grid render bütün diğer
+capability'lerin başlangıç noktası. Upscale/variation'lar render
+edilmiş kart üzerinden çalışır; describe ayrı bir akış (image upload
++ 4 prompt scrape); `--sref` / `--oref` zaten flag-bazlı
+(`buildMJPromptString` destekliyor) ve generate akışına bağlı. Yani
+generate **stable + bridge HTTP server üzerinden tetiklenebilir**
+duruma gelmeden diğer kind'lar hâlâ erken.
+
+⚠ **Pass 49 dürüst sınır**: Gerçek generate `scripts/calibrate-generate.ts`
+standalone Playwright script'i ile yapıldı — bridge HTTP server
+üzerinden değil. Yani:
+  • `PlaywrightDriver.executeJob` content-wise hazır + image-URL-
+    based polling + new-tab download artık entegre, AMA bridge HTTP
+    `/jobs` endpoint'i üzerinden create-job → state machine → output
+    fetch zinciri Pass 49'da canlı koşturulmadı (Pass 50 hedefi).
+  • Mock driver regression-free (selector kalibre + UUID-based
+    polling değişimi sadece real driver'ı etkiledi).
+
 ### Pass 48 (attach mode hardening — tamamlanan)
 - ✅ `mj-bridge/scripts/check-cdp.ts` — yeni standalone CDP precheck:
   Browser çalışıyor mu, doğru port mu, MJ tab açık mı net teşhis.

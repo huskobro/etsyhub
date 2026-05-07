@@ -149,20 +149,23 @@ export default async function AdminMidjourneyPage() {
           </p>
           <details className="mt-2" open>
             <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
-              Kurulum ipucu — Attach modeli (Pass 47, önerilen)
+              Kurulum ipucu — Attach modeli (Pass 49, Chrome-first)
             </summary>
             <pre className="mt-2 overflow-x-auto rounded bg-surface-2 p-3 text-xs text-text">
-{`# 1. Brave (veya Chrome) ayrı profile ile başlat (terminal):
-"/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \\
-  --remote-debugging-port=9222 \\
-  --user-data-dir="$HOME/.mj-bridge-brave-profile"
+{`# 1. Önce mevcut Chrome'u kapat:
+osascript -e 'quit app "Google Chrome"'
 
-# 2. Açılan pencerede:
+# 2. Chrome'u ayrı profile + remote-debugging-port ile başlat:
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \\
+  --remote-debugging-port=9222 \\
+  --user-data-dir="$HOME/.mj-bridge-chrome-profile"
+
+# 3. Açılan pencerede:
 #    a) Cloudflare doğrulamasını çöz (gelirse)
 #    b) midjourney.com → Discord/Google ile login
 #    c) PENCEREYİ AÇIK BIRAK (kapatma)
 
-# 3. Başka terminal — bridge'i attach modunda başlat:
+# 4. Başka terminal — bridge'i attach modunda başlat:
 cd mj-bridge
 MJ_BRIDGE_TOKEN=secret \\
 MJ_BRIDGE_DRIVER=playwright \\
@@ -170,11 +173,14 @@ MJ_BRIDGE_BROWSER_MODE=attach \\
 MJ_BRIDGE_CDP_URL=http://127.0.0.1:9222 \\
 npm run dev
 
-# 4. EtsyHub .env.local:
+# 5. EtsyHub .env.local:
 MJ_BRIDGE_URL=http://127.0.0.1:8780
 MJ_BRIDGE_TOKEN=<aynı token>
 
-# 5. EtsyHub'ı restart et.
+# 6. EtsyHub'ı restart et.
+
+# Brave alternatifi (Pass 47 yolu):
+# --user-data-dir="$HOME/.mj-bridge-brave-profile"
 
 # --- Alternatif: Mock (UI test) veya Launch (CF riski yüksek):
 # MJ_BRIDGE_DRIVER=mock npm run dev

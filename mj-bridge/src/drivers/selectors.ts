@@ -51,11 +51,14 @@ export type MJSelectorKey =
  */
 export const DEFAULT_SELECTORS: Record<MJSelectorKey, string> = {
   // Imagine bar / prompt input — MJ web'in ana giriş noktası.
-  // 2026 May community pattern'leri:
-  //   - textarea (en yaygın) placeholder veya aria-label "prompt"/"imagine"
-  //   - contenteditable div (yeni V8 alpha denemesi)
-  //   - role="textbox"
+  // Pass 49 — gerçek logged-in DOM kalibrasyonu (2026-05-07): MJ web
+  // şu anda <textarea id="desktop_input_bar" placeholder="What will
+  // you imagine?"> kullanıyor. ID en güvenilir; placeholder ikinci.
+  // Eski adaylar (V8 alpha contenteditable, #imagine-bar) korundu —
+  // future-proof.
   promptInput:
+    '#desktop_input_bar, ' +
+    'textarea[placeholder*="What will you imagine" i], ' +
     'textarea[placeholder*="prompt" i], ' +
     'textarea[placeholder*="imagine" i], ' +
     'textarea[placeholder*="describe" i], ' +

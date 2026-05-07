@@ -44,6 +44,7 @@ import {
 } from "./detection.js";
 import {
   buildMJPromptString,
+  captureBaselineUuids,
   downloadGridImages,
   SelectorMismatchError,
   submitPrompt,
@@ -221,10 +222,12 @@ export class PlaywrightDriver implements BridgeDriver {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(
         `Attach modu pre-flight fail: ${this.cfg.cdpUrl} ulaşılamıyor.\n\n` +
-          `Browser şu komutla başlatılmalı:\n` +
-          `  "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \\\n` +
+          `Browser şu komutla başlatılmalı (Pass 49 — Chrome-first):\n` +
+          `  osascript -e 'quit app "Google Chrome"'\n` +
+          `  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \\\n` +
           `    --remote-debugging-port=9222 \\\n` +
-          `    --user-data-dir="$HOME/.mj-bridge-brave-profile"\n\n` +
+          `    --user-data-dir="$HOME/.mj-bridge-chrome-profile"\n\n` +
+          `Brave alternatifi: --user-data-dir="$HOME/.mj-bridge-brave-profile"\n` +
           `Teşhis: \`npx tsx scripts/check-cdp.ts\` (mj-bridge/ içinde)\n` +
           `Detay: ${msg}`,
       );
@@ -603,10 +606,14 @@ export class PlaywrightDriver implements BridgeDriver {
     // Submit prompt.
     onProgress({ state: "SUBMITTING_PROMPT", message: "Prompt gönderiliyor" });
 
-    const baselineCount = await page
-      .locator(this.selectors.renderJobCard)
-      .count()
-      .catch(() => 0);
+    // Pass 49 — submit ÖNCESİ mevcut UUID'leri yakala (baseline).
+    // waitForRender bu set'in DIŞINDA bir UUID'in 4 grid image'ı görünene
+    // kadar bekleyecek. data-job-id artık DOM'da yok (Pass 43 stratejisi
+    // geçersiz); image URL pattern'i tek güvenilir yol.
+    const baselineUuids = await captureBaselineUuids(
+      page,
+      this.selectors,
+    ).catch(() => new Set<string>());
 
     const promptString = buildMJPromptString(job.request.params);
     try {
@@ -629,19 +636,19 @@ export class PlaywrightDriver implements BridgeDriver {
     // Render polling.
     onProgress({
       state: "WAITING_FOR_RENDER",
-      message: "Render bekleniyor (30-90sn)",
+      message: `Render bekleniyor (30-90sn) · baseline=${baselineUuids.size} UUID`,
     });
 
     let render;
     try {
       render = await waitForRender(page, this.selectors, {
-        submitBaselineCount: baselineCount,
+        baselineUuids,
         timeoutMs: this.cfg.renderTimeoutMs,
-        onPoll: (ms) => {
+        onPoll: (ms, n) => {
           if (signal.aborted) return;
           onProgress({
             state: "WAITING_FOR_RENDER",
-            message: `Render bekleniyor… ${Math.floor(ms / 1000)}s`,
+            message: `Render bekleniyor… ${Math.floor(ms / 1000)}s · ${n} yeni img`,
           });
         },
       });

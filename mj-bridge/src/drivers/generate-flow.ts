@@ -127,74 +127,135 @@ export async function submitPrompt(
 }
 
 /**
- * Render polling — yeni job kartı görünene kadar bekle.
+ * Render polling — Pass 49 yeniden yazım: image-URL-based detection.
  *
- * MJ web rendering 30-90 sn. Polling 3sn aralıkla; max 180 sn (3 dk).
+ * MJ web 2026-05-07 logged-in DOM gözleminde görüldü ki:
+ *   • `data-job-id` attribute'u DOM'da YOK (eski Pass 43 stratejisi
+ *     yanlıştı — sadece `data-active` var, başka data-* attr yok)
+ *   • Render edilen 4 grid image'ı `cdn.midjourney.com/<UUID>/0_<n>_640_N.webp`
+ *     pattern'inde geliyor (`<n>` = 0..3)
+ *   • Bu UUID = MJ Job ID (kart attr'ı yerine URL'den parse edilir)
  *
- * Strateji:
- *   1. Submit'ten önce mevcut renderJobCard sayısını kaydet
- *   2. Submit sonrası DOM polling — yeni kart sayısı eski + 1?
- *   3. Yeni kart bulunduğunda kart içinde 4 img bekle (loading
- *      → ready)
- *   4. 4 img URL'lerini topla
+ * Yeni strateji:
+ *   1. Submit ÖNCESİ tüm `cdn.midjourney.com/<UUID>/...` URL'lerinden
+ *      mevcut UUID set'ini topla — "baseline UUIDs"
+ *   2. Submit sonrası polling — DOM'daki tüm renderImage src'lerini
+ *      tarayıp UUID'leri çıkar
+ *   3. Yeni bir UUID'nin 4 farklı index'i (`0_0`, `0_1`, `0_2`, `0_3`)
+ *      hepsi görünene kadar bekle
+ *   4. O UUID = mjJobId; o 4 src = imageUrls
  *
- * Pass 43 V1 NOTE: Bu helper `data-job-id` selector'ına bağlı; gerçek
- * üyelik testinde MJ DOM'unu inspect edip selector'ları kalibre etmek
- * gerek. Bulunamazsa SelectorMismatchError + caller AWAITING state.
+ * Avantaj:
+ *   • DOM yapısına değil, MJ CDN URL pattern'ine bağlı (daha kararlı)
+ *   • Job kart hiyerarşisi DOM'da değişse bile çalışır
+ *   • mjJobId direkt URL'den parse edilir (no data-attr dependency)
+ *
+ * NOTE: Pass 43-48 `submitBaselineCount` parametresi geriye uyumlu
+ * tutuldu (caller değişmesin); ama mantık image URL set bazlı.
  */
 export type RenderResult = {
   jobCardSelector: string;
   mjJobId: string | null;
   imageUrls: string[];
-  /** DOM'dan parse edilen sourceUrl'ler — debug için. */
-  rawHtml?: string;
 };
+
+const MJ_CDN_UUID_RE =
+  /https?:\/\/cdn\.midjourney\.com\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(\d+)_(\d+)_/i;
+
+type CdnImage = { url: string; uuid: string; outerIdx: number; gridIdx: number };
+
+async function collectCdnImages(
+  page: Page,
+  selectors: Record<MJSelectorKey, string>,
+): Promise<CdnImage[]> {
+  const imgs = page.locator(selectors.renderImage);
+  const count = await imgs.count().catch(() => 0);
+  const out: CdnImage[] = [];
+  for (let i = 0; i < count; i++) {
+    const src = await imgs
+      .nth(i)
+      .getAttribute("src")
+      .catch(() => null);
+    if (!src) continue;
+    const m = MJ_CDN_UUID_RE.exec(src);
+    if (!m) continue;
+    out.push({
+      url: src,
+      uuid: m[1]!,
+      outerIdx: Number(m[2]),
+      gridIdx: Number(m[3]),
+    });
+  }
+  return out;
+}
+
+export async function captureBaselineUuids(
+  page: Page,
+  selectors: Record<MJSelectorKey, string>,
+): Promise<Set<string>> {
+  const imgs = await collectCdnImages(page, selectors);
+  return new Set(imgs.map((i) => i.uuid));
+}
 
 export async function waitForRender(
   page: Page,
   selectors: Record<MJSelectorKey, string>,
   options: {
-    submitBaselineCount: number;
+    /**
+     * @deprecated Pass 49 — image-URL-based polling kullanılıyor.
+     * Geriye uyumlu tutuluyor; opts.baselineUuids verilmezse
+     * polling submitBaselineCount > 0 ise eski davranışa düşer
+     * (ama Pass 49 sonrası caller `baselineUuids` vermelidir).
+     */
+    submitBaselineCount?: number;
+    /** Pass 49 — submit öncesi yakalanan UUID set'i. */
+    baselineUuids?: Set<string>;
     timeoutMs: number;
     pollIntervalMs?: number;
-    onPoll?: (elapsedMs: number, currentCount: number) => void;
+    onPoll?: (elapsedMs: number, newImageCount: number) => void;
   },
 ): Promise<RenderResult> {
   const start = Date.now();
   const interval = options.pollIntervalMs ?? 3000;
+  const baseline = options.baselineUuids ?? new Set<string>();
 
   while (Date.now() - start < options.timeoutMs) {
-    const cards = page.locator(selectors.renderJobCard);
-    const count = await cards.count().catch(() => 0);
-    if (options.onPoll) options.onPoll(Date.now() - start, count);
+    const imgs = await collectCdnImages(page, selectors);
+    // Yeni UUID'leri grup'la (UUID -> grid index'lerine map'le)
+    const byUuid = new Map<string, Map<number, string>>();
+    for (const img of imgs) {
+      if (baseline.has(img.uuid)) continue;
+      let m = byUuid.get(img.uuid);
+      if (!m) {
+        m = new Map();
+        byUuid.set(img.uuid, m);
+      }
+      // outerIdx 0 = ilk render grid (upscale'lerde 1+); generate akışında
+      // outerIdx=0 + gridIdx 0..3 hepsi gelmeli.
+      if (img.outerIdx === 0) m.set(img.gridIdx, img.url);
+    }
+    if (options.onPoll) {
+      const total = Array.from(byUuid.values()).reduce(
+        (a, m) => a + m.size,
+        0,
+      );
+      options.onPoll(Date.now() - start, total);
+    }
 
-    if (count > options.submitBaselineCount) {
-      // Yeni kart eklendi — ilk yeni kartı al (genelde DOM order'da yeni
-      // en üstte).
-      const newCard = cards.first();
-      // Kart içindeki 4 img bekle.
-      const imgs = newCard.locator(selectors.renderImage);
-      const imgCount = await imgs.count().catch(() => 0);
-      if (imgCount >= 4) {
-        const imageUrls: string[] = [];
-        for (let i = 0; i < 4; i++) {
-          const src = await imgs
-            .nth(i)
-            .getAttribute("src")
-            .catch(() => null);
-          if (src) imageUrls.push(src);
-        }
-        if (imageUrls.length === 4) {
-          // MJ Job ID — data-job-id attr veya URL fragment.
-          const mjJobId = await newCard
-            .getAttribute("data-job-id")
-            .catch(() => null);
-          return {
-            jobCardSelector: selectors.renderJobCard,
-            mjJobId,
-            imageUrls,
-          };
-        }
+    // 4 grid index'i (0,1,2,3) hepsi olan ilk yeni UUID'i seç.
+    for (const [uuid, gridMap] of byUuid) {
+      if (
+        gridMap.has(0) &&
+        gridMap.has(1) &&
+        gridMap.has(2) &&
+        gridMap.has(3)
+      ) {
+        const imageUrls = [0, 1, 2, 3].map((g) => gridMap.get(g)!);
+        return {
+          jobCardSelector: selectors.renderImage,
+          mjJobId: uuid,
+          imageUrls,
+        };
       }
     }
 
@@ -202,7 +263,7 @@ export async function waitForRender(
   }
 
   throw new Error(
-    `Render timeout (${options.timeoutMs}ms) — yeni job kartı veya 4 img bulunamadı`,
+    `Render timeout (${options.timeoutMs}ms) — yeni UUID için 4 grid image bulunamadı`,
   );
 }
 
@@ -238,18 +299,40 @@ export async function downloadGridImages(
     sourceUrl: string;
   }> = [];
 
+  // Pass 49 — MJ CDN download stratejisi:
+  //
+  // ÖĞRENME (Pass 49 audit): Cloudflare CDN, Playwright APIRequestContext'i
+  // (`page.request.get`) bot olarak görüp 403 + "Just a moment" interstitial
+  // döner — explicit Referer/Cookie header ekleyerek bile. Browser'ın
+  // gerçek navigation request'i (page.goto) ise CF tarafından OK'lanır
+  // çünkü TLS fingerprint + tüm browser header set'i tam.
+  //
+  // Çözüm: yeni tab aç, image URL'ine goto et, response.body() ile
+  // bytes'ı yakala, tab'ı kapat. Yeni tab session ve cookie'leri context
+  // ile paylaşır; CF challenge tetiklenmez.
+  const ctx = page.context();
   for (let i = 0; i < imageUrls.length && i < 4; i++) {
     const url = imageUrls[i]!;
-    const res = await page.request.get(url);
-    if (!res.ok()) {
-      throw new Error(`Image download fail (${res.status()}): ${url}`);
+    const dlPage = await ctx.newPage();
+    try {
+      const resp = await dlPage.goto(url, {
+        waitUntil: "load",
+        timeout: 30_000,
+      });
+      if (!resp || !resp.ok()) {
+        throw new Error(
+          `Image download fail (${resp?.status() ?? "no response"}): ${url}`,
+        );
+      }
+      const body = await resp.body();
+      const ext = guessImageExtension(url, resp.headers()["content-type"]);
+      const localPath = join(jobDir, `${i}${ext}`);
+      await mkdir(dirname(localPath), { recursive: true });
+      await writeFile(localPath, body);
+      results.push({ gridIndex: i, localPath, sourceUrl: url });
+    } finally {
+      await dlPage.close().catch(() => undefined);
     }
-    const body = await res.body();
-    const ext = guessImageExtension(url, res.headers()["content-type"]);
-    const localPath = join(jobDir, `${i}${ext}`);
-    await mkdir(dirname(localPath), { recursive: true });
-    await writeFile(localPath, body);
-    results.push({ gridIndex: i, localPath, sourceUrl: url });
   }
 
   return results;
