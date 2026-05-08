@@ -1,101 +1,169 @@
-# EtsyHub
+# Kivasy
 
-Localhost-first Etsy / POD productivity web app. Farklı ürünlerden ilham alan bağımsız bir ürün.
+Kivasy, **Etsy satıcıları için bir dijital ürün üretim sistemidir**. Kullanıcı referans
+toplar, AI ile tasarım varyasyonları üretir, kalite kontrolünden geçirir, kürasyon
+yapar, mockup uygular ve Etsy'ye **draft listing** olarak gönderir. Localhost-first
+çalışır; ileride macOS / Windows native app'e (Tauri) taşınabilecek şekilde
+tasarlanır.
 
-## Mevcut Durum (2026-04-29)
+> Not: Repo slug, mevcut git geçmişiyle uyum için şimdilik `EtsyHub` olarak kalmaya
+> devam eder. **Public-facing ürün adı `Kivasy`'dir** ve yeni dokümanlar, marka
+> dili, Claude Design handoff bu adı kullanır.
 
-Phase 1–5 production-ready. **Phase 6 (AI Quality Review)** AI mode canlı çalışır durumda; local mode Aşama 2B (KIE data URL probe sonrası) bekliyor.
+---
 
-**Önemli dürüstlük notları:**
+## Ürün scope'u
 
-- Phase 6 AI mode review canlı çalışır — KIE.ai üzerinden Gemini 2.5 Flash; signed URL → multimodal chat/completions → strict JSON schema (veya `json_object` fallback). Aşama 2A (2026-04-29) kapanışı.
-- Local mode review Aşama 2B bekliyor: KIE'nin data URL desteği canlı smoke'da test edilecek; sonuca göre küçük patch (`image-loader.ts` local-path data URL inline) veya orta patch (MinIO temp upload bridge). Şu an local + KIE = explicit throw `"KIE local review henüz etkin değil; Aşama 2B bekleniyor."`.
-- `google-gemini-flash` provider Google API direct yolu mock-tested; canlı doğrulama opsiyonel (kullanıcının canlı Google key'i yok; pratikte KIE üzerinden gidiliyor).
-- Phase 6 cost tracking **conservative estimate** kullanır (1 cent/review, daily $10/user); gerçek KIE/Gemini faturalama değildir. Aşama 2A sonrası AI mode review'larda CostUsage tablosu dolar.
+Kivasy **dijital indirilebilir ürünler** için tasarlanmıştır. Kullanıcının ürettiği
+çıktılar Etsy'de "Digital Download" olarak listelenir.
 
-**Bugün gerçekten ne yapıyor:**
+**Desteklenen ürün tipleri:**
 
-- Etsy / Amazon rakip mağaza tarama, yeni listing kümeleri (trend) tespiti
-- Bookmark → Reference → Collection iş akışı, multi-user veri izolasyonu
-- **AI Mode variation generation:** Reference görselden 6–12 varyasyon, KIE GPT Image 1.5 + Z-Image provider'ları üzerinden, per-user `kieApiKey` ile
-- **Local Mode variation generation:** Disk'teki PNG/JPG asset'lerini reference olarak işaretleme + alpha/DPI/boyut tabanlı kalite skoru
-- **AI Quality Review (Phase 6, Aşama 2A — AI mode canlı; local Aşama 2B bekliyor):**
-  - Review provider seçimi (`/settings` → AI Mode): `kie` (önerilen, default; AI mode canlı KIE Gemini 2.5 Flash) veya `google-gemini` (ileri seviye)
-  - AI tasarımları için `GENERATE_VARIATIONS` SUCCESS sonrası otomatik review job tetiklenir
-  - Local asset'ler için `POST /api/review/local-batch` ile manuel batch (Aşama 2A: KIE seçili kullanıcıda local job FAIL — "Aşama 2B bekleniyor" yön mesajı)
-  - Hibrit pipeline mimarisi: Sharp deterministic alpha kontrolleri (sadece transparent ürünlerde) + provider-selectable LLM (KIE.ai chat/completions multimodal veya Google Gemini direct mock-tested)
-  - 8 sabit risk flag türü (watermark, signature, logo, celebrity face, alpha, edge artifact, text, gibberish text)
-  - Karar kuralı: `risk_flags > 0` veya `score < 60` ⇒ NEEDS_REVIEW; `score ≥ 90` + risk yok ⇒ APPROVED; aksi NEEDS_REVIEW (güvenli varsayılan)
-  - USER override sticky (R12): "Approve anyway" sonrası SYSTEM yazımı race-safe `updateMany` ile engellenir
-  - `/review` queue UI: iki sekme (AI Tasarımları / Local Library), kart grid, status badge, USER/SYSTEM görünür rozet, detay drawer, bulk approve (skip-on-risk) + bulk reject + bulk delete (typing confirmation "SİL")
-- **Conservative cost tracking (Phase 6 Task 18):** Her review çağrısı `CostUsage` tablosuna 1 cent estimate olarak yazılır (gerçek Gemini faturalama değil — minimum hesap birimi $0.01 nedeniyle yuvarlanmış sabit). Daily limit: $10/gün/kullanıcı; aşımda explicit throw, sessiz skip yok. Real-time pricing + admin settings carry-forward.
-- Provider snapshot + prompt snapshot her review yazımında persist edilir (CLAUDE.md kuralı)
-- Admin paneli: prompt versioning, AI/scraper provider config, cost usage, audit logs, feature flags
+- Clipart bundle
+- Wall art (canvas / poster / framed — dijital dosya olarak)
+- Bookmark (kitap ayracı, dijital indirilebilir)
+- Sticker / printable (sticker sheet, transparent PNG setleri)
+- Genel digital download paketleri
 
-**Henüz çalışmayan / eksik (dürüstlük):**
+**Dijital teslim formatları:**
 
-- **KIE local review (Aşama 2B bekliyor — data URL probe sonrası kapsam netleşir)** — local mode + `reviewProvider: "kie"` durumunda job FAIL (yön mesajı: `"KIE local review henüz etkin değil; Aşama 2B bekleniyor."`). Aşama 2B'de KIE'nin data URL desteği canlı smoke'da test edilip kapsam (küçük data URL patch / orta MinIO upload bridge) seçilecek
-- KIE strict JSON schema vs `json_object` fallback canlı davranışı smoke'ta gözlemlenecek (heuristic kod hazır; gerçek KIE error format'ı bilinmiyor)
-- Direct Google Gemini provider canlı doğrulanmadı (`google-gemini` seçeneği mock testleriyle çalışır; kullanıcı canlı Google `geminiApiKey` girerse çalışabilir ama smoke yapılmadı)
-- Real-time cost pricing yok (conservative 1 cent estimate; carry-forward `cost-real-time-pricing`)
-- Admin cost-usage UI yok (carry-forward `cost-budget-settings-ui`)
-- Generate-variations cost tracking yok (Phase 5 KIE provider için; carry-forward `generate-variations-cost-tracking`)
-- Selection Studio, Mockup Studio, Listing Builder, Etsy draft push: **Phase 7+ scope dışı**
+- ZIP (bundle)
+- PNG (transparent veya raster)
+- PDF (printable, sheet)
+- JPG / JPEG (raster çıktı)
 
-## Local Mode vs AI Mode
+**Bu ürün ne değildir:**
 
-İki bağımsız akış aynı pipeline'ı paylaşır:
+- Fiziksel print-on-demand (POD) aracı değildir.
+- Print partner / fulfillment / shipping / kargo entegrasyonu yoktur.
+- Garment POD aracı değildir (t-shirt, hoodie, mug, DTF gibi giysi/eşya
+  ürünleri kapsam dışıdır).
+- Made-to-order / "üretim partneri" akışı yoktur.
 
-| | AI Mode | Local Mode |
-|---|---------|------------|
-| Reference kaynağı | Bookmark → Reference promote | Local Library (disk klasör) |
-| Variation üretimi | KIE provider (per-user `kieApiKey`) | Yok — sadece review akışı |
-| Review tetikleyici | Otomatik (variation success sonrası enqueue) | Manuel batch (`POST /api/review/local-batch`) |
-| Image input | Signed URL (R2/MinIO 1h TTL) | Local file path |
-| Alpha checks | Atlanır (LLM yeterli) | Çalışır (transparent ürünlerde) |
-| Audit trail | `DesignReview` tablosu | Asset row'unda inline |
+Mockup'lar **dijital listing sunumu** için kullanılır — fiziksel üretim için
+değil.
 
-İki mod da aynı `REVIEW_DESIGN` worker'dan geçer (scope discriminated union ile ayrılır).
+---
 
-## Mimari Omurga
+## Ana workflow
 
-**Workers (`src/server/workers/`):**
-- `generate-variations.worker.ts` — KIE provider çağrısı, design persist, review auto-enqueue (best-effort, fail durumunda variation SUCCESS korunur)
-- `review-design.worker.ts` — Sticky check → API key resolve → image input → alpha gate → Gemini → decision → race-safe persist + idempotent audit upsert
-- `scrape-competitor.worker.ts`, `fetch-new-listings.worker.ts`, `trend-cluster-update.worker.ts` (Phase 3-4)
-- `scan-local-folder.worker.ts`, `bookmark-preview.worker.ts`, `thumbnail.worker.ts` (Phase 1-5)
+```
+Reference  →  Batch  →  Library  →  Selection  →  Product  →  Etsy Draft
+```
 
-**Provider abstraction (`src/providers/`):**
-- `image/` — KIE GPT Image 1.5, KIE Z-Image (Phase 5)
-- `review/` — selectable provider (Phase 6 Aşama 2A): `google-gemini-flash` (Google direct, mock-tested) + `kie-gemini-flash` (KIE.ai chat/completions multimodal — AI mode canlı, local mode Aşama 2B bekliyor). Paylaşılan `output-schema.ts` (Zod + OpenAI JSON schema). Runtime seçim `settings.reviewProvider`. `ReviewProvider.modelId` field audit/CostUsage için kanonik kaynak.
-- `scraper/`, `storage/`, `mockup/`, `ocr/` — Phase 3-5
-- Registry paterni (R17.3): Hardcoded provider lookup yasak, sessiz fallback yasak.
+| Aşama | Ne yapar |
+|---|---|
+| **Reference** | Üretim öncesi kaynak havuzu — referanslar, ilham fragmanları, rakip stories, bookmark inbox, koleksiyonlar |
+| **Batch** | AI variation jobs — referanstan tasarım varyasyonu üretimi, retry-failed-only, review |
+| **Library** | Üretilmiş tüm asset'lerin tek doğruluk kaynağı — filter, lineage, geçmiş |
+| **Selection** | Kürasyon — Library'den seçilmiş + organize edilmiş set'ler, edit operasyonları (background remove, color edit, crop, upscale) |
+| **Product** | Mockup'lanmış + bundle preview hazırlanmış + listing metadata'sı doldurulmuş + Etsy'ye gidecek paket |
+| **Etsy Draft** | Etsy Open API üzerinden draft olarak gönderilir; **direct active publish yok** — kullanıcı onayı zorunlu |
 
-**Settings (`src/features/settings/`):**
-- `aiMode` — per-user encrypted `kieApiKey` + `geminiApiKey` (Phase 5'te kuruldu, Phase 6'da review provider tüketir) + plain `reviewProvider: "kie"|"google-gemini"` runtime seçimi (Aşama 1)
-- `localLibrary` — kök klasör yolu, hedef çözünürlük/DPI
+Kullanıcı ayrıca **kendi tasarımlarını** sisteme yükleyip aynı pipeline'a sokabilir
+(Library → Selection → Product → Etsy).
 
-**Review pipeline (`src/server/services/review/`):**
-- `alpha-checks.ts` — Sharp deterministic kenar piksel + alpha kanal kontrolleri (pure fonksiyon)
-- `decision.ts` — `decideReviewStatus({score, riskFlags})` (R8 hardcoded threshold 60/90)
-- `sticky.ts` — `applyReviewDecisionWithSticky` (R12 USER override koruması)
+---
 
-**Auth & multi-tenancy:**
-- NextAuth v5 + per-row `userId` filter zorunlu
-- Ownership ihlalinde 404 (varlık sızıntısı yok)
-- Soft-delete dual-flag (`deletedAt` + `isUserDeleted`)
+## Mockup modeli (3 tip)
 
-## Sıradaki Ana İşler
+Kivasy'de mockup tek tip değildir. Apply Mockups akışı 3 sınıfı destekler:
 
-| Adım | Kapsam |
-|------|--------|
-| Phase 6 Aşama 2B | Local mode KIE review (data URL probe sonrası küçük/orta patch) + canlı smoke. Aşama 2A AI mode canlı; smoke'ta strict/fallback davranışı, `usage.total_tokens`, CostUsage row doğrulanacak. |
-| Phase 7 | Selection Studio (background removal, color editor, crop, upscale, transparent PNG kontrolü) |
-| Phase 8 | Mockup Studio (canvas/wall art, clipart bundle cover, sticker sheet) |
-| Phase 9 | Listing Builder + Etsy draft push (direct active publish YOK; human approval gate'i) |
-| Phase 10 | Admin hardening (prompt versioning UI, theme editor, cost dashboard, real-time pricing, negative library) |
+1. **Lifestyle mockups** — bağlamsal sunum (wall art duvarda, clipart masada,
+   bookmark kitabın içinde, sticker laptop'ta).
+2. **Bundle preview sheets** — alıcının ne aldığını gösterir ("25 PNG dahil",
+   sticker sheet preview, multi-piece wall art set).
+3. **User-uploaded custom templates** — kullanıcı kendi PSD / template
+   dosyasını yükler; `Templates` altındaki `Mockup Templates` alt-tipinde
+   yaşar ve Products genelinde yeniden kullanılır.
 
-Phase dokümanları: [`docs/plans/`](docs/plans/). Phase 6 design + plan: `docs/plans/2026-04-28-phase6-quality-review-{design,plan}.md`.
+---
+
+## Kullanım ölçeği
+
+Aynı arayüz iki uçta da çalışır:
+
+- **Küçük iş:** 1 batch, birkaç referans, ~4–10 varyasyon, bir selection set,
+  birkaç mockup, tek Etsy draft. ~15 dakikada biter.
+- **Büyük operasyon:** 10+ batch, 200+ asset, bulk review, bulk selection,
+  multi-mockup uygulama, çoklu draft. Saatler boyu sürer.
+
+UI küçük işte hafif ve hızlı, büyük işte güçlü ve organize hissetmelidir.
+Density toggle, virtualized grid, floating action bar (bulk-select), chip
+preset filtreler, keyboard-first review desteklenir.
+
+---
+
+## Platform hedefi
+
+- **Desktop web (bugün)** — birincil çalışma ortamı.
+- **Mobile web (bugün)** — browse, status check, küçük iş, hafif kararlar.
+  Yüksek-yoğunluk operasyonları desktop'ta kalabilir; mobile'da çökmemeli.
+- **Native macOS / Windows (gelecek)** — Tauri shell üzerinde paketlenebilir.
+  App shell (sidebar + main + persistent task panel) bu geçişte korunmalı.
+  Browser-only pattern'lerden kaçınılır.
+
+---
+
+## Teknoloji omurgası
+
+- **Frontend:** Next.js 14 App Router · TypeScript strict · Tailwind · CSS
+  variables tabanlı design token sistemi
+- **Backend:** Next.js server actions + API routes · Prisma
+- **Veritabanı:** PostgreSQL 16 (WAL)
+- **Queue:** Redis 7 + BullMQ
+- **Storage:** MinIO (S3-uyumlu) — provider abstraction
+- **Auth:** NextAuth v5 Credentials + JWT + bcryptjs (multi-user, per-row
+  `userId` filter zorunlu)
+- **AI:** Midjourney (describe / generate / image-prompt API-first; `--sref`,
+  `--oref`, `--ow`, `--cref`); KIE provider (GPT Image 1.5, Z-Image); Gemini
+  2.5 Flash (review)
+- **Test:** Vitest (unit + integration) + Playwright (e2e)
+
+---
+
+## Roller
+
+- **User** — kendi referanslarını, batch'lerini, library'sini, selection'larını,
+  product'larını ve Etsy bağlantısını yönetir.
+- **Admin** — provider config, prompt templates, mockup templates, feature
+  flags, theme, users, audit logs, cost usage. Admin scope **ayrı bir
+  uygulama değil**, role-based bir görünüm katmanıdır.
+
+Super admin yoktur. Multi-user veri izolasyonu zorunludur (UI'da gizlemek
+yetmez, backend authorization zorunlu).
+
+---
+
+## Mevcut durum (Pass 91 itibarıyla)
+
+Kapasite olarak ürün omurgası **çalışıyor**. Eksik olan capability değil,
+**bilgi mimarisinin (IA) tek-parça hale getirilmesi** ve **görsel sistemin
+bütünleşmesi**.
+
+**Çalışan capability'ler:**
+
+- Bookmark / Reference / Collection iş akışı + multi-user veri izolasyonu
+- Etsy rakip mağaza tarama, trend cluster tespiti
+- AI Mode variation generation (KIE GPT Image 1.5 + Z-Image, per-user
+  `kieApiKey`)
+- Local Mode variation generation (disk asset'leri reference)
+- AI Quality Review (Sharp deterministic alpha + KIE Gemini 2.5 Flash;
+  USER override sticky; risk flag detection; conservative cost tracking)
+- Midjourney describe / generate / image-prompt API-first; sref/oref/ow/cref
+- Variation V1, batch generation, retry-failed-only
+- Asset Library V1, Batch Review Studio V1, Kept Handoff, Selection
+  Workspace V1
+- Mockup apply (lifestyle), Selection Studio (background removal, color
+  editor, crop, Magic Eraser inpainting via LaMa)
+- Listing draft + Etsy OAuth + draft push (direct publish yok)
+- Admin: prompt versioning, AI/scraper provider config, cost usage, audit
+  logs, feature flags
+
+**Bilgi mimarisi yenileniyor:** mevcut top-level yüzeyler birleştiriliyor.
+Yeni IA için bkz. [`docs/CLAUDE_DESIGN_CONTEXT.md`](docs/CLAUDE_DESIGN_CONTEXT.md).
+
+---
 
 ## Gereksinimler
 
@@ -103,7 +171,7 @@ Phase dokümanları: [`docs/plans/`](docs/plans/). Phase 6 design + plan: `docs/
 - Docker + Docker Compose
 - npm 10+
 
-## Hızlı Başlangıç
+## Hızlı başlangıç
 
 ```bash
 # 1) Altyapı servislerini başlat
@@ -126,11 +194,14 @@ npm run dev
 npm run worker
 ```
 
-Admin girişi için `.env.local` dosyasındaki `ADMIN_EMAIL` / `ADMIN_PASSWORD` değerlerini kullan.
+Admin girişi için `.env.local` dosyasındaki `ADMIN_EMAIL` / `ADMIN_PASSWORD`
+değerlerini kullan.
 
 ### Magic Eraser kurulumu (opsiyonel)
 
-Selection Studio'daki Magic Eraser (LaMa inpainting) Python subprocess gerektirir. Worker `MAGIC_ERASER_INPAINT` job'unu picked up ettikten sonra runner'ı çağırır.
+Selection Studio'daki Magic Eraser (LaMa inpainting) Python subprocess
+gerektirir. Worker `MAGIC_ERASER_INPAINT` job'unu picked up ettikten sonra
+runner'ı çağırır.
 
 **Production (gerçek LaMa):**
 
@@ -140,7 +211,8 @@ pip install simple-lama-inpainting Pillow
 # MAGIC_ERASER_PYTHON=python3   # default; LaMa'nın yüklü olduğu Python'a yönlendir
 ```
 
-İlk çağrı ~5-15 saniye (model lazy load); sonraki çağrılar ~1-3 saniye. Worker concurrency 1 (4096×4096 ~1-2GB RAM peak).
+İlk çağrı ~5-15 saniye (model lazy load); sonraki çağrılar ~1-3 saniye.
+Worker concurrency 1 (4096×4096 ~1-2GB RAM peak).
 
 **QA / mock (LaMa kurulu değil):**
 
@@ -150,16 +222,8 @@ pip install Pillow
 # MAGIC_ERASER_RUNNER_OVERRIDE=$(pwd)/scripts/magic-eraser-mock-runner.py
 ```
 
-Mock runner maskelenen alanı **gri** ile boyar (gerçek inpainting değil — UI smoke için yeterli sinyal).
-
-**QA fixture seed** (admin için draft Selection Set + 1 editable item):
-
-```bash
-npx tsx scripts/seed-magic-eraser-fixture.ts
-# → /selection/sets/<id> adresinden Magic Eraser akışını test edebilirsiniz
-```
-
-Kurulum hatalarında UI op-aware toast verir (örn. "Magic Eraser başarısız: Python yüklü değil veya MAGIC_ERASER_PYTHON yolu hatalı (setup gerekli)").
+Mock runner maskelenen alanı **gri** ile boyar (gerçek inpainting değil — UI
+smoke için yeterli sinyal).
 
 ## Komutlar
 
@@ -176,32 +240,17 @@ Kurulum hatalarında UI op-aware toast verir (örn. "Magic Eraser başarısız: 
 | `npm run db:seed` | Veritabanı seed |
 | `npm run db:reset` | Veritabanını sıfırla + yeniden seed |
 
-## Mimari Özeti
+---
 
-- **Frontend:** Next.js 14 App Router + TypeScript strict + Tailwind + shadcn/ui primitive
-- **Backend:** Next.js server actions + API routes + Prisma
-- **Veritabanı:** PostgreSQL 16
-- **Queue:** Redis 7 + BullMQ
-- **Storage:** MinIO (S3-compatible) — provider abstraction
-- **Auth:** NextAuth v5 Credentials + JWT + bcryptjs
-- **Test:** Vitest (unit + integration) + Playwright (e2e)
+## Dokümantasyon
 
-## Phase Durumu
-
-| Phase | Kapsam | Durum |
-|-------|--------|-------|
-| 1 | App iskelet: auth, user/admin rolleri, theme token, app shell, dashboard | ✅ |
-| 2 | Bookmark Inbox, Reference Board, Collections, Tags, Asset upload/URL import, data isolation | ✅ |
-| 3 | Competitor Analysis: scraper abstraction, review-based ranking, Etsy/Amazon parser, daily cron | ✅ |
-| 4 | Trend Stories: n-gram cluster + rail/feed/drawer + window tabs + feature gate | ✅ |
-| 5 | Variation Generation: KIE provider abstraction, AI Mode + Local Mode, quality scoring | ✅ |
-| 6 | AI Quality Review: hibrit pipeline (Sharp + selectable LLM), USER sticky, queue UI, bulk actions, conservative cost tracking | 🟡 (Aşama 2A AI mode ✅; Aşama 2B local mode ⏳ — KIE data URL probe sonrası kapsam) |
-| 7 | Selection Studio | ⏳ |
-| 8 | Mockup Studio | ⏳ |
-| 9 | Listing Builder + Etsy draft push | ⏳ |
-| 10 | Admin hardening (prompt versioning, theme editor, cost usage, negative library) | ⏳ |
-
-Phase dokümanları: [`docs/plans/`](docs/plans/). Matesy/Listybox referansları için `CLAUDE.md`'ye bak.
+- [`CLAUDE.md`](CLAUDE.md) — proje kuralları + ürün gerçekliği (truth-source)
+- [`docs/CLAUDE_DESIGN_CONTEXT.md`](docs/CLAUDE_DESIGN_CONTEXT.md) — Claude
+  Design handoff için tek-parça ürün bağlamı (Kivasy marka, scope, IA, mockup
+  modeli, mobile/native/high-volume)
+- [`docs/plans/`](docs/plans/) — geçmiş phase planları (history)
+- [`docs/design/`](docs/design/) — geçmiş design çalışmaları (history; eski
+  marka adı geçer, **referans olarak kullanma**)
 
 ## Lisans
 
