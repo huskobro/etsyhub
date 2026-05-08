@@ -104,6 +104,14 @@ export default async function MjBatchDetailPage({
                 ← Batches
               </Button>
             </Link>
+            {/* Pass 89 — Batch Review Studio entry — primary aksiyon */}
+            <Link
+              href={`/admin/midjourney/batches/${summary.batchId}/review`}
+            >
+              <Button variant="primary" size="sm">
+                Review Studio →
+              </Button>
+            </Link>
             <Link href={`/admin/midjourney?batchId=${summary.batchId}`}>
               <Button variant="ghost" size="sm">
                 Job listesinde aç →

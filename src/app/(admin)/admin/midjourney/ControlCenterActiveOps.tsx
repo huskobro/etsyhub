@@ -152,11 +152,14 @@ export async function ControlCenterActiveOps({
               const pending = b.counts.queued + b.counts.running;
               return (
                 <li key={b.batchId}>
-                  <Link
-                    href={`/admin/midjourney/batches/${b.batchId}`}
-                    className="flex items-center justify-between gap-2 rounded border border-border bg-bg p-2 transition hover:border-border-strong"
-                  >
-                    <div className="flex flex-1 items-center gap-2 min-w-0">
+                  {/* Pass 89 — outer div + iki inner link (detail + review).
+                      Pass 87 hotfix'inde öğrendiğim pattern: nested <a> +
+                      onClick fail oluyordu; iki ayrı Link daha sade. */}
+                  <div className="flex items-center justify-between gap-2 rounded border border-border bg-bg p-2 transition hover:border-border-strong">
+                    <Link
+                      href={`/admin/midjourney/batches/${b.batchId}`}
+                      className="flex flex-1 items-center gap-2 min-w-0 hover:text-accent"
+                    >
                       <code className="font-mono text-xs text-text-muted">
                         {b.batchId.slice(0, 8)}
                       </code>
@@ -169,8 +172,8 @@ export async function ControlCenterActiveOps({
                           (inline)
                         </span>
                       )}
-                    </div>
-                    <div className="flex shrink-0 gap-1.5">
+                    </Link>
+                    <div className="flex shrink-0 items-center gap-1.5">
                       {completed > 0 ? (
                         <Badge tone="success">{completed}</Badge>
                       ) : null}
@@ -183,8 +186,18 @@ export async function ControlCenterActiveOps({
                       {completed === 0 && pending === 0 && failed === 0 ? (
                         <span className="text-xs text-text-muted">—</span>
                       ) : null}
+                      {/* Pass 89 — Review entry, completed asset varsa görünür */}
+                      {completed > 0 ? (
+                        <Link
+                          href={`/admin/midjourney/batches/${b.batchId}/review`}
+                          className="text-xs text-accent underline hover:no-underline"
+                          title="Review Studio"
+                        >
+                          Review →
+                        </Link>
+                      ) : null}
                     </div>
-                  </Link>
+                  </div>
                 </li>
               );
             })}

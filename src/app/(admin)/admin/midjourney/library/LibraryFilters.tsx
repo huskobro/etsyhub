@@ -19,11 +19,23 @@ const DAY_CHIPS: Array<{ key: "recent" | "7d" | "30d" | "all"; label: string }> 
     { key: "all", label: "Tümü" },
   ];
 
+// Pass 89 — Review decision filter chip'leri (Library scope)
+const DECISION_CHIPS: Array<{
+  key: "all" | "UNDECIDED" | "KEPT" | "REJECTED";
+  label: string;
+}> = [
+  { key: "all", label: "Tümü" },
+  { key: "KEPT", label: "✓ Tutulanlar" },
+  { key: "UNDECIDED", label: "Bekleyenler" },
+  { key: "REJECTED", label: "Reddedilenler" },
+];
+
 export function LibraryFilters() {
   const router = useRouter();
   const params = useSearchParams();
   const currentDays = params.get("days") ?? "recent";
   const currentVariant = params.get("variantKind") ?? "ALL";
+  const currentDecision = params.get("reviewDecision") ?? "all";
   const currentBatchId = params.get("batchId");
   const currentTemplateId = params.get("templateId");
   const currentParentAssetId = params.get("parentAssetId");
@@ -54,6 +66,13 @@ export function LibraryFilters() {
     });
   }
 
+  function setDecision(d: string) {
+    pushWith((sp) => {
+      if (d === "all") sp.delete("reviewDecision");
+      else sp.set("reviewDecision", d);
+    });
+  }
+
   function applyKeyword(e: React.FormEvent) {
     e.preventDefault();
     pushWith((sp) => {
@@ -77,6 +96,7 @@ export function LibraryFilters() {
   const hasAnyFilter =
     currentDays !== "recent" ||
     currentVariant !== "ALL" ||
+    currentDecision !== "all" ||
     currentBatchId !== null ||
     currentTemplateId !== null ||
     currentParentAssetId !== null ||
@@ -167,6 +187,28 @@ export function LibraryFilters() {
             data-testid={`mj-library-variant-${opt.value}`}
           >
             {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Pass 89 — Review decision filter (Library scope) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-text-muted">Karar:</span>
+        {DECISION_CHIPS.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => setDecision(c.key)}
+            disabled={pending}
+            className={
+              "rounded-full border px-2 py-0.5 text-xs transition disabled:opacity-50 " +
+              (currentDecision === c.key
+                ? "border-accent bg-accent text-on-accent font-semibold"
+                : "border-border bg-bg text-text-muted hover:border-border-strong hover:text-text")
+            }
+            data-testid={`mj-library-decision-${c.key}`}
+          >
+            {c.label}
           </button>
         ))}
       </div>

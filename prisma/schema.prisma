@@ -1183,6 +1183,20 @@ enum MJVariantKind {
   DESCRIBE   // Describe çıktısı (image yok, sadece metadata)
 }
 
+/// Pass 89 — Batch Review Studio V1.
+/// Asset-level karar state'i. Üç state — sade kasıtlı:
+///   UNDECIDED  → operatör henüz karar vermemiş (default)
+///   KEPT       → operatör beğendi, shortlist'e dahil
+///   REJECTED   → operatör elendi
+/// Phase 6/7 GeneratedDesign.reviewStatus pipeline'ı paralel çalışır
+/// (otomatik AI quality review). Batch Review Studio operatörün manuel
+/// hızlı karar yüzeyidir — pipeline'ı bypass etmez.
+enum MJReviewDecision {
+  UNDECIDED
+  KEPT
+  REJECTED
+}
+
 model MidjourneyJob {
   id              String              @id @default(cuid())
   userId          String
@@ -1255,8 +1269,17 @@ model MidjourneyAsset {
   mjImageUrl      String?         // MJ CDN URL (kayıt için, indirilmiş asset ayrı)
   importedAt      DateTime        @default(now())
 
+  /// Pass 89 — Batch Review Studio V1: operatör manuel kararı.
+  /// Default UNDECIDED. setMidjourneyAssetReview service'i ile değişir.
+  /// Schema-zero değil — yeni alanlar additive, default UNDECIDED ile
+  /// eski rowlar otomatik UNDECIDED kabul edilir.
+  reviewDecision   MJReviewDecision @default(UNDECIDED)
+  reviewDecidedAt  DateTime?
+  reviewDecidedBy  String?          // userId (audit lineage)
+
   @@index([midjourneyJobId])
   @@index([variantKind])
   @@index([assetId])
+  @@index([reviewDecision])
 }
 

@@ -18,7 +18,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { AssetThumb } from "../AssetThumb";
 import { VARIANT_KIND_META } from "./variantKindHelper";
-import type { MJVariantKind } from "@prisma/client";
+import type { MJReviewDecision, MJVariantKind } from "@prisma/client";
 
 type LibraryCardProps = {
   card: {
@@ -34,6 +34,7 @@ type LibraryCardProps = {
     batchId: string | null;
     templateId: string | null;
     expandedPrompt: string | null;
+    reviewDecision: MJReviewDecision;
   };
 };
 
@@ -64,6 +65,16 @@ export function LibraryCard({ card }: LibraryCardProps) {
           {variantMeta.label}
           {card.mjActionLabel ? ` ${card.mjActionLabel}` : ""}
         </Badge>
+        {/* Pass 89 — Review decision rozeti (sadece UNDECIDED değilse) */}
+        {card.reviewDecision === "KEPT" ? (
+          <Badge tone="success" title="Batch Review'da tutuldu">
+            ✓
+          </Badge>
+        ) : card.reviewDecision === "REJECTED" ? (
+          <Badge tone="danger" title="Batch Review'da reddedildi">
+            ✕
+          </Badge>
+        ) : null}
         {card.parentAssetId ? (
           <Link
             href={`/admin/midjourney/library?parentAssetId=${card.parentAssetId}`}
@@ -81,13 +92,23 @@ export function LibraryCard({ card }: LibraryCardProps) {
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {card.batchId ? (
-          <Link
-            href={`/admin/midjourney/batches/${card.batchId}`}
-            className="text-text-muted underline hover:text-accent"
-            title={`Batch ${card.batchId}`}
-          >
-            batch {card.batchId.slice(0, 6)}
-          </Link>
+          <>
+            <Link
+              href={`/admin/midjourney/batches/${card.batchId}`}
+              className="text-text-muted underline hover:text-accent"
+              title={`Batch ${card.batchId}`}
+            >
+              batch {card.batchId.slice(0, 6)}
+            </Link>
+            {/* Pass 89 — Review Studio quick-jump */}
+            <Link
+              href={`/admin/midjourney/batches/${card.batchId}/review`}
+              className="text-text-muted underline hover:text-accent"
+              title="Batch Review Studio"
+            >
+              review
+            </Link>
+          </>
         ) : null}
         {card.templateId ? (
           <Link

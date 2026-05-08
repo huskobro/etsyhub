@@ -19,7 +19,7 @@
 //   - Lineage: parentAssetId opsiyonel — UI'da rozet + tıklanınca
 //     parent asset detayına gidiş.
 
-import { MJVariantKind, type Prisma } from "@prisma/client";
+import { MJReviewDecision, MJVariantKind, type Prisma } from "@prisma/client";
 import { db } from "@/server/db";
 
 export type LibraryDayFilter = "recent" | "7d" | "30d" | "all";
@@ -37,6 +37,11 @@ export type LibraryFilter = {
    * altındaki tüm child asset'ler" sayfası).
    */
   parentAssetId?: string;
+  /**
+   * Pass 89 — Review decision filter. Operatör shortlist (KEPT) görmek
+   * istediğinde Library'den hızlıca filtreler.
+   */
+  reviewDecision?: MJReviewDecision;
   /** Time window. Default "recent" (=7d). */
   dayFilter?: LibraryDayFilter;
   /** Free-text search (prompt ilike %q%). */
@@ -76,6 +81,9 @@ export type LibraryCard = {
   templateId: string | null;
   /** Pass 79 expanded prompt (template expansion sonrası). */
   expandedPrompt: string | null;
+
+  /** Pass 89 — Batch Review Studio kararı. */
+  reviewDecision: MJReviewDecision;
 };
 
 export type LibraryPage = {
@@ -132,6 +140,9 @@ export async function listLibraryAssets(
   }
   if (filter.parentAssetId) {
     mjAssetWhere.parentAssetId = filter.parentAssetId;
+  }
+  if (filter.reviewDecision) {
+    mjAssetWhere.reviewDecision = filter.reviewDecision;
   }
   if (since) {
     mjAssetWhere.importedAt = { gte: since };
@@ -238,6 +249,7 @@ export async function listLibraryAssets(
       batchId,
       templateId,
       expandedPrompt,
+      reviewDecision: r.reviewDecision,
     };
   });
 
@@ -306,6 +318,7 @@ export async function getLibraryLineage(
       batchId,
       templateId,
       expandedPrompt,
+      reviewDecision: row.reviewDecision,
     });
 
     currentId = row.parentAssetId;

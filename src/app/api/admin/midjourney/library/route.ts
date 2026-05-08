@@ -20,7 +20,7 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { MJVariantKind } from "@prisma/client";
+import { MJReviewDecision, MJVariantKind } from "@prisma/client";
 import { requireAdmin } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
 import { ValidationError } from "@/lib/errors";
@@ -36,6 +36,7 @@ const query = z.object({
   batchId: z.string().min(1).max(100).optional(),
   templateId: z.string().min(1).max(100).optional(),
   parentAssetId: z.string().min(1).max(100).optional(),
+  reviewDecision: z.enum(["UNDECIDED", "KEPT", "REJECTED"]).optional(),
   days: z.enum(["recent", "7d", "30d", "all"]).optional(),
   q: z.string().max(200).optional(),
   cursorId: z.string().min(1).max(100).optional(),
@@ -60,6 +61,9 @@ export const GET = withErrorHandling(async (req: Request) => {
     batchId: parsed.data.batchId,
     templateId: parsed.data.templateId,
     parentAssetId: parsed.data.parentAssetId,
+    reviewDecision: parsed.data.reviewDecision as
+      | MJReviewDecision
+      | undefined,
     dayFilter: parsed.data.days as LibraryDayFilter | undefined,
     search: parsed.data.q,
     cursorId: parsed.data.cursorId,

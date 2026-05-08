@@ -18,7 +18,7 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { MJVariantKind } from "@prisma/client";
+import type { MJReviewDecision, MJVariantKind } from "@prisma/client";
 import { auth } from "@/server/auth";
 import {
   listLibraryAssets,
@@ -33,6 +33,7 @@ type SearchParams = {
   batchId?: string;
   templateId?: string;
   parentAssetId?: string;
+  reviewDecision?: string;
   days?: string;
   q?: string;
   cursorId?: string;
@@ -66,6 +67,14 @@ function parseDays(d: string | undefined): "recent" | "7d" | "30d" | "all" {
     : "recent";
 }
 
+function parseDecision(d: string | undefined): MJReviewDecision | undefined {
+  if (!d) return undefined;
+  if (d === "UNDECIDED" || d === "KEPT" || d === "REJECTED") {
+    return d as MJReviewDecision;
+  }
+  return undefined;
+}
+
 export default async function AdminMidjourneyLibraryPage({
   searchParams,
 }: {
@@ -76,6 +85,7 @@ export default async function AdminMidjourneyLibraryPage({
   const userId = session.user.id;
 
   const variantKind = parseVariant(searchParams?.variantKind);
+  const reviewDecision = parseDecision(searchParams?.reviewDecision);
   const dayFilter = parseDays(searchParams?.days);
   const search = (searchParams?.q ?? "").trim() || undefined;
   const batchId = (searchParams?.batchId ?? "").trim() || undefined;
@@ -90,6 +100,7 @@ export default async function AdminMidjourneyLibraryPage({
       batchId,
       templateId,
       parentAssetId,
+      reviewDecision,
       dayFilter,
       search,
       cursorId,
@@ -100,6 +111,7 @@ export default async function AdminMidjourneyLibraryPage({
   // Build "load more" URL — preserve filters, set new cursor.
   const sp = new URLSearchParams();
   if (variantKind) sp.set("variantKind", variantKind);
+  if (reviewDecision) sp.set("reviewDecision", reviewDecision);
   if (batchId) sp.set("batchId", batchId);
   if (templateId) sp.set("templateId", templateId);
   if (parentAssetId) sp.set("parentAssetId", parentAssetId);

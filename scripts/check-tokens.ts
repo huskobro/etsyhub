@@ -26,6 +26,10 @@ const whitelist = [
   // çapı CSS pixel olarak runtime'da hesaplanır (canvas DOM rect'e bağlı).
   // Tailwind class ile ifade edilemez; inline style escape hatch'i.
   "src/features/selection/components/MaskCanvas.tsx",
+  // Pass 89: Batch Review Studio progress bar — RolloutBar pattern'inin
+  // 2. tüketicisi (Tailwind arbitrary `w-[X%]` yasak). 3. tüketici geldiğinde
+  // `src/components/ui/progress-bar.tsx`'e terfi edilir.
+  "src/app/(admin)/admin/midjourney/batches/[batchId]/review/page.tsx",
 ];
 
 let hadError = false;
