@@ -136,12 +136,21 @@ export default async function AdminMidjourneyLibraryPage({
       <header className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <h1 className="text-base font-semibold">Asset Library</h1>
-          <Link
-            href="/admin/midjourney"
-            className="text-xs text-text-muted underline hover:text-accent"
-          >
-            ← Control Center
-          </Link>
+          <div className="flex items-center gap-3 text-xs">
+            {/* Pass 90 — Kept Workspace shortcut */}
+            <Link
+              href="/admin/midjourney/kept"
+              className="text-accent underline hover:no-underline"
+            >
+              ✓ Kept Workspace
+            </Link>
+            <Link
+              href="/admin/midjourney"
+              className="text-text-muted underline hover:text-accent"
+            >
+              ← Control Center
+            </Link>
+          </div>
         </div>
         <p className="text-xs text-text-muted">
           Üretilen tüm görseller. Tür/tarih/batch/template/parent ile filtrele,

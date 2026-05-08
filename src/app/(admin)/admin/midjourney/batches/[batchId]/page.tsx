@@ -112,6 +112,14 @@ export default async function MjBatchDetailPage({
                 Review Studio →
               </Button>
             </Link>
+            {/* Pass 90 — Kept Workspace: bu batch'in kept'leri */}
+            <Link
+              href={`/admin/midjourney/kept?batchId=${summary.batchId}`}
+            >
+              <Button variant="ghost" size="sm">
+                Kept Workspace →
+              </Button>
+            </Link>
             <Link href={`/admin/midjourney?batchId=${summary.batchId}`}>
               <Button variant="ghost" size="sm">
                 Job listesinde aç →

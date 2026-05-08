@@ -41,7 +41,7 @@ function ActionCard({ href, title, description, emoji, primary }: ActionCardProp
 export function ControlCenterQuickActions() {
   return (
     <section
-      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
       data-testid="mj-cc-quick-actions"
       aria-label="Production quick actions"
     >
@@ -70,6 +70,13 @@ export function ControlCenterQuickActions() {
         title="Library"
         description="Üretilen tüm görseller. Tür/tarih/batch/template ile filtrele, lineage&apos;da gez."
         emoji="🖼️"
+      />
+      {/* Pass 90 — Kept Assets Workspace / Handoff Studio entry */}
+      <ActionCard
+        href="/admin/midjourney/kept"
+        title="Kept Assets"
+        description="Review&apos;da Tutuldu olanlar. Toplu seç, SelectionSet&apos;e gönder, mockup&apos;a hazırla."
+        emoji="✓"
       />
     </section>
   );

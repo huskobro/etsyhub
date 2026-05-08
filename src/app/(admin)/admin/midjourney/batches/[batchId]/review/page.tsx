@@ -157,6 +157,16 @@ export default async function BatchReviewPage({
                 </Button>
               </Link>
             ) : null}
+            {/* Pass 90 — Kept Workspace entry: bu batch'in kept'leri */}
+            {summary.counts.kept > 0 ? (
+              <Link
+                href={`/admin/midjourney/kept?batchId=${batchId}`}
+              >
+                <Button variant="primary" size="sm">
+                  ✓ Handoff ({summary.counts.kept}) →
+                </Button>
+              </Link>
+            ) : null}
             <Link
               href={`/admin/midjourney/library?batchId=${batchId}&days=all`}
             >
