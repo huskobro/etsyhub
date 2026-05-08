@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/>
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="../ui_kits/kivasy/v4/tokens.css"/>
+<style>
+  body { margin: 0; padding: 24px; background: var(--k-bg); }
+  table { width: 100%; border-collapse: collapse; background: var(--k-paper); border: 1px solid var(--k-line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--k-line); font-size: 13px; color: var(--k-ink); }
+  th { background: var(--k-bg-2); font-family: var(--k-font-mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--k-ink-3); font-weight: 500; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(22,19,15,0.025); }
+  .mono { font-family: var(--k-font-mono); color: var(--k-ink-3); letter-spacing: 0.02em; }
+  .thumb { width: 36px; height: 36px; border-radius: 6px; }
+</style></head><body>
+  <table>
+    <thead><tr><th></th><th>Batch</th><th>Items</th><th>Progress</th><th>Status</th><th>Updated</th></tr></thead>
+    <tbody>
+      <tr><td><div class="thumb k-thumb" data-kind="christmas"></div></td><td>Christmas Q4 Wall Art</td><td class="mono">12</td><td><div class="k-progress" style="width:120px;"><div class="k-progress__bar" style="width:78%;"></div></div></td><td><span class="k-badge" data-tone="info">RUNNING</span></td><td class="mono">2m ago</td></tr>
+      <tr><td><div class="thumb k-thumb" data-kind="boho"></div></td><td>Boho Clipart Bundle</td><td class="mono">25</td><td><div class="k-progress" style="width:120px;"><div class="k-progress__bar" style="width:100%;"></div></div></td><td><span class="k-badge" data-tone="success">DONE</span></td><td class="mono">1h ago</td></tr>
+      <tr><td><div class="thumb k-thumb" data-kind="poster"></div></td><td>Riso Poster Pack</td><td class="mono">8</td><td><div class="k-progress" style="width:120px;"><div class="k-progress__bar" style="width:32%; background: var(--k-amber);"></div></div></td><td><span class="k-badge" data-tone="warning">QUEUED</span></td><td class="mono">3h ago</td></tr>
+    </tbody>
+  </table>
+</body></html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/>
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&f[]=clash-display@500,600,700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="../ui_kits/kivasy/v4/tokens.css"/>
+<style>
+  body { margin: 0; padding: 32px; background: var(--k-bg); font-family: var(--k-font-sans); }
+  .lockup-row { display: flex; gap: 32px; align-items: center; }
+  .lockup { display: flex; align-items: center; gap: 14px; }
+  .meta { font-family: var(--k-font-mono); font-size: 10.5px; letter-spacing: 0.04em;
+          color: var(--k-ink-3); margin-top: 6px; }
+  .stack { display: flex; flex-direction: column; gap: 4px; }
+  .word { font-family: var(--k-font-display); font-weight: 600; letter-spacing: -0.045em;
+          color: var(--k-ink); line-height: 1; }
+  .word .dot { color: var(--k-orange); }
+  .mark-sizes { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+  .section-rule { margin: 28px 0 14px; padding-top: 14px; border-top: 1px solid var(--k-line);
+                  font-family: var(--k-font-mono); font-size: 10.5px; letter-spacing: 0.14em;
+                  text-transform: uppercase; color: var(--k-ink-3); }
+</style></head><body>
+  <!-- Primary lockup: canonical custom-K mark + Kivasy wordmark -->
+  <div class="lockup-row">
+    <div class="lockup">
+      <svg width="56" height="56" viewBox="0 0 40 40" aria-hidden="true">
+        <defs>
+          <linearGradient id="km-fill-lg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#F58450"/>
+            <stop offset="0.55" stop-color="#E85D25"/>
+            <stop offset="1" stop-color="#C9491A"/>
+          </linearGradient>
+        </defs>
+        <rect width="40" height="40" rx="10" fill="url(#km-fill-lg)"/>
+        <rect x="0.5" y="0.5" width="39" height="39" rx="9.5" fill="none" stroke="rgba(255,255,255,0.20)"/>
+        <g fill="#FFFFFF">
+          <rect x="10" y="9" width="3" height="22" rx="1.2"/>
+          <path d="M13.2 19.6 23.2 9 27.5 9 17.5 19.6 27.8 31 23.4 31 13.2 20.4 Z"/>
+          <circle cx="29.8" cy="29" r="1.6" opacity="0.85"/>
+        </g>
+      </svg>
+      <div class="stack">
+        <div class="word" style="font-size: 36px;">Kivasy<span class="dot">.</span></div>
+        <div class="meta">Editorial cockpit · digital downloads</div>
+      </div>
+    </div>
+    <div class="mark-sizes">
+      <svg width="32" height="32" viewBox="0 0 40 40" aria-hidden="true">
+        <defs>
+          <linearGradient id="km-fill-sm" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#F58450"/>
+            <stop offset="0.55" stop-color="#E85D25"/>
+            <stop offset="1" stop-color="#C9491A"/>
+          </linearGradient>
+        </defs>
+        <rect width="40" height="40" rx="10" fill="url(#km-fill-sm)"/>
+        <rect x="0.5" y="0.5" width="39" height="39" rx="9.5" fill="none" stroke="rgba(255,255,255,0.20)"/>
+        <g fill="#FFFFFF">
+          <rect x="10" y="9" width="3" height="22" rx="1.2"/>
+          <path d="M13.2 19.6 23.2 9 27.5 9 17.5 19.6 27.8 31 23.4 31 13.2 20.4 Z"/>
+          <circle cx="29.8" cy="29" r="1.6" opacity="0.85"/>
+        </g>
+      </svg>
+      <svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true">
+        <defs>
+          <linearGradient id="km-fill-xs" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#F58450"/>
+            <stop offset="0.55" stop-color="#E85D25"/>
+            <stop offset="1" stop-color="#C9491A"/>
+          </linearGradient>
+        </defs>
+        <rect width="40" height="40" rx="10" fill="url(#km-fill-xs)"/>
+        <g fill="#FFFFFF">
+          <rect x="10" y="9" width="3" height="22" rx="1.2"/>
+          <path d="M13.2 19.6 23.2 9 27.5 9 17.5 19.6 27.8 31 23.4 31 13.2 20.4 Z"/>
+          <circle cx="29.8" cy="29" r="1.6" opacity="0.85"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</body></html>

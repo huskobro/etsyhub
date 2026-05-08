@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/>
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="../ui_kits/kivasy/v4/tokens.css"/>
+<style>
+  body { margin: 0; padding: 28px; background: var(--k-bg); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .swatch { background: var(--k-paper); border: 1px solid var(--k-line); height: 96px;
+            display: flex; flex-direction: column; justify-content: space-between; padding: 10px; }
+  .meta { font-family: var(--k-font-mono); font-size: 10.5px; color: var(--k-ink-3); letter-spacing: 0.04em; }
+</style></head><body>
+  <div class="grid">
+    <div class="swatch" style="border-radius: var(--k-radius-sm);"><span class="meta">SM</span><span class="meta">5px · chip</span></div>
+    <div class="swatch" style="border-radius: var(--k-radius-md);"><span class="meta">MD</span><span class="meta">8px · button/card</span></div>
+    <div class="swatch" style="border-radius: var(--k-radius-lg);"><span class="meta">LG</span><span class="meta">14px · hero card</span></div>
+    <div class="swatch" style="border-radius: var(--k-radius-xl);"><span class="meta">XL</span><span class="meta">20px · modal</span></div>
+  </div>
+</body></html>

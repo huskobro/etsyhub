@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/>
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="../ui_kits/kivasy/v4/tokens.css"/>
+<style>
+  body { margin: 0; padding: 28px; background: var(--k-bg); }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .swatch { border-radius: 10px; padding: 14px; display: flex; align-items: center; gap: 12px; }
+  .dot { width: 10px; height: 10px; border-radius: 999px; }
+  .label { font-family: var(--k-font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .hex   { font-family: var(--k-font-mono); font-size: 12px; margin-left: auto; opacity: 0.7; }
+</style></head><body>
+  <div class="grid">
+    <div class="swatch" style="background: var(--k-green-soft); color: var(--k-green);"> <span class="dot" style="background:currentColor;"></span><span class="label">Success</span><span class="hex">#2F7A4B</span></div>
+    <div class="swatch" style="background: var(--k-amber-soft); color: var(--k-amber);"> <span class="dot" style="background:currentColor;"></span><span class="label">Warning</span><span class="hex">#B47415</span></div>
+    <div class="swatch" style="background: var(--k-red-soft);   color: var(--k-red);">   <span class="dot" style="background:currentColor;"></span><span class="label">Danger</span> <span class="hex">#B13A28</span></div>
+    <div class="swatch" style="background: var(--k-blue-soft);  color: var(--k-blue);">  <span class="dot" style="background:currentColor;"></span><span class="label">Info</span>   <span class="hex">#2D5F8F</span></div>
+  </div>
+</body></html>

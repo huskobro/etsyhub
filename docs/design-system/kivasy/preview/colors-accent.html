@@ -1,0 +1,41 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/>
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="../ui_kits/kivasy/v4/tokens.css"/>
+<style>
+  body { margin: 0; padding: 28px; background: var(--k-bg); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .swatch { border-radius: 10px; padding: 14px; height: 92px; display: flex; flex-direction: column; justify-content: space-between; }
+  .label { font-family: var(--k-font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .hex   { font-family: var(--k-font-mono); font-size: 12px; letter-spacing: 0.02em; }
+  .group-label { font-family: var(--k-font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--k-ink-3); margin: 0 0 8px; }
+</style></head><body>
+  <p class="group-label">Stage CTA — orange · purple · blue</p>
+  <div class="grid">
+    <div class="swatch" style="background: linear-gradient(180deg, var(--k-orange-bright) 0%, var(--k-orange) 50%, var(--k-orange-deep) 100%); color:#fff;">
+      <span class="label">Create</span>
+      <span class="hex">#E85D25</span>
+    </div>
+    <div class="swatch" style="background: linear-gradient(180deg, var(--k-purple-bright) 0%, var(--k-purple) 50%, var(--k-purple-deep) 100%); color:#fff;">
+      <span class="label">Edit</span>
+      <span class="hex">#6E47A8</span>
+    </div>
+    <div class="swatch" style="background: linear-gradient(180deg, var(--k-blue-bright) 0%, var(--k-blue) 50%, var(--k-blue-deep) 100%); color:#fff;">
+      <span class="label">Publish</span>
+      <span class="hex">#2D5F8F</span>
+    </div>
+    <div class="swatch" style="background: var(--k-orange-soft); color: var(--k-orange-ink);">
+      <span class="label">Soft / chip</span>
+      <span class="hex">#FBEADF</span>
+    </div>
+    <div class="swatch" style="background: var(--k-purple-soft); color: var(--k-purple-deep);">
+      <span class="label">Soft / chip</span>
+      <span class="hex">#ECE3F5</span>
+    </div>
+    <div class="swatch" style="background: var(--k-blue-soft); color: var(--k-blue-deep);">
+      <span class="label">Soft / chip</span>
+      <span class="hex">#E2ECF5</span>
+    </div>
+  </div>
+</body></html>

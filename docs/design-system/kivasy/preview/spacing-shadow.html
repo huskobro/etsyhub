@@ -1,0 +1,18 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/>
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="../ui_kits/kivasy/v4/tokens.css"/>
+<style>
+  body { margin: 0; padding: 36px; background: var(--k-bg); display: flex; gap: 24px; }
+  .card { width: 220px; height: 110px; border-radius: 10px; background: var(--k-paper); padding: 14px;
+          display: flex; flex-direction: column; justify-content: space-between; }
+  .meta { font-family: var(--k-font-mono); font-size: 10.5px; color: var(--k-ink-3); letter-spacing: 0.04em; }
+  .flat   { box-shadow: 0 1px 1px rgba(22,19,15,0.03); border:1px solid var(--k-line); }
+  .lifted { box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 1px rgba(22,19,15,0.03), 0 2px 4px rgba(22,19,15,0.04); border:1px solid var(--k-line); }
+  .pop    { box-shadow: 0 12px 32px -8px rgba(0,0,0,0.18); border:1px solid var(--k-line); }
+</style></head><body>
+  <div class="card flat"><span class="meta">FLAT</span><span class="meta">Lists, table rows</span></div>
+  <div class="card lifted"><span class="meta">LIFTED</span><span class="meta">Hero / stat card</span></div>
+  <div class="card pop"><span class="meta">POPOVER</span><span class="meta">Menus, modals</span></div>
+</body></html>

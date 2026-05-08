@@ -1,0 +1,1067 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Kivasy · v3 — operational discipline</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin/>
+  <link href="https://api.fontshare.com/v2/css?f[]=general-sans@300,400,500,600,700&f[]=clash-display@500,600,700&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com/3.4.10"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --k-bg:           #F7F5EF;
+      --k-bg-2:         #F1EEE5;
+      --k-paper:        #FFFFFF;
+      --k-ink:          #16130F;
+      --k-ink-2:        #4A4640;
+      --k-ink-3:        #8B857C;
+      --k-ink-4:        #B8B2A6;
+      --k-line:         #E4E0D5;
+      --k-line-strong:  #D2CCBE;
+      --k-line-soft:    #EFEBE0;
+
+      --k-orange:       #E85D25;
+      --k-orange-deep:  #C9491A;
+      --k-orange-bright:#F3733E;
+      --k-orange-soft:  #FBEADF;
+      --k-orange-ink:   #8E3A12;
+
+      --k-blue:         #2D5F8F;
+      --k-blue-deep:    #214A72;
+      --k-blue-bright:  #4179AC;
+      --k-blue-soft:    #E2ECF5;
+
+      --k-purple:       #6E47A8;
+      --k-purple-deep:  #563581;
+      --k-purple-bright:#8A60C9;
+      --k-purple-soft:  #ECE3F5;
+
+      --k-green:        #2F7A4B;
+      --k-green-soft:   #E1F0E7;
+      --k-amber:        #B47415;
+      --k-amber-soft:   #F6ECD6;
+      --k-red:          #B13A28;
+      --k-red-soft:     #F5DDD7;
+
+      --k-font-sans:    "General Sans", ui-sans-serif, system-ui, sans-serif;
+      --k-font-display: "Clash Display", "General Sans", ui-sans-serif, sans-serif;
+      --k-font-mono:    "Geist Mono", ui-monospace, Menlo, monospace;
+
+      --k-radius-sm: 5px;
+      --k-radius-md: 8px;
+      --k-radius-lg: 14px;
+      --k-radius-xl: 20px;
+
+      --k-ease: cubic-bezier(.2,.7,.3,1);
+      --k-ease-out-quint: cubic-bezier(.22,1,.36,1);
+    }
+
+    html,body {
+      background: var(--k-bg);
+      color: var(--k-ink);
+      font-family: var(--k-font-sans);
+      font-feature-settings: "ss01","cv11";
+      -webkit-font-smoothing: antialiased;
+      letter-spacing: -0.005em;
+    }
+
+    .k-mono { font-family: var(--k-font-mono); letter-spacing: 0.02em; }
+    .k-display { font-family: var(--k-font-display); letter-spacing: -0.025em; }
+    .k-tnum { font-variant-numeric: tabular-nums; }
+
+    /* Canvas is just warm paper — no decorative grain inside the app frame */
+    .k-canvas { background: var(--k-bg); }
+
+    /* ─── BUTTONS ────────────────────────────────────────────── */
+    .k-btn {
+      position: relative;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      height: 36px; padding: 0 14px;
+      border-radius: var(--k-radius-md);
+      font-family: var(--k-font-sans);
+      font-size: 13.5px; font-weight: 540; letter-spacing: -0.005em;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: transform 140ms var(--k-ease), box-shadow 180ms var(--k-ease), background 140ms var(--k-ease), border-color 140ms var(--k-ease), color 140ms var(--k-ease);
+      isolation: isolate;
+      will-change: transform;
+    }
+    .k-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--k-bg), 0 0 0 4px var(--k-orange); }
+    .k-btn[data-size="sm"] { height: 30px; padding: 0 11px; font-size: 12.5px; gap: 6px; border-radius: 6px; }
+    .k-btn[data-size="lg"] { height: 44px; padding: 0 18px; font-size: 14.5px; gap: 10px; border-radius: 10px; }
+
+    /* Primary — orange gradient, inset highlight, multi-shadow */
+    .k-btn--primary {
+      color: #FFFFFF;
+      background: linear-gradient(180deg, var(--k-orange-bright) 0%, var(--k-orange) 50%, var(--k-orange-deep) 100%);
+      border-color: var(--k-orange-deep);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.28),
+        inset 0 -1px 0 rgba(0,0,0,0.10),
+        0 1px 2px rgba(201,73,26,0.45),
+        0 4px 10px -2px rgba(232,93,37,0.32);
+      text-shadow: 0 1px 0 rgba(0,0,0,0.12);
+    }
+    .k-btn--primary:hover {
+      background: linear-gradient(180deg, #F58450 0%, #ED6730 50%, #D04E1A 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.32),
+        inset 0 -1px 0 rgba(0,0,0,0.10),
+        0 2px 4px rgba(201,73,26,0.50),
+        0 8px 18px -3px rgba(232,93,37,0.42);
+      transform: translateY(-0.5px);
+    }
+    .k-btn--primary:active {
+      transform: translateY(0.5px);
+      background: linear-gradient(180deg, var(--k-orange) 0%, var(--k-orange-deep) 100%);
+      box-shadow:
+        inset 0 1px 1px rgba(0,0,0,0.18),
+        0 1px 1px rgba(201,73,26,0.30);
+    }
+
+    /* Secondary — quiet paper, flat. No gradient. Used in dense toolbars, repeated. */
+    .k-btn--secondary {
+      color: var(--k-ink);
+      background: var(--k-paper);
+      border-color: var(--k-line);
+      box-shadow: 0 1px 1px rgba(22,19,15,0.03);
+    }
+    .k-btn--secondary:hover {
+      background: var(--k-paper);
+      border-color: var(--k-line-strong);
+      box-shadow: 0 1px 2px rgba(22,19,15,0.05);
+    }
+    .k-btn--secondary:active { box-shadow: inset 0 1px 1px rgba(22,19,15,0.05); }
+
+    /* Ghost */
+    .k-btn--ghost {
+      color: var(--k-ink-2);
+      background: transparent;
+      border-color: transparent;
+    }
+    .k-btn--ghost:hover { color: var(--k-ink); background: rgba(22,19,15,0.045); }
+
+    /* Publish (blue) */
+    .k-btn--publish {
+      color: #FFFFFF;
+      background: linear-gradient(180deg, var(--k-blue-bright) 0%, var(--k-blue) 50%, var(--k-blue-deep) 100%);
+      border-color: var(--k-blue-deep);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.24),
+        inset 0 -1px 0 rgba(0,0,0,0.10),
+        0 1px 2px rgba(33,74,114,0.45),
+        0 4px 10px -2px rgba(45,95,143,0.32);
+      text-shadow: 0 1px 0 rgba(0,0,0,0.15);
+    }
+    .k-btn--publish:hover {
+      background: linear-gradient(180deg, #5188BB 0%, #356CA0 50%, #214A72 100%);
+      transform: translateY(-0.5px);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.28),
+        0 2px 4px rgba(33,74,114,0.50),
+        0 8px 18px -3px rgba(45,95,143,0.42);
+    }
+    .k-btn--publish:active { transform: translateY(0.5px); }
+
+    /* Edit (purple) */
+    .k-btn--edit {
+      color: #FFFFFF;
+      background: linear-gradient(180deg, var(--k-purple-bright) 0%, var(--k-purple) 50%, var(--k-purple-deep) 100%);
+      border-color: var(--k-purple-deep);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.26),
+        inset 0 -1px 0 rgba(0,0,0,0.10),
+        0 1px 2px rgba(86,53,129,0.45),
+        0 4px 10px -2px rgba(110,71,168,0.30);
+      text-shadow: 0 1px 0 rgba(0,0,0,0.13);
+    }
+    .k-btn--edit:hover {
+      background: linear-gradient(180deg, #9974D6 0%, #7B53B6 50%, #563581 100%);
+      transform: translateY(-0.5px);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.30),
+        0 2px 4px rgba(86,53,129,0.50),
+        0 8px 18px -3px rgba(110,71,168,0.40);
+    }
+    .k-btn--edit:active { transform: translateY(0.5px); }
+
+    /* Destructive */
+    .k-btn--destructive {
+      color: var(--k-red);
+      background: linear-gradient(180deg, #FFFFFF 0%, #FBF6F4 100%);
+      border-color: var(--k-line-strong);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 1px rgba(22,19,15,0.04);
+    }
+    .k-btn--destructive:hover {
+      color: var(--k-red);
+      background: linear-gradient(180deg, #FFFFFF 0%, var(--k-red-soft) 100%);
+      border-color: var(--k-red);
+      box-shadow: 0 2px 3px rgba(177,58,40,0.18), 0 4px 10px -2px rgba(177,58,40,0.20);
+    }
+
+    /* Icon button — flat, utilitarian, repeats well */
+    .k-iconbtn {
+      width: 32px; height: 32px; padding: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 7px; border: 1px solid var(--k-line);
+      background: var(--k-paper);
+      color: var(--k-ink-2);
+      transition: color 140ms var(--k-ease), border-color 140ms var(--k-ease), background 140ms var(--k-ease);
+    }
+    .k-iconbtn:hover { color: var(--k-ink); border-color: var(--k-line-strong); background: #FBF9F4; }
+
+    /* ─── BADGES ─────────────────────────────────────────── */
+    .k-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      height: 20px; padding: 0 7px;
+      border-radius: 4px;
+      font-family: var(--k-font-mono);
+      font-size: 10.5px; font-weight: 500; letter-spacing: 0.04em;
+      border: 1px solid transparent;
+      background: rgba(22,19,15,0.04);
+      color: var(--k-ink-2);
+    }
+    .k-badge[data-tone="accent"]  { background: var(--k-orange-soft); color: var(--k-orange-ink); }
+    .k-badge[data-tone="success"] { background: var(--k-green-soft);  color: var(--k-green); }
+    .k-badge[data-tone="warning"] { background: var(--k-amber-soft);  color: var(--k-amber); }
+    .k-badge[data-tone="danger"]  { background: var(--k-red-soft);    color: var(--k-red); }
+    .k-badge[data-tone="info"]    { background: var(--k-blue-soft);   color: var(--k-blue); }
+    .k-badge .dot { width: 5px; height: 5px; border-radius: 999px; background: currentColor; box-shadow: 0 0 0 2px rgba(255,255,255,0.6); }
+
+    /* ─── CARDS ───────────────────────────────────────────
+       Two recipes:
+       - .k-card        flat paper, used for repeated list / table / dense surfaces
+       - .k-card--hero  gradient + inset highlight + lift, used for stats / selection / hero
+    */
+    .k-card {
+      position: relative;
+      background: var(--k-paper);
+      border: 1px solid var(--k-line);
+      border-radius: var(--k-radius-md);
+      box-shadow: 0 1px 1px rgba(22,19,15,0.03);
+      transition: border-color 140ms var(--k-ease), box-shadow 140ms var(--k-ease);
+    }
+    .k-card[data-interactive="true"] { cursor: pointer; }
+    .k-card[data-interactive="true"]:hover { border-color: var(--k-line-strong); box-shadow: 0 1px 2px rgba(22,19,15,0.05); }
+
+    .k-card--hero {
+      background: linear-gradient(180deg, #FFFFFF 0%, #FCFAF5 100%);
+      border-radius: var(--k-radius-lg);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.9),
+        0 1px 1px rgba(22,19,15,0.03),
+        0 2px 4px rgba(22,19,15,0.04);
+      transition: transform 200ms var(--k-ease-out-quint), box-shadow 200ms var(--k-ease), border-color 140ms var(--k-ease);
+    }
+    .k-card--hero[data-interactive="true"]:hover {
+      border-color: var(--k-line-strong);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.95),
+        0 4px 8px rgba(22,19,15,0.05),
+        0 12px 28px -8px rgba(22,19,15,0.10);
+      transform: translateY(-1.5px);
+    }
+
+    /* Stat card numeral */
+    .k-numeral {
+      font-family: var(--k-font-display);
+      font-weight: 600;
+      font-size: 36px;
+      line-height: 1;
+      letter-spacing: -0.035em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ─── SIDEBAR ───────────────────────────────────────── */
+    .k-sidebar {
+      width: 248px;
+      background: linear-gradient(180deg, var(--k-bg-2) 0%, #ECE7DA 100%);
+      border-right: 1px solid var(--k-line);
+      box-shadow: inset -1px 0 0 rgba(255,255,255,0.4);
+    }
+
+    .k-nav {
+      position: relative;
+      display: flex; align-items: center; gap: 10px;
+      padding: 0 10px 0 14px;
+      height: 34px;
+      margin: 0 8px;
+      border-radius: 7px;
+      color: var(--k-ink-2);
+      font-size: 13.5px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      cursor: pointer;
+      transition: all 140ms var(--k-ease);
+    }
+    .k-nav:hover { color: var(--k-ink); background: rgba(22,19,15,0.035); }
+
+    .k-nav--active {
+      color: var(--k-ink);
+      font-weight: 560;
+      background: linear-gradient(180deg, #FFFFFF 0%, #FBF8F1 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.95),
+        0 1px 1px rgba(22,19,15,0.04),
+        0 1px 3px rgba(22,19,15,0.05),
+        0 0 0 1px rgba(22,19,15,0.04);
+    }
+    .k-nav--active::before {
+      content: "";
+      position: absolute;
+      left: -12px; top: 7px; bottom: 7px;
+      width: 2px;
+      border-radius: 0 2px 2px 0;
+      background: var(--k-orange);
+    }
+    .k-nav--active .k-nav__icon { color: var(--k-orange); }
+    .k-nav__count {
+      margin-left: auto;
+      font-family: var(--k-font-mono);
+      font-size: 10.5px;
+      color: var(--k-ink-3);
+      letter-spacing: 0.02em;
+    }
+
+    .k-section-label {
+      display: flex; align-items: center; gap: 8px;
+      padding: 0 18px;
+      margin: 18px 0 6px;
+      font-family: var(--k-font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--k-ink-3);
+    }
+    .k-section-label::after {
+      content: ""; flex: 1; height: 1px;
+      background: linear-gradient(90deg, var(--k-line) 0%, transparent 100%);
+    }
+
+    /* Wordmark */
+    .k-wordmark {
+      font-family: var(--k-font-display);
+      font-weight: 600;
+      letter-spacing: -0.045em;
+      font-feature-settings: "ss01","ss03";
+    }
+
+    /* Floating tasks panel — solid paper, no backdrop blur */
+    .k-tasks {
+      background: var(--k-paper);
+      border: 1px solid var(--k-line);
+      border-radius: 16px;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.9),
+        0 1px 2px rgba(22,19,15,0.04),
+        0 12px 32px -8px rgba(22,19,15,0.18),
+        0 32px 64px -20px rgba(22,19,15,0.20);
+    }
+
+    .k-progress {
+      position: relative; height: 4px; border-radius: 999px; overflow: hidden;
+      background: rgba(22,19,15,0.06);
+    }
+    .k-progress__bar {
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, var(--k-orange-bright) 0%, var(--k-orange) 100%);
+      border-radius: 999px;
+      box-shadow: 0 0 8px rgba(232,93,37,0.5);
+    }
+    .k-progress__bar::after {
+      content: ""; position: absolute; inset: 0;
+      background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255,255,255,0.3) 50%,
+        transparent 100%);
+      animation: k-shimmer 1.8s linear infinite;
+    }
+    @keyframes k-shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+    /* Asset thumb */
+    .k-thumb {
+      position: relative; width: 100%; aspect-ratio: 4/3;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: inset 0 0 0 1px rgba(22,19,15,0.06);
+      transition: transform 280ms var(--k-ease-out-quint);
+    }
+    .k-card:hover .k-thumb { transform: scale(1.012); }
+    .k-thumb[data-kind="boho"]      { background: linear-gradient(180deg,#E8DBC5,#C9A87A); }
+    .k-thumb[data-kind="christmas"] { background: linear-gradient(180deg,#1E3A2E,#0F2019); }
+    .k-thumb[data-kind="nursery"]   { background: linear-gradient(180deg,#F5E8DC,#E8D0B8); }
+    .k-thumb[data-kind="poster"]    { background:
+        radial-gradient(ellipse at 30% 30%, #FBF1DD 0%, #F3EDE3 100%); }
+    .k-thumb[data-kind="abstract"]  { background:
+        radial-gradient(ellipse at 30% 20%,#F2C9A3 0%,#E89B5B 35%,#C1582C 70%,#5E2819 100%); }
+    .k-thumb[data-kind="landscape"] { background: linear-gradient(180deg,#C5D8E0 0%,#E8D4B8 55%,#8B6F4E 100%); }
+    .k-thumb[data-kind="riso"]      { background:
+        repeating-linear-gradient(45deg, #F3DDC8 0 4px, #E89B5B 4px 8px),
+        #C1582C; }
+
+    .k-ring-selected {
+      box-shadow:
+        0 0 0 2px var(--k-bg),
+        0 0 0 4px var(--k-orange),
+        0 1px 1px rgba(22,19,15,0.04),
+        0 2px 4px rgba(22,19,15,0.04);
+    }
+
+    /* Specimen helpers */
+    .k-spec-grid {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 24px;
+      align-items: baseline;
+    }
+    .k-rule { height: 1px; background: linear-gradient(90deg, var(--k-line) 0%, transparent 100%); }
+
+    /* Subtle paper grain on dark surfaces */
+    .k-grain { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="env,react">
+const { useState } = React;
+
+/* ─────────── Inline icon set (1.5 stroke) ─────────── */
+const PATHS = {
+  home: "M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z",
+  inbox: "M21 13h-5l-2 3h-4l-2-3H3M5.5 5.5 3 13v6a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-6L18.5 5.5A2 2 0 0 0 16.7 4.5H7.3a2 2 0 0 0-1.8 1z",
+  zap:  "M13 3 4 14h7l-1 7 9-12h-7l1-6z",
+  image:"M4 5h16v14H4zM8 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM20 16l-5-5L8 18",
+  layers:"M12 3 3 7.5 12 12l9-4.5zM3 12.5 12 17l9-4.5M3 17.5 12 22l9-4.5",
+  package:"M16.5 7.5 8.5 4 4 6l8 4 8-4-3.5-1.5zM4 6v11l8 4 8-4V6M12 10v11",
+  book:"M5 19V5a2 2 0 0 1 2-2h12v18H7a2 2 0 0 0-2 2",
+  settings:"M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19.4 15a8 8 0 0 0 .1-3l1.8-1.4-2-3.5-2.1.7a8 8 0 0 0-2.6-1.5L14 4h-4l-.6 2.3a8 8 0 0 0-2.6 1.5l-2.1-.7-2 3.5L4.5 12a8 8 0 0 0 .1 3l-1.8 1.4 2 3.5 2.1-.7a8 8 0 0 0 2.6 1.5L10 23h4l.6-2.3a8 8 0 0 0 2.6-1.5l2.1.7 2-3.5z",
+  search:"M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16zM21 21l-4.3-4.3",
+  plus:"M12 5v14M5 12h14",
+  filter:"M4 5h16l-6 8v6l-4 1v-7z",
+  upload:"M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4M16 9l-4-4-4 4M12 5v12",
+  sparkle:"M12 4v6M12 14v6M4 12h6M14 12h6M6 6l3 3M15 15l3 3M18 6l-3 3M9 15l-3 3",
+  arrow:"M5 12h14M13 5l7 7-7 7",
+  check:"M5 12l5 5L20 7",
+  chevron:"M9 6l6 6-6 6",
+  more:"M5 12h.01M12 12h.01M19 12h.01",
+  download:"M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4M8 11l4 4 4-4M12 15V3",
+  user:"M20 21a8 8 0 0 0-16 0M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  bell:"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9zM10 21a2 2 0 0 0 4 0",
+  rocket:"M14.5 4.5C18 5 19 9 19 9s-4-1-4.5-4.5zM5 19l3-3M9 11l4 4M14 7c-3 0-7 4-7 4l5 5s4-4 4-7-2-2-2-2zM5 15l-2 6 6-2",
+};
+const Icon = ({ name, size = 16, className = "", style }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+       className={className} style={style} aria-hidden="true">
+    <path d={PATHS[name] || PATHS.home}/>
+  </svg>
+);
+
+/* ─────────── Brand mark + wordmark ─────────── */
+function KivasyMark({ size = 36 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true">
+      <defs>
+        <linearGradient id="km-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#F58450"/>
+          <stop offset="0.55" stopColor="#E85D25"/>
+          <stop offset="1" stopColor="#C9491A"/>
+        </linearGradient>
+        <linearGradient id="km-shine" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="rgba(255,255,255,0.45)"/>
+          <stop offset="0.5" stopColor="rgba(255,255,255,0)"/>
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="40" height="40" rx="10" fill="url(#km-fill)"/>
+      <rect x="0" y="0" width="40" height="40" rx="10" fill="url(#km-shine)"/>
+      <rect x="0.5" y="0.5" width="39" height="39" rx="9.5" fill="none" stroke="rgba(255,255,255,0.20)"/>
+      {/* Custom K: vertical bar + chevron leg with cut + signature dot */}
+      <g fill="#FFFFFF">
+        <rect x="10" y="9" width="3" height="22" rx="1.2"/>
+        <path d="M13.2 19.6 23.2 9 27.5 9 17.5 19.6 27.8 31 23.4 31 13.2 20.4 Z"/>
+        <circle cx="29.8" cy="29" r="1.6" opacity="0.85"/>
+      </g>
+    </svg>
+  );
+}
+
+function KivasyWordmark({ size = 22, color = "var(--k-ink)" }) {
+  return (
+    <span className="k-wordmark" style={{ fontSize: size, color, lineHeight: 1 }}>
+      Kivasy<span style={{ color: "var(--k-orange)" }}>.</span>
+    </span>
+  );
+}
+
+/* ─────────── Lockups ─────────── */
+function Lockup() {
+  return (
+    <div className="flex items-center gap-3">
+      <KivasyMark size={36}/>
+      <KivasyWordmark size={22}/>
+    </div>
+  );
+}
+
+/* ─────────── Buttons row ─────────── */
+function Button({ variant = "secondary", size = "md", icon, iconRight, children, ...rest }) {
+  return (
+    <button {...rest} data-size={size} className={`k-btn k-btn--${variant}`}>
+      {icon}{children}{iconRight}
+    </button>
+  );
+}
+
+function Badge({ tone = "neutral", dot, children }) {
+  return (
+    <span className="k-badge" data-tone={tone}>
+      {dot && <span className="dot"/>}
+      {children}
+    </span>
+  );
+}
+
+/* ─────────── Sidebar (authored) ─────────── */
+function Sidebar({ active, onNav }) {
+  const produce = [
+    { id: "overview",   label: "Overview",   icon: "home",    count: null },
+    { id: "references", label: "References", icon: "inbox",   count: 86 },
+    { id: "batches",    label: "Batches",    icon: "zap",     count: 3,    pulse: true },
+    { id: "library",    label: "Library",    icon: "image",   count: "1.2k" },
+    { id: "selections", label: "Selections", icon: "layers",  count: 12 },
+    { id: "products",   label: "Products",   icon: "package", count: 24 },
+  ];
+  const system = [
+    { id: "templates", label: "Templates", icon: "book",     count: null },
+    { id: "settings",  label: "Settings",  icon: "settings", count: null },
+  ];
+  const Item = (it) => {
+    const isActive = active === it.id;
+    return (
+      <div key={it.id} onClick={() => onNav?.(it.id)}
+           className={`k-nav ${isActive ? "k-nav--active" : ""}`}>
+        <span className="k-nav__icon" style={{ color: isActive ? "var(--k-orange)" : "var(--k-ink-3)" }}>
+          <Icon name={it.icon} size={15}/>
+        </span>
+        <span className="flex-1">{it.label}</span>
+        {it.pulse && (
+          <span style={{ position: "relative", width: 6, height: 6 }}>
+            <span style={{ position: "absolute", inset: 0, borderRadius: 999, background: "var(--k-amber)" }}/>
+            <span style={{ position: "absolute", inset: -2, borderRadius: 999, background: "var(--k-amber)", opacity: 0.35, animation: "k-ping 1.6s infinite ease-out" }}/>
+          </span>
+        )}
+        {it.count != null && <span className="k-nav__count k-tnum">{it.count}</span>}
+      </div>
+    );
+  };
+  return (
+    <aside className="k-sidebar h-screen flex flex-col flex-shrink-0">
+      {/* Brand row */}
+      <div className="flex items-center gap-3 px-5 pt-5 pb-4">
+        <KivasyMark size={32}/>
+        <KivasyWordmark size={20}/>
+      </div>
+
+      {/* Workspace switcher */}
+      <div className="px-3 pb-3">
+        <button className="w-full flex items-center gap-2 h-9 px-3 rounded-lg border border-[var(--k-line)] bg-white/60 hover:bg-white transition-colors">
+          <span className="w-5 h-5 rounded bg-gradient-to-br from-[#5E2819] to-[#C1582C] flex items-center justify-center k-mono text-[9px] font-semibold text-white">HB</span>
+          <span className="text-[13px] font-medium flex-1 text-left truncate">Husko Bro Studio</span>
+          <Icon name="chevron" size={12} className="text-[var(--k-ink-3)] rotate-90"/>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto pb-3">
+        <div className="k-section-label">Produce</div>
+        <div className="space-y-0.5">{produce.map(Item)}</div>
+
+        <div className="k-section-label">System</div>
+        <div className="space-y-0.5">{system.map(Item)}</div>
+      </div>
+
+      {/* Footer user pill */}
+      <div className="px-3 pb-4 pt-3 border-t border-[var(--k-line)]">
+        <div className="flex items-center gap-2.5 p-2 pr-1 rounded-lg hover:bg-white/60 transition-colors cursor-pointer">
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#E89B5B] to-[#8E3A12] flex items-center justify-center k-mono text-[10px] font-semibold text-white">HB</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[12.5px] font-medium leading-tight truncate">Husko Bro</div>
+            <div className="k-mono text-[10px] text-[var(--k-ink-3)] mt-0.5 leading-none">Operator</div>
+          </div>
+          <button className="k-iconbtn !w-7 !h-7"><Icon name="more" size={14}/></button>
+        </div>
+      </div>
+      <style>{`@keyframes k-ping{0%{transform:scale(.8);opacity:.7}100%{transform:scale(2);opacity:0}}`}</style>
+    </aside>
+  );
+}
+
+/* ─────────── Topbar ─────────── */
+function Topbar({ title, subtitle, children }) {
+  return (
+    <header className="flex-shrink-0 flex items-center gap-4 h-16 pl-6 pr-5 border-b border-[var(--k-line)] bg-[var(--k-bg)]">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-3">
+          <h1 className="k-display text-[26px] font-semibold leading-none tracking-[-0.025em]">{title}</h1>
+          {subtitle && (
+            <span className="k-mono text-[10.5px] text-[var(--k-ink-3)] tracking-wider uppercase">
+              {subtitle}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">{children}</div>
+    </header>
+  );
+}
+
+/* ─────────── Stat card ─────────── */
+function StatCard({ label, value, delta, deltaTone = "success", spark }) {
+  return (
+    <div className="k-card k-card--hero p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">
+          {label}
+        </div>
+        {delta && <Badge tone={deltaTone} dot>{delta}</Badge>}
+      </div>
+      <div className="mt-3 flex items-end justify-between gap-3">
+        <div className="k-numeral">{value}</div>
+        {spark && (
+          <svg width="68" height="28" viewBox="0 0 68 28" className="text-[var(--k-orange)] opacity-90">
+            <defs>
+              <linearGradient id={`sg-${label}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="currentColor" stopOpacity="0.22"/>
+                <stop offset="1" stopColor="currentColor" stopOpacity="0"/>
+              </linearGradient>
+            </defs>
+            <path d={spark} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d={`${spark} L68 28 L0 28 Z`} fill={`url(#sg-${label})`} stroke="none"/>
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── Selection / asset card ─────────── */
+function SelectionCard({ name, count, kinds, stage, stageTone = "info", primary }) {
+  return (
+    <div className="k-card k-card--hero p-0 overflow-hidden" data-interactive="true">
+      <div className="grid grid-cols-3 gap-1.5 p-3 pb-0">
+        {kinds.slice(0, 3).map((k, i) => (
+          <div key={i} className="k-thumb !aspect-square" data-kind={k}/>
+        ))}
+      </div>
+      <div className="p-5 pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-[15.5px] font-semibold leading-tight tracking-[-0.012em]">{name}</h3>
+          <Badge tone={stageTone}>{stage}</Badge>
+        </div>
+        <div className="mt-1 k-mono text-[11px] text-[var(--k-ink-3)] tracking-wider">
+          {count} designs · ready to package
+        </div>
+        <div className="mt-4 flex items-center gap-2">
+          {primary === "publish"
+            ? <Button variant="publish" size="sm" icon={<Icon name="upload" size={13}/>}>Send to Etsy as Draft</Button>
+            : <Button variant="primary" size="sm" icon={<Icon name="sparkle" size={13}/>}>Apply mockups</Button>}
+          <Button variant="ghost" size="sm">Edit</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── Asset card (library) ─────────── */
+function AssetCard({ kind, title, meta, selected }) {
+  return (
+    <div className={`k-card p-0 overflow-hidden ${selected ? "k-ring-selected" : ""}`} data-interactive="true">
+      <div className="p-2 pb-0">
+        <div className="k-thumb" data-kind={kind}/>
+      </div>
+      <div className="p-3.5">
+        <div className="text-[13px] font-medium leading-tight">{title}</div>
+        <div className="mt-1 k-mono text-[10.5px] text-[var(--k-ink-3)] tracking-wider">{meta}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── Floating tasks panel ─────────── */
+function ActiveTasks() {
+  const tasks = [
+    { id: 1, label: "Boho clipart Q4",   detail: "12 variations",  done: 7,  total: 12, eta: "~3m" },
+    { id: 2, label: "Christmas mockups", detail: "Apply 3 frames", done: 4,  total: 8,  eta: "~5m" },
+    { id: 3, label: "Sticker pack",      detail: "Retry failed",   done: 1,  total: 2,  eta: "~1m" },
+  ];
+  return (
+    <div className="k-tasks fixed bottom-5 right-5 w-[340px] overflow-hidden">
+      <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+        <div className="relative flex items-center justify-center w-6 h-6">
+          <svg width="22" height="22" viewBox="0 0 22 22" className="-rotate-90">
+            <circle cx="11" cy="11" r="9" fill="none" stroke="rgba(22,19,15,0.08)" strokeWidth="2"/>
+            <circle cx="11" cy="11" r="9" fill="none" stroke="var(--k-orange)" strokeWidth="2"
+                    strokeDasharray="56.5" strokeDashoffset="22" strokeLinecap="round"/>
+          </svg>
+        </div>
+        <div className="flex-1">
+          <div className="text-[13px] font-medium leading-none">Active tasks</div>
+          <div className="k-mono text-[10px] text-[var(--k-ink-3)] mt-1 tracking-wider uppercase">3 running · ~5m left</div>
+        </div>
+        <button className="k-iconbtn !w-7 !h-7"><Icon name="more" size={14}/></button>
+      </div>
+      <div className="px-4 pb-4 space-y-3">
+        {tasks.map(t => {
+          const pct = (t.done / t.total) * 100;
+          return (
+            <div key={t.id}>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="min-w-0">
+                  <div className="text-[12.5px] font-medium leading-tight truncate">{t.label}</div>
+                  <div className="k-mono text-[10px] text-[var(--k-ink-3)] mt-0.5 tracking-wider">{t.detail}</div>
+                </div>
+                <div className="text-right">
+                  <div className="k-mono text-[11px] font-medium k-tnum">{t.done}/{t.total}</div>
+                  <div className="k-mono text-[10px] text-[var(--k-ink-3)] mt-0.5">{t.eta}</div>
+                </div>
+              </div>
+              <div className="k-progress">
+                <div className="k-progress__bar" style={{ right: `${100 - pct}%` }}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="border-t border-[var(--k-line-soft)] px-4 py-2.5 flex items-center justify-between bg-[rgba(22,19,15,0.015)]">
+        <span className="k-mono text-[10px] text-[var(--k-ink-3)] tracking-wider uppercase">Workspace queue</span>
+        <button className="k-mono text-[10.5px] text-[var(--k-orange-ink)] hover:text-[var(--k-orange)] transition-colors flex items-center gap-1">
+          View all <Icon name="arrow" size={11}/>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── Specimen sections ─────────── */
+function Section({ title, subtitle, children }) {
+  return (
+    <section className="mb-12">
+      <div className="flex items-baseline gap-4 mb-5">
+        <h2 className="text-[15px] font-semibold tracking-[-0.005em]">{title}</h2>
+        <div className="k-rule flex-1"/>
+        {subtitle && <span className="k-mono text-[10.5px] text-[var(--k-ink-3)] tracking-wider uppercase">{subtitle}</span>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/* ─────────── Type specimen ─────────── */
+function TypeSpecimen() {
+  return (
+    <div className="k-card k-card--hero p-8">
+      <div className="grid grid-cols-[200px_1fr] gap-x-10 gap-y-6 items-baseline">
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Display · Clash 600</div>
+        <div className="k-display text-[56px] font-semibold leading-[0.95] tracking-[-0.04em]">
+          Kivasy<span style={{color:"var(--k-orange)"}}>.</span>
+        </div>
+
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">H1 · Clash 600 / 32</div>
+        <div className="k-display text-[32px] font-semibold leading-tight tracking-[-0.025em]">What needs attention now</div>
+
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">H2 · Clash 600 / 22</div>
+        <div className="k-display text-[22px] font-semibold tracking-[-0.025em]">Recent batches</div>
+
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Body · General 400 / 14</div>
+        <div className="text-[14px] leading-[1.55] text-[var(--k-ink-2)] max-w-[52ch]">
+          Pull from references, kick off a batch, review kept items, then package and send drafts.
+          Kivasy keeps the production chain visible end-to-end so you never lose a decision between
+          steps.
+        </div>
+
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">UI label · General 540 / 13.5</div>
+        <div className="text-[13.5px] font-medium">Send to Etsy as Draft</div>
+
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Mono meta · Geist 500 / 10.5</div>
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Batch · 01J7Z · 12 of 12 kept · 04:42</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── Content ─────────── */
+function ButtonShowcase() {
+  return (
+    <div className="k-card k-card--hero p-7">
+      <div className="grid grid-cols-[120px_1fr] gap-x-8 gap-y-5 items-center">
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Primary</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary" size="sm">New batch</Button>
+          <Button variant="primary" icon={<Icon name="plus" size={14}/>}>New batch</Button>
+          <Button variant="primary" size="lg" icon={<Icon name="sparkle" size={14}/>}>Generate variations</Button>
+        </div>
+
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Secondary</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="secondary" size="sm">Cancel</Button>
+          <Button variant="secondary" icon={<Icon name="filter" size={14}/>}>Filter</Button>
+          <Button variant="secondary" size="lg" icon={<Icon name="download" size={14}/>}>Export ZIP</Button>
+        </div>
+
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Edit</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="edit" size="sm" icon={<Icon name="sparkle" size={13}/>}>Magic eraser</Button>
+          <Button variant="edit" icon={<Icon name="image" size={14}/>}>Edit color</Button>
+        </div>
+
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Publish</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="publish" icon={<Icon name="upload" size={14}/>}>Send to Etsy as Draft</Button>
+          <Button variant="publish" size="sm">Create Etsy Draft</Button>
+        </div>
+
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Ghost · Destructive</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="ghost" size="sm">Skip</Button>
+          <Button variant="ghost" iconRight={<Icon name="chevron" size={12}/>}>View all</Button>
+          <Button variant="destructive" size="sm">Reject batch</Button>
+        </div>
+
+        <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Icon</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="k-iconbtn"><Icon name="search" size={15}/></button>
+          <button className="k-iconbtn"><Icon name="filter" size={15}/></button>
+          <button className="k-iconbtn"><Icon name="settings" size={15}/></button>
+          <button className="k-iconbtn"><Icon name="bell" size={15}/></button>
+          <button className="k-iconbtn"><Icon name="download" size={15}/></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── Core screen mock ─────────── */
+function CoreScreen() {
+  const [active, setActive] = useState("overview");
+  return (
+    <div className="rounded-2xl overflow-hidden border border-[var(--k-line)] shadow-[0_1px_2px_rgba(22,19,15,0.04),0_24px_48px_-16px_rgba(22,19,15,0.18)]">
+      <div className="flex h-[760px] bg-[var(--k-bg)]">
+        <Sidebar active={active} onNav={setActive}/>
+        <main className="flex-1 flex flex-col min-w-0 k-canvas overflow-hidden">
+          <Topbar title="Welcome back" subtitle="Wed · Mar 27 · 09:42 ist">
+            <Button variant="secondary" size="sm" icon={<Icon name="filter" size={13}/>}>Filter</Button>
+            <Button variant="primary" icon={<Icon name="plus" size={14}/>}>New batch</Button>
+          </Topbar>          <div className="flex-1 overflow-y-auto p-7">
+            {/* Stat row */}
+            <div className="grid grid-cols-4 gap-4">
+              <StatCard label="Bookmarks"   value="128" delta="+12" deltaTone="success"
+                spark="M0 18 L8 14 L16 16 L24 11 L32 13 L40 8 L48 10 L56 5 L64 7 L68 4"/>
+              <StatCard label="References" value="86"  delta="+5"  deltaTone="success"
+                spark="M0 16 L10 18 L20 12 L30 14 L40 10 L50 8 L60 11 L68 6"/>
+              <StatCard label="Active jobs" value="3"  delta="2 running" deltaTone="warning"
+                spark="M0 14 L10 12 L20 16 L30 10 L40 14 L50 9 L60 12 L68 8"/>
+              <StatCard label="Drafts sent" value="14" delta="this wk" deltaTone="info"
+                spark="M0 20 L10 17 L20 18 L30 13 L40 15 L50 10 L60 12 L68 7"/>
+            </div>
+
+            {/* Two-up: recent batches + selections */}
+            <div className="grid grid-cols-[1.35fr_1fr] gap-4 mt-5">
+              <div className="k-card p-0 overflow-hidden">
+                <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-[var(--k-line-soft)]">
+                  <h3 className="text-[13.5px] font-medium tracking-[-0.005em]">Recent batches</h3>
+                  <Button variant="ghost" size="sm" iconRight={<Icon name="chevron" size={11}/>}>View all</Button>
+                </div>
+                <div className="divide-y divide-[var(--k-line-soft)]">
+                  {[
+                    { kind:"boho",      name:"Boho clipart Q4",   id:"01J7Z", status:"Running",   tone:"warning", time:"2m" },
+                    { kind:"christmas", name:"Christmas wall art", id:"01J7Y", status:"Succeeded", tone:"success", time:"14m" },
+                    { kind:"abstract",  name:"Riso poster batch",  id:"01J7X", status:"Succeeded", tone:"success", time:"1h" },
+                    { kind:"poster",    name:"Bookmark quotes",    id:"01J7W", status:"Failed",    tone:"danger",  time:"3h" },
+                  ].map((b, i) => (
+                    <div key={b.id} className="flex items-center gap-3.5 px-5 py-3.5 hover:bg-[rgba(22,19,15,0.015)] cursor-pointer">
+                      <div className="w-11 h-11 shrink-0 rounded-lg overflow-hidden ring-1 ring-[rgba(22,19,15,0.06)]">
+                        <div className="k-thumb !aspect-square !rounded-none" data-kind={b.kind}/>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13.5px] font-medium leading-tight truncate">{b.name}</div>
+                        <div className="k-mono text-[10.5px] tracking-wider text-[var(--k-ink-3)] mt-1">batch_{b.id}</div>
+                      </div>
+                      <Badge tone={b.tone} dot>{b.status}</Badge>
+                      <div className="k-mono text-[11px] tabular-nums text-[var(--k-ink-3)] w-10 text-right">{b.time}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="k-card p-0 overflow-hidden">
+                <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-[var(--k-line-soft)]">
+                  <h3 className="text-[13.5px] font-medium tracking-[-0.005em]">Ready to ship</h3>
+                  <Badge tone="info">2 sets</Badge>
+                </div>
+                <div className="px-5 py-4 space-y-3">
+                  {[
+                    { name:"Christmas Wall Art Set", count:12, kinds:["christmas","nursery","poster"] },
+                    { name:"Nursery 3-print Set",    count:6,  kinds:["nursery","abstract","landscape"] },
+                  ].map((s, i) => (
+                    <div key={i} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                      <div className="grid grid-cols-3 gap-0.5 w-[88px] shrink-0">
+                        {s.kinds.map((k,j)=> <div key={j} className="k-thumb !aspect-square" data-kind={k}/>)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-medium leading-tight truncate">{s.name}</div>
+                        <div className="k-mono text-[10.5px] text-[var(--k-ink-3)] mt-1 tracking-wider">{s.count} designs</div>
+                      </div>
+                      <Button variant="publish" size="sm">Create Etsy Draft</Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+        <ActiveTasks/>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── Library screen ─────────── */
+function LibraryScreen() {
+  const items = [
+    { kind:"boho",      title:"Boho wreath 01",  meta:"Square · Kept" },
+    { kind:"nursery",   title:"Bear nursery 03", meta:"Portrait · Kept", selected:true },
+    { kind:"abstract",  title:"Riso study 02",   meta:"Portrait · Kept" },
+    { kind:"poster",    title:"Type poster 04",  meta:"Portrait · Kept" },
+    { kind:"christmas", title:"Holly print 01",  meta:"Square · Kept",   selected:true },
+    { kind:"landscape", title:"Mountain 01",     meta:"Square · Kept" },
+    { kind:"riso",      title:"Riso pattern 03", meta:"Square · Kept" },
+    { kind:"boho",      title:"Wreath 02",       meta:"Square · Kept" },
+  ];
+  return (
+    <div className="grid grid-cols-4 gap-4">
+      {items.map((it, i) => <AssetCard key={i} {...it}/>)}
+    </div>
+  );
+}
+
+/* ─────────── Page ─────────── */
+function App() {
+  return (
+    <div className="min-h-screen bg-[var(--k-bg)]">
+      {/* Page header — quieter, less hero energy */}
+      <div className="border-b border-[var(--k-line)] bg-[var(--k-bg)]">
+        <div className="max-w-[1320px] mx-auto px-10 pt-8 pb-7 flex items-end justify-between gap-8">
+          <div>
+            <Lockup/>
+            <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)] mt-7">Design system · v3</div>
+            <h1 className="k-display text-[34px] font-semibold tracking-[-0.03em] leading-[1.05] mt-2">
+              Operator product, not a showcase.
+            </h1>
+            <p className="text-[14.5px] text-[var(--k-ink-2)] mt-3 max-w-[58ch] leading-[1.55]">
+              Same premium direction. Material depth and display type are now concentrated where decisions get made —
+              CTAs, hero stats, brand surfaces — and pulled out of dense lists, toolbars, and repeated controls.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 pb-1">
+            <Badge tone="accent" dot>v3 · 0.1</Badge>
+            <Badge>Operator preview</Badge>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-[1320px] mx-auto px-10 py-12">
+        <Section title="Brand presence" subtitle="Wordmark · monogram · lockup">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="k-card k-card--hero p-8 flex flex-col items-start gap-6">
+              <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Monogram</div>
+              <KivasyMark size={88}/>
+              <div className="text-[13px] text-[var(--k-ink-2)] leading-[1.5] max-w-[26ch]">
+                Custom <em>K</em> with a cut leg and a signature dot. The square uses a 3-stop coral gradient
+                with an inner highlight and 1px ink edge.
+              </div>
+            </div>
+            <div className="k-card k-card--hero p-8 flex flex-col items-start gap-6">
+              <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Wordmark</div>
+              <KivasyWordmark size={56}/>
+              <div className="text-[13px] text-[var(--k-ink-2)] leading-[1.5] max-w-[28ch]">
+                Clash Display 600 with -0.045em tracking. The orange period is the one mandatory accent —
+                it lands in the same rhythm slot as the active nav rail.
+              </div>
+            </div>
+            <div className="k-card k-card--hero p-8 flex flex-col items-start gap-6">
+              <div className="k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)]">Lockup</div>
+              <Lockup/>
+              <div className="text-[13px] text-[var(--k-ink-2)] leading-[1.5] max-w-[28ch]">
+                Default sidebar lockup. Mark optical-aligns with the wordmark cap-height; gap is 12px,
+                non-negotiable.
+              </div>
+              <div className="flex items-center gap-3 mt-1">
+                <KivasyMark size={28}/>
+                <KivasyMark size={20}/>
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Typography" subtitle="Clash Display · General Sans · Geist Mono">
+          <TypeSpecimen/>
+        </Section>
+
+        <Section title="Buttons" subtitle="Stage colour language">
+          <ButtonShowcase/>
+        </Section>
+
+        <Section title="Stat cards" subtitle="Display numerals · spark + delta">
+          <div className="grid grid-cols-4 gap-4">
+            <StatCard label="Bookmarks"  value="128" delta="+12" deltaTone="success"
+              spark="M0 18 L8 14 L16 16 L24 11 L32 13 L40 8 L48 10 L56 5 L64 7 L68 4"/>
+            <StatCard label="Kept rate"  value="78%" delta="+4 pp" deltaTone="success"
+              spark="M0 20 L10 17 L20 18 L30 13 L40 15 L50 10 L60 12 L68 7"/>
+            <StatCard label="Active jobs" value="3"  delta="2 running" deltaTone="warning"
+              spark="M0 14 L10 12 L20 16 L30 10 L40 14 L50 9 L60 12 L68 8"/>
+            <StatCard label="GMV mtd"    value="$4.2k" delta="+18%" deltaTone="success"
+              spark="M0 22 L10 19 L20 16 L30 18 L40 12 L50 14 L60 8 L68 5"/>
+          </div>
+        </Section>
+
+        <Section title="Selection cards" subtitle="Stage CTA per card">
+          <div className="grid grid-cols-2 gap-4">
+            <SelectionCard name="Christmas Wall Art Set" count={12}
+              kinds={["christmas","nursery","poster"]} stage="Mockup ready" stageTone="info" primary="publish"/>
+            <SelectionCard name="Boho Clipart Bundle Q4" count={25}
+              kinds={["boho","poster","abstract"]} stage="Edits" stageTone="neutral"/>
+            <SelectionCard name="Nursery 3-print Set" count={6}
+              kinds={["nursery","abstract","landscape"]} stage="Mockup ready" stageTone="info" primary="publish"/>
+            <SelectionCard name="Riso poster studies" count={4}
+              kinds={["riso","abstract","poster"]} stage="Curating" stageTone="neutral"/>
+          </div>
+        </Section>
+
+        <Section title="Library grid" subtitle="Selection ring · inset thumb · hover lift">
+          <LibraryScreen/>
+        </Section>
+
+        <Section title="Core screen" subtitle="Sidebar · topbar · overview · active tasks">
+          <CoreScreen/>
+        </Section>
+
+        <div className="mt-10 mb-6 k-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--k-ink-3)] flex items-center gap-3">
+          <span>Kivasy Design System · v2 premium leap</span>
+          <span className="k-rule flex-1"/>
+          <span>Operator preview</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
