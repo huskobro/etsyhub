@@ -274,14 +274,31 @@ export default async function AdminMidjourneyPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Midjourney köprüsü</h1>
-        <p className="text-sm text-text-muted">
-          Local MJ Bridge sağlığı + son 50 job. Pass 41 design doc:{" "}
-          <code className="font-mono text-xs">
-            docs/plans/2026-05-06-midjourney-web-bridge-design.md
-          </code>
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Midjourney köprüsü</h1>
+          <p className="text-sm text-text-muted">
+            Local MJ Bridge sağlığı + son 50 job. Pass 41 design doc:{" "}
+            <code className="font-mono text-xs">
+              docs/plans/2026-05-06-midjourney-web-bridge-design.md
+            </code>
+          </p>
+        </div>
+        {/* Pass 81 — Templates + Batch Run shortcut'ları */}
+        <nav className="flex shrink-0 gap-2" data-testid="mj-page-shortcuts">
+          <Link
+            href="/admin/midjourney/templates"
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:border-border-strong hover:bg-surface-2"
+          >
+            Templates
+          </Link>
+          <Link
+            href="/admin/midjourney/batch-run"
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:border-border-strong hover:bg-surface-2"
+          >
+            Batch Run
+          </Link>
+        </nav>
       </div>
 
       {/* Pass 44 — challenge / login handoff bilgi banner. Bridge sağlıklı

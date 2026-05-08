@@ -78,6 +78,131 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 81 (Templates + Batch Run UI V1 — operatör yüzeyi) 🟢
+
+**Hedef:** Pass 80'de persisted templates + batch generation backend
+geldi ama operatör UI'sı yoktu (curl/API client tüketicisiydi). Pass 81
+görevi: backend'i gerçek admin UI'sına taşı, mikro UI cilaya sapmadan
+hızlı + dürüst V1.
+
+**Pass 81 audit özeti:**
+
+| # | Konu | Durum |
+|---|---|---|
+| Mevcut admin pages | `/admin/midjourney` (page.tsx) + `/admin/midjourney/[id]`. Templates/batch için **hiçbir UI yok** | 🟢 |
+| Backend (Pass 80) | `GET/POST /api/admin/midjourney/templates`, `[id]` GET/PATCH, `test-render-batch` POST hazır | 🟢 |
+| Design tokens + UI components | Button/Card/FormField/Textarea/Table/Badge/StateMessage/Toast hazır; design tokens (`--color-*`, `--space-*`) uyumlu | 🟢 |
+| Sidebar nav | `ADMIN_NAV`'de `/admin/midjourney` yok ama URL bilinerek erişiliyor; Pass 81 V1 sidebar'a dokunmadı (dış değişiklik) | 🟡 Pass 82+ |
+
+**Pass 81 implementasyonu:**
+
+1. **`/admin/midjourney/templates` (page.tsx)** — Templates list:
+   - `listMjTemplates()` server-side fetch
+   - Table: Ad / Aktif Version / Variables (chip'ler) / Product Type / Güncelleme / Aksiyon (Düzenle + Batch Run)
+   - "Yeni Template" + "Batch Run" + "← MJ Ana Sayfa" butonları
+   - Empty state: ilk template oluşturma CTA
+
+2. **`/admin/midjourney/templates/new` (page.tsx)** — Yeni template:
+   - `<TemplateForm mode="new" />`
+   - POST → `/[id]` redirect
+
+3. **`/admin/midjourney/templates/[id]` (page.tsx)** — Edit:
+   - `getMjTemplate(id)` + `listMjTemplates()` (description için)
+   - `<TemplateForm mode="edit" initial={...} />`
+   - "Batch Run" shortcut → `/admin/midjourney/batch-run?templateId=X`
+   - Versiyonlama panel (eski ACTIVE → ARCHIVED açıklaması)
+
+4. **`TemplateForm.tsx` (client component)** — ortak form:
+   - `mode="new" | "edit"` discriminator
+   - Live variable extraction (`{{var}}` regex parse + chip render)
+   - Invalid variable name detect (regex whitelist)
+   - Name validation (2-120 char, regex)
+   - Edit mode: name disabled (Pass 81 V1), changelog input
+   - Submit: POST veya PATCH
+
+5. **`/admin/midjourney/batch-run` (page.tsx)** — Batch Run:
+   - `listMjTemplates()` server-side
+   - Empty state (no templates)
+   - `<BatchRunForm templates={...} preselectedTemplateId={sp.templateId} />`
+   - URL `?templateId=X` querystring desteği (template list / edit'ten redirect)
+
+6. **`BatchRunForm.tsx` (client component)** — ana form:
+   - Template select dropdown (active version label)
+   - Template metni preview (read-only)
+   - Variable Sets JSON textarea (max 50 entries, max 200 char/value)
+   - Live JSON parse + validation
+     - Array check, entry object check, string-only values, max length
+     - Variable mismatch detect: template'teki `{{var}}` ile JSON keys
+       karşılaştır → eksik / fazlalık per entry
+   - Preview: ilk variable set ile expand (live)
+   - Aspect ratio + Submit Strategy select
+   - Submit → POST `/api/admin/midjourney/test-render-batch`
+   - Result panel: totalRequested / totalSubmitted / totalFailed +
+     her job'a `<Link>` (job detail page'e)
+
+7. **`/admin/midjourney/page.tsx` ana sayfa**:
+   - Header sağına nav: "Templates" + "Batch Run" shortcut'ları
+   - Mevcut layout aynen korundu (TestRenderForm + Preferences + Job listesi)
+
+**Pass 81 kanıtları:**
+
+- ✅ **Compile + render**: Next.js dev'de 3 yeni sayfa compile başarılı
+  (307 = auth redirect, beklenen):
+  - `GET /admin/midjourney/templates 307` (Compiled in 412ms, 883 modules)
+  - `GET /admin/midjourney/templates/new 307` (98ms, 876 modules)
+  - `GET /admin/midjourney/batch-run 307` (99ms, 883 modules)
+  - Compile error yok, hidden module path missing yok
+- ✅ **TS clean** (bridge + EtsyHub)
+- ✅ **ESLint clean** (yeni 7 dosya dahil)
+- ✅ **Token check ✓** (`npm run check:tokens`)
+- ✅ **Backend regresyon**: describe (api-first) → COMPLETED 4 prompt
+- ✅ **Pass 80 backend intact** (UI sadece tüketici; service yüzeyi
+  dokunulmadı)
+
+**Pass 81 ürün değeri:**
+- Operatör artık template'i UI'dan görür, oluşturur, düzenler
+  (versiyonlama otomatik)
+- Batch Run sayfasında JSON variable sets ile preview + run yapabilir
+- Sonuç anında: kaç job submit edildi / kaç fail + her job'a link
+- `?templateId=X` ile templates list'ten direkt batch run'a geçiş
+- Ana sayfa shortcut'larıyla nav'a giriş kolay
+
+**Pass 81 servis değeri (taşınabilirlik):**
+- UI sadece API'leri tüketir; servis katmanı (Pass 79/80) MJ-spesifik ama
+  pattern provider-bağımsız
+- `BatchRunForm` JSON textarea pattern'i diğer provider'larda aynen
+  kullanılır
+- Variable mismatch detect (live) saf TypeScript regex — taşınabilir
+
+**Pass 81 dürüst sınırlar:**
+- **JSON textarea V1** — operatör elle JSON girer; CSV import + grid
+  editor Pass 82+
+- **Conditional / loop syntax** ({{#each}}) yok — Pass 82+
+- **Default values** (`{{var|fallback}}`) yok — Pass 82+
+- **Sidebar nav entry** "Midjourney" eklenmedi (mevcut sidebar config
+  korundu; ana sayfadan shortcut yeterli — dış değişiklik istemedik)
+- **Template soft-delete** UI yok (Pass 80 V1'de service tarafı zaten
+  yok; Pass 82+ paketi)
+- **Batch progress tracking + cancel** UI yok — submit sonrası operatör
+  her job'u job detail page'inden takip eder (mevcut Pass 50+ yolu)
+- **UI smoke authenticated session ile yapılmadı** (compile + render
+  + Pass 80 backend kanıtı yeterli görüldü; admin login flow Next.js
+  dev'de session cookie üretmek için gerekli — production'da kullanıcı
+  zaten login)
+
+**Pass 81 dosya değişiklik blast radius:**
+- 7 yeni/değişik dosya:
+  - `src/app/(admin)/admin/midjourney/page.tsx` (header'a 2 nav link)
+  - `src/app/(admin)/admin/midjourney/templates/page.tsx` (yeni, list)
+  - `src/app/(admin)/admin/midjourney/templates/TemplateForm.tsx` (yeni, ortak)
+  - `src/app/(admin)/admin/midjourney/templates/new/page.tsx` (yeni)
+  - `src/app/(admin)/admin/midjourney/templates/[id]/page.tsx` (yeni)
+  - `src/app/(admin)/admin/midjourney/batch-run/page.tsx` (yeni)
+  - `src/app/(admin)/admin/midjourney/batch-run/BatchRunForm.tsx` (yeni)
+- Bridge sıfır değişiklik
+- Service / API sıfır değişiklik (sadece UI tüketici)
+- Schema değişikliği yok
+
 ### Pass 80 (Persisted MJ Templates + Batch Generation V1) 🟢
 
 **Hedef:** Pass 79'da prompt template engine + tek-shot wrapper geldi.
