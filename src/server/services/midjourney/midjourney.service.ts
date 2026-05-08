@@ -133,6 +133,22 @@ export type CreateMidjourneyJobInput = {
    * varsayılanı belirler.
    */
   submitStrategy?: "auto" | "api-first" | "dom-first";
+  /**
+   * Pass 84 — Batch lineage. Caller (batch service) bunu set eder; tek
+   * job (UI Test Render) için undefined kalır. Job.metadata'ya yazılır
+   * → sonradan getBatchSummary(batchId) ile resolve edilir.
+   * Schema değişikliği YOK — Job.metadata JSON reuse.
+   */
+  batchMeta?: {
+    batchId: string;
+    batchIndex: number;
+    batchTotal: number;
+    /** UI gösterimi için template snapshot. */
+    templateId?: string;
+    promptTemplate?: string;
+    /** Bu job'un input variables. */
+    variables?: Record<string, string>;
+  };
 };
 
 /** Pass 65 — image-prompt URL kontratı (R17.2). */
@@ -352,6 +368,27 @@ export async function createMidjourneyJob(
         metadata: {
           bridgeJobId: snapshot.id,
           prompt: input.prompt.slice(0, 200), // truncate (admin display)
+          // Pass 84 — Batch lineage (varsa). Sonradan
+          // getBatchSummary(batchId) bu field üzerinden query yapar.
+          ...(input.batchMeta
+            ? {
+                batchId: input.batchMeta.batchId,
+                batchIndex: input.batchMeta.batchIndex,
+                batchTotal: input.batchMeta.batchTotal,
+                ...(input.batchMeta.templateId
+                  ? { batchTemplateId: input.batchMeta.templateId }
+                  : {}),
+                ...(input.batchMeta.promptTemplate
+                  ? {
+                      batchPromptTemplate:
+                        input.batchMeta.promptTemplate.slice(0, 500),
+                    }
+                  : {}),
+                ...(input.batchMeta.variables
+                  ? { batchVariables: input.batchMeta.variables }
+                  : {}),
+              }
+            : {}),
         },
       },
     });
@@ -682,6 +719,15 @@ export type BatchPerJobResult =
     };
 
 export type CreateMidjourneyJobsFromTemplateBatchResult = {
+  /**
+   * Pass 84 — Batch identity (cuid). Tüm batch job'larının
+   * Job.metadata.batchId field'ında saklanır; sonradan
+   * `getBatchSummary(batchId)` ile bu batch'in jobs listesi resolve edilir.
+   * Schema değişikliği YAPILMADI — Job.metadata JSON reuse.
+   */
+  batchId: string;
+  /** Pass 84 — batch oluşturma zamanı (UI'da "geçen 5 dakika önce..."). */
+  batchCreatedAt: Date;
   templateSnapshot: {
     /** Resolve edilen template metni (persisted veya inline). */
     promptTemplate: string;
@@ -754,6 +800,12 @@ export async function createMidjourneyJobsFromTemplateBatch(
   void _t;
   void _tid;
 
+  // Pass 84 — Batch identity (cuid). Tüm batch job'larının
+  // Job.metadata.batchId field'ında saklanır.
+  const { createId } = await import("@paralleldrive/cuid2");
+  const batchId = createId();
+  const batchCreatedAt = new Date();
+
   const results: BatchPerJobResult[] = [];
   let totalSubmitted = 0;
   let totalFailed = 0;
@@ -766,6 +818,17 @@ export async function createMidjourneyJobsFromTemplateBatch(
           ...rest,
           promptTemplate,
           promptVariables: variables,
+          // Pass 84 — Batch lineage Job.metadata'ya yazılır
+          batchMeta: {
+            batchId,
+            batchIndex: i,
+            batchTotal: variableSets.length,
+            ...(templateMeta.templateId
+              ? { templateId: templateMeta.templateId }
+              : {}),
+            promptTemplate,
+            variables,
+          },
         },
         bridgeClient,
       );
@@ -792,6 +855,8 @@ export async function createMidjourneyJobsFromTemplateBatch(
   }
 
   return {
+    batchId,
+    batchCreatedAt,
     templateSnapshot: {
       promptTemplate,
       ...templateMeta,

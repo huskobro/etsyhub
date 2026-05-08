@@ -78,6 +78,164 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 84 (Batch identity + summary + run history — operator follow-through) 🟢
+
+**Hedef:** Pass 80'de batch generation backend, Pass 81'de UI, Pass 82'de
+CSV import geldi. Pass 83'te variation V1 ile capability sayısı arttı.
+Pass 84 görevi: **operator follow-through** zayıflığını kapat — batch
+run sonrası kalıcı id, sonradan tekrar görüntüleme, jobs grouping.
+
+**Pass 84 audit özeti:**
+
+#### A. Batch visibility eksikleri (Pass 84 öncesi)
+
+| # | Eksik | Etkisi |
+|---|---|---|
+| 1 | **Batch identity yok** | Sayfa yenilenince result panel kaybolur, sonradan dönmek imkansız |
+| 2 | Job.metadata'da `batchId` yok | Hangi job hangi batch'ten geldi belli değil |
+| 3 | Recent batches list yok | Operatör dün/saat önceki batch'i bulamıyor |
+| 4 | State breakdown UI yok | "Bu batch'in 7'si COMPLETED, 1'i RUNNING, 2'si FAILED" gibi özet yok |
+
+#### B. Schema kararı: zero migration
+
+`Job.metadata` JSON field'ı zaten her job için yazılıyor. Pass 84
+**`batchId`/`batchIndex`/`batchTotal`/`batchTemplateId`/`batchPromptTemplate`/
+`batchVariables`** field'larını metadata'ya yazıp Prisma JSON path
+filter ile query'liyoruz. **Schema migration YOK** = blast radius minimum.
+
+#### C. 4 kova
+
+| Kova | Item |
+|---|---|
+| **Build now** | (1) `createMidjourneyJobsFromTemplateBatch` cuid `batchId` üretsin<br>(2) `createMidjourneyJob`'a `batchMeta?` parametresi → Job.metadata persistence<br>(3) `getBatchSummary(batchId, userId?)` service<br>(4) `listRecentBatches(userId, limit)` service<br>(5) `/admin/midjourney/batches` list page<br>(6) `/[batchId]` detail page (counts + jobs table)<br>(7) BatchRunForm result panel'e "Batch sayfasına git" link<br>(8) Ana sayfa header'a "Batches" shortcut |
+| **Strong follow-up** | (9) Job listing filter `?batchId=X`<br>(10) Variation child cluster (parent asset altında) |
+| **Useful later** | (11) Batch cancel/retry-failed-only UI<br>(12) Template run history page (template id'ye göre batch listesi) |
+| **Do not do now** | (13) Schema migration<br>(14) Yeni capability açma<br>(15) Native upscale<br>(16) Animate |
+
+**Pass 84 implementasyonu:**
+
+1. **`src/server/services/midjourney/midjourney.service.ts`**:
+   - `CreateMidjourneyJobInput.batchMeta?` field eklendi
+     (`batchId/batchIndex/batchTotal/templateId/promptTemplate/variables`)
+   - `createMidjourneyJob` body'sinde Job.metadata'ya batchMeta yazımı
+   - `createMidjourneyJobsFromTemplateBatch` body'sinde:
+     - `@paralleldrive/cuid2` ile `batchId` üretildi
+     - `batchCreatedAt` timestamp
+     - Her loop'ta `batchMeta` parametresi `createMidjourneyJobFromTemplate`'e
+     - Result type'a `batchId + batchCreatedAt` eklendi
+
+2. **`src/server/services/midjourney/batches.ts`** (yeni, ~290 satır):
+   - `getBatchSummary(batchId, userId?)`:
+     - Prisma JSON path filter (`metadata.batchId === batchId`)
+     - User-scoped (cross-user yok)
+     - Job + MidjourneyJob join + state aggregation
+     - Counts: `total/queued/running/completed/failed/cancelled/awaiting/other`
+     - Jobs sıralı (batchIndex'e göre)
+   - `listRecentBatches(userId, limit=30)`:
+     - Tüm MJ_BRIDGE jobları al, client-side group by batchId
+     - DB load limit: 2000 son job (Pass 85+ index'lenebilir)
+     - State breakdown her batch için
+
+3. **`src/app/(admin)/admin/midjourney/batches/page.tsx`** (yeni):
+   - List page: son 50 batch
+   - Table: batchId / createdAt / template / counts / detail link
+   - "Yeni Batch Run" CTA
+
+4. **`src/app/(admin)/admin/midjourney/batches/[batchId]/page.tsx`** (yeni):
+   - Detail page: counts panel (7 tile) + jobs table
+   - Per-job: state badge / expanded prompt / variables / asset count /
+     mjJobId / "Job →" link
+   - Template snapshot preview
+
+5. **`src/app/(admin)/admin/midjourney/batch-run/BatchRunForm.tsx`**:
+   - Result type'a `batchId + batchCreatedAt` eklendi
+   - Result panel header'da "Batch sayfasına git →" link (cuid kısaltılmış
+     gösterim + tooltip)
+
+6. **`src/app/(admin)/admin/midjourney/page.tsx`**:
+   - Header nav'a "Batches" shortcut (Templates + Batch Run yanına)
+
+7. **`src/app/api/admin/midjourney/test-render-batch/route.ts`**:
+   - Audit log metadata'ya `batchId + batchCreatedAt` eklendi
+
+**Pass 84 kanıtları:**
+
+- ✅ **E2E real smoke**:
+  ```
+  Step 1 — Batch enqueue:
+    batchId: z57y2mogv5gd...
+    totalSubmitted: 2
+    totalFailed: 0
+
+  Step 2 — getBatchSummary:
+    counts: { total:2, queued:2, running:0, completed:0, ... }
+    templateId: cmowob9ep...
+    promptTemplate: "{{subject}} in {{style}} style, {{mood}} atmosphere"
+    jobs.length: 2
+    [0] state=QUEUED expanded="Pass 84 batch test alpha in watercolor..."
+        vars={subject, style, mood}
+    [1] state=QUEUED expanded="Pass 84 batch test beta in ink line..."
+
+  Step 3 — listRecentBatches:
+    1 recent batch (z57y2mogv5gd..., total=2)
+
+  Step 4 (canlı bridge):
+    "alpha" WAITING_FOR_RENDER, "beta" QUEUED, describe queued
+    (sequential işliyor — Pass 80 rate-limit altyapısı korundu)
+  ```
+- ✅ **TS clean** (bridge + EtsyHub)
+- ✅ **ESLint clean** (yeni 3 dosya + değişen 4 dosya)
+- ✅ **Token check ✓**
+
+**Pass 84 regresyon:**
+- Pass 80 batch endpoint geriye uyumlu — sadece response shape genişledi
+  (`batchId` + `batchCreatedAt` eklendi); var olan field'lar intact
+- Pass 81 BatchRunForm JSON mode ve Pass 82 CSV mode aynen çalışıyor
+- Pass 83 variation/Pass 60 upscale Job.metadata'sında batchMeta yok
+  (bu yollar batch dışı; metadata sadece eklenmesi gereken yerlerde
+  yazılır — geriye uyumlu)
+- describe job queue'ya düştü (kod yolu Pass 78'den beri intact)
+- Bridge sıfır değişiklik
+- Schema değişikliği yok
+
+**Pass 84 ürün değeri:**
+- **Operatör batch'leri sonradan tekrar görüntüleyebilir** (en büyük dert)
+- Ana sayfa "Batches" shortcut → list → detail flow
+- Batch run sonrası "Batch sayfasına git" link ile direkt detail
+- Detail page'de counts panel + jobs table → operator follow-through
+
+**Pass 84 servis değeri (taşınabilirlik):**
+- `Job.metadata.batchId` pattern provider-bağımsız → DALL-E/Recraft/Flux
+  batch'lerde aynı şekilde kullanılır
+- Schema-zero yaklaşımı taşınabilir (Prisma JSON path filter pattern'i)
+- `batches.ts` service MJ-spesifik filter (`type: MIDJOURNEY_BRIDGE`) ama
+  pattern başka job type'larında reuse edilir
+
+**Pass 84 dürüst sınırlar:**
+- **DB load**: `listRecentBatches` 2000 son job alıp client-side group;
+  admin başına bir-kaç bin job için OK. Pass 85+ scale için ayrı
+  `MidjourneyBatch` tablosu eklenebilir
+- **Variation cluster** (parent asset altında 4 child grouping)
+  Pass 84'te yok — Pass 85+ scope
+- **Job listing filter** `?batchId=X` (mevcut admin/midjourney ana sayfa
+  job listesi) Pass 85+
+- **Batch cancel/retry-failed-only** UI yok — Pass 85+
+- **Authenticated UI smoke** yapılmadı (compile + service E2E + bridge
+  enqueue kanıtları yeterli)
+
+**Pass 84 dosya değişiklik blast radius:**
+- 7 yeni/değişik dosya (3 yeni + 4 değişen):
+  - `src/server/services/midjourney/batches.ts` (yeni, ~290 satır)
+  - `src/server/services/midjourney/midjourney.service.ts` (batchMeta + batchId)
+  - `src/app/(admin)/admin/midjourney/batches/page.tsx` (yeni list)
+  - `src/app/(admin)/admin/midjourney/batches/[batchId]/page.tsx` (yeni detail)
+  - `src/app/(admin)/admin/midjourney/batch-run/BatchRunForm.tsx` (link)
+  - `src/app/(admin)/admin/midjourney/page.tsx` (Batches shortcut)
+  - `src/app/api/admin/midjourney/test-render-batch/route.ts` (audit + batchId)
+- Bridge sıfır değişiklik
+- Schema değişikliği yok (Job.metadata JSON reuse)
+- Geriye uyumlu (yeni field'lar optional)
+
 ### Pass 83 (Variation V1 — kanıtlı V8 web native API) 🟢
 
 **Hedef:** Pass 82 audit'inde "variation kanıt yetersiz" demiştik (AutoSail

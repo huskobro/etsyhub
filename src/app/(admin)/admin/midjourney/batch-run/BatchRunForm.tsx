@@ -75,6 +75,10 @@ const DEFAULT_VARIABLE_SETS = `[
 
 type BatchResult = {
   ok: true;
+  /** Pass 84 — Batch identity (cuid). Kalıcı sayfa: /admin/midjourney/batches/<batchId> */
+  batchId: string;
+  /** Pass 84 — batch oluşturma zamanı (ISO string). */
+  batchCreatedAt: string;
   templateSnapshot: {
     promptTemplate: string;
     templateId?: string;
@@ -546,11 +550,29 @@ export function BatchRunForm({ templates, preselectedTemplateId }: BatchRunFormP
           className="mt-2 flex flex-col gap-2 rounded-md border border-border bg-surface p-4"
           data-testid="mj-batch-run-result"
         >
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Batch Sonucu</h3>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-sm font-semibold">Batch Sonucu</h3>
+              {/* Pass 84 — kalıcı batch sayfasına link */}
+              <Link
+                href={`/admin/midjourney/batches/${result.batchId}`}
+                className="text-xs text-accent underline"
+                data-testid="mj-batch-run-detail-link"
+              >
+                Batch sayfasına git →
+              </Link>
+            </div>
             <span className="text-xs text-text-muted">
-              Template snapshot: v{result.templateSnapshot.version ?? "?"}
+              {result.templateSnapshot.version
+                ? `Template snapshot: v${result.templateSnapshot.version}`
+                : "Inline template"}
             </span>
+          </div>
+          <div className="text-xs text-text-muted">
+            Batch ID:{" "}
+            <code className="font-mono" title={result.batchId}>
+              {result.batchId.slice(0, 12)}…
+            </code>
           </div>
           <div className="flex flex-wrap gap-3 text-xs">
             <span>

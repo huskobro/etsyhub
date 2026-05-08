@@ -284,13 +284,20 @@ export default async function AdminMidjourneyPage({
             </code>
           </p>
         </div>
-        {/* Pass 81 — Templates + Batch Run shortcut'ları */}
+        {/* Pass 81 — Templates + Batch Run shortcut'ları
+            Pass 84 — Batches list shortcut */}
         <nav className="flex shrink-0 gap-2" data-testid="mj-page-shortcuts">
           <Link
             href="/admin/midjourney/templates"
             className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:border-border-strong hover:bg-surface-2"
           >
             Templates
+          </Link>
+          <Link
+            href="/admin/midjourney/batches"
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:border-border-strong hover:bg-surface-2"
+          >
+            Batches
           </Link>
           <Link
             href="/admin/midjourney/batch-run"

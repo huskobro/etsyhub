@@ -144,6 +144,9 @@ export const POST = withErrorHandling(async (req: Request) => {
       targetType: "PromptTemplate",
       targetId: result.templateSnapshot.templateId ?? "(inline)",
       metadata: {
+        // Pass 84 — Batch identity audit log'a da yazıldı (lineage)
+        batchId: result.batchId,
+        batchCreatedAt: result.batchCreatedAt.toISOString(),
         templateId: result.templateSnapshot.templateId ?? null,
         versionId: result.templateSnapshot.versionId ?? null,
         version: result.templateSnapshot.version ?? null,
