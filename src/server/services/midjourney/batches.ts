@@ -12,7 +12,7 @@
 //   - Aggregation: state breakdown (queued/running/completed/failed/...)
 //   - Lineage: templateSnapshot, batchCreatedAt, variable counts
 
-import { JobType } from "@prisma/client";
+import { JobType, MidjourneyJobState } from "@prisma/client";
 import { db } from "@/server/db";
 
 const MJ_BATCH_METADATA_PATH = ["batchId"]; // Job.metadata.batchId
@@ -315,6 +315,142 @@ export async function listRecentBatches(
         : null,
       counts: b.counts,
     }));
+}
+
+// ============================================================================
+// Pass 87 — Operator Control Center quick stats.
+//
+// Ana sayfa header'da "şu an ne durumda?" sorusuna tek-bakışta yanıt.
+// Job + MidjourneyJob aggregations user-scoped. Lightweight count
+// query'leri (DB index dostu).
+// ============================================================================
+
+export type ControlCenterStats = {
+  /** Bugün enqueue edilen MJ jobs (00:00 — şimdi). */
+  enqueuedToday: number;
+  /** Şu an running (SUBMITTING/WAITING/COLLECTING/DOWNLOADING/IMPORTING). */
+  running: number;
+  /** Bugün COMPLETED. */
+  completedToday: number;
+  /** Bugün FAILED. */
+  failedToday: number;
+  /** Toplam aktif MJ Templates (taskType=midjourney_generate, ACTIVE versiyonlu). */
+  templates: number;
+  /** Son 7 gün içindeki batch sayısı. */
+  batchesLast7d: number;
+};
+
+export async function getControlCenterStats(
+  userId: string,
+): Promise<ControlCenterStats> {
+  const now = new Date();
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(now.getDate() - 7);
+
+  const RUNNING_DB_STATES: MidjourneyJobState[] = [
+    MidjourneyJobState.OPENING_BROWSER,
+    MidjourneyJobState.SUBMITTING_PROMPT,
+    MidjourneyJobState.WAITING_FOR_RENDER,
+    MidjourneyJobState.COLLECTING_OUTPUTS,
+    MidjourneyJobState.DOWNLOADING,
+    MidjourneyJobState.IMPORTING,
+  ];
+
+  const [enqueuedToday, running, completedToday, failedToday, templatesCount, recentBatches] =
+    await Promise.all([
+      db.midjourneyJob.count({
+        where: { userId, enqueuedAt: { gte: startOfDay } },
+      }),
+      db.midjourneyJob.count({
+        where: { userId, state: { in: RUNNING_DB_STATES } },
+      }),
+      db.midjourneyJob.count({
+        where: { userId, state: "COMPLETED", completedAt: { gte: startOfDay } },
+      }),
+      db.midjourneyJob.count({
+        where: { userId, state: "FAILED", failedAt: { gte: startOfDay } },
+      }),
+      db.promptTemplate.count({
+        where: {
+          taskType: "midjourney_generate",
+          versions: { some: { status: "ACTIVE" } },
+        },
+      }),
+      // Son 7 gün batch sayımı listRecentBatches reuse (limit yüksek tut)
+      listRecentBatches(userId, 200).then((all) =>
+        all.filter((b) => b.createdAt >= sevenDaysAgo).length,
+      ),
+    ]);
+
+  return {
+    enqueuedToday,
+    running,
+    completedToday,
+    failedToday,
+    templates: templatesCount,
+    batchesLast7d: recentBatches,
+  };
+}
+
+/**
+ * Pass 87 — "Needs Attention" failed jobs strip için.
+ *
+ * Son 24 saat içinde FAILED jobs (max 10), retry için doğrudan
+ * batch detail page'e götürür. Tek bir job FAILED ise (single job),
+ * kullanıcı job detail'e gider.
+ */
+export type AttentionFailedJob = {
+  jobId: string;
+  midjourneyJobId: string;
+  prompt: string;
+  blockReason: string | null;
+  failedReason: string | null;
+  failedAt: Date | null;
+  /** Pass 84 batch context (varsa retry batch'a yönlendirir). */
+  batchId: string | null;
+};
+
+export async function listFailedJobsNeedingAttention(
+  userId: string,
+  limit = 10,
+): Promise<AttentionFailedJob[]> {
+  const since = new Date();
+  since.setHours(since.getHours() - 24);
+  const rows = await db.midjourneyJob.findMany({
+    where: {
+      userId,
+      state: "FAILED",
+      failedAt: { gte: since },
+    },
+    select: {
+      id: true,
+      prompt: true,
+      blockReason: true,
+      failedReason: true,
+      failedAt: true,
+      job: {
+        select: { id: true, metadata: true },
+      },
+    },
+    orderBy: { failedAt: "desc" },
+    take: limit,
+  });
+  return rows.map((r) => {
+    const md = (r.job?.metadata as Record<string, unknown> | null) ?? {};
+    const batchId =
+      typeof md["batchId"] === "string" ? (md["batchId"] as string) : null;
+    return {
+      jobId: r.job?.id ?? "",
+      midjourneyJobId: r.id,
+      prompt: r.prompt,
+      blockReason: r.blockReason,
+      failedReason: r.failedReason,
+      failedAt: r.failedAt,
+      batchId,
+    };
+  });
 }
 
 /**

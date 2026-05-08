@@ -1,12 +1,16 @@
 // Pass 42 — /admin/midjourney admin yüzeyi.
-//
-// Bridge sağlığı + son N MJ job listesi. Bridge erişilemiyorsa açık banner
-// + kurulum ipucu (env var + bridge dev komutu).
-//
-// V1: read-only — restart / focus action'ları V1.x'te admin server action
-// olarak eklenecek.
+// Pass 87 — Operator Control Center: ana sayfa dashboard'a çevrildi.
+//   - Quick Stats (6 tile)
+//   - Quick Actions (Batch / Templates / Batches CTA)
+//   - Active Operations (running jobs + recent batches)
+//   - Needs Attention (failed jobs son 24h)
+//   - Recent Templates
+//   - Advanced (TestRenderForm + Preferences <details> içinde)
+//   - All Recent Jobs (mevcut tablo, daraltılmış section)
 
 import Link from "next/link";
+import { auth } from "@/server/auth";
+import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
@@ -21,6 +25,18 @@ import { AssetThumb } from "./AssetThumb";
 import { JobListFilters } from "./JobListFilters";
 import { ListBatchPanel } from "./ListBatchPanel";
 import { MidjourneyPreferencesPanel } from "./MidjourneyPreferencesPanel";
+// Pass 87 — Control Center components
+import { ControlCenterStats } from "./ControlCenterStats";
+import { ControlCenterQuickActions } from "./ControlCenterQuickActions";
+import { ControlCenterActiveOps } from "./ControlCenterActiveOps";
+import { ControlCenterAttention } from "./ControlCenterAttention";
+import { ControlCenterTemplates } from "./ControlCenterTemplates";
+import {
+  getControlCenterStats,
+  listFailedJobsNeedingAttention,
+  listRecentBatches,
+} from "@/server/services/midjourney/batches";
+import { listMjTemplates } from "@/server/services/midjourney/templates";
 
 function stateTone(state: string): BadgeTone {
   if (state === "COMPLETED") return "success";
@@ -147,6 +163,11 @@ export default async function AdminMidjourneyPage({
 }: {
   searchParams?: SearchParams;
 }) {
+  // Pass 87 — Control Center user-scoped data
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+  const userId = session.user.id;
+
   // Pass 63/64 — URL state'ten filter'lar.
   const dayFilter = parseDayFilter(searchParams?.days);
   const keyword = (searchParams?.q ?? "").trim();
@@ -194,7 +215,15 @@ export default async function AdminMidjourneyPage({
       : {}),
   };
 
-  const [healthResult, recentJobs] = await Promise.all([
+  // Pass 87 — Control Center server-side data (paralel fetch)
+  const [
+    healthResult,
+    recentJobs,
+    ccStats,
+    ccRecentBatches,
+    ccFailedJobs,
+    ccTemplates,
+  ] = await Promise.all([
     fetchHealth(),
     db.midjourneyJob.findMany({
       where,
@@ -216,6 +245,11 @@ export default async function AdminMidjourneyPage({
         },
       },
     }),
+    // Pass 87 — Control Center paralel fetch
+    getControlCenterStats(userId),
+    listRecentBatches(userId, 50),
+    listFailedJobsNeedingAttention(userId, 10),
+    listMjTemplates(),
   ]);
 
   // Pass 63 — Per-job export count (audit log derived). Tek query'de
@@ -471,26 +505,56 @@ MJ_BRIDGE_TOKEN=<aynı token>
         </p>
       </div>
 
-      {/* Pass 63/64 — Date + status chip + keyword arama (URL state). */}
-      <JobListFilters />
+      {/* Pass 87 — Operator Control Center: Section A-D
+          Operator günlük girişi: stats → quick actions → active ops →
+          needs attention → recent templates. Hepsi server component,
+          paralel fetch. */}
+      <ControlCenterStats stats={ccStats} />
+      <ControlCenterQuickActions />
+      <ControlCenterActiveOps userId={userId} recentBatches={ccRecentBatches} />
+      <ControlCenterAttention failedJobs={ccFailedJobs} />
+      <ControlCenterTemplates templates={ccTemplates} />
 
-      {/* Pass 64 — List-level asset batch panel. Görünen tüm asset'ler
-          üzerinde akıllı seçim + bulk export ZIP. Sticky top-0 — filtre
-          değişince anında ne seçileceği netleşsin. */}
-      <ListBatchPanel visibleAssets={visibleAssets} />
+      {/* Pass 87 — Advanced section (collapsed by default).
+          TestRenderForm tek-shot + Preferences panel + ListBatchPanel
+          (asset bulk export). Operatör Quick Actions + Batch Run akışıyla
+          %90 işini halleder; bu drawer ileri seviye operasyonlar için. */}
+      <details
+        className="rounded-md border border-border bg-surface"
+        data-testid="mj-advanced-drawer"
+      >
+        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-text">
+          Advanced (Test Render · Preferences · Bulk Export)
+        </summary>
+        <div className="flex flex-col gap-3 border-t border-border p-4">
+          {/* Pass 64 — List-level asset batch panel. Görünen tüm asset'ler
+              üzerinde akıllı seçim + bulk export ZIP. */}
+          <ListBatchPanel visibleAssets={visibleAssets} />
 
-      {/* Pass 70 — MJ kullanıcı tercihleri (typed registry, AutoSail
-          audit'inden ilham). Tek panelde default-export-format +
-          auto-expand-promote-after-completion. */}
-      <MidjourneyPreferencesPanel />
+          {/* Pass 50 — Test Render tek-shot tetikleyici. Bridge sağlıklı
+              değilse form disabled ama görünür. */}
+          <TestRenderForm
+            bridgeOk={healthResult.ok}
+            driverKind={healthResult.health?.driver}
+          />
 
-      {/* Pass 50 — operator Test Render tetikleyici. Bridge sağlıklı
-          değilse form disabled ama görünür kalır (operator
-          kurulum ipucundan sonra direkt buradan tetikleyebilsin). */}
-      <TestRenderForm
-        bridgeOk={healthResult.ok}
-        driverKind={healthResult.health?.driver}
-      />
+          {/* Pass 70 — MJ tercihleri (export format + strategy default + ...) */}
+          <MidjourneyPreferencesPanel />
+        </div>
+      </details>
+
+      {/* Pass 87 — Section E: All Recent Jobs (mevcut filter + table)
+          Header + filter + table korundu; Pass 63/64 işlevselliği intact. */}
+      <section data-testid="mj-cc-jobs-section" aria-label="Tüm jobs">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-base font-semibold">Tüm Jobs</h2>
+          <span className="text-xs text-text-muted">
+            (filtreler + arama aşağıda)
+          </span>
+        </div>
+        {/* Pass 63/64 — Date + status chip + keyword arama (URL state). */}
+        <JobListFilters />
+      </section>
 
       <Table density="admin">
         <THead>

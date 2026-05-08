@@ -78,6 +78,174 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 87 (Operator Control Center — final ürün IA + dashboard ana sayfası) 🟢
+
+**Hedef:** Pass 84/85/86 ile backend follow-through + retry tamam.
+Pass 87 görevi: ürünün **bilgi mimarisini** netleştir + ana sayfayı
+parça parça büyümüş toolset'ten **operator control center**'a çevir.
+Mikro feature avı yerine final ürün düşüncesi.
+
+**Pass 87 audit özeti:**
+
+#### A. Mevcut yüzeyler (8 sayfa)
+
+```
+/admin/midjourney                           ← ANA (job list + test render + prefs — KARIŞIK)
+├── /[id]                                    job detail
+├── /templates                               template list
+│   ├── /new                                 yeni template
+│   └── /[id]                                template edit + run history (Pass 85)
+├── /batches                                 recent batches list (Pass 84)
+│   └── /[batchId]                           batch detail + retry (Pass 86)
+└── /batch-run                               yeni batch CTA + form
+```
+
+Sayfalar var ama **bilgi mimarisi netleşmemiş** — ana sayfa "job list +
+test render + filter + preferences" karışık 5 seviye.
+
+#### B. 3 kullanıcı akışı güç analizi
+
+| Akış | Pass 87 öncesi |
+|---|---|
+| Üretim (template → variables → batch) | 🟡 Yarım — 3 ayrı sayfa atla, ana yüzeyde "üret" yok |
+| Operasyon takibi | 🟢 Güçlü (Pass 84/85/86) |
+| Asset yönetimi | 🔴 YOK — Library ekranı yok |
+
+#### C. Autojourney feature seti haritalama
+
+**Sade kalsın (✅ var)**: batch send, templates, variables, aspect ratio, image-prompt, sref/oref/cref, describe, progress view, retry/resend.
+**Park (🅿️)**: prefix/suffix, import/export tasks, auto rename, download manager, scheduled, random, AI optimize, banned word, visual editor.
+**Pass 87 candidate (🔴 yok)**: assets library + operator control center.
+
+### Karar — Pass 87 paket
+
+**Operator Control Center V1**: ana sayfayı (`/admin/midjourney`) **dashboard**'a çevir; final IA ile 5 section + advanced collapse.
+
+**Asset Library Pass 88'e bırakıldı** (ayrı bir paket; karıştırılırsa ikisi de yarı kalır).
+
+**Pass 87 final IA:**
+
+```
+/admin/midjourney  (Control Center — günlük operatör girişi)
+├── Header (mevcut: Templates / Batches / Batch Run shortcuts korundu)
+├── Section A: Quick Stats         (6 tile: enqueued today / running / completed today / failed today / templates / batches 7d)
+├── Section B: Quick Actions       (3 card: Batch / Templates / Batches)
+├── Section C: Active Operations   (running jobs + recent batches strip)
+├── Section D: Needs Attention     (failed jobs son 24h, batch context'li retry shortcut)
+├── Section E: Recent Templates    (son 5 template + run shortcut)
+├── Advanced (collapsed)           (TestRenderForm + Preferences + ListBatchPanel)
+└── Section F: All Recent Jobs     (mevcut filter + table, başlık eklenmiş)
+```
+
+**Pass 87 implementasyonu:**
+
+1. **`src/server/services/midjourney/batches.ts`** — 2 yeni service helper:
+   - `getControlCenterStats(userId)` → 6 stat (enqueuedToday/running/
+     completedToday/failedToday/templates/batchesLast7d)
+   - `listFailedJobsNeedingAttention(userId, limit=10)` → son 24h FAILED
+     jobs + batch context (batchId varsa retry için batch detail'e link)
+
+2. **5 yeni Control Center component (server-side)**:
+   - `ControlCenterStats.tsx` — 6 tile grid, tone-coded (running=accent,
+     completed=success, failed=danger, templates/batches=neutral hover link)
+   - `ControlCenterQuickActions.tsx` — 3 card grid (Yeni Batch primary
+     accent + Templates + Batches)
+   - `ControlCenterActiveOps.tsx` — 2 panel (running jobs max 6 +
+     recent batches max 5 strip with state badges)
+   - `ControlCenterAttention.tsx` — failed jobs son 24h + batch context
+     routing (batchId varsa /batches/[X], yoksa /[id])
+   - `ControlCenterTemplates.tsx` — son 5 template + variables badge +
+     "Run →" shortcut
+
+3. **`/admin/midjourney/page.tsx`** ana sayfa düzenlendi:
+   - `auth()` session resolve (user-scoped data)
+   - 4 yeni paralel data fetch (`getControlCenterStats`, `listRecentBatches`,
+     `listFailedJobsNeedingAttention`, `listMjTemplates`) Promise.all'a
+     eklendi
+   - Render sırası: banner'lar → Stats → Quick Actions → Active Ops →
+     Attention → Recent Templates → Advanced `<details>` (Test Render,
+     Preferences, ListBatchPanel) → "Tüm Jobs" başlığı + JobListFilters
+     + table
+   - Mevcut Pass 63/64 filter + Pass 85 batch filter + table intact
+
+**Pass 87 kanıtları:**
+
+- ✅ **E2E real smoke (server-side data fetch)**:
+  ```
+  Stats:
+    enqueuedToday: 10, running: 0, completedToday: 5, failedToday: 4,
+    templates: 1, batchesLast7d: 3
+
+  Recent Batches (3): lranizzn... / v3eqm4my... / z57y2mog... — Pass 84/85/86
+    boyunca üretilenler doğru group'lanmış
+
+  Failed (24h, 4): Pass 86 retry fixture + standalone browser-crashed'ler
+    — batchId olan tek batch context (retry için batch detail'e),
+    olmayanlar standalone
+
+  Templates: 1 template (Pass 80 Smoke - Boho Wall Art) — vars=3 v1
+  ```
+- ✅ **Compile + render**: Next.js dev'de `/admin/midjourney` 1542
+  modules compile (Pass 86: ~880; +5 Control Center component +
+  service helper +600 module). Compile error yok.
+- ✅ **TS clean** (bridge + EtsyHub)
+- ✅ **ESLint clean**
+- ✅ **Token check ✓**
+
+**Pass 87 regresyon:**
+- describe (api-first) → COMPLETED 4 prompt
+- Pass 64 list batch panel + Pass 70 preferences + Pass 50 TestRenderForm
+  Advanced `<details>` içinde, intact
+- Pass 63 filter + Pass 85 batch filter banner + Pass 64 table intact
+- Bridge sıfır değişiklik
+- Schema değişikliği yok
+
+**Pass 87 ürün değeri:**
+- **Operatör girişi tek bakışta yanıt veriyor**: "şu an ne durumda?"
+  Stats → Active Ops; "ne yapayım?" Quick Actions → Yeni Batch;
+  "neyi düzeltmem lazım?" Attention → batch detail
+- 3 akış (üretim/takip/template) **kendi entry point'leri ile** ana
+  sayfada görünür — operatör nereye gideceğini düşünmüyor
+- Advanced fonksiyonlar drawer'da → temel iş yüzü sade
+- Pass 84/85 backend tamamen reuse (yeni capability açılmadı, görünür
+  hale getirildi)
+
+**Pass 87 servis değeri (taşınabilirlik):**
+- `getControlCenterStats` provider-bağımsız aggregation pattern (DALL-E/
+  Recraft için aynı pattern)
+- `listFailedJobsNeedingAttention` batch-aware routing — herhangi bir
+  batch sistem'inde uygulanabilir
+- Quick Stats tile pattern + Active Ops panel + Attention strip +
+  Recent X strip Composable building block'lar — başka admin
+  dashboard'larında reuse
+
+**Pass 87 dürüst sınırlar:**
+- **Asset Library yok** (Pass 88 paketi) — ürünün son büyük eksiği
+- **Sidebar nav entry "Midjourney"** Pass 87'de eklenmedi (Pass 88+)
+- **Authenticated browser smoke** yapılmadı (compile + service E2E +
+  bridge intact yeterli)
+- Stats refresh real-time değil — server-side cache yok, her request'te
+  fresh DB query (admin başına 5-6 count + listRecentBatches DB load
+  ~2000 job; küçük admin için OK; Pass 90+ optimization)
+- Quick Actions sadece "Batch / Templates / Batches" (Test Render
+  drawer'da) — ileride contextual smart suggest eklenebilir
+
+**Pass 87 dosya değişiklik blast radius:**
+- 7 dosya (5 yeni component + 2 modify):
+  - `src/server/services/midjourney/batches.ts` (2 yeni helper +
+    MidjourneyJobState typed import)
+  - `src/app/(admin)/admin/midjourney/page.tsx` (auth + paralel fetch +
+    section render)
+  - `src/app/(admin)/admin/midjourney/ControlCenterStats.tsx` (yeni)
+  - `src/app/(admin)/admin/midjourney/ControlCenterQuickActions.tsx` (yeni)
+  - `src/app/(admin)/admin/midjourney/ControlCenterActiveOps.tsx` (yeni)
+  - `src/app/(admin)/admin/midjourney/ControlCenterAttention.tsx` (yeni)
+  - `src/app/(admin)/admin/midjourney/ControlCenterTemplates.tsx` (yeni)
+- Bridge sıfır değişiklik
+- Schema değişikliği yok
+- Geriye uyumlu (mevcut tüm Pass 50+ functionality intact, advanced
+  drawer'da)
+
 ### Pass 86 (Retry-Failed-Only V1 — batch operasyon ergonomi) 🟢
 
 **Hedef:** Pass 84'te batch identity + summary, Pass 85'te follow-through
