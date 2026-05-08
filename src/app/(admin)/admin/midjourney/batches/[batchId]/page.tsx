@@ -10,6 +10,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { getBatchSummary } from "@/server/services/midjourney/batches";
+import { RetryFailedButton } from "./RetryFailedButton";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,20 @@ export default async function MjBatchDetailPage({
                 Template {summary.templateId.slice(0, 8)}…
               </Link>
             ) : null}
+            {/* Pass 86 — Retry lineage badge. Bu batch bir retry ise
+                kaynak batch'a link. */}
+            {summary.retryOfBatchId ? (
+              <span className="inline-flex items-center gap-1 rounded border border-warning bg-warning-soft px-1.5 py-0.5 text-xs">
+                <span className="font-semibold">↻ Retry of</span>
+                <Link
+                  href={`/admin/midjourney/batches/${summary.retryOfBatchId}`}
+                  className="font-mono underline"
+                  data-testid="mj-batch-retry-source-link"
+                >
+                  {summary.retryOfBatchId.slice(0, 12)}…
+                </Link>
+              </span>
+            ) : null}
           </div>
           {summary.promptTemplate ? (
             <div className="mt-2 rounded-md border border-border bg-surface-2 p-2">
@@ -82,22 +97,30 @@ export default async function MjBatchDetailPage({
             </div>
           ) : null}
         </div>
-        <div className="flex gap-2">
-          <Link href="/admin/midjourney/batches">
-            <Button variant="ghost" size="sm">
-              ← Batches
-            </Button>
-          </Link>
-          <Link href={`/admin/midjourney?batchId=${summary.batchId}`}>
-            <Button variant="ghost" size="sm">
-              Job listesinde aç →
-            </Button>
-          </Link>
-          <Link href="/admin/midjourney">
-            <Button variant="ghost" size="sm">
-              MJ Ana Sayfa
-            </Button>
-          </Link>
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex gap-2">
+            <Link href="/admin/midjourney/batches">
+              <Button variant="ghost" size="sm">
+                ← Batches
+              </Button>
+            </Link>
+            <Link href={`/admin/midjourney?batchId=${summary.batchId}`}>
+              <Button variant="ghost" size="sm">
+                Job listesinde aç →
+              </Button>
+            </Link>
+            <Link href="/admin/midjourney">
+              <Button variant="ghost" size="sm">
+                MJ Ana Sayfa
+              </Button>
+            </Link>
+          </div>
+          {/* Pass 86 — Retry Failed Only V1. failedCount=0 ise disabled.
+              Click → confirm → POST → yeni batch detail page. */}
+          <RetryFailedButton
+            batchId={summary.batchId}
+            failedCount={summary.counts.failed}
+          />
         </div>
       </header>
 

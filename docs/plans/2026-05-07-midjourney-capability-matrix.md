@@ -78,6 +78,168 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 86 (Retry-Failed-Only V1 — batch operasyon ergonomi) 🟢
+
+**Hedef:** Pass 84'te batch identity + summary, Pass 85'te follow-through
+geldi. Pass 86 görevi: batch operasyonunda en belirgin eksiği kapat —
+**"sadece fail edenleri tekrar dene"** akışı.
+
+**Pass 86 audit özeti:**
+
+#### A. Retry için veri yeterliliği
+
+✅ **YETERLİ** — Pass 84'te yazılan Job.metadata field'ları:
+- `batchTemplateId` (varsa persisted template)
+- `batchPromptTemplate` (template metni snapshot, max 500 char)
+- `batchVariables` (her job'un input variables map'i)
+- `getBatchSummary` her job için bu field'ları zaten resolve ediyor
+
+Retry için failed jobs'tan `variables` set'leri toplanır → mevcut
+`createMidjourneyJobsFromTemplateBatch` çağrılır. **Eksik persistence YOK.**
+
+#### B. Retry davranışı
+
+**Yeni AYRI batch oluştur** (yeni cuid `batchId`) + Job.metadata'ya
+**retry lineage**:
+- `retryOfBatchId`: kaynak batchId (bu yeni batch onun retry'ı)
+- `retrySourceJobId`: bu yeni job'un retry ettiği eski Job entity id'si
+
+Sebep:
+- Eski batch state intact (geçmiş kanıt)
+- Yeni batch progress ayrı tracked
+- Lineage operatör için net (hangi batch hangi batch'in retry'ı)
+
+#### C. UI ergonomisi
+
+**V1 = "Tüm fail edenleri retry et" tek CTA**. Batch detail header'da:
+- `↻ Failed'leri Retry Et (N)` (N=0 ise disabled, sarı/warning ton)
+- Click → confirm → POST → yeni batchId → router.push detail
+
+Tek tek seçim Pass 87+ scope.
+
+**Pass 86 implementasyonu:**
+
+1. **`src/server/services/midjourney/midjourney.service.ts`**:
+   - `CreateMidjourneyJobsFromTemplateBatchInput.retryLineage?` field
+     (retryOfBatchId + retrySourceJobIds[])
+   - `CreateMidjourneyJobInput.batchMeta.retryOfBatchId?` +
+     `batchMeta.retrySourceJobId?` field'ları
+   - `createMidjourneyJob` body'sinde Job.metadata'ya retry field'ları
+     yazımı (geriye uyumlu, opsiyonel)
+   - Batch service body'de retryLineage iter'da retrySourceJobId per-job
+     forward + result type'a `retryOfBatchId?` echo
+
+2. **`src/server/services/midjourney/batches.ts`** — yeni helper:
+   - `retryFailedJobsFromBatch({ userId, sourceBatchId, aspectRatio?, submitStrategy? })`:
+     - `getBatchSummary(sourceBatchId, userId)` ile failed jobs filter
+     - Template resolve: persisted templateId varsa reuse; aksi halde
+       `promptTemplate` snapshot'tan inline
+     - Variable sets failed jobs'tan toplanır
+     - `createMidjourneyJobsFromTemplateBatch` çağrılır + retryLineage
+       forward
+     - Sonuç: `{ newBatchId, newBatchCreatedAt, retryOfBatchId,
+       totalRetried, totalSubmitted, totalFailed, results[] }`
+   - `NoFailedJobsError` + `BatchTemplateMissingError` typed errors
+     (HTTP 400 mantığı için)
+   - `BatchSummary.retryOfBatchId` field eklendi (Job.metadata'dan
+     resolve)
+   - `getBatchSummary` body'de retryOfBatchId iter
+
+3. **`src/app/api/admin/midjourney/batches/[batchId]/retry-failed/route.ts`**
+   (yeni POST endpoint):
+   - `requireAdmin` + path param batchId resolve
+   - Empty body kabul (default aspect/strategy)
+   - Audit log `MIDJOURNEY_BATCH_RETRY_FAILED`
+   - 400 codes: `NO_FAILED_JOBS`, `TEMPLATE_SNAPSHOT_MISSING`
+   - 502: `BRIDGE_UNREACHABLE`
+
+4. **`src/app/(admin)/admin/midjourney/batches/[batchId]/RetryFailedButton.tsx`**
+   (yeni client component):
+   - `failedCount=0` ise disabled
+   - `window.confirm` UX (V1 simple)
+   - POST → response.newBatchId → `router.push(/batches/<newBatchId>)`
+   - Error display
+
+5. **`/admin/midjourney/batches/[batchId]/page.tsx`**:
+   - Header sağa `<RetryFailedButton>` eklendi (mevcut button row'un altına)
+   - Header solda **"Retry of <batchId>" badge** (warning soft renk +
+     kaynak batch'a link) — `summary.retryOfBatchId` doluyorsa
+
+**Pass 86 kanıtları:**
+
+- ✅ **E2E real smoke**:
+  ```
+  Source batch: v3eqm4myhjrk... (1 FAILED job — Wikipedia URL ile fail)
+  retryFailedJobsFromBatch service call:
+    newBatchId: lranizzn7gx1qed2mlyjk1re
+    retryOfBatchId: v3eqm4myhjrk8vldz98fu6dn ✅
+    totalRetried: 1
+    totalSubmitted: 1
+    totalFailed: 0
+    [0] OK retry from cmowsssv8000... → midjourneyJobId=cmowsu375001
+        expanded="Pass 86 retry test alpha in watercolor style, calming atmosphere"
+
+  Yeni batch summary:
+    retryOfBatchId: v3eqm4myhjrk8vldz98fu6dn ✅ (Job.metadata'dan resolve)
+    templateId: cmowob9ep... (template lineage korundu)
+    counts: { total:1, queued:1, ... }
+
+  Job.metadata persistence:
+    retryOfBatchId: v3eqm4myhjrk8vldz98fu6dn ✅
+    retrySourceJobId: cmowsssv80002naijqts8fpva ✅
+  ```
+- ✅ **TS clean** (bridge + EtsyHub)
+- ✅ **ESLint clean**
+- ✅ **Token check ✓**
+
+**Pass 86 regresyon:**
+- describe queue'ya düştü, bridge sequential intact
+- Pass 76 sref+oref+cref + Pass 80 batch + Pass 84 summary + Pass 85
+  cluster akışları intact
+- Schema değişikliği yok (Job.metadata reuse)
+- Bridge sıfır değişiklik
+
+**Pass 86 ürün değeri:**
+- Operatör 50 prompt'lık batch'inde 5'i fail ettiyse, tek tıkla yeni
+  batch'i sadece o 5 fail edilenle koşturur (eski batch intact)
+- Lineage UI'da net (`↻ Retry of <kaynak>` badge)
+- Persistence Job.metadata'da kalıcı; retry chain'leri (retry'ın retry'ı)
+  aynı şekilde çalışır
+
+**Pass 86 servis değeri (taşınabilirlik):**
+- `retryFailedJobsFromBatch` saf `getBatchSummary` reuse + variable
+  collection + new batch enqueue pattern; başka batch sistem'lerinde
+  aynen kullanılır
+- `retryLineage` field'ları provider-bağımsız; herhangi bir batch
+  service'inde aynı pattern
+
+**Pass 86 dürüst sınırlar:**
+- **V1 sadece "tüm fail'ler"**; tek tek seçim Pass 87+
+- **Aspect/version/sref/oref/cref params source'tan korunmaz**: Pass 84
+  metadata sadece template+variables yazıyor; bu params Pass 86'da V1
+  default (aspect=1:1, strategy=auto) veya UI override. Pass 87+:
+  generate params Job.metadata'ya genişletilebilir
+- **Authenticated UI smoke yapılmadı** (compile + service E2E + bridge
+  sequential intact yeterli)
+- **Retry chain depth limit yok**: retry'ın retry'ı vs. metadata'da
+  zincir devam eder; UI'da sadece bir önceki kaynak gösteriliyor
+
+**Pass 86 dosya değişiklik blast radius:**
+- 5 dosya (2 yeni + 3 modify):
+  - `src/server/services/midjourney/midjourney.service.ts` (retry
+    metadata desteği)
+  - `src/server/services/midjourney/batches.ts` (retryFailedJobsFromBatch
+    + BatchSummary.retryOfBatchId)
+  - `src/app/api/admin/midjourney/batches/[batchId]/retry-failed/route.ts`
+    (yeni)
+  - `src/app/(admin)/admin/midjourney/batches/[batchId]/RetryFailedButton.tsx`
+    (yeni)
+  - `src/app/(admin)/admin/midjourney/batches/[batchId]/page.tsx`
+    (button + badge entegrasyon)
+- Bridge sıfır değişiklik
+- Schema değişikliği yok
+- Geriye uyumlu (yeni field'lar opsiyonel)
+
 ### Pass 85 (Batch follow-through derinleşti: filter + variation cluster + template history) 🟢
 
 **Hedef:** Pass 84 batch identity + summary + recent batches list ile

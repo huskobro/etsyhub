@@ -148,6 +148,13 @@ export type CreateMidjourneyJobInput = {
     promptTemplate?: string;
     /** Bu job'un input variables. */
     variables?: Record<string, string>;
+    /**
+     * Pass 86 — Retry lineage (varsa).
+     * - retryOfBatchId: kaynak batchId (bu yeni batch onun retry'ı)
+     * - retrySourceJobId: bu job'un retry ettiği eski Job entity id'si
+     */
+    retryOfBatchId?: string;
+    retrySourceJobId?: string;
   };
 };
 
@@ -370,6 +377,8 @@ export async function createMidjourneyJob(
           prompt: input.prompt.slice(0, 200), // truncate (admin display)
           // Pass 84 — Batch lineage (varsa). Sonradan
           // getBatchSummary(batchId) bu field üzerinden query yapar.
+          // Pass 86 — Retry lineage (varsa): retryOfBatchId +
+          // retrySourceJobId field'ları yeni batch'in jobs'larına yazılır.
           ...(input.batchMeta
             ? {
                 batchId: input.batchMeta.batchId,
@@ -386,6 +395,12 @@ export async function createMidjourneyJob(
                   : {}),
                 ...(input.batchMeta.variables
                   ? { batchVariables: input.batchMeta.variables }
+                  : {}),
+                ...(input.batchMeta.retryOfBatchId
+                  ? { retryOfBatchId: input.batchMeta.retryOfBatchId }
+                  : {}),
+                ...(input.batchMeta.retrySourceJobId
+                  ? { retrySourceJobId: input.batchMeta.retrySourceJobId }
                   : {}),
               }
             : {}),
@@ -699,6 +714,18 @@ export type CreateMidjourneyJobsFromTemplateBatchInput = Omit<
    * Eksik variable → o job ValidationError ile FAIL (diğerleri devam).
    */
   variableSets: Array<Record<string, string>>;
+  /**
+   * Pass 86 — Retry lineage (varsa). `retryFailedJobsFromBatch` service
+   * bu batch'i retry kaynağı olarak işaretler; her yeni job'un
+   * Job.metadata'sına `retryOfBatchId` + `retrySourceJobIds` yazılır.
+   * Geriye uyumlu (opsiyonel).
+   */
+  retryLineage?: {
+    /** Kaynak batch (failed jobs'ları retry edilen). */
+    retryOfBatchId: string;
+    /** Hangi Job ID'lerinden retry ediliyor (her variable set'e karşılık gelen). */
+    retrySourceJobIds: string[];
+  };
 };
 
 export type BatchPerJobResult =
@@ -728,6 +755,8 @@ export type CreateMidjourneyJobsFromTemplateBatchResult = {
   batchId: string;
   /** Pass 84 — batch oluşturma zamanı (UI'da "geçen 5 dakika önce..."). */
   batchCreatedAt: Date;
+  /** Pass 86 — Retry lineage (varsa, bu batch bir retry'ı). */
+  retryOfBatchId?: string;
   templateSnapshot: {
     /** Resolve edilen template metni (persisted veya inline). */
     promptTemplate: string;
@@ -812,6 +841,8 @@ export async function createMidjourneyJobsFromTemplateBatch(
 
   for (let i = 0; i < variableSets.length; i++) {
     const variables = variableSets[i] ?? {};
+    // Pass 86 — retryLineage varsa, bu job'un retrySourceJobId'sini al
+    const retrySourceJobId = input.retryLineage?.retrySourceJobIds[i];
     try {
       const jobResult = await createMidjourneyJobFromTemplate(
         {
@@ -819,6 +850,7 @@ export async function createMidjourneyJobsFromTemplateBatch(
           promptTemplate,
           promptVariables: variables,
           // Pass 84 — Batch lineage Job.metadata'ya yazılır
+          // Pass 86 — Retry lineage (varsa)
           batchMeta: {
             batchId,
             batchIndex: i,
@@ -828,6 +860,10 @@ export async function createMidjourneyJobsFromTemplateBatch(
               : {}),
             promptTemplate,
             variables,
+            ...(input.retryLineage
+              ? { retryOfBatchId: input.retryLineage.retryOfBatchId }
+              : {}),
+            ...(retrySourceJobId ? { retrySourceJobId } : {}),
           },
         },
         bridgeClient,
@@ -857,6 +893,9 @@ export async function createMidjourneyJobsFromTemplateBatch(
   return {
     batchId,
     batchCreatedAt,
+    ...(input.retryLineage
+      ? { retryOfBatchId: input.retryLineage.retryOfBatchId }
+      : {}),
     templateSnapshot: {
       promptTemplate,
       ...templateMeta,

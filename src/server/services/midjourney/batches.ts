@@ -54,6 +54,14 @@ export type BatchSummary = {
   templateId: string | null;
   /** Template metni (Job.metadata.batchPromptTemplate). */
   promptTemplate: string | null;
+  /**
+   * Pass 86 — Retry lineage (varsa).
+   * Bu batch bir önceki batch'in retry'ı ise:
+   *   - retryOfBatchId: kaynak batchId
+   * Job.metadata.retryOfBatchId üzerinden resolve edilir (tüm retry
+   * job'larında aynı). UI'da "Retry of <batchId>" badge'i ile gösterilir.
+   */
+  retryOfBatchId: string | null;
   /** State breakdown — Pass 84 V1 metricleri. */
   counts: {
     total: number; // tüm batch jobs (DB'de bulunan)
@@ -147,6 +155,7 @@ export async function getBatchSummary(
   let batchTotal = 0;
   let templateId: string | null = null;
   let promptTemplate: string | null = null;
+  let retryOfBatchId: string | null = null;
   const rows: BatchJobRow[] = [];
 
   for (const j of jobs) {
@@ -160,6 +169,10 @@ export async function getBatchSummary(
     }
     if (typeof md["batchPromptTemplate"] === "string" && !promptTemplate) {
       promptTemplate = md["batchPromptTemplate"] as string;
+    }
+    // Pass 86 — Retry lineage (Job.metadata.retryOfBatchId)
+    if (typeof md["retryOfBatchId"] === "string" && !retryOfBatchId) {
+      retryOfBatchId = md["retryOfBatchId"] as string;
     }
     const state = j.midjourneyJob?.state ?? null;
     counts[bucketState(state)] += 1;
@@ -194,6 +207,7 @@ export async function getBatchSummary(
     batchTotal,
     templateId,
     promptTemplate,
+    retryOfBatchId,
     counts,
     jobs: rows,
   };
@@ -322,4 +336,178 @@ export async function listBatchesByTemplate(
   return all
     .filter((b) => b.templateId === templateId)
     .slice(0, limit);
+}
+
+/**
+ * Pass 86 — Retry-failed-only V1.
+ *
+ * Bir batch'in failed jobs'ları toplanır, aynı template + variables ile
+ * yeni bir batch oluşturulur. Eski batch state intact kalır (tarihsel
+ * kanıt); yeni batch'in metadata'sında retry lineage tutulur:
+ *   - Job.metadata.retryOfBatchId = source batchId
+ *   - Job.metadata.retrySourceJobId = retry edilen eski Job entity id
+ *
+ * Sözleşme:
+ *   - Source batch user-scoped (cross-user retry yok)
+ *   - Source batch'te FAILED job yoksa NoFailedJobsError throw
+ *   - Source batch templateId varsa persisted template reuse;
+ *     yoksa promptTemplate snapshot'tan inline retry
+ *   - Aspect ratio + diğer generate params source'tan korunmaz
+ *     (V1 scope: sadece prompt + variables; aspect/strategy yeni
+ *     batch'te override'lanabilir; default 1:1 + auto)
+ *   - Yeni batch maximum 50 job (mevcut Pass 80 limit)
+ *
+ * V1 sınır: source jobs'ın aspect/version/sref/oref/cref params'ı
+ * Job.metadata'da SAKLI DEĞİL (Pass 84 sadece batchId/index/total/
+ * template/variables yazıyor). V2'de bu params da metadata'ya alınıp
+ * retry'da forward edilebilir. V1: sadece template + variables retry.
+ */
+
+export class NoFailedJobsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NoFailedJobsError";
+  }
+}
+
+export class BatchTemplateMissingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BatchTemplateMissingError";
+  }
+}
+
+export type RetryFailedJobsResult = {
+  newBatchId: string;
+  newBatchCreatedAt: Date;
+  retryOfBatchId: string;
+  totalRetried: number;
+  totalSubmitted: number;
+  totalFailed: number;
+  /** Her bir retry job için sonuç (Pass 80 BatchPerJobResult ile aynı tip). */
+  results: Array<
+    | {
+        ok: true;
+        index: number;
+        midjourneyJobId: string;
+        jobId: string;
+        bridgeJobId: string;
+        expandedPrompt: string;
+        variables: Record<string, string>;
+        retrySourceJobId: string;
+      }
+    | {
+        ok: false;
+        index: number;
+        error: string;
+        variables: Record<string, string>;
+        retrySourceJobId: string;
+      }
+  >;
+};
+
+export async function retryFailedJobsFromBatch(input: {
+  userId: string;
+  sourceBatchId: string;
+  /**
+   * Yeni batch için aspect ratio. Source jobs'tan resolve edilemiyor
+   * (Pass 84 metadata'da yok); V1: caller default verir veya UI'da
+   * aspect/strategy override eder.
+   */
+  aspectRatio?: "1:1" | "2:3" | "3:2" | "4:3" | "3:4" | "16:9" | "9:16";
+  /** V1: caller varsayılanı belirler (UI'da operator select). */
+  submitStrategy?: "auto" | "api-first" | "dom-first";
+}): Promise<RetryFailedJobsResult> {
+  // 1) Source batch summary (user-scoped) — failed jobs'ları çıkar
+  const summary = await getBatchSummary(input.sourceBatchId, input.userId);
+  if (!summary) {
+    throw new NoFailedJobsError(
+      `Batch bulunamadı veya cross-user: ${input.sourceBatchId}`,
+    );
+  }
+  const failedJobs = summary.jobs.filter((j) => j.state === "FAILED");
+  if (failedJobs.length === 0) {
+    throw new NoFailedJobsError(
+      `Batch ${input.sourceBatchId.slice(0, 12)}... içinde FAILED job yok (${summary.counts.failed} failed)`,
+    );
+  }
+  if (failedJobs.length > 50) {
+    throw new NoFailedJobsError(
+      `Retry V1 max 50 job (failed: ${failedJobs.length}). İki batch'a böl.`,
+    );
+  }
+
+  // 2) Template resolve — Pass 84'te templateId varsa persisted reuse;
+  //    yoksa promptTemplate snapshot'tan inline retry
+  const templateId = summary.templateId ?? null;
+  const promptTemplate = summary.promptTemplate ?? null;
+  if (!templateId && !promptTemplate) {
+    throw new BatchTemplateMissingError(
+      `Batch ${input.sourceBatchId.slice(0, 12)}... templateId veya promptTemplate snapshot yok — retry yapılamıyor (V1 sınırı)`,
+    );
+  }
+
+  // 3) Variable sets toplam — failed jobs'tan
+  const variableSets: Array<Record<string, string>> = [];
+  const retrySourceJobIds: string[] = [];
+  for (const j of failedJobs) {
+    if (!j.variables || Object.keys(j.variables).length === 0) {
+      // Pass 86 V1: variables yoksa retry edilemez (template variables zorunlu)
+      throw new BatchTemplateMissingError(
+        `Failed Job ${j.jobId.slice(0, 8)}... için variables snapshot yok — retry yapılamıyor`,
+      );
+    }
+    variableSets.push(j.variables);
+    retrySourceJobIds.push(j.jobId);
+  }
+
+  // 4) Yeni batch enqueue — Pass 80 createMidjourneyJobsFromTemplateBatch
+  //    + Pass 86 retryLineage
+  const { createMidjourneyJobsFromTemplateBatch } = await import(
+    "./midjourney.service"
+  );
+  const newBatch = await createMidjourneyJobsFromTemplateBatch({
+    userId: input.userId,
+    ...(templateId
+      ? { templateId }
+      : { promptTemplate: promptTemplate ?? "" }),
+    variableSets,
+    aspectRatio: input.aspectRatio ?? "1:1",
+    submitStrategy: input.submitStrategy ?? "auto",
+    retryLineage: {
+      retryOfBatchId: input.sourceBatchId,
+      retrySourceJobIds,
+    },
+  });
+
+  return {
+    newBatchId: newBatch.batchId,
+    newBatchCreatedAt: newBatch.batchCreatedAt,
+    retryOfBatchId: input.sourceBatchId,
+    totalRetried: failedJobs.length,
+    totalSubmitted: newBatch.totalSubmitted,
+    totalFailed: newBatch.totalFailed,
+    results: newBatch.results.map((r, i) => {
+      const sourceJobId = retrySourceJobIds[i] ?? "";
+      if (r.ok) {
+        return {
+          ok: true as const,
+          index: r.index,
+          midjourneyJobId: r.midjourneyJobId,
+          jobId: r.jobId,
+          bridgeJobId: r.bridgeJobId,
+          expandedPrompt: r.expandedPrompt,
+          variables: r.variables,
+          retrySourceJobId: sourceJobId,
+        };
+      }
+      return {
+        ok: false as const,
+        index: r.index,
+        error: r.error,
+        variables: r.variables,
+        retrySourceJobId: sourceJobId,
+      };
+    }),
+  };
 }
