@@ -81,6 +81,11 @@ type SearchParams = {
   days?: string;
   q?: string;
   status?: string;
+  /**
+   * Pass 85 — `?batchId=...` filter. Mevcut listeyi sadece o batch'in
+   * jobs'larıyla daraltır. Pass 84 Job.metadata.batchId üzerinden join.
+   */
+  batchId?: string;
 };
 
 // Pass 64 — Asset durum filtresi (audit-derived).
@@ -146,6 +151,7 @@ export default async function AdminMidjourneyPage({
   const dayFilter = parseDayFilter(searchParams?.days);
   const keyword = (searchParams?.q ?? "").trim();
   const statusFilter = parseStatusFilter(searchParams?.status);
+  const batchIdFilter = (searchParams?.batchId ?? "").trim() || null;
 
   // Pass 64 — Status "unreviewed" job-level Prisma where ile (relation
   // exists). "undownloaded" audit log relation Prisma'da modellenmediği
@@ -155,9 +161,23 @@ export default async function AdminMidjourneyPage({
       ? { generatedAssets: { some: { generatedDesignId: null } } }
       : {};
 
+  // Pass 85 — `?batchId=` filter. Pass 84 Job.metadata.batchId üzerinden
+  // join. MidjourneyJob → Job (jobId FK) → metadata.batchId.
+  const batchWhere: Prisma.MidjourneyJobWhereInput = batchIdFilter
+    ? {
+        job: {
+          metadata: {
+            path: ["batchId"],
+            equals: batchIdFilter,
+          },
+        },
+      }
+    : {};
+
   const where: Prisma.MidjourneyJobWhereInput = {
     ...dayFilterToWhere(dayFilter),
     ...unreviewedWhere,
+    ...batchWhere,
     ...(keyword
       ? {
           OR: [
@@ -307,6 +327,40 @@ export default async function AdminMidjourneyPage({
           </Link>
         </nav>
       </div>
+
+      {/* Pass 85 — Batch filter banner. ?batchId=X aktifken kullanıcıya
+          "şu an Batch X için filtrelenmiş liste görüyorsun" + filter'ı
+          temizleme + batch detail sayfasına dönüş kısayolu. */}
+      {batchIdFilter ? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent bg-accent-soft px-3 py-2 text-sm"
+          data-testid="mj-batch-filter-banner"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold">Batch filter aktif:</span>
+            <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-xs">
+              {batchIdFilter.slice(0, 12)}…
+            </code>
+            <span className="text-text-muted">
+              ({recentJobs.length} job listede)
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <Link
+              href={`/admin/midjourney/batches/${batchIdFilter}`}
+              className="text-xs text-accent underline hover:no-underline"
+            >
+              Batch detail →
+            </Link>
+            <Link
+              href="/admin/midjourney"
+              className="text-xs text-text-muted underline hover:text-text"
+            >
+              Filter&apos;ı temizle
+            </Link>
+          </div>
+        </div>
+      ) : null}
 
       {/* Pass 44 — challenge / login handoff bilgi banner. Bridge sağlıklı
           ama mjSession.likelyLoggedIn=false ise kullanıcıya manuel

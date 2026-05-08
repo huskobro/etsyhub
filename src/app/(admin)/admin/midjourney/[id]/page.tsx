@@ -541,28 +541,114 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
                       imageUrl={a.mjImageUrl}
                     />
                   ) : null}
-                  {/* Pass 60 — Per-asset upscale child'ları (lineage). */}
-                  {a.children.length > 0 ? (
-                    <div className="mt-1 flex flex-col gap-1 rounded border border-border bg-surface-2 p-1">
+                  {/* Pass 60 — Per-asset upscale child'ları (lineage).
+                      Pass 85 — Variation child'ları ayrı panelde
+                      (variantKind=VARIATION; subtle/strong ayrımı
+                      mjActionLabel'da). Pass 83'ten beri persistence
+                      mevcuttu; bu turda görünür hale geldi. */}
+                  {a.children.filter((c) => c.variantKind === "UPSCALE")
+                    .length > 0 ? (
+                    <div
+                      className="mt-1 flex flex-col gap-1 rounded border border-border bg-surface-2 p-1"
+                      data-testid={`mj-upscale-cluster-${a.id}`}
+                    >
                       <div className="text-xs text-text-muted">
-                        Upscale çıktıları ({a.children.length})
+                        Upscale çıktıları (
+                        {
+                          a.children.filter((c) => c.variantKind === "UPSCALE")
+                            .length
+                        }
+                        )
                       </div>
-                      {a.children.map((c) => (
-                        <Link
-                          key={c.id}
-                          href={`/admin/midjourney/${c.midjourneyJob.id}`}
-                          className="flex items-center justify-between text-xs text-text-muted hover:text-text"
-                          data-testid={`mj-upscale-child-${c.id}`}
-                        >
-                          <span>
-                            ⤴ {c.mjActionLabel ?? c.variantKind}
-                          </span>
-                          <span className="font-mono">
-                            {STATE_LABELS[c.midjourneyJob.state] ??
-                              c.midjourneyJob.state}
-                          </span>
-                        </Link>
-                      ))}
+                      {a.children
+                        .filter((c) => c.variantKind === "UPSCALE")
+                        .map((c) => (
+                          <Link
+                            key={c.id}
+                            href={`/admin/midjourney/${c.midjourneyJob.id}`}
+                            className="flex items-center justify-between text-xs text-text-muted hover:text-text"
+                            data-testid={`mj-upscale-child-${c.id}`}
+                          >
+                            <span>
+                              ⤴ {c.mjActionLabel ?? c.variantKind}
+                            </span>
+                            <span className="font-mono">
+                              {STATE_LABELS[c.midjourneyJob.state] ??
+                                c.midjourneyJob.state}
+                            </span>
+                          </Link>
+                        ))}
+                    </div>
+                  ) : null}
+                  {/* Pass 85 — Variation child cluster. Pass 83'ten beri
+                      ingestOutputs MidjourneyAsset.parentAssetId +
+                      variantKind=VARIATION ile yazıyor; her variation 4
+                      child verir (subtle/strong ayrımı mjActionLabel
+                      üzerinden — Pass 83 "Variation" generic). MJ Job'a
+                      tıklanınca variation parent job detail page'i açılır,
+                      orada full 4-grid render görünür. */}
+                  {a.children.filter((c) => c.variantKind === "VARIATION")
+                    .length > 0 ? (
+                    <div
+                      className="mt-1 flex flex-col gap-1 rounded border border-border bg-surface-2 p-1"
+                      data-testid={`mj-variation-cluster-${a.id}`}
+                    >
+                      <div className="text-xs text-text-muted">
+                        Variation çıktıları (
+                        {
+                          a.children.filter(
+                            (c) => c.variantKind === "VARIATION",
+                          ).length
+                        }
+                        )
+                      </div>
+                      {(() => {
+                        // Tek MJ Job'a bağlı 4 variation child'ı
+                        // gruplayarak tek satır göster (4 grid hep birlikte
+                        // submit edildi → tek mjJob).
+                        const byJob = new Map<
+                          string,
+                          {
+                            jobId: string;
+                            label: string | null;
+                            state: string;
+                            count: number;
+                          }
+                        >();
+                        for (const c of a.children) {
+                          if (c.variantKind !== "VARIATION") continue;
+                          const k = c.midjourneyJob.id;
+                          const existing = byJob.get(k);
+                          if (existing) {
+                            existing.count += 1;
+                          } else {
+                            byJob.set(k, {
+                              jobId: k,
+                              label: c.mjActionLabel,
+                              state: c.midjourneyJob.state,
+                              count: 1,
+                            });
+                          }
+                        }
+                        return Array.from(byJob.values()).map((v) => (
+                          <Link
+                            key={v.jobId}
+                            href={`/admin/midjourney/${v.jobId}`}
+                            className="flex items-center justify-between text-xs text-text-muted hover:text-text"
+                            data-testid={`mj-variation-child-${v.jobId}`}
+                          >
+                            <span>
+                              ↻ {v.label ?? "Variation"}{" "}
+                              <span className="text-text-subtle">
+                                ({v.count} grid)
+                              </span>
+                            </span>
+                            <span className="font-mono">
+                              {STATE_LABELS[v.state] ?? v.state}
+                            </span>
+                          </Link>
+                        ));
+                      })()}
                     </div>
                   ) : null}
                 </div>

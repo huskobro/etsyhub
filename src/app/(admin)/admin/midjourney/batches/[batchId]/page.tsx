@@ -88,6 +88,11 @@ export default async function MjBatchDetailPage({
               ← Batches
             </Button>
           </Link>
+          <Link href={`/admin/midjourney?batchId=${summary.batchId}`}>
+            <Button variant="ghost" size="sm">
+              Job listesinde aç →
+            </Button>
+          </Link>
           <Link href="/admin/midjourney">
             <Button variant="ghost" size="sm">
               MJ Ana Sayfa

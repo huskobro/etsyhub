@@ -302,3 +302,24 @@ export async function listRecentBatches(
       counts: b.counts,
     }));
 }
+
+/**
+ * Pass 85 — Template run history.
+ *
+ * Belirli bir template id'sine bağlı tüm batch'leri listeler. Template
+ * detail page'de "Bu template kaç kez koştu, ne zaman, ne sonuçlar?"
+ * sorusuna yanıt verir.
+ *
+ * Aynı `listRecentBatches` pattern'ini kullanır — ek tablo yok;
+ * Job.metadata.batchTemplateId üzerinden client-side group by batchId.
+ */
+export async function listBatchesByTemplate(
+  userId: string,
+  templateId: string,
+  limit = 20,
+): Promise<RecentBatchSummary[]> {
+  const all = await listRecentBatches(userId, 200);
+  return all
+    .filter((b) => b.templateId === templateId)
+    .slice(0, limit);
+}

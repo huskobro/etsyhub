@@ -78,6 +78,148 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 85 (Batch follow-through derinleşti: filter + variation cluster + template history) 🟢
+
+**Hedef:** Pass 84 batch identity + summary + recent batches list ile
+operator follow-through V1 geldi. Pass 85 görevi: 3 belirgin operatör
+ergonomi eksiğini birlikte kapatmak (yeni capability açmadan).
+
+**Pass 85 audit özeti:**
+
+| # | Eksik | Pass 85 değer |
+|---|---|---|
+| 1 | Ana job listesinde `?batchId=` filter yok | 🟢 Build now (mevcut SearchParams pattern) |
+| 2 | Variation child cluster parent detail'de görünmüyor (Upscale child'larıyla tek panelde karışık) | 🟢 Build now (Pass 83 persistence mevcut, sadece UI render ayrımı) |
+| 3 | Template detail'de "bu template kaç kez koştu" yok | 🟢 Build now (mevcut Pass 84 listRecentBatches templateId döndürüyor) |
+| 4 | Retry-failed-only | 🟡 Pass 86+ |
+
+**Variation child cluster için veri**: Pass 83'ten beri persistence MEVCUT
+ve YETERLİ — `MidjourneyAsset.parentAssetId` self-reference + `children`
+relation. Detail page'de zaten upscale için aynı pattern (`a.children`
+include) çalışıyordu. Sadece `variantKind === "VARIATION"` ile ikinci
+panel ayrılmalı.
+
+**Template run history için veri**: Pass 84 `Job.metadata.batchTemplateId`
+yazılıyor; `listRecentBatches` zaten templateId döndürüyor. Yeni service
+fonksiyonu `listBatchesByTemplate(userId, templateId, limit)` reuse eder,
+template detail page'de gösterir.
+
+**4 kova**
+
+| Kova | Item |
+|---|---|
+| **Build now** | (1) `?batchId=` filter ana liste + batch banner<br>(2) Variation child cluster (parent detail)<br>(3) Template run history (template detail) |
+| **Strong follow-up** | (4) Retry-failed-only (Pass 86)<br>(5) Job listing'e batchId kolon |
+| **Useful later** | (6) Variation child individual (4 grid'i tek tek ayrı satırda)<br>(7) DB scale (MidjourneyBatch tablosu) |
+| **Do not do now** | (8) Native upscale (Gigapixel later)<br>(9) Animate<br>(10) Yeni capability |
+
+**Pass 85 implementasyonu:**
+
+1. **`/admin/midjourney` ana sayfa** — `?batchId=` filter:
+   - `SearchParams.batchId?: string` field eklendi
+   - `batchWhere`: Prisma JSON path filter (`MidjourneyJob → Job →
+     metadata.batchId`) — schema migration yok
+   - **Batch filter banner**: aktifken accent renkli panel, batchId kısaltılmış
+     gösterim, "Batch detail →" + "Filter'ı temizle" link'leri,
+     "(N job listede)" sayım
+
+2. **`/admin/midjourney/batches/[batchId]`** — "Job listesinde aç" link:
+   - Detail page header'a yeni button: `?batchId=X` ile ana sayfaya
+     yönlendirir (batch'in jobs'larını ana liste tablosunda göster)
+
+3. **`/admin/midjourney/[id]` parent detail** — variation child cluster:
+   - Mevcut `children` query zaten variantKind dahil tüm child'ları
+     getiriyor; ikiye böldüm:
+     - `children.filter(c => c.variantKind === "UPSCALE")` → "Upscale çıktıları" paneli (eski davranış)
+     - `children.filter(c => c.variantKind === "VARIATION")` → "Variation çıktıları" paneli (yeni)
+   - Variation panel'inde 4 grid'i **tek MJ Job'a göre group**: `byJob`
+     Map ile aynı child job'a bağlı 4 asset → tek satır
+     `↻ Variation (4 grid) state=COMPLETED`
+   - Click → variation child job detail page'i
+
+4. **`/admin/midjourney/templates/[id]` template detail** — run history:
+   - `auth()` session ile user-scoped fetch
+   - `listBatchesByTemplate(userId, templateId, 20)` → son 20 batch
+   - Yeni `<section>` paneli: tablo (batchId / createdAt / total /
+     completed / running / failed / detail link) + "+ Yeni batch run"
+     CTA + empty state
+   - Tek satırlık özet ile her satırdan batch detail page'e tek tıkla
+
+5. **`src/server/services/midjourney/batches.ts`** — yeni helper:
+   - `listBatchesByTemplate(userId, templateId, limit=20)`:
+     - `listRecentBatches` reuse + client-side templateId filter
+     - Geriye uyumlu (yeni dependency yok)
+
+**Pass 85 kanıtları:**
+
+- ✅ **E2E real smoke**:
+  ```
+  Step 1 — ?batchId= filter (Pass 84 batch z57y2mogv5gd... ile):
+    2/2 jobs filtrelenmiş listede
+    [0] state=WAITING_FOR_RENDER, [1] state=QUEUED
+
+  Step 2 — Variation child cluster:
+    Parent asset cmowoe3zx... (Pass 80 batch grid 3)
+    4 variation children persisted (Pass 83'ten)
+    byJob group: ↻ Variation (4 grid) state=COMPLETED
+    → MJ Job cmowrfrac... (Pass 83 smoke'tan)
+
+  Step 3 — Template run history:
+    Template cmowob9ep... için 1 run
+    z57y2mogv5gd... created=10:30:00 total=2 completed=0 failed=0
+  ```
+- ✅ **TS clean** (bridge + EtsyHub)
+- ✅ **ESLint clean**
+- ✅ **Token check ✓**
+
+**Pass 85 regresyon:**
+- describe (api-first) → COMPLETED 4 prompt
+- generate / variation / sref / oref / cref akışları intact (kod yolu
+  dokunulmadı; sadece UI render + 1 yeni service helper eklendi)
+- Pass 84 batch summary/list intact
+- Schema değişikliği yok
+
+**Pass 85 ürün değeri:**
+- Operatör batch detail'den **"Job listesinde aç"** ile ana liste filter'lı
+  açılır, Pass 64 download/review filter'larıyla birlikte kullanılabilir
+- Parent grid altında **variation çıktıları** ayrı panelde, upscale ile
+  karışmıyor; 4 grid tek satırda gruplu (gürültü minimum)
+- Template detail'de **run history** operatör "bu template kaç kez koştu,
+  ne zaman, ne sonuçlar?" sorusunu tek bakışta yanıtlıyor
+- Yeni batch run CTA template detail'den direkt erişilebilir
+
+**Pass 85 servis değeri:**
+- `listBatchesByTemplate` saf reuse pattern (Pass 84 listRecentBatches +
+  filter); başka uygulamalarda template/category-scoped batch listesi için
+  aynı pattern kullanılabilir
+- `?batchId=` Prisma JSON path filter pattern provider-bağımsız (DALL-E/
+  Recraft batch'lerinde aynen)
+
+**Pass 85 dürüst sınırlar:**
+- **Variation 4 child individual gösterim** yok — Pass 85 V1 4 grid'i tek
+  satıra sıkıştırıyor (operatör child job detail'den 4 grid'i ayrı görür).
+  Pass 86+: thumbnail tile per child
+- **Retry-failed-only** UI yok (Pass 86)
+- **DB scale**: `listRecentBatches` 2000 son job alıyor; admin başına
+  küçük cardinality için OK (Pass 86+ index)
+- **Authenticated UI smoke** yapılmadı (compile + service E2E + bridge
+  intact kanıtları yeterli)
+- **Sidebar nav entry** "Midjourney" Pass 85'te de eklenmedi (mevcut
+  Sidebar config dış değişiklik istemiyor)
+
+**Pass 85 dosya değişiklik blast radius:**
+- 5 dosya (hepsi modify, yeni dosya yok):
+  - `src/app/(admin)/admin/midjourney/page.tsx` (batchId filter + banner)
+  - `src/app/(admin)/admin/midjourney/[id]/page.tsx` (variation cluster)
+  - `src/app/(admin)/admin/midjourney/batches/[batchId]/page.tsx` (job
+    listesinde aç link)
+  - `src/app/(admin)/admin/midjourney/templates/[id]/page.tsx` (run history)
+  - `src/server/services/midjourney/batches.ts` (listBatchesByTemplate)
+- Bridge sıfır değişiklik
+- Service tarafında sadece 1 yeni fonksiyon (listBatchesByTemplate)
+- Schema değişikliği yok
+- Geriye uyumlu
+
 ### Pass 84 (Batch identity + summary + run history — operator follow-through) 🟢
 
 **Hedef:** Pass 80'de batch generation backend, Pass 81'de UI, Pass 82'de
