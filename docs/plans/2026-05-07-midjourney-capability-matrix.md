@@ -78,6 +78,125 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 80 (Persisted MJ Templates + Batch Generation V1) 🟢
+
+**Hedef:** Pass 79'da prompt template engine + tek-shot wrapper geldi.
+Pass 80 doğal devam: persistent templates + batch generation V1.
+Native upscale park (Gigapixel later); UI cila scope dışı; küçük ama
+gerçek kullanılabilir bir ilk sürüm.
+
+**Pass 80 audit özeti:**
+
+| # | Konu | Durum |
+|---|---|---|
+| PromptTemplate model | Init migration'dan beri var, `taskType="image-variation"` ile variation system prompt için kullanılıyor. **Schema değişikliği gerekmez** (taskType ile reuse) | 🟢 |
+| `userPromptTemplate` alanı | Mevcut sistemde **kullanılmıyor** → Pass 80'de MJ Mustache template'i için kullanıldı | 🟢 |
+| Batch rate-limit | BullMQ `concurrency: 1` + bridge job-manager `currentJobId !== null` + 10sn min interval → otomatik sıralama, ekstra logic gerekmez | 🟢 |
+| Prisma migration | ❌ Gereksiz (Pass 80 schema değiştirmedi) | ✅ |
+
+**Pass 80 implementasyonu:**
+
+1. **`src/server/services/midjourney/templates.ts` (yeni)** — persisted MJ template service:
+   - `MJ_TASK_TYPE = "midjourney_generate"` sabit (PromptTemplate.taskType)
+   - `providerKind = ProviderKind.AI` (mevcut enum)
+   - `getMjTemplate(id)` → `ResolvedMjTemplate` (active version + variables)
+   - `listMjTemplates()` → `MjTemplateSummary[]`
+   - `createMjTemplate({name, description?, productTypeKey?, promptTemplateText})`:
+     - Atomic tx: PromptTemplate + initial PromptVersion (version=1, status=ACTIVE)
+   - `updateMjTemplate({templateId, promptTemplateText, description?, changelog?})`:
+     - Eski ACTIVE → ARCHIVED, yeni version ACTIVE
+     - Lineage korundu (version 1, 2, 3, ... sıralı)
+   - `deleteMjTemplate` deliberately throws (Pass 80 V1 lineage koruma; soft-delete Pass 81+)
+   - Variable extraction Pass 79 helper (`extractTemplateVariables`) ile
+
+2. **`src/server/services/midjourney/midjourney.service.ts` (genişletildi)** — batch service:
+   - `createMidjourneyJobsFromTemplateBatch({ userId, templateId? | promptTemplate?, variableSets[], ...generateParams })`:
+     - 1 template + N variable sets → N MidjourneyJob
+     - templateId verilirse persisted template resolve; aksi halde inline
+     - Sequential enqueue (`for` loop), best-effort (tek fail diğerlerini durdurmaz)
+     - Max 50 variable set (rate-limit + queue koruması)
+     - Sonuç: `{ templateSnapshot, totalRequested, totalSubmitted, totalFailed, results[] }`
+   - `BatchPerJobResult` discriminated union (`ok: true | false`)
+   - Pass 79 `createMidjourneyJobFromTemplate`'i her loop'ta reuse — sref/oref/cref/strategy aynen geçer
+
+3. **API endpoints (yeni)**:
+   - `GET /api/admin/midjourney/templates` → list MJ templates
+   - `POST /api/admin/midjourney/templates` → create + initial ACTIVE version (audit `MIDJOURNEY_TEMPLATE_CREATE`)
+   - `GET /api/admin/midjourney/templates/[id]` → tek template
+   - `PATCH /api/admin/midjourney/templates/[id]` → eski ACTIVE → ARCHIVED, yeni version ACTIVE (audit `MIDJOURNEY_TEMPLATE_UPDATE`)
+   - `POST /api/admin/midjourney/test-render-batch` → batch enqueue (audit `MIDJOURNEY_TEMPLATE_BATCH_RENDER` + lineage)
+
+**Pass 80 kanıtları:**
+
+- ✅ **E2E real smoke (2 batch jobs COMPLETED)**:
+  - Template: `{{subject}} in {{style}} style, {{mood}} atmosphere`
+  - Persisted: id `cmowob9ep0001103p7hxucplr`, version 1, variables `[subject, style, mood]`
+  - DB taskType `midjourney_generate`, providerKind `AI`
+  - Batch input: 2 variable sets
+  - **Result**:
+
+    | # | mjJobId | DB MidjourneyJob | State | Expanded |
+    |---|---|---|---|---|
+    | 1 | `7824ba18-...` | `cmowob9fr...` | COMPLETED | "...batch one in watercolor style, calming atmosphere" |
+    | 2 | `5405f143-...` | `cmowob9gc...` | COMPLETED | "...batch two in ink line style, minimal atmosphere" |
+
+  - Bridge sequential işledi (10sn min interval otomatik); her iki job
+    `submitMethod=api`, `submitStrategy=api-first`
+
+- ✅ **Round-trip kanıt**: `getMjTemplate(id)` template'i persistence'tan
+  doğru alıyor (`promptTemplateText` + variables aynı)
+- ✅ **List**: `listMjTemplates()` 1 MJ template döndürdü
+
+**Pass 80 regresyon kanıtları:**
+
+- ✅ describe (api-first) → COMPLETED 4 prompt
+- ✅ Pass 79 single-template yolu (`createMidjourneyJobFromTemplate`,
+  inline template) bozulmadı: `Pass 80 single regression test {{kind}}`
+  → `Pass 80 single regression test art deco geometric` → bridgeJobId
+  `f00ca474-...` enqueued
+- ✅ TS clean (bridge + EtsyHub)
+- ✅ ESLint clean (yeni 5 dosya dahil)
+
+**Pass 80 ürün değeri:**
+- Operatör template'i UI/CLI'dan bir kez yazar, `taskType=midjourney_generate`
+  ile DB'de saklanır
+- Versiyonlama otomatik (PromptVersion); eski jobs eski version'a bağlı kalır
+- Batch endpoint ile 1 template × N variable set → N otomatik render
+  (örn. POD ürün setleri için "subject × style" kombinasyonları)
+- Audit log her template create/update/batch için lineage saklıyor
+
+**Pass 80 servis değeri (taşınabilirlik):**
+- `templates.ts` MJ-spesifik (DB modeli reuse) ama
+- `createMidjourneyJobsFromTemplateBatch` pattern'i provider-bağımsız
+  (tek `createMidjourneyJob` çağrısı değiştirilirse DALL-E/Recraft batch
+  aynı şekilde olur)
+- Core helper (`src/lib/prompt-template.ts`) hâlâ saf TypeScript,
+  hiç dependency yok — başka uygulamalara aynen taşınır
+
+**Pass 80 dürüst sınırlar:**
+- **Conditional / loop syntax** (`{{#each}}`, `{{#if}}`) yok — Pass 81+ scope
+- **Default value** (`{{style|minimalist}}`) yok — Pass 81+
+- **Admin UI** yok (Templates List + New + Edit + Batch Run sayfaları)
+  — endpoint'ler curl/API client tüketicisine yönelik; UI Pass 81+
+- **Template delete** yok (lineage koruma; Pass 81+ soft-delete)
+- **Batch progress tracking + cancel** yok (sadece submit kanıtı + ayrı
+  ayrı job durumları)
+- **CSV upload import** yok — Pass 81+ (variable sets şu an JSON'da
+  manuel)
+- **Native upscale park** (Gigapixel local automation later)
+- **Variation kind** hâlâ unimplemented
+
+**Pass 80 dosya değişiklik blast radius:**
+- 5 yeni/değişik dosya:
+  - `src/server/services/midjourney/templates.ts` (yeni, ~210 satır)
+  - `src/server/services/midjourney/midjourney.service.ts` (batch service ~150 satır eklendi)
+  - `src/app/api/admin/midjourney/templates/route.ts` (yeni, GET + POST)
+  - `src/app/api/admin/midjourney/templates/[id]/route.ts` (yeni, GET + PATCH)
+  - `src/app/api/admin/midjourney/test-render-batch/route.ts` (yeni, POST)
+- Bridge sıfır değişiklik (Pass 80 EtsyHub-only)
+- Schema değişikliği yok (PromptTemplate + PromptVersion reuse)
+- Geriye uyumlu — Pass 79 single-template yolu intact
+
 ### Pass 79 (Prompt Template + Variables servis katmanı — taşınabilir) 🟢
 
 **Hedef:** Pass 78'de strategy productization tamamlandı. Pass 79

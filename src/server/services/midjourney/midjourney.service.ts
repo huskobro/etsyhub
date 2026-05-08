@@ -616,6 +616,193 @@ export async function createMidjourneyJobFromTemplate(
   };
 }
 
+// ============================================================================
+// Pass 80 — Template Batch Generation V1.
+//
+// 1 template + N variable sets → N MidjourneyJob (sequential enqueue).
+// Pass 79 createMidjourneyJobFromTemplate'in tekil kullanımını batch'e
+// çevirir.
+//
+// Rate-limit / queue güvenliği (audit C):
+//   - BullMQ MIDJOURNEY_BRIDGE worker concurrency=1
+//   - Bridge job-manager 10sn min interval jobs arası
+//   - Yani N job enqueue → bridge tek tek ~10sn aralıklarla işler
+//   - Ekstra rate-limit logic GEREKMEZ (mevcut altyapı doğal koruma)
+//
+// Sözleşme:
+//   - templateId verilirse persisted MJ template'i çözülür (Pass 80
+//     templates service); aksi halde inline promptTemplate string kabul
+//   - variableSets[] her bir entry → 1 job
+//   - Tüm job'lar AYNI generate parametrelerini paylaşır (aspectRatio,
+//     version, sref/oref/cref, strategy) — variable'lar sadece prompt
+//     metnini değiştirir
+//   - Tek job fail olsa bile diğerleri devam (best-effort)
+//   - Sonuç: { results: PerJobResult[], totalSubmitted, totalFailed }
+//
+// Provider-bağımsızlık: bu service MJ-spesifik ama core "expand × N"
+// pattern'i diğer provider'larda aynen kullanılabilir (DALL-E batch,
+// Recraft batch, vs.). Sadece `createMidjourneyJob` çağrısı değişir.
+// ============================================================================
+
+export type CreateMidjourneyJobsFromTemplateBatchInput = Omit<
+  CreateMidjourneyJobInput,
+  "prompt"
+> & {
+  /**
+   * Persisted MJ template id (Pass 80 templates service ile resolve).
+   * Verilirse `promptTemplate` ignore edilir.
+   */
+  templateId?: string;
+  /**
+   * Inline template (templateId verilmediyse). Pass 79 fonksiyonuyla aynı.
+   */
+  promptTemplate?: string;
+  /**
+   * N adet variable set — her biri için ayrı job oluşturulur.
+   * Eksik variable → o job ValidationError ile FAIL (diğerleri devam).
+   */
+  variableSets: Array<Record<string, string>>;
+};
+
+export type BatchPerJobResult =
+  | {
+      ok: true;
+      index: number;
+      midjourneyJobId: string;
+      jobId: string;
+      bridgeJobId: string;
+      expandedPrompt: string;
+      variables: Record<string, string>;
+    }
+  | {
+      ok: false;
+      index: number;
+      error: string;
+      variables: Record<string, string>;
+    };
+
+export type CreateMidjourneyJobsFromTemplateBatchResult = {
+  templateSnapshot: {
+    /** Resolve edilen template metni (persisted veya inline). */
+    promptTemplate: string;
+    /** Persisted ise template lineage. */
+    templateId?: string;
+    versionId?: string;
+    version?: number;
+  };
+  totalRequested: number;
+  totalSubmitted: number;
+  totalFailed: number;
+  results: BatchPerJobResult[];
+};
+
+/**
+ * Batch enqueue: 1 template + N variable sets → N job.
+ *
+ * Sequential — Promise.all DEĞİL. Sebep: bridge tek tek alır zaten;
+ * Promise.all enqueue race-condition + DB constraint riski olmasın diye
+ * sıralı çağırırız. Performans kaybı yok — bridge yine 10sn min interval
+ * işliyor.
+ *
+ * Best-effort: tek job fail olursa diğerleri devam eder. results[] ile
+ * her job'un sonucu raporlanır. Caller HTTP response'ta totalFailed > 0
+ * ise 207 Multi-Status semantik dönebilir (Pass 80 V1: 200 + results).
+ */
+export async function createMidjourneyJobsFromTemplateBatch(
+  input: CreateMidjourneyJobsFromTemplateBatchInput,
+  bridgeClient: BridgeClient = getBridgeClient(),
+): Promise<CreateMidjourneyJobsFromTemplateBatchResult> {
+  // 1) Template resolve (persisted veya inline)
+  let promptTemplate: string;
+  let templateMeta: { templateId?: string; versionId?: string; version?: number } = {};
+
+  if (input.templateId) {
+    const { getMjTemplate } = await import("./templates");
+    const resolved = await getMjTemplate(input.templateId);
+    if (!resolved) {
+      throw new Error(
+        `MJ template bulunamadı veya ACTIVE version yok: ${input.templateId}`,
+      );
+    }
+    promptTemplate = resolved.promptTemplateText;
+    templateMeta = {
+      templateId: resolved.templateId,
+      versionId: resolved.versionId,
+      version: resolved.version,
+    };
+  } else if (input.promptTemplate) {
+    promptTemplate = input.promptTemplate;
+  } else {
+    throw new Error(
+      "templateId veya promptTemplate'den biri verilmeli",
+    );
+  }
+
+  // 2) variableSets validation
+  if (!Array.isArray(input.variableSets) || input.variableSets.length === 0) {
+    throw new Error("variableSets en az 1 entry içermeli");
+  }
+  if (input.variableSets.length > 50) {
+    throw new Error(
+      `Batch max 50 variable set (geçen: ${input.variableSets.length}). ` +
+        `Daha fazlası için ayrı batch.`,
+    );
+  }
+
+  // 3) Sequential enqueue — her variable set için 1 job
+  const { promptTemplate: _t, templateId: _tid, variableSets, ...rest } = input;
+  void _t;
+  void _tid;
+
+  const results: BatchPerJobResult[] = [];
+  let totalSubmitted = 0;
+  let totalFailed = 0;
+
+  for (let i = 0; i < variableSets.length; i++) {
+    const variables = variableSets[i] ?? {};
+    try {
+      const jobResult = await createMidjourneyJobFromTemplate(
+        {
+          ...rest,
+          promptTemplate,
+          promptVariables: variables,
+        },
+        bridgeClient,
+      );
+      results.push({
+        ok: true,
+        index: i,
+        midjourneyJobId: jobResult.midjourneyJob.id,
+        jobId: jobResult.jobId,
+        bridgeJobId: jobResult.bridgeJobId,
+        expandedPrompt: jobResult.expandedPrompt,
+        variables,
+      });
+      totalSubmitted++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      results.push({
+        ok: false,
+        index: i,
+        error: msg,
+        variables,
+      });
+      totalFailed++;
+    }
+  }
+
+  return {
+    templateSnapshot: {
+      promptTemplate,
+      ...templateMeta,
+    },
+    totalRequested: variableSets.length,
+    totalSubmitted,
+    totalFailed,
+    results,
+  };
+}
+
 /**
  * Worker polling step — bridge state → DB.
  *
