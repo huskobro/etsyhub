@@ -29,6 +29,7 @@ import { PromoteToReview } from "./PromoteToReview";
 import { AddToSelection } from "./AddToSelection";
 import { FailureDetail } from "./FailureDetail";
 import { UpscaleButton } from "./UpscaleButton";
+import { VariationButton } from "./VariationButton";
 import { ExportButtons } from "./ExportButtons";
 import { AssetBatchPanel } from "./AssetBatchPanel";
 import { DescribeButton } from "./DescribeButton";
@@ -506,6 +507,22 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
                       automation (research candidate, Pass 63+). */}
                   {job.state === "COMPLETED" && a.variantKind === "GRID" ? (
                     <UpscaleButton midjourneyAssetId={a.id} />
+                  ) : null}
+                  {/* Pass 83 — Variation Subtle/Strong butonları
+                      (yalnız COMPLETED + GRID asset'lerde). MJ V8 web
+                      native API (capture-doğrulanmış: t:"vary",
+                      strong:bool). Yeni 4-grid render üretir. */}
+                  {job.state === "COMPLETED" && a.variantKind === "GRID" ? (
+                    <>
+                      <VariationButton
+                        midjourneyAssetId={a.id}
+                        mode="subtle"
+                      />
+                      <VariationButton
+                        midjourneyAssetId={a.id}
+                        mode="strong"
+                      />
+                    </>
                   ) : null}
                   {/* Pass 62 — Format export butonları (PNG/JPEG/WebP).
                       Source MinIO'da canonical (PNG yeni ingest'ler için);

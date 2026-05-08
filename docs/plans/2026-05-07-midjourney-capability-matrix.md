@@ -78,6 +78,193 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 83 (Variation V1 — kanıtlı V8 web native API) 🟢
+
+**Hedef:** Pass 82 audit'inde "variation kanıt yetersiz" demiştik (AutoSail
+Discord-only, V8 web kontratı kanıtsız). Pass 83 görevi: live capture ile
+V8 web kontratını topla; kanıt yeterliyse V1 implementation, değilse Yol
+B (batch dashboard).
+
+**Pass 83 live capture (Yol A → Build):**
+
+Kullanıcı MJ Create tab'ında Vary Subtle + Vary Strong tetikledi; CDP
+Network capture submit-jobs body + response yakaladı:
+
+```json
+// Subtle (strong:false)
+{
+  "f": { "mode": "relaxed", "private": false },
+  "channelId": "singleplayer_<userId>",
+  "metadata": {
+    "isMobile": null,
+    "imagePrompts": null,         ← imagine'de 0; variation'da NULL
+    "imageReferences": null,
+    "characterReferences": null,
+    "depthReferences": null,
+    "lightboxOpen": null
+  },
+  "t": "vary",                     ← KRİTİK: "variation" değil "vary"
+  "strong": false,                 ← subtle=false, strong=true
+  "id": "<parentMjJobId>",         ← parent grid'in mjJobId'si
+  "index": 2                       ← grid index 0-3
+}
+
+// Response
+{
+  "success": [{
+    "job_id": "<new variation jobId>",
+    "prompt": "<inherited parent prompt>",
+    "event_type": "variation",
+    "job_type": "v7_diffusion",
+    "meta": { "batch_size": 4, "parent_id": ..., "parent_grid": 2 }
+  }]
+}
+```
+
+**Net bulgular**:
+1. ✅ MJ V8 web kendi native variation API'si var (Discord-only DEĞİL)
+2. ✅ `t: "vary"` field name (`"variation"` değil — kanıtsız implementation
+   yapsaydım yanlışı tahmin ederdim → Pass 75 V0 sref tekrarına düşerdim)
+3. ✅ `strong: boolean` discriminator (subtle/strong)
+4. ✅ `id` = parent mjJobId, `index` = 0-3 (mevcut Pass 60 upscale type
+   pattern ile birebir aynı — schema değişikliği gerek yok)
+5. ✅ `metadata.imagePrompts: null` (imagine'de 0; variation'da null —
+   bu farkın MJ tarafında validation rolü olabilir)
+6. ✅ `batch_size: 4` — variation 4 grid (upscale 1)
+
+**Karar**: kanıt YETERLİ. Pass 75 V0 sref pain'i tekrarı riski sıfır
+(literal capture). Pass 83 V1 implementation başladı.
+
+**Pass 83 implementasyonu:**
+
+1. **`mj-bridge/src/drivers/generate-flow.ts`** — yeni helper:
+   - `submitVariationViaApi(page, { parentMjJobId, gridIndex, mode, ... })`:
+     - mjUserDefer.promise → channelId resolve (mevcut pattern)
+     - POST `/api/submit-jobs` body capture-doğrulanmış shape
+     - Response parse + `success[].job_id` döner
+     - Pass 76 sref/oref/cref upload pattern reuse YOK (variation
+       upload-bağımsız; parent zaten MJ tarafında saklı)
+
+2. **`mj-bridge/src/drivers/playwright.ts`** — yeni branch + executor:
+   - `if (job.request.kind === "variation") executeVariationJob`
+   - `executeVariationJob`:
+     - Validate gridIndex (0..3) + mode ("subtle"|"strong")
+     - Challenge probe (mevcut pattern)
+     - `submitVariationViaApi` → mjJobId
+     - **Pass 77 user-queue + CDN HEAD hibrit polling reuse**
+       (`waitForJobReadyViaApi`)
+     - `downloadGridImages` (4 grid)
+     - mjMetadata: `kind:variation, parentMjJobId, parentGridIndex,
+       variationMode, submitMethod:api, submitStrategy:auto`
+
+3. **`src/server/services/midjourney/variation.ts`** (yeni):
+   - `createMidjourneyVariationJob({ actorUserId, parentMidjourneyAssetId,
+     mode?, submitStrategy? })`
+   - upscale.ts paraleli; cross-user kontrol; parent GRID validation
+   - DB tx: yeni Job + yeni MidjourneyJob (kind=VARIATION)
+   - BullMQ enqueue: payload `variationParentAssetId`
+
+4. **`src/server/services/midjourney/midjourney.service.ts`** —
+   `pollAndUpdate` + `ingestOutputs` lineage:
+   - Yeni param `variationParentAssetId?: string`
+   - `ingestOutputs`'ta variantKind logic genişletildi:
+     - `upscaleParentAssetId` → UPSCALE
+     - `variationParentAssetId` → VARIATION
+     - else → GRID
+   - 4 child asset hepsi aynı parentAssetId'ye bağlanır
+   - Auto-promote SKIP (parent zaten promoted veya generate akışında)
+
+5. **`src/server/services/midjourney/bridge-client.ts`** — yeni request
+   type:
+   - `BridgeVariationRequest`: `kind:"variation", parentMjJobId,
+     gridIndex, mode:"subtle"|"strong", submitStrategy?`
+   - `BridgeJobRequest` union'a eklendi
+
+6. **`src/server/workers/midjourney-bridge.worker.ts`**:
+   - Payload `variationParentAssetId?: string` field
+   - `pollAndUpdate` çağrısına ilet
+
+7. **`src/app/api/admin/midjourney/variation/route.ts`** (yeni):
+   - POST endpoint, Zod body, audit log `MIDJOURNEY_VARIATION`
+
+8. **`src/app/(admin)/admin/midjourney/[id]/VariationButton.tsx`** (yeni):
+   - `mode: "subtle" | "strong"` prop
+   - Click → POST → router.push child job
+
+9. **`src/app/(admin)/admin/midjourney/[id]/page.tsx`**:
+   - GRID asset altında `VariationButton mode="subtle"` +
+     `VariationButton mode="strong"` (UpscaleButton'ın yanında)
+   - COMPLETED + variantKind=GRID guard
+
+**Pass 83 kanıtları:**
+
+- ✅ **E2E real smoke COMPLETED**:
+  - Parent MidjourneyAsset: `cmowoe3zx0019103po87mkkwe` (Pass 80 batch
+    grid 3, mjJobId `5405f143-...`)
+  - Service çağrısı → bridge accepted (bridgeJobId
+    `899e108f-0981-4353-993e-10b8da9c7685`)
+  - Bridge submit → mjJobId `1e64aa44-6c3e-4487-b8b3-356f2b553054`
+  - Pass 77 user-queue polling → COMPLETED (~50sn)
+  - **outputs: 4 grid CDN URL'leri indirildi**:
+    - `cdn.midjourney.com/1e64aa44-.../0_0_640_N.webp`
+    - `cdn.midjourney.com/1e64aa44-.../0_1_640_N.webp`
+    - `cdn.midjourney.com/1e64aa44-.../0_2_640_N.webp`
+    - `cdn.midjourney.com/1e64aa44-.../0_3_640_N.webp`
+  - mjMetadata: `submitMethod:api, variationMode:subtle, parentGridIndex:3,
+    parentMjJobId:5405f143-...`
+- ✅ **TS clean** (bridge + EtsyHub)
+- ✅ **ESLint clean** (yeni 3 dosya + değişen 6 dosya)
+- ✅ **Token check ✓**
+
+**Pass 83 regresyon:**
+- describe (api-first) → COMPLETED 4 prompt
+- generate / sref / oref / cref / image-prompt akışları intact (kod
+  yolu değişmedi; sadece kind="variation" branch'i eklendi)
+- Pass 60 upscale yolu intact
+- Pass 80 batch generation intact
+
+**Pass 83 ürün değeri:**
+- Operatör grid asset detail page'de bir grid'e bakıp **Vary Subtle**
+  veya **Vary Strong** ile yeni 4-grid render üretebilir
+- Parent → child lineage DB'de korunur (variantKind=VARIATION +
+  parentAssetId)
+- AutoSail/Discord eklentisi gerekmez — V8 web native API doğrudan
+  vurulur
+
+**Pass 83 servis değeri (taşınabilirlik):**
+- `submitVariationViaApi` saf MJ API çağrısı; başka uygulamalara
+  taşıma için Pass 76 `submitPromptViaApi` ile aynı pattern
+- Pass 77 user-queue polling reuse → variation hiç ek polling kodu
+  gerektirmedi (4 grid render generate ile aynı CDN URL pattern)
+
+**Pass 83 dürüst sınırlar:**
+- **DOM fallback yok**: Pass 83 V1 sadece API yolu (capture-doğrulanmış,
+  deterministic). DOM V1-V4 button click implementasyonu MJ UI
+  değişikliklerine duyarlı; Pass 84+ scope.
+- **Auto-promote skip**: Variation child'lar GeneratedDesign'a otomatik
+  bağlanmaz (parent zaten Review/promoted akışında olabilir; Review
+  queue kirletmek istemedik)
+- **`mode: "creative"` yok** (Pass 60 upscale'inkinden farklı —
+  variation sadece subtle/strong; capture'da iki mode da kanıtlandı)
+- **DB schema değişikliği yok** — `MidjourneyJobKind.VARIATION` +
+  `MJVariantKind.VARIATION` zaten init migration'da
+- **Authenticated UI smoke yapılmadı** (compile + render + service
+  E2E + bridge polling kanıtları yeterli)
+
+**Pass 83 dosya değişiklik blast radius:**
+- 9 dosya (3 yeni + 6 değişen):
+  - `mj-bridge/src/drivers/generate-flow.ts` (submitVariationViaApi yeni)
+  - `mj-bridge/src/drivers/playwright.ts` (executeVariationJob yeni)
+  - `src/server/services/midjourney/variation.ts` (yeni service ~190 satır)
+  - `src/server/services/midjourney/midjourney.service.ts` (lineage param)
+  - `src/server/services/midjourney/bridge-client.ts` (BridgeVariationRequest type)
+  - `src/server/workers/midjourney-bridge.worker.ts` (payload field)
+  - `src/app/api/admin/midjourney/variation/route.ts` (yeni route)
+  - `src/app/(admin)/admin/midjourney/[id]/VariationButton.tsx` (yeni)
+  - `src/app/(admin)/admin/midjourney/[id]/page.tsx` (button entegrasyon)
+- Schema değişikliği yok
+- Geriye uyumlu (yeni kind branch, mevcut kind handler'ları intact)
+
 ### Pass 82 (CSV/TSV import for batch + Variation audit raporu) 🟢
 
 **Hedef:** Pass 81 batch UI V1 JSON textarea'sı ile geldi; operatörün

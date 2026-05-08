@@ -1142,6 +1142,196 @@ export async function submitPromptViaApi(
  *   - Network fail → caller'a yansıt
  *   - timeout → throw "render-timeout"
  */
+// ============================================================================
+// Pass 83 — Variation V1 submit helper (MJ V8 web native API).
+//
+// Pass 83 live capture (kullanıcı V1-V4 Vary subtle + Vary strong basıp
+// CDP submit-jobs body yakalandı) → MJ V8 web kontrat:
+//
+//   POST /api/submit-jobs
+//   body: {
+//     "f": { "mode": "relaxed", "private": false },
+//     "channelId": "singleplayer_<userId>",
+//     "metadata": {
+//       "isMobile": null,
+//       "imagePrompts": null,        ← imagine'de 0; variation'da NULL
+//       "imageReferences": null,
+//       "characterReferences": null,
+//       "depthReferences": null,
+//       "lightboxOpen": null
+//     },
+//     "t": "vary",                    ← KRİTİK: "variation" değil "vary"
+//     "strong": false | true,         ← subtle=false, strong=true
+//     "id": "<parentMjJobId>",        ← parent grid'in mjJobId'si
+//     "index": 0..3                   ← grid index
+//   }
+//
+//   response:
+//   {
+//     "success": [{
+//       "job_id": "<new variation jobId>",
+//       "prompt": "<inherited parent prompt>",
+//       "event_type": "variation",    ← Pass 80 audit'te incoming parser
+//       "job_type": "v7_diffusion",
+//       "meta": {
+//         "batch_size": 4,            ← variation 4 grid (upscale 1)
+//         "parent_id": "<parentMjJobId>",
+//         "parent_grid": <index>
+//       }
+//     }]
+//   }
+//
+// Discord-only DEĞİL — V8 web kendi native API'si var. AutoSail'in
+// `sendVariation`/`callCommand("variation")` Discord'a özel; biz
+// /api/submit-jobs'a doğrudan vururuz (Pass 76+ generate ile aynı
+// yol). Polling Pass 77 user-queue + CDN HEAD hibrit ile reuse edilir
+// (variation 4 grid, generate ile aynı CDN URL pattern'i).
+// ============================================================================
+
+export type SubmitVariationApiResult = {
+  /** Yeni variation job UUID (response.success[0].job_id). */
+  mjJobId: string;
+  /** Submit eden user mjId'si (channelId resolution için cached). */
+  userId: string;
+  /** Method tag — caller mjMetadata'da işaretler. */
+  method: "api";
+};
+
+export async function submitVariationViaApi(
+  page: Page,
+  options: {
+    parentMjJobId: string;
+    gridIndex: 0 | 1 | 2 | 3;
+    /** "subtle" → strong=false, "strong" → strong=true */
+    mode: "subtle" | "strong";
+    /** Pass 71 — relaxed (free) / fast (paid). Default "relaxed". */
+    submitMode?: "relaxed" | "fast";
+    /** Network/page.evaluate timeout. Default 30sn. */
+    fetchTimeoutMs?: number;
+  },
+): Promise<SubmitVariationApiResult> {
+  const fetchTimeoutMs = options.fetchTimeoutMs ?? 30_000;
+  const submitMode = options.submitMode ?? "relaxed";
+
+  type SubmitResult = {
+    ok: boolean;
+    status: number;
+    body: string;
+    userId: string;
+  };
+  const result: SubmitResult = await page.evaluate(
+    async (input: {
+      parentMjJobId: string;
+      gridIndex: number;
+      strong: boolean;
+      mode: "relaxed" | "fast";
+      timeoutMs: number;
+    }) => {
+      // tsx/esbuild __name helper stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).__name = (globalThis as any).__name ?? ((x: unknown) => x);
+      // mjUserDefer.promise → channelId
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = window as any;
+      const userPromise = w.mjUserDefer?.promise as Promise<{ id?: string }> | undefined;
+      if (!userPromise) {
+        throw new Error("window.mjUserDefer.promise yok (MJ tab'ı login değil veya henüz hazır değil)");
+      }
+      let user: { id?: string };
+      try {
+        user = await Promise.race([
+          userPromise,
+          new Promise<{ id?: string }>((_, rej) =>
+            setTimeout(() => rej(new Error("mjUserDefer timeout 8sn")), 8000),
+          ),
+        ]);
+      } catch (err) {
+        throw new Error(
+          `mjUserDefer resolve fail: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      const userId = user?.id;
+      if (typeof userId !== "string" || userId.length === 0) {
+        throw new Error("mjUserDefer.promise resolved ama user.id boş");
+      }
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), input.timeoutMs);
+      try {
+        const res = await fetch(`${window.location.origin}/api/submit-jobs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Csrf-Protection": "1",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            f: { mode: input.mode, private: false },
+            channelId: `singleplayer_${userId}`,
+            // Pass 83 capture kanıtı: variation metadata field'ları NULL
+            // (imagine'de 0; bu farkın MJ tarafında validation rolü olabilir).
+            metadata: {
+              isMobile: null,
+              imagePrompts: null,
+              imageReferences: null,
+              characterReferences: null,
+              depthReferences: null,
+              lightboxOpen: null,
+            },
+            t: "vary",
+            strong: input.strong,
+            id: input.parentMjJobId,
+            index: input.gridIndex,
+          }),
+          signal: ctrl.signal,
+        });
+        const text = await res.text();
+        return { ok: res.ok, status: res.status, body: text, userId };
+      } finally {
+        clearTimeout(t);
+      }
+    },
+    {
+      parentMjJobId: options.parentMjJobId,
+      gridIndex: options.gridIndex,
+      strong: options.mode === "strong",
+      mode: submitMode,
+      timeoutMs: fetchTimeoutMs,
+    },
+  );
+
+  if (!result.ok) {
+    throw new Error(
+      `/api/submit-jobs (variation) HTTP ${result.status}: ${result.body.slice(0, 300)}`,
+    );
+  }
+  let parsed: {
+    success?: Array<{ job_id?: string }>;
+    failure?: Array<{ message?: string }>;
+  };
+  try {
+    parsed = JSON.parse(result.body) as typeof parsed;
+  } catch {
+    throw new Error(
+      `submit-jobs (variation) response JSON parse fail: ${result.body.slice(0, 300)}`,
+    );
+  }
+  if (parsed.failure && parsed.failure.length > 0) {
+    const msg = parsed.failure[0]?.message ?? "unknown failure";
+    throw new Error(`submit-jobs (variation) failure: ${msg}`);
+  }
+  const success = parsed.success?.[0];
+  if (!success?.job_id) {
+    throw new Error(
+      `submit-jobs (variation) success[].job_id beklenmiyor: ${result.body.slice(0, 300)}`,
+    );
+  }
+  return {
+    mjJobId: success.job_id,
+    userId: result.userId,
+    method: "api",
+  };
+}
+
 export type WaitForJobApiResult = {
   mjJobId: string;
   /** Pass 72 — tutarlı imageUrls dönüş tipi (RenderResult ile uyum). */

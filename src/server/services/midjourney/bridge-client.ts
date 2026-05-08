@@ -146,10 +146,37 @@ export type BridgeDescribeRequest = {
   etsyhubJobId?: string;
 };
 
+/**
+ * Pass 83 — Variation V1 request kontrat (V8 web native API).
+ *
+ * Bridge driver `/api/submit-jobs` body:
+ *   { f, channelId, metadata (all null), t:"vary", strong:bool, id, index }
+ * Pass 83 live capture kanıtı.
+ *
+ * Sözleşme:
+ *   - parentMjJobId: render edilmiş bir grid'in mjJobId (parent)
+ *   - gridIndex: 0..3 (parent grid içindeki pozisyon)
+ *   - mode: "subtle" (strong:false) | "strong" (strong:true)
+ *   - submitStrategy: api-first (V1; DOM fallback Pass 84+)
+ *
+ * Çıktı: 4 grid (yeni job_id, parent_id + parent_grid lineage MJ
+ * tarafında saklanır). EtsyHub MidjourneyAsset variantKind=VARIATION +
+ * parentAssetId ile yazar.
+ */
+export type BridgeVariationRequest = {
+  kind: "variation";
+  parentMjJobId: string;
+  gridIndex: 0 | 1 | 2 | 3;
+  mode: "subtle" | "strong";
+  submitStrategy?: "auto" | "api-first" | "dom-first";
+  etsyhubJobId?: string;
+};
+
 export type BridgeJobRequest =
   | BridgeGenerateRequest
   | BridgeUpscaleRequest
-  | BridgeDescribeRequest;
+  | BridgeDescribeRequest
+  | BridgeVariationRequest;
 
 export type BridgeJobOutput = {
   gridIndex: number;

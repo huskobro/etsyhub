@@ -52,6 +52,7 @@ import {
   SelectorMismatchError,
   submitPrompt,
   submitPromptViaApi,
+  submitVariationViaApi,
   triggerUpscale,
   uploadImagePromptsViaApi,
   waitForJobReadyViaApi,
@@ -621,14 +622,20 @@ export class PlaywrightDriver implements BridgeDriver {
       return;
     }
 
-    if (job.request.kind !== "generate") {
-      onProgress({
-        state: "FAILED",
-        blockReason: "internal-error",
-        message: `kind="${job.request.kind}" henüz desteklenmiyor (V1.x)`,
-      });
+    // Pass 83 — kind="variation" V8 web native API.
+    // Pass 83 live capture kanıtı: t:"vary" + strong:bool + id + index.
+    // Discord-only AutoSail pattern'i kullanılmaz; native /api/submit-jobs
+    // doğrudan vurulur. Polling Pass 77 user-queue + CDN HEAD hibrit
+    // (variation 4 grid → generate ile aynı CDN URL pattern).
+    if (job.request.kind === "variation") {
+      await this.executeVariationJob(job, onProgress, signal);
       return;
     }
+
+    // Pass 83 sonrası kind union: generate | upscale | describe | variation.
+    // Hepsi yukarıda branch'lendi; bu noktaya sadece kind="generate" gelir.
+    // TS exhaustive check için early-return artık gereksiz (önceki guard
+    // never narrow ediyordu). Generate akışı aşağıda devam eder.
 
     onProgress({ state: "OPENING_BROWSER", message: "Browser hazırlanıyor" });
 
@@ -1484,6 +1491,227 @@ export class PlaywrightDriver implements BridgeDriver {
    * Caller (EtsyHub midjourney.service) bu metadata'yı saklayıp UI'da
    * gösterir; MidjourneyAsset row açılmaz.
    */
+
+  /**
+   * Pass 83 — Variation V1 executor (kind="variation").
+   *
+   * Pass 83 live capture kanıtı: MJ V8 web /api/submit-jobs body
+   *   { f, channelId, metadata (all null), t:"vary", strong:bool, id, index }
+   * → response success[].job_id (yeni 4-grid render). AutoSail Discord-only;
+   * V8 web kendi native API'si kullanılır.
+   *
+   * Akış:
+   *   1. submitVariationViaApi (parent_id + grid_index + strong)
+   *   2. waitForJobReadyViaApi (Pass 77 user-queue + CDN HEAD hibrit)
+   *   3. downloadGridImages (4 grid → outputs)
+   *
+   * Lineage: variation child job parent grid'in mjJobId'sine bağlı;
+   * caller (EtsyHub createMidjourneyVariationJob) MidjourneyAsset
+   * variantKind=VARIATION + parentAssetId ile yazar.
+   *
+   * Pass 83 dürüst sınırı: DOM fallback yok (V8 web V1-V4 button DOM
+   * action'ları MJ UI değişikliklerine duyarlı; API yolu deterministic
+   * + capture-doğrulanmış). DOM fallback Pass 84+.
+   */
+  private async executeVariationJob(
+    job: { id: string; request: CreateJobRequest },
+    onProgress: DriverProgressCallback,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (job.request.kind !== "variation") return; // type-narrow guard
+    if (!this.context) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "browser-crashed",
+        message: "Bridge init() henüz çağrılmadı",
+      });
+      return;
+    }
+    const { parentMjJobId, gridIndex, mode } = job.request;
+    if (gridIndex < 0 || gridIndex > 3) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "internal-error",
+        message: `Invalid gridIndex: ${gridIndex} (0..3 beklenir)`,
+      });
+      return;
+    }
+    if (mode !== "subtle" && mode !== "strong") {
+      onProgress({
+        state: "FAILED",
+        blockReason: "internal-error",
+        message: `Invalid mode: "${mode}" (subtle | strong beklenir)`,
+      });
+      return;
+    }
+    // Pass 78 — strategy resolution (variation şu an api-only; metadata
+    // raporlama için saklanır; DOM yolu Pass 84+ scope).
+    const requestedVariationStrategy: "auto" | "api-first" | "dom-first" =
+      job.request.submitStrategy === "api-first" ||
+      job.request.submitStrategy === "dom-first" ||
+      job.request.submitStrategy === "auto"
+        ? job.request.submitStrategy
+        : "auto";
+
+    onProgress({ state: "OPENING_BROWSER", message: "Browser hazırlanıyor" });
+    const page = this.pickMjPage() ?? (await this.context.newPage());
+    await page.bringToFront().catch(() => undefined);
+
+    // /imagine sayfasında olduğumuzdan emin ol (mjUserDefer.promise
+    // window.location.origin'e bağlı; auth cookie'leri MJ domain'inde).
+    if (!page.url().startsWith(this.urls.imagine)) {
+      try {
+        await page.goto(this.urls.imagine, {
+          waitUntil: "domcontentloaded",
+          timeout: 30_000,
+        });
+      } catch (err) {
+        onProgress({
+          state: "FAILED",
+          blockReason: "browser-crashed",
+          message: `MJ ${this.urls.imagine} navigate fail: ${err instanceof Error ? err.message : "unknown"}`,
+        });
+        return;
+      }
+    }
+
+    // Challenge probe (executeUpscaleJob ile aynı pattern)
+    {
+      const ch = await detectChallengeRequired(page, this.selectors);
+      if (ch.challengeRequired) {
+        onProgress({
+          state: "AWAITING_CHALLENGE",
+          blockReason: "challenge-required",
+          message: ch.reason ?? "Challenge tespit edildi",
+        });
+        const cleared = await waitForChallengeCleared(page, this.selectors, {
+          timeoutMs: this.cfg.challengeTimeoutMs,
+          onPoll: (ms: number) => {
+            if (signal.aborted) return;
+            onProgress({
+              state: "AWAITING_CHALLENGE",
+              blockReason: "challenge-required",
+              message: `Bekliyoruz… ${Math.floor(ms / 1000)}s`,
+            });
+          },
+        });
+        if (signal.aborted) return;
+        if (!cleared.cleared) {
+          onProgress({
+            state: "FAILED",
+            blockReason: "challenge-required",
+            message: `Challenge ${this.cfg.challengeTimeoutMs / 1000}s içinde çözülmedi`,
+          });
+          return;
+        }
+      }
+    }
+
+    // 1) Submit variation via API
+    onProgress({
+      state: "SUBMITTING_PROMPT",
+      message: `Variation submit (${mode}) — parent=${parentMjJobId.slice(0, 8)}… grid=${gridIndex}`,
+    });
+    let submitResult;
+    try {
+      submitResult = await submitVariationViaApi(page, {
+        parentMjJobId,
+        gridIndex,
+        mode,
+      });
+    } catch (err) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "internal-error",
+        message: `Variation submit fail: ${err instanceof Error ? err.message : String(err)}`,
+      });
+      return;
+    }
+    if (signal.aborted) return;
+
+    const newMjJobId = submitResult.mjJobId;
+
+    // 2) Render polling (Pass 77 hibrit reuse)
+    onProgress({
+      state: "WAITING_FOR_RENDER",
+      message: `Variation render bekleniyor (API · target=${newMjJobId.slice(0, 8)}…)`,
+    });
+    let render;
+    try {
+      const apiRenderTimeoutMs = Number(
+        process.env["MJ_BRIDGE_API_RENDER_TIMEOUT_MS"] ?? 10 * 60_000,
+      );
+      render = await waitForJobReadyViaApi(page, newMjJobId, {
+        timeoutMs:
+          Number.isFinite(apiRenderTimeoutMs) && apiRenderTimeoutMs > 0
+            ? apiRenderTimeoutMs
+            : 10 * 60_000,
+        onPoll: (ms, status) => {
+          if (signal.aborted) return;
+          onProgress({
+            state: "WAITING_FOR_RENDER",
+            message: `Variation render bekleniyor (API)… ${Math.floor(ms / 1000)}s · ${status}`,
+          });
+        },
+      });
+    } catch (err) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "render-timeout",
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
+    if (signal.aborted) return;
+
+    onProgress({
+      state: "COLLECTING_OUTPUTS",
+      mjJobId: render.mjJobId,
+      mjMetadata: {
+        kind: "variation",
+        parentMjJobId,
+        parentGridIndex: gridIndex,
+        variationMode: mode,
+        submitMethod: "api" as const,
+        submitStrategy: requestedVariationStrategy,
+      },
+    });
+
+    // 3) Download grid images (4 grid)
+    onProgress({
+      state: "DOWNLOADING",
+      message: "Variation grid görselleri indiriliyor",
+    });
+    let downloaded;
+    try {
+      downloaded = await downloadGridImages(
+        page,
+        render.imageUrls,
+        this.cfg.outputsDir,
+        job.id,
+      );
+    } catch (err) {
+      onProgress({
+        state: "FAILED",
+        blockReason: "internal-error",
+        message: `Variation download fail: ${err instanceof Error ? err.message : "unknown"}`,
+      });
+      return;
+    }
+    if (signal.aborted) return;
+
+    onProgress({
+      state: "COMPLETED",
+      outputs: downloaded.map((d) => ({
+        gridIndex: d.gridIndex,
+        localPath: d.localPath,
+        fetchUrl: `/jobs/${job.id}/outputs/${d.gridIndex}`,
+        sourceUrl: d.sourceUrl,
+      })),
+      message: `Variation render + download tamamlandı (${mode})`,
+    });
+  }
+
   private async executeDescribeJob(
     job: { id: string; request: CreateJobRequest },
     onProgress: DriverProgressCallback,

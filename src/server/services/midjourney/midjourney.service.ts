@@ -819,6 +819,13 @@ export async function pollAndUpdate(
    * yeni asset'i bu parent'la bağlar (variantKind=UPSCALE + parentAssetId).
    */
   upscaleParentAssetId?: string,
+  /**
+   * Pass 83 — Variation lineage. Worker payload'dan iletilir; ingestOutputs
+   * yeni 4 asset'i bu parent'la bağlar (variantKind=VARIATION +
+   * parentAssetId). Upscale'in tek asset'inden farklı olarak variation
+   * 4 grid → 4 child asset; hepsi aynı parentAssetId'ye bağlanır.
+   */
+  variationParentAssetId?: string,
 ): Promise<{ state: MidjourneyJobState; isTerminal: boolean }> {
   const mjJob = await db.midjourneyJob.findUniqueOrThrow({
     where: { id: midjourneyJobId },
@@ -916,6 +923,7 @@ export async function pollAndUpdate(
         snapshot,
         bridgeClient,
         upscaleParentAssetId,
+        variationParentAssetId,
       );
     } catch (err) {
       logger.error(
@@ -955,6 +963,13 @@ async function ingestOutputs(
    * (Reference handoff) upscale'lerde devre dışı (parent zaten promoted).
    */
   upscaleParentAssetId?: string,
+  /**
+   * Pass 83 — Variation lineage. Verilirse yeni 4 MidjourneyAsset row'ları
+   * variantKind=VARIATION + parentAssetId ile yazılır (parent grid'in
+   * tek asset'ine 4 variation child bağlanır). Auto-promote variation'da
+   * da SKIP (parent zaten Review/promoted akışında).
+   */
+  variationParentAssetId?: string,
 ): Promise<void> {
   if (!snapshot.outputs || snapshot.outputs.length === 0) return;
 
@@ -1012,17 +1027,24 @@ async function ingestOutputs(
       data: {
         midjourneyJobId,
         gridIndex: out.gridIndex,
-        // Pass 60 — Upscale lineage: parent verilirse UPSCALE variant +
-        // parentAssetId; aksi halde GRID (mevcut generate akışı).
+        // Pass 60 — Upscale lineage; Pass 83 — Variation lineage:
+        // parent kind'a göre variantKind seçilir. Generate (parent yoksa)
+        // → GRID. Upscale parent → UPSCALE (1 child). Variation parent →
+        // VARIATION (4 child).
         variantKind: upscaleParentAssetId
           ? MJVariantKind.UPSCALE
-          : MJVariantKind.GRID,
-        parentAssetId: upscaleParentAssetId ?? null,
+          : variationParentAssetId
+            ? MJVariantKind.VARIATION
+            : MJVariantKind.GRID,
+        parentAssetId:
+          upscaleParentAssetId ?? variationParentAssetId ?? null,
         assetId: asset.id,
         mjImageUrl: out.sourceUrl ?? null,
         mjActionLabel: upscaleParentAssetId
           ? `Upscale (Subtle)`
-          : null,
+          : variationParentAssetId
+            ? `Variation`
+            : null,
       },
     });
   }
@@ -1044,6 +1066,7 @@ async function ingestOutputs(
   // queue'yu kirletir. Operatör isterse manuel promote panel kullanır.
   if (
     !upscaleParentAssetId &&
+    !variationParentAssetId &&
     mjJob.referenceId &&
     mjJob.productTypeId
   ) {

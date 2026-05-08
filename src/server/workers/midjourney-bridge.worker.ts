@@ -29,6 +29,12 @@ export type MidjourneyBridgeJobPayload = {
    * yazılır.
    */
   upscaleParentAssetId?: string;
+  /**
+   * Pass 83 — Variation lineage. createMidjourneyVariationJob bunu set eder.
+   * pollAndUpdate → ingestOutputs'a iletilir; 4 MidjourneyAsset row'ları
+   * variantKind=VARIATION + parentAssetId ile yazılır.
+   */
+  variationParentAssetId?: string;
 };
 
 const POLL_INTERVAL_MS = 3000;
@@ -61,6 +67,7 @@ export async function handleMidjourneyBridge(
       midjourneyJobId,
       undefined,
       job.data.upscaleParentAssetId,
+      job.data.variationParentAssetId,
     );
     if (result.isTerminal) {
       logger.info(
