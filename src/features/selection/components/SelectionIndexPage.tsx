@@ -31,6 +31,7 @@ import {
   type SelectionSetListItem,
 } from "@/features/selection/queries";
 import { CreateSetModal } from "./CreateSetModal";
+import { MjOriginInlineBadge } from "./MjOriginInlineBadge";
 
 const READY_LIMIT = 5;
 
@@ -181,12 +182,14 @@ function ActiveDraftCard({ set }: { set: SelectionSetListItem }) {
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="truncate text-sm font-medium text-text">{set.name}</div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge tone="accent">Draft</Badge>
           {/* Pass 35 — Item sayısı görünür. "0 varyant" → boş set sinyali. */}
           <span className="font-mono text-xs text-text-muted">
             {set.itemCount} varyant
           </span>
+          {/* Pass 91 — MJ origin badge (handoff'tan gelen set'ler için). */}
+          <MjOriginInlineBadge sourceMetadata={set.sourceMetadata} />
         </div>
       </div>
       {/* Button primitive `asChild` desteklemiyor; semantik link için
@@ -230,9 +233,13 @@ function ReadySetRow({ set }: { set: SelectionSetListItem }) {
           <span className="truncate text-sm font-medium text-text">
             {set.name}
           </span>
-          <span className="font-mono text-xs text-text-muted">
-            Finalize: {finalizedLabel} · {set.itemCount} varyant
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs text-text-muted">
+              Finalize: {finalizedLabel} · {set.itemCount} varyant
+            </span>
+            {/* Pass 91 — MJ origin badge */}
+            <MjOriginInlineBadge sourceMetadata={set.sourceMetadata} />
+          </div>
         </div>
         <Badge tone="success">Ready</Badge>
       </Link>

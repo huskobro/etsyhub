@@ -35,6 +35,13 @@ export type SelectionSetListItem = {
   thumbnailUrl: string | null;
   /** Pass 35 — Set'teki toplam item sayısı (UI'da "N varyant"). */
   itemCount: number;
+  /**
+   * Pass 91 — sourceMetadata Json blob'u. MJ Kept handoff sonrası
+   * mjOrigin sub-object var; SelectionIndex ve StudioShell bunu okur.
+   * Manuel/quick-start set'lerde farklı şekiller olabilir; UI parse
+   * sırasında defansif davranır.
+   */
+  sourceMetadata: unknown;
 };
 
 export type SelectionSetsResponse = {
@@ -100,10 +107,29 @@ export type SelectionAssetMetaView = {
   mimeType: string;
 };
 
+/**
+ * Pass 91 — MJ origin per item. `null` ise item MJ pipeline'ından
+ * gelmemiş (ör. legacy reference-based generation). Selection sayfası bu
+ * null durumda MJ-spesifik UI göstermez.
+ */
+export type ItemMjOriginView = {
+  midjourneyAssetId: string;
+  midjourneyJobId: string;
+  variantKind: string;
+  mjActionLabel: string | null;
+  parentAssetId: string | null;
+  prompt: string;
+  expandedPrompt: string | null;
+  batchId: string | null;
+  templateId: string | null;
+  reviewDecision: string;
+};
+
 export type SelectionItemView = SelectionItem & {
   review: ReviewView | null;
   sourceAsset: SelectionAssetMetaView | null;
   editedAsset: SelectionAssetMetaView | null;
+  mjOrigin: ItemMjOriginView | null;
 };
 
 /**

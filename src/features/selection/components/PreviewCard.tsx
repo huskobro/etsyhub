@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/Badge";
 import { AssetImage } from "@/components/ui/asset-image";
 import { useStudioStore } from "@/features/selection/stores/studio-store";
 import type { SelectionItemView } from "@/features/selection/queries";
+import { MjItemOriginBadges } from "./MjItemOriginBadges";
 
 export type PreviewCardProps = {
   /** Set'in items array'i (position asc sıralı; backend mapper). */
@@ -117,7 +118,7 @@ export function PreviewCard({ items }: PreviewCardProps) {
     <Card className="flex min-h-0 flex-1 flex-col items-center bg-surface-2 p-4">
       <div className="flex w-full max-w-content flex-col">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge tone="accent" dot>
               Varyant {positionLabel}
             </Badge>
@@ -134,6 +135,9 @@ export function PreviewCard({ items }: PreviewCardProps) {
                 Orijinal
               </Badge>
             ) : null}
+            {/* Pass 91 — MJ origin badges (variant kind + batch link + job
+                link). mjOrigin null ise sessiz. */}
+            <MjItemOriginBadges origin={activeItem.mjOrigin} />
           </div>
           {/* Pass 33 — Boyut metadata: asset.width × asset.height (DB'den).
               Pre-Pass 33 placeholder "—" idi; gerçek değer artık görünür. */}

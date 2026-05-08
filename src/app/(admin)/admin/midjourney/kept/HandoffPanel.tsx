@@ -159,11 +159,14 @@ export function HandoffPanel({
             </span>
           </div>
           <div className="flex gap-2">
+            {/* Pass 91 — primary CTA: Selection Workspace'e geç. MJ origin
+                bar oradaki yüzeyde otomatik render edilecek (kopukluk yok). */}
             <Link
               href={`/selection/sets/${result.selectionSetId}`}
-              className="rounded border border-success bg-bg px-2 py-1 text-xs font-medium text-success hover:bg-success hover:text-on-accent"
+              className="rounded border border-success bg-success px-2 py-1 text-xs font-semibold text-on-accent transition hover:opacity-90"
+              data-testid="mj-handoff-success-open-set"
             >
-              SelectionSet&apos;i aç →
+              Selection Workspace&apos;e geç →
             </Link>
             <button
               type="button"

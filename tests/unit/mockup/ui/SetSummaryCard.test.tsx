@@ -33,6 +33,7 @@ const mockSet: SelectionSetDetailView = {
       review: null,
       sourceAsset: null,
       editedAsset: null,
+      mjOrigin: null,
     },
     {
       id: "item-2",
@@ -50,6 +51,7 @@ const mockSet: SelectionSetDetailView = {
       review: null,
       sourceAsset: null,
       editedAsset: null,
+      mjOrigin: null,
     },
   ],
   activeExport: null,

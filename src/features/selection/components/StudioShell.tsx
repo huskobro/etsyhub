@@ -41,6 +41,7 @@ import { FinalizeModal } from "./FinalizeModal";
 import { ExportButton } from "./ExportButton";
 import { ArchiveAction } from "./ArchiveAction";
 import { StudioToastSlot } from "./StudioToastSlot";
+import { MjOriginBar } from "./MjOriginBar";
 import type { SelectionSet } from "@prisma/client";
 
 export type StudioShellProps = {
@@ -135,6 +136,11 @@ export function StudioShell({ setId }: StudioShellProps) {
 
   return (
     <div className="flex h-full flex-col gap-4">
+      {/* Pass 91 — MJ Origin Bar (handoff sonrası bağlam çubuğu).
+          sourceMetadata.mjOrigin yoksa null döner; legacy/manual set'lerde
+          görünmez. */}
+      <MjOriginBar sourceMetadata={set.sourceMetadata} />
+
       {/* Üst bar */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1 min-w-0">

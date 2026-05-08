@@ -214,6 +214,24 @@ export type AssetMetaView = {
   mimeType: string;
 };
 
+/**
+ * Pass 91 — MJ origin context per item (selection sayfasında render için).
+ * SelectionItem'ın MidjourneyAsset üzerinden gelen kaynağını gösterir;
+ * Phase 6 review pipeline'ı dışında (Library/Review/Kept ile uyum için).
+ */
+export type ItemMjOriginView = {
+  midjourneyAssetId: string;
+  midjourneyJobId: string;
+  variantKind: string;
+  mjActionLabel: string | null;
+  parentAssetId: string | null;
+  prompt: string;
+  expandedPrompt: string | null;
+  batchId: string | null;
+  templateId: string | null;
+  reviewDecision: string;
+};
+
 export async function getSet(input: {
   userId: string;
   setId: string;
@@ -225,6 +243,7 @@ export async function getSet(input: {
       productTypeKey: string | null;
       sourceAsset: AssetMetaView | null;
       editedAsset: AssetMetaView | null;
+      mjOrigin: ItemMjOriginView | null;
     })[];
     activeExport: ActiveExport | null;
   }
@@ -235,7 +254,34 @@ export async function getSet(input: {
     orderBy: { position: "asc" },
     include: {
       generatedDesign: {
-        include: { review: true, productType: true },
+        include: {
+          review: true,
+          productType: true,
+          // Pass 91 — MJ origin context. GeneratedDesign.assetId =
+          // MidjourneyAsset.assetId (Pass 55 promote) → unique constraint
+          // var; tek MidjourneyAsset döner. Job metadata batchId/template
+          // için inner job select.
+          asset: {
+            select: {
+              midjourneyAsset: {
+                select: {
+                  id: true,
+                  variantKind: true,
+                  mjActionLabel: true,
+                  parentAssetId: true,
+                  reviewDecision: true,
+                  midjourneyJob: {
+                    select: {
+                      id: true,
+                      prompt: true,
+                      job: { select: { metadata: true } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
   });
@@ -278,21 +324,57 @@ export async function getSet(input: {
   // ItemSet'te tüm items aynı productType olur (variation generation pattern);
   // Apply page items[0].productTypeKey ile Apply scope'una set'in kategorisini
   // çeker. V1 hardcoded "canvas" düştü.
-  const items = rows.map(({ generatedDesign, ...item }) => ({
-    ...item,
-    review: mapReviewToView({
-      generatedDesign,
-      designReview: generatedDesign.review,
-    }),
-    aspectRatio: generatedDesign.productType.aspectRatio ?? null,
-    productTypeKey: generatedDesign.productType.key ?? null,
-    sourceAsset: item.sourceAssetId
-      ? (assetById.get(item.sourceAssetId) ?? null)
-      : null,
-    editedAsset: item.editedAssetId
-      ? (assetById.get(item.editedAssetId) ?? null)
-      : null,
-  }));
+  const items = rows.map(({ generatedDesign, ...item }) => {
+    // Pass 91 — MJ origin extract.
+    const mjAsset = generatedDesign.asset?.midjourneyAsset ?? null;
+    let mjOrigin: ItemMjOriginView | null = null;
+    if (mjAsset) {
+      const md = (mjAsset.midjourneyJob.job?.metadata ?? null) as Record<
+        string,
+        unknown
+      > | null;
+      const batchId =
+        md && typeof md["batchId"] === "string"
+          ? (md["batchId"] as string)
+          : null;
+      const templateId =
+        md && typeof md["batchTemplateId"] === "string"
+          ? (md["batchTemplateId"] as string)
+          : null;
+      const expandedPrompt =
+        md && typeof md["prompt"] === "string"
+          ? (md["prompt"] as string)
+          : null;
+      mjOrigin = {
+        midjourneyAssetId: mjAsset.id,
+        midjourneyJobId: mjAsset.midjourneyJob.id,
+        variantKind: mjAsset.variantKind,
+        mjActionLabel: mjAsset.mjActionLabel,
+        parentAssetId: mjAsset.parentAssetId,
+        prompt: mjAsset.midjourneyJob.prompt,
+        expandedPrompt,
+        batchId,
+        templateId,
+        reviewDecision: mjAsset.reviewDecision,
+      };
+    }
+    return {
+      ...item,
+      review: mapReviewToView({
+        generatedDesign,
+        designReview: generatedDesign.review,
+      }),
+      aspectRatio: generatedDesign.productType.aspectRatio ?? null,
+      productTypeKey: generatedDesign.productType.key ?? null,
+      sourceAsset: item.sourceAssetId
+        ? (assetById.get(item.sourceAssetId) ?? null)
+        : null,
+      editedAsset: item.editedAssetId
+        ? (assetById.get(item.editedAssetId) ?? null)
+        : null,
+      mjOrigin,
+    };
+  });
   // Phase 7 Task 14 — activeExport (Set GET payload genişletme, design Section 6.6).
   // Additive alan: BullMQ queue'dan en son EXPORT_SELECTION_SET job'unun durumu.
   // Job yoksa null. UI bu objeye bakarak "İndir hazır" / "İşleniyor" /

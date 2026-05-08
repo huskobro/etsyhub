@@ -392,14 +392,26 @@ export async function handoffKeptAssetsToSelectionSet(
     );
   }
 
-  // 1. User-scope + KEPT defansif kontrol
+  // 1. User-scope + KEPT defansif kontrol.
+  // Pass 91 — MJ origin context'i de aynı query'de toplanır
+  // (sourceMetadata.mjOrigin için).
   const allowed = await db.midjourneyAsset.findMany({
     where: {
       id: { in: input.midjourneyAssetIds },
       asset: { userId: input.userId },
       reviewDecision: MJReviewDecision.KEPT,
     },
-    select: { id: true },
+    select: {
+      id: true,
+      variantKind: true,
+      midjourneyJob: {
+        select: {
+          job: {
+            select: { metadata: true },
+          },
+        },
+      },
+    },
   });
   if (allowed.length === 0) {
     throw new HandoffError(
@@ -408,6 +420,27 @@ export async function handoffKeptAssetsToSelectionSet(
     );
   }
   const allowedIds = allowed.map((a) => a.id);
+
+  // Pass 91 — Origin context: hangi batch'lerden ve template'lerden gelmiş
+  // ve variant kind dağılımı nedir. SelectionSet.sourceMetadata.mjOrigin
+  // olarak yazılır; selection sayfası bunu gösterir, geri-link kurar.
+  const batchSet = new Set<string>();
+  const templateSet = new Set<string>();
+  const variantKindCounts: Record<string, number> = {};
+  for (const a of allowed) {
+    variantKindCounts[a.variantKind] =
+      (variantKindCounts[a.variantKind] ?? 0) + 1;
+    const md = (a.midjourneyJob.job?.metadata ?? null) as Record<
+      string,
+      unknown
+    > | null;
+    if (md && typeof md["batchId"] === "string") {
+      batchSet.add(md["batchId"] as string);
+    }
+    if (md && typeof md["batchTemplateId"] === "string") {
+      templateSet.add(md["batchTemplateId"] as string);
+    }
+  }
 
   // 2. Reference + ProductType varlığı (promote service zaten kontrol
   // ediyor ama daha clean error message için early)
@@ -447,6 +480,37 @@ export async function handoffKeptAssetsToSelectionSet(
   const set = await createSet({
     userId: input.userId,
     name: input.selectionSetName.trim(),
+  });
+
+  // Pass 91 — sourceMetadata.mjOrigin yazımı. Phase 7 SelectionSet zaten
+  // sourceMetadata Json? alanına sahipti (quick-start için kullanılıyordu);
+  // MJ handoff'lar için artık standart bir mjOrigin sub-object yazıyoruz:
+  //   {
+  //     kindFamily: "midjourney_kept",
+  //     batchIds: string[],
+  //     templateIds: string[],
+  //     variantKindCounts: { GRID: N, UPSCALE: N, ... },
+  //     referenceId, productTypeId,
+  //     handedOffAt: ISO,
+  //     keptAssetCount: N
+  //   }
+  // Bu blob salt-okunur kontrat; selection sayfası okuyup MJ context'i
+  // gösterir.
+  const mjOrigin = {
+    kindFamily: "midjourney_kept" as const,
+    batchIds: Array.from(batchSet),
+    templateIds: Array.from(templateSet),
+    variantKindCounts,
+    referenceId: input.referenceId,
+    productTypeId: input.productTypeId,
+    handedOffAt: new Date().toISOString(),
+    keptAssetCount: allowedIds.length,
+  };
+  await db.selectionSet.update({
+    where: { id: set.id },
+    data: {
+      sourceMetadata: { mjOrigin } as Prisma.InputJsonValue,
+    },
   });
 
   // 5. addItems — promote edilen GD'leri set'e ekle. items service
