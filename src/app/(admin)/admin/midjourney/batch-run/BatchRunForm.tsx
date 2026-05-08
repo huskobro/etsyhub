@@ -1,18 +1,26 @@
 "use client";
 
 // Pass 81 — Batch Run form (client).
+// Pass 82 — CSV/TSV input mode eklendi (JSON ↔ CSV/TSV toggle).
 //
 // Akış:
 //   1. Template select (preselected destekli — querystring ?templateId=)
-//   2. Variable Sets JSON textarea
-//   3. JSON parse + variable mismatch detect (live)
+//   2. Variable Sets girişi (JSON veya CSV/TSV — operatör seçer)
+//   3. Live parse + variable mismatch detect
 //   4. Preview: ilk variable set ile expand göster
 //   5. Aspect ratio + submitStrategy
 //   6. Submit → POST /api/admin/midjourney/test-render-batch
 //   7. Sonuç: totalSubmitted/totalFailed + her job'a link
+//
+// CSV/TSV mode (Pass 82):
+//   - Excel/Google Sheets'ten kopyalayıp yapıştırma → tek hamle parse
+//   - Header row → variable adları
+//   - Data rows → variable values
+//   - Otomatik delimiter tespit (CSV ↔ TSV)
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { parseTabularToVariableSets } from "@/lib/csv-parser";
 
 const ASPECT_RATIOS = ["1:1", "2:3", "3:2", "4:3", "3:4", "16:9", "9:16"] as const;
 type AspectRatio = (typeof ASPECT_RATIOS)[number];
@@ -104,9 +112,14 @@ export function BatchRunForm({ templates, preselectedTemplateId }: BatchRunFormP
   );
   const selected = templates.find((t) => t.id === templateId);
 
-  // Variable sets — JSON textarea
+  // Variable sets — JSON veya CSV/TSV
+  // Pass 82: input mode toggle (JSON varsayılan; operatör CSV/TSV seçebilir)
+  const [inputMode, setInputMode] = useState<"json" | "csv">("json");
   const [variableSetsRaw, setVariableSetsRaw] = useState<string>(
     DEFAULT_VARIABLE_SETS,
+  );
+  const [csvRaw, setCsvRaw] = useState<string>(
+    "subject,style,mood\nboho mandala wall art,watercolor,calming\nboho mandala wall art,ink line,minimal",
   );
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
   const [submitStrategy, setSubmitStrategy] =
@@ -119,6 +132,27 @@ export function BatchRunForm({ templates, preselectedTemplateId }: BatchRunFormP
 
   // Live parse + validation
   const parsed = useMemo(() => {
+    if (inputMode === "csv") {
+      // Pass 82 — CSV/TSV mode
+      const r = parseTabularToVariableSets(csvRaw, {
+        maxRows: 50,
+        maxColumns: 30,
+        maxValueLength: 200,
+      });
+      if (!r.ok) {
+        return {
+          ok: false as const,
+          error: r.errors.join("; "),
+        };
+      }
+      return {
+        ok: true as const,
+        sets: r.sets,
+        delimiter: r.delimiter,
+        header: r.header,
+      };
+    }
+    // JSON mode
     try {
       const v = JSON.parse(variableSetsRaw) as unknown;
       if (!Array.isArray(v)) {
@@ -168,7 +202,7 @@ export function BatchRunForm({ templates, preselectedTemplateId }: BatchRunFormP
         error: `JSON parse hatası: ${e instanceof Error ? e.message : String(e)}`,
       };
     }
-  }, [variableSetsRaw]);
+  }, [inputMode, variableSetsRaw, csvRaw]);
 
   // Variable mismatch detection
   const mismatch = useMemo(() => {
@@ -307,29 +341,97 @@ export function BatchRunForm({ templates, preselectedTemplateId }: BatchRunFormP
         </div>
       ) : null}
 
-      {/* Variable Sets JSON */}
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-text-muted">
-          Variable Sets (JSON array, max 50)
-        </span>
-        <textarea
-          value={variableSetsRaw}
-          onChange={(e) => setVariableSetsRaw(e.target.value)}
-          disabled={pending}
-          rows={10}
-          className="rounded-md border border-border bg-bg px-3 py-2 font-mono text-xs disabled:opacity-50"
-          data-testid="mj-batch-run-variable-sets"
-        />
+      {/* Variable Sets — Pass 82: JSON ↔ CSV/TSV toggle */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-text-muted">
+            Variable Sets (max 50 satır, max 30 kolon)
+          </span>
+          <div
+            className="inline-flex rounded-md border border-border bg-surface p-0.5"
+            data-testid="mj-batch-run-mode-toggle"
+            role="tablist"
+            aria-label="Variable sets giriş biçimi"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={inputMode === "json"}
+              onClick={() => setInputMode("json")}
+              disabled={pending}
+              className={
+                "rounded px-2 py-0.5 text-xs font-medium " +
+                (inputMode === "json"
+                  ? "bg-accent text-white"
+                  : "text-text-muted hover:text-text")
+              }
+            >
+              JSON
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={inputMode === "csv"}
+              onClick={() => setInputMode("csv")}
+              disabled={pending}
+              className={
+                "rounded px-2 py-0.5 text-xs font-medium " +
+                (inputMode === "csv"
+                  ? "bg-accent text-white"
+                  : "text-text-muted hover:text-text")
+              }
+            >
+              CSV / TSV
+            </button>
+          </div>
+        </div>
+
+        {inputMode === "json" ? (
+          <label className="flex flex-col gap-1 text-xs">
+            <textarea
+              value={variableSetsRaw}
+              onChange={(e) => setVariableSetsRaw(e.target.value)}
+              disabled={pending}
+              rows={10}
+              className="rounded-md border border-border bg-bg px-3 py-2 font-mono text-xs disabled:opacity-50"
+              data-testid="mj-batch-run-variable-sets"
+              placeholder='[{"subject":"...","style":"..."}]'
+            />
+          </label>
+        ) : (
+          <label className="flex flex-col gap-1 text-xs">
+            <textarea
+              value={csvRaw}
+              onChange={(e) => setCsvRaw(e.target.value)}
+              disabled={pending}
+              rows={10}
+              className="rounded-md border border-border bg-bg px-3 py-2 font-mono text-xs disabled:opacity-50"
+              data-testid="mj-batch-run-csv"
+              placeholder={"subject,style,mood\nboho mandala,watercolor,calming\ngeometric,ink,minimal"}
+            />
+            <span className="text-xs text-text-muted">
+              İlk satır header (variable adları). Excel/Sheets&apos;ten
+              kopyalayıp yapıştırabilirsin (TSV/CSV otomatik tespit edilir).
+            </span>
+          </label>
+        )}
+
         {parsed.ok ? (
           <span className="text-xs text-text-muted">
             ✓ {parsed.sets.length} variable set
+            {inputMode === "csv" && "delimiter" in parsed && parsed.delimiter
+              ? ` (${parsed.delimiter === "," ? "CSV" : "TSV"})`
+              : ""}
           </span>
         ) : (
-          <span className="text-xs text-danger" data-testid="mj-batch-run-json-error">
+          <span
+            className="text-xs text-danger"
+            data-testid="mj-batch-run-input-error"
+          >
             ✕ {parsed.error}
           </span>
         )}
-      </label>
+      </div>
 
       {/* Variable mismatch warning */}
       {mismatch && mismatch.length > 0 ? (

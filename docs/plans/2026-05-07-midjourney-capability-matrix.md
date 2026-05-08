@@ -78,6 +78,183 @@ kovaya ayırır** ve roadmap'e bağlar.
 - ✅ EtsyHub: bridge HTTP client + service + BullMQ worker
 - ✅ EtsyHub: /admin/midjourney sayfası
 
+### Pass 82 (CSV/TSV import for batch + Variation audit raporu) 🟢
+
+**Hedef:** Pass 81 batch UI V1 JSON textarea'sı ile geldi; operatörün
+gerçek üretim ihtiyacında JSON yazmak yavaş + hatalı (Excel/Sheets'ten
+direkt kopyalama yok). Pass 82 görevi: batch hızını gerçekten artır
+(CSV/TSV paste) + variation için ilk teknik audit (kanıt seviyesi).
+
+**Pass 82 audit özeti:**
+
+#### A. Batch UX darboğazı
+
+Pass 81 BatchRunForm 4 sürtünme noktası:
+1. **Manual JSON yazma**: Excel/Sheets'ten gelen tabular veriyi
+   `[{"a":"x", "b":"y"}, ...]` formatına dönüştürmek zorunda
+2. **Quote escaping**: Türkçe içerik / değer içinde virgül için backslash
+   pain
+3. **N satır pain**: 10+ variable set için textarea hızla okunmaz
+4. **Header bilgisi**: Variable adlarını her object'te tekrar yazmak
+
+CSV/TSV import bu 4 pain noktasını tek hamlede çözer.
+
+#### B. Variation audit (kanıt seviyesi)
+
+**AutoSail main.js (variation context)**:
+- AutoSail'in `sendVariation`, `variationModal`, `beforeVariation`
+  fonksiyonları **tamamen Discord-only**:
+  - `callCommand("variation", n, {nonce})` Discord interaction API
+  - `MJ::JOB::variation::<id>` custom_id pattern Discord message component
+  - V8 web `/api/submit-jobs` body'sinde `t:"variation"` literal **YOK**
+- AutoSail'in incoming event parser'ı `parent_id`, `parent_grid`,
+  `event_type` field'larını V8 web job listesinden parse ediyor (Pass 80
+  audit + bO/SQe/xQe helper'larında görünür) — ama bu **incoming**
+  (job listening), **outgoing** submit-jobs body için kanıt değil
+
+**Pass 82 net bulgu**: AutoSail variation V8 web'de kullanılmıyor;
+Discord'a özel. MJ V8 web'in kendi variation submit pattern'i için
+**live capture şart** (kullanıcı eklenti dışında MJ UI'dan V1-V4
+butonlarına basıp CDP Network capture yakalamalı).
+
+**Pass 82 karar (variation)**:
+- 🅿️ **Pass 82 implementation YOK** — kanıt yetersiz
+- 🟡 **Pass 83+ live capture turu**: kullanıcı MJ Create tab'ında render
+  bittikten sonra V1-V4 butonlarına bassın, CDP capture submit-jobs
+  body'sini yakalasın
+- Pass 80/82'de gözlemlenen `parent_id` + `parent_grid` field'ları
+  outgoing variation submit body'sinde de muhtemelen kullanılır ama
+  **canlı kanıtsız implementasyon riskli** (Pass 75 V0 sref `URL::N`
+  benzeri yanlış syntax pain'i tekrar etme riski)
+
+#### C. Ürün önceliği (Pass 82 sırası)
+
+| # | Konu | Pass 82 değer |
+|---|---|---|
+| 1 | **CSV/TSV import** | 🟢 **Build now** — operatör Excel'den direkt kopyala-yapıştır |
+| 2 | Variable grid editor | 🟡 Pass 83+ (CSV'den sonra inceleme) |
+| 3 | Batch progress UI | 🟡 Pass 83+ (job detail page'leri zaten var, dashboard ek) |
+| 4 | **Variation V1** | 🅿️ Pass 83+ (live capture yapılmadan implementation riskli) |
+| 5 | Sidebar/productization | 🔴 Mikro polish (Pass 82'de yapma) |
+
+**Pass 82 implementasyonu:**
+
+1. **`src/lib/csv-parser.ts` (yeni, saf TypeScript, hiç dependency yok)**:
+   - `parseTabularToVariableSets(input, options?)` — ana fonksiyon
+   - `detectDelimiter(input)` — header satırına bakar, tab/virgül sayar
+     (quoted field'ları skip)
+   - `extractHeader(input)` — UI form için header preview
+   - **RFC 4180 desteği**:
+     - Quoted field içinde delimiter (`"a,b"` virgül = değer parçası)
+     - Escaped quote (`"a""b"` → `a"b`)
+     - Multi-line quoted field (newline değer parçası)
+   - **Validation**:
+     - Header variable name regex (`[a-zA-Z][a-zA-Z0-9_]*`)
+     - Header duplicate check
+     - Per-row column count check (header'a eşit olmalı)
+     - Max 50 row + max 30 column + max 200 char/value (Pass 80 batch
+       limitleriyle uyumlu)
+   - **Newline normalization**: `\r\n` / `\r` / `\n` hepsi tek satır
+   - **Empty trailing rows ignore**
+
+2. **`BatchRunForm.tsx` (Pass 81'den genişletildi)**:
+   - **Input mode toggle**: JSON ↔ CSV/TSV (tab UI, accent-bg active)
+   - JSON mode aynen Pass 81 (geriye uyumlu)
+   - CSV mode: ayrı textarea + `parseTabularToVariableSets` ile live parse
+   - Live status:
+     - JSON: `✓ N variable set` veya `✕ <error>`
+     - CSV: `✓ N variable set (CSV/TSV)` (delimiter göster)
+   - Variable mismatch detection JSON'la aynı şekilde çalışır (sets'ler
+     uniform array of records)
+   - Preview ve submit yolları aynı backend'e gidiyor
+
+**Pass 82 kanıtları:**
+
+- ✅ **CSV parser unit test 19/19 PASS**:
+  1. CSV basic
+  2. TSV basic (delimiter detect)
+  3. Quoted field with comma
+  4. Backslash escape (RFC değil ama no-op)
+  5. RFC quote escape (`""` → `"`)
+  6. `\r\n` newline normalization
+  7. Empty trailing rows ignored
+  8. Invalid header name fails
+  9. Duplicate header fails
+  10. Column count mismatch
+  11. Max rows enforced (50)
+  12. Max value length enforced (200)
+  13. detectDelimiter — comma
+  14. detectDelimiter — tab
+  15. detectDelimiter — quoted comma ignored
+  16. extractHeader
+  17. Empty input fails
+  18. Whitespace trim per cell
+  19. Multi-line quoted field
+
+- ✅ **Compile + render**: `/admin/midjourney/batch-run` 890 modules
+  (Pass 81: 883; CSV parser eklediği için +7 module). Compile error yok.
+
+- ✅ **E2E real smoke**:
+  ```
+  CSV input:
+  subject,style,mood
+  Pass 82 csv test geometric mandala,watercolor,calming
+  Pass 82 csv test floral motif,ink line,minimal
+
+  → Parsed: delimiter=",", 2 sets
+  → Batch: totalSubmitted=2, totalFailed=0
+  → mjJobIds: cmowpw8gb / cmowpw8gq
+  → Bridge sequential işliyor (2/2 enqueued; 1 COMPLETED + 1 WAITING_FOR_RENDER
+    canlı doğrulandı)
+  ```
+
+- ✅ **TS clean** (bridge + EtsyHub)
+- ✅ **ESLint clean** (yeni 1 dosya + değişmiş 1 dosya)
+- ✅ **Token check ✓**
+
+**Pass 82 regresyon:**
+- describe job queue'ya düştü (arkadaki batch jobları beklediği için
+  RUNNING'e geçmedi henüz; kod yolu Pass 78'den beri intact, bridge
+  altyapısında değişiklik yok)
+- Pass 81 JSON mode aynen çalışıyor (toggle JSON varsayılan; geriye
+  uyumlu)
+- Pass 80 backend (templates + batch service) sıfır değişiklik
+- Bridge sıfır değişiklik
+
+**Pass 82 ürün değeri:**
+- Operatör Excel/Sheets'ten variable sets'i tek copy-paste ile alır
+- Header row variable adlarını otomatik tanır (templates ile mismatch
+  detection mevcut)
+- 50 satıra kadar batch tek formdan
+- JSON mode korundu (advanced operatörler için)
+
+**Pass 82 servis değeri (taşınabilirlik):**
+- `csv-parser.ts` saf TypeScript, hiç dependency yok → DALL-E/Recraft
+  batch UI'larında aynen kullanılır
+- RFC 4180 desteği production-grade (multi-line quoted, escaped quote,
+  delimiter detect)
+- Provider-agnostic — sadece tabular → variable sets dönüşümü
+
+**Pass 82 dürüst sınırlar:**
+- **Variable grid editor** yok (Pass 83+)
+- **CSV file upload** yok (sadece paste/textarea Pass 82 V1)
+- **Type coercion** yok (her şey string; number/boolean Pass 83+)
+- **Custom delimiter** yok (sadece auto-detect comma/tab Pass 82 V1)
+- **Variation kind** Pass 83+ (live capture şart)
+- **Native upscale** parkta (Gigapixel later)
+- **Authenticated UI smoke** yapılmadı (Compile + render + E2E backend
+  smoke yeterli kanıt)
+
+**Pass 82 dosya değişiklik blast radius:**
+- 2 dosya:
+  - `src/lib/csv-parser.ts` (yeni, ~210 satır, 0 dependency)
+  - `src/app/(admin)/admin/midjourney/batch-run/BatchRunForm.tsx`
+    (mode toggle + CSV input ~80 satır eklendi)
+- Bridge sıfır değişiklik
+- Service / API sıfır değişiklik
+- Schema değişikliği yok
+- Pass 81 JSON mode aynen korundu (geriye uyumlu)
+
 ### Pass 81 (Templates + Batch Run UI V1 — operatör yüzeyi) 🟢
 
 **Hedef:** Pass 80'de persisted templates + batch generation backend
