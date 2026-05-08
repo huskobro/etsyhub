@@ -53,11 +53,15 @@ export function ControlCenterTemplates({ templates }: TemplatesProps) {
         >
           {templates.slice(0, 5).map((t) => (
             <li key={t.id}>
-              <Link
-                href={`/admin/midjourney/templates/${t.id}`}
-                className="flex items-center justify-between gap-2 rounded border border-border bg-bg p-2 transition hover:border-border-strong"
-              >
-                <div className="flex flex-1 flex-col gap-0.5 min-w-0">
+              {/* Pass 87 fix: dış <Link> yerine <div> — server component'te
+                  iç içe <a> + onClick prop fail oluyordu (digest 4191870042).
+                  İç içe iki ayrı navigation: ana satır → template detail,
+                  "Run →" button → batch-run. */}
+              <div className="flex items-center justify-between gap-2 rounded border border-border bg-bg p-2 transition hover:border-border-strong">
+                <Link
+                  href={`/admin/midjourney/templates/${t.id}`}
+                  className="flex flex-1 flex-col gap-0.5 min-w-0 hover:text-accent"
+                >
                   <span className="truncate text-sm font-medium text-text">
                     {t.name}
                   </span>
@@ -70,7 +74,7 @@ export function ControlCenterTemplates({ templates }: TemplatesProps) {
                       {t.promptTemplateText.length > 100 ? "…" : ""}
                     </code>
                   ) : null}
-                </div>
+                </Link>
                 <div className="flex shrink-0 items-center gap-2">
                   {t.templateVariables.length > 0 ? (
                     <span
@@ -88,12 +92,11 @@ export function ControlCenterTemplates({ templates }: TemplatesProps) {
                   <Link
                     href={`/admin/midjourney/batch-run?templateId=${t.id}`}
                     className="text-xs text-accent underline hover:no-underline"
-                    onClick={(e) => e.stopPropagation()}
                   >
                     Run →
                   </Link>
                 </div>
-              </Link>
+              </div>
             </li>
           ))}
         </ul>
