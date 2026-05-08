@@ -1,57 +1,77 @@
 import type { UserRole } from "@prisma/client";
 import {
   LayoutDashboard,
-  Sparkles,
-  Store,
-  Bookmark,
+  Inbox,
+  Zap,
   Image as ImageIcon,
-  FolderOpen,
-  ShieldCheck,
   Layers,
-  Frame,
-  ListChecks,
+  Package,
+  BookOpen,
   Settings as SettingsIcon,
-  Shield,
-  Globe2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type NavItem = {
+/**
+ * Kivasy Information Architecture — 8 items, 2 groups.
+ *
+ * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/base.jsx → Sidebar
+ * + docs/IMPLEMENTATION_HANDOFF.md §4.
+ *
+ * **Closed list — no new top-level surfaces.** Sub-views live inside their
+ * parent (e.g. References → Pool / Stories / Inbox / Shops / Collections).
+ * Admin scope is a footer badge, not a separate sidebar.
+ *
+ * Production chain (one-directional, every arrow = single primary CTA):
+ *   Reference → Batch → Library → Selection → Product → Etsy Draft
+ */
+
+export type NavGroupId = "produce" | "system";
+
+export interface NavItem {
+  id: string;
   href: string;
   label: string;
   icon: LucideIcon;
-  roles: UserRole[];
-  phase: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
-  enabled: boolean;
+  group: NavGroupId;
+  /** Implementation rollout that owns this surface. Items in a not-yet-
+   *  rolled rollout still render in the sidebar but route to a placeholder
+   *  page (with a "Coming in rollout-N" hint). */
+  rollout: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+  /** True once the surface is implemented end-to-end. `false` during
+   *  rollouts that haven't reached this surface yet. */
+  ready: boolean;
+}
+
+export const NAV_ITEMS: NavItem[] = [
+  // PRODUCE — pipeline surfaces
+  { id: "overview",   href: "/overview",   label: "Overview",   icon: LayoutDashboard, group: "produce", rollout: 8, ready: false },
+  { id: "references", href: "/references", label: "References", icon: Inbox,           group: "produce", rollout: 6, ready: false },
+  { id: "batches",    href: "/batches",    label: "Batches",    icon: Zap,             group: "produce", rollout: 3, ready: true  },
+  { id: "library",    href: "/library",    label: "Library",    icon: ImageIcon,       group: "produce", rollout: 2, ready: true  },
+  { id: "selections", href: "/selections", label: "Selections", icon: Layers,          group: "produce", rollout: 4, ready: false },
+  { id: "products",   href: "/products",   label: "Products",   icon: Package,         group: "produce", rollout: 5, ready: false },
+
+  // SYSTEM — meta surfaces
+  { id: "templates",  href: "/templates",  label: "Templates",  icon: BookOpen,        group: "system",  rollout: 7, ready: false },
+  { id: "settings",   href: "/settings",   label: "Settings",   icon: SettingsIcon,    group: "system",  rollout: 7, ready: false },
+];
+
+export const GROUP_LABELS: Record<NavGroupId, string> = {
+  produce: "Produce",
+  system: "System",
 };
 
-// Pass 18 — `Üret` (Phase 5) ve `Mockup` (Phase 8) sidebar'dan kaldırıldı.
-// Pre-Pass 18: bu iki menü `enabled: false` + `P5`/`P8` rozeti ile görünüyordu;
-// kullanıcı pasif görünce "henüz yapılmamış" sanıyordu fakat akış zaten aktif:
-//   - Variation üretimi: `/references/[id]/variations` (reference detail launch)
-//   - Mockup üretimi: `/selection/sets/[setId]/mockup/apply` (selection set launch)
-// Top-level catalog sayfası tasarımca yok (intentional). Pasif menü misleading
-// olduğu için tamamen kaldırıldı; entry point'ler zaten aktif menülerden akıyor:
-// References (variations launch) → Review → Seçim (mockup launch) → Listingler.
-export const USER_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Panel", icon: LayoutDashboard, roles: ["USER", "ADMIN"], phase: 1, enabled: true },
-  { href: "/trend-stories", label: "Trend Akışı", icon: Sparkles, roles: ["USER", "ADMIN"], phase: 4, enabled: true },
-  { href: "/competitors", label: "Rakipler", icon: Store, roles: ["USER", "ADMIN"], phase: 3, enabled: true },
-  { href: "/bookmarks", label: "Bookmark", icon: Bookmark, roles: ["USER", "ADMIN"], phase: 2, enabled: true },
-  { href: "/references", label: "Referanslar", icon: ImageIcon, roles: ["USER", "ADMIN"], phase: 2, enabled: true },
-  { href: "/collections", label: "Koleksiyonlar", icon: FolderOpen, roles: ["USER", "ADMIN"], phase: 2, enabled: true },
-  { href: "/review", label: "Review", icon: ShieldCheck, roles: ["USER", "ADMIN"], phase: 6, enabled: true },
-  { href: "/selection", label: "Seçim", icon: Layers, roles: ["USER", "ADMIN"], phase: 7, enabled: true },
-  { href: "/listings", label: "Listingler", icon: ListChecks, roles: ["USER", "ADMIN"], phase: 9, enabled: true },
-  { href: "/settings", label: "Ayarlar", icon: SettingsIcon, roles: ["USER", "ADMIN"], phase: 1, enabled: true },
-];
+/** Filter nav items by role. Currently all 8 items are visible to USER and
+ *  ADMIN alike — admin-only sub-sections live INSIDE Settings (Governance
+ *  group: Users / Audit / Feature Flags) and inside Templates. */
+export function navForRole(_role: UserRole): NavItem[] {
+  return NAV_ITEMS;
+}
 
-export const ADMIN_NAV: NavItem[] = [
-  { href: "/admin", label: "Admin", icon: Shield, roles: ["ADMIN"], phase: 1, enabled: true },
-  { href: "/admin/scraper-providers", label: "Scraper Providers", icon: Globe2, roles: ["ADMIN"], phase: 3, enabled: true },
-  { href: "/admin/mockup-templates", label: "Mockup Templates", icon: Frame, roles: ["ADMIN"], phase: 8, enabled: true },
-];
-
-export function navForRole(role: UserRole): NavItem[] {
-  return [...USER_NAV, ...(role === "ADMIN" ? ADMIN_NAV : [])].filter((n) => n.roles.includes(role));
+/** Group nav items for sidebar rendering (preserves declared order). */
+export function navByGroup(items: NavItem[]): Record<NavGroupId, NavItem[]> {
+  return {
+    produce: items.filter((i) => i.group === "produce"),
+    system: items.filter((i) => i.group === "system"),
+  };
 }

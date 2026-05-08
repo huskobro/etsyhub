@@ -1,5 +1,11 @@
 # Kivasy — Ürün ve Proje Kuralları
 
+> **Status:** Implementation rollouts R1–R3 done; R3.5 visual parity
+> cleanup done; **R4 Selections** next. Source of truth:
+> [`docs/IMPLEMENTATION_HANDOFF.md`](docs/IMPLEMENTATION_HANDOFF.md).
+> Design system: [`docs/design-system/kivasy/`](docs/design-system/kivasy/).
+> Parity checkpoint: [`docs/DESIGN_PARITY_CHECKPOINT.md`](docs/DESIGN_PARITY_CHECKPOINT.md).
+
 > **Marka adı:** `Kivasy`. Public-facing ürün adı budur. Repo slug, mevcut git
 > geçmişi nedeniyle şimdilik `EtsyHub` olarak kalır; bu bir uyumluluk
 > kararıdır, marka değildir. Yeni dokümanlar, UI metinleri, Claude Design

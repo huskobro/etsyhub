@@ -34,8 +34,10 @@ export const Sidebar = forwardRef<HTMLElement, SidebarProps>(function Sidebar(
       role="navigation"
       aria-label={ariaLabel}
       className={cn(
-        "flex h-screen w-sidebar flex-col",
-        "bg-surface-2 border-r border-border",
+        // R3.5 — `.k-sidebar` recipe (gradient bg + inset highlight) lives
+        // in globals.css. Tailwind utilities here only set width + flex layout;
+        // background + border come from the recipe.
+        "k-sidebar flex h-screen w-sidebar flex-col",
         className,
       )}
       {...rest}

@@ -135,11 +135,25 @@ yetmez, backend authorization zorunlu).
 
 ---
 
-## Mevcut durum (Pass 91 itibarıyla)
+## Şu an nerede? (Implementation rollouts)
 
-Kapasite olarak ürün omurgası **çalışıyor**. Eksik olan capability değil,
-**bilgi mimarisinin (IA) tek-parça hale getirilmesi** ve **görsel sistemin
-bütünleşmesi**.
+Kapasite olarak ürün omurgası **çalışıyor**. İmplementation rollout'u Kivasy
+design system'e geçişi getirir; mevcut durum:
+
+| Rollout | Kapsam | Durum |
+|---|---|---|
+| **R1** | Tokens + shell + sidebar (8/2 IA) + middleware redirects | ✓ Done |
+| **R2** | Library (A1) — virtualized grid, density, bulk-select, detail panel | ✓ Done |
+| **R3** | Batches index (A2) + Batch detail (A3) + Review workspace (A4 dark) + A6 Create Variations + Active Tasks data wire | ✓ Done |
+| **R3.5** | Visual parity cleanup — token re-bind, font stack, .k-btn/.k-card--hero recipes, sidebar gradient, stale docs sync | ✓ Done (this commit) |
+| **R4** | Selections (B2 + B3) + edit modals + handoff wires | ⏳ Next |
+| **R5** | Products (A5 detail + A7 Apply Mockups + B6 Generate Listing) | ⏳ |
+| **R6** | References (B1 — Pool/Stories/Inbox/Shops/Collections konsolidasyon) | ⏳ |
+| **R7** | Templates (C1) + Settings (C2) + D1 AI Providers pane | ⏳ |
+| **R8** | Overview rework (C3 — pipeline pulse, pending actions, recent activity) | ⏳ |
+
+**Bilgi mimarisi yenileniyor:** mevcut top-level yüzeyler birleştiriliyor.
+Yeni IA için bkz. [`docs/CLAUDE_DESIGN_CONTEXT.md`](docs/CLAUDE_DESIGN_CONTEXT.md).
 
 **Çalışan capability'ler:**
 
@@ -242,15 +256,54 @@ smoke için yeterli sinyal).
 
 ---
 
-## Dokümantasyon
+## Source-of-truth links
 
-- [`CLAUDE.md`](CLAUDE.md) — proje kuralları + ürün gerçekliği (truth-source)
-- [`docs/CLAUDE_DESIGN_CONTEXT.md`](docs/CLAUDE_DESIGN_CONTEXT.md) — Claude
-  Design handoff için tek-parça ürün bağlamı (Kivasy marka, scope, IA, mockup
-  modeli, mobile/native/high-volume)
-- [`docs/plans/`](docs/plans/) — geçmiş phase planları (history)
-- [`docs/design/`](docs/design/) — geçmiş design çalışmaları (history; eski
-  marka adı geçer, **referans olarak kullanma**)
+Repo'yu açan biri için tek-bakışta:
+
+- **Project rules** → [`CLAUDE.md`](CLAUDE.md)
+- **Implementation handoff** → [`docs/IMPLEMENTATION_HANDOFF.md`](docs/IMPLEMENTATION_HANDOFF.md)
+  (rollout sırası, invariant'lar, surface→wave eşleşmesi)
+- **Design system (Kivasy)** → [`docs/design-system/kivasy/`](docs/design-system/kivasy/)
+  - Live UI kits: `ui_kits/kivasy/v4.html` (A1-A7), `v5.html` (B1-B6),
+    `v6.html` (C1-C3), `v7.html` (D1-D2)
+  - Tokens: `ui_kits/kivasy/v4/tokens.css`
+- **Design context (handoff brief)** → [`docs/CLAUDE_DESIGN_CONTEXT.md`](docs/CLAUDE_DESIGN_CONTEXT.md)
+- **Design parity checkpoint** → [`docs/DESIGN_PARITY_CHECKPOINT.md`](docs/DESIGN_PARITY_CHECKPOINT.md)
+  (her rollout sonu uygulanır)
+
+## Local preview (live app + design reference yan yana)
+
+İki kanal:
+
+**1. Canlı uygulama:**
+
+```bash
+docker compose up -d        # Postgres + Redis + MinIO
+npm run dev                 # localhost:3000
+npm run worker              # ayrı terminal — BullMQ worker
+```
+
+**2. Kivasy design system UI kits (tasarım referansı):**
+
+UI kit dosyaları self-contained HTML — doğrudan tarayıcıda açılır:
+
+```bash
+open "docs/design-system/kivasy/ui_kits/kivasy/Kivasy UI Kit v4.html"
+open "docs/design-system/kivasy/ui_kits/kivasy/Kivasy UI Kit v5.html"
+open "docs/design-system/kivasy/ui_kits/kivasy/Kivasy UI Kit v6.html"
+open "docs/design-system/kivasy/ui_kits/kivasy/Kivasy UI Kit v7.html"
+```
+
+Tasarım referansı + canlı app yan yana açıkken parity checkpoint'i (Cmd+K
+palette / sidebar / tipografi / button gradient / sidebar gradient) gözle
+doğrulanır. Kuralı için → [`docs/DESIGN_PARITY_CHECKPOINT.md`](docs/DESIGN_PARITY_CHECKPOINT.md).
+
+## History (ignored — referans alma)
+
+- [`docs/plans/`](docs/plans/) — geçmiş phase planları
+- [`docs/design/`](docs/design/) — pre-Kivasy "Editorial Cockpit" history.
+  [`docs/design/HISTORY.md`](docs/design/HISTORY.md)'de neyin neyle
+  superseded olduğu yazılı.
 
 ## Lisans
 

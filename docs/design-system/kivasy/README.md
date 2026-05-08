@@ -60,6 +60,29 @@ v6 — Wave C · system layer
    C1 Templates          C2 Settings            C3 Overview rework
 ```
 
+### Implementation status (which design surfaces ship live today)
+
+| Surface | Wave | Implementation | Live route |
+|---|---|---|---|
+| A1 Library | A | ✓ R2 | `/library` |
+| A2 Batches index | A | ✓ R3 | `/batches` |
+| A3 Batch detail | A | ✓ R3 | `/batches/[batchId]` |
+| A4 Review workspace | A | ✓ R3 | `/batches/[batchId]/review` |
+| A5 Product detail | A | ⏳ R5 | (not yet) |
+| A6 Create Variations modal | A | ✓ R3 | from Library detail panel |
+| A7 Apply Mockups modal | A | ⏳ R5 | (not yet) |
+| B1 References | B | ⏳ R6 | (legacy `/references` etc. still live) |
+| B2 Selections index | B | ⏳ R4 (next) | (placeholder) |
+| B3 Selection detail | B | ⏳ R4 (next) | (legacy `/selection/sets/[id]`) |
+| B4 Products index | B | ⏳ R5 | (placeholder) |
+| B5 Add Reference modal | B | ⏳ R6 | (not yet) |
+| B6 Generate Listing modal | B | ⏳ R5 | (not yet) |
+| C1 Templates | C | ⏳ R7 | (placeholder) |
+| C2 Settings | C | ⏳ R7 | (legacy `/settings` still live) |
+| C3 Overview rework | C | ⏳ R8 | (current `/overview` is rollout placeholder) |
+| D1 AI Providers pane | D | ⏳ R7 | (lands inside C2 Settings) |
+| D2 A6 Prompt Preview | D | ✓ R3 | inside A6 modal |
+
 ### Removed in housekeeping pass
 
 Out-of-scope / superseded — do not reintroduce:

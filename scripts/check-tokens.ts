@@ -30,6 +30,43 @@ const whitelist = [
   // 2. tüketicisi (Tailwind arbitrary `w-[X%]` yasak). 3. tüketici geldiğinde
   // `src/components/ui/progress-bar.tsx`'e terfi edilir.
   "src/app/(admin)/admin/midjourney/batches/[batchId]/review/page.tsx",
+  // Rollout-1 — Kivasy app-shell. v4 spec'in yarı-piksel mono caption
+  // hierarchy'si (text-[10px] / text-[10.5px]) Tailwind text-xs (11px) ile
+  // karşılanmıyor. Active Tasks panel keskin 340w boyutu da v4 spec sabiti
+  // (k-tasks recipe). Sidebar admin badge'i v4 base.jsx ile eşit.
+  "src/features/app-shell/Sidebar.tsx",
+  "src/features/app-shell/ActiveTasksPanel.tsx",
+  "src/features/app-shell/RolloutPlaceholder.tsx",
+  // Rollout-1 — Kivasy brand mark / wordmark canonical SVG geometry. The
+  // `rgba()` strokes and inline `style` props are part of the byte-canonical
+  // mark (matches docs/design-system/kivasy/ui_kits/kivasy/v4/base.jsx
+  // KivasyMark / KivasyWord).
+  "src/components/ui/KivasyMark.tsx",
+  // Rollout-2 — Library primitives. v4 spec sabit ölçüler:
+  //  · DetailPanel  → w-[460px], max-w-[90vw] (panel width canonical)
+  //  · Checkbox     → border-[1.5px] (k-checkbox recipe)
+  //  · FloatingBulkBar → comment'de canonical dark surface hex (#16130F)
+  "src/components/ui/DetailPanel.tsx",
+  "src/components/ui/FloatingBulkBar.tsx",
+  "src/features/library/components/Checkbox.tsx",
+  // Rollout-3 — Batches/Review/Modal primitives.
+  //  · ProgressBar  → style.width % escape hatch (RolloutBar pattern, 3rd
+  //    consumer threshold; dynamic percent cannot be a Tailwind class).
+  //  · Modal        → v4 modal-sm/md/lg sabit max-width sözleşmesi
+  //    (420 / 720 / 1100), dark variant'ın canonical #1F1C18 / #16130F
+  //    surface'leri. Bunlar token sistemine alınmadı çünkü modal canonical
+  //    boyutları ve dark workspace tek-tip.
+  //  · BatchReviewWorkspace → A4 dark workspace. v4 #1A1815 (canvas) /
+  //    #16130F (workspace bar) / #1F1C18 (info rail) sabitleri sadece bu
+  //    surface'te kullanılır; light theme yok. Filmstrip + KBD chip
+  //    boyutları (min-w-[22px], min-w-[28px], text-[8px]/[9px]) v4 spec.
+  //  · BatchesIndexClient → text-[13.5px] yarı-piksel (Kivasy v4 row
+  //    typography sabitlerinden), Tailwind text-sm 13px / text-base 14px
+  //    arasında token tier yok.
+  "src/components/ui/ProgressBar.tsx",
+  "src/features/library/components/Modal.tsx",
+  "src/features/batches/components/BatchReviewWorkspace.tsx",
+  "src/features/batches/components/BatchesIndexClient.tsx",
 ];
 
 let hadError = false;

@@ -31,7 +31,7 @@ vi.mock("@/features/selection/queries", () => ({
 }));
 
 import { SelectionIndexPage } from "@/features/selection/components/SelectionIndexPage";
-import { USER_NAV } from "@/features/app-shell/nav-config";
+import { NAV_ITEMS } from "@/features/app-shell/nav-config";
 
 function wrapper(ui: ReactElement) {
   const client = new QueryClient({
@@ -204,23 +204,26 @@ describe("SelectionIndexPage — son ready set'ler", () => {
   });
 });
 
-describe("Sidebar nav-config — /selection entry", () => {
-  it("USER_NAV /selection entry: label 'Seçim', enabled=true, phase=7", () => {
-    const entry = USER_NAV.find((n) => n.href === "/selection");
+describe("Sidebar nav-config — Selections entry (Kivasy IA, rollout-1)", () => {
+  // Rollout-1 IA: 8 items / 2 groups (Produce / System). Selections lives
+  // in Produce group with rollout=4. The legacy `enabled` / `phase` shape
+  // was replaced by `ready` / `rollout`. See docs/IMPLEMENTATION_HANDOFF.md
+  // §4 + nav-config.ts.
+  it("Selections nav item: label 'Selections', group 'produce', rollout=4", () => {
+    const entry = NAV_ITEMS.find((n) => n.href === "/selections");
     expect(entry).toBeDefined();
-    expect(entry!.label).toBe("Seçim");
-    expect(entry!.enabled).toBe(true);
-    expect(entry!.phase).toBe(7);
-    expect(entry!.roles).toEqual(expect.arrayContaining(["USER", "ADMIN"]));
+    expect(entry!.label).toBe("Selections");
+    expect(entry!.group).toBe("produce");
+    expect(entry!.rollout).toBe(4);
   });
 
-  it("/selection entry sıralaması: /review sonrası, /listings öncesi", () => {
-    // Pass 18 — `/mockups` top-level menüsü kaldırıldı (yanıltıcı pasif item).
-    // Akış sıralaması: Review → Seçim → Listingler.
-    const reviewIdx = USER_NAV.findIndex((n) => n.href === "/review");
-    const selectionIdx = USER_NAV.findIndex((n) => n.href === "/selection");
-    const listingsIdx = USER_NAV.findIndex((n) => n.href === "/listings");
-    expect(selectionIdx).toBeGreaterThan(reviewIdx);
-    expect(selectionIdx).toBeLessThan(listingsIdx);
+  it("Production chain order: Library → Selections → Products", () => {
+    // Selections sits between Library and Products in the production chain.
+    // Reference → Batch → Library → Selection → Product → Etsy Draft.
+    const libraryIdx = NAV_ITEMS.findIndex((n) => n.href === "/library");
+    const selectionsIdx = NAV_ITEMS.findIndex((n) => n.href === "/selections");
+    const productsIdx = NAV_ITEMS.findIndex((n) => n.href === "/products");
+    expect(selectionsIdx).toBeGreaterThan(libraryIdx);
+    expect(selectionsIdx).toBeLessThan(productsIdx);
   });
 });

@@ -244,6 +244,8 @@ no new primitives, no design re-litigation.
 The design system is built; implementation is sequencing only.
 
 ### Rollout 1 — Tokens + shell
+**Status:** ✓ Completed (commit `73d13f2…` and follow-up). Token re-bind +
+font stack alignment finalised in R3.5 cleanup pass.
 - Port `v4/tokens.css` → `src/app/globals.css` + `tailwind.config.ts`
   bindings
 - Port `v4/base.jsx` primitives → `src/components/ui/*`; reconcile or
@@ -263,6 +265,9 @@ The design system is built; implementation is sequencing only.
   `/listings/draft/[id]` → `/products/[id]`
 
 ### Rollout 2 — Library
+**Status:** ✓ Completed. Library surface live at `/library` with virtualized
+grid, density toggle, filter chips, slide-in detail panel, bulk-select
+floating action bar.
 - New route `/library` rendering the A1 surface
 - Virtualized grid (`@tanstack/react-virtual`)
 - Density toggle (Comfortable / Dense), filter chips, saved-view chips
@@ -272,6 +277,10 @@ The design system is built; implementation is sequencing only.
 - Mobile counterpart (browse-only acceptable)
 
 ### Rollout 3 — Batches index + detail + Review
+**Status:** ✓ Completed. `/batches`, `/batches/[id]` (Overview/Items/Logs/
+Costs), `/batches/[id]/review` (dark workspace + keyboard handler + ? help
+modal). A6 Create Variations + D2 Prompt Preview live. Active Tasks panel
+data-wired to `listRecentBatches`.
 - New routes `/batches`, `/batches/[id]`
 - Tabs in detail: Items / Parameters / Logs / Costs (Review = dedicated
   full-screen workspace)
@@ -280,7 +289,19 @@ The design system is built; implementation is sequencing only.
   required — backend dependency)
 - A6 Create Variations modal (with D2 Prompt Preview extension)
 
+### Rollout 3.5 — Visual parity cleanup (housekeeping pass)
+**Status:** ✓ Completed (this commit). Token re-bind: legacy `--color-*`
+HSL tuples reset to Kivasy v4 hex equivalents; `--layout-sidebar-width`
+232→248; Tailwind `font-sans`/`mono`/`display` resolve to Kivasy stack;
+`.k-btn` family + `.k-card--hero` + `.k-sidebar` recipes ported into
+globals.css; 4 primary CTAs (Start Batch / Open Review / Add to Selection /
+Create Variations) switched to `k-btn k-btn--primary` className. Stale
+docs/design/EtsyHub.zip removed; HISTORY.md badge added. README +
+IMPLEMENTATION_HANDOFF + design-system READMEs + CLAUDE.md synced with
+rollout progress and source-of-truth links.
+
 ### Rollout 4 — Selections index + detail
+**Status:** ⏳ Next.
 - Reuse Library card patterns (A1 → S/B3 grid)
 - Stage-aware deterministic CTAs (B2 STAGE_CTA map)
 - B3 detail tabs: Designs / Edits / Mockups / History (Mockups read-only

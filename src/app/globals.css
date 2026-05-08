@@ -3,36 +3,52 @@
 @tailwind utilities;
 
 /*
- * EtsyHub — Design Tokens
- * Onaylı tasarım dili: docs/design/EtsyHub/EtsyHub Design Spec.md
- * Yön: Editoryal Kokpit — warm off-white #FAFAF7, accent #E85D25, Inter + IBM Plex Mono.
- * HSL-tuple formatı korundu (Tailwind `hsl(var(--...) / <alpha-value>)` opacity sistemi).
+ * Kivasy — Design Tokens
+ * Source of truth: docs/design-system/kivasy/ui_kits/kivasy/v4/tokens.css
+ * Yön: Operatör kokpiti — warm paper #F7F5EF, accent #E85D25 (orange),
+ * stage colors orange/purple/blue, Clash Display + General Sans + Geist Mono.
+ *
+ * İki paralel token sistemi (Rollout-1 zemin):
+ * - --color-* HSL tuples — legacy ThemeProvider runtime override pipeline'ı
+ *   (admin Theme editor) için korundu. Değerler Kivasy paletine hizalandı.
+ * - --k-* hex literals — yeni Kivasy v4 canonical token sistemi, yeni
+ *   surface'lerin (rollout-2+) kullanması için. design-system/kivasy/
+ *   ui_kits/kivasy/v4/tokens.css ile birebir.
+ *
+ * Eski legacy isimleri (`--color-*`) yeni surface'lerde KULLANILMAZ;
+ * sadece geriye uyumluluk için duruyor. Yeni kod `--k-*` veya Tailwind
+ * üzerinden bind edilen `bg-paper`, `text-ink`, `border-line` vs. kullanır.
  */
 
 @layer base {
   :root {
     /* ——— Color · Surfaces ————————————————————————————— */
-    --color-bg:           60 23% 97%;   /* warm off-white #FAFAF7 */
-    --color-surface:      0 0% 100%;    /* #FFFFFF */
-    --color-surface-muted: 51 23% 94%;  /* #F3F2EC — sidebar, subtle panel, toolbar */
-    --color-surface-2:    51 23% 94%;   /* alias for design spec naming */
-    --color-surface-3:    47 18% 90%;   /* #EBE9E2 — hover row, disabled fill */
+    /* R3.5 — Kivasy v4 hex'lerine yeniden hizalanmış HSL tuple'ları.
+     * --color-* legacy'sini yeni Kivasy değerlerine bind ediyoruz; bu
+     * sayede legacy primitive'ler (`bg-bg`, `bg-surface-2`, `border-border`)
+     * artık Kivasy v4 paletini render ediyor. Hex referansları yorumda.
+     */
+    --color-bg:           45 36% 95%;   /* --k-bg #F7F5EF */
+    --color-surface:      0 0% 100%;    /* --k-paper #FFFFFF */
+    --color-surface-muted: 45 27% 92%;  /* --k-bg-2 #F1EEE5 — sidebar, panels */
+    --color-surface-2:    45 27% 92%;   /* alias --k-bg-2 */
+    --color-surface-3:    43 23% 86%;   /* --k-line #E4E0D5 — hover row */
 
     /* ——— Color · Text —————————————————————————————————— */
-    --color-text:         24 11% 9%;    /* near-black warm #1A1715 */
-    --color-text-muted:   30 6% 40%;    /* #6B655F — secondary, meta */
-    --color-text-subtle:  32 6% 58%;    /* #9A948D — placeholder, breadcrumb */
+    --color-text:         34 19% 7%;    /* --k-ink #16130F */
+    --color-text-muted:   36 8% 27%;    /* --k-ink-2 #4A4640 */
+    --color-text-subtle:  33 8% 52%;    /* --k-ink-3 #8B857C */
 
     /* ——— Color · Borders ——————————————————————————————— */
-    --color-border:        45 14% 89%;  /* #E7E5DF — default card/input */
-    --color-border-strong: 45 13% 82%;  /* #D6D3CA — focused/hovered */
-    --color-border-subtle: 51 18% 92%;  /* #EFEEE8 — tablo satır ayırıcı */
+    --color-border:        43 23% 86%;  /* --k-line #E4E0D5 */
+    --color-border-strong: 40 19% 78%;  /* --k-line-strong #D2CCBE */
+    --color-border-subtle: 43 27% 91%;  /* --k-line-soft #EFEBE0 */
 
     /* ——— Color · Accent ———————————————————————————————— */
-    --color-accent:           17 81% 53%;  /* #E85D25 — CTA, selected, focus */
-    --color-accent-hover:     17 78% 46%;  /* #D14E1A */
-    --color-accent-soft:      24 78% 93%;  /* #FBEADF — selected row bg, chip bg */
-    --color-accent-text:      18 77% 39%;  /* #B04517 — chip text on accent-soft */
+    --color-accent:           17 81% 53%;  /* --k-orange #E85D25 (unchanged) */
+    --color-accent-hover:     17 78% 45%;  /* --k-orange-deep #C9491A */
+    --color-accent-soft:      24 78% 93%;  /* --k-orange-soft #FBEADF (unchanged) */
+    --color-accent-text:      18 78% 31%;  /* --k-orange-ink #8E3A12 */
     --color-accent-foreground: 0 0% 100%;  /* accent bg üstü text */
 
     /* ——— Color · Status ———————————————————————————————— */
@@ -75,8 +91,16 @@
     --shadow-popover:    0 12px 32px rgba(26, 23, 21, 0.12), 0 2px 6px rgba(26, 23, 21, 0.06);
 
     /* ——— Typography ———————————————————————————————————— */
-    --font-sans: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    /* R3.5 — Kivasy v4 type stack canonical. Legacy `--font-inter` /
+     * `--font-plex-mono` next/font yüklemeleri hâlâ HTML'e enjekte ediyor
+     * ama buradan referans verilmiyor; Kivasy CDN üzerinden gelen
+     * General Sans / Geist Mono / Clash Display kullanılır.
+     */
+    --font-sans: "General Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, Menlo, monospace;
+    /* font-display utility için root binding (Tailwind'in font-display'ine
+     * bağlanır). Sadece H1, hero numerals, brand wordmark kullanır. */
+    --font-display: "Clash Display", "General Sans", ui-sans-serif, sans-serif;
 
     --text-xs:   11px;
     --text-sm:   13px;
@@ -97,7 +121,8 @@
     --dur: 180ms;
 
     /* ——— Layout ——————————————————————————————————————— */
-    --layout-sidebar-width:    232px;
+    /* R3.5 — sidebar width Kivasy v4 spec'ine yükseltildi (232 → 248). */
+    --layout-sidebar-width:    248px;
     --layout-header-height:    56px;
     --layout-content-max-width: 1440px;
     --page-pad-user:  var(--space-6);  /* 24 */
@@ -118,7 +143,292 @@
 
     /* ——— Named letter-spacing (mono title-case meta) —— */
     --tracking-meta: 0.6px;
+
+    /* ════════════════════════════════════════════════════════════════
+     * Kivasy v4 canonical tokens — birebir docs/design-system/kivasy/
+     * ui_kits/kivasy/v4/tokens.css. Yeni surface'ler bunları kullanır.
+     * ════════════════════════════════════════════════════════════════ */
+
+    /* Surfaces — warm paper */
+    --k-bg:           #F7F5EF;
+    --k-bg-2:         #F1EEE5;
+    --k-paper:        #FFFFFF;
+
+    /* Ink — 4 stop */
+    --k-ink:          #16130F;
+    --k-ink-2:        #4A4640;
+    --k-ink-3:        #8B857C;
+    --k-ink-4:        #B8B2A6;
+
+    /* Line — 3 weight */
+    --k-line:         #E4E0D5;
+    --k-line-strong:  #D2CCBE;
+    --k-line-soft:    #EFEBE0;
+
+    /* Stage · orange (create / upstream) */
+    --k-orange:       #E85D25;
+    --k-orange-deep:  #C9491A;
+    --k-orange-bright:#F3733E;
+    --k-orange-soft:  #FBEADF;
+    --k-orange-ink:   #8E3A12;
+
+    /* Stage · blue (publish / downstream) */
+    --k-blue:         #2D5F8F;
+    --k-blue-deep:    #214A72;
+    --k-blue-bright:  #4179AC;
+    --k-blue-soft:    #E2ECF5;
+
+    /* Stage · purple (edit / midstream) */
+    --k-purple:       #6E47A8;
+    --k-purple-deep:  #563581;
+    --k-purple-bright:#8A60C9;
+    --k-purple-soft:  #ECE3F5;
+
+    /* Status — 4 stop */
+    --k-green:        #2F7A4B;
+    --k-green-soft:   #E1F0E7;
+    --k-amber:        #B47415;
+    --k-amber-soft:   #F6ECD6;
+    --k-red:          #B13A28;
+    --k-red-soft:     #F5DDD7;
+
+    /* Type stack — Clash Display / General Sans / Geist Mono */
+    --k-font-sans:    "General Sans", ui-sans-serif, system-ui, sans-serif;
+    --k-font-display: "Clash Display", "General Sans", ui-sans-serif, sans-serif;
+    --k-font-mono:    "Geist Mono", ui-monospace, Menlo, monospace;
+
+    /* Radii */
+    --k-radius-sm: 5px;
+    --k-radius-md: 8px;
+    --k-radius-lg: 14px;
+    --k-radius-xl: 20px;
+
+    /* Easing */
+    --k-ease:           cubic-bezier(.2,.7,.3,1);
+    --k-ease-out-quint: cubic-bezier(.22,1,.36,1);
   }
+
+  /* Kivasy helper utilities */
+  .k-mono    { font-family: var(--k-font-mono);    letter-spacing: 0.02em; }
+  .k-display { font-family: var(--k-font-display); letter-spacing: -0.025em; }
+  .k-tnum    { font-variant-numeric: tabular-nums; }
+  .k-wordmark {
+    font-family: var(--k-font-display);
+    font-weight: 600;
+    letter-spacing: -0.045em;
+    font-feature-settings: "ss01","ss03";
+  }
+
+  /* R3.5 — Türkçe locale uppercase fix.
+   * Tailwind `uppercase` utility CSS `text-transform: uppercase` üretir.
+   * `<html lang="tr">` altında bu kural `i → İ` dotted-uppercase üretir
+   * ("İTEMS" / "İMPLEMENTATİON" gibi). Mono caps caption'larımızda Latince
+   * davranış istiyoruz — `font-mono` + `uppercase` kombinasyonunda
+   * locale override + lowercase i → ı, sonra browser'ın doğru I'ya
+   * mapleyebilmesi için font-feature `case` açık.
+   *
+   * Bu kural sadece `.font-mono.uppercase` çakışmasında etkili olur;
+   * marka/UI metni Türkçe (örn. "Çıkış") `uppercase` kullanmıyor.
+   */
+  .font-mono.uppercase {
+    text-transform: uppercase;
+    -webkit-locale: "en";
+    font-feature-settings: "case" on, "ss01", "cv11";
+  }
+
+  /* Button family — `.k-btn` + variants. R3.5.
+   * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/tokens.css → .k-btn.
+   * Stage CTA color language:
+   *   --primary  → orange (create / upstream)
+   *   --publish  → blue   (publish / downstream)
+   *   --edit     → purple (edit / midstream)
+   * Used by: /batches Start Batch · /batches/[id] Open Review · Library
+   * detail Add to Selection · A6 Create Variations footer.
+   */
+  .k-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: var(--k-radius-md);
+    font-family: var(--k-font-sans);
+    font-size: 13.5px;
+    font-weight: 540;
+    letter-spacing: -0.005em;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition:
+      transform 140ms var(--k-ease),
+      box-shadow 180ms var(--k-ease),
+      background 140ms var(--k-ease),
+      border-color 140ms var(--k-ease),
+      color 140ms var(--k-ease);
+    isolation: isolate;
+    will-change: transform;
+  }
+  .k-btn:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--k-bg),
+      0 0 0 4px var(--k-orange);
+  }
+  .k-btn[data-size="sm"] {
+    height: 30px;
+    padding: 0 11px;
+    font-size: 12.5px;
+    gap: 6px;
+    border-radius: 6px;
+  }
+  .k-btn[data-size="lg"] {
+    height: 44px;
+    padding: 0 18px;
+    font-size: 14.5px;
+    gap: 10px;
+    border-radius: 10px;
+  }
+  .k-btn[disabled] {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .k-btn--primary {
+    color: #fff;
+    background: linear-gradient(
+      180deg,
+      var(--k-orange-bright) 0%,
+      var(--k-orange) 50%,
+      var(--k-orange-deep) 100%
+    );
+    border-color: var(--k-orange-deep);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.10),
+      0 1px 2px rgba(201, 73, 26, 0.45),
+      0 4px 10px -2px rgba(232, 93, 37, 0.32);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+  }
+  .k-btn--primary:hover {
+    transform: translateY(-0.5px);
+  }
+
+  .k-btn--publish {
+    color: #fff;
+    background: linear-gradient(
+      180deg,
+      var(--k-blue-bright) 0%,
+      var(--k-blue) 50%,
+      var(--k-blue-deep) 100%
+    );
+    border-color: var(--k-blue-deep);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.24),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.10),
+      0 1px 2px rgba(33, 74, 114, 0.45),
+      0 4px 10px -2px rgba(45, 95, 143, 0.32);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+  }
+  .k-btn--publish:hover {
+    transform: translateY(-0.5px);
+  }
+
+  .k-btn--edit {
+    color: #fff;
+    background: linear-gradient(
+      180deg,
+      var(--k-purple-bright) 0%,
+      var(--k-purple) 50%,
+      var(--k-purple-deep) 100%
+    );
+    border-color: var(--k-purple-deep);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.26),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.10),
+      0 1px 2px rgba(86, 53, 129, 0.45),
+      0 4px 10px -2px rgba(110, 71, 168, 0.30);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.13);
+  }
+  .k-btn--edit:hover {
+    transform: translateY(-0.5px);
+  }
+
+  .k-btn--secondary {
+    color: var(--k-ink);
+    background: var(--k-paper);
+    border-color: var(--k-line);
+    box-shadow: 0 1px 1px rgba(22, 19, 15, 0.03);
+  }
+  .k-btn--secondary:hover {
+    border-color: var(--k-line-strong);
+  }
+
+  .k-btn--ghost {
+    color: var(--k-ink-2);
+    background: transparent;
+  }
+  .k-btn--ghost:hover {
+    color: var(--k-ink);
+    background: rgba(22, 19, 15, 0.045);
+  }
+
+  .k-btn--destructive {
+    color: var(--k-red);
+    background: linear-gradient(180deg, #fff 0%, #FBF6F4 100%);
+    border-color: var(--k-line-strong);
+  }
+  .k-btn--destructive:hover {
+    background: linear-gradient(180deg, #fff 0%, var(--k-red-soft) 100%);
+    border-color: var(--k-red);
+  }
+
+  /* Card hero — `.k-card--hero` recipe. R3.5.
+   * Used by hero stats, selection cards (rollout-4), brand specimen cards.
+   * Compose with `.k-card` for default border/bg, then opt in to hero
+   * gradient + lift via this class.
+   */
+  .k-card--hero {
+    background: linear-gradient(180deg, #FFFFFF 0%, #FCFAF5 100%);
+    border-radius: var(--k-radius-lg);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 1px 1px rgba(22, 19, 15, 0.03),
+      0 2px 4px rgba(22, 19, 15, 0.04);
+  }
+
+  /* Sidebar — `.k-sidebar` gradient bg + active nav rail + ::before pseudo.
+   * R3.5. Replaces flat `bg-surface-2` rendering on the app shell.
+   */
+  .k-sidebar {
+    background: linear-gradient(180deg, var(--k-bg-2) 0%, #ECE7DA 100%);
+    border-right: 1px solid var(--k-line);
+    box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.4);
+  }
+
+  /* Floating bulk action bar — `.k-fab` recipe.
+   * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/tokens.css → .k-fab
+   * Dark pill that overlays any canvas; appears when 2+ items selected.
+   * Used by FloatingBulkBar primitive (rollouts 2-4). */
+  .k-fab {
+    background: #16130F;
+    color: #fff;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      0 12px 32px -8px rgba(0,0,0,0.35),
+      0 32px 64px -20px rgba(0,0,0,0.40);
+  }
+  .k-fab__count {
+    padding-right: 12px;
+    border-right: 1px solid rgba(255,255,255,0.12);
+    margin-right: 6px;
+  }
+  .k-fab__btn { color: #fff; background: transparent; }
+  .k-fab__btn:hover { background: rgba(255,255,255,0.08); }
+  .k-fab__btn--primary { background: var(--k-orange); }
+  .k-fab__btn--primary:hover { background: var(--k-orange-bright); }
+  .k-fab__close { color: rgba(255,255,255,0.55); background: transparent; }
+  .k-fab__close:hover { color: #fff; background: rgba(255,255,255,0.08); }
 
   /* Density variant — user/admin ortak aile, farklı sıkılık */
   [data-density="admin"] {
