@@ -8,6 +8,7 @@ import { UserAssetThumb } from "@/components/ui/UserAssetThumb";
 import { useLibrarySelection } from "@/features/library/stores/selection-store";
 import { VARIANT_KIND_META } from "@/app/(admin)/admin/midjourney/library/variantKindHelper";
 import { CreateVariationsModal } from "@/features/batches/components/CreateVariationsModal";
+import { AddToSelectionModal } from "@/features/selections/components/AddToSelectionModal";
 import type { LibraryCard } from "@/server/services/midjourney/library";
 
 /**
@@ -32,6 +33,7 @@ export function LibraryDetailPanel({ card, onClose }: LibraryDetailPanelProps) {
   );
   const toggle = useLibrarySelection((s) => s.toggle);
   const [variationsOpen, setVariationsOpen] = useState(false);
+  const [addToSelectionOpen, setAddToSelectionOpen] = useState(false);
 
   if (!card) return null;
   const variantMeta = VARIANT_KIND_META[card.variantKind];
@@ -56,12 +58,21 @@ export function LibraryDetailPanel({ card, onClose }: LibraryDetailPanelProps) {
         <>
           <button
             type="button"
-            onClick={() => toggle(card.midjourneyAssetId)}
+            onClick={() => setAddToSelectionOpen(true)}
             data-size="sm"
             className="k-btn k-btn--primary"
+            data-testid="library-detail-add-to-selection"
           >
             <Plus className="h-3 w-3" aria-hidden />
-            {isSelected ? "Selected" : "Add to Selection"}
+            Add to Selection
+          </button>
+          <button
+            type="button"
+            onClick={() => toggle(card.midjourneyAssetId)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink"
+            title="Bulk-select toggle (acts on the floating bulk-bar)"
+          >
+            {isSelected ? "✓ Bulk-selected" : "Bulk select"}
           </button>
           <button
             type="button"
@@ -193,6 +204,12 @@ export function LibraryDetailPanel({ card, onClose }: LibraryDetailPanelProps) {
           templateLabel={card.templateId ? "Linked template" : null}
           templateId={card.templateId}
           onClose={() => setVariationsOpen(false)}
+        />
+      ) : null}
+      {addToSelectionOpen ? (
+        <AddToSelectionModal
+          midjourneyAssetIds={[card.midjourneyAssetId]}
+          onClose={() => setAddToSelectionOpen(false)}
         />
       ) : null}
     </DetailPanel>

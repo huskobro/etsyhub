@@ -67,6 +67,19 @@ const whitelist = [
   "src/features/library/components/Modal.tsx",
   "src/features/batches/components/BatchReviewWorkspace.tsx",
   "src/features/batches/components/BatchesIndexClient.tsx",
+  // Rollout-4 — Selections (B2/B3) recipes.
+  //  · SelectionCard → `.k-card--hero` v5 hero card; `aspect-square` + 3-up
+  //    thumb composite v5 design layer'ında tanımlı.
+  //  · SelectionsIndexClient → toolbar `max-w-[420px]` + search input
+  //    `rounded-md` Library/Batches ile birebir patern.
+  //  · DesignsTab → 4-col grid + drag handle + bulk-bar; v5 spec sabit
+  //    `text-[10.5px]` mono caption (Library/Batches ile tutarlı).
+  //  · EditsTab → before/after `!w-12 !aspect-square` thumb pairing +
+  //    `bg-k-purple` v2 badge (purple = edit stage canonical).
+  "src/features/selections/components/SelectionCard.tsx",
+  "src/features/selections/components/SelectionsIndexClient.tsx",
+  "src/features/selections/components/tabs/DesignsTab.tsx",
+  "src/features/selections/components/tabs/EditsTab.tsx",
 ];
 
 let hadError = false;

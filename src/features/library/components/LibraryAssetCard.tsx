@@ -27,12 +27,14 @@ interface LibraryAssetCardProps {
   card: LibraryCardData;
   density: Density;
   onOpen: (assetId: string) => void;
+  onAddToSelection: (assetId: string) => void;
 }
 
 export function LibraryAssetCard({
   card,
   density,
   onOpen,
+  onAddToSelection,
 }: LibraryAssetCardProps) {
   const variantMeta = VARIANT_KIND_META[card.variantKind];
   const selected = useLibrarySelection((s) => s.selected.has(card.midjourneyAssetId));
@@ -125,10 +127,14 @@ export function LibraryAssetCard({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            // For now: add to selection toggles selection state. In rollout-4
-            // this fires the "Add to Selection" modal that picks a set.
-            useLibrarySelection.getState().toggle(card.midjourneyAssetId);
+            // R4 — Hand-off modal (LibraryClient hosts AddToSelectionModal
+            // when `addToSelectionAsset !== null`). Boundary preserved:
+            // Library never owns set CRUD; the modal picks an existing
+            // draft set and posts to /api/selection/sets/[setId]/items
+            // /from-library.
+            onAddToSelection(card.midjourneyAssetId);
           }}
+          data-testid="library-card-add-to-selection"
           className="pointer-events-auto inline-flex h-7 flex-1 items-center justify-center gap-1 rounded-md bg-paper/95 px-2 text-xs font-medium text-ink shadow-card hover:bg-paper"
         >
           <Plus className="h-3 w-3" aria-hidden />

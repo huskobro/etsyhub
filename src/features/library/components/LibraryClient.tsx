@@ -5,6 +5,7 @@ import { LibraryToolbar } from "./LibraryToolbar";
 import { LibraryGrid } from "./LibraryGrid";
 import { LibraryDetailPanel } from "./LibraryDetailPanel";
 import { LibraryFloatingBulkBar } from "./LibraryFloatingBulkBar";
+import { AddToSelectionModal } from "@/features/selections/components/AddToSelectionModal";
 import {
   type Density,
   readStoredDensity,
@@ -47,6 +48,12 @@ export function LibraryClient({
     ? cards.find((c) => c.midjourneyAssetId === selectedAssetId) ?? null
     : null;
 
+  // R4 — Per-card "Add to Selection" hand-off modal target. Tek bir asset
+  // için açılır; LibraryFloatingBulkBar bulk handoff'u kendi içinde yönetir.
+  const [addToSelectionAsset, setAddToSelectionAsset] = useState<string | null>(
+    null,
+  );
+
   return (
     <div className="flex h-full flex-col">
       <LibraryToolbar
@@ -72,6 +79,7 @@ export function LibraryClient({
               cards={cards}
               density={density}
               onOpen={setSelectedAssetId}
+              onAddToSelection={setAddToSelectionAsset}
             />
             {loadMoreHref ? (
               <div className="flex justify-center pb-6">
@@ -93,6 +101,12 @@ export function LibraryClient({
         onClose={() => setSelectedAssetId(null)}
       />
       <LibraryFloatingBulkBar />
+      {addToSelectionAsset !== null ? (
+        <AddToSelectionModal
+          midjourneyAssetIds={[addToSelectionAsset]}
+          onClose={() => setAddToSelectionAsset(null)}
+        />
+      ) : null}
     </div>
   );
 }

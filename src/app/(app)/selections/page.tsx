@@ -1,13 +1,56 @@
-import { RolloutPlaceholder } from "@/features/app-shell/RolloutPlaceholder";
+import { redirect } from "next/navigation";
+import { auth } from "@/server/auth";
+import { listSelectionsForIndex } from "@/server/services/selection/index-view";
+import { SelectionsIndexClient } from "@/features/selections/components/SelectionsIndexClient";
+
+/**
+ * /selections — Kivasy B2 Selections index (rollout-4).
+ *
+ * Source: docs/design-system/kivasy/ui_kits/kivasy/v5/screens-b2-b3.jsx →
+ * B2SelectionsIndex.
+ *
+ * Service layer reused: `listSets` (Pass 35) + 3-up composite + edited count
+ * via `listSelectionsForIndex` thin wrapper.
+ *
+ * Surface boundary (docs/IMPLEMENTATION_HANDOFF.md §5):
+ *   Selections = curated sets, mockup-bound. NOT a clone of Library —
+ *   Library has set CRUD only via "Add to Selection" handoff. Mockup
+ *   üretimi ve listing burada yapılmaz; cross-link Products'a düşer.
+ */
 
 export const metadata = { title: "Selections · Kivasy" };
+export const dynamic = "force-dynamic";
 
-export default function SelectionsPage() {
-  return (
-    <RolloutPlaceholder
-      title="Selections"
-      rollout={4}
-      blurb="Curated sets ready for mockup application. Edits (background remove, color edit, crop, upscale) live here. Lands in rollout 4. The legacy /selection routes still work via the existing (app)/selection surface until then."
-    />
-  );
+export default async function SelectionsPage() {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+
+  // archived dahil değil — B2 default canlı set'leri gösterir; archived
+  // filter ileride filter chip'in 5. değeri olacak (R5+).
+  const [draftSets, readySets] = await Promise.all([
+    listSelectionsForIndex({ userId: session.user.id, status: "draft" }),
+    listSelectionsForIndex({ userId: session.user.id, status: "ready" }),
+  ]);
+
+  const rows = [...draftSets, ...readySets]
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      status: s.status,
+      itemCount: s.itemCount,
+      editedItemCount: s.editedItemCount,
+      thumbsComposite: s.thumbsComposite,
+      createdAt: s.createdAt.toISOString(),
+      updatedAt: s.updatedAt.toISOString(),
+      finalizedAt: s.finalizedAt ? s.finalizedAt.toISOString() : null,
+      lastExportedAt: s.lastExportedAt
+        ? s.lastExportedAt.toISOString()
+        : null,
+    }));
+
+  return <SelectionsIndexClient rows={rows} />;
 }
