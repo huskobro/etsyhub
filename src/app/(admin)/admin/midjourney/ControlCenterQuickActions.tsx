@@ -41,7 +41,7 @@ function ActionCard({ href, title, description, emoji, primary }: ActionCardProp
 export function ControlCenterQuickActions() {
   return (
     <section
-      className="grid grid-cols-1 gap-3 sm:grid-cols-3"
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
       data-testid="mj-cc-quick-actions"
       aria-label="Production quick actions"
     >
@@ -63,6 +63,13 @@ export function ControlCenterQuickActions() {
         title="Batches"
         description="Batch run geçmişi + retry + lineage. Son 50 batch tek listede."
         emoji="📦"
+      />
+      {/* Pass 88 — Asset Library V1 entry */}
+      <ActionCard
+        href="/admin/midjourney/library"
+        title="Library"
+        description="Üretilen tüm görseller. Tür/tarih/batch/template ile filtrele, lineage&apos;da gez."
+        emoji="🖼️"
       />
     </section>
   );

@@ -166,12 +166,21 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <Link
-          href="/admin/midjourney"
-          className="text-xs text-text-muted hover:text-text"
-        >
-          ← Midjourney köprüsü
-        </Link>
+        <div className="flex items-center gap-3 text-xs text-text-muted">
+          <Link
+            href="/admin/midjourney"
+            className="hover:text-text"
+          >
+            ← Midjourney köprüsü
+          </Link>
+          {/* Pass 88 — Library quick-jump */}
+          <Link
+            href="/admin/midjourney/library"
+            className="hover:text-accent"
+          >
+            🖼 Library
+          </Link>
+        </div>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">MJ Job</h1>
           <Badge tone={stateTone(job.state)}>
@@ -392,16 +401,25 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
           <h2 className="text-sm font-semibold">
             Üretilen görseller ({job.generatedAssets.length})
           </h2>
-          {job.mjJobId ? (
-            <a
-              href={`https://www.midjourney.com/jobs/${job.mjJobId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-text-muted hover:text-text"
+          <div className="flex items-center gap-3 text-xs">
+            {/* Pass 88 — Library tüm asset'leri */}
+            <Link
+              href="/admin/midjourney/library"
+              className="text-text-muted hover:text-accent"
             >
-              MJ web&apos;de aç ↗
-            </a>
-          ) : null}
+              Library&apos;de tümü →
+            </Link>
+            {job.mjJobId ? (
+              <a
+                href={`https://www.midjourney.com/jobs/${job.mjJobId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-text-muted hover:text-text"
+              >
+                MJ web&apos;de aç ↗
+              </a>
+            ) : null}
+          </div>
         </div>
         {job.generatedAssets.length === 0 ? (
           <div className="rounded-md border border-border bg-surface p-4 text-sm text-text-muted">

@@ -59,6 +59,12 @@ export default async function MjTemplateEditPage({
               ← Templates
             </Button>
           </Link>
+          {/* Pass 88 — Library link: bu template ile üretilen tüm asset'ler */}
+          <Link href={`/admin/midjourney/library?templateId=${id}&days=all`}>
+            <Button variant="ghost" size="sm">
+              Library&apos;de aç →
+            </Button>
+          </Link>
           <Link href={`/admin/midjourney/batch-run?templateId=${id}`}>
             <Button variant="primary" size="sm">
               Batch Run →

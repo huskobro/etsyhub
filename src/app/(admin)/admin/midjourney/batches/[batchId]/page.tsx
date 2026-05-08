@@ -109,6 +109,14 @@ export default async function MjBatchDetailPage({
                 Job listesinde aç →
               </Button>
             </Link>
+            {/* Pass 88 — Library entry: bu batch'in tüm asset'leri */}
+            <Link
+              href={`/admin/midjourney/library?batchId=${summary.batchId}&days=all`}
+            >
+              <Button variant="ghost" size="sm">
+                Library&apos;de aç →
+              </Button>
+            </Link>
             <Link href="/admin/midjourney">
               <Button variant="ghost" size="sm">
                 MJ Ana Sayfa
