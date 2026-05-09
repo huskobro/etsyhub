@@ -121,13 +121,15 @@ export type RunRecipeChainResult = {
 /**
  * Recipe run'ın "doğru sıradaki adım"ını hesaplar.
  *
- * R8'de tam orchestration engine yazmıyoruz; recipe run = "operatörü doğru
- * production page'ine yönlendir + audit". Linklerden hangisinin
- * konfigüre edildiğine göre destination seçilir:
+ * R9 — destination + side-effect:
+ *   · Audit log entry (RECIPE_RUN_PLANNED action — caller eklerden önce/sonra
+ *     ekler)
+ *   · Recipe.config.lastRunAt + runCount günceller (markRecipeRun)
+ *
+ * Linklerden hangisinin konfigüre edildiğine göre destination seçilir:
  *   · promptTemplateId varsa → /admin/midjourney/batch-run (mevcut batch
  *     starter sayfası); UI bu link'i recipe payload'ı ile expand eder.
- *   · sadece productTypeKey varsa → /selections/new (operatör selection
- *     başlatır)
+ *   · sadece productTypeKey varsa → /selections (operatör selection başlatır)
  *   · hiçbir link yoksa → no-destination
  */
 export async function planRecipeChainRun(
@@ -186,6 +188,78 @@ export async function planRecipeChainRun(
       chosenLinks: links,
     },
   };
+}
+
+/**
+ * Recipe run side-effect: lastRunAt + runCount + lastDestination'ı
+ * Recipe.config'a yazar. Atomic upsert; concurrent run'larda son yazan
+ * kazanır (run history için audit log kullanılır, kayıp yok).
+ */
+export async function markRecipeRun(input: {
+  recipeId: string;
+  destination: RunRecipeChainResult["destination"];
+}): Promise<void> {
+  const r = await db.recipe.findUnique({
+    where: { id: input.recipeId },
+  });
+  if (!r) return;
+  const cfg = (r.config as Record<string, unknown>) ?? {};
+  const links = (cfg.links as Record<string, unknown>) ?? {};
+  const settings = (cfg.settings as Record<string, unknown>) ?? {};
+  const stats = (cfg.stats as Record<string, unknown> | undefined) ?? {};
+  const runCount = typeof stats.runCount === "number" ? stats.runCount : 0;
+  const nextStats = {
+    runCount: runCount + 1,
+    lastRunAt: new Date().toISOString(),
+    lastDestinationKind: input.destination.kind,
+  };
+  await db.recipe.update({
+    where: { id: input.recipeId },
+    data: {
+      config: {
+        kind: "recipe-chain",
+        links,
+        settings,
+        stats: nextStats,
+      } as unknown as object,
+    },
+  });
+}
+
+/**
+ * Recipe için son N run'u (audit log) döner. UI "Recent runs" tab'ı için.
+ */
+export type RecipeRunHistoryEntry = {
+  id: string;
+  createdAt: string;
+  actor: string;
+  destinationKind: string;
+};
+
+export async function getRecipeRunHistory(input: {
+  recipeId: string;
+  limit?: number;
+}): Promise<RecipeRunHistoryEntry[]> {
+  const rows = await db.auditLog.findMany({
+    where: {
+      action: "RECIPE_RUN_PLANNED",
+      targetType: "Recipe",
+      targetId: input.recipeId,
+    },
+    orderBy: { createdAt: "desc" },
+    take: input.limit ?? 10,
+  });
+  return rows.map((r) => {
+    const md = (r.metadata as Record<string, unknown>) ?? {};
+    const dest = md.destination as Record<string, unknown> | undefined;
+    return {
+      id: r.id,
+      createdAt: r.createdAt.toISOString(),
+      actor: r.actor,
+      destinationKind:
+        (dest && typeof dest.kind === "string" && dest.kind) || "unknown",
+    };
+  });
 }
 
 function safeKey(name: string): string {

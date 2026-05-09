@@ -9,7 +9,11 @@ import { requireUser } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
 import { ValidationError } from "@/lib/errors";
 import { audit } from "@/server/audit";
-import { planRecipeChainRun } from "@/server/services/templates/recipes.service";
+import {
+  markRecipeRun,
+  planRecipeChainRun,
+} from "@/server/services/templates/recipes.service";
+import { notifyUser } from "@/server/services/settings/notifications-inbox.service";
 
 const InputSchema = z.object({
   overrides: z
@@ -38,18 +42,40 @@ export const POST = withErrorHandling(
       overrides: parsed.data.overrides,
     });
 
-    await audit({
-      actor: user.id,
-      action: "RECIPE_RUN_PLANNED",
-      targetType: "Recipe",
-      targetId: result.audit.recipeId,
-      metadata: {
-        recipeKey: result.audit.recipeKey,
-        recipeName: result.audit.recipeName,
+    // R9 — gerçek side-effect: audit log + Recipe.config.stats + inbox notify
+    await Promise.all([
+      audit({
+        actor: user.id,
+        action: "RECIPE_RUN_PLANNED",
+        targetType: "Recipe",
+        targetId: result.audit.recipeId,
+        metadata: {
+          recipeKey: result.audit.recipeKey,
+          recipeName: result.audit.recipeName,
+          destination: result.destination,
+          chosenLinks: result.audit.chosenLinks,
+        },
+      }),
+      markRecipeRun({
+        recipeId: result.audit.recipeId,
         destination: result.destination,
-        chosenLinks: result.audit.chosenLinks,
-      },
-    });
+      }),
+      notifyUser({
+        userId: user.id,
+        kind: "recipeRun",
+        title: `Recipe run · ${result.audit.recipeName}`,
+        body:
+          result.destination.kind === "no-destination"
+            ? "Run was logged but no destination was reachable — link more inputs."
+            : `Continue at ${result.destination.kind}.`,
+        href:
+          result.destination.kind === "batch-run"
+            ? `/admin/midjourney/batch-run?recipeId=${result.audit.recipeId}&templateId=${result.destination.promptTemplateId}`
+            : result.destination.kind === "selections-create"
+              ? `/selections?recipeId=${result.audit.recipeId}`
+              : undefined,
+      }),
+    ]);
 
     return NextResponse.json(result);
   },

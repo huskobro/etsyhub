@@ -14,6 +14,7 @@ import {
   getStoragePrefs,
   updateStoragePrefs,
 } from "@/server/services/settings/storage-prefs.service";
+import { invalidateUserSignedUrlPrefs } from "@/server/services/settings/signed-url.helper";
 
 export const GET = withErrorHandling(async () => {
   const user = await requireUser();
@@ -50,5 +51,8 @@ export const PUT = withErrorHandling(async (req: Request) => {
     throw new ValidationError("Geçersiz storage prefs", parsed.error.flatten());
   }
   const prefs = await updateStoragePrefs(user.id, parsed.data);
+  // R9 — signed URL TTL cache invalidation; bir sonraki signed URL
+  // üretiminde yeni değer okunur.
+  invalidateUserSignedUrlPrefs(user.id);
   return NextResponse.json({ prefs });
 });

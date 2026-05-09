@@ -158,6 +158,8 @@ const whitelist = [
   "src/features/settings/shell/panes/PaneEditor.tsx",
   "src/features/settings/shell/panes/PaneScrapers.tsx",
 ];
+// Note: Rollout-9 keeps existing whitelisted files; no new client tsx with
+// half-pixel typography added.
 
 let hadError = false;
 

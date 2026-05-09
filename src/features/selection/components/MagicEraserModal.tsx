@@ -20,13 +20,14 @@
 //   - Mask boyut limit: ≤500KB base64 (endpoint zod). Aşılırsa kullanıcı
 //     mesaj alır. 4096×4096 binarize ~50KB safe.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Eraser, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { selectionSetQueryKey, type SelectionItemView } from "../queries";
 import { MaskCanvas, type MaskCanvasHandle } from "./MaskCanvas";
+import { useEditorSettings } from "@/features/settings/hooks/useEditorSettings";
 
 type Props = {
   open: boolean;
@@ -46,7 +47,19 @@ export function MagicEraserModal({
 }: Props) {
   const qc = useQueryClient();
   const canvasRef = useRef<MaskCanvasHandle>(null);
-  const [brushSize, setBrushSize] = useState(60);
+  // R9 — Editor settings'ten brush size default'u; gelene kadar 60 (mevcut UX)
+  const editorSettings = useEditorSettings();
+  const defaultBrushSize = editorSettings.data?.settings.brushSize ?? 60;
+  const [brushSize, setBrushSize] = useState(defaultBrushSize);
+  const [appliedDefault, setAppliedDefault] = useState(false);
+  useEffect(() => {
+    // İlk settings load sırasında modal yeniden açıldıysa default uygula —
+    // kullanıcı manual değiştirmediği sürece. Idempotent.
+    if (!appliedDefault && editorSettings.data) {
+      setBrushSize(editorSettings.data.settings.brushSize);
+      setAppliedDefault(true);
+    }
+  }, [appliedDefault, editorSettings.data]);
   const [error, setError] = useState<string | null>(null);
 
   const submit = useMutation({

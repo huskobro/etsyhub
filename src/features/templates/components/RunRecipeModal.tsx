@@ -5,11 +5,12 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
+  History,
   Loader2,
   PlayCircle,
 } from "lucide-react";
@@ -64,6 +65,23 @@ export function RunRecipeModal({ recipe, onClose }: Props) {
   const [variationCount, setVariationCount] = useState<number>(
     recipe.settings.variationCount ?? 8,
   );
+
+  // R9 — recent runs (audit log) — recipe history transparency
+  const runsQuery = useQuery<{
+    runs: Array<{
+      id: string;
+      createdAt: string;
+      actor: string;
+      destinationKind: string;
+    }>;
+  }>({
+    queryKey: ["templates", "recipes", recipe.id, "runs"],
+    queryFn: async () => {
+      const r = await fetch(`/api/templates/recipes/${recipe.id}/runs`);
+      if (!r.ok) throw new Error("Recent runs yüklenemedi");
+      return r.json();
+    },
+  });
 
   const runMutation = useMutation<RunResultView, Error, void>({
     mutationFn: async () => {
@@ -250,6 +268,44 @@ export function RunRecipeModal({ recipe, onClose }: Props) {
             {destinationHint}
           </p>
         </div>
+
+        {/* R9 — Recent runs (audit log) */}
+        {runsQuery.data && runsQuery.data.runs.length > 0 ? (
+          <div>
+            <div className="mb-2 flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+              <History className="h-3 w-3" aria-hidden />
+              Recent runs
+            </div>
+            <div className="overflow-hidden rounded-md border border-line bg-paper">
+              {runsQuery.data.runs.slice(0, 5).map((run, i) => (
+                <div
+                  key={run.id}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2",
+                    i < runsQuery.data!.runs.slice(0, 5).length - 1 &&
+                      "border-b border-line-soft",
+                  )}
+                  data-testid="recipe-recent-run"
+                >
+                  <span className="font-mono text-[11px] tabular-nums text-ink-3">
+                    {new Date(run.createdAt).toLocaleString("tr-TR", {
+                      day: "2-digit",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                  <Badge tone={run.destinationKind === "no-destination" ? "warning" : "info"}>
+                    {run.destinationKind}
+                  </Badge>
+                  <span className="ml-auto font-mono text-[10.5px] text-ink-3">
+                    by {run.actor.slice(0, 8)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </Modal>
   );

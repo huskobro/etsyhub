@@ -8,10 +8,13 @@
 "use client";
 
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
+  Check,
   Download,
+  Loader2,
   Pencil,
   Plus,
   Search,
@@ -209,7 +212,9 @@ export function TemplatesIndexClient({
           />
         ) : null}
         {sub === "presets" ? <StylePresetsSubview isAdmin={isAdmin} /> : null}
-        {sub === "mockups" ? <MockupsSubview rows={mockups} /> : null}
+        {sub === "mockups" ? (
+          <MockupsSubview rows={mockups} isAdmin={isAdmin} />
+        ) : null}
         {sub === "recipes" ? (
           <RecipesSubview
             rows={recipes}
@@ -385,7 +390,13 @@ function PromptsSubview({
 // Mockups subview — 3 sınıf gruplu (CLAUDE.md §6 mockup model)
 // ────────────────────────────────────────────────────────────
 
-function MockupsSubview({ rows }: { rows: MockupTemplateRow[] }) {
+function MockupsSubview({
+  rows,
+  isAdmin,
+}: {
+  rows: MockupTemplateRow[];
+  isAdmin: boolean;
+}) {
   // V1 classifier: tags / name'den derive (kind enum eksik R6'da).
   const groups: Record<
     "lifestyle" | "bundle" | "user",
@@ -451,46 +462,101 @@ function MockupsSubview({ rows }: { rows: MockupTemplateRow[] }) {
             </div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
               {items.map((m) => (
-                <div
+                <MockupTile
                   key={m.id}
-                  className="k-card overflow-hidden p-3"
-                  data-testid="templates-mockup-tile"
-                >
-                  <div className="mb-3 aspect-square overflow-hidden rounded-md bg-k-bg-2">
-                    {m.thumbnailUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={m.thumbnailUrl}
-                        alt={m.name}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : null}
-                  </div>
-                  <div className="truncate text-[13px] font-medium text-ink">
-                    {m.name}
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                    {m.aspectRatios.slice(0, 2).map((a) => (
-                      <span
-                        key={a}
-                        className="rounded bg-k-bg-2 px-1.5 py-0.5 font-mono text-[10px] text-ink-2"
-                      >
-                        {a}
-                      </span>
-                    ))}
-                    <Badge
-                      tone={m.status === "ACTIVE" ? "success" : "neutral"}
-                    >
-                      {m.status}
-                    </Badge>
-                  </div>
-                </div>
+                  template={m}
+                  showActivate={g.id === "user" && isAdmin}
+                />
               ))}
             </div>
           </section>
         );
       })}
+    </div>
+  );
+}
+
+function MockupTile({
+  template,
+  showActivate,
+}: {
+  template: MockupTemplateRow;
+  showActivate: boolean;
+}) {
+  const qc = useQueryClient();
+  const activate = useMutation<unknown, Error, void>({
+    mutationFn: async () => {
+      const r = await fetch(`/api/templates/mockups/${template.id}/activate`, {
+        method: "POST",
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({}));
+        throw new Error(b?.error ?? `HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["templates"] });
+    },
+  });
+  const canActivate = showActivate && template.status === "DRAFT";
+  return (
+    <div
+      className="k-card overflow-hidden p-3"
+      data-testid="templates-mockup-tile"
+      data-mockup-status={template.status}
+    >
+      <div className="mb-3 aspect-square overflow-hidden rounded-md bg-k-bg-2">
+        {template.thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={template.thumbnailUrl}
+            alt={template.name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : null}
+      </div>
+      <div className="truncate text-[13px] font-medium text-ink">
+        {template.name}
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        {template.aspectRatios.slice(0, 2).map((a) => (
+          <span
+            key={a}
+            className="rounded bg-k-bg-2 px-1.5 py-0.5 font-mono text-[10px] text-ink-2"
+          >
+            {a}
+          </span>
+        ))}
+        <Badge tone={template.status === "ACTIVE" ? "success" : "neutral"}>
+          {template.status}
+        </Badge>
+        {template.tags.includes("smart-obj") ? (
+          <Badge tone="info">SMART-OBJ</Badge>
+        ) : null}
+      </div>
+      {canActivate ? (
+        <button
+          type="button"
+          onClick={() => activate.mutate()}
+          disabled={activate.isPending}
+          className="mt-2 inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border border-line bg-paper px-2 text-xs font-medium text-ink-2 hover:border-k-orange hover:text-k-orange disabled:opacity-50"
+          data-testid="mockup-activate-cta"
+        >
+          {activate.isPending ? (
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+          ) : (
+            <Check className="h-3 w-3" aria-hidden />
+          )}
+          Activate template
+        </button>
+      ) : null}
+      {activate.isError ? (
+        <p className="mt-1 font-mono text-[10.5px] text-danger">
+          {activate.error.message}
+        </p>
+      ) : null}
     </div>
   );
 }
