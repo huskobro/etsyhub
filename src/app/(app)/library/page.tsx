@@ -152,7 +152,7 @@ export default async function LibraryPage({
       <header className="flex items-center gap-4 border-b border-line bg-bg px-6 py-4">
         <KivasyMark size={20} idSuffix="library-header" />
         <div className="flex-1">
-          <h1 className="text-base font-semibold text-ink">Library</h1>
+          <h1 className="k-display text-lg font-semibold tracking-tight text-ink">Library</h1>
           <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
             {summary.recent7d} added last 7 days · {totalLabel}
           </p>

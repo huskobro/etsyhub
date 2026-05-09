@@ -171,7 +171,7 @@ export function BatchReviewWorkspace({
 
   if (!item) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center bg-[#1A1815] text-white/80">
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#1A1815] text-white/80">
         <h1 className="text-2xl font-semibold">No items in this batch</h1>
         <Link
           href={`/batches/${batchId}`}
@@ -188,7 +188,7 @@ export function BatchReviewWorkspace({
 
   return (
     <div
-      className="-m-6 flex h-screen flex-col bg-[#1A1815] text-white/85"
+      className="fixed inset-0 z-50 flex h-screen flex-col bg-[#1A1815] text-white/85"
       data-testid="batch-review-workspace"
       data-decision={currentDecision}
     >

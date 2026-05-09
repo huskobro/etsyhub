@@ -64,7 +64,7 @@ export function ProductDetailClient({ productId }: Props) {
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Link>
-          <h1 className="text-base font-semibold text-ink">Product</h1>
+          <h1 className="k-display text-lg font-semibold tracking-tight text-ink">Product</h1>
         </header>
         <div className="flex-1 px-6 py-10">
           <div
@@ -126,7 +126,7 @@ export function ProductDetailClient({ productId }: Props) {
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
-            <h1 className="truncate text-base font-semibold text-ink">
+            <h1 className="truncate k-display text-lg font-semibold tracking-tight text-ink">
               {listing.title ?? "(untitled draft)"}
             </h1>
             <Badge tone={productStageBadgeTone(stage)} dot>

@@ -69,7 +69,7 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
         </Link>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3">
-            <h1 className="truncate text-base font-semibold text-ink">
+            <h1 className="truncate k-display text-lg font-semibold tracking-tight text-ink">
               batch_{summary.batchId.slice(0, 12)}
             </h1>
             <Badge tone={statusTone} dot>

@@ -112,7 +112,7 @@ export function SelectionDetailClient({ set, items }: Props) {
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
-            <h1 className="truncate text-base font-semibold text-ink">
+            <h1 className="truncate k-display text-lg font-semibold tracking-tight text-ink">
               {set.name}
             </h1>
             <Badge tone={stageBadgeTone(stage)} dot>

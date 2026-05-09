@@ -140,7 +140,7 @@ export function BatchesIndexClient({
       {/* Header */}
       <header className="flex items-center gap-4 border-b border-line bg-bg px-6 py-4">
         <div className="flex-1">
-          <h1 className="text-base font-semibold text-ink">Batches</h1>
+          <h1 className="k-display text-lg font-semibold tracking-tight text-ink">Batches</h1>
           <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
             {runningCount} running · {batches.length} last 30
           </p>
@@ -217,7 +217,7 @@ export function BatchesIndexClient({
         ) : (
           <div className="overflow-hidden rounded-md border border-line bg-paper">
             <table className="w-full" data-testid="batches-table">
-              <thead className="border-b border-line bg-k-bg-2/40">
+              <thead className="border-b border-line-soft bg-k-bg-2/40">
                 <tr>
                   <BatchTH>Batch</BatchTH>
                   <BatchTH>Source</BatchTH>

@@ -160,7 +160,7 @@ export function ProductsIndexClient({
     <div className="-m-6 flex h-screen flex-col" data-testid="products-page">
       <header className="flex items-center gap-4 border-b border-line bg-bg px-6 py-4">
         <div className="flex-1">
-          <h1 className="text-base font-semibold text-ink">Products</h1>
+          <h1 className="k-display text-lg font-semibold tracking-tight text-ink">Products</h1>
           <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
             {rows.length} products · {sentCount} sent to Etsy
             {fromSelectionId ? (
@@ -252,7 +252,7 @@ export function ProductsIndexClient({
         ) : (
           <div className="overflow-hidden rounded-md border border-line bg-paper">
             <table className="w-full" data-testid="products-table">
-              <thead className="border-b border-line bg-k-bg-2/40">
+              <thead className="border-b border-line-soft bg-k-bg-2/40">
                 <tr>
                   <ProductTH className="w-20" />
                   <ProductTH>Product</ProductTH>
