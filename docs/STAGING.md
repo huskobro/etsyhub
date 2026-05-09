@@ -12,14 +12,21 @@
 
 ## 1. Genel readiness hükmü
 
-Localhost MVP smoke uçtan uca tamamlandı (R11.9 + R11.11 son commit
-`1494b22`). Variation pipeline + mockup binding + listing AI fill +
-listing save **gerçek KIE provider call'larıyla** doğrulandı. Brand
-cleanup yapıldı, parity gap'leri operatör için dürüstçe etiketli
-("SOON" rozetler + "post-MVP enrichment" placeholder).
+Localhost MVP smoke uçtan uca tamamlandı (R11.9 + R11.11 + R11.12
+prep). Variation pipeline + mockup binding + listing AI fill + listing
+save **gerçek KIE provider call'larıyla** doğrulandı. Brand cleanup
+yapıldı, parity gap'leri operatör için dürüstçe etiketli ("SOON"
+rozetler + "post-MVP enrichment" placeholder).
 
 **Staging için kalan iş: infrastructure provisioning + env
 configuration + seed.** Kod tarafında release blocker yok.
+
+**Sayısal özet:**
+- env.ts: 22 field tanımlı — 9 strictly required + 8 recommended (default'lu) + 5 optional
+- Worker: 15 job type, 1 process (npm run worker:prod), 2 daily cron scheduler
+- Web: Next.js 14 production build (60+ route, ~87 kB shared JS)
+- Storage: provider-agnostic (S3 veya MinIO uyumlu)
+- Health: `/api/health` lightweight probe (DB + Redis + Storage check, ~5ms response)
 
 ---
 
@@ -48,45 +55,59 @@ configuration + seed.** Kod tarafında release blocker yok.
 
 ## 3. Env / dependency matrisi
 
-### 3.1 ZORUNLU (eksikse `next start` runtime'da Zod parse fail)
+### 3.1 STRICTLY REQUIRED — set edilmezse `next start` runtime'da Zod parse fail (sistem hiç ayağa kalkmaz)
+
+env.ts'de no-default + no-optional 9 field:
 
 | Env | Üretim | Not |
 |---|---|---|
-| `NODE_ENV` | `production` | Build sırasında set; runtime'da da set edilmiş olmalı |
-| `APP_URL` | `https://staging.kivasy.app` (örnek) | Etsy OAuth callback'i ile must-match |
+| `APP_URL` | `https://staging.kivasy.app` (örnek) | URL format; Etsy OAuth callback'i ile must-match |
 | `AUTH_SECRET` | `openssl rand -hex 32` | min 32 char; JWT signing |
-| `AUTH_TRUST_HOST` | `true` | Reverse proxy arkasında |
 | `SECRETS_ENCRYPTION_KEY` | 64-hex string | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` — KIE/Gemini key encryption |
 | `DATABASE_URL` | Postgres URL | `postgresql://user:pass@host:5432/db?schema=public` |
 | `REDIS_URL` | Redis URL | `redis://host:6379` |
-| `STORAGE_PROVIDER` | `s3` veya `minio` | Default minio |
 | `STORAGE_BUCKET` | bucket adı | Pre-create gerekli |
-| `STORAGE_ENDPOINT` | URL | S3 için `https://s3.region.amazonaws.com`, MinIO için ssl URL |
-| `STORAGE_REGION` | `us-east-1` (default) | S3 için provider region |
+| `STORAGE_ENDPOINT` | URL | S3 için `https://s3.region.amazonaws.com`, MinIO için SSL URL |
 | `STORAGE_ACCESS_KEY` | string | IAM access key veya MinIO root |
 | `STORAGE_SECRET_KEY` | string | İlgili secret |
-| `STORAGE_FORCE_PATH_STYLE` | `true` (MinIO) / `false` (S3 yeni) | Path-style addressing |
-| `STORAGE_PUBLIC_URL` | URL (opsiyonel ama önerilen) | Signed URL'lerin domain'i |
 
-### 3.2 SEED için zorunlu (ilk admin user)
+### 3.2 RECOMMENDED — default'u var ama production'da explicit set edilmeli
+
+env.ts'de default'lu 8 field (set edilmezse default ile devam eder):
+
+| Env | Default | Production önerisi |
+|---|---|---|
+| `NODE_ENV` | `development` | `production` (build hedefi) |
+| `LOG_LEVEL` | `info` | `info` (production) / `debug` (initial deploy) |
+| `AUTH_TRUST_HOST` | `true` | `true` (reverse proxy arkasında) |
+| `REGISTRATION_ENABLED` | `false` | `false` (staging için doğru) |
+| `STORAGE_PROVIDER` | `minio` | `s3` (managed) veya `minio` (self-host) |
+| `STORAGE_REGION` | `us-east-1` | provider region |
+| `STORAGE_FORCE_PATH_STYLE` | `true` | `false` (S3 yeni endpoint), `true` (MinIO) |
+| `MJ_BRIDGE_URL` | `http://127.0.0.1:8780` | mj-bridge deploy edilirse override |
+
+### 3.3 SEED için zorunlu (ilk admin user — tek-seferlik bootstrap)
 
 | Env | Üretim |
 |---|---|
 | `ADMIN_EMAIL` | İlk admin (örn. `admin@staging.kivasy.app`) |
 | `ADMIN_PASSWORD` | min 8 char; deploy sonrası UI'dan değiştir |
 
-### 3.3 OPSİYONEL — feature gating
+> Not: env.ts'de `optional()` (sistem ayağa kalkar set edilmese de), ama
+> `npm run db:seed` ilk admin user oluşturmak için bunları okur.
+
+### 3.4 OPTIONAL — feature gating (eksikse sistem açılır, ama bazı akışlar düşer)
 
 | Env | Yoksa fail mode |
 |---|---|
-| `REGISTRATION_ENABLED` | Default `false`; staging için ✓ |
-| `LOG_LEVEL` | Default `info`; debug için `debug` |
-| `ETSY_CLIENT_ID` / `ETSY_CLIENT_SECRET` / `ETSY_REDIRECT_URI` | Yoksa Settings → Etsy "Connect" 503; readiness endpoint `not_configured` honest fail |
+| `ETSY_CLIENT_ID` / `ETSY_CLIENT_SECRET` / `ETSY_REDIRECT_URI` | Yoksa Settings → Etsy "Connect" 503; `/api/settings/etsy-connection/readiness` `not_configured` honest fail |
 | `ETSY_TAXONOMY_MAP_JSON` | Yoksa Etsy submit 422 (`ETSY_TAXONOMY_MISSING`); UI'da Türkçe hint döner |
-| `MJ_BRIDGE_URL` / `MJ_BRIDGE_TOKEN` | Default `http://127.0.0.1:8780`; bridge yoksa `BridgeUnreachableError` |
-| `MAGIC_ERASER_PYTHON` / `MAGIC_ERASER_RUNNER_OVERRIDE` | Yoksa Magic Eraser job fail; diğer 4 edit-op çalışır |
+| `MJ_BRIDGE_TOKEN` | Bridge auth header; bridge enabled ama token yoksa 401 |
+| `MAGIC_ERASER_PYTHON` / `MAGIC_ERASER_RUNNER_OVERRIDE` | Yoksa Magic Eraser job fail; diğer 4 edit-op (bg-remove/color/crop/upscale) çalışır |
+| `STORAGE_PUBLIC_URL` | Yoksa signed URL'ler `STORAGE_ENDPOINT` üzerinden; CDN kullanılıyorsa override |
+| `DATABASE_URL_TEST` | Yalnız test ortamı için |
 
-### 3.4 USER-scoped secrets (env'de DEĞİL — UI'dan girilir)
+### 3.5 USER-scoped secrets (env'de DEĞİL — UI'dan girilir)
 
 | Secret | Nerede |
 |---|---|
@@ -151,26 +172,44 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"  # SECR
 
 ```bash
 # 1. .env.production hazırla
+# 9 strictly required (sistem ayağa kalkmaz) + 7 recommended (default'lu) +
+# 2 seed (ilk admin) + opsiyonel feature gating
 cat > .env.production <<'EOF'
-NODE_ENV=production
+# ── strictly required (env.ts no-default + no-optional)
 APP_URL=https://staging.kivasy.app
-LOG_LEVEL=info
-AUTH_SECRET=<openssl çıktısı>
-AUTH_TRUST_HOST=true
-REGISTRATION_ENABLED=false
-ADMIN_EMAIL=admin@staging.kivasy.app
-ADMIN_PASSWORD=<staging admin pass>
+AUTH_SECRET=<openssl rand -hex 32>
 SECRETS_ENCRYPTION_KEY=<64-hex>
 DATABASE_URL=postgresql://USER:PASS@HOST:5432/DB?schema=public
 REDIS_URL=redis://HOST:6379
-STORAGE_PROVIDER=s3
 STORAGE_BUCKET=kivasy-staging
 STORAGE_ENDPOINT=https://s3.us-east-1.amazonaws.com
-STORAGE_REGION=us-east-1
 STORAGE_ACCESS_KEY=<iam access key>
 STORAGE_SECRET_KEY=<iam secret>
+
+# ── recommended (production override)
+NODE_ENV=production
+LOG_LEVEL=info
+AUTH_TRUST_HOST=true
+REGISTRATION_ENABLED=false
+STORAGE_PROVIDER=s3
+STORAGE_REGION=us-east-1
 STORAGE_FORCE_PATH_STYLE=false
+
+# ── opsiyonel
 STORAGE_PUBLIC_URL=https://kivasy-staging.s3.us-east-1.amazonaws.com
+
+# ── seed (npm run db:seed bunları okur)
+ADMIN_EMAIL=admin@staging.kivasy.app
+ADMIN_PASSWORD=<staging admin pass — UI'dan değiştir>
+
+# ── opsiyonel feature gating (yoksa ilgili akış düşer ama sistem ayakta)
+# ETSY_CLIENT_ID=
+# ETSY_CLIENT_SECRET=
+# ETSY_REDIRECT_URI=https://staging.kivasy.app/api/etsy/oauth/callback
+# ETSY_TAXONOMY_MAP_JSON='{"wall_art":2078,"sticker":1208,"clipart":1207}'
+# MJ_BRIDGE_URL=http://127.0.0.1:8780
+# MJ_BRIDGE_TOKEN=<shared secret>
+# MAGIC_ERASER_PYTHON=python3
 EOF
 ```
 
@@ -269,6 +308,27 @@ curl -I https://staging.kivasy.app/api/auth/session  # → 200 (null session OK)
 Sistem mevcut haliyle staging'e taşınabilir. KIE provider key'i UI'dan girildiğinde gerçek smoke koşturulabilir. Etsy submit denenirse honest fail döner (operatör credential aşamasında çözülür). Geri kalan tüm pipeline staging'de çalışır.
 
 ---
+
+## 6.1 Do-not-forget (staging bring-up sırasında unutulması kolay maddeler)
+
+Operatör için staging deploy'a geçerken kritik noktalar:
+
+- **AUTH_SECRET**: `openssl rand -hex 32` — staging'de yeniden üret, dev'le aynı kullanma
+- **SECRETS_ENCRYPTION_KEY**: 64-hex; **rotasyon yapılırsa mevcut encrypted secret'lar decrypt edilemez** (silent null fallback). Staging'de yeniden üret + güvenli sakla
+- **STORAGE_BUCKET**: pre-create gerekli; bucket yoksa storage upload fail eder
+- **Worker AYRI process**: `npm run worker:prod` — web ile birlikte değil, ayrı systemd unit / PM2 / Docker container. Worker yoksa job'lar queue'da birikir, hiçbir şey tamamlanmaz
+- **KIE API key UI'dan girilecek**: `.env`'de DEĞİL — `Settings → AI Providers → KIE` üzerinden. Encrypted at rest. Variation/listing AI fill için zorunlu
+- **Etsy submit env hazır değilse**: 503 (`EtsyNotConfigured`) honest fail döner — bug değil, beklenen
+- **mj-bridge**: optional. Variation pipeline KIE direct path'i bağımsız çalışır; bridge yoksa KIE provider'ı kullan (Settings → AI Providers'da task assignment "kie/midjourney-v7")
+- **Magic Eraser Python (LaMa)**: optional. Yoksa Magic Eraser edit-op fail; bg-remove/color/crop/upscale çalışır
+- **Postgres pre-migrate snapshot**: `npm run db:migrate:deploy` çalıştırmadan ÖNCE backup al — migration geri alınamaz, yalnız restore ile rollback yapılabilir
+- **Seed sadece bir kez (production'da)**: Idempotent (existence check) ama gereksiz çağrılar log gürültüsü yaratır. Staging için 1 kere yeterli
+- **`/api/health` AUTH GEREKTIRMEZ**: load balancer / orchestration probe için public; sensitive bilgi sızdırmaz (yalnız boolean health flags + uptime)
+- **Production'da `next dev` çalıştırma**: Yalnız `npm start` (production build artifact). Dev mode performans + HMR overhead taşır
+- **`ADMIN_PASSWORD` UI'dan değiştir**: Seed sonrası ilk login → Settings → şifre rotasyonu. `.env` plaintext şifre ile kalmasın
+- **Prisma migrate deploy idempotent**: tekrar çalıştırılması güvenli ama production migration **geri-alınamaz**
+- **`/admin/midjourney/*` legacy admin debug**: sidebar'dan görünmez ama direct URL ile erişilebilir; admin için ops aracı (DELETE etmeyin, dependency var: `variantKindHelper`)
+- **Worker daily cron'lar UTC**: FETCH_NEW_LISTINGS UTC 06:00 + SELECTION_EXPORT_CLEANUP UTC 04:00 — staging timezone yanlış set edilirse cron timing farklı çalışır
 
 ## 7. Bilinçli post-staging deferred
 
