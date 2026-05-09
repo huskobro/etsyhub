@@ -124,16 +124,19 @@ export function CollectionsPage() {
             Bookmark ve referansları tema/konu bazında grupla.
           </p>
         </div>
-        <Button
-          variant="primary"
-          icon={<Plus className="h-4 w-4" aria-hidden />}
+        {/* R11.14.1 — k-btn recipe parity (gradient). */}
+        <button
+          type="button"
+          data-size="sm"
+          className="k-btn k-btn--primary"
           onClick={() => {
             setCreateError(null);
             setCreateOpen(true);
           }}
         >
+          <Plus className="h-3 w-3" aria-hidden />
           Yeni koleksiyon
-        </Button>
+        </button>
       </div>
 
       <Toolbar

@@ -172,13 +172,18 @@ export function ReferencesPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="primary"
-            icon={<Plus className="h-4 w-4" aria-hidden />}
+          {/* R11.14.1 — k-btn recipe (Kivasy v4 gradient parity) — eski
+              Button component'i flat solid orange üretiyordu; references
+              top-level CTA için design-system canon. */}
+          <button
+            type="button"
+            data-size="sm"
+            className="k-btn k-btn--primary"
             onClick={() => router.push("/collections?intent=create")}
           >
+            <Plus className="h-3 w-3" aria-hidden />
             Yeni koleksiyon
-          </Button>
+          </button>
         </div>
       </div>
 

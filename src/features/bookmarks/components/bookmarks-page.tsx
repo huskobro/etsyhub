@@ -173,13 +173,16 @@ export function BookmarksPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="primary"
-            icon={<Plus className="h-4 w-4" aria-hidden />}
+          {/* R11.14.1 — k-btn recipe parity (gradient). */}
+          <button
+            type="button"
+            data-size="sm"
+            className="k-btn k-btn--primary"
             onClick={() => setImportOpen(true)}
           >
+            <Plus className="h-3 w-3" aria-hidden />
             URL&apos;den ekle
-          </Button>
+          </button>
         </div>
       </div>
 

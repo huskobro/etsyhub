@@ -183,16 +183,19 @@ export function OverviewClient({
               section={pending.needsReview}
               actionLabel="Open Review"
               actionIcon={<Eye className="h-3 w-3" aria-hidden />}
+              cta="primary"
             />
             <PendingSectionView
               section={pending.mockupReady}
               actionLabel="Apply Mockups"
               actionIcon={<ImageIcon className="h-3 w-3" aria-hidden />}
+              cta="primary"
             />
             <PendingSectionView
               section={pending.draftsToSend}
-              actionLabel="Open Listing"
+              actionLabel="Send to Etsy as Draft"
               actionIcon={<Send className="h-3 w-3" aria-hidden />}
+              cta="publish"
             />
 
             {pending.failedBatches.total === 0 ? (
@@ -210,7 +213,7 @@ export function OverviewClient({
                 section={pending.failedBatches}
                 actionLabel="Inspect"
                 actionIcon={<ArrowRight className="h-3 w-3" aria-hidden />}
-                tone="warning"
+                cta="secondary"
               />
             )}
           </section>
@@ -354,7 +357,7 @@ export function OverviewClient({
               href="/settings?pane=notifications"
               className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-ink-2 hover:text-ink"
             >
-              View full inbox
+              View full activity (Inbox)
               <ArrowRight className="h-3 w-3" aria-hidden />
             </Link>
           </div>
@@ -368,12 +371,15 @@ function PendingSectionView({
   section,
   actionLabel,
   actionIcon,
-  tone = "primary",
+  cta = "primary",
 }: {
   section: { title: string; total: number; rows: { id: string; name: string; meta: string; href: string }[] };
   actionLabel: string;
   actionIcon: React.ReactNode;
-  tone?: "primary" | "warning";
+  /** k-btn recipe variant. Source: docs/design-system/kivasy/v6/screens-c3.jsx
+   *  PendingSection cta="primary" (orange) | "publish" (blue). secondary
+   *  warning fallback için. */
+  cta?: "primary" | "publish" | "secondary";
 }) {
   const visible = section.rows.slice(0, 4);
   if (section.total === 0) {
@@ -401,38 +407,41 @@ function PendingSectionView({
       </div>
       <div className="divide-y divide-line-soft">
         {visible.map((r) => (
-          <Link
+          <div
             key={r.id}
-            href={r.href}
             className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-k-bg-2"
           >
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[13.5px] font-medium text-ink">
+            <Link
+              href={r.href}
+              className="min-w-0 flex-1"
+            >
+              <div className="truncate text-[13.5px] font-medium text-ink hover:text-k-orange">
                 {r.name}
               </div>
               <div className="mt-0.5 font-mono text-[10.5px] tabular-nums tracking-meta text-ink-3">
                 {r.meta}
               </div>
-            </div>
-            <span
-              className={cn(
-                "inline-flex h-7 flex-shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium",
-                tone === "primary"
-                  ? "border border-line bg-paper text-ink-2"
-                  : "border border-warning bg-warning-soft text-warning",
-              )}
+            </Link>
+            <Link
+              href={r.href}
+              data-size="sm"
+              className={cn("k-btn", `k-btn--${cta}`)}
             >
               {actionIcon}
               {actionLabel}
-            </span>
-          </Link>
+            </Link>
+          </div>
         ))}
       </div>
       {section.total > visible.length ? (
         <div className="flex justify-end border-t border-line-soft px-4 py-2">
-          <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+          <Link
+            href={visible[0]?.href ?? "#"}
+            className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-ink-2 hover:text-ink"
+          >
             View all ({section.total})
-          </span>
+            <ArrowRight className="h-3 w-3" aria-hidden />
+          </Link>
         </div>
       ) : null}
     </div>

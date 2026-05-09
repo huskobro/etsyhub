@@ -103,9 +103,14 @@ export function CompetitorListPage() {
       title="Rakipler"
       subtitle="Etsy/Amazon mağazalarını takibe al, yeni listingleri analiz et."
       actions={
-        <Button variant="primary" onClick={() => setDialogOpen(true)}>
+        <button
+          type="button"
+          data-size="sm"
+          className="k-btn k-btn--primary"
+          onClick={() => setDialogOpen(true)}
+        >
           + Rakip Ekle
-        </Button>
+        </button>
       }
       toolbar={toolbar}
     >
