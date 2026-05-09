@@ -3,12 +3,13 @@
 // Güvenlik kuralları:
 // - GET: anahtarlar plain text DÖNMEZ. Var ise "•••••" (mask), yoksa null.
 //   `reviewProvider` plain döner (sır değil, runtime tercih).
-// - PUT: boş string → mevcut değer KORUNUR (preserve). Null → 400 (anlamsız:
-//   bu surface üzerinden explicit silme yok; gelecek geliştirme için ayrı buton
-//   açılabilir). Dolu string yeni değeri yazar. `reviewProvider` zorunlu enum.
+// - PUT: boş string → mevcut değer KORUNUR (preserve). null → explicit
+//   disconnect (key kaldırılır). Dolu string → yeni değeri yazar.
+//   `reviewProvider` zorunlu enum.
 // - WHY: Mask + preserve, formun "şifreyi göstermeden değiştirmeden geçme"
 //   kullanım davranışını gerektiriyor; aksi takdirde GET → form re-PUT cycle'ında
-//   anahtar yanlışlıkla "•••••" olarak persist edilir.
+//   anahtar yanlışlıkla "•••••" olarak persist edilir. null sentinel'i ise
+//   AI Providers pane "Disconnect" butonu için açık intent: key tamamen silinir.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -24,9 +25,10 @@ import { ReviewProviderChoiceSchema } from "@/features/settings/ai-mode/schemas"
 const MASK = "•••••";
 
 const PutBody = z.object({
-  // Boş string preserve sentinel; null reject (400). Dolu string → write.
-  kieApiKey: z.string(),
-  geminiApiKey: z.string(),
+  // Boş string preserve sentinel; null = explicit disconnect (key clear);
+  // dolu string = yeni değeri yaz.
+  kieApiKey: z.string().nullable(),
+  geminiApiKey: z.string().nullable(),
   // Phase 6 Aşama 1: review provider runtime seçimi. Default "kie" — body'de
   // yoksa Zod default doldurur (eski client backwards compat).
   reviewProvider: ReviewProviderChoiceSchema.default("kie"),
@@ -52,11 +54,16 @@ export const PUT = withErrorHandling(async (req: Request) => {
     throw new ValidationError("Geçersiz istek", parsed.error.flatten());
   }
 
-  // Preserve-on-empty: mevcut değeri çek; boş string → eskisini koru.
+  // Sentinel davranışı:
+  //   "" (boş string)   → mevcut değeri KORU (preserve)
+  //   null              → explicit DISCONNECT (key clear)
+  //   dolu string       → yeni değeri WRITE
   const existing = await getUserAiModeSettings(user.id);
   const next = {
     kieApiKey:
-      parsed.data.kieApiKey === "" ? existing.kieApiKey : parsed.data.kieApiKey,
+      parsed.data.kieApiKey === ""
+        ? existing.kieApiKey
+        : parsed.data.kieApiKey,
     geminiApiKey:
       parsed.data.geminiApiKey === ""
         ? existing.geminiApiKey

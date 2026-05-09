@@ -667,6 +667,48 @@ const TONE_GRADIENT: Record<ProviderTone, string> = {
 function ProviderCard({ provider: p }: { provider: ProviderRow }) {
   const [revealKey, setRevealKey] = useState(false);
   const [defaultsOpen, setDefaultsOpen] = useState(p.id === "kie");
+  // R11.6 — KIE + Gemini gerçek provider'lar (key persistence + disconnect
+  // canlı). Diğer 4 provider hâlâ R12 scope'unda; placeholder davranışta kalır.
+  const isEditable = p.id === "kie" || p.id === "gemini";
+  const [keyDraft, setKeyDraft] = useState("");
+  const qc = useQueryClient();
+  const keyMutation = useMutation<
+    { settings: AiModeMaskedSettings },
+    Error,
+    "save" | "disconnect"
+  >({
+    mutationFn: async (action) => {
+      const field = p.id === "kie" ? "kieApiKey" : "geminiApiKey";
+      const otherField = p.id === "kie" ? "geminiApiKey" : "kieApiKey";
+      const body: Record<string, unknown> = {
+        [otherField]: "", // boş string = preserve diğer key'i
+      };
+      if (action === "save") {
+        if (!keyDraft.trim()) {
+          throw new Error("API key boş olamaz");
+        }
+        body[field] = keyDraft.trim();
+      } else {
+        // disconnect → null sentinel (backend explicit clear)
+        body[field] = null;
+      }
+      const r = await fetch("/api/settings/ai-mode", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e?.error ?? `HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+    onSuccess: () => {
+      setKeyDraft("");
+      // Üst seviye query'i invalide et — R8'de QUERY_KEY=["settings","ai-mode"]
+      qc.invalidateQueries({ queryKey: ["settings", "ai-mode"] });
+    },
+  });
   const isMissing = p.status.label === "KEY MISSING";
   const isFailed = !!p.authFailed;
 
@@ -726,6 +768,22 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
             <RotateCw className="h-3 w-3" aria-hidden />
             Re-authenticate
           </button>
+        ) : !isMissing && isEditable ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(`${p.name} API key'i kaldırılsın mı?`)) {
+                keyMutation.mutate("disconnect");
+              }
+            }}
+            disabled={keyMutation.isPending}
+            className="inline-flex h-7 items-center rounded-md border border-line px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
+            data-testid="ai-provider-disconnect"
+          >
+            {keyMutation.isPending && keyMutation.variables === "disconnect"
+              ? "Disconnecting…"
+              : "Disconnect"}
+          </button>
         ) : !isMissing ? (
           <button
             type="button"
@@ -749,7 +807,65 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
             </div>
           </div>
           <div>
-            {isMissing ? (
+            {isMissing && isEditable ? (
+              <div>
+                <div className="flex max-w-[520px] items-center gap-2">
+                  <input
+                    type={revealKey ? "text" : "password"}
+                    value={keyDraft}
+                    onChange={(e) => setKeyDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && keyDraft.trim()) {
+                        keyMutation.mutate("save");
+                      }
+                    }}
+                    placeholder={`Paste your ${p.name} API key`}
+                    autoComplete="off"
+                    spellCheck={false}
+                    data-testid="ai-provider-key-input"
+                    className="h-9 flex-1 rounded-md border border-line bg-paper px-3 font-mono text-[12px] text-ink placeholder:text-ink-3 focus:border-k-orange focus:outline-none focus:ring-2 focus:ring-k-orange-soft"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setRevealKey((v) => !v)}
+                    className={cn(
+                      "inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-ink-3 hover:text-ink",
+                      revealKey && "text-k-orange",
+                    )}
+                    aria-label={revealKey ? "Hide key" : "Reveal key"}
+                  >
+                    {revealKey ? (
+                      <EyeOff className="h-3.5 w-3.5" aria-hidden />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" aria-hidden />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => keyMutation.mutate("save")}
+                    disabled={!keyDraft.trim() || keyMutation.isPending}
+                    className="k-btn k-btn--primary"
+                    data-size="sm"
+                    data-testid="ai-provider-key-save"
+                  >
+                    {keyMutation.isPending &&
+                    keyMutation.variables === "save"
+                      ? "Saving…"
+                      : "Save"}
+                  </button>
+                </div>
+                {p.keyEmptyHint ? (
+                  <div className="mt-1.5 font-mono text-[10.5px] tracking-wider text-ink-3">
+                    {p.keyEmptyHint}
+                  </div>
+                ) : null}
+                {keyMutation.isError ? (
+                  <div className="mt-1.5 text-[11.5px] text-danger">
+                    {(keyMutation.error as Error).message}
+                  </div>
+                ) : null}
+              </div>
+            ) : isMissing ? (
               <div>
                 <input
                   type="text"
@@ -764,34 +880,77 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
                 ) : null}
               </div>
             ) : (
-              <div className="flex max-w-[520px] items-center gap-2">
-                <div className="flex h-9 flex-1 items-center rounded-md border border-line bg-k-bg-2 px-3 font-mono text-[12px] text-ink-2">
-                  {revealKey ? p.keyMasked : maskKey(p.keyMasked)}
+              <div>
+                <div className="flex max-w-[520px] items-center gap-2">
+                  <div className="flex h-9 flex-1 items-center rounded-md border border-line bg-k-bg-2 px-3 font-mono text-[12px] text-ink-2">
+                    {revealKey ? p.keyMasked : maskKey(p.keyMasked)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRevealKey((v) => !v)}
+                    className={cn(
+                      "inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-ink-3 hover:text-ink",
+                      revealKey && "text-k-orange",
+                    )}
+                    aria-label={revealKey ? "Hide key" : "Reveal key"}
+                  >
+                    {revealKey ? (
+                      <EyeOff className="h-3.5 w-3.5" aria-hidden />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" aria-hidden />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-ink-3 hover:text-ink disabled:opacity-50"
+                    aria-label="Copy key"
+                    disabled
+                    title="Copy ships in R12"
+                  >
+                    <Copy className="h-3.5 w-3.5" aria-hidden />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setRevealKey((v) => !v)}
-                  className={cn(
-                    "inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-ink-3 hover:text-ink",
-                    revealKey && "text-k-orange",
-                  )}
-                  aria-label={revealKey ? "Hide key" : "Reveal key"}
-                >
-                  {revealKey ? (
-                    <EyeOff className="h-3.5 w-3.5" aria-hidden />
-                  ) : (
-                    <Eye className="h-3.5 w-3.5" aria-hidden />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-ink-3 hover:text-ink disabled:opacity-50"
-                  aria-label="Copy key"
-                  disabled
-                  title="Copy ships in R12"
-                >
-                  <Copy className="h-3.5 w-3.5" aria-hidden />
-                </button>
+                {isEditable ? (
+                  <div className="mt-2 flex max-w-[520px] items-center gap-2">
+                    <input
+                      type={revealKey ? "text" : "password"}
+                      value={keyDraft}
+                      onChange={(e) => setKeyDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && keyDraft.trim()) {
+                          keyMutation.mutate("save");
+                        }
+                      }}
+                      placeholder="Paste new key to replace"
+                      autoComplete="off"
+                      spellCheck={false}
+                      data-testid="ai-provider-key-replace-input"
+                      className="h-8 flex-1 rounded-md border border-line bg-paper px-3 font-mono text-[12px] text-ink placeholder:text-ink-3 focus:border-k-orange focus:outline-none focus:ring-2 focus:ring-k-orange-soft"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => keyMutation.mutate("save")}
+                      disabled={!keyDraft.trim() || keyMutation.isPending}
+                      className="inline-flex h-8 items-center rounded-md border border-line px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
+                      data-testid="ai-provider-key-replace-save"
+                    >
+                      {keyMutation.isPending &&
+                      keyMutation.variables === "save"
+                        ? "Saving…"
+                        : "Replace"}
+                    </button>
+                  </div>
+                ) : null}
+                {keyMutation.isError ? (
+                  <div className="mt-1.5 text-[11.5px] text-danger">
+                    {(keyMutation.error as Error).message}
+                  </div>
+                ) : null}
+                {keyMutation.isSuccess ? (
+                  <div className="mt-1.5 font-mono text-[10.5px] uppercase tracking-meta text-k-green">
+                    Saved
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
