@@ -123,6 +123,25 @@ const whitelist = [
   "src/features/settings/shell/panes/PaneEtsy.tsx",
   "src/features/settings/shell/panes/PaneAIProviders.tsx",
   "src/features/settings/shell/panes/PaneDeferred.tsx",
+  // Rollout-7 — Templates CRUD + Settings persist + remaining panes.
+  //  · PromptTemplateEditorModal → Modal lg + ModalSplit (340/1fr) +
+  //    text-[12.5px] / text-[11.5px] / text-[10.5px] / text-[11px]
+  //    yarı-piksel form labels + max-h-[88vh] viewport limit (Modal canon).
+  //  · StylePresetsSubview → text-[14px] preset card title + text-[10px] /
+  //    text-[10.5px] / text-[11px] yarı-piksel mono labels (v6 C1 canon).
+  //  · PaneWorkspace → max-w-[680px] container + text-[26px] k-display
+  //    title + text-[12.5px] / text-[11.5px] / text-[10.5px] yarı-piksel
+  //    typography (Settings canon).
+  //  · PaneNotifications → text-[13px] / text-[11.5px] / text-[10.5px] /
+  //    text-[9.5px] yarı-piksel + h-5/w-9 toggle (v6 ToggleRow pattern).
+  //  · PaneStorage → text-[26px] k-display title + text-[20px] / text-[15px]
+  //    / text-[13px] / text-[12px] / text-[11px] / text-[10.5px] / text-[10px]
+  //    yarı-piksel typography (Settings canon).
+  "src/features/templates/components/PromptTemplateEditorModal.tsx",
+  "src/features/templates/components/StylePresetsSubview.tsx",
+  "src/features/settings/shell/panes/PaneWorkspace.tsx",
+  "src/features/settings/shell/panes/PaneNotifications.tsx",
+  "src/features/settings/shell/panes/PaneStorage.tsx",
 ];
 
 let hadError = false;

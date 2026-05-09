@@ -37,6 +37,8 @@ export default async function TemplatesPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
+  const isAdmin = session.user.role === "ADMIN";
+
   const [counts, prompts, mockups, recipes] = await Promise.all([
     getTemplatesCounts(),
     listPromptTemplatesForView(),
@@ -50,6 +52,7 @@ export default async function TemplatesPage() {
       prompts={prompts}
       mockups={mockups}
       recipes={recipes}
+      isAdmin={isAdmin}
     />
   );
 }

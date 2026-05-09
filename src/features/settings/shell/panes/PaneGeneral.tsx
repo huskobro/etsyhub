@@ -7,8 +7,9 @@
 // Whitelisted in scripts/check-tokens.ts.
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { Grid3x3, List as ListIcon } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Grid3x3, List as ListIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 /**
@@ -27,11 +28,65 @@ type Theme = "light" | "dark";
 type Language = "en-US" | "tr" | "de";
 type DateFormat = "relative" | "iso";
 
+interface GeneralSettingsView {
+  density: Density;
+  language: Language;
+  dateFormat: DateFormat;
+  theme: Theme;
+}
+
+const QUERY_KEY = ["settings", "general"] as const;
+
 export function PaneGeneral() {
+  const qc = useQueryClient();
+
+  const query = useQuery<{ settings: GeneralSettingsView }>({
+    queryKey: QUERY_KEY,
+    queryFn: async () => {
+      const r = await fetch("/api/settings/general");
+      if (!r.ok) throw new Error("General settings yüklenemedi");
+      return r.json();
+    },
+  });
+
+  const mutation = useMutation<
+    { settings: GeneralSettingsView },
+    Error,
+    Partial<GeneralSettingsView>
+  >({
+    mutationFn: async (patch) => {
+      const r = await fetch("/api/settings/general", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body?.error ?? `HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(QUERY_KEY, data);
+    },
+  });
+
+  const remote = query.data?.settings;
   const [density, setDensity] = useState<Density>("comfortable");
   const [theme] = useState<Theme>("light");
   const [language, setLanguage] = useState<Language>("en-US");
   const [dateFormat, setDateFormat] = useState<DateFormat>("relative");
+
+  useEffect(() => {
+    if (!remote) return;
+    setDensity(remote.density);
+    setLanguage(remote.language);
+    setDateFormat(remote.dateFormat);
+  }, [remote]);
+
+  function persist(patch: Partial<GeneralSettingsView>) {
+    mutation.mutate(patch);
+  }
 
   return (
     <div className="max-w-[680px] px-10 py-9">
@@ -50,14 +105,20 @@ export function PaneGeneral() {
         <Segment>
           <SegmentButton
             active={density === "comfortable"}
-            onClick={() => setDensity("comfortable")}
+            onClick={() => {
+              setDensity("comfortable");
+              persist({ density: "comfortable" });
+            }}
           >
             <Grid3x3 className="h-3 w-3" aria-hidden />
             Comfortable
           </SegmentButton>
           <SegmentButton
             active={density === "dense"}
-            onClick={() => setDensity("dense")}
+            onClick={() => {
+              setDensity("dense");
+              persist({ density: "dense" });
+            }}
           >
             <ListIcon className="h-3 w-3" aria-hidden />
             Dense
@@ -82,7 +143,11 @@ export function PaneGeneral() {
       >
         <select
           value={language}
-          onChange={(e) => setLanguage(e.target.value as Language)}
+          onChange={(e) => {
+            const v = e.target.value as Language;
+            setLanguage(v);
+            persist({ language: v });
+          }}
           className="h-9 w-[280px] rounded-md border border-line bg-paper px-3 text-sm text-ink focus:border-k-orange focus:outline-none focus:ring-2 focus:ring-k-orange-soft"
           data-testid="settings-general-language"
         >
@@ -99,13 +164,19 @@ export function PaneGeneral() {
         <Segment>
           <SegmentButton
             active={dateFormat === "relative"}
-            onClick={() => setDateFormat("relative")}
+            onClick={() => {
+              setDateFormat("relative");
+              persist({ dateFormat: "relative" });
+            }}
           >
             Relative
           </SegmentButton>
           <SegmentButton
             active={dateFormat === "iso"}
-            onClick={() => setDateFormat("iso")}
+            onClick={() => {
+              setDateFormat("iso");
+              persist({ dateFormat: "iso" });
+            }}
           >
             ISO 8601
           </SegmentButton>
@@ -115,14 +186,31 @@ export function PaneGeneral() {
       <div className="mt-8 border-t border-line-soft pt-5">
         <button
           type="button"
-          className="inline-flex h-7 items-center rounded-md px-3 text-xs font-medium text-ink-2 hover:text-ink"
-          disabled
-          title="Persist in R7"
+          className="inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-ink-2 hover:text-ink disabled:opacity-50"
+          disabled={mutation.isPending}
+          onClick={() =>
+            persist({
+              density: "comfortable",
+              language: "en-US",
+              dateFormat: "relative",
+              theme: "light",
+            })
+          }
+          data-testid="settings-general-reset"
         >
+          {mutation.isPending ? (
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+          ) : null}
           Reset to defaults
         </button>
         <p className="mt-2 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-          Persist disabled · settings registry expansion in R7
+          {mutation.isError
+            ? `Save failed: ${mutation.error?.message}`
+            : mutation.isSuccess
+              ? "Saved · synced via UserSetting key=general"
+              : query.isLoading
+                ? "Loading…"
+                : "Toggle to persist instantly · synced via UserSetting key=general"}
         </p>
       </div>
     </div>

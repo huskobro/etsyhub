@@ -78,6 +78,13 @@ interface ProviderRow {
 
 const QUERY_KEY = ["settings", "ai-mode"] as const;
 
+interface CostSummaryView {
+  dailySpendCents: number;
+  monthlySpendCents: number;
+  activeProviderCount: number;
+  failedCalls24h: number;
+}
+
 export function PaneAIProviders() {
   const aiModeQuery = useQuery({
     queryKey: QUERY_KEY,
@@ -86,6 +93,16 @@ export function PaneAIProviders() {
       if (!r.ok) throw new Error("AI Providers settings yüklenemedi");
       return r.json();
     },
+  });
+
+  const costQuery = useQuery<{ summary: CostSummaryView }>({
+    queryKey: ["settings", "cost-summary"],
+    queryFn: async () => {
+      const r = await fetch("/api/settings/cost-summary");
+      if (!r.ok) throw new Error("Cost summary yüklenemedi");
+      return r.json();
+    },
+    staleTime: 60 * 1000,
   });
 
   const providers = useMemo<ProviderRow[]>(() => {
@@ -265,30 +282,36 @@ export function PaneAIProviders() {
         in Preferences → Workspace (R7)
       </p>
 
-      {/* 4-column stat row */}
+      {/* 4-column stat row — R7 real backing via /api/settings/cost-summary */}
       <div className="mb-7 grid grid-cols-2 divide-line-soft rounded-md border border-line bg-paper md:grid-cols-4 md:divide-x">
         <Stat
           label="DAILY SPEND"
-          value="$3.42"
+          value={dollar(costQuery.data?.summary.dailySpendCents)}
           meta="of $50 limit"
-          pct={3.42 / 50}
+          pct={(costQuery.data?.summary.dailySpendCents ?? 0) / 100 / 50}
         />
         <Stat
           label="MONTHLY SPEND"
-          value="$48.90"
+          value={dollar(costQuery.data?.summary.monthlySpendCents)}
           meta="of $800 limit"
-          pct={48.9 / 800}
+          pct={(costQuery.data?.summary.monthlySpendCents ?? 0) / 100 / 800}
         />
         <Stat
           label="ACTIVE PROVIDERS"
-          value={String(activeCount)}
+          value={String(costQuery.data?.summary.activeProviderCount ?? activeCount)}
           meta={`of ${totalCount}`}
         />
         <Stat
           label="FAILED CALLS · 24H"
-          value="0"
-          meta="cost-usage aggregator R7"
-          tone="ink"
+          value={String(costQuery.data?.summary.failedCalls24h ?? 0)}
+          meta={
+            costQuery.data?.summary.failedCalls24h
+              ? "FAILED job count last 24h"
+              : "no failures in 24h"
+          }
+          tone={
+            (costQuery.data?.summary.failedCalls24h ?? 0) > 0 ? "danger" : "ink"
+          }
         />
       </div>
 
@@ -597,4 +620,9 @@ const TASK_LABELS = {
 function maskKey(key: string): string {
   if (!key || key.length < 8) return "•••••";
   return `${key.slice(0, 4)}${"•".repeat(Math.min(20, key.length - 8))}${key.slice(-4)}`;
+}
+
+function dollar(cents: number | undefined): string {
+  if (cents == null) return "—";
+  return `$${(cents / 100).toFixed(2)}`;
 }

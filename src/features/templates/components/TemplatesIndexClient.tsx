@@ -12,6 +12,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   Download,
+  Pencil,
   Plus,
   Search,
   Upload,
@@ -24,6 +25,8 @@ import type {
   RecipeRow,
   TemplatesCounts,
 } from "@/server/services/templates/index-view";
+import { PromptTemplateEditorModal } from "./PromptTemplateEditorModal";
+import { StylePresetsSubview } from "./StylePresetsSubview";
 
 /**
  * TemplatesIndexClient — Kivasy C1 Templates surface.
@@ -48,17 +51,25 @@ interface TemplatesIndexClientProps {
   prompts: PromptTemplateRow[];
   mockups: MockupTemplateRow[];
   recipes: RecipeRow[];
+  isAdmin: boolean;
 }
+
+type EditorState =
+  | { mode: "closed" }
+  | { mode: "create" }
+  | { mode: "edit"; templateId: string };
 
 export function TemplatesIndexClient({
   counts,
   prompts,
   mockups,
   recipes,
+  isAdmin,
 }: TemplatesIndexClientProps) {
   const router = useRouter();
   const params = useSearchParams();
   const sub = (params.get("sub") as SubTab | null) ?? "prompts";
+  const [editor, setEditor] = useState<EditorState>({ mode: "closed" });
 
   function setSub(next: SubTab) {
     const sp = new URLSearchParams(params.toString());
@@ -83,7 +94,7 @@ export function TemplatesIndexClient({
         type="button"
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
         disabled
-        title="Upload PSD ships in R7"
+        title="Upload PSD pipeline ships in R8 (operator template ingest)"
       >
         <Upload className="h-3 w-3" aria-hidden />
         Upload PSD
@@ -93,7 +104,7 @@ export function TemplatesIndexClient({
         type="button"
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
         disabled
-        title="Import recipe ships in R7"
+        title="Recipe import / runner ships in R8"
       >
         <Download className="h-3 w-3" aria-hidden />
         Import recipe
@@ -119,8 +130,13 @@ export function TemplatesIndexClient({
           type="button"
           data-size="sm"
           className="k-btn k-btn--primary"
-          disabled
-          title="New Template ships in R7"
+          disabled={!isAdmin}
+          onClick={() => setEditor({ mode: "create" })}
+          title={
+            isAdmin
+              ? "Open prompt template editor"
+              : "Admin scope — only admins can create templates"
+          }
           data-testid="templates-new-cta"
         >
           <Plus className="h-3 w-3" aria-hidden />
@@ -165,11 +181,26 @@ export function TemplatesIndexClient({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
-        {sub === "prompts" ? <PromptsSubview rows={prompts} /> : null}
-        {sub === "presets" ? <PresetsSubview /> : null}
+        {sub === "prompts" ? (
+          <PromptsSubview
+            rows={prompts}
+            isAdmin={isAdmin}
+            onEdit={(id) => setEditor({ mode: "edit", templateId: id })}
+          />
+        ) : null}
+        {sub === "presets" ? <StylePresetsSubview isAdmin={isAdmin} /> : null}
         {sub === "mockups" ? <MockupsSubview rows={mockups} /> : null}
         {sub === "recipes" ? <RecipesSubview rows={recipes} /> : null}
       </div>
+
+      {editor.mode !== "closed" ? (
+        <PromptTemplateEditorModal
+          mode={editor.mode}
+          templateId={editor.mode === "edit" ? editor.templateId : undefined}
+          onClose={() => setEditor({ mode: "closed" })}
+          onSaved={() => router.refresh()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -178,7 +209,15 @@ export function TemplatesIndexClient({
 // Prompts subview
 // ────────────────────────────────────────────────────────────
 
-function PromptsSubview({ rows }: { rows: PromptTemplateRow[] }) {
+function PromptsSubview({
+  rows,
+  isAdmin,
+  onEdit,
+}: {
+  rows: PromptTemplateRow[];
+  isAdmin: boolean;
+  onEdit: (id: string) => void;
+}) {
   const [q, setQ] = useState("");
   const filtered = rows.filter((r) =>
     r.name.toLowerCase().includes(q.toLowerCase()),
@@ -241,6 +280,7 @@ function PromptsSubview({ rows }: { rows: PromptTemplateRow[] }) {
               <th className="w-28 border-b border-line-soft bg-k-bg-2/40 px-3 py-2.5 text-left font-mono text-[10.5px] font-medium uppercase tracking-meta text-ink-3">
                 Updated
               </th>
+              <th className="w-12 border-b border-line-soft bg-k-bg-2/40 px-3 py-2.5" />
             </tr>
           </thead>
           <tbody>
@@ -270,6 +310,19 @@ function PromptsSubview({ rows }: { rows: PromptTemplateRow[] }) {
                 <td className="px-3 py-3 font-mono text-xs text-ink-3">
                   {relativeDate(r.updatedAt)}
                 </td>
+                <td className="px-3 py-3 text-right">
+                  {isAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => onEdit(r.id)}
+                      className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-ink-2 hover:text-ink"
+                      data-testid="templates-prompts-edit"
+                    >
+                      <Pencil className="h-3 w-3" aria-hidden />
+                      Edit
+                    </button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -279,26 +332,7 @@ function PromptsSubview({ rows }: { rows: PromptTemplateRow[] }) {
   );
 }
 
-// ────────────────────────────────────────────────────────────
-// Presets subview (R7 deferred)
-// ────────────────────────────────────────────────────────────
-
-function PresetsSubview() {
-  return (
-    <div className="rounded-md border border-dashed border-line bg-paper px-6 py-12 text-center">
-      <h3 className="text-base font-semibold text-ink">
-        Style Presets — coming in R7
-      </h3>
-      <p className="mt-1 text-sm text-text-muted">
-        Aspect ratio + similarity + palette + weight bundles for re-use across
-        batches. Schema and CRUD ship next rollout.
-      </p>
-      <p className="mt-3 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-        Wave D · Templates CRUD
-      </p>
-    </div>
-  );
-}
+// Presets subview lives in StylePresetsSubview (sibling file).
 
 // ────────────────────────────────────────────────────────────
 // Mockups subview — 3 sınıf gruplu (CLAUDE.md §6 mockup model)
@@ -425,7 +459,8 @@ function RecipesSubview({ rows }: { rows: RecipeRow[] }) {
         <h3 className="text-base font-semibold text-ink">No recipes yet</h3>
         <p className="mt-1 text-sm text-text-muted">
           Recipes bundle prompt + preset + mockup + listing into one click.
-          CRUD UI ships in R7.
+          Recipe runner UI lands in R8 alongside the A6 modal preset
+          selector.
         </p>
       </div>
     );
@@ -441,15 +476,28 @@ function RecipesSubview({ rows }: { rows: RecipeRow[] }) {
           <div className="text-[14.5px] font-semibold leading-snug text-ink">
             {r.name}
           </div>
-          <div className="mt-1 font-mono text-xs text-ink-3">
-            {r.key}
-          </div>
+          <div className="mt-1 font-mono text-xs text-ink-3">{r.key}</div>
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             {r.productTypeDisplay ? (
               <Badge tone="neutral">{r.productTypeDisplay}</Badge>
             ) : null}
             {r.isSystem ? <Badge tone="info">SYSTEM</Badge> : null}
           </div>
+
+          {/* Chain visualization (R7) */}
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
+            <ChainStep label="Prompt" />
+            <ArrowRight
+              className="h-3 w-3 text-ink-3"
+              aria-hidden
+            />
+            <ChainStep label="Style preset" />
+            <ArrowRight className="h-3 w-3 text-ink-3" aria-hidden />
+            <ChainStep label="Mockup" />
+            <ArrowRight className="h-3 w-3 text-ink-3" aria-hidden />
+            <ChainStep label="Listing" />
+          </div>
+
           <div className="mt-3 flex items-center justify-between border-t border-line-soft pt-2.5">
             <span className="font-mono text-xs text-ink-3">
               {relativeDate(r.updatedAt)}
@@ -458,7 +506,7 @@ function RecipesSubview({ rows }: { rows: RecipeRow[] }) {
               type="button"
               className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-ink-2 hover:text-ink disabled:opacity-50"
               disabled
-              title="Run recipe ships in R7"
+              title="Recipe runner orchestration ships in R8"
             >
               Run
               <ArrowRight className="h-3 w-3" aria-hidden />
@@ -467,6 +515,14 @@ function RecipesSubview({ rows }: { rows: RecipeRow[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function ChainStep({ label }: { label: string }) {
+  return (
+    <span className="rounded bg-k-bg-2 px-1.5 py-0.5 font-mono text-[10px] text-ink-2">
+      {label}
+    </span>
   );
 }
 

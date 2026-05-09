@@ -4,6 +4,9 @@ import { SettingsShell, type PaneId } from "./SettingsShell";
 import { PaneGeneral } from "./panes/PaneGeneral";
 import { PaneEtsy } from "./panes/PaneEtsy";
 import { PaneAIProviders } from "./panes/PaneAIProviders";
+import { PaneWorkspace } from "./panes/PaneWorkspace";
+import { PaneNotifications } from "./panes/PaneNotifications";
+import { PaneStorage } from "./panes/PaneStorage";
 import { PaneDeferred } from "./panes/PaneDeferred";
 
 /**
@@ -36,6 +39,12 @@ function renderPane(pane: PaneId) {
       return <PaneEtsy />;
     case "providers":
       return <PaneAIProviders />;
+    case "workspace":
+      return <PaneWorkspace />;
+    case "notifications":
+      return <PaneNotifications />;
+    case "storage":
+      return <PaneStorage />;
     default:
       return <PaneDeferred paneId={pane} />;
   }
