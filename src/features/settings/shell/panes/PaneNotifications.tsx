@@ -140,7 +140,7 @@ export function PaneNotifications() {
       <p className="mt-1 mb-7 text-[13px] text-ink-2">
         In-app inbox + signal preferences. Recipe runs, batch results,
         and mockup activations land in the inbox below. Feed refreshes
-        every 15s until the SSE channel ships in R12.
+        every 15s until the SSE live channel becomes available with the upcoming notifications upgrade.
       </p>
 
       <NotificationsInbox />
@@ -173,7 +173,7 @@ export function PaneNotifications() {
                     </div>
                     {!s.live ? (
                       <span className="font-mono text-[9.5px] uppercase tracking-meta text-ink-4">
-                        R12
+                        Soon
                       </span>
                     ) : null}
                   </div>
@@ -226,7 +226,7 @@ export function PaneNotifications() {
         ) : query.isLoading && !query.data ? (
           "Loading preferences…"
         ) : (
-          "Toggles persist instantly · in-app inbox active · desktop push + email digest land in R12"
+          "Toggles persist instantly · in-app inbox active · desktop push + email digest coming soon"
         )}
       </p>
     </div>

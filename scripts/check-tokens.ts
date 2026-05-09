@@ -203,6 +203,11 @@ const whitelist = [
   //   primitive removed). v5 SubShops paritesi: text-[13px] title +
   //   text-[10.5px]/text-[12.5px] mono caption hierarchy.
   "src/features/competitors/components/competitor-card.tsx",
+  // R11.14.11 — PageShell topbar AppTopbar canon parity (h-16 + h1 24px
+  //   k-display + subtitle 10.5px mono inline). Tüm PageShell tüketici
+  //   sayfalar (competitor-list, trend-stories, variations) artık aynı
+  //   topbar typography hierarchy'sinde.
+  "src/components/ui/PageShell.tsx",
 ];
 // Note: Rollout-9 keeps existing whitelisted files; no new client tsx with
 // half-pixel typography added.

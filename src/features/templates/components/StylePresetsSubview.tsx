@@ -119,7 +119,7 @@ export function StylePresetsSubview({ isAdmin }: { isAdmin: boolean }) {
                   type="button"
                   className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-ink-2 hover:text-ink disabled:opacity-50"
                   disabled
-                  title="Apply ships in R8 — A6 modal preset selector"
+                  title="Apply preset to a batch — coming soon (preset selector in batch modal)."
                 >
                   Apply
                   <ArrowRight className="h-3 w-3" aria-hidden />

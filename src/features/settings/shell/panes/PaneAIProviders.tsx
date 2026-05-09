@@ -285,7 +285,7 @@ export function PaneAIProviders() {
         status: { tone: "warning", label: "KEY MISSING" },
         keyMasked: "",
         keyEmptyHint:
-          "OpenAI provider integration ships in R12",
+          "OpenAI provider integration coming soon",
         lastSuccess: null,
         lastError: null,
         defaults: null,
@@ -299,7 +299,7 @@ export function PaneAIProviders() {
         tone: "blue",
         status: { tone: "warning", label: "KEY MISSING" },
         keyMasked: "",
-        keyEmptyHint: "Fal.ai integration ships in R12",
+        keyEmptyHint: "Fal.ai integration coming soon",
         lastSuccess: null,
         lastError: null,
         defaults: null,
@@ -313,7 +313,7 @@ export function PaneAIProviders() {
         tone: "ink",
         status: { tone: "warning", label: "KEY MISSING" },
         keyMasked: "",
-        keyEmptyHint: "Replicate integration ships in R12",
+        keyEmptyHint: "Replicate integration coming soon",
         lastSuccess: null,
         lastError: null,
         defaults: null,
@@ -327,7 +327,7 @@ export function PaneAIProviders() {
         tone: "purple",
         status: { tone: "warning", label: "KEY MISSING" },
         keyMasked: "",
-        keyEmptyHint: "Recraft integration ships in R12",
+        keyEmptyHint: "Recraft integration coming soon",
         lastSuccess: null,
         lastError: null,
         defaults: null,
@@ -763,7 +763,7 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
             data-size="sm"
             className="k-btn k-btn--primary"
             disabled
-            title="Re-authenticate ships in R12"
+            title="Re-authenticate is part of the upcoming provider integration"
           >
             <RotateCw className="h-3 w-3" aria-hidden />
             Re-authenticate
@@ -789,7 +789,7 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
             type="button"
             className="inline-flex h-7 items-center rounded-md px-3 text-xs font-medium text-ink-2 hover:text-ink disabled:opacity-50"
             disabled
-            title="Disconnect ships in R12"
+            title="Disconnect is part of the upcoming provider integration"
           >
             Disconnect
           </button>

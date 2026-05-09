@@ -101,7 +101,7 @@ export function SelectionCard({
               aria-label="More actions"
               className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-line text-ink-3 hover:border-line-strong hover:text-ink"
               disabled
-              title="More actions (rename, archive, duplicate) — coming in R5"
+              title="More actions (rename, archive, duplicate) — coming soon"
             >
               <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
             </button>

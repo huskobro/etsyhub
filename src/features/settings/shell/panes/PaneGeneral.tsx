@@ -135,9 +135,9 @@ export function PaneGeneral() {
             active={false}
             disabled
             onClick={() => {}}
-            title="Dark theme ships in R7+ (post-MVP). Light theme is the only option for now."
+            title="Dark theme is on the post-MVP backlog. Light theme is the only option for now."
           >
-            Dark · R7+
+            Dark · Soon
           </SegmentButton>
         </Segment>
       </SettingRow>

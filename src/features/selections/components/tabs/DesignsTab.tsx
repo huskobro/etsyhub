@@ -120,7 +120,7 @@ export function DesignsTab({ setId, items }: DesignsTabProps) {
                     onClick={(e) => e.stopPropagation()}
                     className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-line bg-paper/95 text-ink-3 cursor-grab disabled:opacity-50"
                     disabled
-                    title="Reorder by drag-and-drop — coming in R5. Designs currently sort by add date."
+                    title="Reorder by drag-and-drop — coming soon. Designs currently sort by add date."
                   >
                     <GripVertical className="h-3 w-3" aria-hidden />
                   </button>

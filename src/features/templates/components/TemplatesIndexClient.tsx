@@ -128,7 +128,7 @@ export function TemplatesIndexClient({
         type="button"
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
         disabled
-        title="Recipe export / import ships in R9"
+        title="Recipe export / import — coming soon."
       >
         <Download className="h-3 w-3" aria-hidden />
         Import recipe
@@ -302,7 +302,7 @@ function PromptsSubview({
           </h3>
           <p className="mt-1 text-sm text-text-muted">
             {rows.length === 0
-              ? "Prompt templates power the variation pipeline. CRUD UI lands in R7."
+              ? "Prompt templates power the variation pipeline. The CRUD editor is coming soon."
               : "Clear search or try another keyword."}
           </p>
         </div>
@@ -440,8 +440,8 @@ function MockupsSubview({
           No mockup templates yet
         </h3>
         <p className="mt-1 text-sm text-text-muted">
-          Mockup templates land here as the catalog grows. Upload PSD action
-          ships in R7.
+          Mockup templates land here as the catalog grows. PSD upload is
+          coming soon.
         </p>
       </div>
     );

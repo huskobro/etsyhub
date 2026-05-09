@@ -152,7 +152,7 @@ export function ProductDetailClient({ productId }: Props) {
           type="button"
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
           disabled
-          title="Duplicate this product as a new draft — coming in R6."
+          title="Duplicate this product as a new draft — coming soon."
         >
           <Copy className="h-3 w-3" aria-hidden />
           Duplicate
@@ -161,7 +161,7 @@ export function ProductDetailClient({ productId }: Props) {
           type="button"
           className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-ink-2 hover:text-ink disabled:opacity-50"
           disabled
-          title="Preview the listing as it will appear on Etsy — coming in R6."
+          title="Preview the listing as it will appear on Etsy — coming soon."
         >
           <Eye className="h-3 w-3" aria-hidden />
           Preview
