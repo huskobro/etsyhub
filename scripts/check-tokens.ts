@@ -199,6 +199,10 @@ const whitelist = [
   "src/features/selections/components/SelectionDetailClient.tsx",
   "src/features/products/components/ProductDetailClient.tsx",
   "src/features/batches/components/BatchDetailClient.tsx",
+  // R11.14.10 — CompetitorCard k-card recipe migration (legacy Card+Button
+  //   primitive removed). v5 SubShops paritesi: text-[13px] title +
+  //   text-[10.5px]/text-[12.5px] mono caption hierarchy.
+  "src/features/competitors/components/competitor-card.tsx",
 ];
 // Note: Rollout-9 keeps existing whitelisted files; no new client tsx with
 // half-pixel typography added.

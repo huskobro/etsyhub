@@ -383,26 +383,28 @@
     border-color: var(--k-red);
   }
 
-  /* Selection ring — `.k-ring-selected` recipe. R11.14.2 (R11.14.9: spec
-   * fix — k-card hover override'ını yenmek için extra selector specificity
-   * + recipe order swap. Önce: tek `.k-ring-selected` selector'u
-   * `.k-card[data-interactive="true"]:hover` tarafından override ediliyordu,
-   * çünkü her ikisi de aynı (0,1,0) specificity'de ama hover sonra geliyor.
-   * Çözüm: `.k-card.k-ring-selected` selector'u (0,2,0 specificity) +
-   * `.k-card.k-ring-selected:hover` (hover state'te de korur) + bare
-   * `.k-ring-selected` selector'u bookmarklet/non-card kullanıcılar için
-   * korundu).
+  /* Selection ring — `.k-ring-selected` recipe.
+   *
+   * R11.14.2 first port (CSS variable referans).
+   * R11.14.9 specificity fix (k-card hover override'ını yenmek için).
+   * R11.14.10 transition bug fix (CRITICAL):
+   *   `box-shadow: 0 0 0 2px var(--k-bg), 0 0 0 4px var(--k-orange), ...`
+   *   formülü canlı browser'da computed style'a transparan
+   *   `rgba(0,0,0,0) 0px 0px 0px 0px` olarak resolve oluyordu. Sebep:
+   *   k-card recipe'inin `transition: box-shadow 140ms` ı, var() color
+   *   resolution ile WebKit/Chromium'da çakışıyor. Solution: hex direkt
+   *   yazılır (variable'lar zaten sabit, color cascade'e ihtiyaç yok).
    *
    * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/tokens.css.
-   * Çift halka: 2px paper offset + 4px orange. Library/References/
-   * Selections asset kartları seçildiğinde tam parity. */
+   * Çift halka: 2px paper offset (#F7F5EF = --k-bg) + 4px orange
+   * (#E85D25 = --k-orange). */
   .k-ring-selected,
   .k-card.k-ring-selected,
   .k-card[data-interactive="true"].k-ring-selected,
   .k-card[data-interactive="true"].k-ring-selected:hover {
     box-shadow:
-      0 0 0 2px var(--k-bg),
-      0 0 0 4px var(--k-orange),
+      0 0 0 2px #F7F5EF,
+      0 0 0 4px #E85D25,
       0 1px 1px rgba(22, 19, 15, 0.04);
   }
 

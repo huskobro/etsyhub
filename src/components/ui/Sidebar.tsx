@@ -47,7 +47,16 @@ export const Sidebar = forwardRef<HTMLElement, SidebarProps>(function Sidebar(
           {brand}
         </div>
       ) : null}
-      <div className="flex-1 overflow-y-auto px-2 pb-4 pt-2">{children}</div>
+      {/* R11.14.10 — `overflow-x-hidden` eklendi.
+       *   Önceden: `overflow-y-auto` yalnızdı; child element'lerin (NavItem
+       *   active-state ::before pseudo-rail, k-nav 0 -12px left offset, ya
+       *   da box-shadow halkalar) sidebar genişliğini ~4px aşması durumunda
+       *   browser auto axis için yatay scrollbar gösteriyordu (kullanıcı
+       *   feedback: "sidebar dikey değil yatay olarak scroll gerektiriyor").
+       *   Yatay overflow zaten istenmiyor; clip ederek scrollbar baskılandı. */}
+      <div className="flex-1 overflow-x-hidden overflow-y-auto px-2 pb-4 pt-2">
+        {children}
+      </div>
       {footer ? (
         <div className="flex items-center gap-2.5 border-t border-border-subtle p-3">
           {footer}

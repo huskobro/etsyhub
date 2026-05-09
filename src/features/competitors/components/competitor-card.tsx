@@ -1,22 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import type { CompetitorListItem } from "../queries/use-competitors";
 
 /**
- * CompetitorCard — T-33 primitive consumption.
+ * CompetitorCard — Kivasy v5 B1.Shops sub-view recipe (R11.14.10).
  *
- * Sözleşme: docs/design/implementation-notes/competitors-screens.md
- * - Card primitive (stat varianti default → list grid'de doğrudan padlenmiş kart)
- *   sarması; manuel <article> yok
- * - Auto/Manual pill → Badge (success / neutral tone)
- * - Tara butonu → Button variant="ghost" size="sm"
- * - Detay link → next/link, Button-style sınıfları primitive değil; mevcut accent
- *   stili korunur (Button asChild yok, Link styled minimal kalır)
+ * Source: docs/design-system/kivasy/ui_kits/kivasy/v5/screens-b1.jsx
+ *   → SubShops kart bloğu
+ *
+ * R11.14.10 — Eski legacy `Card` + `Button` + `Badge` primitive kompozisyonu
+ * yerine v5 SubShops k-card pattern'a geçirildi (Library + References Pool
+ * paritesiyle birebir):
+ *   - .k-card overflow-hidden + data-interactive
+ *   - meta block: shop title (text-[13px] font-medium) + platform mono
+ *     (text-[10.5px]) + .k-badge tone (success/neutral)
+ *   - bottom action row: ghost Scan button + accent Detail link
+ *   - hover state: k-card recipe + line-strong border (CSS-only)
+ *
+ * Surface boundary: Shops sub-view kart-grid. Detail link
+ * `/competitors/[id]` route'una yönlendirir.
  */
+
 export function CompetitorCard({
   competitor,
   onTriggerScan,
@@ -34,52 +39,64 @@ export function CompetitorCard({
     : "Not scanned yet";
 
   return (
-    <Card as="article" className="flex flex-col gap-3">
+    <article
+      className="k-card flex flex-col gap-3 p-4"
+      data-testid="competitor-card"
+      data-interactive="true"
+    >
       <header className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col">
-          <h3 className="truncate text-sm font-medium text-text">
+          <h3 className="truncate text-[13px] font-medium leading-tight text-ink">
             {shopLabel}
           </h3>
-          <span className="text-xs text-text-muted">
+          <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
             {competitor.platform} · {competitor.etsyShopName}
           </span>
         </div>
-        {competitor.autoScanEnabled ? (
-          <Badge tone="success">Auto-scan</Badge>
-        ) : (
-          <Badge tone="neutral">Manual</Badge>
-        )}
+        <span
+          className="k-badge"
+          data-tone={competitor.autoScanEnabled ? "success" : "neutral"}
+        >
+          {competitor.autoScanEnabled ? "Auto-scan" : "Manual"}
+        </span>
       </header>
 
-      <dl className="grid grid-cols-2 gap-2 text-xs text-text-muted">
-        <div className="flex flex-col">
+      <dl className="grid grid-cols-2 gap-2 text-[10.5px] font-mono uppercase tracking-meta text-ink-3">
+        <div className="flex flex-col gap-0.5">
           <dt>Listings</dt>
-          <dd className="text-sm text-text">{totalListings}</dd>
+          <dd className="font-sans text-[13px] normal-case tracking-normal text-ink">
+            {totalListings}
+          </dd>
         </div>
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-0.5">
           <dt>Last scan</dt>
-          <dd className="truncate text-sm text-text" title={lastScanText}>
+          <dd
+            className="truncate font-sans text-[12.5px] normal-case tracking-normal text-ink-2"
+            title={lastScanText}
+          >
             {lastScanText}
           </dd>
         </div>
       </dl>
 
       <div className="flex items-center justify-end gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
+        <button
+          type="button"
+          data-size="sm"
+          className="k-btn k-btn--ghost"
           onClick={() => onTriggerScan(competitor.id)}
           disabled={scanning}
         >
           {scanning ? "Starting…" : "Scan"}
-        </Button>
+        </button>
         <Link
           href={`/competitors/${competitor.id}`}
-          className="inline-flex h-control-sm items-center rounded-md bg-accent-soft px-2.5 text-sm font-medium text-accent-text hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          data-size="sm"
+          className="k-btn k-btn--secondary"
         >
           Detail
         </Link>
       </div>
-    </Card>
+    </article>
   );
 }
