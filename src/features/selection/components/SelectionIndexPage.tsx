@@ -51,19 +51,19 @@ export function SelectionIndexPage() {
       <header>
         <h1 className="text-2xl font-semibold text-text">Selection Studio</h1>
         <p className="mt-1 text-sm text-text-muted">
-          Tasarımları seç, düzenle, dışa aktar.
+          Curate, edit and export your designs.
         </p>
       </header>
 
-      {/* Aktif draft set bölümü */}
+      {/* Active draft set */}
       <section className="flex flex-col gap-3">
         <h2 className="font-mono text-xs tracking-meta text-text-muted">
-          Aktif draft
+          Active draft
         </h2>
         {draftQuery.isLoading ? (
           <Card
             role="status"
-            aria-label="Aktif draft set yükleniyor"
+            aria-label="Loading active draft set"
             className="flex flex-col gap-3"
           >
             <Skeleton className="h-4 w-1/3" />
@@ -73,8 +73,8 @@ export function SelectionIndexPage() {
           <Card>
             <StateMessage
               tone="error"
-              title="Yüklenemedi"
-              body="Aktif draft set bilgisi alınamadı. Tekrar deneyin."
+              title="Couldn't load"
+              body="Active draft set info could not be retrieved. Try again."
             />
           </Card>
         ) : activeDraft ? (
@@ -83,15 +83,15 @@ export function SelectionIndexPage() {
           <Card>
             <StateMessage
               tone="neutral"
-              title="Henüz aktif draft set yok"
-              body="Yeni bir set oluşturarak tasarımları seçmeye başlayın."
+              title="No active draft set yet"
+              body="Create a new set to start curating designs."
               action={
                 <Button
                   variant="primary"
                   icon={<Plus className="h-4 w-4" aria-hidden />}
                   onClick={() => setCreateOpen(true)}
                 >
-                  Yeni set oluştur
+                  Create new set
                 </Button>
               }
             />
@@ -99,15 +99,15 @@ export function SelectionIndexPage() {
         )}
       </section>
 
-      {/* Son finalize edilen set'ler */}
+      {/* Recently finalized sets */}
       <section className="flex flex-col gap-3">
         <h2 className="font-mono text-xs tracking-meta text-text-muted">
-          Son finalize edilen set&apos;ler
+          Recently finalized sets
         </h2>
         {readyQuery.isLoading ? (
           <div
             role="status"
-            aria-label="Finalize edilen set'ler yükleniyor"
+            aria-label="Loading finalized sets"
             className="flex flex-col gap-2"
           >
             <Skeleton className="h-12 w-full" />
@@ -118,13 +118,13 @@ export function SelectionIndexPage() {
           <Card>
             <StateMessage
               tone="error"
-              title="Yüklenemedi"
-              body="Finalize edilmiş set listesi alınamadı."
+              title="Couldn't load"
+              body="Finalized set list could not be retrieved."
             />
           </Card>
         ) : readySets.length === 0 ? (
           <p className="text-sm text-text-muted">
-            Henüz finalize edilen set yok.
+            No finalized sets yet.
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -184,9 +184,9 @@ function ActiveDraftCard({ set }: { set: SelectionSetListItem }) {
         <div className="truncate text-sm font-medium text-text">{set.name}</div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="accent">Draft</Badge>
-          {/* Pass 35 — Item sayısı görünür. "0 varyant" → boş set sinyali. */}
+          {/* Pass 35 — Item count visible. "0 items" → empty-set signal. */}
           <span className="font-mono text-xs text-text-muted">
-            {set.itemCount} varyant
+            {set.itemCount} items
           </span>
           {/* Pass 91 — MJ origin badge (handoff'tan gelen set'ler için). */}
           <MjOriginInlineBadge sourceMetadata={set.sourceMetadata} />
@@ -203,7 +203,7 @@ function ActiveDraftCard({ set }: { set: SelectionSetListItem }) {
         href={`/selection/sets/${set.id}`}
         className="inline-flex h-control-md items-center justify-center gap-1.5 rounded-md border border-accent bg-accent px-3.5 text-base font-medium text-accent-foreground transition-colors duration-fast ease-out hover:border-accent-hover hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
       >
-        Aç
+        Open
       </Link>
     </Card>
   );
@@ -211,7 +211,7 @@ function ActiveDraftCard({ set }: { set: SelectionSetListItem }) {
 
 function ReadySetRow({ set }: { set: SelectionSetListItem }) {
   const finalizedLabel = set.finalizedAt
-    ? new Date(set.finalizedAt).toLocaleDateString("tr-TR", {
+    ? new Date(set.finalizedAt).toLocaleDateString("en-US", {
         day: "2-digit",
         month: "short",
         year: "numeric",
@@ -235,7 +235,7 @@ function ReadySetRow({ set }: { set: SelectionSetListItem }) {
           </span>
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs text-text-muted">
-              Finalize: {finalizedLabel} · {set.itemCount} varyant
+              Finalized: {finalizedLabel} · {set.itemCount} items
             </span>
             {/* Pass 91 — MJ origin badge */}
             <MjOriginInlineBadge sourceMetadata={set.sourceMetadata} />

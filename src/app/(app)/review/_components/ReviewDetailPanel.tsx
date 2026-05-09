@@ -43,10 +43,10 @@ type Props = {
 };
 
 const STATUS_LABEL: Record<ReviewQueueItem["reviewStatus"], string> = {
-  PENDING: "Beklemede",
-  APPROVED: "Onaylandı",
-  NEEDS_REVIEW: "İnceleme",
-  REJECTED: "Reddedildi",
+  PENDING: "Pending",
+  APPROVED: "Approved",
+  NEEDS_REVIEW: "Needs review",
+  REJECTED: "Rejected",
 };
 
 const STATUS_TONE: Record<ReviewQueueItem["reviewStatus"], BadgeTone> = {

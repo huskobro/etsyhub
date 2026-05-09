@@ -162,29 +162,23 @@ export function ReferencesPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-text">Referans Havuzu</h1>
-          <p className="text-xs text-text-muted">
-            {items.length > 0
-              ? `${items.length} referans · Seçilmiş kaynak havuzu`
-              : "Seçilmiş referanslar — üretime hazır kaynak havuzu"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* R11.14.1 — k-btn recipe (Kivasy v4 gradient parity) — eski
-              Button component'i flat solid orange üretiyordu; references
-              top-level CTA için design-system canon. */}
-          <button
-            type="button"
-            data-size="sm"
-            className="k-btn k-btn--primary"
-            onClick={() => router.push("/collections?intent=create")}
-          >
-            <Plus className="h-3 w-3" aria-hidden />
-            Yeni koleksiyon
-          </button>
-        </div>
+      {/* R11.14.3 — Çift header kaldırıldı. Üst topbar artık References shell
+       * (page.tsx) tarafından tek h1 + sub-view-aware subtitle ile
+       * gerçekleşiyor. Eski "Referans Havuzu / Seçilmiş kaynak havuzu"
+       * h1 + p çifti çıkarıldı. CTA "New collection" topbar'ın yanına
+       * push edilemiyordu (ayrı React tree); bu sub-page sadece toolbar
+       * + grid + bulk-bar render eder. CTA Pool sub-view için burada
+       * kalmaya devam eder ama copy EN ve segment tonu küçültüldü. */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          data-size="sm"
+          className="k-btn k-btn--primary"
+          onClick={() => router.push("/collections?intent=create")}
+        >
+          <Plus className="h-3 w-3" aria-hidden />
+          New collection
+        </button>
       </div>
 
       <Toolbar
@@ -192,7 +186,7 @@ export function ReferencesPage({
           <div className="w-60">
             <Input
               type="search"
-              placeholder="Başlık, tag veya koleksiyonda ara"
+              placeholder="Search by title, tag or collection"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               prefix={<Search className="h-4 w-4" aria-hidden />}
@@ -206,7 +200,7 @@ export function ReferencesPage({
             icon={<SlidersHorizontal className="h-4 w-4" aria-hidden />}
             disabled
           >
-            Filtre
+            Filter
           </Button>
         }
       >
@@ -215,10 +209,10 @@ export function ReferencesPage({
             active={activeCollection === null}
             onToggle={() => setActiveCollection(null)}
           >
-            {`Tümü · ${totalCount}`}
+            {`All · ${totalCount}`}
           </Chip>
 
-          {/* Koleksiyon chip'leri */}
+          {/* Collection chips */}
           {collectionChips.map((c) => (
             <Chip
               key={c.id}
@@ -229,13 +223,13 @@ export function ReferencesPage({
             </Chip>
           ))}
 
-          {/* Koleksiyonsuz chip */}
+          {/* Uncategorized chip */}
           {uncategorizedCount > 0 ? (
             <Chip
               active={activeCollection === "uncategorized"}
               onToggle={() => setActiveCollection("uncategorized")}
             >
-              {`Koleksiyonsuz · ${uncategorizedCount}`}
+              {`Uncategorized · ${uncategorizedCount}`}
             </Chip>
           ) : null}
         </FilterBar>
@@ -243,14 +237,14 @@ export function ReferencesPage({
 
       <BulkActionBar
         selectedCount={selectedCount}
-        label={selectedCount > 0 ? `${selectedCount} referans seçildi` : undefined}
+        label={selectedCount > 0 ? `${selectedCount} selected` : undefined}
         actions={
           <>
             <Button variant="ghost" size="sm" disabled>
-              Üret
+              Generate
             </Button>
             <Button variant="ghost" size="sm" disabled>
-              Koleksiyona taşı
+              Move to collection
             </Button>
             <Button
               variant="ghost"
@@ -258,7 +252,7 @@ export function ReferencesPage({
               onClick={bulkArchive}
               disabled={archiveMutation.isPending}
             >
-              Arşivle
+              Archive
             </Button>
           </>
         }
@@ -270,18 +264,18 @@ export function ReferencesPage({
       ) : query.error ? (
         <StateMessage
           tone="error"
-          title="Liste yüklenemedi"
+          title="Couldn't load list"
           body={(query.error as Error).message}
         />
       ) : items.length === 0 ? (
         <StateMessage
           tone="neutral"
           icon={<BookmarkIcon className="h-5 w-5" aria-hidden />}
-          title="Henüz referans yok"
-          body="Bookmark sayfasından 'Referansa Taşı' ile ekleyebilir ya da doğrudan görsel yükleyerek havuza bir referans alabilirsin."
+          title="No references yet"
+          body="Promote bookmarks from the Inbox sub-view, or upload directly to seed the pool."
           action={
             <Button variant="primary" disabled>
-              Referans ekle
+              Add reference
             </Button>
           }
         />

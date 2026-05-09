@@ -32,9 +32,9 @@ import { Toast } from "@/components/ui/Toast";
 type AutoFilter = "ALL" | "AUTO" | "MANUAL";
 
 const AUTO_FILTERS: { value: AutoFilter; label: string }[] = [
-  { value: "ALL", label: "Tümü" },
-  { value: "AUTO", label: "Oto-tarama" },
-  { value: "MANUAL", label: "Manuel" },
+  { value: "ALL", label: "All" },
+  { value: "AUTO", label: "Auto-scan" },
+  { value: "MANUAL", label: "Manual" },
 ];
 
 export function CompetitorListPage() {
@@ -53,7 +53,7 @@ export function CompetitorListPage() {
     setScanningId(id);
     scan.mutate(id, {
       onSuccess: () => {
-        setToast({ kind: "success", message: "Tarama kuyruğa alındı." });
+        setToast({ kind: "success", message: "Scan queued." });
       },
       onError: (err) => {
         setToast({ kind: "error", message: err.message });
@@ -76,10 +76,10 @@ export function CompetitorListPage() {
         <div className="w-60">
           <Input
             type="search"
-            placeholder="Mağaza adına göre ara…"
+            placeholder="Search by shop name…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            aria-label="Rakip arama"
+            aria-label="Search competitors"
           />
         </div>
       }
@@ -100,8 +100,10 @@ export function CompetitorListPage() {
 
   return (
     <PageShell
-      title="Rakipler"
-      subtitle="Etsy/Amazon mağazalarını takibe al, yeni listingleri analiz et."
+      // R11.14.3 — Title/subtitle References shell tarafından üst topbar'da
+      // gösteriliyor; PageShell başlığı boş bırakıldı (çift header kaldırma).
+      title=""
+      subtitle=""
       actions={
         <button
           type="button"
@@ -109,7 +111,7 @@ export function CompetitorListPage() {
           className="k-btn k-btn--primary"
           onClick={() => setDialogOpen(true)}
         >
-          + Rakip Ekle
+          + Add Shop
         </button>
       }
       toolbar={toolbar}
@@ -130,27 +132,27 @@ export function CompetitorListPage() {
               onClick={() => setToast(null)}
               className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-text underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              Kapat
+              Close
             </button>
           </div>
         ) : null}
 
         {list.isLoading ? (
-          <StateMessage tone="neutral" title="Yükleniyor…" />
+          <StateMessage tone="neutral" title="Loading…" />
         ) : list.isError ? (
           <StateMessage
             tone="error"
-            title="Liste yüklenemedi"
+            title="Couldn't load list"
             body={(list.error as Error).message}
           />
         ) : items.length === 0 ? (
           <StateMessage
             tone="neutral"
-            title="Henüz rakip mağaza yok"
+            title="No competitor shops yet"
             body={
               autoFilter === "ALL"
-                ? 'Yukarıdaki "+ Rakip Ekle" ile ilk mağazayı takibe al.'
-                : "Bu filtreye uyan rakip bulunamadı."
+                ? 'Use "+ Add Shop" above to track your first store.'
+                : "No competitors match this filter."
             }
           />
         ) : (
@@ -172,7 +174,7 @@ export function CompetitorListPage() {
             onCreated={() => {
               setToast({
                 kind: "success",
-                message: "Rakip eklendi, ilk tarama kuyruğa alındı.",
+                message: "Shop added, first scan queued.",
               });
             }}
           />

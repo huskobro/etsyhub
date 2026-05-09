@@ -26,7 +26,7 @@ type TabValue = "ai" | "local";
 type Props = { activeTab: TabValue };
 
 const TABS: { value: TabValue; label: string }[] = [
-  { value: "ai", label: "AI Tasarımları" },
+  { value: "ai", label: "AI Designs" },
   { value: "local", label: "Local Library" },
 ];
 

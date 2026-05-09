@@ -37,13 +37,13 @@ export default function ReviewPage({
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold text-text">Review</h1>
             <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-text">
-              Karar Atölyesi
+              Decision workspace
             </span>
           </div>
           <p className="text-sm text-text-muted">
-            Üretilen ve taranan görseller hakkında onay/red kararı verin.
-            Üretim için <strong>Referanslar &rsaquo; bir referans &rsaquo; Üret</strong>{" "}
-            yolunu kullanın.
+            Approve or reject generated and scanned visuals here. To produce
+            new variants, use{" "}
+            <strong>References &rsaquo; pick a reference &rsaquo; Create Variations</strong>.
           </p>
         </div>
       </header>

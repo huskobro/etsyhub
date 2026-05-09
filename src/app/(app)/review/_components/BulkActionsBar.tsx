@@ -45,7 +45,7 @@ export function BulkActionsBar({ scope }: Props) {
       >
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-text">
-            {selectedIds.length} öğe seçildi
+            {selectedIds.length} selected
           </span>
           <Button
             variant="primary"
@@ -53,7 +53,7 @@ export function BulkActionsBar({ scope }: Props) {
             onClick={() => setDialog("approve")}
             data-testid="bulk-approve-trigger"
           >
-            Onayla ({selectedIds.length})
+            Approve ({selectedIds.length})
           </Button>
           <Button
             variant="destructive"
@@ -61,7 +61,7 @@ export function BulkActionsBar({ scope }: Props) {
             onClick={() => setDialog("reject")}
             data-testid="bulk-reject-trigger"
           >
-            Reddet ({selectedIds.length})
+            Reject ({selectedIds.length})
           </Button>
           {scope === "local" ? (
             <Button
@@ -70,7 +70,7 @@ export function BulkActionsBar({ scope }: Props) {
               onClick={() => setDialog("delete")}
               data-testid="bulk-delete-trigger"
             >
-              Sil ({selectedIds.length})
+              Delete ({selectedIds.length})
             </Button>
           ) : null}
           <button

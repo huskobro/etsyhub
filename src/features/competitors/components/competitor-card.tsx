@@ -30,8 +30,8 @@ export function CompetitorCard({
   const totalListings =
     competitor.totalListings ?? competitor._count?.listings ?? 0;
   const lastScanText = competitor.lastScannedAt
-    ? new Date(competitor.lastScannedAt).toLocaleString("tr-TR")
-    : "Henüz taranmadı";
+    ? new Date(competitor.lastScannedAt).toLocaleString("en-US")
+    : "Not scanned yet";
 
   return (
     <Card as="article" className="flex flex-col gap-3">
@@ -45,19 +45,19 @@ export function CompetitorCard({
           </span>
         </div>
         {competitor.autoScanEnabled ? (
-          <Badge tone="success">Oto-tarama</Badge>
+          <Badge tone="success">Auto-scan</Badge>
         ) : (
-          <Badge tone="neutral">Manuel</Badge>
+          <Badge tone="neutral">Manual</Badge>
         )}
       </header>
 
       <dl className="grid grid-cols-2 gap-2 text-xs text-text-muted">
         <div className="flex flex-col">
-          <dt>Listing</dt>
+          <dt>Listings</dt>
           <dd className="text-sm text-text">{totalListings}</dd>
         </div>
         <div className="flex flex-col">
-          <dt>Son tarama</dt>
+          <dt>Last scan</dt>
           <dd className="truncate text-sm text-text" title={lastScanText}>
             {lastScanText}
           </dd>
@@ -71,13 +71,13 @@ export function CompetitorCard({
           onClick={() => onTriggerScan(competitor.id)}
           disabled={scanning}
         >
-          {scanning ? "Başlatılıyor…" : "Tara"}
+          {scanning ? "Starting…" : "Scan"}
         </Button>
         <Link
           href={`/competitors/${competitor.id}`}
           className="inline-flex h-control-sm items-center rounded-md bg-accent-soft px-2.5 text-sm font-medium text-accent-text hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
-          Detay
+          Detail
         </Link>
       </div>
     </Card>

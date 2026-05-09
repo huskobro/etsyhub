@@ -176,11 +176,16 @@ export default async function LibraryPage({
           <Filter className="h-3 w-3" aria-hidden />
           Saved views
         </button>
+        {/* R11.14.3 — "New Selection" navigates to /selections (the index).
+         * Set CRUD (draft creation) lives in the Selections feature per
+         * IMPLEMENTATION_HANDOFF §5 boundary; Library never owns sets.
+         * The Selections index hosts the actual create-set affordance. */}
         <Link
           href="/selections"
           data-size="sm"
           className="k-btn k-btn--primary"
           data-testid="library-new-selection-cta"
+          title="Open Selections — create or pick a draft set"
         >
           <Layers className="h-3 w-3" aria-hidden />
           New Selection

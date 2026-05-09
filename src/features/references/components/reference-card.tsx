@@ -49,8 +49,12 @@ export function ReferenceCard({
   onArchive?: (id: string) => void;
 }) {
   const title =
-    reference.bookmark?.title ?? reference.bookmark?.sourceUrl ?? "Referans";
-  const createdLabel = new Date(reference.createdAt).toLocaleDateString("tr-TR");
+    reference.bookmark?.title ?? reference.bookmark?.sourceUrl ?? "Reference";
+  const createdLabel = new Date(reference.createdAt).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
   const source = (() => {
     if (!reference.bookmark?.sourceUrl) return null;
     try {
@@ -105,7 +109,7 @@ export function ReferenceCard({
             href={`/references/${reference.id}/variations`}
             data-size="sm"
             className="k-btn k-btn--primary pointer-events-auto w-full"
-            title="Üretim atölyesini aç (lokal kütüphaneden seç veya AI ile yeni varyant üret)"
+            title="Open the production workspace (pick from local library or generate AI variants)"
             onClick={(e) => e.stopPropagation()}
           >
             <Sparkles className="h-3 w-3" aria-hidden />
@@ -137,7 +141,7 @@ export function ReferenceCard({
               size="sm"
               onClick={() => onArchive(reference.id)}
             >
-              Arşivle
+              Archive
             </Button>
           </div>
         ) : null}

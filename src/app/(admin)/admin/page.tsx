@@ -15,19 +15,19 @@ export default async function AdminOverviewPage() {
   ]);
 
   const cards = [
-    { label: "Kullanıcılar", value: users, sub: `${activeUsers} aktif`, href: "/admin/users" },
-    { label: "Feature Flag", value: flags, sub: "", href: "/admin/feature-flags" },
-    { label: "Tema", value: themes, sub: "", href: "/admin/theme" },
-    { label: "Çalışan İş", value: jobsRunning, sub: `${jobsFailed} hatalı`, href: "/admin/jobs" },
-    { label: "Audit Kaydı", value: audits, sub: "", href: "/admin/audit-logs" },
-    { label: "Scraper Sağlayıcı", value: scraperFlags, sub: "aktif + API anahtarları", href: "/admin/scraper-providers" },
+    { label: "Users", value: users, sub: `${activeUsers} active`, href: "/admin/users" },
+    { label: "Feature Flags", value: flags, sub: "", href: "/admin/feature-flags" },
+    { label: "Themes", value: themes, sub: "", href: "/admin/theme" },
+    { label: "Running Jobs", value: jobsRunning, sub: `${jobsFailed} failed`, href: "/admin/jobs" },
+    { label: "Audit Records", value: audits, sub: "", href: "/admin/audit-logs" },
+    { label: "Scraper Providers", value: scraperFlags, sub: "active + API keys", href: "/admin/scraper-providers" },
   ];
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold">Admin Paneli</h1>
-        <p className="text-sm text-text-muted">Sistem durumu ve yönetim ekranları.</p>
+        <h1 className="text-2xl font-semibold">Admin</h1>
+        <p className="text-sm text-text-muted">System status and management screens.</p>
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {cards.map((c) => (

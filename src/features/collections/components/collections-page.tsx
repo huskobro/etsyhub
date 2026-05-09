@@ -117,14 +117,9 @@ export function CollectionsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-text">Koleksiyonlar</h1>
-          <p className="text-xs text-text-muted">
-            Bookmark ve referansları tema/konu bazında grupla.
-          </p>
-        </div>
-        {/* R11.14.1 — k-btn recipe parity (gradient). */}
+      {/* R11.14.3 — Çift header kaldırıldı; üst topbar References shell
+       * tarafından tek h1 + sub-view subtitle olarak render ediliyor. */}
+      <div className="flex justify-end">
         <button
           type="button"
           data-size="sm"
@@ -135,7 +130,7 @@ export function CollectionsPage() {
           }}
         >
           <Plus className="h-3 w-3" aria-hidden />
-          Yeni koleksiyon
+          New collection
         </button>
       </div>
 
@@ -144,7 +139,7 @@ export function CollectionsPage() {
           <div className="w-60">
             <Input
               type="search"
-              placeholder="Koleksiyon ara"
+              placeholder="Search collections"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               prefix={<Search className="h-4 w-4" aria-hidden />}
@@ -154,7 +149,7 @@ export function CollectionsPage() {
       >
         <FilterBar>
           <Chip active={kind === "ALL"} onToggle={() => setKind("ALL")}>
-            Tümü
+            All
           </Chip>
           <Chip
             active={kind === "BOOKMARK"}
@@ -166,7 +161,7 @@ export function CollectionsPage() {
             active={kind === "REFERENCE"}
             onToggle={() => setKind("REFERENCE")}
           >
-            Referans
+            Reference
           </Chip>
         </FilterBar>
       </Toolbar>
@@ -176,7 +171,7 @@ export function CollectionsPage() {
       ) : query.error ? (
         <StateMessage
           tone="error"
-          title="Liste yüklenemedi"
+          title="Couldn't load list"
           body={(query.error as Error).message}
         />
       ) : items.length === 0 ? (
@@ -184,15 +179,15 @@ export function CollectionsPage() {
           <StateMessage
             tone="neutral"
             icon={<FolderIcon className="h-5 w-5" aria-hidden />}
-            title="Eşleşen koleksiyon yok"
-            body="Farklı bir arama terimi dene ya da yeni bir koleksiyon oluştur."
+            title="No matching collection"
+            body="Try a different search term or create a new collection."
           />
         ) : (
           <StateMessage
             tone="neutral"
             icon={<FolderIcon className="h-5 w-5" aria-hidden />}
-            title="Henüz koleksiyon yok"
-            body="Bookmark ve referansları tema bazında grupla. İlk koleksiyonunu oluşturarak başla."
+            title="No collections yet"
+            body="Group bookmarks and references by theme. Create your first collection to start."
             action={
               <Button
                 variant="primary"
@@ -202,7 +197,7 @@ export function CollectionsPage() {
                   setCreateOpen(true);
                 }}
               >
-                İlk koleksiyonunu oluştur
+                Create your first collection
               </Button>
             }
           />

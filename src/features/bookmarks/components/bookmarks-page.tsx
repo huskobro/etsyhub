@@ -43,11 +43,11 @@ type ListResponse = {
 };
 
 const STATUS_FILTERS: { value: BookmarkStatus | "ALL"; label: string }[] = [
-  { value: "ALL", label: "Tümü" },
+  { value: "ALL", label: "All" },
   { value: "INBOX", label: "Inbox" },
-  { value: "REFERENCED", label: "Referans" },
-  { value: "RISKY", label: "Riskli" },
-  { value: "ARCHIVED", label: "Arşiv" },
+  { value: "REFERENCED", label: "Reference" },
+  { value: "RISKY", label: "Risky" },
+  { value: "ARCHIVED", label: "Archive" },
 ];
 
 type ProductTypeOption = { id: string; displayName: string };
@@ -163,27 +163,19 @@ export function BookmarksPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-text">Bookmark Inbox</h1>
-          <p className="text-xs text-text-muted">
-            {items.length > 0
-              ? `${items.length} kayıt · URL veya görsel ekleyerek fikir topla`
-              : "URL veya görsel ekleyerek fikir topla"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* R11.14.1 — k-btn recipe parity (gradient). */}
-          <button
-            type="button"
-            data-size="sm"
-            className="k-btn k-btn--primary"
-            onClick={() => setImportOpen(true)}
-          >
-            <Plus className="h-3 w-3" aria-hidden />
-            URL&apos;den ekle
-          </button>
-        </div>
+      {/* R11.14.3 — Çift header kaldırıldı; üst topbar References shell
+       * tarafından tek h1 + sub-view subtitle olarak render ediliyor.
+       * Sadece CTA + toolbar + grid burada kalır. */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          data-size="sm"
+          className="k-btn k-btn--primary"
+          onClick={() => setImportOpen(true)}
+        >
+          <Plus className="h-3 w-3" aria-hidden />
+          Add from URL
+        </button>
       </div>
 
       <Toolbar
@@ -191,7 +183,7 @@ export function BookmarksPage({
           <div className="w-60">
             <Input
               type="search"
-              placeholder="Başlık, kaynak veya not ara"
+              placeholder="Search by title, source or note"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               prefix={<Search className="h-4 w-4" aria-hidden />}
@@ -243,22 +235,22 @@ export function BookmarksPage({
       ) : query.error ? (
         <StateMessage
           tone="error"
-          title="Liste yüklenemedi"
+          title="Couldn't load list"
           body={(query.error as Error).message}
         />
       ) : items.length === 0 ? (
         <StateMessage
           tone="neutral"
           icon={<BookmarkIcon className="h-5 w-5" aria-hidden />}
-          title="Henüz bookmark yok"
-          body="Etsy, Pinterest, Amazon veya herhangi bir URL'yi yapıştırarak fikir toplamaya başla. Bookmark'ları sonradan referans havuzuna taşıyabilirsin."
+          title="No bookmarks yet"
+          body="Paste any URL from Etsy, Pinterest, Amazon or elsewhere to start collecting ideas. You can promote bookmarks to references later."
           action={
             <Button
               variant="primary"
               icon={<Plus className="h-4 w-4" aria-hidden />}
               onClick={() => setImportOpen(true)}
             >
-              İlk bookmark&apos;ını ekle
+              Add your first bookmark
             </Button>
           }
         />

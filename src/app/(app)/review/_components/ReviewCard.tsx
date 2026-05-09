@@ -30,10 +30,10 @@ import { useReviewSelection } from "@/features/review/stores/selection-store";
 type Props = { item: ReviewQueueItem };
 
 const STATUS_LABEL: Record<ReviewStatusEnum, string> = {
-  PENDING: "Beklemede",
-  APPROVED: "Onaylandı",
-  NEEDS_REVIEW: "İnceleme",
-  REJECTED: "Reddedildi",
+  PENDING: "Pending",
+  APPROVED: "Approved",
+  NEEDS_REVIEW: "Needs review",
+  REJECTED: "Rejected",
 };
 
 const STATUS_TONE: Record<ReviewStatusEnum, BadgeTone> = {
