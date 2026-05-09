@@ -156,7 +156,7 @@ export function LibraryToolbar({
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="Search by prompt, batch id, template…"
             disabled={pending}
-            className="h-8 w-full rounded-md border border-line bg-paper pl-9 pr-3 text-sm text-ink placeholder:text-ink-3 focus:border-k-orange focus:outline-none focus:ring-2 focus:ring-k-orange-soft disabled:opacity-50"
+            className="k-input !pl-9"
             data-testid="library-search-input"
           />
         </form>

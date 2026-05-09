@@ -168,12 +168,16 @@ const whitelist = [
   // R11.14 — References B1 sibling-tab shell. v5 spec'in text-[12.5px] tab
   //   label + text-[10.5px] mono count chip yarı-piksel hierarchy.
   "src/features/references/components/ReferencesShellTabs.tsx",
-  // R11.14.2 — ReferenceCard k-card recipe v5 SubPool parity.
-  //   v5 SubPool kart bloğu (screens-b1.jsx lines 124-150): kart başlığı
-  //   text-[13px] + meta caption text-[10.5px] mono. Library/Selections
-  //   kartlarıyla tutarlı yarı-piksel hierarchy; Tailwind tier'da text-sm
-  //   (14px) ve text-xs (12px) arası geçiş yok.
-  "src/features/references/components/reference-card.tsx",
+  // R11.14.4 — ReferencesPage v5 B1.SubPool full implementation.
+  //   v5 SubPool kart başlığı text-[13px] + meta caption text-[10.5px] mono
+  //   (screens-b1.jsx lines 124-150). Library/Selections/Products kartlarıyla
+  //   tutarlı yarı-piksel hierarchy; Tailwind tier'da text-sm (14px) ve
+  //   text-xs (12px) arası geçiş yok. Eski reference-card.tsx kaldırıldı.
+  "src/features/references/components/references-page.tsx",
+  // R11.14.4 — LibraryAssetCard v4 A1 recipe parity (k-card + k-thumb +
+  //   k-checkbox + k-iconbtn). Title text-[13px] + meta mono text-[10.5px]
+  //   yarı-piksel hierarchy v5 SubPool ile birebir.
+  "src/features/library/components/LibraryAssetCard.tsx",
 ];
 // Note: Rollout-9 keeps existing whitelisted files; no new client tsx with
 // half-pixel typography added.

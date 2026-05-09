@@ -2,8 +2,6 @@
 
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Badge } from "@/components/ui/Badge";
-import { Checkbox } from "@/features/library/components/Checkbox";
 import { UserAssetThumb } from "@/components/ui/UserAssetThumb";
 import { useLibrarySelection } from "@/features/library/stores/selection-store";
 import { VARIANT_KIND_META } from "@/app/(admin)/admin/midjourney/library/variantKindHelper";
@@ -11,18 +9,31 @@ import type { LibraryCard as LibraryCardData } from "@/server/services/midjourne
 import type { Density } from "@/components/ui/DensityToggle";
 
 /**
- * Kivasy LibraryAssetCard — A1 Library grid card.
+ * Kivasy LibraryAssetCard — A1 Library grid card (R11.14.4 v4 recipe parity).
  *
  * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/screens-a1-a2.jsx
- * → A1Library asset card recipe.
+ *   → A1Library asset card.
  *
- * Surface boundary (docs/IMPLEMENTATION_HANDOFF.md §5):
- * - Library cards do NOT expose set CRUD; "Add to Selection" lives on the
- *   detail panel footer (single asset path) and floating bulk-bar (>=2
- *   selected). Per-card overlay duplicate removed in R11.14.2 to match
- *   v4 A1Library HTML target.
- * - Click on card opens the right detail panel; thumbnail-only click is
- *   reserved for selection toggling alongside the checkbox.
+ * v4 A1 DOM structure:
+ *   <div class="k-card overflow-hidden ${selected:k-ring-selected}" data-interactive>
+ *     <div class="relative">
+ *       <div class="p-2 pb-0"><div class="k-thumb" data-kind={...}/></div>
+ *       <div class="absolute top-3 left-3"><Checkbox/></div>
+ *       <div class="absolute top-3 right-3"><k-iconbtn bookmark/></div>
+ *     </div>
+ *     <div class="p-3.5 (or p-2.5 dense)">
+ *       <div class="text-[13px] font-medium leading-tight truncate">{title}</div>
+ *       <div class="mt-1 k-mono text-[10.5px] text-ink-3 tracking-wider">
+ *         {ratio} · batch_{batch} · {added} ago
+ *       </div>
+ *     </div>
+ *   </div>
+ *
+ * Boundary (docs/IMPLEMENTATION_HANDOFF.md §5):
+ *   Cards do NOT host set CRUD. "Add to Selection" lives in detail panel
+ *   footer (single asset) and floating bulk-bar (>=2 selected). Per-card
+ *   overlay was removed in R11.14.2; here we keep a small Sparkles
+ *   iconbtn (top-right hover) as shorthand to open the detail panel.
  */
 
 interface LibraryAssetCardProps {
@@ -37,110 +48,136 @@ export function LibraryAssetCard({
   onOpen,
 }: LibraryAssetCardProps) {
   const variantMeta = VARIANT_KIND_META[card.variantKind];
-  const selected = useLibrarySelection((s) => s.selected.has(card.midjourneyAssetId));
+  const selected = useLibrarySelection((s) =>
+    s.selected.has(card.midjourneyAssetId),
+  );
   const toggle = useLibrarySelection((s) => s.toggle);
   const previewPrompt = (card.expandedPrompt ?? card.prompt).trim();
   const promptPreview =
-    previewPrompt.length > 90
-      ? `${previewPrompt.slice(0, 90)}…`
-      : previewPrompt;
+    previewPrompt.length > 60 ? `${previewPrompt.slice(0, 60)}…` : previewPrompt;
+  const titleText = promptPreview || `${variantMeta.label} ${card.gridIndex}`;
+  const importedRel = formatRelative(
+    typeof card.importedAt === "string"
+      ? card.importedAt
+      : new Date(card.importedAt).toISOString(),
+  );
+  const reviewBadge =
+    card.reviewDecision === "KEPT"
+      ? { tone: "success", label: "Kept" }
+      : card.reviewDecision === "REJECTED"
+        ? { tone: "danger", label: "Rejected" }
+        : null;
 
   return (
-    <article
-      className={cn(
-        "group relative flex flex-col overflow-hidden rounded-md border border-line bg-paper transition-colors hover:border-line-strong",
-        density === "dense" ? "p-1.5" : "p-2",
-        selected && "k-ring-selected",
-      )}
+    <div
+      className={cn("k-card overflow-hidden group", selected && "k-ring-selected")}
+      data-interactive="true"
       data-testid="library-asset-card"
       data-asset-id={card.midjourneyAssetId}
+      onClick={() => onOpen(card.midjourneyAssetId)}
     >
-      <button
-        type="button"
-        onClick={() => onOpen(card.midjourneyAssetId)}
-        className="block text-left outline-none"
-        title={previewPrompt}
-      >
-        <UserAssetThumb
-          assetId={card.assetId}
-          alt={`${variantMeta.label} grid ${card.gridIndex}`}
-        />
-      </button>
-
-      {/* Top-left: selection checkbox (always visible) */}
-      <div className="absolute left-3 top-3 z-10">
-        <Checkbox
-          checked={selected}
-          onChange={() => toggle(card.midjourneyAssetId)}
-          ariaLabel={`Select ${variantMeta.label} ${card.gridIndex}`}
-        />
-      </div>
-
-      {/* Top-right: review status badge (KEPT / REJECTED) — meta-only */}
-      {card.reviewDecision !== "UNDECIDED" ? (
-        <div className="absolute right-3 top-3 z-10">
-          {card.reviewDecision === "KEPT" ? (
-            <Badge tone="success" title="Kept on review">
-              ✓
-            </Badge>
-          ) : (
-            <Badge tone="danger" title="Rejected on review">
-              ✕
-            </Badge>
-          )}
+      <div className="relative">
+        <div className="p-2 pb-0">
+          <div className="k-thumb" data-aspect="square">
+            <UserAssetThumb
+              assetId={card.assetId}
+              alt={`${variantMeta.label} grid ${card.gridIndex}`}
+              bare
+            />
+          </div>
         </div>
-      ) : null}
 
-      <div className={cn(density === "dense" ? "p-1.5" : "p-2")}>
-        <div className="flex items-center gap-1.5">
-          <Badge tone={variantMeta.tone} title={variantMeta.hint}>
-            {variantMeta.label}
-            {card.mjActionLabel ? ` ${card.mjActionLabel}` : ""}
-          </Badge>
-          {card.batchId ? (
-            <span className="font-mono text-xs text-text-subtle">
-              batch_{card.batchId.slice(0, 6)}
-            </span>
-          ) : null}
-        </div>
-        {density === "comfortable" ? (
-          <p
-            className="mt-1 line-clamp-2 text-xs text-text-muted"
-            title={previewPrompt}
+        {/* Top-left: selection checkbox (always visible, k-checkbox recipe) */}
+        <div className="absolute left-3 top-3 z-10">
+          <button
+            type="button"
+            aria-label={`Select ${variantMeta.label} ${card.gridIndex}`}
+            aria-pressed={selected}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggle(card.midjourneyAssetId);
+            }}
+            className="k-checkbox"
+            data-checked={selected || undefined}
           >
-            {promptPreview || (
-              <span className="italic">(boş prompt)</span>
-            )}
-          </p>
+            {selected ? (
+              <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  d="M5 12l5 5L20 7"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : null}
+          </button>
+        </div>
+
+        {/* Top-right: review badge (KEPT/REJECTED) — meta only.
+         *   v4 A1 has a "bookmark" iconbtn here; we don't have a favorite
+         *   model yet, so we surface review-decision badge instead (data-
+         *   driven, no hollow UI). */}
+        {reviewBadge ? (
+          <div className="absolute right-3 top-3 z-10">
+            <span className="k-badge" data-tone={reviewBadge.tone}>
+              {reviewBadge.label}
+            </span>
+          </div>
+        ) : null}
+
+        {/* Top-right hover: Sparkles iconbtn — opens detail panel.
+         *   Hidden when reviewBadge is present (avoid stacking). */}
+        {!reviewBadge ? (
+          <div className="absolute right-3 top-3 z-10 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              type="button"
+              className="k-iconbtn"
+              data-size="sm"
+              title="Open detail · Variations / Add to Selection"
+              aria-label="Open detail panel"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen(card.midjourneyAssetId);
+              }}
+            >
+              <Sparkles className="h-3 w-3" aria-hidden />
+            </button>
+          </div>
         ) : null}
       </div>
 
-      {/* Hover overlay: lightweight icon-only "open detail" affordance.
-       * R11.14.2 — Per v4 A1Library HTML target, primary CTAs live in the
-       * right detail panel footer ("Add to Selection" / "Variations").
-       * Cards keep a small Sparkles iconbtn (top-right on hover) as a
-       * shorthand to open the detail panel — preserves discoverability
-       * without duplicating the primary CTA. */}
-      <div
-        className={cn(
-          "pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1",
-          card.reviewDecision !== "UNDECIDED" && "right-12",
-          "opacity-0 transition-opacity group-hover:opacity-100",
-        )}
-      >
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpen(card.midjourneyAssetId);
-          }}
-          className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-md bg-paper/95 text-ink-2 shadow-card hover:text-ink"
-          title="Open detail · Variations / Add to Selection"
-          aria-label="Open detail panel"
+      {/* Meta block — title 13px font-medium + mono caption 10.5px */}
+      <div className={density === "dense" ? "p-2.5" : "p-3.5"}>
+        <div
+          className="truncate text-[13px] font-medium leading-tight text-ink"
+          title={previewPrompt}
         >
-          <Sparkles className="h-3 w-3" aria-hidden />
-        </button>
+          {titleText}
+        </div>
+        <div className="mt-1 font-mono text-[10.5px] tracking-wider text-ink-3">
+          {variantMeta.label}
+          {card.mjActionLabel ? ` ${card.mjActionLabel}` : ""}
+          {card.batchId ? ` · batch_${card.batchId.slice(0, 6)}` : ""}
+          {` · ${importedRel}`}
+        </div>
       </div>
-    </article>
+    </div>
   );
+}
+
+function formatRelative(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "now";
+  if (min < 60) return `${min}m ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+  });
 }

@@ -76,7 +76,7 @@ export function Sidebar({
             onClick={() => signOut({ callbackUrl: "/login" })}
             className="font-mono text-xs"
           >
-            Çıkış
+            Sign out
           </Button>
         </div>
       }

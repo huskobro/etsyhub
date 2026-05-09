@@ -20,6 +20,13 @@ interface UserAssetThumbProps {
   className?: string;
   /** 1:1 aspect (object-cover). Default true. */
   square?: boolean;
+  /**
+   * R11.14.4 — When `bare=true`, render raw `<img>` (no wrapper div, no
+   * aspect-ratio). Used inside `.k-thumb` recipe which already provides
+   * the aspect-ratio + overflow-hidden + bg-paper layer. Default false
+   * preserves legacy callers.
+   */
+  bare?: boolean;
 }
 
 export function UserAssetThumb({
@@ -27,6 +34,7 @@ export function UserAssetThumb({
   alt = "",
   className,
   square = true,
+  bare = false,
 }: UserAssetThumbProps) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +64,40 @@ export function UserAssetThumb({
     "overflow-hidden rounded-md border border-border bg-surface-2",
     className,
   );
+
+  if (bare) {
+    if (error) {
+      return (
+        <div
+          className="flex h-full w-full items-center justify-center text-xs text-text-muted"
+          title={`Thumb fail: ${error}`}
+          data-testid="user-asset-thumb-error"
+        >
+          ⚠
+        </div>
+      );
+    }
+    if (!url) {
+      return (
+        <div
+          className="flex h-full w-full items-center justify-center text-xs text-text-muted"
+          data-testid="user-asset-thumb-loading"
+        >
+          …
+        </div>
+      );
+    }
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt={alt}
+        className="h-full w-full object-cover"
+        loading="lazy"
+        data-testid="user-asset-thumb"
+      />
+    );
+  }
 
   if (error) {
     return (
