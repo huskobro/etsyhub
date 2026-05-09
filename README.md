@@ -282,6 +282,9 @@ smoke için yeterli sinyal).
 
 Repo'yu açan biri için tek-bakışta:
 
+- **Staging deployment runbook** → [`docs/STAGING.md`](docs/STAGING.md)
+  (localhost-sonrası ilk staging için pratik runbook: minimum infra, env
+  matrisi, akış bazlı readiness, deploy sıralaması, smoke)
 - **Production shakedown (release günü)** → [`docs/PRODUCTION_SHAKEDOWN.md`](docs/PRODUCTION_SHAKEDOWN.md)
   (release öncesi/sonrası checklist, env/worker/queue ops, backup/restore,
   ilk smoke akışı, rollback senaryoları)
