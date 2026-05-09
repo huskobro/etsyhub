@@ -10,6 +10,8 @@
 >
 > Source of truth ağacı:
 > - **MVP acceptance (bu dosya)** — operatör release kararı için
+> - [`docs/POST_MVP_BACKLOG.md`](POST_MVP_BACKLOG.md) — post-MVP scope
+>   (parity gaps + capability expansion + architecture + tech debt) tek doc'ta
 > - [`docs/PRODUCTION_SHAKEDOWN.md`](PRODUCTION_SHAKEDOWN.md) — release
 >   günü operasyonel checklist (env, worker, backup, smoke, rollback)
 > - [`README.md`](../README.md) — repo girişi

@@ -290,6 +290,9 @@ Repo'yu açan biri için tek-bakışta:
   ilk smoke akışı, rollback senaryoları)
 - **MVP acceptance + readiness** → [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md)
   (release kararı, MVP-ready akışlar, post-MVP deferred matrisi, acceptance checklist)
+- **Post-MVP backlog** → [`docs/POST_MVP_BACKLOG.md`](docs/POST_MVP_BACKLOG.md)
+  (4 grupta sentezlenmiş post-MVP scope: parity gaps, capability expansion,
+  architecture/infra, tech debt + cleanup)
 - **Project rules** → [`CLAUDE.md`](CLAUDE.md)
 - **Implementation handoff** → [`docs/IMPLEMENTATION_HANDOFF.md`](docs/IMPLEMENTATION_HANDOFF.md)
   (rollout sırası, invariant'lar, surface→wave eşleşmesi)
