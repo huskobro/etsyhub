@@ -7,7 +7,7 @@ export default function OverviewPage() {
     <RolloutPlaceholder
       title="Overview"
       rollout={8}
-      blurb="The morning landing — pipeline pulse, pending actions, active batches, recent activity. Final form lands in rollout 8 (after the production spine + system layer ship), so the data feeding it reflects the real product state."
+      blurb="The morning landing — pipeline pulse, pending actions, active batches, recent activity. The four-block C3 view lands in post-MVP enrichment; for now jump straight into Library, Batches, Selections, or Products from the sidebar."
     />
   );
 }

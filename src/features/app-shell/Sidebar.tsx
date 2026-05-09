@@ -95,11 +95,11 @@ export function Sidebar({
                 meta={
                   item.ready ? undefined : (
                     <span
-                      title={`Coming in rollout ${item.rollout}`}
+                      title="Coming soon · post-MVP enrichment"
                       // eslint-disable-next-line no-restricted-syntax
-                      className="font-mono text-[10px] text-text-subtle"
+                      className="font-mono text-[10px] uppercase tracking-meta text-text-subtle"
                     >
-                      R{item.rollout}
+                      Soon
                     </span>
                   )
                 }

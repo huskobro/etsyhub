@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Search, Plus, RotateCw, ChevronRight } from "lucide-react";
+import { Search, Plus, RotateCw, ChevronRight, Info, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
 import { FilterChip } from "@/components/ui/FilterChip";
@@ -69,6 +69,15 @@ export function BatchesIndexClient({
   const [density, setDensity] = useState<Density>(initialDensity);
   const [keyword, setKeyword] = useState(params.get("q") ?? "");
   const currentStatus = (params.get("status") ?? "all") as BatchAggregateStatus | "all";
+  // R11.7 fix — `?action=new` middleware redirect target'ı (legacy
+  // /admin/midjourney/batch-run'dan gelen). A6 modal reference asset
+  // gerektirdiği için standalone tetiklenemiyor; banner ile operatöre
+  // doğru entry point'i (Library → asset seç → Create Variations) söyle.
+  const startBatchHint = params.get("action") === "new";
+
+  function dismissStartBatchHint() {
+    pushWith((sp) => sp.delete("action"));
+  }
 
   function pushWith(updater: (sp: URLSearchParams) => void) {
     const sp = new URLSearchParams(params.toString());
@@ -153,7 +162,7 @@ export function BatchesIndexClient({
           Retry-failed-only
         </Link>
         <Link
-          href="/admin/midjourney/batch-run"
+          href="/library?intent=start-batch"
           data-size="sm"
           className="k-btn k-btn--primary"
           data-testid="batches-new-cta"
@@ -162,6 +171,44 @@ export function BatchesIndexClient({
           Start Batch
         </Link>
       </header>
+
+      {/* R11.7 — Start-batch hint banner. Operator legacy redirect ile
+          buraya geldi; reference olmadan A6 modal anlamlı değil. */}
+      {startBatchHint ? (
+        <div
+          className="flex items-start gap-3 border-b border-line bg-k-orange-soft/40 px-6 py-3"
+          data-testid="batches-start-hint"
+          role="status"
+        >
+          <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-k-orange-ink" aria-hidden />
+          <div className="flex-1">
+            <div className="text-[13px] font-medium text-ink">
+              Pick a reference asset to start a batch
+            </div>
+            <p className="mt-0.5 text-[12.5px] text-ink-2">
+              Variation batches start from a Library asset. Open Library,
+              select an asset, then use{" "}
+              <span className="font-medium text-ink">Create Variations</span>.
+            </p>
+            <Link
+              href="/library?intent=start-batch"
+              className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 text-[11.5px] font-medium text-ink hover:border-line-strong"
+              data-testid="batches-start-hint-cta"
+            >
+              Open Library
+              <ChevronRight className="h-3 w-3" aria-hidden />
+            </Link>
+          </div>
+          <button
+            type="button"
+            onClick={dismissStartBatchHint}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-3 hover:bg-ink/5 hover:text-ink"
+            aria-label="Dismiss"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      ) : null}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-bg px-6 py-3">

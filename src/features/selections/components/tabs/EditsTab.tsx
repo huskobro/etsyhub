@@ -179,16 +179,15 @@ export function EditsTab({ setId, items }: EditsTabProps) {
       )}
 
       <p className="mt-4 text-xs text-text-muted">
-        Edit operations open in a split modal. Until R5 lands the new
-        modal layer, use the legacy{" "}
+        Edit operations (background remove, color edit, crop, upscale,
+        magic eraser) open inside the legacy{" "}
         <a
           href={`/selection/sets/${setId}`}
           className="text-info underline-offset-2 hover:underline"
         >
           Selection Studio
-        </a>{" "}
-        to apply background remove, color edit, crop, upscale, and magic
-        eraser.
+        </a>
+        . The split-modal in-place editor lands post-MVP.
       </p>
     </div>
   );

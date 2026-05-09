@@ -149,15 +149,14 @@ export function AddToSelectionModal({
             </h3>
             <p className="mt-1 text-xs text-text-muted">
               Hand-off requires a draft set with a reference + product type.
-              Until R5 lands the in-modal &ldquo;New Selection&rdquo; flow, create a
-              draft via{" "}
+              Create a draft set via{" "}
               <a
                 href="/selection"
                 className="text-info underline-offset-2 hover:underline"
               >
                 Selection Studio (legacy)
               </a>
-              .
+              . The in-modal &ldquo;New Selection&rdquo; flow lands post-MVP.
             </p>
           </div>
         ) : (

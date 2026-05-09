@@ -152,21 +152,32 @@ export function SelectionDetailClient({ set, items }: Props) {
             Apply Mockups
           </Link>
         ) : (
-          <button
-            type="button"
-            data-size="sm"
-            className="k-btn k-btn--primary"
-            disabled
-            title={
-              stage === "Sent"
-                ? "Set already sent — view in Product"
-                : "Finalize the selection (Mockup ready) before applying mockups"
-            }
-            data-testid="selection-detail-apply-mockups"
-          >
-            <ImageIconLucide className="h-3 w-3" aria-hidden />
-            Apply Mockups
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              data-size="sm"
+              className="k-btn k-btn--primary cursor-not-allowed"
+              disabled
+              title={
+                stage === "Sent"
+                  ? "Set already sent — view in Product"
+                  : "Finalize the selection (Mockup ready) before applying mockups"
+              }
+              data-testid="selection-detail-apply-mockups"
+              data-apply-enabled="false"
+            >
+              <ImageIconLucide className="h-3 w-3" aria-hidden />
+              Apply Mockups
+            </button>
+            <span
+              className="font-mono text-xs uppercase tracking-meta text-ink-3"
+              data-testid="selection-detail-apply-hint"
+            >
+              {stage === "Sent"
+                ? "Already sent · view in Product"
+                : `Stage: ${stage} → finalize to enable`}
+            </span>
+          </div>
         )}
       </header>
 

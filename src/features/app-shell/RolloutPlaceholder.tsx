@@ -2,20 +2,16 @@ import { Construction } from "lucide-react";
 import Link from "next/link";
 
 /**
- * Rollout-1 placeholder for surfaces that ship in later rollouts.
+ * Placeholder shell for surfaces deferred to post-MVP enrichment.
  *
- * The sidebar already lists all 8 IA items so operators see the final shape;
- * routes that haven't been ported yet render this calm placeholder with a
- * pointer to the implementation handoff doc.
- *
- * Replace per-rollout: rollout-2 fills /library, rollout-3 fills /batches,
- * rollout-4 fills /selections, rollout-5 fills /products, rollout-6 fills
- * /references, rollout-7 fills /templates + /settings, rollout-8 fills
- * /overview.
+ * MVP omurgası (Library / Batches / Selections / Products / Templates /
+ * Settings) canlıdır; bu placeholder yalnızca Overview C3 rework'u ve
+ * benzeri post-MVP surface'lar için kullanılır. `rollout` prop'u
+ * geriye dönük uyumluluk için kalır ama UI'da görünmez.
  */
 export function RolloutPlaceholder({
   title,
-  rollout,
+  rollout: _rollout,
   blurb,
 }: {
   title: string;
@@ -30,17 +26,17 @@ export function RolloutPlaceholder({
       <h1 className="k-display text-2xl font-semibold text-ink">{title}</h1>
       <p className="mt-3 max-w-state-body text-sm text-text-muted">
         {blurb ??
-          `This surface is part of the Kivasy production omurgası and lands in implementation rollout ${rollout}. The shell, tokens, and navigation are already wired up.`}
+          `This surface lands in post-MVP enrichment. The shell, tokens, and navigation are wired up; the data view will replace this placeholder.`}
       </p>
       {/* eslint-disable-next-line no-restricted-syntax */}
       <div className="mt-6 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-        Implementation rollout · R{rollout}
+        Post-MVP enrichment
       </div>
       <Link
-        href="/overview"
+        href="/library"
         className="mt-8 font-mono text-xs text-k-orange-ink hover:underline"
       >
-        ← back to overview
+        ← Library
       </Link>
     </div>
   );

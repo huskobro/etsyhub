@@ -116,13 +116,14 @@ export function MockupsTab({ listing }: MockupsTabProps) {
               >
                 {sourceSelection.setName}
               </Link>
-              . Cover swap and per-render actions ship in R6.
+              . Use Apply more mockups to add lifestyle / preview / template
+              renders to this product.
             </p>
           ) : (
             <p className="mt-1 text-sm text-text-muted">
               Mockups are produced from a Selection&apos;s &ldquo;Apply
-              Mockups&rdquo; CTA. Cover swap and per-render actions ship in
-              R6 — for now this is the orchestration view of what landed.
+              Mockups&rdquo; CTA. Open a Selection set, finalize it, then
+              run Apply Mockups to package this product.
             </p>
           )}
         </div>

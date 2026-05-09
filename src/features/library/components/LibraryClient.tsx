@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Sparkles, X } from "lucide-react";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { LibraryGrid } from "./LibraryGrid";
 import { LibraryDetailPanel } from "./LibraryDetailPanel";
@@ -54,8 +56,53 @@ export function LibraryClient({
     null,
   );
 
+  // R11.7 fix — `?intent=start-batch` query param: operatör Batches Start
+  // CTA üzerinden geldi, A6 modal reference asset gerektiriyor. Banner
+  // ile yönlendirme: "asset seç → kart üzerinden Create Variations".
+  const router = useRouter();
+  const params = useSearchParams();
+  const startBatchIntent = params.get("intent") === "start-batch";
+
+  function dismissIntent() {
+    const sp = new URLSearchParams(params.toString());
+    sp.delete("intent");
+    const qs = sp.toString();
+    router.replace(qs ? `/library?${qs}` : "/library", { scroll: false });
+  }
+
   return (
     <div className="flex h-full flex-col">
+      {startBatchIntent ? (
+        <div
+          className="flex items-start gap-3 border-b border-line bg-k-orange-soft/40 px-6 py-3"
+          data-testid="library-start-batch-hint"
+          role="status"
+        >
+          <Sparkles
+            className="mt-0.5 h-4 w-4 flex-shrink-0 text-k-orange-ink"
+            aria-hidden
+          />
+          <div className="flex-1">
+            <div className="text-sm font-medium text-ink">
+              Pick an asset, then use{" "}
+              <span className="text-k-orange-ink">Create Variations</span>
+            </div>
+            <p className="mt-0.5 text-xs text-ink-2">
+              Variation batches start from a Library asset. Click an asset
+              card → detail panel opens → use the Create Variations CTA.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissIntent}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-3 hover:bg-ink/5 hover:text-ink"
+            aria-label="Dismiss"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      ) : null}
+
       <LibraryToolbar
         totalLabel={totalLabel}
         density={density}
