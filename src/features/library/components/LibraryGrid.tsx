@@ -23,15 +23,9 @@ interface LibraryGridProps {
   cards: LibraryCard[];
   density: Density;
   onOpen: (assetId: string) => void;
-  onAddToSelection: (assetId: string) => void;
 }
 
-export function LibraryGrid({
-  cards,
-  density,
-  onOpen,
-  onAddToSelection,
-}: LibraryGridProps) {
+export function LibraryGrid({ cards, density, onOpen }: LibraryGridProps) {
   return (
     <div
       className={cn(
@@ -49,7 +43,6 @@ export function LibraryGrid({
           card={card}
           density={density}
           onOpen={onOpen}
-          onAddToSelection={onAddToSelection}
         />
       ))}
     </div>

@@ -383,6 +383,18 @@
     border-color: var(--k-red);
   }
 
+  /* Selection ring — `.k-ring-selected` recipe. R11.14.2.
+   * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/tokens.css.
+   * Çift halka: 2px paper offset + 4px orange. Library/References/
+   * Selections asset kartları seçildiğinde tam parity. Lib/Ref kartları
+   * bunu zaten referansla kullanıyordu; v4 source recipe'i app'e taşındı. */
+  .k-ring-selected {
+    box-shadow:
+      0 0 0 2px var(--k-bg),
+      0 0 0 4px var(--k-orange),
+      0 1px 1px rgba(22, 19, 15, 0.04);
+  }
+
   /* Card hero — `.k-card--hero` recipe. R3.5.
    * Used by hero stats, selection cards (rollout-4), brand specimen cards.
    * Compose with `.k-card` for default border/bg, then opt in to hero

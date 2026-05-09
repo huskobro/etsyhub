@@ -27,8 +27,13 @@ export default async function Page() {
           <h1 className="k-display text-lg font-semibold tracking-tight text-ink">
             References
           </h1>
+          {/* R11.14.2 — v5 B1 subtitle parity: aktif sub-view'a göre
+           * "{count} {LABEL} · {weekly} ADDED THIS WEEK" formatı.
+           * Bu page server component'i sub-view "pool" için bağlandı;
+           * diğer sub-view'lar kendi route'larında kendi alt-counts'larını
+           * üretir. */}
           <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
-            {counts.pool} REFERENCES · POOL · STORIES · INBOX · SHOPS · COLLECTIONS
+            {counts.pool} REFERENCES · {counts.poolThisWeek} ADDED THIS WEEK
           </p>
         </div>
       </header>

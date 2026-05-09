@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import type { MJReviewDecision, MJVariantKind } from "@prisma/client";
+import { Filter, Layers } from "lucide-react";
 import { auth } from "@/server/auth";
 import {
   listLibraryAssets,
@@ -157,6 +159,32 @@ export default async function LibraryPage({
             {summary.recent7d} added last 7 days · {totalLabel}
           </p>
         </div>
+        {/* R11.14.2 — v4 A1Library topbar parity:
+         *   <Btn variant="secondary"> Saved views </Btn>
+         *   <Btn variant="primary">   New Selection </Btn>
+         * Saved views CTA is a placeholder (filter drawer lands rollout-2.5);
+         * disabled with hint. New Selection navigates to /selections — set
+         * CRUD lives there per IMPLEMENTATION_HANDOFF §5 boundary. */}
+        <button
+          type="button"
+          data-size="sm"
+          className="k-btn k-btn--secondary"
+          disabled
+          title="Saved-view popover lands rollout-2.5"
+          data-testid="library-saved-views-cta"
+        >
+          <Filter className="h-3 w-3" aria-hidden />
+          Saved views
+        </button>
+        <Link
+          href="/selections"
+          data-size="sm"
+          className="k-btn k-btn--primary"
+          data-testid="library-new-selection-cta"
+        >
+          <Layers className="h-3 w-3" aria-hidden />
+          New Selection
+        </Link>
       </header>
 
       <LibraryClient

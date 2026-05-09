@@ -7,7 +7,6 @@ import { LibraryToolbar } from "./LibraryToolbar";
 import { LibraryGrid } from "./LibraryGrid";
 import { LibraryDetailPanel } from "./LibraryDetailPanel";
 import { LibraryFloatingBulkBar } from "./LibraryFloatingBulkBar";
-import { AddToSelectionModal } from "@/features/selections/components/AddToSelectionModal";
 import {
   type Density,
   readStoredDensity,
@@ -50,11 +49,10 @@ export function LibraryClient({
     ? cards.find((c) => c.midjourneyAssetId === selectedAssetId) ?? null
     : null;
 
-  // R4 — Per-card "Add to Selection" hand-off modal target. Tek bir asset
-  // için açılır; LibraryFloatingBulkBar bulk handoff'u kendi içinde yönetir.
-  const [addToSelectionAsset, setAddToSelectionAsset] = useState<string | null>(
-    null,
-  );
+  // R11.14.2 — Per-card "Add to Selection" overlay was removed to match
+  // v4 A1Library HTML target (CTAs live in detail panel footer, not on
+  // cards). Single-asset hand-off lives in LibraryDetailPanel; bulk path
+  // lives in LibraryFloatingBulkBar.
 
   // R11.7 fix — `?intent=start-batch` query param: operatör Batches Start
   // CTA üzerinden geldi, A6 modal reference asset gerektiriyor. Banner
@@ -126,7 +124,6 @@ export function LibraryClient({
               cards={cards}
               density={density}
               onOpen={setSelectedAssetId}
-              onAddToSelection={setAddToSelectionAsset}
             />
             {loadMoreHref ? (
               <div className="flex justify-center pb-6">
@@ -148,12 +145,6 @@ export function LibraryClient({
         onClose={() => setSelectedAssetId(null)}
       />
       <LibraryFloatingBulkBar />
-      {addToSelectionAsset !== null ? (
-        <AddToSelectionModal
-          midjourneyAssetIds={[addToSelectionAsset]}
-          onClose={() => setAddToSelectionAsset(null)}
-        />
-      ) : null}
     </div>
   );
 }

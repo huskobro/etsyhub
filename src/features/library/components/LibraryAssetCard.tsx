@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles, Plus } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
 import { Checkbox } from "@/features/library/components/Checkbox";
@@ -17,8 +17,10 @@ import type { Density } from "@/components/ui/DensityToggle";
  * → A1Library asset card recipe.
  *
  * Surface boundary (docs/IMPLEMENTATION_HANDOFF.md §5):
- * - Library cards expose an "Add to Selection" CTA (handoff to Selections);
- *   no set CRUD here.
+ * - Library cards do NOT expose set CRUD; "Add to Selection" lives on the
+ *   detail panel footer (single asset path) and floating bulk-bar (>=2
+ *   selected). Per-card overlay duplicate removed in R11.14.2 to match
+ *   v4 A1Library HTML target.
  * - Click on card opens the right detail panel; thumbnail-only click is
  *   reserved for selection toggling alongside the checkbox.
  */
@@ -27,14 +29,12 @@ interface LibraryAssetCardProps {
   card: LibraryCardData;
   density: Density;
   onOpen: (assetId: string) => void;
-  onAddToSelection: (assetId: string) => void;
 }
 
 export function LibraryAssetCard({
   card,
   density,
   onOpen,
-  onAddToSelection,
 }: LibraryAssetCardProps) {
   const variantMeta = VARIANT_KIND_META[card.variantKind];
   const selected = useLibrarySelection((s) => s.selected.has(card.midjourneyAssetId));
@@ -115,11 +115,16 @@ export function LibraryAssetCard({
         ) : null}
       </div>
 
-      {/* Hover overlay: single primary action — handoff to Selections.
-       * Boundary invariant: no set CRUD here, just the CTA. */}
+      {/* Hover overlay: lightweight icon-only "open detail" affordance.
+       * R11.14.2 — Per v4 A1Library HTML target, primary CTAs live in the
+       * right detail panel footer ("Add to Selection" / "Variations").
+       * Cards keep a small Sparkles iconbtn (top-right on hover) as a
+       * shorthand to open the detail panel — preserves discoverability
+       * without duplicating the primary CTA. */}
       <div
         className={cn(
-          "pointer-events-none absolute inset-x-2 bottom-2 flex items-center gap-1",
+          "pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1",
+          card.reviewDecision !== "UNDECIDED" && "right-12",
           "opacity-0 transition-opacity group-hover:opacity-100",
         )}
       >
@@ -127,28 +132,11 @@ export function LibraryAssetCard({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            // R4 — Hand-off modal (LibraryClient hosts AddToSelectionModal
-            // when `addToSelectionAsset !== null`). Boundary preserved:
-            // Library never owns set CRUD; the modal picks an existing
-            // draft set and posts to /api/selection/sets/[setId]/items
-            // /from-library.
-            onAddToSelection(card.midjourneyAssetId);
-          }}
-          data-testid="library-card-add-to-selection"
-          className="pointer-events-auto inline-flex h-7 flex-1 items-center justify-center gap-1 rounded-md bg-paper/95 px-2 text-xs font-medium text-ink shadow-card hover:bg-paper"
-        >
-          <Plus className="h-3 w-3" aria-hidden />
-          Add to Selection
-        </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
             onOpen(card.midjourneyAssetId);
           }}
-          className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-paper/95 text-ink-2 shadow-card hover:text-ink"
-          title="Variations / similar"
-          aria-label="Variations / similar"
+          className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-md bg-paper/95 text-ink-2 shadow-card hover:text-ink"
+          title="Open detail · Variations / Add to Selection"
+          aria-label="Open detail panel"
         >
           <Sparkles className="h-3 w-3" aria-hidden />
         </button>
