@@ -162,7 +162,13 @@ export function LibraryAssetCard({
         ) : null}
       </div>
 
-      {/* Meta block — title 13px font-medium + mono caption 10.5px */}
+      {/* Meta block — title 13px font-medium + variant k-badge tone-mapped
+       *   + mono caption 10.5px.
+       * R11.14.14 — Variant kind (Grid/Variation/Upscale/Describe) artık
+       * detail drawer ile aynı tone-mapped k-badge olarak render ediliyor
+       * (önceki: düz mono text, kullanıcı feedback'ine göre detail drawer
+       * paritesi sağlanmamıştı). VARIANT_KIND_META.tone ile renkler
+       * Library kartı + drawer + filter chip'lerinde tek kaynaktan. */}
       <div className={density === "dense" ? "p-2.5" : "p-3.5"}>
         <div
           className="truncate text-[13px] font-medium leading-tight text-ink"
@@ -170,11 +176,15 @@ export function LibraryAssetCard({
         >
           {titleText}
         </div>
-        <div className="mt-1 font-mono text-[10.5px] tracking-wider text-ink-3">
-          {variantMeta.label}
-          {card.mjActionLabel ? ` ${card.mjActionLabel}` : ""}
-          {card.batchId ? ` · batch_${card.batchId.slice(0, 6)}` : ""}
-          {` · ${importedRel}`}
+        <div className="mt-1 flex items-center gap-1.5">
+          <span className="k-badge" data-tone={variantMeta.tone}>
+            {variantMeta.label}
+            {card.mjActionLabel ? ` ${card.mjActionLabel}` : ""}
+          </span>
+          <span className="truncate font-mono text-[10.5px] tracking-wider text-ink-3">
+            {card.batchId ? `batch_${card.batchId.slice(0, 6)} · ` : ""}
+            {importedRel}
+          </span>
         </div>
       </div>
     </div>
