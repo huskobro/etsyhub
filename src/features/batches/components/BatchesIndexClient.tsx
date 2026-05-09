@@ -7,11 +7,12 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Search, Plus, RotateCw, ChevronRight, Info, X } from "lucide-react";
+import { Search, Plus, RotateCw, ChevronRight, Info, X, ImageOff } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
 import { FilterChip } from "@/components/ui/FilterChip";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { UserAssetThumb } from "@/components/ui/UserAssetThumb";
 import {
   DensityToggle,
   type Density,
@@ -266,6 +267,7 @@ export function BatchesIndexClient({
             <table className="w-full" data-testid="batches-table">
               <thead className="border-b border-line-soft bg-k-bg-2/40">
                 <tr>
+                  <BatchTH className="w-12" />
                   <BatchTH>Batch</BatchTH>
                   <BatchTH>Source</BatchTH>
                   <BatchTH className="w-32">Progress</BatchTH>
@@ -290,6 +292,42 @@ export function BatchesIndexClient({
                       )}
                       data-testid="batches-row"
                     >
+                      <BatchTD className={density === "dense" ? "py-2" : "py-3"}>
+                        <Link
+                          href={`/batches/${b.batchId}`}
+                          className="block"
+                          aria-label={`Open batch ${b.batchId.slice(0, 8)}`}
+                        >
+                          {b.representativeAssetId ? (
+                            <div
+                              className={cn(
+                                "overflow-hidden rounded-md border border-line-soft bg-k-bg-2",
+                                density === "dense" ? "h-7 w-7" : "h-9 w-9",
+                              )}
+                            >
+                              <UserAssetThumb
+                                assetId={b.representativeAssetId}
+                                alt={`Batch ${b.batchId.slice(0, 8)} preview`}
+                              />
+                            </div>
+                          ) : (
+                            <div
+                              className={cn(
+                                "flex items-center justify-center rounded-md border border-dashed border-line-soft bg-k-bg-2 text-ink-4",
+                                density === "dense" ? "h-7 w-7" : "h-9 w-9",
+                              )}
+                              title="No representative asset yet"
+                            >
+                              <ImageOff
+                                className={cn(
+                                  density === "dense" ? "h-3 w-3" : "h-3.5 w-3.5",
+                                )}
+                                aria-hidden
+                              />
+                            </div>
+                          )}
+                        </Link>
+                      </BatchTD>
                       <BatchTD className={density === "dense" ? "py-2" : "py-3"}>
                         <Link
                           href={`/batches/${b.batchId}`}

@@ -220,6 +220,9 @@ export type RecentBatchSummary = {
   templateId: string | null;
   promptTemplatePreview: string | null;
   counts: BatchSummary["counts"];
+  /** R11.14 — Representative MidjourneyAsset.assetId (visual context için
+   *  Batches index'te thumbnail). Yoksa null (henüz tamamlanmış asset yok). */
+  representativeAssetId: string | null;
 };
 
 /**
@@ -302,19 +305,52 @@ export async function listRecentBatches(
     entry.counts[bucketState(state)] += 1;
   }
 
-  return Array.from(byBatch.values())
+  const summaries = Array.from(byBatch.values())
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .slice(0, limit)
-    .map((b) => ({
-      batchId: b.batchId,
-      createdAt: b.createdAt,
-      batchTotal: b.batchTotal,
-      templateId: b.templateId,
-      promptTemplatePreview: b.promptTemplate
-        ? b.promptTemplate.slice(0, 120)
-        : null,
-      counts: b.counts,
-    }));
+    .slice(0, limit);
+
+  // R11.14 — representative asset thumbnail aggregation. Her batch için
+  // batchId metadata'sı olan ilk completed MidjourneyJob'un asset'ini
+  // (gridIndex 0 tercih). Reverse relation: MidjourneyJob → job → metadata.batchId
+  const representatives = new Map<string, string>();
+  if (summaries.length > 0) {
+    const completedJobs = await db.midjourneyJob.findMany({
+      where: {
+        userId,
+        state: "COMPLETED",
+      },
+      select: {
+        job: { select: { metadata: true } },
+        generatedAssets: {
+          select: { assetId: true, gridIndex: true },
+          orderBy: { gridIndex: "asc" },
+          take: 1,
+        },
+      },
+      orderBy: { completedAt: "desc" },
+      take: 500,
+    });
+    for (const mj of completedJobs) {
+      const md = (mj.job?.metadata as Record<string, unknown> | null) ?? {};
+      const bid = md["batchId"];
+      if (typeof bid !== "string") continue;
+      if (representatives.has(bid)) continue;
+      const asset = mj.generatedAssets[0];
+      if (asset) representatives.set(bid, asset.assetId);
+    }
+  }
+
+  return summaries.map((b) => ({
+    batchId: b.batchId,
+    createdAt: b.createdAt,
+    batchTotal: b.batchTotal,
+    templateId: b.templateId,
+    promptTemplatePreview: b.promptTemplate
+      ? b.promptTemplate.slice(0, 120)
+      : null,
+    counts: b.counts,
+    representativeAssetId: representatives.get(b.batchId) ?? null,
+  }));
 }
 
 // ============================================================================

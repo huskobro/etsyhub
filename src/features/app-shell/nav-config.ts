@@ -44,8 +44,8 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   // PRODUCE — pipeline surfaces
-  { id: "overview",   href: "/overview",   label: "Overview",   icon: LayoutDashboard, group: "produce", rollout: 8, ready: false },
-  { id: "references", href: "/references", label: "References", icon: Inbox,           group: "produce", rollout: 6, ready: false },
+  { id: "overview",   href: "/overview",   label: "Overview",   icon: LayoutDashboard, group: "produce", rollout: 8, ready: true  },
+  { id: "references", href: "/references", label: "References", icon: Inbox,           group: "produce", rollout: 6, ready: true  },
   { id: "batches",    href: "/batches",    label: "Batches",    icon: Zap,             group: "produce", rollout: 3, ready: true  },
   { id: "library",    href: "/library",    label: "Library",    icon: ImageIcon,       group: "produce", rollout: 2, ready: true  },
   { id: "selections", href: "/selections", label: "Selections", icon: Layers,          group: "produce", rollout: 4, ready: true  },

@@ -157,6 +157,17 @@ const whitelist = [
   "src/features/templates/components/UploadMockupTemplateModal.tsx",
   "src/features/settings/shell/panes/PaneEditor.tsx",
   "src/features/settings/shell/panes/PaneScrapers.tsx",
+  // R11.14 — Overview C3 4-block view (Pipeline pulse / Pending actions /
+  //   Active batches / Recent activity). v6 spec'in yarı-piksel mono caption
+  //   hierarchy'si (text-[9.5px] / text-[10px] / text-[10.5px] / text-[11px]
+  //   / text-[12.5px] / text-[13.5px] / text-[26px] k-display) Tailwind
+  //   token tier'ında yok. Inline style: ProgressBar yüzdesi (RolloutBar
+  //   emsali) + Recent activity grid-template-columns (5-column ızgara
+  //   sabitleri canonical: 60px / 1fr / 1fr / 90px / 24px).
+  "src/features/overview/components/OverviewClient.tsx",
+  // R11.14 — References B1 sibling-tab shell. v5 spec'in text-[12.5px] tab
+  //   label + text-[10.5px] mono count chip yarı-piksel hierarchy.
+  "src/features/references/components/ReferencesShellTabs.tsx",
 ];
 // Note: Rollout-9 keeps existing whitelisted files; no new client tsx with
 // half-pixel typography added.
