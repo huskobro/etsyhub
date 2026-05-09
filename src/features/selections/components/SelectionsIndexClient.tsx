@@ -42,8 +42,17 @@ export interface SelectionRow {
   lastExportedAt: string | null;
 }
 
+export interface RecipeBanner {
+  recipeId: string;
+  recipeName: string;
+  productTypeKey: string | null;
+  productTypeDisplay: string | null;
+}
+
 interface SelectionsIndexClientProps {
   rows: SelectionRow[];
+  /** R10 — Recipe runner destination=selections-create geldiyse banner. */
+  recipeBanner?: RecipeBanner | null;
 }
 
 function relativeTime(iso: string): string {
@@ -65,7 +74,10 @@ const ALL_STAGES: ReadonlyArray<SelectionStage | "all"> = [
   "Sent",
 ];
 
-export function SelectionsIndexClient({ rows }: SelectionsIndexClientProps) {
+export function SelectionsIndexClient({
+  rows,
+  recipeBanner = null,
+}: SelectionsIndexClientProps) {
   const router = useRouter();
   const params = useSearchParams();
   const [keyword, setKeyword] = useState(params.get("q") ?? "");
@@ -144,6 +156,29 @@ export function SelectionsIndexClient({ rows }: SelectionsIndexClientProps) {
           New Selection
         </button>
       </header>
+
+      {/* R10 — Recipe runner destination banner */}
+      {recipeBanner ? (
+        <div
+          className="flex items-center gap-3 border-b border-line bg-k-orange-soft/30 px-6 py-2.5"
+          data-testid="selections-recipe-banner"
+        >
+          <span className="font-mono text-[10.5px] uppercase tracking-meta text-k-orange">
+            Recipe run
+          </span>
+          <span className="text-sm text-ink-2">
+            {recipeBanner.recipeName}
+            {recipeBanner.productTypeDisplay
+              ? ` · for ${recipeBanner.productTypeDisplay}`
+              : recipeBanner.productTypeKey
+                ? ` · for ${recipeBanner.productTypeKey}`
+                : null}
+          </span>
+          <span className="ml-auto font-mono text-[10.5px] tracking-meta text-ink-3">
+            Curate variations into a Selection set; Apply Mockups when ready.
+          </span>
+        </div>
+      ) : null}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-bg px-6 py-3">

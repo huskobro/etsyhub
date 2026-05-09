@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/server/auth";
 import { listSelectionsForIndex } from "@/server/services/selection/index-view";
 import { SelectionsIndexClient } from "@/features/selections/components/SelectionsIndexClient";
+import { getRecipeChainById } from "@/server/services/templates/recipes.service";
 
 /**
  * /selections — Kivasy B2 Selections index (rollout-4).
@@ -21,9 +22,28 @@ import { SelectionsIndexClient } from "@/features/selections/components/Selectio
 export const metadata = { title: "Selections · Kivasy" };
 export const dynamic = "force-dynamic";
 
-export default async function SelectionsPage() {
+interface SearchParams {
+  recipeId?: string;
+  productTypeKey?: string;
+}
+
+export default async function SelectionsPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const session = await auth();
   if (!session?.user) redirect("/login");
+
+  // R10 — Recipe runner destination=selections-create geldiyse banner için
+  // recipe lookup. Cross-tenant invariant: recipe hâlâ tüm user'lara açık
+  // (system-scope), ownership filter yok.
+  const recipeId = (searchParams?.recipeId ?? "").trim() || null;
+  const productTypeKey =
+    (searchParams?.productTypeKey ?? "").trim() || null;
+  const recipeBanner = recipeId
+    ? await getRecipeChainById(recipeId).catch(() => null)
+    : null;
 
   // archived dahil değil — B2 default canlı set'leri gösterir; archived
   // filter ileride filter chip'in 5. değeri olacak (R5+).
@@ -52,5 +72,20 @@ export default async function SelectionsPage() {
         : null,
     }));
 
-  return <SelectionsIndexClient rows={rows} />;
+  return (
+    <SelectionsIndexClient
+      rows={rows}
+      recipeBanner={
+        recipeBanner
+          ? {
+              recipeId: recipeBanner.id,
+              recipeName: recipeBanner.name,
+              productTypeKey:
+                productTypeKey ?? recipeBanner.productTypeKey ?? null,
+              productTypeDisplay: recipeBanner.productTypeDisplay,
+            }
+          : null
+      }
+    />
+  );
 }

@@ -31,12 +31,13 @@
 //   payload'a almak.
 
 import type { Job } from "bullmq";
-import { Prisma } from "@prisma/client";
+import { Prisma, ProviderKind } from "@prisma/client";
 import { db } from "@/server/db";
 import { logger } from "@/lib/logger";
 import { requireItemOwnership } from "@/server/services/selection/authz";
 import { assertSetMutable } from "@/server/services/selection/state";
 import { magicEraser } from "@/server/services/selection/edit-ops/magic-eraser";
+import { notifyUser } from "@/server/services/settings/notifications-inbox.service";
 
 export type MagicEraserJobPayload = {
   userId: string;
@@ -106,6 +107,38 @@ export async function handleMagicEraser(
       },
       "selection edit magic-eraser completed",
     );
+
+    // R10 — CostUsage write (LaMa local, nominal accounting; 0¢)
+    // ve notifyUser dispatch (magicEraser preference).
+    try {
+      await db.costUsage.create({
+        data: {
+          userId: job.data.userId,
+          providerKind: ProviderKind.AI,
+          providerKey: "local-lama",
+          model: "lama-cleaner",
+          // BullMQ job id heavy ref olarak saklanır; etsyhub Job row id yok.
+          jobId: null,
+          units: 1,
+          // Local subprocess — gerçek sunucu maliyeti 0; takip için 1¢
+          // sentinel (0 toplam'da görünmez, 1¢ "yapıldı" sinyali).
+          costCents: 1,
+          periodKey: new Date().toISOString().slice(0, 7),
+        },
+      });
+    } catch (err) {
+      logger.warn(
+        { itemId, err: (err as Error).message },
+        "magic-eraser CostUsage write failed (non-fatal)",
+      );
+    }
+    await notifyUser({
+      userId: job.data.userId,
+      kind: "magicEraser",
+      title: "Magic eraser done",
+      body: `Item ${itemId.slice(0, 8)} cleaned in ${result.elapsedMs}ms`,
+      href: `/selections/${job.data.setId}?tab=edits`,
+    }).catch(() => undefined);
     return;
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

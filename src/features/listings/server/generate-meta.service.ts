@@ -32,6 +32,11 @@ import { buildProviderSnapshot } from "@/providers/review/snapshot";
 import { LISTING_META_PROMPT_VERSION } from "@/providers/listing-meta-ai/prompt";
 import { LISTING_META_KIE_COST_ESTIMATE_CENTS } from "@/providers/listing-meta-ai/kie-gemini-flash";
 import { recordCostUsage } from "@/server/services/cost/track-usage";
+import {
+  BudgetExceededError,
+  assertWithinBudget,
+  resolveTaskModel,
+} from "@/server/services/settings/budget-guard.service";
 import type { ListingMetaOutput } from "@/providers/listing-meta-ai/types";
 
 // ────────────────────────────────────────────────────────────
@@ -106,6 +111,38 @@ export async function generateListingMeta(
   const { kieApiKey } = await getUserAiModeSettings(userId);
   if (!kieApiKey || kieApiKey.trim() === "") {
     throw new ListingMetaProviderNotConfiguredError();
+  }
+
+  // R10 — workspace task assignment + budget guard.
+  // Listing copy generation cost ~1¢/call. Limit 0 = no enforcement.
+  const taskAssignment = await resolveTaskModel({
+    userId,
+    taskKey: "listingCopy",
+  });
+  try {
+    await assertWithinBudget({
+      userId,
+      providerKey: taskAssignment.providerKey,
+      costEstimateCents: LISTING_META_KIE_COST_ESTIMATE_CENTS,
+    });
+  } catch (err) {
+    if (err instanceof BudgetExceededError) {
+      logger.warn(
+        {
+          userId,
+          listingId,
+          providerKey: err.providerKey,
+          window: err.window,
+          spent: err.spentCents,
+          limit: err.limitCents,
+        },
+        "listing meta blocked by budget guard",
+      );
+      throw new ListingMetaProviderError(
+        `Bütçe aşımı (${err.window}): ${err.providerKey} için $${(err.limitCents / 100).toFixed(2)} limit, harcanmış $${(err.spentCents / 100).toFixed(2)}.`,
+      );
+    }
+    throw err;
   }
 
   // 3. Provider resolve

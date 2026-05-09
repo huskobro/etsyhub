@@ -21,12 +21,13 @@
 //   - Provider trace metadata (poll attempt count, latency)
 //   - Queue payload encryption (BullMQ Redis plain text — Phase 7+ hardening)
 import type { Job } from "bullmq";
-import { JobStatus, JobType, VariationState } from "@prisma/client";
+import { JobStatus, JobType, ProviderKind, VariationState } from "@prisma/client";
 import { db } from "@/server/db";
 import { logger } from "@/lib/logger";
 import { enqueue } from "@/server/queue";
 import { getImageProvider } from "@/providers/image/registry";
 import type { ImageGenerateInput } from "@/providers/image/types";
+import { notifyUser } from "@/server/services/settings/notifications-inbox.service";
 
 export type GenerateVariationsPayload = {
   jobId: string;
@@ -113,6 +114,41 @@ export async function handleGenerateVariations(
         },
       });
 
+      // R10 — CostUsage write (KIE midjourney baseline 24¢/call).
+      // Best-effort; CostUsage hatası variation success'i geri almaz.
+      try {
+        await db.costUsage.create({
+          data: {
+            userId: job.data.userId,
+            providerKind: ProviderKind.AI,
+            providerKey: "kie",
+            model: "kie/midjourney-v7",
+            jobId,
+            units: 1,
+            costCents: 24,
+            periodKey: new Date().toISOString().slice(0, 7),
+          },
+        });
+      } catch (err) {
+        logger.warn(
+          {
+            jobId,
+            err: (err as Error).message,
+          },
+          "variation CostUsage write failed (non-fatal)",
+        );
+      }
+
+      // R10 — notifications inbox dispatch (preference-aware).
+      // Best-effort; notifyUser dahili try/catch'lı.
+      await notifyUser({
+        userId: job.data.userId,
+        kind: "batchCompleted",
+        title: "Variation generated",
+        body: `Design ${designId.slice(0, 8)} ready · ${r.imageUrls?.[0] ? "image cached" : "no preview"}`,
+        href: `/library?days=recent`,
+      }).catch(() => undefined);
+
       // Phase 6 Task 9 — auto-enqueue REVIEW_DESIGN.
       //
       // Cross-job rollback YASAK (kullanıcı kararı): variation generation
@@ -155,7 +191,7 @@ export async function handleGenerateVariations(
 
 async function failDesign(designId: string, jobId: string, msg: string): Promise<void> {
   // Job.error ve design.errorMessage AYNI mesaj — debugging tek truth.
-  await db.generatedDesign.update({
+  const design = await db.generatedDesign.update({
     where: { id: designId },
     data: { state: VariationState.FAIL, errorMessage: msg },
   });
@@ -163,4 +199,12 @@ async function failDesign(designId: string, jobId: string, msg: string): Promise
     where: { id: jobId },
     data: { status: JobStatus.FAILED, error: msg, finishedAt: new Date() },
   });
+  // R10 — notifications inbox (batchFailed preference).
+  await notifyUser({
+    userId: design.userId,
+    kind: "batchFailed",
+    title: "Variation failed",
+    body: `Design ${designId.slice(0, 8)} · ${msg.slice(0, 80)}`,
+    href: `/batches`,
+  }).catch(() => undefined);
 }

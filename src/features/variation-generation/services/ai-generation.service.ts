@@ -33,6 +33,12 @@ import { enqueue } from "@/server/queue";
 import { buildImagePrompt } from "@/features/variation-generation/prompt-builder";
 import type { ImageGenerateInput, ImageCapability } from "@/providers/image/types";
 import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
+import {
+  BudgetExceededError,
+  assertWithinBudget,
+  resolveTaskModel,
+} from "@/server/services/settings/budget-guard.service";
+import { logger } from "@/lib/logger";
 
 export type CreateVariationJobsInput = {
   userId: string;
@@ -70,6 +76,45 @@ export async function createVariationJobs(
     throw new Error(
       `kieApiKey ayarlanmamış (Settings → AI Mode'dan KIE anahtarı girin); userId=${input.userId}`,
     );
+  }
+
+  // R10 — Workspace task assignment + budget guard.
+  // Variation üretimi pre-flight cost estimate: KIE midjourney ~$0.024/call.
+  // N-count toplam estimate UserSetting key=aiProviders.spendLimits.kie
+  // ile karşılaştırılır. Aşılırsa BudgetExceededError.
+  const taskAssignment = await resolveTaskModel({
+    userId: input.userId,
+    taskKey: "variation",
+  });
+  const VARIATION_CALL_COST_CENTS = 24; // KIE midjourney baseline
+  const totalCostCents = VARIATION_CALL_COST_CENTS * input.count;
+  try {
+    await assertWithinBudget({
+      userId: input.userId,
+      providerKey: taskAssignment.providerKey,
+      costEstimateCents: totalCostCents,
+    });
+  } catch (err) {
+    if (err instanceof BudgetExceededError) {
+      logger.warn(
+        {
+          userId: input.userId,
+          providerKey: err.providerKey,
+          window: err.window,
+          spent: err.spentCents,
+          limit: err.limitCents,
+          requested: totalCostCents,
+        },
+        "variation enqueue blocked by budget guard",
+      );
+      throw new Error(
+        `Bütçe aşımı (${err.window}): ${err.providerKey} provider için ` +
+          `${(err.limitCents / 100).toFixed(2)}$ limit, harcanmış ` +
+          `${(err.spentCents / 100).toFixed(2)}$. Settings → AI Providers ` +
+          `→ spend limits.`,
+      );
+    }
+    throw err;
   }
 
   const prompt = buildImagePrompt({

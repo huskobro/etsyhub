@@ -118,6 +118,18 @@ export async function handleSelectionEditRemoveBackground(
       { jobId: job.id, itemId, op: "background-remove", outputAssetId: result.assetId },
       "selection edit bg-remove completed",
     );
+
+    // R10 — magicEraser preference inbox dispatch (edit-op family).
+    const { notifyUser } = await import(
+      "@/server/services/settings/notifications-inbox.service"
+    );
+    await notifyUser({
+      userId: job.data.userId,
+      kind: "magicEraser",
+      title: "Background removed",
+      body: `Item ${itemId.slice(0, 8)} background cleaned.`,
+      href: `/selections/${job.data.setId}?tab=edits`,
+    }).catch(() => undefined);
     return;
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
