@@ -275,6 +275,61 @@ export async function uploadMockupTemplate(
     },
   });
 
+  // R11.9 — minimum LOCAL_SHARP binding'i otomatik oluştur (DRAFT).
+  // Activate endpoint'i sonrasında ACTIVE'e geçer. Bu sayede operator'un
+  // "Activate template" tıklaması yeterlidir; ayrı binding wizard'a gerek
+  // kalmaz. PSD/unsupported için binding skipped (raster only).
+  if (suitability.kind === "raster" && suitability.width && suitability.height) {
+    // Default centered safe area: 70% genişlik/yükseklik (operatör manuel
+    // tune edebilir admin editor'da). Smart-object yok, raster composite.
+    const defaultBindingConfig = {
+      providerId: "local-sharp" as const,
+      baseAssetKey: thumbKey,
+      baseDimensions: {
+        w: suitability.thumbnailBytes
+          ? Math.min(suitability.width, THUMBNAIL_MAX_DIMENSION)
+          : suitability.width,
+        h: suitability.thumbnailBytes
+          ? Math.round(
+              (suitability.height / suitability.width) *
+                Math.min(suitability.width, THUMBNAIL_MAX_DIMENSION),
+            )
+          : suitability.height,
+      },
+      safeArea: {
+        type: "rect" as const,
+        x: 0.15,
+        y: 0.15,
+        w: 0.7,
+        h: 0.7,
+      },
+      recipe: {
+        blendMode: "normal" as const,
+      },
+      coverPriority: 50,
+    };
+    try {
+      await db.mockupTemplateBinding.create({
+        data: {
+          templateId: tpl.id,
+          providerId: "LOCAL_SHARP",
+          config: defaultBindingConfig,
+          estimatedRenderMs:
+            input.estimatedRenderMs ?? DEFAULT_ESTIMATED_RENDER_MS,
+          version: 1,
+          // status default DRAFT (Prisma); activate endpoint ACTIVE'e taşır.
+        },
+      });
+    } catch (err) {
+      // Unique (templateId, providerId) collision teorik olarak imkansız
+      // (template yeni oluşturuldu) ama defansif log.
+      logger.warn(
+        { templateId: tpl.id, err: (err as Error).message },
+        "default LOCAL_SHARP binding create failed (non-blocking)",
+      );
+    }
+  }
+
   logger.info(
     {
       templateId: tpl.id,
@@ -352,6 +407,15 @@ export async function activateMockupTemplate(input: {
   }
   const updated = await db.mockupTemplate.update({
     where: { id: input.templateId },
+    data: { status: "ACTIVE" },
+  });
+  // R11.9 — auto-binding(s) ACTIVE'e taşı. Apply Mockups read endpoint
+  // bindings.status='ACTIVE' filter'ı uyguluyor; template ACTIVE ama
+  // binding DRAFT ise template hâlâ visible olmaz. Atomik: template
+  // ACTIVE = mockup pipeline ready demek; binding(ler) DRAFT'taysa
+  // sweep yapar.
+  await db.mockupTemplateBinding.updateMany({
+    where: { templateId: input.templateId, status: "DRAFT" },
     data: { status: "ACTIVE" },
   });
   return { id: updated.id, status: updated.status };
