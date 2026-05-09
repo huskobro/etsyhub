@@ -52,8 +52,8 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "products",   href: "/products",   label: "Products",   icon: Package,         group: "produce", rollout: 5, ready: true  },
 
   // SYSTEM — meta surfaces
-  { id: "templates",  href: "/templates",  label: "Templates",  icon: BookOpen,        group: "system",  rollout: 7, ready: false },
-  { id: "settings",   href: "/settings",   label: "Settings",   icon: SettingsIcon,    group: "system",  rollout: 7, ready: false },
+  { id: "templates",  href: "/templates",  label: "Templates",  icon: BookOpen,        group: "system",  rollout: 6, ready: true  },
+  { id: "settings",   href: "/settings",   label: "Settings",   icon: SettingsIcon,    group: "system",  rollout: 6, ready: true  },
 ];
 
 export const GROUP_LABELS: Record<NavGroupId, string> = {

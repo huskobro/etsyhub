@@ -104,6 +104,25 @@ const whitelist = [
   //  · HistoryTab → A5 timeline mono ts text-[11px] yarı-piksel.
   "src/features/products/components/tabs/MockupsTab.tsx",
   "src/features/products/components/tabs/HistoryTab.tsx",
+  // Rollout-6 — Templates (C1) + Settings (C2/D1) recipes.
+  //  · TemplatesIndexClient → v6 sub-tab segment + table cell typography
+  //    (text-[13.5px] / text-[10.5px] yarı-piksel) + max-w-sm search +
+  //    hero recipe card text-[14.5px].
+  //  · SettingsShell → v6 detail-list grid-cols-[260px_1fr] + left-rail
+  //    text-[13px] / text-[10px] / text-[9.5px] mono group label canon.
+  //  · PaneGeneral / PaneEtsy / PaneAIProviders → v6/v7 max-w-[680px] +
+  //    max-w-[920px] pane container + text-[26px] k-display title +
+  //    text-[13.5px] / text-[12px] / text-[11.5px] / text-[10.5px] /
+  //    text-[10px] / text-[9.5px] yarı-piksel typography (Settings canon).
+  //  · PaneAIProviders → ProviderCard mono badge canonical hex'leri
+  //    (#E89B5B/#8E3A12 warm, #5B9BD5/#1E4F7B blue, #4A4640/#16130F ink,
+  //    #8A60C9/#4A2E7A purple) — D1 spec'in mono kimliği.
+  "src/features/templates/components/TemplatesIndexClient.tsx",
+  "src/features/settings/shell/SettingsShell.tsx",
+  "src/features/settings/shell/panes/PaneGeneral.tsx",
+  "src/features/settings/shell/panes/PaneEtsy.tsx",
+  "src/features/settings/shell/panes/PaneAIProviders.tsx",
+  "src/features/settings/shell/panes/PaneDeferred.tsx",
 ];
 
 let hadError = false;

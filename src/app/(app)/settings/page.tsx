@@ -1,33 +1,37 @@
-import { requireUser } from "@/server/session";
-import { Card } from "@/components/ui/Card";
-import { LocalLibrarySettingsPanel } from "@/features/settings/local-library/components/local-library-settings-panel";
-import { AiModeSettingsPanel } from "@/features/settings/ai-mode/components/ai-mode-settings-panel";
-import { EtsyConnectionSettingsPanel } from "@/features/settings/etsy-connection/components/etsy-connection-settings-panel";
-import { EtsyReadinessSummary } from "@/features/settings/etsy-connection/components/etsy-readiness-summary";
+import { redirect } from "next/navigation";
+import { auth } from "@/server/auth";
+import { SettingsClient } from "@/features/settings/shell/SettingsClient";
+
+/**
+ * /settings — Kivasy C2 Settings detail-list shell (rollout-6).
+ *
+ * Source: docs/design-system/kivasy/ui_kits/kivasy/v6/screens-c2.jsx →
+ * C2Settings + docs/design-system/kivasy/ui_kits/kivasy/v7/screens-d.jsx
+ * → D1Providers (AI Providers pane).
+ *
+ * Live panes (R6):
+ *   - General · density / theme / language / date format
+ *   - Etsy · OAuth-connected shop, permissions, re-auth
+ *   - AI Providers · workspace defaults, key states, task-type model map
+ *
+ * Deferred panes (R7+, placeholder rendering):
+ *   - Workspace / Editor / Notifications / Storage / Scrapers
+ *   - Users / Audit / Feature Flags / Theme (admin governance)
+ *
+ * Boundary discipline (CLAUDE.md):
+ *   Settings = system surface. GOVERNANCE group is admin-only; non-admin
+ *   users don't see it in the rail. AI Providers is admin-scope (workspace
+ *   defaults badge), per-user override caption visible.
+ */
+
+export const metadata = { title: "Settings · Kivasy" };
+export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const user = await requireUser();
+  const session = await auth();
+  if (!session?.user) redirect("/login");
 
-  return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Ayarlar</h1>
-      <Card variant="stat" className="p-5">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-          <dt className="text-text-muted">E-posta</dt>
-          <dd className="text-text">{user.email}</dd>
-          <dt className="text-text-muted">Rol</dt>
-          <dd className="text-text">{user.role}</dd>
-        </dl>
-      </Card>
+  const isAdmin = session.user.role === "ADMIN";
 
-      {/* Phase 5 Task 15 — operator-facing settings (Settings Registry kuralı). */}
-      <LocalLibrarySettingsPanel />
-      <AiModeSettingsPanel />
-      {/* Phase 9 V1 Finalization — Etsy live submit hazırlığı diagnostics
-          (OAuth + taxonomy + connection 3-state checklist). */}
-      <EtsyReadinessSummary />
-      {/* Phase 9 V1 — Etsy bağlantı paneli (OAuth flow). */}
-      <EtsyConnectionSettingsPanel />
-    </div>
-  );
+  return <SettingsClient isAdmin={isAdmin} />;
 }
