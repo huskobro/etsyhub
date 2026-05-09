@@ -10,6 +10,8 @@
 >
 > Source of truth ağacı:
 > - **MVP acceptance (bu dosya)** — operatör release kararı için
+> - [`docs/PRODUCTION_SHAKEDOWN.md`](PRODUCTION_SHAKEDOWN.md) — release
+>   günü operasyonel checklist (env, worker, backup, smoke, rollback)
 > - [`README.md`](../README.md) — repo girişi
 > - [`CLAUDE.md`](../CLAUDE.md) — proje kuralları, marka, scope
 > - [`docs/IMPLEMENTATION_HANDOFF.md`](IMPLEMENTATION_HANDOFF.md) —
@@ -299,23 +301,28 @@ MVP release'i kabul etmeden önce aşağıdakiler doğrulanmalıdır:
 
 ## 8. Acceptance sonrası önerilen sonraki adım
 
-**Tek sonraki adım: production deployment shakedown.**
+**Tek sonraki adım: production deployment shakedown.** Adım adım
+operasyonel kılavuz: [`docs/PRODUCTION_SHAKEDOWN.md`](PRODUCTION_SHAKEDOWN.md).
 
-Yeni rollout açmadan önce:
+Özet:
 
-1. **Bir gerçek operatör (sen ya da iç test kullanıcısı) ile uçtan
-   uca yaşayan akış**: 1 reference → 1 batch → 5+ asset → 1 selection
-   set → 3 mockup → 1 product → 1 Etsy draft. Sürtünme nokta(ları)
-   not edilir.
-2. **Eksik production env config kontrolü** — `.env.example` ile
-   gerçek env karşılaştırması, secret rotation hazırlığı
-   (`SECRETS_ENCRYPTION_KEY`, Etsy OAuth keys, KIE/Gemini API keys).
-3. **Backup + restore drill** — Postgres + Redis snapshot stratejisi
-   karara bağlanır; selection set + library asset kaybı senaryosu test
-   edilir.
-4. **Observability shakedown** — log aggregation + cost tracking
-   dashboard (admin Cost Usage ekranı yeterli mi yoksa external metric
-   pipeline gerekli mi?).
+1. **Release öncesi (T-1):** code/build sanity, env hazırlık,
+   Postgres pre-migrate snapshot, ilk admin seed
+2. **Release günü:** docker compose up → migrate deploy → build →
+   start → worker (ayrı process — ZORUNLU)
+3. **İlk smoke akışı (15-20 dk):** Login → Providers → Etsy →
+   Reference → Batch → Library → Review → Selection → Mockup →
+   Product → Etsy draft → Inbox doğrulama
+4. **T+24h observation:** `/admin/jobs` queue health,
+   `/settings?pane=providers` cost summary, worker log error rate
+
+Detaylar:
+
+- Env zorunlu/opsiyonel matrisi (PRODUCTION_SHAKEDOWN §1.3)
+- Worker/queue topology — 15 worker, concurrency tablosu, daily
+  cron'lar (PRODUCTION_SHAKEDOWN §3)
+- Backup/restore — Postgres + Redis + Storage (PRODUCTION_SHAKEDOWN §4)
+- Rollback senaryoları (PRODUCTION_SHAKEDOWN §6)
 
 Bu shakedown'dan sonra "R12 production-grade enrichment" rollout'u
 açılabilir (provider registry expansion, SSE delivery, recipe full

@@ -7,6 +7,8 @@
 >
 > Source of truth ağacı:
 > - **MVP acceptance + readiness** → [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md)
+> - **Production shakedown (release günü)** →
+>   [`docs/PRODUCTION_SHAKEDOWN.md`](docs/PRODUCTION_SHAKEDOWN.md)
 > - **Implementation handoff (rollout sırası, invariant'lar)** →
 >   [`docs/IMPLEMENTATION_HANDOFF.md`](docs/IMPLEMENTATION_HANDOFF.md)
 > - **Design system** → [`docs/design-system/kivasy/`](docs/design-system/kivasy/)

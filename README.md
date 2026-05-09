@@ -282,6 +282,9 @@ smoke için yeterli sinyal).
 
 Repo'yu açan biri için tek-bakışta:
 
+- **Production shakedown (release günü)** → [`docs/PRODUCTION_SHAKEDOWN.md`](docs/PRODUCTION_SHAKEDOWN.md)
+  (release öncesi/sonrası checklist, env/worker/queue ops, backup/restore,
+  ilk smoke akışı, rollback senaryoları)
 - **MVP acceptance + readiness** → [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md)
   (release kararı, MVP-ready akışlar, post-MVP deferred matrisi, acceptance checklist)
 - **Project rules** → [`CLAUDE.md`](CLAUDE.md)
