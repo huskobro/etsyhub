@@ -100,7 +100,7 @@ export function ArchiveAction({ setId, setStatus }: ArchiveActionProps) {
       queryClient.invalidateQueries({ queryKey: selectionSetQueryKey(setId) });
       setConfirmOpen(false);
       setErrorMessage(null);
-      router.push("/selection");
+      router.push("/selections");
     },
     onError: (err: Error) => {
       setErrorMessage(err.message);

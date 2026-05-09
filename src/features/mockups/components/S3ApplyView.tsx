@@ -82,8 +82,8 @@ export function S3ApplyView({ setId }: { setId: string }) {
       <header className="sticky top-0 z-10 border-b border-border bg-white px-6 py-3">
         <nav className="text-sm text-text-muted">
           <span>← </span>
-          <a href="/selection" className="hover:text-text">
-            Selection
+          <a href="/selections" className="hover:text-text">
+            Selections
           </a>
           <span className="mx-1.5">/</span>
           <a href={`/selection/sets/${setId}`} className="hover:text-text">
