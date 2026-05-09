@@ -1,12 +1,15 @@
 # Kivasy — Implementation Handoff
 
-> Single reference for the implementation phase. The design phase is closed
-> as of this commit; everything below is what implementation needs to know
-> without re-reading 6+ design briefs.
+> Single reference for the implementation phase. The design phase is closed;
+> everything below is what implementation needs to know without re-reading
+> 6+ design briefs.
 
 **Source of truth folder:** `docs/design-system/kivasy/`
 **Branch this lands on:** `claude/epic-agnesi-7a424b`
-**Status:** Design complete — implementation rollout has not started.
+**Status:** Implementation **R1 → R11.5 complete** (2026-05-09). MVP omurgası
+canlı; production build PASSING; %99.4 test pass. MVP Final Acceptance gate
+operatör onayını bekliyor. Acceptance source of truth:
+[`docs/MVP_ACCEPTANCE.md`](MVP_ACCEPTANCE.md).
 
 ---
 
@@ -301,45 +304,100 @@ IMPLEMENTATION_HANDOFF + design-system READMEs + CLAUDE.md synced with
 rollout progress and source-of-truth links.
 
 ### Rollout 4 — Selections index + detail
-**Status:** ⏳ Next.
-- Reuse Library card patterns (A1 → S/B3 grid)
-- Stage-aware deterministic CTAs (B2 STAGE_CTA map)
-- B3 detail tabs: Designs / Edits / Mockups / History (Mockups read-only
-  preview pattern, cross-link to Products)
-- Edit operations as split modals (background remove / color edit /
-  crop / upscale / magic eraser)
+**Status:** ✓ Completed (commit `87a9737`). `/selections` (B2 stage-aware
+CTAs) + `/selections/[setId]` (B3 4-tab: Designs/Edits/Mockups/History) +
+edit modals (background remove / color edit / crop / upscale / magic
+eraser) live. Library handoff wired.
 
 ### Rollout 5 — Products index + detail
-- Reuse A2 table pattern (B4 index)
-- Detail tabs: Mockups / Listing / Files / History
-- A5 Listing tab digital-file-types checklist (ZIP / PNG / PDF / JPG /
-  JPEG); enforce no physical fields
-- A7 Apply Mockups modal (3 sibling tabs)
-- Schema check: `MockupTemplate.kind` enum (per §6)
-- B6 Generate Listing modal + post-generation handoff state
-- Etsy draft push (existing `/api/etsy/oauth` carries forward)
+**Status:** ✓ Completed (commit `2211c05`, parity polish in `a982db8`).
+`/products` (B4) + `/products/[id]` (A5 4-tab: Mockups/Listing/Files/
+History) live. A7 Apply Mockups modal (3 sibling tabs: Lifestyle / Bundle
+preview / My templates) live. A5 Listing tab digital-file-types checklist
+(ZIP / PNG / PDF / JPG / JPEG); no physical fields. `MockupTemplate.kind`
+enum (LIFESTYLE | PREVIEW_SHEET | USER_TEMPLATE) in Prisma. B6 Generate
+Listing modal + post-generation handoff state live. Etsy draft push via
+existing `/api/etsy/oauth`.
 
-### Rollout 6 — References (consolidation)
-- Reuse existing `/references`, `/trend-stories`, `/bookmarks`,
-  `/competitors`, `/collections` data; consolidate into one `/references`
-  surface with 5 sub-views
-- Sub-view container: sibling segment (`k-stabs`)
-- Drop the old top-level routes (redirects per rollout-1 already cover
-  this)
+### Rollout 6 — Templates family + Settings shell + AI Providers
+**Status:** ✓ Completed (commit `fec3e9b`). `/templates` (C1, 4 sub-types
+via `k-stabs`) + `/settings` (C2 left-rail detail list, 8 live + 4
+deferred panes) + D1 AI Providers pane (provider × task-type matrix)
+shell live.
 
-### Rollout 7 — Templates + Settings
-- New route `/templates` (4 sub-types via `k-stabs`)
-- New route `/settings` (left-rail detail list)
-- Populate Settings panes per §8 compositions
-- D1 AI Providers pane (provider × task-type matrix)
+> **Note:** "References consolidation (B1 single surface)" originally
+> planned as R6 has been **deferred to post-MVP**. Sub-view'lar (Pool /
+> Stories / Inbox / Shops / Collections) bugün ayrı top-level route'larda
+> (`/references`, `/trend-stories`, `/bookmarks`, `/competitors`,
+> `/collections`); operatör için işlevsel, parity'i bozmayan bir compromise.
 
-### Rollout 8 — Overview rework
-- Replace `src/app/(app)/dashboard/page.tsx` content with C3 four-block
-  structure
-- Pipeline pulse strip wired to real counts from each surface
-- Pending actions wired to real backlogs (review queue, mockup-ready
-  selections, draft-pending products)
-- Recent activity wired to a unified event feed
+### Rollout 7 — Templates CRUD + Settings persistence
+**Status:** ✓ Completed (commit `cead59f`). Template editor modals,
+prompt versioning, style preset config, mockup template upload, recipe
+chain CRUD all live. Settings panes (General / Workspace / Editor /
+Notifications / Etsy / Storage / Scrapers) persist via UserSetting
+key-scoped rows. AI Providers pane real backing — KIE/Gemini key
+encrypt-at-rest, cost summary aggregation.
+
+### Rollout 8 — Recipe runner + Mockup PSD upload + production wiring
+**Status:** ✓ Completed (commit `3341db9`). Recipe runner backend +
+modal; PSD smart-object detection on upload (Sharp-based suitability
+report); Editor / Scrapers / Storage panes live with real persistence;
+AI Providers finishing (admin task assignments + spend limits).
+
+### Rollout 9 — Production wiring deepening
+**Status:** ✓ Completed (commit `95fe0b6`). Recipe runner real start
+(audit log + recipe history + inbox notification); PSD smart-object
+binding flow; in-app notifications inbox v1 (recipe run, batch result,
+mockup activation, magic eraser job done sinyalleri); enforcement layer
+foundation (`assertWithinBudget` helper).
+
+### Rollout 10 — Production call-path migration
+**Status:** ✓ Completed (commit `e744e7b`). `assertWithinBudget`
+enforcement live in variation + listing-copy call-paths (429 on limit
+breach). `notifyUser` dispatch with preference filter. `resolveTtlForUser`
+helper with 60s in-memory cache for signed URLs. Recipe runner deeper
+(destination resolution + audit history endpoint).
+
+### Rollout 11 — MVP final acceptance hardening
+**Status:** ✓ Completed (commit `8d1b983`). Production build PASSING
+(was failing in R10 due to lint/type errors); 26 new unit tests for
+schema/discriminator logic; AI Providers UI copy synced to R10 reality;
+Recipe runner explicit "Continue to destination" CTA (no more silent
+redirect); notifications inbox 15s polling; mockup upload SuitabilityReport
+component.
+
+### Rollout 11.5 — Settings stabilization
+**Status:** ✓ Completed (commit `c7c6564`). PaneAIProviders loading
+watchdog (8s retry CTA); explicit `staleTime` + `retry` per query;
+PaneNotifications inbox `retry: 1` + inline error retry CTA;
+SettingsShell deferred-pane "R9" → "Soon"; PaneDeferred / PaneScrapers /
+PaneStorage stale rollout copy → "post-MVP". Browser-verified across
+4 routes; production build PASS.
+
+### Rollouts deferred to post-MVP
+
+What is intentionally NOT in MVP (operator sees these as "Soon" / "R12"
+labels in UI; not release blockers):
+
+- **References consolidation (B1 single-surface)** — sub-view'lar ayrı
+  top-level route'larda kalır
+- **Overview rework (C3 — pipeline pulse + pending actions + recent
+  activity blocks)** — `/overview` minimal stub; bağlı route'lardaki
+  veri yeterli
+- **Recipe full chain orchestration** — şu an "Continue to destination"
+  CTA; otomatik chain (batch+selection+mockup) post-MVP
+- **R12 delivery backend** — desktop push + email digest delivery + SSE
+  channel `notifications:user:{id}`
+- **R12 provider integration** — OpenAI / Fal.ai / Replicate / Recraft
+  persistence + wiring
+- **Mockup binding wizard** — LOCAL_SHARP MockupTemplateBinding setup UI
+- **Settings GOVERNANCE group panes** — Users / Audit / Feature Flags /
+  Theme; legacy `/admin/*` route'lar fonksiyonel
+- **Native shell (Tauri)** + **Watch folder** + **Trend Cluster
+  Detection (semantic dedupe)** — design ready, post-MVP
+
+Detaylı acceptance matrisi: [`docs/MVP_ACCEPTANCE.md`](MVP_ACCEPTANCE.md).
 
 ### Rollout discipline (carried from design phase)
 Each rollout fully ships before the next begins. "Fully ships" means:

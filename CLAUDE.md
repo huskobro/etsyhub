@@ -1,10 +1,17 @@
 # Kivasy — Ürün ve Proje Kuralları
 
-> **Status:** Implementation rollouts R1–R3 done; R3.5 visual parity
-> cleanup done; **R4 Selections** next. Source of truth:
-> [`docs/IMPLEMENTATION_HANDOFF.md`](docs/IMPLEMENTATION_HANDOFF.md).
-> Design system: [`docs/design-system/kivasy/`](docs/design-system/kivasy/).
-> Parity checkpoint: [`docs/DESIGN_PARITY_CHECKPOINT.md`](docs/DESIGN_PARITY_CHECKPOINT.md).
+> **Status:** Implementation **R1 → R11.5 complete** (2026-05-09). MVP
+> omurgası canlı; production build PASSING; %99.4 test pass; settings/
+> providers/notifications stabilize. MVP Final Acceptance gate operatör
+> onayını bekliyor.
+>
+> Source of truth ağacı:
+> - **MVP acceptance + readiness** → [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md)
+> - **Implementation handoff (rollout sırası, invariant'lar)** →
+>   [`docs/IMPLEMENTATION_HANDOFF.md`](docs/IMPLEMENTATION_HANDOFF.md)
+> - **Design system** → [`docs/design-system/kivasy/`](docs/design-system/kivasy/)
+> - **Parity checkpoint (her rollout sonu uygulanır)** →
+>   [`docs/DESIGN_PARITY_CHECKPOINT.md`](docs/DESIGN_PARITY_CHECKPOINT.md)
 
 > **Marka adı:** `Kivasy`. Public-facing ürün adı budur. Repo slug, mevcut git
 > geçmişi nedeniyle şimdilik `EtsyHub` olarak kalır; bu bir uyumluluk

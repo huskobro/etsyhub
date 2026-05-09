@@ -12,6 +12,25 @@ tasarlanır.
 
 ---
 
+## Current status (2026-05-09)
+
+**MVP omurgası tamamlandı (R1 → R11.5).** Production build PASSING, 1779/1790
+test pass (%99.4), 60+ live route, settings/providers/notifications canlı ve
+kararlı. MVP Final Acceptance gate **AÇIK** — operatör release kararı bekliyor.
+
+- ✓ Reference → Batch → Library → Selection → Product → Etsy Draft zinciri uçtan uca
+- ✓ Templates (Prompts / Style Presets / Mockup Templates / Recipes) CRUD canlı
+- ✓ Settings shell 8 live pane (General / Workspace / Editor / Notifications /
+  Etsy / AI Providers / Storage / Scrapers); 4 deferred pane "Soon" rozetli
+- ✓ AI Provider enforcement (variation + listing-copy budget guard)
+- ✓ In-app notifications inbox (15s polling; SSE channel R12)
+- ✓ Recipe runner explicit "Continue to destination" CTA
+- ✓ Multi-user veri izolasyonu, role-gated admin scope
+
+**Acceptance source of truth:** [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md).
+
+---
+
 ## Ürün scope'u
 
 Kivasy **dijital indirilebilir ürünler** için tasarlanmıştır. Kullanıcının ürettiği
@@ -137,45 +156,48 @@ yetmez, backend authorization zorunlu).
 
 ## Şu an nerede? (Implementation rollouts)
 
-Kapasite olarak ürün omurgası **çalışıyor**. İmplementation rollout'u Kivasy
-design system'e geçişi getirir; mevcut durum:
+Kivasy design system'e geçiş **R11.5'e kadar tamamlandı**. MVP omurgası
+canlı; aşağıdaki tablo her rollout'un commit hash + kapsamını verir.
+Detaylı acceptance audit için [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md).
 
-| Rollout | Kapsam | Durum |
-|---|---|---|
-| **R1** | Tokens + shell + sidebar (8/2 IA) + middleware redirects | ✓ Done |
-| **R2** | Library (A1) — virtualized grid, density, bulk-select, detail panel | ✓ Done |
-| **R3** | Batches index (A2) + Batch detail (A3) + Review workspace (A4 dark) + A6 Create Variations + Active Tasks data wire | ✓ Done |
-| **R3.5** | Visual parity cleanup — token re-bind, font stack, .k-btn/.k-card--hero recipes, sidebar gradient, stale docs sync | ✓ Done (this commit) |
-| **R4** | Selections (B2 + B3) + edit modals + handoff wires | ⏳ Next |
-| **R5** | Products (A5 detail + A7 Apply Mockups + B6 Generate Listing) | ⏳ |
-| **R6** | References (B1 — Pool/Stories/Inbox/Shops/Collections konsolidasyon) | ⏳ |
-| **R7** | Templates (C1) + Settings (C2) + D1 AI Providers pane | ⏳ |
-| **R8** | Overview rework (C3 — pipeline pulse, pending actions, recent activity) | ⏳ |
+| Rollout | Commit | Kapsam | Durum |
+|---|---|---|---|
+| **R1+R2+R3+R3.5** | `23708bb` | Tokens + shell · Library · Batches · Review · A6 modal · parity cleanup | ✓ |
+| **R4** | `87a9737` | Selections (B2 + B3) + edit modals + handoff | ✓ |
+| **R5 + R5.5** | `2211c05`, `a982db8` | Products (A5 detail + A7 Apply Mockups + B6 Listing) + topbar parity | ✓ |
+| **R6** | `fec3e9b` | Templates family (C1) + Settings shell (C2) + D1 AI Providers | ✓ |
+| **R7** | `cead59f` | Templates CRUD + Settings persistence + AI Providers real backing | ✓ |
+| **R8** | `3341db9` | Recipe runner + Mockup PSD upload + Editor/Scrapers/Storage live | ✓ |
+| **R9** | `95fe0b6` | Production wiring — recipe real start + smart-object + inbox + enforcement | ✓ |
+| **R10** | `e744e7b` | Production call-path migration — variation+listingCopy budget guard live | ✓ |
+| **R11** | `8d1b983` | MVP final acceptance hardening — production build PASSING + tests + honesty cleanup | ✓ |
+| **R11.5** | `c7c6564` | Settings stabilization — providers/notifications resilient, stale rollout copy cleanup | ✓ |
 
-**Bilgi mimarisi yenileniyor:** mevcut top-level yüzeyler birleştiriliyor.
-Yeni IA için bkz. [`docs/CLAUDE_DESIGN_CONTEXT.md`](docs/CLAUDE_DESIGN_CONTEXT.md).
+### MVP-ready akışlar (production-ready bugün)
 
-**Çalışan capability'ler:**
+- **Production spine** — Reference → Batch → Library → Selection → Product → Etsy Draft (uçtan uca canlı)
+- **Templates** — Prompt Templates · Style Presets · Mockup Templates (PSD upload + activation) · Recipes (chain + run + audit history)
+- **Settings** — 8 live pane (General · Workspace · Editor · Notifications · Etsy · AI Providers · Storage · Scrapers); 4 deferred pane "Soon" rozetli
+- **AI Provider enforcement** — `assertWithinBudget` variation + listing-copy call-path'lerinde aktif (R10)
+- **In-app notifications inbox** — recipe run, batch result, mockup activation sinyalleri; 15s polling
+- **Multi-user veri izolasyonu** — backend authorization + per-row `userId` filter
+- **Magic Eraser** — LaMa inpainting (production) / mock runner (QA)
+- **AI Quality Review** — Sharp deterministic alpha + KIE Gemini 2.5 Flash; quality_score badge
 
-- Bookmark / Reference / Collection iş akışı + multi-user veri izolasyonu
-- Etsy rakip mağaza tarama, trend cluster tespiti
-- AI Mode variation generation (KIE GPT Image 1.5 + Z-Image, per-user
-  `kieApiKey`)
-- Local Mode variation generation (disk asset'leri reference)
-- AI Quality Review (Sharp deterministic alpha + KIE Gemini 2.5 Flash;
-  USER override sticky; risk flag detection; conservative cost tracking)
-- Midjourney describe / generate / image-prompt API-first; sref/oref/ow/cref
-- Variation V1, batch generation, retry-failed-only
-- Asset Library V1, Batch Review Studio V1, Kept Handoff, Selection
-  Workspace V1
-- Mockup apply (lifestyle), Selection Studio (background removal, color
-  editor, crop, Magic Eraser inpainting via LaMa)
-- Listing draft + Etsy OAuth + draft push (direct publish yok)
-- Admin: prompt versioning, AI/scraper provider config, cost usage, audit
-  logs, feature flags
+### Deferred (post-MVP)
 
-**Bilgi mimarisi yenileniyor:** mevcut top-level yüzeyler birleştiriliyor.
-Yeni IA için bkz. [`docs/CLAUDE_DESIGN_CONTEXT.md`](docs/CLAUDE_DESIGN_CONTEXT.md).
+UI'da dürüstçe etiketli, release blocker değil:
+
+- **R12 delivery backend** — desktop push, daily email digest, SSE channel `notifications:user:{id}`
+- **R12 provider integration** — OpenAI / Fal.ai / Replicate / Recraft persistence + wiring
+- **Mockup binding wizard** — LOCAL_SHARP MockupTemplateBinding setup UI (CLI ile yapılıyor)
+- **Recipe full chain orchestration** — şu an "Continue to destination" CTA mevcut; otomatik chain (batch+selection+mockup) post-MVP
+- **References consolidation** — Pool / Stories / Inbox / Shops / Collections sub-view'lar şu an ayrı route'larda; B1 single-surface consolidation post-MVP
+- **Native macOS / Windows shell (Tauri)** — design Tauri-feasible; native app build post-MVP
+- **Watch folder** — Tauri `notify` integration, post-MVP
+- **Trend Cluster Detection (semantic dedupe)** — embedding-based similarity, post-MVP
+- **Settings Governance group** — Users / Audit / Feature Flags / Theme placeholder (legacy `/admin/*` route'ları fonksiyonel)
+- **Theme editor** — read-only preview only
 
 ---
 
@@ -260,6 +282,8 @@ smoke için yeterli sinyal).
 
 Repo'yu açan biri için tek-bakışta:
 
+- **MVP acceptance + readiness** → [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md)
+  (release kararı, MVP-ready akışlar, post-MVP deferred matrisi, acceptance checklist)
 - **Project rules** → [`CLAUDE.md`](CLAUDE.md)
 - **Implementation handoff** → [`docs/IMPLEMENTATION_HANDOFF.md`](docs/IMPLEMENTATION_HANDOFF.md)
   (rollout sırası, invariant'lar, surface→wave eşleşmesi)

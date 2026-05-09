@@ -62,26 +62,40 @@ v6 — Wave C · system layer
 
 ### Implementation status (which design surfaces ship live today)
 
+Updated 2026-05-09 (post R11.5). MVP omurgası canlı.
+
 | Surface | Wave | Implementation | Live route |
 |---|---|---|---|
 | A1 Library | A | ✓ R2 | `/library` |
 | A2 Batches index | A | ✓ R3 | `/batches` |
 | A3 Batch detail | A | ✓ R3 | `/batches/[batchId]` |
 | A4 Review workspace | A | ✓ R3 | `/batches/[batchId]/review` |
-| A5 Product detail | A | ⏳ R5 | (not yet) |
+| A5 Product detail | A | ✓ R5 | `/products/[id]` |
 | A6 Create Variations modal | A | ✓ R3 | from Library detail panel |
-| A7 Apply Mockups modal | A | ⏳ R5 | (not yet) |
-| B1 References | B | ⏳ R6 | (legacy `/references` etc. still live) |
-| B2 Selections index | B | ⏳ R4 (next) | (placeholder) |
-| B3 Selection detail | B | ⏳ R4 (next) | (legacy `/selection/sets/[id]`) |
-| B4 Products index | B | ⏳ R5 | (placeholder) |
-| B5 Add Reference modal | B | ⏳ R6 | (not yet) |
-| B6 Generate Listing modal | B | ⏳ R5 | (not yet) |
-| C1 Templates | C | ⏳ R7 | (placeholder) |
-| C2 Settings | C | ⏳ R7 | (legacy `/settings` still live) |
-| C3 Overview rework | C | ⏳ R8 | (current `/overview` is rollout placeholder) |
-| D1 AI Providers pane | D | ⏳ R7 | (lands inside C2 Settings) |
+| A7 Apply Mockups modal | A | ✓ R5 | from Selections → Mockups CTA |
+| B1 References (single-surface) | B | ⏳ post-MVP | sub-view'lar şimdilik ayrı top-level route'larda (`/references`, `/trend-stories`, `/bookmarks`, `/competitors`, `/collections`) |
+| B2 Selections index | B | ✓ R4 | `/selections` |
+| B3 Selection detail | B | ✓ R4 | `/selections/[setId]` |
+| B4 Products index | B | ✓ R5 | `/products` |
+| B5 Add Reference modal | B | ✓ R6 | from References surfaces |
+| B6 Generate Listing modal | B | ✓ R5 | from Products → Listing tab |
+| C1 Templates | C | ✓ R6+R7 | `/templates?sub=prompts\|styles\|mockups\|recipes` |
+| C2 Settings | C | ✓ R6+R7+R11.5 | `/settings` (8 live + 4 deferred panes) |
+| C3 Overview rework | C | ⏳ post-MVP | `/overview` minimal stub; bağlı route'lardaki veri yeterli |
+| D1 AI Providers pane | D | ✓ R6+R7+R10+R11.5 | `/settings?pane=providers` (real backing + budget enforcement + watchdog) |
 | D2 A6 Prompt Preview | D | ✓ R3 | inside A6 modal |
+
+**Capability layer (R8 → R11.5):**
+
+| Capability | Implementation | Live |
+|---|---|---|
+| Recipe runner (chain + run modal + audit history) | R8+R9+R11 | from Templates → Recipes |
+| Mockup PSD upload + smart-object detection | R8+R9 | from Templates → Mockup Templates → Upload |
+| Settings persistence (UserSetting key-scoped) | R7+R8 | all live panes |
+| AI Provider budget enforcement (variation + listing-copy) | R10 | call-path's `assertWithinBudget` |
+| In-app notifications inbox (15s polling) | R9+R11+R11.5 | `/settings?pane=notifications` |
+| Cost summary aggregation | R7 | AI Providers 4-stat row |
+| Recipe audit history | R9+R10 | inside Run Recipe modal |
 
 ### Removed in housekeeping pass
 
