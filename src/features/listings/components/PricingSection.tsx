@@ -82,25 +82,25 @@ export function PricingSection({ listing }: { listing: ListingDraftView }) {
         {/* Materials */}
         <div>
           <label htmlFor="listing-materials" className="block text-sm font-medium mb-2">
-            Malzemeler
+            Materials
           </label>
           <textarea
             id="listing-materials"
             value={materials}
             onChange={(e) => setMaterials(e.target.value)}
-            placeholder="Ör: Digital download, PNG, Transparent background"
+            placeholder="e.g. Digital download, PNG, Transparent background"
             rows={3}
             className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Ürün yapısı ve sunumu
+            Product composition and presentation
           </p>
         </div>
 
         {/* Error Alert */}
         {mutation.error && (
           <p role="alert" className="text-sm text-red-600">
-            Kaydetme başarısız: {mutation.error.message}
+            Save failed: {mutation.error.message}
           </p>
         )}
 

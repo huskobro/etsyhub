@@ -145,10 +145,10 @@ export function AiModeForm({
           maxLength={BRIEF_MAX}
           rows={3}
           className="rounded-md border border-border bg-bg p-2 text-sm text-text"
-          placeholder="ör. pastel tones, no text, soft watercolor"
+          placeholder="e.g. pastel tones, no text, soft watercolor"
         />
         <span className="text-xs text-text-muted">
-          Sistem promptuna eklenir, yerine geçmez. {brief.length}/{BRIEF_MAX}
+          Appended to the system prompt, doesn&apos;t replace it. {brief.length}/{BRIEF_MAX}
         </span>
       </label>
       {partialNotice ? (

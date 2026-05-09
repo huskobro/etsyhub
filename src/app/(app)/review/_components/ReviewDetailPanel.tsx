@@ -407,10 +407,10 @@ export function ReviewDetailPanel({ id, scope }: Props) {
             {/* Summary */}
             {item.reviewSummary ? (
               <section
-                aria-label="Provider özeti"
+                aria-label="Provider summary"
                 className="flex flex-col gap-1"
               >
-                <h3 className="text-sm font-medium text-text">Özet</h3>
+                <h3 className="text-sm font-medium text-text">Summary</h3>
                 <p className="text-sm text-text-muted">{item.reviewSummary}</p>
               </section>
             ) : null}

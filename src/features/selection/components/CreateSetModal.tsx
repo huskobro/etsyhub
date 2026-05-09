@@ -137,7 +137,7 @@ export function CreateSetModal({ open, onOpenChange }: CreateSetModalProps) {
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="örn. Boho Wall Art"
+                placeholder="e.g. Boho Wall Art"
                 disabled={mutation.isPending}
               />
             </FormField>
