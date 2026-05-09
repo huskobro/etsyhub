@@ -7,6 +7,7 @@ import {
   type ActiveTask,
 } from "@/features/app-shell/ActiveTasksPanel";
 import { listRecentBatches } from "@/server/services/midjourney/batches";
+import { getNavCounts } from "@/features/app-shell/nav-counts";
 
 /**
  * (app) layout — Kivasy shell. Sidebar (8 items / 2 groups) + main canvas
@@ -23,13 +24,16 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   if (!session?.user) redirect("/login");
   const { id: userId, email, role } = session.user;
 
-  const tasks = await loadActiveTasks(userId);
+  const [tasks, navCounts] = await Promise.all([
+    loadActiveTasks(userId),
+    getNavCounts(userId),
+  ]);
   const totalActive = tasks.length;
   const totalEta = totalActive > 0 ? estimateEta(tasks) : undefined;
 
   return (
     <div className="flex h-screen w-full bg-bg text-text">
-      <Sidebar role={role} email={email} />
+      <Sidebar role={role} email={email} navCounts={navCounts} />
       <main className="mx-auto flex w-full max-w-content flex-1 flex-col overflow-auto p-6">
         {children}
       </main>

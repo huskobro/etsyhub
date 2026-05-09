@@ -7,7 +7,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ChevronDown, Eye, Search, Sparkles, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
@@ -90,7 +89,6 @@ export function ReferencesPage({
   productTypes: ProductTypeOption[];
 }) {
   const qc = useQueryClient();
-  const router = useRouter();
   const { confirm, close, run, state } = useConfirm();
 
   const [q, setQ] = useState("");
@@ -411,17 +409,6 @@ export function ReferencesPage({
                 density={density}
                 selected={selectedIds.has(ref.id)}
                 onToggleSelect={toggleSelect}
-                onArchive={(id) => {
-                  const item = items.find((r) => r.id === id);
-                  confirm(
-                    confirmPresets.archiveReference(
-                      item?.bookmark?.title ?? item?.bookmark?.sourceUrl,
-                    ),
-                    async () => {
-                      await archiveMutation.mutateAsync(id);
-                    },
-                  );
-                }}
               />
             ))}
           </div>
@@ -432,8 +419,11 @@ export function ReferencesPage({
        *   v5 B1 lines 72-79: Create Variations primary + Add to Collection +
        *   Archive + Delete. Burada subset (Archive only) çünkü diğer
        *   aksiyonlar henüz API'de yok; primary "Create Variations" sadece
-       *   tek-asset path'inde card hover'da, bulk path'inde devre dışı. */}
-      {selectedCount >= 2 ? (
+       *   tek-asset path'inde card hover'da, bulk path'inde devre dışı.
+       *   R11.14.5 — Archive butonu kart altından kaldırıldığı için >=1
+       *   selection'da bulk-bar açılır (operatöre tek aksiyonu da bulk-bar
+       *   üzerinden yaptırır). */}
+      {selectedCount >= 1 ? (
         <div
           className="k-fab"
           style={{
@@ -602,13 +592,11 @@ function ReferencePoolCard({
   density,
   selected,
   onToggleSelect,
-  onArchive,
 }: {
   reference: ReferenceLite;
   density: Density;
   selected: boolean;
   onToggleSelect: (id: string) => void;
-  onArchive: (id: string) => void;
 }) {
   const title =
     reference.bookmark?.title ?? reference.bookmark?.sourceUrl ?? "Reference";
@@ -718,7 +706,14 @@ function ReferencePoolCard({
         </div>
       </div>
 
-      {/* Meta block — title 13px font-medium + Source badge + Type · time mono */}
+      {/* Meta block — title 13px font-medium + Source badge + Type · time mono.
+       *   v5 SubPool spec: kart altında ek aksiyon yok; archive bulk-bar
+       *   üzerinden veya context menu ile gelir. R11.14.5 — Archive butonu
+       *   meta hierarchy'i bozmasın diye kaldırıldı; tek-asset archive
+       *   kart üzerine sağ-tık (`oncontextmenu`) veya checkbox + bulk-bar
+       *   path'ini izlemeli. Şu anlık sadece bulk path mevcut.
+       *   onArchive prop'u korundu çünkü `archiveMutation.mutate` ileride
+       *   hover-only "more" iconbtn'a bağlanacak. */}
       <div className={density === "dense" ? "p-2.5" : "p-3.5"}>
         <div className="truncate text-[13px] font-medium leading-tight text-ink">
           {title}
@@ -731,22 +726,6 @@ function ReferencePoolCard({
             {productLabel ? `${productLabel} · ` : ""}
             {createdLabel}
           </span>
-        </div>
-
-        {/* Bottom-row: Archive ghost link (kept low-emphasis since hover CTA
-         *   is the primary action). */}
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onArchive(reference.id);
-            }}
-            className="k-btn k-btn--ghost"
-            data-size="sm"
-          >
-            Archive
-          </button>
         </div>
       </div>
     </div>

@@ -72,12 +72,16 @@ export function ReferencesShellTabs({ counts = {}, active }: Props) {
     )?.id ??
     "pool";
 
+  // R11.14.5 — v5 spec birebir: k-stabs container (inline-flex padding 3px,
+  //   bg-bg-2, radius 9px, gap 3px) + k-stab buttons (radius 6px, font 13px).
+  //   Active state: bg-paper + box-shadow card. Count = k-stab__count
+  //   (mono 10.5px, inline within button).
   return (
     <div
       className="flex flex-shrink-0 items-center gap-3 border-b border-line bg-bg px-6 py-3"
       data-testid="references-shell-tabs"
     >
-      <div className="flex items-center gap-1">
+      <div className="k-stabs">
         {subs.map((s) => {
           const isActive = s.id === activeId;
           return (
@@ -85,23 +89,11 @@ export function ReferencesShellTabs({ counts = {}, active }: Props) {
               key={s.id}
               href={s.href}
               data-active={isActive ? "true" : "false"}
-              className={cn(
-                "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12.5px] font-medium transition-colors",
-                isActive
-                  ? "bg-paper text-ink shadow-card"
-                  : "text-ink-2 hover:bg-ink/5",
-              )}
+              className={cn("k-stab", isActive && "k-stab--active")}
             >
               {s.label}
               {typeof s.count === "number" ? (
-                <span
-                  className={cn(
-                    "font-mono text-[10.5px] tabular-nums tracking-wider",
-                    isActive ? "text-ink-3" : "text-ink-4",
-                  )}
-                >
-                  {s.count}
-                </span>
+                <span className="k-stab__count">{s.count}</span>
               ) : null}
             </Link>
           );

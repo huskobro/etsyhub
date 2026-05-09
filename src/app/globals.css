@@ -565,6 +565,20 @@
     border-color: var(--k-orange);
   }
 
+  /* k-ping — pulse animation for batch RUNNING indicator (sidebar nav).
+   * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/base.jsx Sidebar
+   * inline keyframe `@keyframes k-ping`. */
+  @keyframes k-ping {
+    0% {
+      transform: scale(0.8);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(2);
+      opacity: 0;
+    }
+  }
+
   /* Mono caption / nav helpers */
   .k-section-label {
     display: flex; align-items: center; gap: 8px;

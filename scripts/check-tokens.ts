@@ -178,6 +178,14 @@ const whitelist = [
   //   k-checkbox + k-iconbtn). Title text-[13px] + meta mono text-[10.5px]
   //   yarı-piksel hierarchy v5 SubPool ile birebir.
   "src/features/library/components/LibraryAssetCard.tsx",
+  // R11.14.5 — References page topbar v5 spec (h1 text-[24px] k-display,
+  //   subtitle text-[10.5px] mono inline). Tailwind text-2xl (24px) tier
+  //   var ama k-display font-family + leading-none kombinasyonu için
+  //   half-pixel tracking gerekli.
+  "src/app/(app)/references/page.tsx",
+  // R11.14.5 — Shared ReferencesTopbar (References family tek doğruluk
+  //   kaynağı). Aynı half-pixel typography hierarchy.
+  "src/features/references/components/ReferencesTopbar.tsx",
 ];
 // Note: Rollout-9 keeps existing whitelisted files; no new client tsx with
 // half-pixel typography added.
