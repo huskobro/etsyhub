@@ -109,6 +109,10 @@ export function SelectionCard({
         </div>
 
         <div className="mt-3.5">
+          {/* R11.14.9 — CTA recipe parity. Önceden secondary variant
+           * ad-hoc Tailwind composition (bg-paper border-line) kullanıyordu;
+           * şimdi k-btn--secondary recipe ile tutarlı (Library'deki
+           * "Saved views" CTA ile aynı tonu üretir). */}
           <Link
             href={`/selections/${id}`}
             data-size="sm"
@@ -116,8 +120,8 @@ export function SelectionCard({
               cta.variant === "primary"
                 ? "k-btn k-btn--primary"
                 : cta.variant === "ghost"
-                  ? "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-ink-2 hover:text-ink"
-                  : "inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink",
+                  ? "k-btn k-btn--ghost"
+                  : "k-btn k-btn--secondary",
             )}
             data-testid="selection-card-cta"
           >

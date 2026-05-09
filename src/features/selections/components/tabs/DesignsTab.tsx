@@ -5,6 +5,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { GripVertical, Plus, Sparkles, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { FloatingBulkBar } from "@/components/ui/FloatingBulkBar";
@@ -63,15 +64,18 @@ export function DesignsTab({ setId, items }: DesignsTabProps) {
         <div className="font-mono text-xs uppercase tracking-meta text-ink-3">
           {items.length} designs · drag to reorder
         </div>
-        <button
-          type="button"
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
-          disabled
-          title="To add designs: open Library, multi-select assets, then use the floating bulk-bar's 'Add to Selection' (this set is the destination)."
+        {/* R11.14.9 — Was previously disabled with workflow tooltip; now
+         * actionable link to Library. Library shows a guidance banner
+         * (?intent=add-to-selection) so user picks assets and uses
+         * bulk-bar 'Add to Selection' to get back here. */}
+        <Link
+          href={`/library?intent=add-to-selection&setId=${setId}`}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink"
+          title="Open Library to pick designs and add them to this set."
         >
           <Plus className="h-3 w-3" aria-hidden />
           Add from Library
-        </button>
+        </Link>
       </div>
 
       {items.length === 0 ? (

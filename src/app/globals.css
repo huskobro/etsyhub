@@ -383,12 +383,23 @@
     border-color: var(--k-red);
   }
 
-  /* Selection ring — `.k-ring-selected` recipe. R11.14.2.
+  /* Selection ring — `.k-ring-selected` recipe. R11.14.2 (R11.14.9: spec
+   * fix — k-card hover override'ını yenmek için extra selector specificity
+   * + recipe order swap. Önce: tek `.k-ring-selected` selector'u
+   * `.k-card[data-interactive="true"]:hover` tarafından override ediliyordu,
+   * çünkü her ikisi de aynı (0,1,0) specificity'de ama hover sonra geliyor.
+   * Çözüm: `.k-card.k-ring-selected` selector'u (0,2,0 specificity) +
+   * `.k-card.k-ring-selected:hover` (hover state'te de korur) + bare
+   * `.k-ring-selected` selector'u bookmarklet/non-card kullanıcılar için
+   * korundu).
+   *
    * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/tokens.css.
    * Çift halka: 2px paper offset + 4px orange. Library/References/
-   * Selections asset kartları seçildiğinde tam parity. Lib/Ref kartları
-   * bunu zaten referansla kullanıyordu; v4 source recipe'i app'e taşındı. */
-  .k-ring-selected {
+   * Selections asset kartları seçildiğinde tam parity. */
+  .k-ring-selected,
+  .k-card.k-ring-selected,
+  .k-card[data-interactive="true"].k-ring-selected,
+  .k-card[data-interactive="true"].k-ring-selected:hover {
     box-shadow:
       0 0 0 2px var(--k-bg),
       0 0 0 4px var(--k-orange),
@@ -620,25 +631,66 @@
   /* Floating bulk action bar — `.k-fab` recipe.
    * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/tokens.css → .k-fab
    * Dark pill that overlays any canvas; appears when 2+ items selected.
-   * Used by FloatingBulkBar primitive (rollouts 2-4). */
+   * R11.14.9 — full v4 source port (position fixed + flex layout + padding
+   * + border-radius). Önceden recipe yarı tanımlıydı, tüketici inline
+   * style ile doluyordu (parity zayıflığı). */
   .k-fab {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
     background: #16130F;
     color: #fff;
+    padding: 6px 6px 6px 16px;
+    border-radius: 12px;
+    z-index: 50;
     box-shadow:
       inset 0 1px 0 rgba(255,255,255,0.06),
       0 12px 32px -8px rgba(0,0,0,0.35),
       0 32px 64px -20px rgba(0,0,0,0.40);
   }
   .k-fab__count {
+    font-family: var(--k-font-mono);
+    font-size: 12px;
+    letter-spacing: 0.02em;
     padding-right: 12px;
     border-right: 1px solid rgba(255,255,255,0.12);
     margin-right: 6px;
   }
-  .k-fab__btn { color: #fff; background: transparent; }
+  .k-fab__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 11px;
+    background: transparent;
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 140ms cubic-bezier(0.2, 0, 0, 1);
+  }
   .k-fab__btn:hover { background: rgba(255,255,255,0.08); }
+  .k-fab__btn:disabled { opacity: 0.45; cursor: not-allowed; }
   .k-fab__btn--primary { background: var(--k-orange); }
   .k-fab__btn--primary:hover { background: var(--k-orange-bright); }
-  .k-fab__close { color: rgba(255,255,255,0.55); background: transparent; }
+  .k-fab__close {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.55);
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color 140ms, background 140ms;
+  }
   .k-fab__close:hover { color: #fff; background: rgba(255,255,255,0.08); }
 
   /* Density variant — user/admin ortak aile, farklı sıkılık */

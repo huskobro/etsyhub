@@ -154,21 +154,23 @@ export function EditsTab({ setId, items }: EditsTabProps) {
                   {EDIT_ORDER.map((kind) => {
                     const meta = EDIT_META[kind];
                     const Icon = meta.icon;
+                    // R11.14.9 — Edit op trigger artık legacy Studio'ya
+                    // link'lenir (önceden disabled idi, kullanıcı edit
+                    // ops'u nereden başlatacağını bilmiyordu).
                     return (
-                      <button
+                      <a
                         key={kind}
-                        type="button"
-                        title={meta.label}
-                        aria-label={meta.label}
+                        href={`/selection/sets/${setId}`}
+                        title={`${meta.label} — opens in Selection Studio`}
+                        aria-label={`${meta.label} (opens in Selection Studio)`}
                         className={cn(
                           "inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper",
                           meta.tone,
-                          "hover:border-k-purple hover:text-k-purple disabled:opacity-50",
+                          "hover:border-k-purple hover:text-k-purple",
                         )}
-                        disabled
                       >
                         <Icon className="h-3.5 w-3.5" aria-hidden />
-                      </button>
+                      </a>
                     );
                   })}
                 </div>

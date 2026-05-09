@@ -57,13 +57,19 @@ export function LibraryClient({
   // R11.7 fix — `?intent=start-batch` query param: operatör Batches Start
   // CTA üzerinden geldi, A6 modal reference asset gerektiriyor. Banner
   // ile yönlendirme: "asset seç → kart üzerinden Create Variations".
+  // R11.14.9 — `?intent=add-to-selection&setId=X` query param: operatör
+  // Selection detail "Add from Library" üzerinden geldi. Banner ile
+  // yönlendirme: "asset(lar) seç → bulk-bar Add to Selection".
   const router = useRouter();
   const params = useSearchParams();
   const startBatchIntent = params.get("intent") === "start-batch";
+  const addToSelectionIntent = params.get("intent") === "add-to-selection";
+  const intentSetId = params.get("setId");
 
   function dismissIntent() {
     const sp = new URLSearchParams(params.toString());
     sp.delete("intent");
+    sp.delete("setId");
     const qs = sp.toString();
     router.replace(qs ? `/library?${qs}` : "/library", { scroll: false });
   }
@@ -88,6 +94,42 @@ export function LibraryClient({
             <p className="mt-0.5 text-xs text-ink-2">
               Variation batches start from a Library asset. Click an asset
               card → detail panel opens → use the Create Variations CTA.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissIntent}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-3 hover:bg-ink/5 hover:text-ink"
+            aria-label="Dismiss"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      ) : null}
+
+      {addToSelectionIntent ? (
+        <div
+          className="flex items-start gap-3 border-b border-line bg-k-orange-soft/40 px-6 py-3"
+          data-testid="library-add-to-selection-hint"
+          role="status"
+        >
+          <Sparkles
+            className="mt-0.5 h-4 w-4 flex-shrink-0 text-k-orange-ink"
+            aria-hidden
+          />
+          <div className="flex-1">
+            <div className="text-sm font-medium text-ink">
+              Pick assets to add to your{" "}
+              <span className="text-k-orange-ink">
+                {intentSetId
+                  ? `Selection set ${intentSetId.slice(0, 8)}`
+                  : "Selection set"}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-ink-2">
+              Multi-select assets below, then use the floating bulk-bar's{" "}
+              <span className="font-medium">Add to Selection</span>{" "}
+              action. The destination set is pre-set.
             </p>
           </div>
           <button

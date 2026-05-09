@@ -416,31 +416,32 @@ export function ReferencesPage({
       </div>
 
       {/* Floating bulk bar — k-fab recipe.
-       *   v5 B1 lines 72-79: Create Variations primary + Add to Collection +
-       *   Archive + Delete. Burada subset (Archive only) çünkü diğer
-       *   aksiyonlar henüz API'de yok; primary "Create Variations" sadece
-       *   tek-asset path'inde card hover'da, bulk path'inde devre dışı.
-       *   R11.14.5 — Archive butonu kart altından kaldırıldığı için >=1
-       *   selection'da bulk-bar açılır (operatöre tek aksiyonu da bulk-bar
-       *   üzerinden yaptırır). */}
+       *   v5 B1 spec: Create Variations primary + Add to Collection +
+       *   Archive + Delete. Burada subset: Create Variations primary
+       *   (tek-asset bulk path: ilk seçili asset'in /variations sayfasına
+       *   yönlendir), Archive (mevcut), Delete deferred.
+       *   R11.14.9 — k-fab recipe inline style yerine pure className.
+       *   Kullanıcı feedback: "bulk bar HTML target'tan farklı hissediyor"
+       *   → primary CTA + Sparkles icon eklendi, layout v4 source'a
+       *   tamamen uydu. */}
       {selectedCount >= 1 ? (
-        <div
-          className="k-fab"
-          style={{
-            position: "fixed",
-            bottom: 18,
-            left: "50%",
-            transform: "translateX(-50%)",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "6px 6px 6px 16px",
-            borderRadius: 12,
-            zIndex: 50,
-          }}
-          data-testid="references-bulk-bar"
-        >
+        <div className="k-fab" data-testid="references-bulk-bar">
           <span className="k-fab__count">{selectedCount} selected</span>
+          {selectedCount === 1 ? (
+            (() => {
+              const id = items.find((i) => selectedIds.has(i.id))?.id;
+              return id ? (
+                <Link
+                  href={`/references/${id}/variations`}
+                  className="k-fab__btn k-fab__btn--primary"
+                  data-testid="references-bulk-create-variations"
+                >
+                  <Sparkles className="h-3 w-3" aria-hidden />
+                  Create Variations
+                </Link>
+              ) : null;
+            })()
+          ) : null}
           <button
             type="button"
             className="k-fab__btn"

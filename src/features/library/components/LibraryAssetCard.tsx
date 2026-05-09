@@ -52,6 +52,12 @@ export function LibraryAssetCard({
     s.selected.has(card.midjourneyAssetId),
   );
   const toggle = useLibrarySelection((s) => s.toggle);
+  // R11.14.9 — Bulk mode click conflict fix.
+  // User feedback: "Bulk select moduna girince resmin üzerine tıklayınca
+  // drawer değil select olması lazım."
+  // selectedCount >= 1 ise card click → toggle (bulk select modu).
+  // selectedCount === 0 ise card click → onOpen (detail drawer).
+  const bulkModeActive = useLibrarySelection((s) => s.selected.size > 0);
   const previewPrompt = (card.expandedPrompt ?? card.prompt).trim();
   const promptPreview =
     previewPrompt.length > 60 ? `${previewPrompt.slice(0, 60)}…` : previewPrompt;
@@ -74,7 +80,15 @@ export function LibraryAssetCard({
       data-interactive="true"
       data-testid="library-asset-card"
       data-asset-id={card.midjourneyAssetId}
-      onClick={() => onOpen(card.midjourneyAssetId)}
+      data-bulk-mode={bulkModeActive ? "true" : "false"}
+      onClick={() => {
+        // R11.14.9 — Bulk mode'da click → toggle, normal mode'da → drawer
+        if (bulkModeActive) {
+          toggle(card.midjourneyAssetId);
+        } else {
+          onOpen(card.midjourneyAssetId);
+        }
+      }}
     >
       <div className="relative">
         <div className="p-2 pb-0">
