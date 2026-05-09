@@ -67,7 +67,7 @@ export function DesignsTab({ setId, items }: DesignsTabProps) {
           type="button"
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
           disabled
-          title="Add from Library lands as part of R4 handoff (Library bulk-bar)"
+          title="To add designs: open Library, multi-select assets, then use the floating bulk-bar's 'Add to Selection' (this set is the destination)."
         >
           <Plus className="h-3 w-3" aria-hidden />
           Add from Library
@@ -116,7 +116,7 @@ export function DesignsTab({ setId, items }: DesignsTabProps) {
                     onClick={(e) => e.stopPropagation()}
                     className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-line bg-paper/95 text-ink-3 cursor-grab disabled:opacity-50"
                     disabled
-                    title="Drag-to-reorder lands in R5"
+                    title="Reorder by drag-and-drop — coming in R5. Designs currently sort by add date."
                   >
                     <GripVertical className="h-3 w-3" aria-hidden />
                   </button>

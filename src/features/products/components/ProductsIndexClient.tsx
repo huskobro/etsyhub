@@ -172,7 +172,7 @@ export function ProductsIndexClient({
             data-size="sm"
             className="k-btn k-btn--primary"
             disabled
-            title="New Product is created via Selection → Apply Mockups handoff"
+            title="To create a new Product: open a Selection (Mockup ready stage), then use 'Apply Mockups'. Products always come from finalized selections."
             data-testid="products-new-cta"
           >
             <Plus className="h-3 w-3" aria-hidden />

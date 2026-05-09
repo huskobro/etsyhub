@@ -184,6 +184,14 @@ export function PaneNotifications() {
                 <button
                   type="button"
                   aria-pressed={enabled}
+                  aria-label={`${enabled ? "Disable" : "Enable"} ${s.label} notifications`}
+                  title={
+                    !s.live
+                      ? `${s.label} channel is not yet live — toggle is locked.`
+                      : enabled
+                        ? `Click to disable ${s.label} notifications.`
+                        : `Click to enable ${s.label} notifications.`
+                  }
                   onClick={() => toggle(s.id)}
                   disabled={!s.live || query.isLoading}
                   className={cn(

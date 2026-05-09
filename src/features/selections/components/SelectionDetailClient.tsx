@@ -131,7 +131,7 @@ export function SelectionDetailClient({ set, items }: Props) {
           type="button"
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
           disabled
-          title="Duplicate ships in R5"
+          title="Duplicate this set as a new draft — coming in R5."
         >
           <Copy className="h-3 w-3" aria-hidden />
           Duplicate
@@ -141,7 +141,7 @@ export function SelectionDetailClient({ set, items }: Props) {
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line text-ink-2 hover:border-line-strong hover:text-ink"
           aria-label="More actions"
           disabled
-          title="Kebab actions ship in R5"
+          title="More actions (rename, archive, export) — coming in R5"
         >
           <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
         </button>

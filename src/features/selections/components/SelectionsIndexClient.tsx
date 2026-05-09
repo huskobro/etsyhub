@@ -147,7 +147,11 @@ export function SelectionsIndexClient({
             data-size="sm"
             className="k-btn k-btn--primary"
             disabled
-            title="New Selection lands as part of Library handoff (R4 in progress)"
+            // R11.14.8 — Misleading CTA correction. Önceki: "lands as part
+            // of Library handoff (R4 in progress)" — kullanıcıya ne
+            // yapması gerektiğini söylemiyordu. Şimdi: net actionable
+            // hint (Library bulk-bar üzerinden draft set oluşturma akışı).
+            title="To create a new Selection: open Library, multi-select assets, then use the bulk-bar 'Add to Selection' action."
             data-testid="selections-new-cta"
           >
             <Plus className="h-3 w-3" aria-hidden />

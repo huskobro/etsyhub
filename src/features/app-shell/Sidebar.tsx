@@ -136,7 +136,7 @@ export function Sidebar({
         <button
           type="button"
           disabled
-          title="Multi-workspace lands post-MVP"
+          title="You're working in your personal workspace. Switching between multiple workspaces is a post-MVP feature."
           className="flex h-9 w-full items-center gap-2 rounded-lg border border-line bg-paper/60 px-3 transition-colors hover:bg-paper disabled:cursor-default"
           data-testid="sidebar-workspace-switcher"
         >

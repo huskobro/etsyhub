@@ -161,21 +161,28 @@ export default async function LibraryPage({
               data-size="sm"
               className="k-btn k-btn--secondary"
               disabled
-              title="Saved-view popover lands rollout-2.5"
+              title="Save your current filter combination as a named view — coming in rollout-2.5."
               data-testid="library-saved-views-cta"
             >
               <Filter className="h-3 w-3" aria-hidden />
               Saved views
             </button>
+            {/* R11.14.8 — CTA copy correction. "New Selection" without
+             * any selected assets is misleading (Selections index has
+             * disabled CTA → dead-end). Updated label + tooltip steers
+             * user to the actual workflow: select assets first, then use
+             * the floating bulk-bar's "Add to Selection". This Link still
+             * navigates to /selections so users can browse existing sets,
+             * but the label no longer promises a creation flow. */}
             <Link
               href="/selections"
               data-size="sm"
               className="k-btn k-btn--primary"
               data-testid="library-new-selection-cta"
-              title="Open Selections — create or pick a draft set"
+              title="View existing draft sets. To create a new one: select assets below and use the floating bulk-bar's 'Add to Selection'."
             >
               <Layers className="h-3 w-3" aria-hidden />
-              New Selection
+              View Selections
             </Link>
           </>
         }

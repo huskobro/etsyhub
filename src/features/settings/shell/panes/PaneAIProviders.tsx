@@ -905,7 +905,7 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
                     className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-ink-3 hover:text-ink disabled:opacity-50"
                     aria-label="Copy key"
                     disabled
-                    title="Copy ships in R12"
+                    title="Copy-to-clipboard for API keys is intentionally blocked for security. Reveal + manual copy is the safe path."
                   >
                     <Copy className="h-3.5 w-3.5" aria-hidden />
                   </button>
