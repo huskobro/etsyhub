@@ -41,14 +41,14 @@ function Frame({ children }: { children: React.ReactNode }) {
   );
 }
 
-function EmptyContent({ label = "Görsel yok" }: { label?: string }) {
+function EmptyContent({ label = "No image" }: { label?: string }) {
   return (
     <div
       role="img"
       aria-label={label}
       className="flex h-full items-center justify-center text-xs text-text-muted"
     >
-      Görsel yok
+      {label}
     </div>
   );
 }
@@ -57,7 +57,7 @@ function LoadingContent() {
   return (
     <div
       role="status"
-      aria-label="Görsel yükleniyor"
+      aria-label="Loading image"
       aria-busy="true"
       className="h-full w-full animate-pulse motion-reduce:animate-none"
     />
@@ -89,7 +89,7 @@ export function AssetImage({
   const content = !assetId ? (
     <EmptyContent />
   ) : query.isError ? (
-    <EmptyContent label="Görsel yüklenemedi" />
+    <EmptyContent label="Couldn't load image" />
   ) : query.isPending ? (
     <LoadingContent />
   ) : query.data ? (

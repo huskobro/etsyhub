@@ -114,7 +114,7 @@ export function LocalAssetCard({
             onClick={() => setDeleteOpen(true)}
             className="text-xs text-danger underline hover:text-danger"
           >
-            Sil
+            Delete
           </button>
         </div>
       </div>

@@ -42,7 +42,7 @@ export function DeleteAssetConfirm({
           </dl>
         </>
       }
-      confirmLabel="Diskten Sil"
+      confirmLabel="Delete from disk"
       cancelLabel="Vazgeç"
       tone="destructive"
       busy={del.isPending}

@@ -159,7 +159,7 @@ export function ArchiveAction({ setId, setStatus }: ArchiveActionProps) {
         description={
           <>
             Bu set arşivlenecek.{" "}
-            <strong className="text-text">Geri alınamaz</strong> (Phase 7).
+            <strong className="text-text">Cannot be undone</strong>
             Arşivlenmiş set&apos;ler /selection ana sayfasında görünmez. Set
             verisi silinmez — ileride archive yönetimi eklendiğinde
             erişilebilir olur.

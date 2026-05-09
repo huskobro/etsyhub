@@ -73,7 +73,7 @@ export function TagPicker({
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-1">
         {selected.length === 0 ? (
-          <span className="text-xs text-text-muted">Tag yok</span>
+          <span className="text-xs text-text-muted">No tags</span>
         ) : (
           selected.map((id) => {
             const t = byId.get(id);
@@ -96,7 +96,7 @@ export function TagPicker({
           disabled={disabled}
           className="rounded-md border border-border px-2 py-0.5 text-xs text-text-muted hover:bg-surface-muted disabled:opacity-50"
         >
-          {open ? "Kapat" : "Tag ekle"}
+          {open ? "Close" : "Add tag"}
         </button>
       </div>
 
