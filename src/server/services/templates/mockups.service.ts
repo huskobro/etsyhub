@@ -13,8 +13,17 @@ import sharp from "sharp";
 import { db } from "@/server/db";
 import { getStorage } from "@/providers/storage";
 import { logger } from "@/lib/logger";
+import { MockupCategorySchema, type MockupCategoryId } from "@/features/mockups/schemas";
 
-const USER_TEMPLATE_CATEGORY = "user";
+/**
+ * R11.8 — Operatör upload sırasında product type seçer; categoryId artık
+ * MockupCategorySchema enum (canvas/wall_art/printable/clipart/sticker/tshirt/
+ * hoodie/dtf). "user-uploaded" sinyali categoryId yerine **`user` tag**'i
+ * üzerinden korunur (UI classifier bu tag'i okur). Eski "user" hardcoded
+ * categoryId Apply Mockups read endpoint'inden gizliyordu — fix bu engeli
+ * kaldırır.
+ */
+const USER_UPLOAD_TAG = "user";
 const DEFAULT_ESTIMATED_RENDER_MS = 4000;
 const DEFAULT_ASPECT_RATIOS = ["1:1", "2:3", "3:4"];
 const THUMBNAIL_MAX_DIMENSION = 800;
@@ -131,6 +140,16 @@ export type UploadMockupTemplateInput = {
   tags: string[];
   /** Aspect ratios — boş gelirse varsayılan kullanılır. */
   aspectRatios?: string[];
+  /**
+   * R11.8 — Product type / category. MockupCategorySchema enum
+   * (canvas / wall_art / printable / clipart / sticker / tshirt /
+   * hoodie / dtf). Apply Mockups read endpoint'i bu key üzerinden
+   * filter yapıyor; operatör upload sırasında seçer.
+   *
+   * Backward-compat: belirsizse (eski client) "wall_art" varsayılan
+   * (Kivasy scope: digital-only ürünlerin en yaygın hedefi).
+   */
+  productType?: MockupCategoryId;
   /** Yüklenen dosyanın bytes'ı. */
   file: {
     bytes: Buffer;
@@ -231,11 +250,21 @@ export async function uploadMockupTemplate(
       inferredTags.push("flat");
     }
   }
+  // R11.8 — operator-uploaded sinyali artık tag üzerinden taşınır
+  // (categoryId enum'a düştü). UI classifier "user" tag'ini gördüğünde
+  // template'i My Templates section'ında render eder.
+  inferredTags.push(USER_UPLOAD_TAG);
   const finalTags = Array.from(new Set([...tags, ...inferredTags]));
+
+  // R11.8 — productType validate; verilmezse "wall_art" varsayılan
+  // (Kivasy digital-only scope için en yaygın hedef).
+  const categoryId: MockupCategoryId = input.productType
+    ? MockupCategorySchema.parse(input.productType)
+    : "wall_art";
 
   const tpl = await db.mockupTemplate.create({
     data: {
-      categoryId: USER_TEMPLATE_CATEGORY,
+      categoryId,
       name: trimmedName,
       status: "DRAFT",
       thumbKey,

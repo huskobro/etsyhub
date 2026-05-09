@@ -37,12 +37,29 @@ interface UploadResponse {
   };
 }
 
+// R11.8 — Kivasy digital-only scope (CLAUDE.md): tshirt/hoodie/dtf garment
+// POD out-of-scope. Operatör'a sadece dijital ürün kategorileri:
+const PRODUCT_TYPE_OPTIONS: Array<{
+  value: "wall_art" | "clipart" | "sticker" | "printable" | "canvas";
+  label: string;
+  hint: string;
+}> = [
+  { value: "wall_art", label: "Wall art", hint: "Frame / poster / canvas — duvar mockup" },
+  { value: "clipart", label: "Clipart", hint: "Bundle preview · sheet · multi-design" },
+  { value: "sticker", label: "Sticker", hint: "Die-cut sheet · tek sticker" },
+  { value: "printable", label: "Printable", hint: "PDF planner · printable journal" },
+  { value: "canvas", label: "Canvas", hint: "Lifestyle canvas · gallery wall" },
+];
+
 export function UploadMockupTemplateModal({ onClose, onUploaded }: Props) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [tags, setTags] = useState<string>("");
   const [aspectRatios, setAspectRatios] = useState<string>("1:1, 2:3, 3:4");
+  const [productType, setProductType] = useState<
+    (typeof PRODUCT_TYPE_OPTIONS)[number]["value"]
+  >("wall_art");
   const [file, setFile] = useState<File | null>(null);
 
   const mutation = useMutation<UploadResponse, Error, void>({
@@ -53,6 +70,7 @@ export function UploadMockupTemplateModal({ onClose, onUploaded }: Props) {
       fd.append("name", name);
       fd.append("tags", tags);
       fd.append("aspectRatios", aspectRatios);
+      fd.append("productType", productType);
       const r = await fetch("/api/templates/mockups", {
         method: "POST",
         body: fd,
@@ -150,6 +168,40 @@ export function UploadMockupTemplateModal({ onClose, onUploaded }: Props) {
             placeholder="Studio frame mockup"
             className="h-9 w-full rounded-md border border-line bg-paper px-3 text-sm text-ink placeholder:text-ink-3 focus:border-k-orange focus:outline-none focus:ring-2 focus:ring-k-orange-soft"
           />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-[12.5px] font-semibold text-ink">
+            Product type
+          </label>
+          <div
+            className="flex flex-wrap gap-1.5"
+            data-testid="mockup-upload-product-type"
+          >
+            {PRODUCT_TYPE_OPTIONS.map((opt) => {
+              const active = productType === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setProductType(opt.value)}
+                  className={
+                    active
+                      ? "inline-flex h-8 items-center gap-1.5 rounded-md border border-k-orange bg-k-orange-soft px-3 text-xs font-medium text-k-orange-ink"
+                      : "inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink"
+                  }
+                  data-product-type={opt.value}
+                  data-active={active ? "true" : "false"}
+                  aria-pressed={active}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+            {PRODUCT_TYPE_OPTIONS.find((o) => o.value === productType)?.hint}
+          </p>
         </div>
 
         <div>

@@ -398,24 +398,29 @@ function MockupsSubview({
   isAdmin: boolean;
 }) {
   // V1 classifier: tags / name'den derive (kind enum eksik R6'da).
+  // R11.8 — "user" tag operator-uploaded sinyali (categoryId artık enum,
+  // hardcoded "user" değil); My Templates için en güçlü signal — bundle/
+  // sheet/preview match'inden önce kontrol edilmeli ki operatör yüklediği
+  // "Bundle Preview · 9-up" gibi template'leri kendi catalog'unda görsün.
   const groups: Record<
     "lifestyle" | "bundle" | "user",
     MockupTemplateRow[]
   > = { lifestyle: [], bundle: [], user: [] };
   for (const r of rows) {
+    const tagsLower = r.tags.map((t) => t.toLowerCase());
     const hay = (r.name + " " + r.tags.join(" ")).toLowerCase();
-    if (
+    const isUserUploaded =
+      tagsLower.includes("user") ||
+      tagsLower.includes("custom") ||
+      tagsLower.includes("psd");
+    if (isUserUploaded) {
+      groups.user.push(r);
+    } else if (
       hay.includes("bundle") ||
       hay.includes("sheet") ||
       hay.includes("preview")
     ) {
       groups.bundle.push(r);
-    } else if (
-      hay.includes("psd") ||
-      hay.includes("custom") ||
-      hay.includes("user")
-    ) {
-      groups.user.push(r);
     } else {
       groups.lifestyle.push(r);
     }
