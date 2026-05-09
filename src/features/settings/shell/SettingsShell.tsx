@@ -284,7 +284,7 @@ export function SettingsShell({
                         ) : null}
                         {it.state === "deferred" ? (
                           <span className="font-mono text-[9.5px] uppercase tracking-wider text-ink-4">
-                            R9
+                            Soon
                           </span>
                         ) : null}
                       </button>

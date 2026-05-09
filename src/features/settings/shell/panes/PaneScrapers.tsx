@@ -254,8 +254,8 @@ export function PaneScrapers() {
       </div>
 
       <p className="mt-6 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-        Scraper job orchestration ships in R9 · tokens persist now via
-        UserSetting key=scrapers
+        Scraper tokens + rate limits persist via UserSetting
+        key=scrapers · full job orchestration lands post-MVP
       </p>
     </div>
   );

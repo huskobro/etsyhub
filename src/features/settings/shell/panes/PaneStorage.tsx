@@ -214,8 +214,8 @@ export function PaneStorage() {
             <div className="flex items-start gap-2">
               <Package className="mt-0.5 h-4 w-4 text-ink-3" aria-hidden />
               <p className="text-[12px] leading-relaxed text-ink-2">
-                Remote provider switch (R2 / S3) and bucket override UI ship
-                in R9. Signed URL TTL persists today via{" "}
+                Remote provider switch (R2 / S3) and bucket override UI
+                land post-MVP. Signed URL TTL persists today via{" "}
                 <span className="font-mono text-xs">
                   UserSetting key=storage
                 </span>

@@ -1,7 +1,10 @@
 /* eslint-disable no-restricted-syntax */
-// PaneNotifications — R8: persistence canlı (UserSetting key="notifications").
-// Toggle'lar artık backend'e yazılır; desktop push + email digest hâlâ
-// capability eksik (R9'da backend ile gelir).
+// PaneNotifications — R11.5 stabilization:
+//   · UserSetting key="notifications" persistence (R8'den beri canlı).
+//   · In-app inbox feed: 15s polling fallback, SSE channel R12 scope.
+//   · Desktop push + daily email digest: capability eksik (R12 delivery
+//     backend); toggle'lar UI'da disabled görünür ve "R12" rozetiyle
+//     işaretlenir.
 //
 // v6 sabit boyutlar (max-w-[680px] + text-[26px] k-display + yarı-piksel)
 // Whitelisted in scripts/check-tokens.ts.
@@ -135,9 +138,9 @@ export function PaneNotifications() {
         Notifications
       </h2>
       <p className="mt-1 mb-7 text-[13px] text-ink-2">
-        In-app inbox + signal preferences. Recipe runs and mockup
-        activations land here in real time. Polls every 15s until SSE
-        ships in R12.
+        In-app inbox + signal preferences. Recipe runs, batch results,
+        and mockup activations land in the inbox below. Feed refreshes
+        every 15s until the SSE channel ships in R12.
       </p>
 
       <NotificationsInbox />
@@ -170,7 +173,7 @@ export function PaneNotifications() {
                     </div>
                     {!s.live ? (
                       <span className="font-mono text-[9.5px] uppercase tracking-meta text-ink-4">
-                        R9
+                        R12
                       </span>
                     ) : null}
                   </div>
@@ -212,10 +215,10 @@ export function PaneNotifications() {
           </>
         ) : mutation.isError ? (
           `Save failed: ${mutation.error?.message}`
-        ) : query.isLoading ? (
-          "Loading…"
+        ) : query.isLoading && !query.data ? (
+          "Loading preferences…"
         ) : (
-          "Toggles persist instantly · in-app inbox active, desktop/email R10"
+          "Toggles persist instantly · in-app inbox active · desktop push + email digest land in R12"
         )}
       </p>
     </div>
@@ -237,6 +240,8 @@ function NotificationsInbox() {
   // R11 — Real-time polling (light SSE-lite). 15s refetch interval +
   // 10s stale time + window focus refetch — feed canlı hisseder. Backend
   // SSE channel R12'de gelecek (`notifications:user:{id}`).
+  // R11.5 — retry: 1 to fail-fast on auth/network errors (avoid infinite
+  // spinner if endpoint hangs); error path renders inline retry CTA.
   const inbox = useQuery<{ items: InboxItem[] }>({
     queryKey: ["notifications", "inbox"],
     queryFn: async () => {
@@ -247,6 +252,7 @@ function NotificationsInbox() {
     staleTime: 10 * 1000,
     refetchInterval: 15 * 1000,
     refetchOnWindowFocus: true,
+    retry: 1,
   });
 
   const readAll = useMutation<unknown, Error, void>({
@@ -315,9 +321,25 @@ function NotificationsInbox() {
           </button>
         </div>
       </div>
-      {inbox.isLoading ? (
+      {inbox.isLoading && !inbox.data ? (
         <div className="flex h-20 items-center justify-center">
           <Loader2 className="h-4 w-4 animate-spin text-k-orange" aria-hidden />
+        </div>
+      ) : inbox.error && !inbox.data ? (
+        <div
+          className="flex items-center justify-between px-4 py-3 text-[12.5px] text-danger"
+          data-testid="inbox-error"
+        >
+          <span>
+            Inbox yüklenemedi: {(inbox.error as Error).message}
+          </span>
+          <button
+            type="button"
+            onClick={() => inbox.refetch()}
+            className="inline-flex h-6 items-center rounded-md border border-line bg-paper px-2 text-[11px] font-medium text-ink-2 hover:text-ink"
+          >
+            Retry
+          </button>
         </div>
       ) : items.length === 0 ? (
         <div className="px-4 py-6 text-center">

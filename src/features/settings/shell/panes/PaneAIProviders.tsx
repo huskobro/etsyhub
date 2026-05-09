@@ -8,7 +8,7 @@
 // Whitelisted in scripts/check-tokens.ts.
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -18,7 +18,6 @@ import {
   EyeOff,
   Loader2,
   RotateCw,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
@@ -151,6 +150,8 @@ const TASK_MODEL_OPTIONS: Record<TaskKey, string[]> = {
 };
 
 export function PaneAIProviders() {
+  // R11.5 — explicit staleTime + retry sınırları: query takılmasını engeller,
+  // dev HMR sırasında stale cache fetch loop'unu açıkça kapatır.
   const aiModeQuery = useQuery({
     queryKey: QUERY_KEY,
     queryFn: async (): Promise<{ settings: AiModeMaskedSettings }> => {
@@ -158,6 +159,8 @@ export function PaneAIProviders() {
       if (!r.ok) throw new Error("AI Providers settings yüklenemedi");
       return r.json();
     },
+    staleTime: 30 * 1000,
+    retry: 1,
   });
 
   const costQuery = useQuery<{ summary: CostSummaryView }>({
@@ -168,6 +171,7 @@ export function PaneAIProviders() {
       return r.json();
     },
     staleTime: 60 * 1000,
+    retry: 1,
   });
 
   // R8 — admin scope spend limits + task assignments
@@ -182,6 +186,7 @@ export function PaneAIProviders() {
       if (!r.ok) throw new Error("Admin AI providers settings yüklenemedi");
       return r.json();
     },
+    staleTime: 30 * 1000,
     retry: false,
   });
 
@@ -338,19 +343,18 @@ export function PaneAIProviders() {
   ).length;
   const totalCount = providers.length;
 
-  if (aiModeQuery.isLoading) {
-    return (
-      <div className="max-w-[920px] px-10 py-9">
-        <h2 className="k-display text-[26px] font-semibold tracking-[-0.025em] text-ink">
-          AI Providers
-        </h2>
-        <div className="mt-8 flex items-center gap-2 text-sm text-ink-2">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          Loading provider settings…
-        </div>
-      </div>
-    );
-  }
+  // R11.5 — loading watchdog: 8s'den uzun süredir fetching ise kullanıcıya
+  // retry CTA göster. Loading state sonsuz takılmasın; pane "ölü" hissetmesin.
+  const isInitialLoad = aiModeQuery.isLoading && !aiModeQuery.data;
+  const [showRetry, setShowRetry] = useState(false);
+  useEffect(() => {
+    if (!isInitialLoad) {
+      setShowRetry(false);
+      return;
+    }
+    const t = setTimeout(() => setShowRetry(true), 8000);
+    return () => clearTimeout(t);
+  }, [isInitialLoad]);
 
   if (aiModeQuery.error) {
     return (
@@ -365,7 +369,44 @@ export function PaneAIProviders() {
           <AlertTriangle className="mr-1 inline h-4 w-4" aria-hidden />
           {(aiModeQuery.error as Error).message ??
             "AI provider settings yüklenemedi"}
+          <button
+            type="button"
+            onClick={() => aiModeQuery.refetch()}
+            className="ml-3 inline-flex h-6 items-center rounded-md border border-danger bg-paper px-2 text-[11px] font-medium text-danger hover:bg-danger-soft"
+          >
+            <RotateCw className="mr-1 h-3 w-3" aria-hidden />
+            Retry
+          </button>
         </div>
+      </div>
+    );
+  }
+
+  if (isInitialLoad) {
+    return (
+      <div className="max-w-[920px] px-10 py-9">
+        <h2 className="k-display text-[26px] font-semibold tracking-[-0.025em] text-ink">
+          AI Providers
+        </h2>
+        <div className="mt-8 flex items-center gap-2 text-sm text-ink-2">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          Loading provider settings…
+        </div>
+        {showRetry ? (
+          <div className="mt-3 rounded-md border border-line bg-paper px-4 py-3 text-[12px] text-ink-2">
+            Still loading after a few seconds — the API may be slow or
+            offline.
+            <button
+              type="button"
+              onClick={() => aiModeQuery.refetch()}
+              className="ml-3 inline-flex h-7 items-center rounded-md border border-line bg-paper px-2 text-[11px] font-medium text-ink hover:border-line-strong"
+              data-testid="ai-providers-loading-retry"
+            >
+              <RotateCw className="mr-1 h-3 w-3" aria-hidden />
+              Retry
+            </button>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -512,7 +553,9 @@ export function PaneAIProviders() {
           ? "Saving assignments…"
           : adminMutation.isError
             ? `Save failed: ${adminMutation.error?.message}`
-            : "Assignments persist via UserSetting key=aiProviders · variation+listingCopy enforcement live"}
+            : adminQuery.isFetching && !adminQuery.data
+              ? "Loading workspace assignments…"
+              : "Assignments persist via UserSetting key=aiProviders · variation+listingCopy enforcement live"}
       </p>
     </div>
   );
