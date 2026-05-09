@@ -6,7 +6,7 @@
 
 import { SelectionIndexPage } from "@/features/selection/components/SelectionIndexPage";
 
-export const metadata = { title: "Seçim — EtsyHub" };
+export const metadata = { title: "Selection Studio · Kivasy" };
 
 export default function Page() {
   return <SelectionIndexPage />;

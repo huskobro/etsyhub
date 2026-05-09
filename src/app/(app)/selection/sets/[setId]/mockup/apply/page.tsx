@@ -13,7 +13,7 @@ import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { S3ApplyView } from "@/features/mockups/components/S3ApplyView";
 
-export const metadata = { title: "Mockup Studio — EtsyHub" };
+export const metadata = { title: "Mockup Studio · Kivasy" };
 
 export default async function Page({
   params,

@@ -9,7 +9,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/server/auth";
 import { ListingsIndexView } from "@/features/listings/components/ListingsIndexView";
 
-export const metadata = { title: "Listingler — EtsyHub" };
+export const metadata = { title: "Listings · Kivasy" };
 
 export default async function Page() {
   const session = await auth();

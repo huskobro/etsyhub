@@ -3,7 +3,7 @@ import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { S7JobView } from "@/features/mockups/components/S7JobView";
 
-export const metadata = { title: "Mockup Job — EtsyHub" };
+export const metadata = { title: "Mockup Job · Kivasy" };
 
 export default async function Page({
   params,

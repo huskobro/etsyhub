@@ -3,7 +3,7 @@ import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { S8ResultView } from "@/features/mockups/components/S8ResultView";
 
-export const metadata = { title: "Mockup Pack Sonuç — EtsyHub" };
+export const metadata = { title: "Mockup Result · Kivasy" };
 
 export default async function Page({
   params,

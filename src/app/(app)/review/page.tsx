@@ -13,7 +13,7 @@
 import { ReviewTabs } from "@/app/(app)/review/_components/ReviewTabs";
 import { ReviewDetailPanel } from "@/app/(app)/review/_components/ReviewDetailPanel";
 
-export const metadata = { title: "Review — EtsyHub" };
+export const metadata = { title: "Review · Kivasy" };
 
 type SearchParams = { tab?: string; detail?: string; page?: string };
 
