@@ -50,6 +50,18 @@ export function middleware(request: NextRequest) {
   const url = request.nextUrl;
   const path = url.pathname;
 
+  // R11.10 — Dev-only routes guard. /primitives showcase production'da
+  // SSG runtime fault üretiyor (R11 raporundaki 500); dev mode'da
+  // geliştirici reference'ı olarak kullanılabilir, production'da 404.
+  // Sayfa silinmedi (HMR + dev preview için kalır), sadece production'da
+  // erişim kapatıldı.
+  if (
+    process.env.NODE_ENV === "production" &&
+    /^\/primitives(\/.*)?$/.test(path)
+  ) {
+    return NextResponse.rewrite(new URL("/_not-found", request.url));
+  }
+
   for (const [pattern, target] of REDIRECT_MAP) {
     if (pattern.test(path)) {
       const dest = target(url);
@@ -79,5 +91,8 @@ export const config = {
     "/admin/midjourney/batches",
     "/admin/midjourney/templates/:path*",
     "/admin/midjourney/templates",
+    // R11.10 — primitives production guard
+    "/primitives",
+    "/primitives/:path*",
   ],
 };
