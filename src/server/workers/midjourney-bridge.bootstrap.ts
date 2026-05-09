@@ -36,8 +36,12 @@ export function ensureMidjourneyBridgeWorker(): void {
   // Concurrency 1 — bridge tek browser + tek MJ oturumu (Pass 42 nota).
   const worker = new Worker(
     JobType.MIDJOURNEY_BRIDGE,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    handleMidjourneyBridge as unknown as (job: any) => Promise<unknown>,
+    // BullMQ Worker generic'i with handler signature mismatch — runtime
+    // güvenli (job.data shape worker tarafında zod-parse). `unknown` cast
+    // explicit `any` yerine; @typescript-eslint plugin yüklü değil.
+    handleMidjourneyBridge as unknown as (
+      job: unknown,
+    ) => Promise<unknown>,
     { connection, concurrency: 1 },
   );
   worker.on("failed", (job, err) => {

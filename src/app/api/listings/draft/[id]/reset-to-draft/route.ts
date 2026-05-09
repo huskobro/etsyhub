@@ -18,13 +18,14 @@ import { ValidationError, AppError } from "@/lib/errors";
 import { ListingDraftPathSchema } from "@/features/listings/schemas";
 import { db } from "@/server/db";
 
-export class ListingResetNotFoundError extends AppError {
+// R11 — Next.js route file'da class export yasak; local helper class.
+class ListingResetNotFoundError extends AppError {
   constructor() {
     super("Listing bulunamadı", "LISTING_RESET_NOT_FOUND", 404);
   }
 }
 
-export class ListingResetInvalidStateError extends AppError {
+class ListingResetInvalidStateError extends AppError {
   constructor(currentStatus: string) {
     super(
       `Sadece FAILED durumundaki listing'ler DRAFT'a çevrilebilir (mevcut: ${currentStatus})`,

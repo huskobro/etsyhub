@@ -136,7 +136,8 @@ export function PaneNotifications() {
       </h2>
       <p className="mt-1 mb-7 text-[13px] text-ink-2">
         In-app inbox + signal preferences. Recipe runs and mockup
-        activations land here in real time (R9 delivery layer).
+        activations land here in real time. Polls every 15s until SSE
+        ships in R12.
       </p>
 
       <NotificationsInbox />
@@ -233,6 +234,9 @@ interface InboxItem {
 
 function NotificationsInbox() {
   const qc = useQueryClient();
+  // R11 — Real-time polling (light SSE-lite). 15s refetch interval +
+  // 10s stale time + window focus refetch — feed canlı hisseder. Backend
+  // SSE channel R12'de gelecek (`notifications:user:{id}`).
   const inbox = useQuery<{ items: InboxItem[] }>({
     queryKey: ["notifications", "inbox"],
     queryFn: async () => {
@@ -240,7 +244,9 @@ function NotificationsInbox() {
       if (!r.ok) throw new Error("Inbox yüklenemedi");
       return r.json();
     },
-    staleTime: 30 * 1000,
+    staleTime: 10 * 1000,
+    refetchInterval: 15 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   const readAll = useMutation<unknown, Error, void>({

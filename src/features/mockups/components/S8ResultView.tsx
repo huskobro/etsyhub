@@ -37,7 +37,7 @@ function AllFailedView({ setId, job }: { setId: string; job: MockupJobView }) {
           variant="secondary"
           onClick={() => router.push(`/selection/sets/${setId}/mockup/apply`)}
         >
-          S3'e dön
+          S3&apos;e dön
         </Button>
       </div>
     </main>
@@ -90,7 +90,7 @@ function CoverSlot({
               onClick={() => setShowCoverSwap(true)}
               className="w-full"
             >
-              Cover'ı Değiştir
+              Cover&apos;ı Değiştir
             </Button>
           )}
           <a

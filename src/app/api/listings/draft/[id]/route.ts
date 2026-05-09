@@ -44,13 +44,14 @@ type ListingWithEtsyConnection = Listing & {
 // Custom errors (AppError extend, withErrorHandling HOF auto-map)
 // ────────────────────────────────────────────────────────────
 
-export class ListingDraftNotFoundError extends AppError {
+// R11 — Next.js route file'da class export yasak; local helper class.
+class ListingDraftNotFoundError extends AppError {
   constructor() {
     super("Listing draft bulunamadı", "LISTING_DRAFT_NOT_FOUND", 404);
   }
 }
 
-export class ListingNotEditableError extends AppError {
+class ListingNotEditableError extends AppError {
   constructor() {
     super(
       "Listing draft bu durumda düzenlenemez (terminal status)",

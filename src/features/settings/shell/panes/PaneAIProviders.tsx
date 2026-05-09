@@ -29,17 +29,21 @@ import { Badge } from "@/components/ui/Badge";
  * Source: docs/design-system/kivasy/ui_kits/kivasy/v7/screens-d.jsx →
  * D1Providers + PaneAIProviders + ProviderCard.
  *
- * Data:
- *   - Connected providers (KIE + Google Gemini) are read from existing
- *     /api/settings/ai-mode endpoint (Phase 5 / Phase 6).
- *   - Other providers (OpenAI / Fal.ai / Replicate / Recraft) render as
- *     "KEY MISSING" placeholders — schema/CRUD ships in R7.
- *   - Spend stats use static defaults (cost-usage aggregator R7+).
+ * Status (R10):
+ *   - KIE + Gemini key persistence: live (UserSetting key=aiMode encrypted).
+ *   - Cost summary: live (CostUsage aggregation; daily/monthly/active/
+ *     failed24h).
+ *   - Spend limits: persisted (UserSetting key=aiProviders) AND enforced
+ *     in variation + listing-copy call paths via assertWithinBudget.
+ *   - Task assignments: persisted; resolveTaskModel feeds variation
+ *     pipeline pre-flight (worker call still uses providerKey, model
+ *     selection lands in R12 provider registry granularity).
+ *   - OpenAI / Fal.ai / Replicate / Recraft: schema not yet wired
+ *     (R12 provider integration pass).
  *
  * Boundary discipline:
- *   Read-only display in R6; key reveal/copy and re-authenticate buttons
- *   ship in R7+. Per-user key override caption visible (workspace defaults
- *   first principle).
+ *   Per-user key override caption visible (workspace defaults first
+ *   principle); admin-scope writes for taskAssignments / spendLimits.
  */
 
 interface AiModeMaskedSettings {
@@ -276,7 +280,7 @@ export function PaneAIProviders() {
         status: { tone: "warning", label: "KEY MISSING" },
         keyMasked: "",
         keyEmptyHint:
-          "Add an API key to enable OpenAI for any task — schema lands in R7",
+          "OpenAI provider integration ships in R12",
         lastSuccess: null,
         lastError: null,
         defaults: null,
@@ -290,7 +294,7 @@ export function PaneAIProviders() {
         tone: "blue",
         status: { tone: "warning", label: "KEY MISSING" },
         keyMasked: "",
-        keyEmptyHint: "R7 — Fal.ai integration ships next rollout",
+        keyEmptyHint: "Fal.ai integration ships in R12",
         lastSuccess: null,
         lastError: null,
         defaults: null,
@@ -304,7 +308,7 @@ export function PaneAIProviders() {
         tone: "ink",
         status: { tone: "warning", label: "KEY MISSING" },
         keyMasked: "",
-        keyEmptyHint: "R7 — Replicate integration ships next rollout",
+        keyEmptyHint: "Replicate integration ships in R12",
         lastSuccess: null,
         lastError: null,
         defaults: null,
@@ -318,7 +322,7 @@ export function PaneAIProviders() {
         tone: "purple",
         status: { tone: "warning", label: "KEY MISSING" },
         keyMasked: "",
-        keyEmptyHint: "R7 — Recraft integration ships next rollout",
+        keyEmptyHint: "Recraft integration ships in R12",
         lastSuccess: null,
         lastError: null,
         defaults: null,
@@ -381,7 +385,7 @@ export function PaneAIProviders() {
       </p>
       <p className="mb-7 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
         Per-user keys override workspace defaults · Manage your personal keys
-        in Preferences → Workspace (R7)
+        in Preferences → Workspace (live)
       </p>
 
       {/* 4-column stat row — R7 real backing via /api/settings/cost-summary */}
@@ -508,7 +512,7 @@ export function PaneAIProviders() {
           ? "Saving assignments…"
           : adminMutation.isError
             ? `Save failed: ${adminMutation.error?.message}`
-            : "Assignments persist via UserSetting key=aiProviders · enforcement R9"}
+            : "Assignments persist via UserSetting key=aiProviders · variation+listingCopy enforcement live"}
       </p>
     </div>
   );
@@ -674,7 +678,7 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
             data-size="sm"
             className="k-btn k-btn--primary"
             disabled
-            title="Re-authenticate ships in R7"
+            title="Re-authenticate ships in R12"
           >
             <RotateCw className="h-3 w-3" aria-hidden />
             Re-authenticate
@@ -684,7 +688,7 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
             type="button"
             className="inline-flex h-7 items-center rounded-md px-3 text-xs font-medium text-ink-2 hover:text-ink disabled:opacity-50"
             disabled
-            title="Disconnect ships in R7"
+            title="Disconnect ships in R12"
           >
             Disconnect
           </button>
@@ -706,7 +710,7 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
               <div>
                 <input
                   type="text"
-                  placeholder="Add API key in Settings → AI Mode (R7 unification)"
+                  placeholder="Add API key in Settings → Workspace (per-user override)"
                   disabled
                   className="h-9 w-full max-w-[480px] rounded-md border border-line bg-k-bg-2 px-3 text-sm text-ink-3 placeholder:text-ink-3"
                 />
@@ -741,7 +745,7 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
                   className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-ink-3 hover:text-ink disabled:opacity-50"
                   aria-label="Copy key"
                   disabled
-                  title="Copy ships in R7"
+                  title="Copy ships in R12"
                 >
                   <Copy className="h-3.5 w-3.5" aria-hidden />
                 </button>
@@ -815,7 +819,7 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
                 Spend limits
               </div>
               <div className="mt-0.5 text-[11.5px] text-ink-3">
-                Hard ceiling — calls fail past limit (R7 enforcement)
+                Hard ceiling — variation + listing-copy paths block at limit (R10 enforcement live)
               </div>
             </div>
             <div className="flex max-w-[420px] items-center gap-3">

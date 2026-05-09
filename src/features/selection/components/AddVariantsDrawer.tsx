@@ -380,7 +380,7 @@ function ReviewQueueDisabledNotice() {
         <div className="flex-1 text-sm text-text">
           <p className="font-medium">Review Queue henüz aktif değil</p>
           <p className="mt-1 text-text-muted">
-            Phase 6 canlı smoke kapandıktan sonra burada review queue'ndaki
+            Phase 6 canlı smoke kapandıktan sonra burada review queue&apos;ndaki
             tasarımları sete ekleyebileceksin. Şimdilik <em>Reference
             Batches</em> sekmesini kullan.
           </p>
@@ -423,7 +423,7 @@ function BatchesTabContent({
   if (references.length === 0) {
     return (
       <div className="rounded-md border border-border bg-bg/60 px-3 py-6 text-center text-sm text-text-muted">
-        Henüz referansınız yok. Reference Board'dan ekleyin.
+        Henüz referansınız yok. Reference Board&apos;dan ekleyin.
       </div>
     );
   }
@@ -456,7 +456,7 @@ function BatchesTabContent({
       {/* Designs / batches */}
       {!referenceId ? (
         <p className="text-sm text-text-muted">
-          Bir referans seçin; o referansa ait varyant batch'leri burada
+          Bir referans seçin; o referansa ait varyant batch&apos;leri burada
           listelenecek.
         </p>
       ) : designsQuery.isLoading ? (

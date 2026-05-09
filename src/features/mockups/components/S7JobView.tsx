@@ -176,7 +176,7 @@ export function S7JobView({ setId, jobId }: { setId: string; jobId: string }) {
             variant="secondary"
             onClick={() => router.push(`/selection/sets/${setId}/mockup/apply`)}
           >
-            S3'e dön
+            S3&apos;e dön
           </Button>
         </div>
       )}
@@ -189,7 +189,7 @@ export function S7JobView({ setId, jobId }: { setId: string; jobId: string }) {
             variant="secondary"
             onClick={() => router.push(`/selection/sets/${setId}/mockup/apply`)}
           >
-            S3'e dön
+            S3&apos;e dön
           </Button>
         </div>
       )}

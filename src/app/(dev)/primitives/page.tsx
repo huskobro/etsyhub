@@ -1,3 +1,8 @@
+// R11 — Dev-only primitives showcase. Static generation timeout
+// (build SSG'de tüm UI primitive'lerini render etmeye çalışıyor).
+// Force dynamic — production build'de SSG'ye girmesin.
+export const dynamic = "force-dynamic";
+
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";

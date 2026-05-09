@@ -197,8 +197,11 @@ export async function applyEdit(input: ApplyEditInput): Promise<SelectionItem> {
   }
 
   // Exhaustive — TS bu noktayı asla görmemeli.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // _exhaustive intentionally unused (TS exhaustiveness check); ESLint
+  // @typescript-eslint plugin yüklü değil, generic ignore yerine
+  // void expression ile kullan.
   const _exhaustive: never = input.op;
+  void _exhaustive;
   throw new Error(`Bilinmeyen edit op: ${JSON.stringify(input.op)}`);
 }
 

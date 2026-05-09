@@ -98,27 +98,34 @@ export function RunRecipeModal({ recipe, onClose }: Props) {
       }
       return r.json();
     },
-    onSuccess: (data) => {
-      // Destination'a göre operatörü doğru sayfaya yönlendir
-      if (data.destination.kind === "batch-run") {
-        const sp = new URLSearchParams();
-        sp.set("recipeId", recipe.id);
-        sp.set("templateId", data.destination.promptTemplateId);
-        if (data.destination.productTypeKey)
-          sp.set("productTypeKey", data.destination.productTypeKey);
-        sp.set("count", String(variationCount));
-        router.push(`/admin/midjourney/batch-run?${sp.toString()}`);
-        onClose();
-      } else if (data.destination.kind === "selections-create") {
-        const sp = new URLSearchParams();
-        sp.set("recipeId", recipe.id);
-        if (data.destination.productTypeKey)
-          sp.set("productTypeKey", data.destination.productTypeKey);
-        router.push(`/selections?${sp.toString()}`);
-        onClose();
-      }
+    onSuccess: () => {
+      // R11 — auto-redirect kaldırıldı. Operatör onay state'inde
+      // "Continue" butonu basarak yönlendirilecek; recipe inbox notify
+      // ve audit log zaten yazıldı (R10).
     },
   });
+
+  const completed = runMutation.isSuccess && runMutation.data;
+  function continueToDestination() {
+    if (!completed) return;
+    const data = completed;
+    if (data.destination.kind === "batch-run") {
+      const sp = new URLSearchParams();
+      sp.set("recipeId", recipe.id);
+      sp.set("templateId", data.destination.promptTemplateId);
+      if (data.destination.productTypeKey)
+        sp.set("productTypeKey", data.destination.productTypeKey);
+      sp.set("count", String(variationCount));
+      router.push(`/admin/midjourney/batch-run?${sp.toString()}`);
+    } else if (data.destination.kind === "selections-create") {
+      const sp = new URLSearchParams();
+      sp.set("recipeId", recipe.id);
+      if (data.destination.productTypeKey)
+        sp.set("productTypeKey", data.destination.productTypeKey);
+      router.push(`/selections?${sp.toString()}`);
+    }
+    onClose();
+  }
 
   const chainSteps: Array<{
     label: string;
@@ -173,6 +180,27 @@ export function RunRecipeModal({ recipe, onClose }: Props) {
       onClose={onClose}
       size="md"
       footer={
+        completed ? (
+          <>
+            <span className="font-mono text-[11px] text-ink-3">
+              Run logged · audit + inbox notification dispatched
+            </span>
+            <button
+              type="button"
+              data-size="sm"
+              className="k-btn k-btn--primary ml-auto"
+              onClick={continueToDestination}
+              data-testid="recipe-run-continue"
+            >
+              <ArrowRight className="h-3 w-3" aria-hidden />
+              Continue to {completed.destination.kind === "batch-run"
+                ? "Batch Run"
+                : completed.destination.kind === "selections-create"
+                  ? "Selections"
+                  : "destination"}
+            </button>
+          </>
+        ) : (
         <>
           <button
             type="button"
@@ -205,6 +233,7 @@ export function RunRecipeModal({ recipe, onClose }: Props) {
             </button>
           </div>
         </>
+        )
       }
     >
       <div className="space-y-5">

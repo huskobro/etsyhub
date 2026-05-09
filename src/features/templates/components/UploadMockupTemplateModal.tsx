@@ -20,6 +20,23 @@ interface Props {
   onUploaded?: () => void;
 }
 
+interface UploadResponse {
+  template: {
+    id: string;
+    name: string;
+    status: string;
+    tags: string[];
+    aspectRatios: string[];
+    suitability: {
+      kind: "raster" | "psd" | "unsupported";
+      width: number | null;
+      height: number | null;
+      detectedAspect: string | null;
+      hasSmartObject: boolean;
+    };
+  };
+}
+
 export function UploadMockupTemplateModal({ onClose, onUploaded }: Props) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -28,7 +45,7 @@ export function UploadMockupTemplateModal({ onClose, onUploaded }: Props) {
   const [aspectRatios, setAspectRatios] = useState<string>("1:1, 2:3, 3:4");
   const [file, setFile] = useState<File | null>(null);
 
-  const mutation = useMutation<unknown, Error, void>({
+  const mutation = useMutation<UploadResponse, Error, void>({
     mutationFn: async () => {
       if (!file) throw new Error("Dosya seçilmedi");
       const fd = new FormData();
@@ -49,9 +66,12 @@ export function UploadMockupTemplateModal({ onClose, onUploaded }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["templates"] });
       onUploaded?.();
-      onClose();
+      // R11 — Modal'ı hemen kapatmak yerine suitability sonucunu göster.
+      // Operatör "Done" basınca kapanır.
     },
   });
+
+  const result = mutation.data?.template ?? null;
 
   const canUpload = !!file && name.trim().length > 0;
   const fileLabel = file
@@ -64,40 +84,60 @@ export function UploadMockupTemplateModal({ onClose, onUploaded }: Props) {
       onClose={onClose}
       size="md"
       footer={
-        <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium text-ink-2 hover:text-ink"
-          >
-            Cancel
-          </button>
-          <div className="ml-auto flex items-center gap-3">
-            {mutation.error ? (
-              <span className="font-mono text-[11px] text-danger">
-                <AlertTriangle className="mr-1 inline h-3 w-3" aria-hidden />
-                {mutation.error.message}
-              </span>
-            ) : null}
+        result ? (
+          <>
+            <span className="font-mono text-[11px] text-ink-3">
+              Template ID: {result.id.slice(0, 12)}
+            </span>
             <button
               type="button"
+              onClick={onClose}
               data-size="sm"
-              className="k-btn k-btn--primary"
-              disabled={!canUpload || mutation.isPending}
-              onClick={() => mutation.mutate()}
-              data-testid="mockup-upload-confirm"
+              className="k-btn k-btn--primary ml-auto"
+              data-testid="mockup-upload-done"
             >
-              {mutation.isPending ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-              ) : (
-                <Upload className="h-3 w-3" aria-hidden />
-              )}
-              Upload to My Templates
+              Done
             </button>
-          </div>
-        </>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium text-ink-2 hover:text-ink"
+            >
+              Cancel
+            </button>
+            <div className="ml-auto flex items-center gap-3">
+              {mutation.error ? (
+                <span className="font-mono text-[11px] text-danger">
+                  <AlertTriangle className="mr-1 inline h-3 w-3" aria-hidden />
+                  {mutation.error.message}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                data-size="sm"
+                className="k-btn k-btn--primary"
+                disabled={!canUpload || mutation.isPending}
+                onClick={() => mutation.mutate()}
+                data-testid="mockup-upload-confirm"
+              >
+                {mutation.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                ) : (
+                  <Upload className="h-3 w-3" aria-hidden />
+                )}
+                Upload to My Templates
+              </button>
+            </div>
+          </>
+        )
       }
     >
+      {result ? (
+        <SuitabilityReport result={result} />
+      ) : (
       <div className="space-y-5">
         <div>
           <label className="mb-1 block text-[12.5px] font-semibold text-ink">
@@ -188,12 +228,113 @@ export function UploadMockupTemplateModal({ onClose, onUploaded }: Props) {
         <div className="rounded-md border border-dashed border-line bg-k-bg-2/40 px-3 py-2">
           <p className="text-[12.5px] leading-snug text-ink-2">
             Upload lands as a <strong>DRAFT</strong> in My Templates. Smart-
-            object deep parse + provider binding wizard ship in R9; for now
-            the file is stored and metadata persists so operators can
-            reference it.
+            object deep parse + provider binding wizard ship in R12; for now
+            the file is stored, sharp inspection runs (raster: thumbnail +
+            aspect detect; PSD: smart-object hint).
           </p>
         </div>
       </div>
+      )}
     </Modal>
+  );
+}
+
+/* eslint-disable no-restricted-syntax */
+// SuitabilityReport — Kivasy v6 hint card; v6 sabit ölçüler:
+//  · text-[15px] / text-[12.5px] / text-[11px] / text-[10.5px] yarı-piksel
+// Whitelisted in scripts/check-tokens.ts.
+function SuitabilityReport({
+  result,
+}: {
+  result: NonNullable<UploadResponse["template"]>;
+}) {
+  const ok = result.suitability.kind !== "unsupported";
+  const isPsd = result.suitability.kind === "psd";
+  const hasSmartObject = result.suitability.hasSmartObject;
+  const detectedAspect = result.suitability.detectedAspect;
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border border-success bg-success-soft px-4 py-3">
+        <div className="text-[15px] font-semibold text-success">
+          Template uploaded
+        </div>
+        <div className="mt-1 font-mono text-[11px] text-ink-3">
+          {result.name} · status {result.status}
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-md border border-line bg-paper">
+        <div className="border-b border-line-soft px-4 py-2.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+          File suitability
+        </div>
+        <div className="divide-y divide-line-soft">
+          <Row label="Kind" value={result.suitability.kind.toUpperCase()} />
+          {result.suitability.width && result.suitability.height ? (
+            <Row
+              label="Dimensions"
+              value={`${result.suitability.width} × ${result.suitability.height}`}
+            />
+          ) : null}
+          {detectedAspect ? (
+            <Row label="Detected aspect" value={detectedAspect} />
+          ) : null}
+          <Row
+            label="Aspect ratios"
+            value={result.aspectRatios.join(" · ")}
+          />
+          <Row label="Tags" value={result.tags.join(", ") || "—"} />
+          {isPsd ? (
+            <Row
+              label="Smart-object hint"
+              value={hasSmartObject ? "Likely (PlcL marker)" : "Not detected"}
+              tone={hasSmartObject ? "success" : "neutral"}
+            />
+          ) : null}
+        </div>
+      </div>
+      {ok ? (
+        <div className="rounded-md border border-info bg-info-soft px-4 py-2.5">
+          <p className="text-[12.5px] leading-snug text-info">
+            Next step: open My Templates, click <strong>Activate template</strong>{" "}
+            to move from DRAFT to ACTIVE. Activated templates are visible in
+            Selection &rarr; Apply Mockups.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-md border border-warning bg-warning-soft px-4 py-2.5">
+          <p className="text-[12.5px] leading-snug text-warning">
+            File parsed as <strong>unsupported</strong> — upload persisted but
+            no thumbnail rendered. Activation may fail. Use a PSD/PNG/JPG
+            file for best results.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "success" | "neutral";
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2">
+      <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+        {label}
+      </span>
+      <span
+        className={
+          tone === "success"
+            ? "ml-auto font-mono text-[12.5px] text-k-green"
+            : "ml-auto font-mono text-[12.5px] text-ink-2"
+        }
+      >
+        {value}
+      </span>
+    </div>
   );
 }
