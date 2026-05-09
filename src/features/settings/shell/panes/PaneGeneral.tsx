@@ -131,7 +131,12 @@ export function PaneGeneral() {
           <SegmentButton active={theme === "light"} onClick={() => {}}>
             Light
           </SegmentButton>
-          <SegmentButton active={false} disabled onClick={() => {}}>
+          <SegmentButton
+            active={false}
+            disabled
+            onClick={() => {}}
+            title="Dark theme ships in R7+ (post-MVP). Light theme is the only option for now."
+          >
             Dark · R7+
           </SegmentButton>
         </Segment>
@@ -257,11 +262,15 @@ function SegmentButton({
   disabled,
   onClick,
   children,
+  title,
 }: {
   active: boolean;
   disabled?: boolean;
   onClick: () => void;
   children: ReactNode;
+  /** Optional tooltip — recommended for disabled segments to make the
+   * reason visible on hover (R11.14.7 audit clarity). */
+  title?: string;
 }) {
   return (
     <button
@@ -269,6 +278,7 @@ function SegmentButton({
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}
+      title={title}
       className={cn(
         "inline-flex h-7 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors",
         active

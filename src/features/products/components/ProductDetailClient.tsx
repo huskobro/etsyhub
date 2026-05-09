@@ -115,8 +115,8 @@ export function ProductDetailClient({ productId }: Props) {
       className="-m-6 flex h-screen flex-col"
       data-testid="product-detail-page"
     >
-      {/* Header */}
-      <header className="flex items-center gap-4 border-b border-line bg-bg px-6 py-4">
+      {/* R11.14.7 — h1 17→24px parity (matches AppTopbar canon). */}
+      <header className="flex h-16 flex-shrink-0 items-center gap-4 border-b border-line bg-bg pl-6 pr-5">
         <Link
           href="/products"
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line text-ink-2 hover:border-line-strong hover:text-ink"
@@ -125,8 +125,8 @@ export function ProductDetailClient({ productId }: Props) {
           <ArrowLeft className="h-4 w-4" aria-hidden />
         </Link>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="truncate k-display text-lg font-semibold tracking-tight text-ink">
+          <div className="flex items-baseline gap-3">
+            <h1 className="truncate k-display text-[24px] font-semibold leading-none tracking-tight text-ink">
               {listing.title ?? "(untitled draft)"}
             </h1>
             <Badge tone={productStageBadgeTone(stage)} dot>
@@ -142,11 +142,11 @@ export function ProductDetailClient({ productId }: Props) {
                 Etsy · {listing.etsyListingId.slice(0, 12)}
               </a>
             ) : null}
+            <span className="whitespace-nowrap font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+              PROD · {listing.id.slice(0, 8)}
+              {listing.status === "DRAFT" ? " · DRAFT NOT SENT" : ""}
+            </span>
           </div>
-          <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
-            PROD · {listing.id.slice(0, 8)}{" "}
-            {listing.status === "DRAFT" ? "· DRAFT NOT SENT" : null}
-          </p>
         </div>
         <button
           type="button"

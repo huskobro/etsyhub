@@ -233,18 +233,26 @@ export function SettingsShell({
                   {g.items.map((it) => {
                     const Icon = it.icon;
                     const active = activePane === it.id;
+                    const isDeferred = it.state === "deferred";
                     return (
                       <button
                         key={it.id}
                         type="button"
                         onClick={() => setPane(it.id)}
+                        disabled={isDeferred}
                         aria-current={active ? "page" : undefined}
+                        title={
+                          isDeferred
+                            ? "This pane is part of post-MVP backlog (deferred). UI placeholder only."
+                            : undefined
+                        }
                         data-testid={`settings-rail-${it.id}`}
                         className={cn(
                           "flex h-8 w-full items-center gap-2.5 rounded-md px-3 text-left transition-colors",
                           active
                             ? "bg-paper text-ink shadow-card"
                             : "text-ink-2 hover:bg-ink/5",
+                          isDeferred && "cursor-not-allowed opacity-60",
                         )}
                       >
                         <Icon

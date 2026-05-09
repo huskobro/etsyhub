@@ -192,6 +192,13 @@ const whitelist = [
   //   var ama k-display + leading-none + tracking-tight kombinasyonu için
   //   half-pixel arbitrary value gerekiyor.
   "src/components/ui/AppTopbar.tsx",
+  // R11.14.7 — Detail page headers (Selection / Product / Batch) bespoke
+  //   topbar (back-arrow + title + status badge + sub-copy combined).
+  //   AppTopbar canon h1 24px + mono 10.5px subtitle inline; detail
+  //   header'ları aynı half-pixel hierarchy'de tutar.
+  "src/features/selections/components/SelectionDetailClient.tsx",
+  "src/features/products/components/ProductDetailClient.tsx",
+  "src/features/batches/components/BatchDetailClient.tsx",
 ];
 // Note: Rollout-9 keeps existing whitelisted files; no new client tsx with
 // half-pixel typography added.

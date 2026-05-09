@@ -101,8 +101,12 @@ export function SelectionDetailClient({ set, items }: Props) {
       className="-m-6 flex h-screen flex-col"
       data-testid="selection-detail-page"
     >
-      {/* Header */}
-      <header className="flex items-center gap-4 border-b border-line bg-bg px-6 py-4">
+      {/* R11.14.7 — Detail header h1 17→24px parity (matches AppTopbar
+       * canon used across index pages). Inline because detail header has
+       * back-arrow + title + status badge + sub-copy combined; AppTopbar
+       * subtitle slot is single-line so we keep this bespoke header but
+       * align typography. */}
+      <header className="flex h-16 flex-shrink-0 items-center gap-4 border-b border-line bg-bg pl-6 pr-5">
         <Link
           href="/selections"
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line text-ink-2 hover:border-line-strong hover:text-ink"
@@ -111,17 +115,17 @@ export function SelectionDetailClient({ set, items }: Props) {
           <ArrowLeft className="h-4 w-4" aria-hidden />
         </Link>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="truncate k-display text-lg font-semibold tracking-tight text-ink">
+          <div className="flex items-baseline gap-3">
+            <h1 className="truncate k-display text-[24px] font-semibold leading-none tracking-tight text-ink">
               {set.name}
             </h1>
             <Badge tone={stageBadgeTone(stage)} dot>
               {stage}
             </Badge>
+            <span className="whitespace-nowrap font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+              SEL · {set.id.slice(0, 8)}
+            </span>
           </div>
-          <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
-            SEL · {set.id.slice(0, 8)}
-          </p>
         </div>
         <button
           type="button"

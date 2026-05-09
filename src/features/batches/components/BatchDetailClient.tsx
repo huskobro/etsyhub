@@ -58,8 +58,8 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
 
   return (
     <div className="-m-6 flex h-screen flex-col" data-testid="batch-detail-page">
-      {/* Header */}
-      <header className="flex items-center gap-4 border-b border-line bg-bg px-6 py-4">
+      {/* R11.14.7 — h1 17→24px parity (matches AppTopbar canon). */}
+      <header className="flex h-16 flex-shrink-0 items-center gap-4 border-b border-line bg-bg pl-6 pr-5">
         <Link
           href="/batches"
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line text-ink-2 hover:border-line-strong hover:text-ink"
@@ -68,8 +68,8 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
           <ArrowLeft className="h-4 w-4" aria-hidden />
         </Link>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3">
-            <h1 className="truncate k-display text-lg font-semibold tracking-tight text-ink">
+          <div className="flex items-baseline gap-3">
+            <h1 className="truncate k-display text-[24px] font-semibold leading-none tracking-tight text-ink">
               batch_{summary.batchId.slice(0, 12)}
             </h1>
             <Badge tone={statusTone} dot>
@@ -84,22 +84,21 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
                 Retry of {summary.retryOfBatchId.slice(0, 8)}
               </Link>
             ) : null}
+            <span className="whitespace-nowrap font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+              {summary.createdAt.toISOString().slice(0, 19).replace("T", " ")}
+              {summary.templateId ? (
+                <>
+                  {" · "}
+                  <Link
+                    href={`/templates?templateId=${summary.templateId}`}
+                    className="text-info underline-offset-2 hover:underline"
+                  >
+                    TEMPLATE {summary.templateId.slice(0, 8).toUpperCase()}
+                  </Link>
+                </>
+              ) : null}
+            </span>
           </div>
-          <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
-            {summary.createdAt.toISOString().slice(0, 19).replace("T", " ")}
-            {summary.templateId ? (
-              <>
-                {" "}
-                ·{" "}
-                <Link
-                  href={`/templates?templateId=${summary.templateId}`}
-                  className="text-info underline-offset-2 hover:underline"
-                >
-                  template {summary.templateId.slice(0, 8)}
-                </Link>
-              </>
-            ) : null}
-          </p>
         </div>
         {summary.counts.failed > 0 ? (
           <Link
