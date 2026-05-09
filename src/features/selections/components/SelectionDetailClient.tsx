@@ -136,14 +136,20 @@ export function SelectionDetailClient({ set, items }: Props) {
           <Copy className="h-3 w-3" aria-hidden />
           Duplicate
         </button>
+        {/* R11.14.12 — More actions kebab visibility upgrade.
+         * Önceden: 32×32 icon-only kebab → kullanıcı feedback'i
+         * "ne işe yaradığı belli değil". Şimdi inline-label "More"
+         * yanına icon (Duplicate ile aynı yükseklik + şekil), aria-label
+         * korundu. Disabled state ve actionable tooltip aynı kalır. */}
         <button
           type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line text-ink-2 hover:border-line-strong hover:text-ink"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
           aria-label="More actions"
           disabled
           title="More actions (rename, archive, export) — coming soon"
         >
-          <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
+          <MoreHorizontal className="h-3 w-3" aria-hidden />
+          More
         </button>
         {applyEnabled ? (
           <Link

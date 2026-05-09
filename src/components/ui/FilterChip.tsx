@@ -24,6 +24,9 @@ interface FilterChipProps {
   onRemove?: () => void;
   disabled?: boolean;
   className?: string;
+  /** R11.14.12 — Hover tooltip; kullanıcıya cycle behavior'u + current
+   * value'yu net iletmek için. */
+  title?: string;
   children: React.ReactNode;
 }
 
@@ -35,6 +38,7 @@ export function FilterChip({
   onRemove,
   disabled,
   className,
+  title,
   children,
 }: FilterChipProps) {
   return (
@@ -52,6 +56,7 @@ export function FilterChip({
         type="button"
         onClick={onClick}
         disabled={disabled}
+        title={title}
         className="inline-flex items-center gap-1.5 outline-none"
       >
         <span>{children}</span>

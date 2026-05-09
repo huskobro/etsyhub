@@ -208,6 +208,16 @@ const whitelist = [
   //   sayfalar (competitor-list, trend-stories, variations) artık aynı
   //   topbar typography hierarchy'sinde.
   "src/components/ui/PageShell.tsx",
+  // R11.14.12 — Sub-route card recipe migrations (Library + References
+  //   Pool + Competitor card paritesiyle aynı k-card pattern):
+  //     · BookmarkCard (Inbox sub-view)
+  //     · CollectionCard (Collections sub-view)
+  //     · TrendClusterCard (Stories sub-view)
+  //   Half-pixel typography hierarchy: text-[13px] title + text-[10.5px]
+  //   mono meta caption.
+  "src/features/bookmarks/components/bookmark-card.tsx",
+  "src/features/collections/components/collection-card.tsx",
+  "src/features/trend-stories/components/trend-cluster-card.tsx",
 ];
 // Note: Rollout-9 keeps existing whitelisted files; no new client tsx with
 // half-pixel typography added.

@@ -166,7 +166,7 @@ export function AiModeForm({
           disabled={disabled}
           className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
         >
-          Üret
+          Generate
         </button>
       </div>
 

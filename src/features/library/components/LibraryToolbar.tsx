@@ -161,26 +161,42 @@ export function LibraryToolbar({
           />
         </form>
 
+        {/* R11.14.12 — Filter chip clarity upgrade.
+         * Önceden active state'te chip sadece selected value gösteriyordu
+         * ("Kept"). Hangi dimension olduğu belirsiz hale geliyordu —
+         * caret bir dropdown sözü veriyordu ama implementasyon cycle.
+         * Şimdi active state'te dimension prefix ("Status: Kept"),
+         * inactive'de placeholder ("Status"). Cycle behavior aynı kalır,
+         * caret semantiği daha dürüst hale gelir. */}
         <FilterChip
           active={currentDecision !== "all"}
           caret
           onClick={cycleDecision}
+          title={`Cycle status filter (currently ${DECISION_LABELS[currentDecision] ?? "All"})`}
         >
-          {DECISION_LABELS[currentDecision] ?? "Status"}
+          {currentDecision !== "all"
+            ? `Status: ${DECISION_LABELS[currentDecision]}`
+            : "Status"}
         </FilterChip>
         <FilterChip
           active={currentVariant !== "ALL"}
           caret
           onClick={cycleVariant}
+          title={`Cycle type filter (currently ${VARIANT_LABELS[currentVariant] ?? "All"})`}
         >
-          {VARIANT_LABELS[currentVariant] ?? "Type"}
+          {currentVariant !== "ALL"
+            ? `Type: ${VARIANT_LABELS[currentVariant]}`
+            : "Type"}
         </FilterChip>
         <FilterChip
           active={currentDays !== "recent"}
           caret
           onClick={cycleDays}
+          title={`Cycle date filter (currently ${DAY_LABELS[currentDays] ?? "Last 7 days"})`}
         >
-          {DAY_LABELS[currentDays] ?? "Date"}
+          {currentDays !== "recent"
+            ? `Date: ${DAY_LABELS[currentDays]}`
+            : "Date"}
         </FilterChip>
 
         <div className="ml-auto flex items-center gap-3">

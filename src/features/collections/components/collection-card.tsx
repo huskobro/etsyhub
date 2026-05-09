@@ -1,9 +1,26 @@
 "use client";
 
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { CollectionThumb } from "@/components/ui/CollectionThumb";
+
+/**
+ * CollectionCard — Kivasy v5 B1.Collections sub-view recipe (R11.14.12).
+ *
+ * Source: docs/design-system/kivasy/ui_kits/kivasy/v5/screens-b1.jsx
+ *   → SubCollections kart bloğu paritesi.
+ *
+ * R11.14.12 — Eski legacy `Card variant="asset"` + `Button` + `Badge`
+ * primitive kompozisyonu yerine v5 SubCollections k-card pattern'a
+ * geçirildi (Library + References Pool + Competitor + Bookmark
+ * paritesiyle birebir):
+ *   - .k-card overflow-hidden + data-interactive
+ *   - thumbnail wrapper p-2 pb-0 + CollectionThumb (3-up composite)
+ *   - meta block: name 13px font-semibold + kind k-badge tone +
+ *     count·updated mono caption 10.5px
+ *   - footer ghost Archive (low-emphasis)
+ *
+ * Tüm copy EN'e normalize edildi (kind labels, item label, button copy,
+ * date locale en-US).
+ */
 
 type CollectionKind = "BOOKMARK" | "REFERENCE" | "MIXED";
 
@@ -32,16 +49,16 @@ export function CollectionCard({
         : collection._count.bookmarks + collection._count.references;
   const itemLabel =
     collection.kind === "BOOKMARK"
-      ? "bookmark"
+      ? "bookmarks"
       : collection.kind === "REFERENCE"
-        ? "referans"
-        : "kayıt";
+        ? "references"
+        : "items";
   const kindLabel =
     collection.kind === "BOOKMARK"
       ? "Bookmark"
       : collection.kind === "REFERENCE"
-        ? "Referans"
-        : "Karma";
+        ? "Reference"
+        : "Mixed";
   const kindTone =
     collection.kind === "BOOKMARK"
       ? "accent"
@@ -50,40 +67,51 @@ export function CollectionCard({
         : "neutral";
   const updated = new Date(
     collection.updatedAt ?? collection.createdAt,
-  ).toLocaleDateString("tr-TR");
+  ).toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  });
 
   return (
-    <Card variant="asset" interactive>
-      <CollectionThumb
-        assetIds={collection.thumbnailAssetIds ?? []}
-        alt={collection.name}
-      />
-      <div className="flex flex-col gap-2 p-3">
+    <article
+      className="k-card overflow-hidden flex flex-col"
+      data-interactive="true"
+      data-testid="collection-card"
+    >
+      <div className="p-2 pb-0">
+        <CollectionThumb
+          assetIds={collection.thumbnailAssetIds ?? []}
+          alt={collection.name}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5 p-3.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-sm font-semibold text-text">
+            <h3 className="truncate text-[13px] font-semibold leading-tight text-ink">
               {collection.name}
             </h3>
-            <div className="mt-1 flex items-center gap-1.5 text-xs text-text-subtle">
-              <span className="font-mono">{`${itemCount} ${itemLabel}`}</span>
-              <span aria-hidden>·</span>
-              <span>{updated}</span>
+            <div className="mt-1 font-mono text-[10.5px] tracking-wider text-ink-3">
+              {itemCount} {itemLabel} · {updated}
             </div>
           </div>
-          <Badge tone={kindTone}>{kindLabel}</Badge>
+          <span className="k-badge" data-tone={kindTone}>
+            {kindLabel}
+          </span>
         </div>
         {onArchive ? (
-          <div className="flex justify-end pt-1">
-            <Button
-              variant="ghost"
-              size="sm"
+          <div className="mt-1 flex justify-end">
+            <button
+              type="button"
+              data-size="sm"
+              className="k-btn k-btn--ghost"
               onClick={() => onArchive(collection.id)}
             >
-              Arşivle
-            </Button>
+              Archive
+            </button>
           </div>
         ) : null}
       </div>
-    </Card>
+    </article>
   );
 }

@@ -24,21 +24,22 @@ export function CostConfirmDialog({
     <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="AI üretimi başlatılacak"
+      title="AI generation will start"
       description={
         <>
           <span className="block text-text">
-            <strong>{count} görsel</strong> üretilecek. Her görsel ayrı kuyruk
-            işidir; AI provider&apos;a istek atılır ve maliyet üretir.
+            <strong>{count} images</strong> will be generated. Each image is
+            a separate queue job; the AI provider is hit per request and
+            incurs cost.
           </span>
           <span className="mt-2 block text-xs text-text-muted">
-            Tahmini maliyet: doğrulanmamış (sağlayıcı fiyatı sözleşme dışı).
-            Bilinçli aksiyonla devam et.
+            Estimated cost: unverified (provider pricing is out of scope).
+            Confirm only if you intend to proceed.
           </span>
         </>
       }
-      confirmLabel={`${count} görsel üret`}
-      cancelLabel="Vazgeç"
+      confirmLabel={`Generate ${count} images`}
+      cancelLabel="Cancel"
       tone="warning"
       busy={busy}
       errorMessage={errorMessage ?? null}

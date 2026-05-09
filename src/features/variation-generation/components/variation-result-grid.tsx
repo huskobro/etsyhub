@@ -16,7 +16,7 @@ const STATE_BADGES: Record<string, StateBadge> = {
     className: "bg-info-soft text-info",
   },
   PROVIDER_RUNNING: {
-    label: "Üretiliyor",
+    label: "Generating",
     className: "bg-info-soft text-info",
   },
   SUCCESS: { label: "Tamam", className: "bg-success-soft text-success" },
@@ -40,7 +40,7 @@ export function VariationResultGrid({
 
   return (
     <div className="flex flex-col gap-3">
-      <h3 className="text-sm font-medium text-text">Üretim sonuçları</h3>
+      <h3 className="text-sm font-medium text-text">Generation results</h3>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         {designs.map((d) => {
           const b = badge(d.state);
@@ -56,12 +56,12 @@ export function VariationResultGrid({
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
                     src={d.resultUrl}
-                    alt="Üretilen görsel"
+                    alt="Generated image"
                     className="h-full w-full object-cover"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-xs text-text-muted">
-                    {isFail ? "Üretim başarısız" : "Bekleniyor…"}
+                    {isFail ? "Generation failed" : "Pending…"}
                   </div>
                 )}
                 <span
