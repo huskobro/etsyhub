@@ -132,23 +132,42 @@ export type RecipeRow = {
   productTypeKey: string | null;
   productTypeDisplay: string | null;
   isSystem: boolean;
+  /** R8 — `key:"recipe:<slug>"` ve config.kind="recipe-chain" olanlar
+   *  RunRecipeModal ile çalıştırılabilir. Legacy (key prefix olmayan)
+   *  Recipe'ler read-only kalır. */
+  isRunnableChain: boolean;
   updatedAt: string;
 };
 
 export async function listRecipesForView(): Promise<RecipeRow[]> {
+  // R8 — yalnız non-style Recipe satırlarını döner (style preset'ler ayrı
+  // sub-tab'ta listeleniyor). recipe:<slug> namespace ve legacy key'ler
+  // bir arada; UI runnable flag'i ile ayırır.
   const recipes = await db.recipe.findMany({
+    where: {
+      NOT: { key: { startsWith: "style:" } },
+    },
     orderBy: { updatedAt: "desc" },
     include: { productType: true },
   });
-  return recipes.map((r) => ({
-    id: r.id,
-    key: r.key,
-    name: r.name,
-    productTypeKey: r.productType?.key ?? null,
-    productTypeDisplay: r.productType?.displayName ?? null,
-    isSystem: r.isSystem,
-    updatedAt: r.updatedAt.toISOString(),
-  }));
+  return recipes.map((r) => {
+    const cfg = r.config as Record<string, unknown> | null;
+    const isRunnableChain =
+      r.key.startsWith("recipe:") &&
+      typeof cfg === "object" &&
+      cfg !== null &&
+      cfg.kind === "recipe-chain";
+    return {
+      id: r.id,
+      key: r.key,
+      name: r.name,
+      productTypeKey: r.productType?.key ?? null,
+      productTypeDisplay: r.productType?.displayName ?? null,
+      isSystem: r.isSystem,
+      isRunnableChain,
+      updatedAt: r.updatedAt.toISOString(),
+    };
+  });
 }
 
 // ────────────────────────────────────────────────────────────

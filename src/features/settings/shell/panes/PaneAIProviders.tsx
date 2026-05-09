@@ -9,7 +9,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ChevronDown,
@@ -85,6 +85,67 @@ interface CostSummaryView {
   failedCalls24h: number;
 }
 
+type TaskKey =
+  | "variation"
+  | "review"
+  | "listingCopy"
+  | "bgRemoval"
+  | "mockup";
+
+interface ProviderSpendLimit {
+  dailyLimitUsd: number;
+  monthlyLimitUsd: number;
+}
+
+interface AdminProvidersSettings {
+  spendLimits: Record<string, ProviderSpendLimit>;
+  taskAssignments: Record<TaskKey, string>;
+}
+
+const DEFAULT_ADMIN_SETTINGS: AdminProvidersSettings = {
+  spendLimits: {
+    kie: { dailyLimitUsd: 50, monthlyLimitUsd: 800 },
+    gemini: { dailyLimitUsd: 30, monthlyLimitUsd: 400 },
+  },
+  taskAssignments: {
+    variation: "kie/midjourney-v7",
+    review: "kie/qc-vision-2",
+    listingCopy: "kie/copy-flash",
+    bgRemoval: "kie/cutout-v2",
+    mockup: "kie/compose-pro",
+  },
+};
+
+// Per-task model options — UI dropdown için.
+const TASK_MODEL_OPTIONS: Record<TaskKey, string[]> = {
+  variation: [
+    "kie/midjourney-v7",
+    "fal-ai/flux-pro-1.1",
+    "openai/gpt-image-1",
+    "replicate/sdxl",
+  ],
+  review: [
+    "kie/qc-vision-2",
+    "google/gemini-2.0-flash",
+    "openai/gpt-4o-mini",
+  ],
+  listingCopy: [
+    "kie/copy-flash",
+    "openai/gpt-4o-mini",
+    "openai/gpt-4o",
+  ],
+  bgRemoval: [
+    "kie/cutout-v2",
+    "replicate/rembg-v2",
+    "fal-ai/birefnet",
+  ],
+  mockup: [
+    "kie/compose-pro",
+    "replicate/sdxl-controlnet",
+    "fal-ai/flux-canny",
+  ],
+};
+
 export function PaneAIProviders() {
   const aiModeQuery = useQuery({
     queryKey: QUERY_KEY,
@@ -105,11 +166,52 @@ export function PaneAIProviders() {
     staleTime: 60 * 1000,
   });
 
+  // R8 — admin scope spend limits + task assignments
+  const adminQuery = useQuery<{ settings: AdminProvidersSettings }>({
+    queryKey: ["settings", "ai-providers"],
+    queryFn: async () => {
+      const r = await fetch("/api/settings/ai-providers");
+      if (r.status === 403) {
+        // Non-admin user → silent fallback to defaults
+        return { settings: DEFAULT_ADMIN_SETTINGS };
+      }
+      if (!r.ok) throw new Error("Admin AI providers settings yüklenemedi");
+      return r.json();
+    },
+    retry: false,
+  });
+
+  const qc = useQueryClient();
+  const adminMutation = useMutation<
+    { settings: AdminProvidersSettings },
+    Error,
+    Partial<AdminProvidersSettings>
+  >({
+    mutationFn: async (patch) => {
+      const r = await fetch("/api/settings/ai-providers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({}));
+        throw new Error(b?.error ?? `HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings", "ai-providers"] });
+    },
+  });
+
+  const adminSettings = adminQuery.data?.settings ?? DEFAULT_ADMIN_SETTINGS;
+
   const providers = useMemo<ProviderRow[]>(() => {
     const masked = aiModeQuery.data?.settings;
     const kieKey = masked?.kieApiKey;
     const geminiKey = masked?.geminiApiKey;
     const reviewProvider = masked?.reviewProvider ?? "kie";
+    const limits = adminSettings.spendLimits;
 
     const rows: ProviderRow[] = [
       {
@@ -138,8 +240,8 @@ export function PaneAIProviders() {
               mockup: { model: "kie/compose-pro", cost: "$0.012" },
             }
           : null,
-        dailyLimit: 50,
-        monthlyLimit: 800,
+        dailyLimit: limits.kie?.dailyLimitUsd ?? 50,
+        monthlyLimit: limits.kie?.monthlyLimitUsd ?? 800,
       },
       {
         id: "gemini",
@@ -163,8 +265,8 @@ export function PaneAIProviders() {
               }
             : null,
         partial: !!geminiKey && reviewProvider !== "google-gemini",
-        dailyLimit: 30,
-        monthlyLimit: 400,
+        dailyLimit: limits.gemini?.dailyLimitUsd ?? 30,
+        monthlyLimit: limits.gemini?.monthlyLimitUsd ?? 400,
       },
       {
         id: "openai",
@@ -225,7 +327,7 @@ export function PaneAIProviders() {
       },
     ];
     return rows;
-  }, [aiModeQuery.data]);
+  }, [aiModeQuery.data, adminSettings]);
 
   const activeCount = providers.filter(
     (p) => p.status.label === "CONNECTED",
@@ -319,6 +421,144 @@ export function PaneAIProviders() {
         {providers.map((p) => (
           <ProviderCard key={p.id} provider={p} />
         ))}
+      </div>
+
+      {/* R8 — workspace task assignments + spend limits persist */}
+      <div className="mt-7 overflow-hidden rounded-md border border-line bg-paper">
+        <div className="border-b border-line-soft px-4 py-2.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+          Workspace task assignments (admin · persisted)
+        </div>
+        <div className="divide-y divide-line-soft">
+          {(["variation", "review", "listingCopy", "bgRemoval", "mockup"] as const).map(
+            (task) => {
+              const current = adminSettings.taskAssignments[task];
+              const options = TASK_MODEL_OPTIONS[task];
+              return (
+                <div
+                  key={task}
+                  className="flex items-center gap-3 px-4 py-3"
+                  data-testid="ai-providers-task-assignment"
+                  data-task={task}
+                >
+                  <span className="flex-1 text-[12.5px] text-ink">
+                    {TASK_LABEL_MAP[task]}
+                  </span>
+                  <select
+                    value={current}
+                    onChange={(e) =>
+                      adminMutation.mutate({
+                        taskAssignments: {
+                          ...adminSettings.taskAssignments,
+                          [task]: e.target.value,
+                        },
+                      })
+                    }
+                    className="h-8 w-[260px] rounded-md border border-line bg-paper px-2 font-mono text-[11.5px] text-ink-2 focus:border-k-orange focus:outline-none focus:ring-1 focus:ring-k-orange-soft"
+                  >
+                    {options.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                    {!options.includes(current) ? (
+                      <option value={current}>{current} (custom)</option>
+                    ) : null}
+                  </select>
+                </div>
+              );
+            },
+          )}
+        </div>
+        <div className="grid grid-cols-1 gap-3 border-t border-line-soft px-4 py-3 md:grid-cols-2">
+          <SpendLimitsRow
+            providerId="kie"
+            label="KIE limits (USD)"
+            current={
+              adminSettings.spendLimits.kie ?? {
+                dailyLimitUsd: 50,
+                monthlyLimitUsd: 800,
+              }
+            }
+            onSave={(v) =>
+              adminMutation.mutate({
+                spendLimits: { ...adminSettings.spendLimits, kie: v },
+              })
+            }
+          />
+          <SpendLimitsRow
+            providerId="gemini"
+            label="Gemini limits (USD)"
+            current={
+              adminSettings.spendLimits.gemini ?? {
+                dailyLimitUsd: 30,
+                monthlyLimitUsd: 400,
+              }
+            }
+            onSave={(v) =>
+              adminMutation.mutate({
+                spendLimits: { ...adminSettings.spendLimits, gemini: v },
+              })
+            }
+          />
+        </div>
+      </div>
+
+      <p className="mt-4 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+        {adminMutation.isPending
+          ? "Saving assignments…"
+          : adminMutation.isError
+            ? `Save failed: ${adminMutation.error?.message}`
+            : "Assignments persist via UserSetting key=aiProviders · enforcement R9"}
+      </p>
+    </div>
+  );
+}
+
+const TASK_LABEL_MAP: Record<TaskKey, string> = {
+  variation: "Variation generation",
+  review: "Quality review",
+  listingCopy: "Listing copy generation",
+  bgRemoval: "Background removal",
+  mockup: "Mockup composition",
+};
+
+function SpendLimitsRow({
+  providerId,
+  label,
+  current,
+  onSave,
+}: {
+  providerId: string;
+  label: string;
+  current: ProviderSpendLimit;
+  onSave: (v: ProviderSpendLimit) => void;
+}) {
+  const [daily, setDaily] = useState(current.dailyLimitUsd);
+  const [monthly, setMonthly] = useState(current.monthlyLimitUsd);
+  return (
+    <div data-testid="ai-providers-spend-limits" data-provider={providerId}>
+      <div className="mb-1 text-[12px] font-medium text-ink">{label}</div>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min={0}
+          max={2000}
+          value={daily}
+          onChange={(e) => setDaily(parseInt(e.target.value || "0", 10))}
+          onBlur={() => onSave({ dailyLimitUsd: daily, monthlyLimitUsd: monthly })}
+          className="h-8 w-20 rounded-md border border-line bg-paper px-2 text-xs tabular-nums text-ink"
+        />
+        <span className="font-mono text-[10.5px] text-ink-3">/ day</span>
+        <input
+          type="number"
+          min={0}
+          max={20000}
+          value={monthly}
+          onChange={(e) => setMonthly(parseInt(e.target.value || "0", 10))}
+          onBlur={() => onSave({ dailyLimitUsd: daily, monthlyLimitUsd: monthly })}
+          className="h-8 w-24 rounded-md border border-line bg-paper px-2 text-xs tabular-nums text-ink"
+        />
+        <span className="font-mono text-[10.5px] text-ink-3">/ month</span>
       </div>
     </div>
   );

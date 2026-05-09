@@ -54,7 +54,7 @@ export function PaneDeferred({ paneId }: { paneId: PaneId }) {
         {name}
       </h2>
       <p className="mt-1 mb-4 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-        Coming in R8
+        Coming in R9
       </p>
       {hint ? (
         <div className="rounded-md border border-dashed border-line bg-k-bg-2/40 px-5 py-4">

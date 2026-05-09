@@ -100,14 +100,21 @@ const GROUPS: PaneGroup[] = [
         meta: "Override",
         metaTone: "neutral",
       },
-      { id: "editor", name: "Editor", icon: ImageIcon, state: "deferred" },
+      {
+        id: "editor",
+        name: "Editor",
+        icon: ImageIcon,
+        state: "live",
+        meta: "Defaults",
+        metaTone: "neutral",
+      },
       {
         id: "notifications",
         name: "Notifications",
         icon: Bell,
         state: "live",
-        meta: "Local",
-        metaTone: "neutral",
+        meta: "Live",
+        metaTone: "success",
       },
     ],
   },
@@ -136,10 +143,17 @@ const GROUPS: PaneGroup[] = [
         name: "Storage",
         icon: Package,
         state: "live",
-        meta: "Read-only",
+        meta: "Tunable",
         metaTone: "neutral",
       },
-      { id: "scrapers", name: "Scrapers", icon: Download, state: "deferred" },
+      {
+        id: "scrapers",
+        name: "Scrapers",
+        icon: Download,
+        state: "live",
+        meta: "Admin",
+        metaTone: "neutral",
+      },
     ],
   },
   {
@@ -270,7 +284,7 @@ export function SettingsShell({
                         ) : null}
                         {it.state === "deferred" ? (
                           <span className="font-mono text-[9.5px] uppercase tracking-wider text-ink-4">
-                            R8
+                            R9
                           </span>
                         ) : null}
                       </button>

@@ -27,6 +27,8 @@ import type {
 } from "@/server/services/templates/index-view";
 import { PromptTemplateEditorModal } from "./PromptTemplateEditorModal";
 import { StylePresetsSubview } from "./StylePresetsSubview";
+import { RunRecipeModal } from "./RunRecipeModal";
+import { UploadMockupTemplateModal } from "./UploadMockupTemplateModal";
 
 /**
  * TemplatesIndexClient — Kivasy C1 Templates surface.
@@ -59,6 +61,16 @@ type EditorState =
   | { mode: "create" }
   | { mode: "edit"; templateId: string };
 
+interface RecipeChainView {
+  id: string;
+  key: string;
+  name: string;
+  productTypeKey: string | null;
+  productTypeDisplay: string | null;
+  links: Record<string, string | null | undefined>;
+  settings: Record<string, unknown>;
+}
+
 export function TemplatesIndexClient({
   counts,
   prompts,
@@ -70,6 +82,8 @@ export function TemplatesIndexClient({
   const params = useSearchParams();
   const sub = (params.get("sub") as SubTab | null) ?? "prompts";
   const [editor, setEditor] = useState<EditorState>({ mode: "closed" });
+  const [runRecipe, setRunRecipe] = useState<RecipeChainView | null>(null);
+  const [mockupUploadOpen, setMockupUploadOpen] = useState(false);
 
   function setSub(next: SubTab) {
     const sp = new URLSearchParams(params.toString());
@@ -92,9 +106,15 @@ export function TemplatesIndexClient({
     sub === "mockups" ? (
       <button
         type="button"
+        onClick={() => setMockupUploadOpen(true)}
+        disabled={!isAdmin}
+        title={
+          isAdmin
+            ? "Upload a PSD or image as a user mockup template"
+            : "Admin scope — only admins can upload mockup templates"
+        }
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
-        disabled
-        title="Upload PSD pipeline ships in R8 (operator template ingest)"
+        data-testid="templates-mockups-upload-cta"
       >
         <Upload className="h-3 w-3" aria-hidden />
         Upload PSD
@@ -104,7 +124,7 @@ export function TemplatesIndexClient({
         type="button"
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
         disabled
-        title="Recipe import / runner ships in R8"
+        title="Recipe export / import ships in R9"
       >
         <Download className="h-3 w-3" aria-hidden />
         Import recipe
@@ -190,7 +210,22 @@ export function TemplatesIndexClient({
         ) : null}
         {sub === "presets" ? <StylePresetsSubview isAdmin={isAdmin} /> : null}
         {sub === "mockups" ? <MockupsSubview rows={mockups} /> : null}
-        {sub === "recipes" ? <RecipesSubview rows={recipes} /> : null}
+        {sub === "recipes" ? (
+          <RecipesSubview
+            rows={recipes}
+            onRun={(row) =>
+              setRunRecipe({
+                id: row.id,
+                key: row.key,
+                name: row.name,
+                productTypeKey: row.productTypeKey,
+                productTypeDisplay: row.productTypeDisplay,
+                links: {},
+                settings: {},
+              })
+            }
+          />
+        ) : null}
       </div>
 
       {editor.mode !== "closed" ? (
@@ -199,6 +234,18 @@ export function TemplatesIndexClient({
           templateId={editor.mode === "edit" ? editor.templateId : undefined}
           onClose={() => setEditor({ mode: "closed" })}
           onSaved={() => router.refresh()}
+        />
+      ) : null}
+      {runRecipe ? (
+        <RunRecipeModal
+          recipe={runRecipe}
+          onClose={() => setRunRecipe(null)}
+        />
+      ) : null}
+      {mockupUploadOpen ? (
+        <UploadMockupTemplateModal
+          onClose={() => setMockupUploadOpen(false)}
+          onUploaded={() => router.refresh()}
         />
       ) : null}
     </div>
@@ -452,15 +499,21 @@ function MockupsSubview({ rows }: { rows: MockupTemplateRow[] }) {
 // Recipes subview
 // ────────────────────────────────────────────────────────────
 
-function RecipesSubview({ rows }: { rows: RecipeRow[] }) {
+function RecipesSubview({
+  rows,
+  onRun,
+}: {
+  rows: RecipeRow[];
+  onRun: (row: RecipeRow) => void;
+}) {
   if (rows.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-line bg-paper px-6 py-12 text-center">
         <h3 className="text-base font-semibold text-ink">No recipes yet</h3>
         <p className="mt-1 text-sm text-text-muted">
           Recipes bundle prompt + preset + mockup + listing into one click.
-          Recipe runner UI lands in R8 alongside the A6 modal preset
-          selector.
+          Create new chain recipes via the new <code>recipe:&lt;slug&gt;</code>{" "}
+          namespace.
         </p>
       </div>
     );
@@ -472,6 +525,7 @@ function RecipesSubview({ rows }: { rows: RecipeRow[] }) {
           key={r.id}
           className="k-card k-card--hero overflow-hidden p-4"
           data-testid="templates-recipe-card"
+          data-recipe-runnable={r.isRunnableChain ? "true" : undefined}
         >
           <div className="text-[14.5px] font-semibold leading-snug text-ink">
             {r.name}
@@ -482,15 +536,17 @@ function RecipesSubview({ rows }: { rows: RecipeRow[] }) {
               <Badge tone="neutral">{r.productTypeDisplay}</Badge>
             ) : null}
             {r.isSystem ? <Badge tone="info">SYSTEM</Badge> : null}
+            {r.isRunnableChain ? (
+              <Badge tone="success">CHAIN</Badge>
+            ) : (
+              <Badge tone="neutral">LEGACY</Badge>
+            )}
           </div>
 
           {/* Chain visualization (R7) */}
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
             <ChainStep label="Prompt" />
-            <ArrowRight
-              className="h-3 w-3 text-ink-3"
-              aria-hidden
-            />
+            <ArrowRight className="h-3 w-3 text-ink-3" aria-hidden />
             <ChainStep label="Style preset" />
             <ArrowRight className="h-3 w-3 text-ink-3" aria-hidden />
             <ChainStep label="Mockup" />
@@ -504,9 +560,15 @@ function RecipesSubview({ rows }: { rows: RecipeRow[] }) {
             </span>
             <button
               type="button"
+              onClick={() => onRun(r)}
               className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-ink-2 hover:text-ink disabled:opacity-50"
-              disabled
-              title="Recipe runner orchestration ships in R8"
+              disabled={!r.isRunnableChain}
+              title={
+                r.isRunnableChain
+                  ? "Open run modal — choose count + destination"
+                  : "Legacy recipe — re-create with chain links to enable runner"
+              }
+              data-testid="recipe-run-cta"
             >
               Run
               <ArrowRight className="h-3 w-3" aria-hidden />

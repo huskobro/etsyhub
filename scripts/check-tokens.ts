@@ -142,6 +142,21 @@ const whitelist = [
   "src/features/settings/shell/panes/PaneWorkspace.tsx",
   "src/features/settings/shell/panes/PaneNotifications.tsx",
   "src/features/settings/shell/panes/PaneStorage.tsx",
+  // Rollout-8 — Recipe runner + Mockup upload + remaining panes.
+  //  · RunRecipeModal → Modal md (max-w-[720px]) + chain step
+  //    text-[12.5px] / text-[11px] / text-[10.5px] yarı-piksel.
+  //  · UploadMockupTemplateModal → Modal md + drop zone border-dashed
+  //    + text-[10.5px] / text-[12px] / text-[12.5px] / text-[13px]
+  //    yarı-piksel labels.
+  //  · PaneEditor → text-[12.5px] / text-[12px] / text-[11.5px] /
+  //    text-[10.5px] / text-[13px] / text-[13.5px] yarı-piksel
+  //    typography (Settings canon).
+  //  · PaneScrapers → admin scope text-[12.5px] / text-[10.5px] /
+  //    text-[11px] / text-[12px] yarı-piksel typography.
+  "src/features/templates/components/RunRecipeModal.tsx",
+  "src/features/templates/components/UploadMockupTemplateModal.tsx",
+  "src/features/settings/shell/panes/PaneEditor.tsx",
+  "src/features/settings/shell/panes/PaneScrapers.tsx",
 ];
 
 let hadError = false;

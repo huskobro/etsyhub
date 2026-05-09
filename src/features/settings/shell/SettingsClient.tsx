@@ -7,6 +7,8 @@ import { PaneAIProviders } from "./panes/PaneAIProviders";
 import { PaneWorkspace } from "./panes/PaneWorkspace";
 import { PaneNotifications } from "./panes/PaneNotifications";
 import { PaneStorage } from "./panes/PaneStorage";
+import { PaneEditor } from "./panes/PaneEditor";
+import { PaneScrapers } from "./panes/PaneScrapers";
 import { PaneDeferred } from "./panes/PaneDeferred";
 
 /**
@@ -45,6 +47,10 @@ function renderPane(pane: PaneId) {
       return <PaneNotifications />;
     case "storage":
       return <PaneStorage />;
+    case "editor":
+      return <PaneEditor />;
+    case "scrapers":
+      return <PaneScrapers />;
     default:
       return <PaneDeferred paneId={pane} />;
   }
