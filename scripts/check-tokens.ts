@@ -80,6 +80,30 @@ const whitelist = [
   "src/features/selections/components/SelectionsIndexClient.tsx",
   "src/features/selections/components/tabs/DesignsTab.tsx",
   "src/features/selections/components/tabs/EditsTab.tsx",
+  // Rollout-5 — Products (B4 / A5) recipes.
+  //  · ProductsIndexClient → B4 table sabit ölçüler: text-[13.5px] /
+  //    text-[12.5px] / text-[11px] / text-[10.5px] / text-[9.5px] /
+  //    text-[10px] yarı-piksel mono caption hierarchy + 4-up thumb cell
+  //    rounded-[3px] / w-12 grid sabitleri (Batches table paterni).
+  //    Listing health bar inline `style={{width:health+%}}` — RolloutBar
+  //    pattern (Tailwind arbitrary `w-[X%]` yasak, dinamik percent).
+  //  · ListingTab → A5 form layout sabitleri: max-w-[820px] form panel +
+  //    grid-cols-[1fr_360px] split rail + text-[12.5px] / text-[11.5px] /
+  //    text-[10.5px] / text-[36px] / text-[24px] / text-[14px] yarı-piksel
+  //    typography (Kivasy v4 listing form canon). min-h-[60px] tag chip
+  //    container + h-12 format toggle button.
+  //  · FilesTab → A5 stat tile sabit boyutu (text-[24px]) + table cell
+  //    text-[10.5px] / text-[12px] / text-[12.5px] / text-[13px] yarı-
+  //    piksel typography (A5 file table canon).
+  "src/features/products/components/ProductsIndexClient.tsx",
+  "src/features/products/components/tabs/ListingTab.tsx",
+  "src/features/products/components/tabs/FilesTab.tsx",
+  //  · MockupsTab → A5 mockup grid kart başlığı text-[15px] semibold +
+  //    mono caption text-[10.5px] (Selections Mockups read-only ile aynı
+  //    spec; v4 base.jsx section header canon).
+  //  · HistoryTab → A5 timeline mono ts text-[11px] yarı-piksel.
+  "src/features/products/components/tabs/MockupsTab.tsx",
+  "src/features/products/components/tabs/HistoryTab.tsx",
 ];
 
 let hadError = false;

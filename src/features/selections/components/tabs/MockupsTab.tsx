@@ -61,8 +61,10 @@ const SECTIONS: Section[] = [
 ];
 
 export function MockupsTab({ setId, stage }: MockupsTabProps) {
-  // Apply Mockups CTA, set "Mockup ready" değilse Products cross-link
-  // gating de aynı stage'e bağlı (boundary: ürün önce paketlenmeli).
+  // R5 — Apply Mockups çalıştırıldıktan sonra (her stage'de) Products cross-
+  // link aktiftir; Products index `?fromSelection=setId` ile filtrelenmiş
+  // listing kayıtlarını gösterir. Set finalize edilmediyse (Curating/Edits)
+  // henüz mockup uygulanmamıştır → link disabled tutulur.
   const productLink =
     stage === "Sent" || stage === "Mockup ready"
       ? `/products?fromSelection=${setId}`

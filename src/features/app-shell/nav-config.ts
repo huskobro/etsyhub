@@ -49,7 +49,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "batches",    href: "/batches",    label: "Batches",    icon: Zap,             group: "produce", rollout: 3, ready: true  },
   { id: "library",    href: "/library",    label: "Library",    icon: ImageIcon,       group: "produce", rollout: 2, ready: true  },
   { id: "selections", href: "/selections", label: "Selections", icon: Layers,          group: "produce", rollout: 4, ready: true  },
-  { id: "products",   href: "/products",   label: "Products",   icon: Package,         group: "produce", rollout: 5, ready: false },
+  { id: "products",   href: "/products",   label: "Products",   icon: Package,         group: "produce", rollout: 5, ready: true  },
 
   // SYSTEM — meta surfaces
   { id: "templates",  href: "/templates",  label: "Templates",  icon: BookOpen,        group: "system",  rollout: 7, ready: false },
