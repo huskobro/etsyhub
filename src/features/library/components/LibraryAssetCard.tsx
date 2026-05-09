@@ -176,10 +176,19 @@ export function LibraryAssetCard({
         >
           {titleText}
         </div>
+        {/* R11.14.15 — mjActionLabel duplicate guard.
+         * Veride bazı row'larda mjActionLabel = variantKind label (örn.
+         * "Variation Variation"). mjActionLabel sadece value variantMeta
+         * label'dan farklıysa eklenir (case-insensitive); aynıysa atlanır.
+         * Beklenen format: "U1"/"V3" gibi MJ action shorthand'leri. */}
         <div className="mt-1 flex items-center gap-1.5">
           <span className="k-badge" data-tone={variantMeta.tone}>
             {variantMeta.label}
-            {card.mjActionLabel ? ` ${card.mjActionLabel}` : ""}
+            {card.mjActionLabel &&
+            card.mjActionLabel.toLowerCase() !==
+              variantMeta.label.toLowerCase()
+              ? ` ${card.mjActionLabel}`
+              : ""}
           </span>
           <span className="truncate font-mono text-[10.5px] tracking-wider text-ink-3">
             {card.batchId ? `batch_${card.batchId.slice(0, 6)} · ` : ""}
