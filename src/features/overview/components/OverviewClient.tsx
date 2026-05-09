@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
+import { AppTopbar } from "@/components/ui/AppTopbar";
 import type {
   PipelinePulseData,
   PendingActionsData,
@@ -97,16 +98,7 @@ export function OverviewClient({
       data-testid="overview-page"
     >
       {/* Topbar */}
-      <header className="flex flex-shrink-0 items-center gap-4 border-b border-line bg-bg px-6 py-4">
-        <div className="flex-1">
-          <h1 className="k-display text-lg font-semibold tracking-tight text-ink">
-            Overview
-          </h1>
-          <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
-            {subtitle}
-          </p>
-        </div>
-      </header>
+      <AppTopbar title="Overview" subtitle={subtitle} />
 
       <div className="flex-1 space-y-5 overflow-y-auto px-7 pb-12 pt-5">
         {/* ── Block 1: Pipeline Pulse */}

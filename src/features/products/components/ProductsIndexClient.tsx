@@ -23,6 +23,7 @@ import {
   type Density,
   DensityToggle,
 } from "@/components/ui/DensityToggle";
+import { AppTopbar } from "@/components/ui/AppTopbar";
 import {
   deriveProductStage,
   productStageBadgeTone,
@@ -156,46 +157,29 @@ export function ProductsIndexClient({
 
   const sentCount = enriched.filter((r) => r.stage === "Sent").length;
 
+  const subtitleText = fromSelectionId
+    ? `${rows.length} PRODUCTS · ${sentCount} SENT TO ETSY · FILTERED BY SELECTION ${fromSelectionId.slice(0, 8)}`
+    : `${rows.length} PRODUCTS · ${sentCount} SENT TO ETSY`;
+
   return (
     <div className="-m-6 flex h-screen flex-col" data-testid="products-page">
-      <header className="flex items-center gap-4 border-b border-line bg-bg px-6 py-4">
-        <div className="flex-1">
-          <h1 className="k-display text-lg font-semibold tracking-tight text-ink">Products</h1>
-          <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
-            {rows.length} products · {sentCount} sent to Etsy
-            {fromSelectionId ? (
-              <>
-                {" · "}
-                <Link
-                  href={`/selections/${fromSelectionId}`}
-                  className="text-info underline-offset-2 hover:underline"
-                  data-testid="products-from-selection-link"
-                >
-                  filtered by Selection {fromSelectionId.slice(0, 8)}
-                </Link>
-                {" · "}
-                <Link
-                  href="/products"
-                  className="text-ink-3 hover:underline"
-                >
-                  clear
-                </Link>
-              </>
-            ) : null}
-          </p>
-        </div>
-        <button
-          type="button"
-          data-size="sm"
-          className="k-btn k-btn--primary"
-          disabled
-          title="New Product is created via Selection → Apply Mockups handoff"
-          data-testid="products-new-cta"
-        >
-          <Plus className="h-3 w-3" aria-hidden />
-          New Product
-        </button>
-      </header>
+      <AppTopbar
+        title="Products"
+        subtitle={subtitleText}
+        actions={
+          <button
+            type="button"
+            data-size="sm"
+            className="k-btn k-btn--primary"
+            disabled
+            title="New Product is created via Selection → Apply Mockups handoff"
+            data-testid="products-new-cta"
+          >
+            <Plus className="h-3 w-3" aria-hidden />
+            New Product
+          </button>
+        }
+      />
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-bg px-6 py-3">

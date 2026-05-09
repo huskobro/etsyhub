@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/Badge";
 import { FilterChip } from "@/components/ui/FilterChip";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { UserAssetThumb } from "@/components/ui/UserAssetThumb";
+import { AppTopbar } from "@/components/ui/AppTopbar";
 import {
   DensityToggle,
   type Density,
@@ -147,31 +148,31 @@ export function BatchesIndexClient({
 
   return (
     <div className="-m-6 flex h-screen flex-col" data-testid="batches-page">
-      {/* Header */}
-      <header className="flex items-center gap-4 border-b border-line bg-bg px-6 py-4">
-        <div className="flex-1">
-          <h1 className="k-display text-lg font-semibold tracking-tight text-ink">Batches</h1>
-          <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
-            {runningCount} running · {batches.length} last 30
-          </p>
-        </div>
-        <Link
-          href="/library"
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink"
-        >
-          <RotateCw className="h-3 w-3" aria-hidden />
-          Retry-failed-only
-        </Link>
-        <Link
-          href="/library?intent=start-batch"
-          data-size="sm"
-          className="k-btn k-btn--primary"
-          data-testid="batches-new-cta"
-        >
-          <Plus className="h-3 w-3" aria-hidden />
-          Start Batch
-        </Link>
-      </header>
+      <AppTopbar
+        title="Batches"
+        subtitle={`${runningCount} RUNNING · ${batches.length} LAST 30`}
+        actions={
+          <>
+            <Link
+              href="/library"
+              data-size="sm"
+              className="k-btn k-btn--secondary"
+            >
+              <RotateCw className="h-3 w-3" aria-hidden />
+              Retry-failed-only
+            </Link>
+            <Link
+              href="/library?intent=start-batch"
+              data-size="sm"
+              className="k-btn k-btn--primary"
+              data-testid="batches-new-cta"
+            >
+              <Plus className="h-3 w-3" aria-hidden />
+              Start Batch
+            </Link>
+          </>
+        }
+      />
 
       {/* R11.7 — Start-batch hint banner. Operator legacy redirect ile
           buraya geldi; reference olmadan A6 modal anlamlı değil. */}

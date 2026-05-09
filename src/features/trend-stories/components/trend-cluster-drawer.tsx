@@ -188,7 +188,7 @@ function DrawerPage({
       {showHeader ? <ClusterHeader cluster={cluster} /> : null}
 
       {members.length === 0 ? (
-        <p className="text-sm text-text-muted">Bu kümede listing yok.</p>
+        <p className="text-sm text-text-muted">No listings in this cluster.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {members.map((m) => (

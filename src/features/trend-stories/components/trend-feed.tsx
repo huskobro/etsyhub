@@ -125,15 +125,15 @@ function FeedPage({
       // için kullanıcı henüz rakip yoksa boşluğun sebebini bilmiyordu.
       <StateMessage
         tone="neutral"
-        title="Bu pencerede listing yok"
-        body="Pencere aralığını değiştir ya da rakip mağaza ekleyip taramaya başla."
+        title="No listings in this window"
+        body="Change the window range, or add a competitor shop and start scanning."
         action={
           <Link
             href="/competitors"
             className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-foreground hover:opacity-90"
             data-testid="trend-feed-empty-cta"
           >
-            Rakiplere git
+            Open Shops
           </Link>
         }
       />

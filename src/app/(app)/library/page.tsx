@@ -8,7 +8,7 @@ import {
   getLibrarySummary,
 } from "@/server/services/midjourney/library";
 import { LibraryClient } from "@/features/library/components/LibraryClient";
-import { KivasyMark } from "@/components/ui/KivasyMark";
+import { AppTopbar } from "@/components/ui/AppTopbar";
 
 /**
  * /library — Kivasy A1 Library (rollout-2 implementation).
@@ -151,46 +151,35 @@ export default async function LibraryPage({
 
   return (
     <div className="-m-6 flex h-screen flex-col" data-testid="library-page">
-      <header className="flex items-center gap-4 border-b border-line bg-bg px-6 py-4">
-        <KivasyMark size={20} idSuffix="library-header" />
-        <div className="flex-1">
-          <h1 className="k-display text-lg font-semibold tracking-tight text-ink">Library</h1>
-          <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
-            {summary.recent7d} added last 7 days · {totalLabel}
-          </p>
-        </div>
-        {/* R11.14.2 — v4 A1Library topbar parity:
-         *   <Btn variant="secondary"> Saved views </Btn>
-         *   <Btn variant="primary">   New Selection </Btn>
-         * Saved views CTA is a placeholder (filter drawer lands rollout-2.5);
-         * disabled with hint. New Selection navigates to /selections — set
-         * CRUD lives there per IMPLEMENTATION_HANDOFF §5 boundary. */}
-        <button
-          type="button"
-          data-size="sm"
-          className="k-btn k-btn--secondary"
-          disabled
-          title="Saved-view popover lands rollout-2.5"
-          data-testid="library-saved-views-cta"
-        >
-          <Filter className="h-3 w-3" aria-hidden />
-          Saved views
-        </button>
-        {/* R11.14.3 — "New Selection" navigates to /selections (the index).
-         * Set CRUD (draft creation) lives in the Selections feature per
-         * IMPLEMENTATION_HANDOFF §5 boundary; Library never owns sets.
-         * The Selections index hosts the actual create-set affordance. */}
-        <Link
-          href="/selections"
-          data-size="sm"
-          className="k-btn k-btn--primary"
-          data-testid="library-new-selection-cta"
-          title="Open Selections — create or pick a draft set"
-        >
-          <Layers className="h-3 w-3" aria-hidden />
-          New Selection
-        </Link>
-      </header>
+      <AppTopbar
+        title="Library"
+        subtitle={`${summary.recent7d} ADDED LAST 7 DAYS · ${totalLabel.toUpperCase()}`}
+        actions={
+          <>
+            <button
+              type="button"
+              data-size="sm"
+              className="k-btn k-btn--secondary"
+              disabled
+              title="Saved-view popover lands rollout-2.5"
+              data-testid="library-saved-views-cta"
+            >
+              <Filter className="h-3 w-3" aria-hidden />
+              Saved views
+            </button>
+            <Link
+              href="/selections"
+              data-size="sm"
+              className="k-btn k-btn--primary"
+              data-testid="library-new-selection-cta"
+              title="Open Selections — create or pick a draft set"
+            >
+              <Layers className="h-3 w-3" aria-hidden />
+              New Selection
+            </Link>
+          </>
+        }
+      />
 
       <LibraryClient
         cards={page.cards}

@@ -186,6 +186,12 @@ const whitelist = [
   // R11.14.5 — Shared ReferencesTopbar (References family tek doğruluk
   //   kaynağı). Aynı half-pixel typography hierarchy.
   "src/features/references/components/ReferencesTopbar.tsx",
+  // R11.14.6 — Generic AppTopbar (tüm uygulama yüzeylerinin tek topbar
+  //   kaynağı). v4 base.jsx Topbar parity (h-16 + h1 text-[24px] k-display
+  //   + subtitle text-[10.5px] mono inline). Tailwind text-2xl 24px tier
+  //   var ama k-display + leading-none + tracking-tight kombinasyonu için
+  //   half-pixel arbitrary value gerekiyor.
+  "src/components/ui/AppTopbar.tsx",
 ];
 // Note: Rollout-9 keeps existing whitelisted files; no new client tsx with
 // half-pixel typography added.

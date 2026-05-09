@@ -32,6 +32,7 @@ import { PromptTemplateEditorModal } from "./PromptTemplateEditorModal";
 import { StylePresetsSubview } from "./StylePresetsSubview";
 import { RunRecipeModal } from "./RunRecipeModal";
 import { UploadMockupTemplateModal } from "./UploadMockupTemplateModal";
+import { AppTopbar } from "@/components/ui/AppTopbar";
 
 /**
  * TemplatesIndexClient — Kivasy C1 Templates surface.
@@ -140,32 +141,28 @@ export function TemplatesIndexClient({
       data-testid="templates-page"
     >
       {/* Header */}
-      <header className="flex items-center gap-4 border-b border-line bg-bg px-6 py-4">
-        <div className="flex-1">
-          <h1 className="k-display text-lg font-semibold tracking-tight text-ink">
-            Templates
-          </h1>
-          <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
-            {totals} · 4 sub-types
-          </p>
-        </div>
-        <button
-          type="button"
-          data-size="sm"
-          className="k-btn k-btn--primary"
-          disabled={!isAdmin}
-          onClick={() => setEditor({ mode: "create" })}
-          title={
-            isAdmin
-              ? "Open prompt template editor"
-              : "Admin scope — only admins can create templates"
-          }
-          data-testid="templates-new-cta"
-        >
-          <Plus className="h-3 w-3" aria-hidden />
-          New Template
-        </button>
-      </header>
+      <AppTopbar
+        title="Templates"
+        subtitle={`${totals} · 4 SUB-TYPES`}
+        actions={
+          <button
+            type="button"
+            data-size="sm"
+            className="k-btn k-btn--primary"
+            disabled={!isAdmin}
+            onClick={() => setEditor({ mode: "create" })}
+            title={
+              isAdmin
+                ? "Open prompt template editor"
+                : "Admin scope — only admins can create templates"
+            }
+            data-testid="templates-new-cta"
+          >
+            <Plus className="h-3 w-3" aria-hidden />
+            New Template
+          </button>
+        }
+      />
 
       {/* Sibling tabs (sub-type selector) */}
       <div className="flex items-center gap-3 border-b border-line bg-bg px-6 pt-3 pb-3">

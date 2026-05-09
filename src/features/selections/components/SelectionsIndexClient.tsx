@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { FilterChip } from "@/components/ui/FilterChip";
+import { AppTopbar } from "@/components/ui/AppTopbar";
 import {
   type Density,
   DensityToggle,
@@ -137,25 +138,23 @@ export function SelectionsIndexClient({
   return (
     <div className="-m-6 flex h-screen flex-col" data-testid="selections-page">
       {/* Header */}
-      <header className="flex items-center gap-4 border-b border-line bg-bg px-6 py-4">
-        <div className="flex-1">
-          <h1 className="k-display text-lg font-semibold tracking-tight text-ink">Selections</h1>
-          <p className="mt-0.5 font-mono text-xs uppercase tracking-meta text-ink-3">
-            {rows.length} sets · {mockupReadyCount} mockup-ready
-          </p>
-        </div>
-        <button
-          type="button"
-          data-size="sm"
-          className="k-btn k-btn--primary"
-          disabled
-          title="New Selection lands as part of Library handoff (R4 in progress)"
-          data-testid="selections-new-cta"
-        >
-          <Plus className="h-3 w-3" aria-hidden />
-          New Selection
-        </button>
-      </header>
+      <AppTopbar
+        title="Selections"
+        subtitle={`${rows.length} SETS · ${mockupReadyCount} MOCKUP-READY`}
+        actions={
+          <button
+            type="button"
+            data-size="sm"
+            className="k-btn k-btn--primary"
+            disabled
+            title="New Selection lands as part of Library handoff (R4 in progress)"
+            data-testid="selections-new-cta"
+          >
+            <Plus className="h-3 w-3" aria-hidden />
+            New Selection
+          </button>
+        }
+      />
 
       {/* R10 — Recipe runner destination banner */}
       {recipeBanner ? (
