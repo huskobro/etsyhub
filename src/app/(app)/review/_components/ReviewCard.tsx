@@ -209,21 +209,11 @@ export function ReviewCard({ item }: Props) {
           >
             {STATUS_LABEL[item.reviewStatus]}
           </Badge>
-          {/* IA Phase 14 — operator override signal. Önceki "Kullanıcı"
-           *   badge'i kart üzerinde gereksiz görsel gürültü çıkarıyordu
-           *   ve çağrışımı zayıftı. Yerine küçük inline mono caption
-           *   ("override") — sinyal korunur, baskınlık düşer. AI review
-           *   score zaten thumbnail'ın sağ üstünde score-chip olarak
-           *   görünür (sistem değerlendirmesi olarak ön planda). */}
-          {item.reviewStatusSource === "USER" ? (
-            <span
-              data-testid="user-badge"
-              title="Operator override (system karar üzerine yazıldı)"
-              className="font-mono text-[10.5px] uppercase tracking-meta text-text-muted"
-            >
-              override
-            </span>
-          ) : null}
+          {/* IA Phase 15 — operator override signal kart üzerinden
+           *   tamamen kaldırıldı. Sinyal info-rail'de korunuyor (focus
+           *   workspace'te `Operator override` caption). Kart üzeri
+           *   sistem score / metadata için ayrılır (CLAUDE.md Madde M:
+           *   sistem skorları operator override'ından öne çıkar). */}
         </div>
         {/* Pass 24 — Source meta. Kullanıcının "bu görsel nereden geldi?"
             sorusunu kart üzerinden cevaplar. Local: dosya adı + klasör

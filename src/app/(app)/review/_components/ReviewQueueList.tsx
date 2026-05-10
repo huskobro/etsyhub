@@ -46,11 +46,14 @@ export function ReviewQueueList({ scope }: Props) {
   const decisionChip = decisionFromParam(searchParams.get("decision"));
   // chip "all" ⇒ undefined ⇒ server tüm decision'ları döner.
   const decisionParam = decisionChip === "all" ? undefined : decisionChip;
+  // IA Phase 15 — server-side search.
+  const queryRaw = searchParams.get("q") ?? "";
 
   const { data, isLoading, error } = useReviewQueue({
     scope,
     decision: decisionParam,
     page: pageNum,
+    q: queryRaw,
   });
 
   // Selection store scope sync: scope prop değişiminde store'u güncelle

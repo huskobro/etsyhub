@@ -1343,11 +1343,19 @@ polish bu sabitleri korur:
 2. **Scope summary** — `Batch / Folder · N undecided · K kept ·
    D discarded`. Üç sayım her zaman: undecided / kept / discarded
    (decided türetilmiş). Undecided > 0 iken accent.
-3. **Aktif item** (`Item N / M`) — yalnızca scope-içi cursor.
-   Page bilgisi top-bar'da ana bilgi değildir.
+3. **Aktif item** (`Item N / M`) — `M` her zaman **gerçek scope
+   total** (folder/batch'teki tüm item sayısı). Page size, cache
+   window veya filtrelenmiş slice değildir. Page bilgisi top-bar'da
+   ana bilgi değildir.
 
 Top-bar **yatay** kalır; uzun scope adları (folder path, batch id)
 truncate ile ezilir, top-bar yüksekliğini artırmaz.
+
+**Sistem skorları:** Operator karar ekseninden ayrı, AI/scan
+pipeline çıktıları (reviewScore, qualityScore, riskFlagCount) UI'da
+**sistem değerlendirmesi** olarak gösterilir. Skor null ise chip
+hiç render edilmez (sahte default değil). Operatör override sinyali
+kart üzerinde değil, info-rail seviyesinde kalır.
 
 **Progress bar:** her zaman **current scope progress** —
 `(kept + discarded) / scopeTotal`. Workspace-wide ilerleme bar'a

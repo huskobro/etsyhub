@@ -45,6 +45,16 @@ const QuerySchema = z.object({
     ])
     .optional(),
   page: z.coerce.number().int().min(1).default(1),
+  // IA Phase 15 — server-side search. Filter scope'a uygun fields:
+  //   • design: ProductType.key + Reference.notes (queue-level
+  //     metadata operatörün gördüğü 'productType + ref-XXXXXX'
+  //     bilgisi). GeneratedDesign tablosunda doğrudan prompt
+  //     field'ı olmadığı için (promptVersion.user_prompt_template
+  //     üzerinden geliyor) prompt search bu turun kapsamı dışı.
+  //   • local: fileName + folderName.
+  // Empty string treated as no-filter (alias-pair helper drops the
+  // param at the URL writer side).
+  q: z.string().trim().min(1).max(120).optional(),
 });
 
 const PAGE_SIZE = 24;
@@ -76,7 +86,7 @@ export const GET = withErrorHandling(async (req: Request) => {
     );
   }
 
-  const { scope, status, page } = parsed.data;
+  const { scope, status, page, q } = parsed.data;
   const skip = (page - 1) * PAGE_SIZE;
 
   if (scope === "design") {
@@ -84,6 +94,18 @@ export const GET = withErrorHandling(async (req: Request) => {
       userId: user.id,
       deletedAt: null,
       ...(status ? { reviewStatus: status } : {}),
+      // IA Phase 15 — search across product type key + reference id
+      // suffix. Reference.notes is the operator-meaningful free-text
+      // field; productType.key is the canonical taxonomy chip the
+      // grid card already shows.
+      ...(q
+        ? {
+            OR: [
+              { productType: { key: { contains: q, mode: "insensitive" as const } } },
+              { reference: { notes: { contains: q, mode: "insensitive" as const } } },
+            ],
+          }
+        : {}),
     };
     const [items, total] = await Promise.all([
       db.generatedDesign.findMany({
@@ -205,6 +227,17 @@ export const GET = withErrorHandling(async (req: Request) => {
     deletedAt: null,
     isUserDeleted: false,
     ...(status ? { reviewStatus: status } : {}),
+    // IA Phase 15 — search across fileName + folderName. Both indexed
+    // by `(userId, folderName)` already; insensitive contains keeps
+    // the query cheap on typical libraries.
+    ...(q
+      ? {
+          OR: [
+            { fileName: { contains: q, mode: "insensitive" as const } },
+            { folderName: { contains: q, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
   };
   const [items, total] = await Promise.all([
     db.localLibraryAsset.findMany({

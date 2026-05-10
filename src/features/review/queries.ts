@@ -124,6 +124,9 @@ type Params = {
   /** Legacy escape hatch — prefer `decision` for new call sites. */
   status?: ReviewStatusEnum;
   page?: number;
+  /** IA Phase 15 — server-side search query. Empty string falls
+   *  through (helper drops the URL param). */
+  q?: string;
 };
 
 /** Resolve the effective server-side status for cache key + URL. */
@@ -138,6 +141,7 @@ export const reviewQueueQueryKey = (params: Params) =>
     params.scope,
     effectiveStatus(params) ?? "ALL",
     params.page ?? 1,
+    params.q?.trim() ? params.q.trim() : "",
   ] as const;
 
 export function useReviewQueue(params: Params) {
@@ -149,6 +153,8 @@ export function useReviewQueue(params: Params) {
       const status = effectiveStatus(params);
       if (status) url.searchParams.set("status", status);
       if (params.page) url.searchParams.set("page", String(params.page));
+      const trimmedQ = params.q?.trim();
+      if (trimmedQ) url.searchParams.set("q", trimmedQ);
 
       const res = await fetch(url.toString());
       if (!res.ok) {

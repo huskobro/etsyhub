@@ -79,9 +79,15 @@ export interface ReviewWorkspaceShellProps<TItem> {
   cursor: number;
   /** Called when the operator clicks a filmstrip thumb. */
   onJumpToCursor: (idx: number) => void;
-  /** Total across all pages (queue mode); falls back to items.length
-   *  when omitted. Surface in the sub-line as "page N / M". */
-  pageInfo?: { page: number; total: number };
+  /**
+   * IA Phase 14 — true scope total (folder / batch'teki tüm item
+   * sayısı). Queue mode'da `data.total` (cross-page); batch mode'da
+   * batch'in tüm item sayısı. `items.length` page-size'a kadar olan
+   * cache window'u, kullanıcıya scope cardinality olarak verilemez
+   * (CLAUDE.md Madde M). Omitted ise items.length fallback (single-
+   * scope all-loaded senaryosu).
+   */
+  scopeTotal?: number;
 
   // ── Boundary navigation ─────────────────────────────────────────────
   canGoPrev: boolean;
@@ -160,7 +166,7 @@ export function ReviewWorkspaceShell<TItem>({
   items,
   cursor,
   onJumpToCursor,
-  pageInfo,
+  scopeTotal,
   canGoPrev,
   canGoNext,
   onGoPrev,
@@ -186,7 +192,11 @@ export function ReviewWorkspaceShell<TItem>({
 }: ReviewWorkspaceShellProps<TItem>) {
   const [helpOpen, setHelpOpen] = useState(false);
   const item = items[cursor] ?? null;
-  const total = items.length;
+  // IA Phase 14 — `total` artık scope-total: queue mode'da
+  // tüm filtreli scope item sayısı, batch mode'da batch toplam.
+  // items.length yalnızca cache window (~24); top-bar'da `Item N / M`
+  // M'sini scopeTotal ile gösterir.
+  const total = scopeTotal ?? items.length;
   const decidedCount = keptCount + discardedCount;
   const denom = progressTotal ?? total;
   // IA Phase 12 — scope-completion detection. When the active scope

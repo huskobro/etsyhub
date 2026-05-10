@@ -142,12 +142,16 @@ export function QueueReviewWorkspace({
   const prefetchNeighbour = useCallback(
     async (neighbourPage: number) => {
       if (neighbourPage < 1 || neighbourPage > totalPages) return;
+      // IA Phase 15 — focus mode prefetch key matches queries.ts 5-tuple
+      // (q empty when not searching). Keeps the underlying React Query
+      // cache hit when the operator returns to the queue grid.
       await queryClient.prefetchQuery({
         queryKey: [
           "review-queue",
           scope,
           decisionToCacheStatus(decision),
           neighbourPage,
+          "",
         ],
         queryFn: async () => {
           const url = new URL(
@@ -355,7 +359,7 @@ export function QueueReviewWorkspace({
         const target = items[targetIdx];
         if (target) navigateToItemOnPage(page, target.id);
       }}
-      pageInfo={{ page, total: totalPages }}
+      scopeTotal={total}
       canGoPrev={canGoPrev}
       canGoNext={canGoNext}
       onGoPrev={goPrev}

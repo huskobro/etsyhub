@@ -176,6 +176,10 @@ export function BatchReviewWorkspace({
       items={items}
       cursor={cursor}
       onJumpToCursor={setCursor}
+      // Batch workspace loads the full batch up to MAX_LIMIT (200);
+      // items.length already represents the scope total. Pass
+      // explicitly so the contract is clear at the adapter level.
+      scopeTotal={items.length}
       canGoPrev={cursor > 0}
       canGoNext={cursor < items.length - 1}
       onGoPrev={goPrev}
