@@ -407,6 +407,11 @@ export function QueueReviewWorkspace({
   const keptCount = items.filter(
     (it) => it.reviewStatus === "APPROVED",
   ).length;
+  // IA Phase 10 — undecided is the operator's primary "what's left?"
+  // counter; surfaced accented in the top bar. NEEDS_REVIEW counts as
+  // undecided here because it is a pipeline auto-flag, not an operator
+  // decision (CLAUDE.md Madde H).
+  const undecidedCount = items.length - decidedCount;
 
   // Boundary affordances — disable arrows where there is genuinely no
   // neighbour, otherwise let the cross-page jump take over.
@@ -437,18 +442,44 @@ export function QueueReviewWorkspace({
         <span className="font-mono text-xs uppercase tracking-meta text-white/40">
           {scope === "design" ? "AI · Focus" : "Local · Focus"}
         </span>
-        <div className="flex flex-1 items-center justify-center gap-3">
-          <span className="font-mono text-xs text-white/50">Item</span>
-          <span className="k-display text-lg font-semibold tabular-nums">
-            {cursorLabel}
-            <span className="font-normal text-white/40">
-              {" "}
-              · page {page} / {totalPages}
+        {/* IA Phase 10 — top-bar info hierarchy (matches
+         *   BatchReviewWorkspace). Big row: cursor + total. Small mono
+         *   row: page index, then undecided count accented (operator's
+         *   "what's left?" answer), then decided / kept secondary. */}
+        <div className="flex flex-1 flex-col items-center justify-center leading-tight">
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-xs uppercase tracking-meta text-white/40">
+              Item
             </span>
-          </span>
-          <span className="font-mono text-xs tabular-nums text-white/50">
-            {decidedCount} decided · {keptCount} kept
-          </span>
+            <span className="k-display text-xl font-semibold tabular-nums text-white">
+              {cursorLabel}
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-2 font-mono text-xs uppercase tracking-meta">
+            <span className="tabular-nums text-white/50">
+              Page {page} / {totalPages}
+            </span>
+            <span className="text-white/20">·</span>
+            <span
+              className={cn(
+                "tabular-nums",
+                undecidedCount > 0
+                  ? "text-k-orange-bright"
+                  : "text-white/40",
+              )}
+              data-testid="topbar-undecided-count"
+            >
+              {undecidedCount} undecided
+            </span>
+            <span className="text-white/20">·</span>
+            <span className="tabular-nums text-white/50">
+              {decidedCount} decided
+            </span>
+            <span className="text-white/20">·</span>
+            <span className="tabular-nums text-white/50">
+              {keptCount} kept
+            </span>
+          </div>
         </div>
         <button
           type="button"
@@ -611,6 +642,8 @@ export function QueueReviewWorkspace({
               <DesignSourceSection
                 source={item.source}
                 referenceId={item.referenceId}
+                reviewScore={item.reviewScore}
+                riskFlagCount={item.riskFlagCount}
               />
             ) : null}
 
@@ -760,12 +793,21 @@ function LocalSourceSection({
 function DesignSourceSection({
   source,
   referenceId,
+  reviewScore,
+  riskFlagCount,
 }: {
   source: Extract<
     NonNullable<ReviewQueueItem["source"]>,
     { kind: "design" }
   >;
   referenceId: string | null;
+  /** AI quality score 0-100 — surfaced in the rail so the operator can
+   *  read the AI signal alongside the operator decision. */
+  reviewScore: number | null;
+  /** Risk-flag count — pipeline auto-flags (text detected, low alpha,
+   *  trademark match…). Surface as a single accent number; the full
+   *  list lands when the unified-review service-layer ships. */
+  riskFlagCount: number;
 }) {
   const transparency = transparencyForMime(source.mimeType);
   return (
@@ -789,6 +831,28 @@ function DesignSourceSection({
             <dt className="text-white/40">Resolution</dt>
             <dd className="text-white/75">
               {source.width}×{source.height}
+            </dd>
+          </>
+        ) : null}
+        <dt className="text-white/40">Transparency</dt>
+        <dd className="text-white/75">
+          {transparency.kind === "supports-alpha"
+            ? "Supported (format-level)"
+            : transparency.kind === "no-alpha"
+              ? "Not supported (JPEG)"
+              : "Unknown"}
+        </dd>
+        {reviewScore !== null ? (
+          <>
+            <dt className="text-white/40">Quality</dt>
+            <dd className="text-white/75">{reviewScore}/100</dd>
+          </>
+        ) : null}
+        {riskFlagCount > 0 ? (
+          <>
+            <dt className="text-white/40">Risk</dt>
+            <dd className="text-amber-300">
+              {riskFlagCount} işaret
             </dd>
           </>
         ) : null}
@@ -979,28 +1043,33 @@ function ActionButton({
   icon: React.ReactNode;
   primary?: boolean;
 }) {
-  // Tone palette mirrors BatchReviewWorkspace so the two surfaces
-  // read identically. Pressed state means "this is the operator's
-  // current decision" — visual reinforcement when the workspace
-  // re-opens on an already-decided item.
-  const bg = primary
-    ? pressed
-      ? "bg-emerald-500/30 border-emerald-400/50"
-      : "bg-emerald-500/20 border-emerald-400/40 hover:bg-emerald-500/30"
-    : tone === "reject"
-      ? pressed
-        ? "bg-rose-500/30 border-rose-400/50"
-        : "bg-white/5 border-white/10 hover:bg-rose-500/15"
-      : "bg-white/5 border-white/10 hover:bg-white/10";
+  // IA Phase 10 — pressed-only fill (Keep button bug fix). Idle state
+  // is plain across all tones; pressed adds the canonical orange
+  // (Keep) / danger (Reject) decision-confirm fill. This matches
+  // BatchReviewWorkspace ActionButton so the two surfaces read
+  // identically and the operator never sees a "pre-selected" Keep
+  // button on an undecided item.
+  const idle = "bg-white/5 border-white/10 hover:bg-white/10";
+  const keepPressed =
+    "border-2 border-k-orange bg-k-orange/20 hover:bg-k-orange/30";
+  const rejectPressed = "border-rose-400/50 bg-rose-500/25";
+  const containerBg = pressed
+    ? primary || tone === "keep"
+      ? keepPressed
+      : tone === "reject"
+        ? rejectPressed
+        : "border-white/30 bg-white/15"
+    : idle;
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-pressed={pressed}
       data-pressed={pressed || undefined}
       className={cn(
         "flex items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40",
-        bg,
+        containerBg,
       )}
     >
       {icon}

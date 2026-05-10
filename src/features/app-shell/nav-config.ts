@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Inbox,
   Zap,
+  CheckSquare,
   Image as ImageIcon,
   Layers,
   Package,
@@ -12,17 +13,24 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 /**
- * Kivasy Information Architecture — 8 items, 2 groups.
+ * Kivasy Information Architecture — 9 items, 2 groups.
  *
  * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/base.jsx → Sidebar
- * + docs/IMPLEMENTATION_HANDOFF.md §4.
+ * + docs/IMPLEMENTATION_HANDOFF.md §4 + CLAUDE.md "Bilgi Mimarisi (Final
+ * Yön)".
  *
- * **Closed list — no new top-level surfaces.** Sub-views live inside their
- * parent (e.g. References → Pool / Stories / Inbox / Shops / Collections).
- * Admin scope is a footer badge, not a separate sidebar.
+ * **Closed list — no new top-level surfaces beyond these 9.** Sub-views
+ * live inside their parent (e.g. References → Pool / Stories / Inbox /
+ * Shops / Collections). Admin scope is a footer badge, not a separate
+ * sidebar.
+ *
+ * IA Phase 10 promoted Review from a Batches sub-tab to a top-level
+ * surface — entry visibility audit showed operators couldn't find
+ * canonical review (CLAUDE.md Madde B + K). Review is the canonical
+ * decision workspace; sidebar entry is the canonical entry point.
  *
  * Production chain (one-directional, every arrow = single primary CTA):
- *   Reference → Batch → Library → Selection → Product → Etsy Draft
+ *   Reference → Batch → Review → Library → Selection → Product → Etsy
  */
 
 export type NavGroupId = "produce" | "system";
@@ -47,6 +55,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "overview",   href: "/overview",   label: "Overview",   icon: LayoutDashboard, group: "produce", rollout: 8, ready: true  },
   { id: "references", href: "/references", label: "References", icon: Inbox,           group: "produce", rollout: 6, ready: true  },
   { id: "batches",    href: "/batches",    label: "Batches",    icon: Zap,             group: "produce", rollout: 3, ready: true  },
+  { id: "review",     href: "/review",     label: "Review",     icon: CheckSquare,     group: "produce", rollout: 6, ready: true  },
   { id: "library",    href: "/library",    label: "Library",    icon: ImageIcon,       group: "produce", rollout: 2, ready: true  },
   { id: "selections", href: "/selections", label: "Selections", icon: Layers,          group: "produce", rollout: 4, ready: true  },
   { id: "products",   href: "/products",   label: "Products",   icon: Package,         group: "produce", rollout: 5, ready: true  },

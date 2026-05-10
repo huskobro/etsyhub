@@ -1072,8 +1072,16 @@ Bu sistemin güçlü olması gereken noktalar:
 
 ## Bilgi Mimarisi (Final Yön)
 
-Top-level navigasyon **8 öğe / 2 grup**'tur. Yeni ekran/feature **bu listenin
-dışında top-level** olarak eklenmez; uygun yerinin alt-akışına yerleşir.
+Top-level navigasyon **9 öğe / 2 grup**'tur. Yeni ekran/feature bu listenin
+dışında top-level olarak eklenmez; uygun yerinin alt-akışına yerleşir.
+
+**Closed-list istisnası — Review (IA Phase 10):** Önceki yapı 8 öğe idi
+ve Review canonical surface'i sub-view olarak Batches içinde
+düşünülmüştü. Operatör entry visibility audit'i sonrası karar şudur:
+review canonical bir stage'tir (Madde C) ve Batches sub-view olarak
+gizlemek operatörü "review nereden açılır?" sorusuna düşürüyordu.
+Review top-level olarak listeye eklendi; closed-list invariant'ı yeni
+9 öğe ile yeniden kilitlendi. Yeni top-level eklemesi yine yasaktır.
 
 **PRODUCE**
 
@@ -1086,8 +1094,11 @@ dışında top-level** olarak eklenmez; uygun yerinin alt-akışına yerleşir.
   - Inbox — bookmark inbox
   - Shops — Etsy shop analizleri
   - Collections — operatör-organize gruplamalar
-- **Batches** — variation jobs, retry-failed-only, review (Items / Review /
-  Logs / History tab'ları detail içinde)
+- **Batches** — variation jobs, retry-failed-only, logs, history
+  (Review tab'ı top-level Review surface'ine yönlenir — tek canonical
+  review ürünü, Madde B)
+- **Review** — canonical decision workspace; queue mode + scope
+  param'ları ile batch / source / item focus modları
 - **Library** — üretilmiş tüm asset'lerin tek doğruluk kaynağı
 - **Selections** — kürate edilmiş set'ler (Designs / Edits / Mockups /
   History tab'ları detail içinde)
@@ -1118,6 +1129,164 @@ dışında top-level** olarak eklenmez; uygun yerinin alt-akışına yerleşir.
 **Admin scope ayrı bir sidebar değildir.** Footer'da küçük bir rozet ile
 işaretlenir; admin-only section'lar `Settings` ve `Templates` içinde
 role-gated olarak görünür.
+
+## Canonical Surface İlkeleri (Ürün Anayasası)
+
+Bu bölüm, IA Phase çalışmaları boyunca kristalize olan ürün/mimari
+prensiplerini sözleşmeye bağlar. Yeni feature, refactor veya bug fix
+yapılırken bu ilkelere uyulmalı; ihlal eden değişiklik **sınır
+gözden geçirilmeden** birleştirilmez.
+
+### A. Canonical surface ilkesi
+
+- Aynı iş / aynı stage / aynı kullanıcı amacı için birden fazla paralel
+  yüzey **olmaz**. Operatör hangi sayfadan, hangi butondan gelirse
+  gelsin **aynı canonical surface'e** iner.
+- Legacy / duplicate / bridge / fallback yüzeyler kullanıcıya ana yol
+  olarak sunulmaz. Eski yüzeyler ya canonical olana **redirect**
+  edilir, ya **thin wrapper** olarak çalışır, ya da kaldırılır.
+- Yeni canonical replacement açılmadan eski yüzey kapatılmaz: önce
+  replacement path doğrulanır, sonra eski yüzey kapatma adımına alınır.
+- Bir yüzey "tek canonical" iken UI/CTA seviyesinde de dağılım yok
+  demektir: tüm "Open X" CTA'ları aynı canonical URL'e gider; alt
+  scope'lar için canonical query param taksonomisi kullanılır.
+
+### B. Tek canonical review experience
+
+- Review için tek canonical route ailesi: **`/review`**.
+- Batch / local / AI / item review ayrı ürün yüzeyleri **değildir**;
+  canonical `/review` yüzeyinin **scope'lanmış modlarıdır**:
+  - `/review` — queue mode (tab grid)
+  - `/review?source=ai|local` — source filter
+  - `/review?decision=undecided|kept|rejected` — decision filter
+  - `/review?batch=<id>` — batch-scoped focus mode
+  - `/review?item=<id>` — single-item focus mode (MJ ise parent
+    batch'e otomatik resolve)
+- Operatör farkında olmadan legacy review veya deaktif review
+  yüzeyine **düşmez**: sidebar / Overview / Batches / References
+  hepsinde "Review" girişi `/review` veya scoped variant'ına yönelir.
+- Review erişimi **görünür ve bulunabilir** olmalıdır; gizli route
+  gibi kalmaz.
+
+### C. Tek canonical surface per stage
+
+Sadece review için değil, üretim hattının her aşaması için canonical
+yüzey yaklaşımı:
+
+| Stage | Canonical surface |
+|---|---|
+| Source picking | `/references` (+ alt sub-view'lar) |
+| Generation | `/references/[id]/variations` → `/batches` |
+| Review | `/review` (+ scope param'ları) |
+| Selection / Edit | `/selections/[setId]` (+ `?tab=edits`) |
+| Mockup | `/products/[id]` (read-only preview Selections'ta) |
+| Listing / Export | `/products/[id]?tab=listing` |
+
+- Aynı stage'i yapan duplicate sayfalar **uzun vadede kaldırılır**
+  veya canonical olana yönlendirilir. Mevcut duplicate'lar açıkça
+  **bridge** olarak işaretlenir (Madde J).
+
+### D. Digital-only ürün sınırı
+
+- Kivasy **dijital ürün üretim sistemi**dir.
+- Fiziksel / POD dili, fiziksel ürün seed data'sı, fiziksel fulfillment
+  varsayımları **ürün omurgasına sızmaz**. Print partner, kargo,
+  made-to-order, garment POD (t-shirt, hoodie, mug) UI'da **görünmez**.
+- Ana product type'lar dijital indirilebilir kategorilerdir: clipart,
+  wall art (dijital dosya), bookmark, sticker, printable. Yeni
+  product type bu sınırı koruyarak eklenir.
+
+### E. Source picking prensibi
+
+- Source picking tek-image-upload mantığına sıkışmaz; **first-class
+  adımdır**.
+- Desteklenen kaynak türleri:
+  - lokal tek/çoklu file upload
+  - lokal folder scan (LocalLibraryAsset pipeline)
+  - image URL paste
+  - listing / product URL — kaynağın image set'i çekilip operatöre
+    seçim yaptırılır
+- Yeni kaynak tipi eklenirken canonical "Add Source" modal'ına
+  sub-tab olarak takılır; ayrı top-level page açılmaz.
+
+### F. Target output type first-class olmalı
+
+- Source ne olursa olsun, generation öncesinde operatör **ne ürettiğini
+  seçer**: clipart / wall art / bookmark / sticker / printable.
+- Target aspect ratio (2:3 / 4:5 / 1:1 / 3:4) ve output type generation
+  öncesinin birinci sınıf kararıdır; defaults UI'da görünür ve
+  değiştirilebilir.
+- WorkflowRun tablosu (gelecek) bu iki alanı **denormalize** field
+  olarak tutar — runtime config drift'i önlemek için.
+
+### G. Workflow / run / lineage görünürlüğü
+
+- Tüm üretim süreci **tek bir run/workflow/job kimliği** altında
+  izlenebilir olmalı.
+- Source → generation → review → selection → mockup → listing zinciri
+  **kopmaz**; her aşama bir önceki aşamanın run kimliğini taşır.
+- Workflow tracking ayrı ve görünür bir ürün sorumluluğu olarak ele
+  alınır. Şu an `Job.metadata.batchId` schema-zero pattern'i kullanılıyor;
+  WorkflowRun tablosu IA Phase 11'de eklenecek (canonical lineage
+  identity).
+
+### H. Decision ve progression gate prensibi
+
+- Bir scope'ta **undecided item kaldığı sürece** kullanıcı bir sonraki
+  aşamaya yanlışlıkla ilerlemez.
+- UI'da "kaç undecided kaldı" **açıkça görünür** olmalı. Sayı görünmez
+  ise gate görünmez demektir.
+- Gate hem **görünürlük** (caption / badge / disabled state) hem
+  **davranış** (CTA disabled, server 4xx) seviyesinde tutarlıdır.
+- Operatör override etmeli ise (örn. "Apply mockups anyway"), bu
+  override **explicit** ve audit'lenebilir bir aksiyondur; sessiz
+  bypass yoktur.
+
+### I. Bakım yükü / shell duplication prensibi
+
+- Aynı deneyimi veren **iki büyük paralel workspace component'i**
+  uzun vadede istenmez.
+- Tercih edilen pattern: **ortak shell + source adapter / presenter**.
+  Layout, action bar, filmstrip, keyboard model, info rail iskeleti
+  ortaklaşır; source farkları adapter katmanında kalır.
+- "İleride taşırız" kabul edilebilir bir karar değil — refactor
+  ertelendiği her tur teknik borç birikir. İkinci consumer geldiği
+  anda shell'e taşıma o turun zorunlu işidir.
+
+### J. Legacy yüzeyleri kapatma kuralı
+
+- "İleride kaldırırız" diyerek paralel legacy yüzeyler **sürekli
+  yaşatılmaz**.
+- Bir yüzey bridge olarak kalıyorsa şu üç bilgi **yorum + dokümantasyon
+  seviyesinde** açıkça yazılır:
+  1. Neden bridge olarak duruyor (canonical replacement henüz hangi
+     parça için hazır değil).
+  2. Ne zaman kaldırılacağı (tetik koşulu — örn. "QueueReviewWorkspace
+     MJ source'unu da host edince").
+  3. Canonical replacement'ın URL'i veya component adı.
+- Bridge surface'lerin user-facing wording'inde "legacy" kelimesi
+  geçmez (operatöre teknik borç sızdırma); ama internal yorum/PR
+  notunda açık tutulur.
+
+### K. Surface completion disiplini
+
+- Bir yüzey / stage / ana kullanıcı akışı tam kapanmadan **bir sonraki
+  büyük yüzeye geçilmez**. "Büyük ölçüde tamam" yeterli değildir.
+- Bir surface tamamlanmış sayılmadan önce şu alanlar gözden geçirilmiş
+  olmalı:
+  - canonical route + entry points
+  - duplicate / legacy / bridge yüzeyler (Madde A + J)
+  - primary ve secondary CTA'lar
+  - empty / filled / loading / error state'leri
+  - bulk / selection / focus / detail davranışları
+  - progression gates (Madde H)
+  - keyboard / navigation / back/exit davranışı
+  - visual parity / design-system uyumu
+  - metadata / status / badge / count hiyerarşisi
+  - TR/EN sızıntıları, placeholder / roadmap dili (operatöre "rollout-N"
+    veya "coming in phase X" gibi internal etiket sızdırılmaz)
+- Surface'te hâlâ büyük açıklar varsa, yeni yüzeye feature taşımak
+  yerine önce mevcut surface kapatılır.
 
 ## Library / Selections / Products — Sınır Invariant'ları
 

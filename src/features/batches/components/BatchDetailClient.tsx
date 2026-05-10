@@ -109,15 +109,29 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
             Retry-failed-only ({summary.counts.failed})
           </Link>
         ) : null}
-        <Link
-          href={`/review?batch=${summary.batchId}`}
-          data-size="sm"
-          className="k-btn k-btn--primary"
-          data-testid="batch-detail-open-review"
-        >
-          <Eye className="h-3 w-3" aria-hidden />
-          Open Review
-        </Link>
+        {/* IA Phase 10 — undecided gate visibility (CLAUDE.md Madde H).
+         *   Operator should see "what's left to review" without entering
+         *   the workspace. Caption is intentionally subtle (text-ink-3
+         *   uppercase mono) so it doesn't compete with the primary CTA;
+         *   the workspace itself surfaces the precise count + accented
+         *   undecided pill. */}
+        <div className="flex flex-col items-end gap-0.5">
+          <Link
+            href={`/review?batch=${summary.batchId}`}
+            data-size="sm"
+            className="k-btn k-btn--primary"
+            data-testid="batch-detail-open-review"
+          >
+            <Eye className="h-3 w-3" aria-hidden />
+            Open Review
+          </Link>
+          <span
+            className="font-mono text-xs uppercase tracking-meta text-ink-3"
+            data-testid="batch-detail-review-hint"
+          >
+            Decide every item before next stage
+          </span>
+        </div>
       </header>
 
       {/* Summary strip — A3 Pattern */}

@@ -102,6 +102,8 @@ export function BatchReviewWorkspace({
     (acc, it) => (decisionFor(it) === "KEPT" ? acc + 1 : acc),
     0,
   );
+  // IA Phase 10 — undecided is the operator's "what's left?" anchor.
+  const undecidedCount = items.length - decidedCount;
 
   const setDecision = useCallback(
     async (assetId: string, next: MJReviewDecision) => {
@@ -223,21 +225,52 @@ export function BatchReviewWorkspace({
         <span className="font-mono text-xs uppercase tracking-meta text-white/40">
           Review workspace
         </span>
-        <div className="flex flex-1 items-center justify-center gap-3">
-          <span className="font-mono text-xs text-white/50">Item</span>
-          <span className="k-display text-lg font-semibold tabular-nums">
-            {cursor + 1}
-            <span className="font-normal text-white/40"> / {total}</span>
-          </span>
+        {/* IA Phase 10 — top-bar info hierarchy.
+         *   Big row: "Item N / M" (operator's primary anchor — where
+         *   am I?). Small mono row underneath: undecided count first
+         *   and accented (the operator's "what's left?" question
+         *   gets the loudest answer), then decided / kept as
+         *   secondary counters. ProgressBar stays as a non-text
+         *   companion so the visual share is still readable at a
+         *   glance.
+         */}
+        <div className="flex flex-1 items-center justify-center gap-4">
+          <div className="flex flex-col items-center leading-tight">
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-xs uppercase tracking-meta text-white/40">
+                Item
+              </span>
+              <span className="k-display text-xl font-semibold tabular-nums text-white">
+                {cursor + 1}
+                <span className="font-normal text-white/40"> / {total}</span>
+              </span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-2 font-mono text-xs uppercase tracking-meta">
+              <span
+                className={cn(
+                  "tabular-nums",
+                  undecidedCount > 0 ? "text-k-orange-bright" : "text-white/40",
+                )}
+                data-testid="topbar-undecided-count"
+              >
+                {undecidedCount} undecided
+              </span>
+              <span className="text-white/20">·</span>
+              <span className="tabular-nums text-white/50">
+                {decidedCount} decided
+              </span>
+              <span className="text-white/20">·</span>
+              <span className="tabular-nums text-white/50">
+                {keptCount} kept
+              </span>
+            </div>
+          </div>
           <ProgressBar
             value={total > 0 ? (decidedCount / total) * 100 : 0}
             tone="orange"
-            className="w-48"
+            className="w-40"
             ariaLabel={`Review progress ${decidedCount}/${total}`}
           />
-          <span className="font-mono text-xs tabular-nums text-white/50">
-            {decidedCount} decided · {keptCount} kept
-          </span>
         </div>
         <button
           type="button"
@@ -480,40 +513,49 @@ function ActionButton({
   icon: React.ReactNode;
   primary?: boolean;
 }) {
+  // IA Phase 10 — Keep button visual state bug fix. Önceden `primary`
+  // her zaman orange-border + orange-fill render ediyordu (pressed
+  // kontrolünden bağımsız), bu yüzden Keep butonu henüz tıklanmasa
+  // bile selected görünüyordu. Doğru davranış: idle → plain
+  // (border-white/10 + bg-white/5), pressed → orange decision-confirm
+  // fill. Reject için aynı pattern danger toneuyla.
+  const idleClasses = "border-white/10 bg-white/5 hover:bg-white/10";
+  const keepPressedClasses =
+    "border-2 border-k-orange bg-k-orange/20 hover:bg-k-orange/30";
+  const rejectPressedClasses = "border-danger/50 bg-danger/15";
+  const undoPressedClasses = "border-white/30 bg-white/15";
+  const containerClasses = pressed
+    ? primary || tone === "keep"
+      ? keepPressedClasses
+      : tone === "reject"
+        ? rejectPressedClasses
+        : undoPressedClasses
+    : idleClasses;
+  const iconColor =
+    pressed && (primary || tone === "keep")
+      ? "text-k-orange-bright"
+      : pressed && tone === "reject"
+        ? "text-danger"
+        : "text-white/70";
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
       aria-pressed={pressed}
+      data-pressed={pressed || undefined}
       data-tone={tone}
       className={cn(
         "flex h-16 flex-col items-center justify-center gap-1.5 rounded-xl border transition-colors disabled:opacity-40",
-        primary
-          ? "border-2 border-k-orange bg-k-orange/15 hover:bg-k-orange/25"
-          : pressed
-            ? tone === "reject"
-              ? "border-danger/50 bg-danger/15"
-              : "border-white/30 bg-white/15"
-            : "border-white/10 bg-white/5 hover:bg-white/10",
+        containerClasses,
       )}
     >
       <div className="flex items-center gap-2">
-        <span
-          className={cn(
-            primary
-              ? "text-k-orange-bright"
-              : pressed && tone === "reject"
-                ? "text-danger"
-                : "text-white/70",
-          )}
-        >
-          {icon}
-        </span>
+        <span className={iconColor}>{icon}</span>
         <span
           className={cn(
             "text-sm font-medium",
-            primary ? "text-white" : "text-white/85",
+            pressed ? "text-white" : "text-white/85",
           )}
         >
           {label}
