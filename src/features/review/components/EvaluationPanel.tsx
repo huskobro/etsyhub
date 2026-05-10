@@ -212,6 +212,43 @@ export function EvaluationPanel({
             </ul>
           </div>
 
+          {evaluation.decisionOutcome ? (
+            <div className="mt-4" data-testid="evaluation-decision-outcome">
+              <SectionTitle>Decision</SectionTitle>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span
+                  className={cn(
+                    "rounded-md px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta",
+                    evaluation.decisionOutcome.reasonKind === "auto_approved"
+                      ? "bg-emerald-500/15 text-emerald-300"
+                      : evaluation.decisionOutcome.reasonKind === "blocker_fail"
+                        ? "bg-rose-500/15 text-rose-200"
+                        : evaluation.decisionOutcome.reasonKind === "low_score"
+                          ? "bg-rose-500/10 text-rose-200"
+                          : evaluation.decisionOutcome.reasonKind ===
+                              "operator_override"
+                            ? "bg-white/10 text-white"
+                            : "bg-amber-500/10 text-amber-200",
+                  )}
+                  data-testid="evaluation-decision-status"
+                >
+                  {evaluation.decisionOutcome.reasonKind ===
+                  "operator_override"
+                    ? "Operator decision"
+                    : evaluation.decisionOutcome.status === "APPROVED"
+                      ? "Auto-approved"
+                      : "Needs review"}
+                </span>
+              </div>
+              <p
+                className="mt-2 text-xs leading-relaxed text-white/75"
+                data-testid="evaluation-decision-reason"
+              >
+                {evaluation.decisionOutcome.reason}
+              </p>
+            </div>
+          ) : null}
+
           {summary ? (
             <div className="mt-4">
               <SectionTitle>Summary</SectionTitle>
@@ -303,6 +340,10 @@ function ScopeTriggerButton({
             ? "Enqueued"
             : `Enqueue review for ${label}`}
       </button>
+      <p className="mt-1.5 text-[10.5px] text-white/45">
+        Queues undecided items in this scope that do not have a valid
+        review yet. Already-scored items are skipped automatically.
+      </p>
       {error ? (
         <p className="mt-1.5 text-[11px] text-rose-300">{error}</p>
       ) : null}

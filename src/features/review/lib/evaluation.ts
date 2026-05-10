@@ -107,6 +107,20 @@ export type Evaluation = {
   checks: EvaluationCheck[];
   /** Risk flag count (UI'da kart hint'i + panel başlığı). */
   riskFlagCount: number;
+  /** IA Phase 25 — decision outcome (CLAUDE.md Madde M+).
+   *  Lifecycle === "ready" iken dolu; UI Decision/Outcome
+   *  bloğunda render edilir. Reason kategorisi tone'u, reason
+   *  string'i kopyayı belirler. */
+  decisionOutcome: {
+    status: "APPROVED" | "REJECTED" | "NEEDS_REVIEW" | "PENDING";
+    reasonKind:
+      | "blocker_fail"
+      | "low_score"
+      | "mid_band_safe_default"
+      | "auto_approved"
+      | "operator_override";
+    reason: string;
+  } | null;
 };
 
 /** EN labels — fallback when caller has no resolved criteria list.
@@ -297,6 +311,54 @@ export function buildEvaluation(input: {
     lifecycle = "not_queued";
   }
 
+  // IA Phase 25 — decision outcome resolve (CLAUDE.md Madde M+).
+  // Operatör override aktifse outcome USER damgasını yansıtır;
+  // aksi halde failed checks + score'a bakılarak server decision
+  // kuralının aynısı client tarafında türetilir.
+  let decisionOutcome: Evaluation["decisionOutcome"] = null;
+  if (lifecycle === "ready" && reviewScore !== null) {
+    if (operatorOverride) {
+      decisionOutcome = {
+        status: "PENDING", // outer caller knows the actual reviewStatus; reason categorical
+        reasonKind: "operator_override",
+        reason:
+          "Decided by the operator. The system evaluation above stays as reference.",
+      };
+    } else {
+      const blockerFailed = checks.some(
+        (c) => c.state === "failed" && c.severity === "blocker",
+      );
+      const REVIEW_THRESHOLD_LOW = 60;
+      const REVIEW_THRESHOLD_HIGH = 90;
+      if (blockerFailed) {
+        decisionOutcome = {
+          status: "NEEDS_REVIEW",
+          reasonKind: "blocker_fail",
+          reason:
+            "Needs review because at least one blocker-severity criterion failed.",
+        };
+      } else if (reviewScore < REVIEW_THRESHOLD_LOW) {
+        decisionOutcome = {
+          status: "NEEDS_REVIEW",
+          reasonKind: "low_score",
+          reason: `Needs review because the final score (${reviewScore}) is below the auto-approve threshold (${REVIEW_THRESHOLD_LOW}).`,
+        };
+      } else if (reviewScore >= REVIEW_THRESHOLD_HIGH) {
+        decisionOutcome = {
+          status: "APPROVED",
+          reasonKind: "auto_approved",
+          reason: `Auto-approved — no blocker fails and the final score (${reviewScore}) reached the high threshold (${REVIEW_THRESHOLD_HIGH}).`,
+        };
+      } else {
+        decisionOutcome = {
+          status: "NEEDS_REVIEW",
+          reasonKind: "mid_band_safe_default",
+          reason: `Needs review because the final score (${reviewScore}) sits in the mid-band (${REVIEW_THRESHOLD_LOW}–${REVIEW_THRESHOLD_HIGH - 1}); the safe default routes it to manual review even when no checks failed.`,
+        };
+      }
+    }
+  }
+
   return {
     lifecycle,
     score: lifecycle === "ready" ? reviewScore : null,
@@ -306,6 +368,7 @@ export function buildEvaluation(input: {
     operatorOverride,
     checks,
     riskFlagCount: failedReasons.size,
+    decisionOutcome,
   };
 }
 

@@ -90,6 +90,25 @@ export type ScoringBreakdown = {
   hasBlockerFail: boolean;
 };
 
+/**
+ * IA Phase 25 — explainable decision (CLAUDE.md Madde M+). Carries
+ * the canonical machine-readable outcome + a one-line operator
+ * reason that the right panel renders directly. UI never has to
+ * synthesize "why is this NEEDS_REVIEW" — server is the source of
+ * truth.
+ */
+export type DecisionOutcome = {
+  status: ReviewStatus;
+  /** Canonical category for the reason — UI maps to copy/colour. */
+  reasonKind:
+    | "blocker_fail"
+    | "low_score"
+    | "mid_band_safe_default"
+    | "auto_approved";
+  /** One-line English explanation of the decision. */
+  reason: string;
+};
+
 export function computeScoringBreakdown(args: {
   providerRaw: number;
   riskFlagKinds: ReadonlyArray<string>;
@@ -128,12 +147,43 @@ export function computeScoringBreakdown(args: {
 export function decideReviewStatusFromBreakdown(
   breakdown: ScoringBreakdown,
 ): ReviewStatus {
-  if (breakdown.hasBlockerFail) return ReviewStatus.NEEDS_REVIEW;
+  return decideReviewOutcomeFromBreakdown(breakdown).status;
+}
+
+/**
+ * IA Phase 25 — explainable variant. Returns the same canonical
+ * status plus a `reasonKind` + human-readable English `reason`.
+ * Worker persists this to the audit row; queue endpoint surfaces
+ * it; UI right panel renders it as Decision/Outcome.
+ */
+export function decideReviewOutcomeFromBreakdown(
+  breakdown: ScoringBreakdown,
+): DecisionOutcome {
+  if (breakdown.hasBlockerFail) {
+    return {
+      status: ReviewStatus.NEEDS_REVIEW,
+      reasonKind: "blocker_fail",
+      reason:
+        "Needs review because at least one blocker-severity criterion failed.",
+    };
+  }
   if (breakdown.finalScore < REVIEW_THRESHOLD_LOW) {
-    return ReviewStatus.NEEDS_REVIEW;
+    return {
+      status: ReviewStatus.NEEDS_REVIEW,
+      reasonKind: "low_score",
+      reason: `Needs review because the final score (${breakdown.finalScore}) is below the auto-approve threshold (${REVIEW_THRESHOLD_LOW}).`,
+    };
   }
   if (breakdown.finalScore >= REVIEW_THRESHOLD_HIGH) {
-    return ReviewStatus.APPROVED;
+    return {
+      status: ReviewStatus.APPROVED,
+      reasonKind: "auto_approved",
+      reason: `Auto-approved — no blocker fails and the final score (${breakdown.finalScore}) reached the high threshold (${REVIEW_THRESHOLD_HIGH}).`,
+    };
   }
-  return ReviewStatus.NEEDS_REVIEW;
+  return {
+    status: ReviewStatus.NEEDS_REVIEW,
+    reasonKind: "mid_band_safe_default",
+    reason: `Needs review because the final score (${breakdown.finalScore}) sits in the mid-band (${REVIEW_THRESHOLD_LOW}–${REVIEW_THRESHOLD_HIGH - 1}); the safe default routes it to manual review even when no checks failed.`,
+  };
 }

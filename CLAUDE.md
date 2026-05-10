@@ -1467,6 +1467,20 @@ yönetilir (CLAUDE.md ürün anayasası: master prompt admin yönetimi).
 Hardcoded sabitler ara katmandadır; canonical kaynak settings
 olduğunda pipeline buradan okur, kod sabit değişmez.
 
+### M+. Decision explainability discipline
+
+Bir item `NEEDS_REVIEW` durumuna düştüğünde **sebep operatöre
+açıkça gösterilir**:
+
+- "All checks passed but needs_review" çelişkisini önlemek için
+  decision reasoning UI'a Decision/Outcome bloğu olarak iner.
+- Olası sebepler: blocker fail, low score, mid-band safe default,
+  threshold'a uzaklık. Her kuralın hangisinin tetiklendiği server
+  tarafında resolve edilir, UI'a string olarak iletilir.
+- Score breakdown + decision reason iki ayrı bilgidir: breakdown
+  sayıların matematiğini, reason kararın "neden böyle çıktığını"
+  anlatır.
+
 ### N. Scoring lifecycle dürüstlüğü ve cost disiplini
 
 Sistem skoru bir **lifecycle** taşır; UI tek bir "waiting for AI"
@@ -1508,6 +1522,13 @@ nedenle:
   thumbnail regen, taxonomy değişikliği. Bu sınır pipeline kodunda
   açık tek bir invalidation helper'ında tanımlıdır; başka yerlerde
   ad-hoc reset yapılmaz.
+- **Kept/Rejected → Undecided dönüşü** tek başına re-score sebebi
+  **değildir**: status PENDING'e döner, kararın USER damgası
+  silinir, ama mevcut snapshot (score, riskFlags, summary,
+  reviewedAt) **korunur**. Operatör kararını geri çekti — AI
+  değerlendirmesi hâlâ referans olarak durur. Re-score istiyorsa
+  explicit "rerun" akışı ile (snapshot temizle + enqueue)
+  tetikler. Hiç skor yoksa zaten not_queued.
 - "Sıraya alındı" (queued) durumu ile "henüz hiç değerlendirilmedi"
   (pending) durumu UI'da ayrı lifecycle olarak temsil edilir; sahte
   default skor gösterilmez.

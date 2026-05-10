@@ -6,7 +6,7 @@ import { getReviewProvider } from "@/providers/review/registry";
 import { runAlphaChecks } from "@/server/services/review/alpha-checks";
 import {
   computeScoringBreakdown,
-  decideReviewStatusFromBreakdown,
+  decideReviewOutcomeFromBreakdown,
 } from "@/server/services/review/decision";
 import {
   applyReviewDecisionWithSticky,
@@ -258,7 +258,8 @@ async function handleDesignReview(
     riskFlagKinds: flagKinds,
     criteria: activeCriteria,
   });
-  const decision = decideReviewStatusFromBreakdown(breakdown);
+  const outcome = decideReviewOutcomeFromBreakdown(breakdown);
+  const decision = outcome.status;
 
   const providerSnapshot = buildProviderSnapshot(providerId, new Date());
   const promptSnapshot = `${REVIEW_PROMPT_VERSION}\nfingerprint=${composed.fingerprint}\n${composed.systemPrompt}`;
@@ -328,6 +329,7 @@ async function handleDesignReview(
       _breakdown: breakdown,
       _fingerprint: composed.fingerprint,
       _providerRaw: llm.score,
+      _decisionOutcome: outcome,
     } as unknown as Prisma.InputJsonValue,
   };
   await db.designReview.upsert({
@@ -498,7 +500,8 @@ async function handleLocalAssetReview(
     riskFlagKinds: flagKinds,
     criteria: activeCriteria,
   });
-  const decision = decideReviewStatusFromBreakdown(breakdown);
+  const outcome = decideReviewOutcomeFromBreakdown(breakdown);
+  const decision = outcome.status;
   const providerSnapshot = buildProviderSnapshot(providerId, new Date());
   const promptSnapshot = `${REVIEW_PROMPT_VERSION}\nfingerprint=${composed.fingerprint}\n${composed.systemPrompt}`;
 

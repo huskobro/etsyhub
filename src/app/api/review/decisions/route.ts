@@ -71,15 +71,25 @@ const PostSchema = z.object({
 });
 
 // Discriminated union — local scope productTypeKey ZORUNLU (Karar 3).
+// IA Phase 25 — `rerun` opt-in flag (default false). When true,
+// the snapshot is wiped and a fresh REVIEW_DESIGN job is enqueued.
+// When false (default), only the operator-decision layer is
+// rolled back: status → PENDING, source → SYSTEM. The existing
+// AI evaluation (score / summary / risk flags / provider snapshot)
+// stays as a reference so undecided'a alma tek başına re-score
+// sebebi olmaz (CLAUDE.md Madde N — kept/rejected → undecided
+// preserve).
 const PatchSchema = z.discriminatedUnion("scope", [
   z.object({
     scope: z.literal("design"),
     id: z.string().cuid(),
+    rerun: z.boolean().optional(),
   }),
   z.object({
     scope: z.literal("local"),
     id: z.string().cuid(),
     productTypeKey: z.string().min(1),
+    rerun: z.boolean().optional(),
   }),
 ]);
 
@@ -187,49 +197,58 @@ export const PATCH = withErrorHandling(async (req: Request) => {
       throw new NotFoundError();
     }
 
-    // Reset state — ATOMIK commit. USER damgası silinir, SYSTEM PENDING'e
-    // döner; review snapshot/score/summary/riskFlags null'lanır.
-    // textDetected/gibberishDetected schema default (false) — sıfırla.
-    // Prisma.DbNull: Json? alanı için DB NULL set etmek (JsonNull JSON null
-    // value'su, DbNull SQL NULL — burada satırı temizliyoruz).
-    await db.generatedDesign.update({
-      where: { id: parsed.data.id },
-      data: {
-        reviewStatus: ReviewStatus.PENDING,
-        reviewStatusSource: ReviewStatusSource.SYSTEM,
-        reviewScore: null,
-        reviewSummary: null,
-        reviewRiskFlags: Prisma.DbNull,
-        textDetected: false,
-        gibberishDetected: false,
-        reviewedAt: null,
-        reviewProviderSnapshot: null,
-        reviewPromptSnapshot: null,
-      },
-    });
-
-    // Rerun BEST-EFFORT (Karar 2). DesignReview audit row SİLİNMEZ — worker
-    // rerun'da upsert update dalı override edecek; o ana kadar eski SYSTEM
-    // kanıt zinciri kalır.
-    let rerunEnqueued = true;
-    let rerunError: string | undefined;
-    try {
-      await enqueue(JobType.REVIEW_DESIGN, {
-        scope: "design" as const,
-        generatedDesignId: parsed.data.id,
-        userId: user.id,
+    // IA Phase 25 — preserve-by-default reset (CLAUDE.md Madde N).
+    // Default: only roll back the USER decision layer. snapshot stays.
+    // Opt-in `rerun: true` ⇒ wipe snapshot + enqueue fresh job.
+    const rerun = parsed.data.rerun === true;
+    if (rerun) {
+      await db.generatedDesign.update({
+        where: { id: parsed.data.id },
+        data: {
+          reviewStatus: ReviewStatus.PENDING,
+          reviewStatusSource: ReviewStatusSource.SYSTEM,
+          reviewScore: null,
+          reviewSummary: null,
+          reviewRiskFlags: Prisma.DbNull,
+          textDetected: false,
+          gibberishDetected: false,
+          reviewedAt: null,
+          reviewProviderSnapshot: null,
+          reviewPromptSnapshot: null,
+        },
       });
-    } catch (err) {
-      rerunEnqueued = false;
-      rerunError = err instanceof Error ? err.message : String(err);
-      logger.error(
-        { designId: parsed.data.id, userId: user.id, err: rerunError },
-        "review reset: rerun enqueue failed (state reset committed)",
-      );
+    } else {
+      await db.generatedDesign.update({
+        where: { id: parsed.data.id },
+        data: {
+          reviewStatus: ReviewStatus.PENDING,
+          reviewStatusSource: ReviewStatusSource.SYSTEM,
+        },
+      });
+    }
+
+    let rerunEnqueued = false;
+    let rerunError: string | undefined;
+    if (rerun) {
+      try {
+        await enqueue(JobType.REVIEW_DESIGN, {
+          scope: "design" as const,
+          generatedDesignId: parsed.data.id,
+          userId: user.id,
+        });
+        rerunEnqueued = true;
+      } catch (err) {
+        rerunError = err instanceof Error ? err.message : String(err);
+        logger.error(
+          { designId: parsed.data.id, userId: user.id, err: rerunError },
+          "review reset: rerun enqueue failed (state reset committed)",
+        );
+      }
     }
 
     return NextResponse.json({
       reset: true,
+      rerun,
       rerunEnqueued,
       ...(rerunError !== undefined && { rerunError }),
     });
@@ -249,44 +268,56 @@ export const PATCH = withErrorHandling(async (req: Request) => {
     throw new NotFoundError();
   }
 
-  // Reset state — LocalLibraryAsset reviewIssues alanı da var (design'da yok),
-  // null'lanır. textDetected/gibberishDetected LocalLibraryAsset'te yok.
-  // Json? alanlar için Prisma.DbNull (SQL NULL).
-  await db.localLibraryAsset.update({
-    where: { id: parsed.data.id },
-    data: {
-      reviewStatus: ReviewStatus.PENDING,
-      reviewStatusSource: ReviewStatusSource.SYSTEM,
-      reviewScore: null,
-      reviewSummary: null,
-      reviewIssues: Prisma.DbNull,
-      reviewRiskFlags: Prisma.DbNull,
-      reviewedAt: null,
-      reviewProviderSnapshot: null,
-      reviewPromptSnapshot: null,
-    },
-  });
-
-  let rerunEnqueued = true;
-  let rerunError: string | undefined;
-  try {
-    await enqueue(JobType.REVIEW_DESIGN, {
-      scope: "local" as const,
-      localAssetId: parsed.data.id,
-      userId: user.id,
-      productTypeKey: parsed.data.productTypeKey,
+  // IA Phase 25 — preserve-by-default reset (local branch).
+  const rerun = parsed.data.rerun === true;
+  if (rerun) {
+    await db.localLibraryAsset.update({
+      where: { id: parsed.data.id },
+      data: {
+        reviewStatus: ReviewStatus.PENDING,
+        reviewStatusSource: ReviewStatusSource.SYSTEM,
+        reviewScore: null,
+        reviewSummary: null,
+        reviewIssues: Prisma.DbNull,
+        reviewRiskFlags: Prisma.DbNull,
+        reviewedAt: null,
+        reviewProviderSnapshot: null,
+        reviewPromptSnapshot: null,
+      },
     });
-  } catch (err) {
-    rerunEnqueued = false;
-    rerunError = err instanceof Error ? err.message : String(err);
-    logger.error(
-      { assetId: parsed.data.id, userId: user.id, err: rerunError },
-      "review reset: rerun enqueue failed (state reset committed)",
-    );
+  } else {
+    await db.localLibraryAsset.update({
+      where: { id: parsed.data.id },
+      data: {
+        reviewStatus: ReviewStatus.PENDING,
+        reviewStatusSource: ReviewStatusSource.SYSTEM,
+      },
+    });
+  }
+
+  let rerunEnqueued = false;
+  let rerunError: string | undefined;
+  if (rerun) {
+    try {
+      await enqueue(JobType.REVIEW_DESIGN, {
+        scope: "local" as const,
+        localAssetId: parsed.data.id,
+        userId: user.id,
+        productTypeKey: parsed.data.productTypeKey,
+      });
+      rerunEnqueued = true;
+    } catch (err) {
+      rerunError = err instanceof Error ? err.message : String(err);
+      logger.error(
+        { assetId: parsed.data.id, userId: user.id, err: rerunError },
+        "review reset: rerun enqueue failed (state reset committed)",
+      );
+    }
   }
 
   return NextResponse.json({
     reset: true,
+    rerun,
     rerunEnqueued,
     ...(rerunError !== undefined && { rerunError }),
   });

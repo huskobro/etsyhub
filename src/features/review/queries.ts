@@ -203,6 +203,22 @@ export const reviewQueueQueryKey = (params: Params) =>
 export function useReviewQueue(params: Params) {
   return useQuery<ReviewQueueResponse>({
     queryKey: reviewQueueQueryKey(params),
+    // IA Phase 25 — live lifecycle (CLAUDE.md Madde N). Background
+    // refetch lets the operator watch queued/running assets promote
+    // to ready without manual reload. Interval only fires when there
+    // is something in flight; ready/idle scopes back off.
+    refetchInterval: (query) => {
+      const data = query.state.data as ReviewQueueResponse | undefined;
+      if (!data) return 8000; // first load — try again shortly
+      const liveCount = (data.items ?? []).filter(
+        (it) =>
+          it.reviewLifecycle === "queued" ||
+          it.reviewLifecycle === "running",
+      ).length;
+      return liveCount > 0 ? 5000 : false;
+    },
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const url = new URL("/api/review/queue", window.location.origin);
       url.searchParams.set("scope", params.scope);
