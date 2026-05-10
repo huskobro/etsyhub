@@ -5,12 +5,16 @@ import { logger } from "@/lib/logger";
 import { getReviewProvider } from "@/providers/review/registry";
 import { runAlphaChecks } from "@/server/services/review/alpha-checks";
 import { decideReviewStatus } from "@/server/services/review/decision";
-import { applyReviewDecisionWithSticky } from "@/server/services/review/sticky";
-import { buildProviderSnapshot } from "@/providers/review/snapshot";
 import {
-  REVIEW_PROMPT_VERSION,
-  REVIEW_SYSTEM_PROMPT,
-} from "@/providers/review/prompt";
+  applyReviewDecisionWithSticky,
+  isAlreadyScoredBySystem,
+} from "@/server/services/review/sticky";
+import { buildProviderSnapshot } from "@/providers/review/snapshot";
+import { REVIEW_PROMPT_VERSION } from "@/providers/review/prompt";
+import {
+  composeReviewSystemPrompt,
+  composeVersionToken,
+} from "@/providers/review/criteria";
 import type { ReviewRiskFlag, ImageInput } from "@/providers/review/types";
 import { getStorage } from "@/providers/storage";
 import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
@@ -141,6 +145,33 @@ async function handleDesignReview(
     return { skipped: true, reason: "user_sticky" };
   }
 
+  // Already-scored guard (CLAUDE.md Madde N — scoring cost disiplini).
+  // SYSTEM tarafından zaten dolu bir snapshot + reviewedAt varsa ikinci
+  // kez Gemini çağrısı yapmıyoruz. Re-score için PATCH route'u snapshot'ları
+  // null'lar (reset) veya invalidation helper karar resetler — ikisi de
+  // bu guard'ı doğal olarak açar (reviewedAt = null sonrası yeniden
+  // skor verilebilir). Defansif olarak hem snapshot hem reviewedAt
+  // kontrol eder.
+  if (
+    isAlreadyScoredBySystem({
+      reviewedAt: design.reviewedAt,
+      reviewProviderSnapshot: design.reviewProviderSnapshot,
+      source: design.reviewStatusSource,
+    })
+  ) {
+    logger.info(
+      {
+        jobId: job.id,
+        designId: design.id,
+        scope: "design",
+        existingScore: design.reviewScore,
+        existingStatus: design.reviewStatus,
+      },
+      "review skipped — already_scored (reset to re-score)",
+    );
+    return { skipped: true, reason: "already_scored", status: design.reviewStatus, score: design.reviewScore ?? undefined };
+  }
+
   // Daily budget guardrail (Task 18) — sticky'den sonra, provider resolve'dan
   // önce. USER sticky early-return üstte yer aldığı için override edilmiş
   // kayıtlar budget tüketmez. Limit aşılırsa explicit throw (sessiz skip YASAK);
@@ -178,8 +209,21 @@ async function handleDesignReview(
   const decision = decideReviewStatus({ score: llm.score, riskFlags: allFlags });
 
   // Snapshot — CLAUDE.md kuralı: provider+prompt her review yazımında persist.
+  // Phase 16 (Madde O — criteria block compose): final prompt artık
+  // composeReviewSystemPrompt() üzerinden üretilen aktif kriter
+  // bloklarından oluşur. Snapshot prompt versiyonu + compose token
+  // (aktif blokların id@version listesi) + system prompt'u içerir;
+  // ileride admin override gelince audit drift'i fark eder.
   const providerSnapshot = buildProviderSnapshot(providerId, new Date());
-  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\n${REVIEW_SYSTEM_PROMPT}`;
+  const composed = composeReviewSystemPrompt({
+    productType: productKey,
+    isTransparentTarget: isTransparent,
+  });
+  const composeToken = composeVersionToken({
+    productType: productKey,
+    isTransparentTarget: isTransparent,
+  });
+  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\nblocks=${composeToken}\n${composed.systemPrompt}`;
 
   // Persist (K2 — sticky TOCTOU race fix):
   //   T1 sticky read + T2 Gemini fetch (1-30sn) arasında USER "Approve anyway"
@@ -236,7 +280,9 @@ async function handleDesignReview(
     decision,
     provider: providerId,
     model: provider.modelId,
-    promptSnapshot: REVIEW_SYSTEM_PROMPT,
+    // Phase 16 — audit'e compose edilmiş final prompt yazılır;
+    // hardcoded REVIEW_SYSTEM_PROMPT artık fallback değil.
+    promptSnapshot: composed.systemPrompt,
     responseSnapshot: llm as unknown as Prisma.InputJsonValue,
   };
   await db.designReview.upsert({
@@ -312,6 +358,27 @@ async function handleLocalAssetReview(
     return { skipped: true, reason: "user_sticky" };
   }
 
+  // Already-scored guard (CLAUDE.md Madde N) — design branch ile aynı.
+  if (
+    isAlreadyScoredBySystem({
+      reviewedAt: asset.reviewedAt,
+      reviewProviderSnapshot: asset.reviewProviderSnapshot,
+      source: asset.reviewStatusSource,
+    })
+  ) {
+    logger.info(
+      {
+        jobId: job.id,
+        assetId: asset.id,
+        scope: "local",
+        existingScore: asset.reviewScore,
+        existingStatus: asset.reviewStatus,
+      },
+      "review skipped — already_scored (reset to re-score)",
+    );
+    return { skipped: true, reason: "already_scored", status: asset.reviewStatus, score: asset.reviewScore ?? undefined };
+  }
+
   // Daily budget guardrail (Task 18) — design branch ile aynı sıra; DRY refactor
   // Dalga B reviewer Ö1 carry-forward, bu dalgada paralel implementasyon.
   await assertWithinDailyBudget(payload.userId, ProviderKind.AI);
@@ -342,8 +409,17 @@ async function handleLocalAssetReview(
   const allFlags: ReviewRiskFlag[] = [...alphaFlags, ...llm.riskFlags];
   const decision = decideReviewStatus({ score: llm.score, riskFlags: allFlags });
 
+  // Phase 16 — criteria block compose (Madde O); design branch ile aynı.
   const providerSnapshot = buildProviderSnapshot(providerId, new Date());
-  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\n${REVIEW_SYSTEM_PROMPT}`;
+  const composed = composeReviewSystemPrompt({
+    productType: productKey,
+    isTransparentTarget: isTransparent,
+  });
+  const composeToken = composeVersionToken({
+    productType: productKey,
+    isTransparentTarget: isTransparent,
+  });
+  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\nblocks=${composeToken}\n${composed.systemPrompt}`;
 
   // Persist — LocalLibraryAsset; audit trail YOK (DesignReview yalnız scope=design).
   // K2 — sticky TOCTOU race guard: updateMany + conditional WHERE.

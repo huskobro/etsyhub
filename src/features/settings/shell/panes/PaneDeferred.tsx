@@ -14,6 +14,7 @@ const PANE_LABELS: Record<PaneId, string> = {
   notifications: "Notifications",
   etsy: "Etsy",
   providers: "AI Providers",
+  review: "Review",
   storage: "Storage",
   scrapers: "Scrapers",
   users: "Users",

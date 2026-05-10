@@ -8,6 +8,7 @@ import { PaneWorkspace } from "./panes/PaneWorkspace";
 import { PaneNotifications } from "./panes/PaneNotifications";
 import { PaneStorage } from "./panes/PaneStorage";
 import { PaneEditor } from "./panes/PaneEditor";
+import { PaneReview } from "./panes/PaneReview";
 import { PaneScrapers } from "./panes/PaneScrapers";
 import { PaneDeferred } from "./panes/PaneDeferred";
 
@@ -49,6 +50,8 @@ function renderPane(pane: PaneId) {
       return <PaneStorage />;
     case "editor":
       return <PaneEditor />;
+    case "review":
+      return <PaneReview />;
     case "scrapers":
       return <PaneScrapers />;
     default:

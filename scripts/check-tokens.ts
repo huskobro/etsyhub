@@ -186,6 +186,10 @@ const whitelist = [
   "src/features/templates/components/UploadMockupTemplateModal.tsx",
   "src/features/settings/shell/panes/PaneEditor.tsx",
   "src/features/settings/shell/panes/PaneScrapers.tsx",
+  // IA Phase 16 — PaneReview review scoring config snapshot pane.
+  //   Settings v6 canon zinciriyle aynı half-pixel hierarchy:
+  //   text-[10px] / text-[11px] / text-[12.5px] / text-[26px] k-display.
+  "src/features/settings/shell/panes/PaneReview.tsx",
   // R11.14 — Overview C3 4-block view (Pipeline pulse / Pending actions /
   //   Active batches / Recent activity). v6 spec'in yarı-piksel mono caption
   //   hierarchy'si (text-[9.5px] / text-[10px] / text-[10.5px] / text-[11px]

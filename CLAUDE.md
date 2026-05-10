@@ -1419,6 +1419,62 @@ yönetilir (CLAUDE.md ürün anayasası: master prompt admin yönetimi).
 Hardcoded sabitler ara katmandadır; canonical kaynak settings
 olduğunda pipeline buradan okur, kod sabit değişmez.
 
+### N. Scoring cost disiplini
+
+AI scoring (Gemini vb.) **pahalı bir işlem** olarak ele alınır. Bu
+nedenle:
+
+- Bir asset için sistem skoru bir kez **başarıyla** üretildiyse
+  (`reviewedAt` dolu, `reviewProviderSnapshot` dolu, source = SYSTEM),
+  asset'in **content fingerprint'i değişmediği sürece** tekrar
+  scoring tetiklenmez.
+- Operatör kararı verilmiş (`KEPT` / `REJECTED`) item'lar için ek
+  scoring çalıştırılmaz; karar verilen item'a yeni provider çağrısı
+  düşmez.
+- Scoring tetiklemesi **idempotent** kabul edilir: aynı içeriğe ait
+  job ikinci kez kuyruğa atılırsa worker en içte erken-skip yapar
+  (sticky guard'ın eşdeğeri "already-scored guard").
+- Re-score yalnızca iki yoldan biriyle yapılır:
+  1. Operatör manuel **reset** ettiğinde (`reviewedAt → null`,
+     snapshot'lar temizlenir, rerun enqueue),
+  2. Asset üzerinde scoring'i etkileyen **anlamlı bir image-content
+     değişikliği** olduğunda (background remove, crop, upscale,
+     remaster, re-export gibi); bu durumda invalidation helper
+     kararı resetler ve item undecided'a düşer.
+- Scoring'i etkilemeyen değişiklikler re-score doğurmaz: kullanıcı
+  kararı (keep / reject), label / metadata güncellemesi, sadece
+  thumbnail regen, taxonomy değişikliği. Bu sınır pipeline kodunda
+  açık tek bir invalidation helper'ında tanımlıdır; başka yerlerde
+  ad-hoc reset yapılmaz.
+- "Sıraya alındı" (queued) durumu ile "henüz hiç değerlendirilmedi"
+  (pending) durumu UI'da ayrı lifecycle olarak temsil edilir; sahte
+  default skor gösterilmez.
+
+### O. Prompt-block / criteria architecture
+
+Sistem genelinde kullanılan master promptlar **tek parça sabit
+metin** olmamalıdır. Bunun yerine:
+
+- Master prompt, ayrı **prompt blokları**ndan compose edilir.
+- Her blok eklenebilir, düzenlenebilir, aktif/pasif yapılabilir,
+  gerekirse stage / source / product type bağlamına hedeflenebilir.
+- Compose edilen final master prompt **yalnız aktif ve ilgili
+  blokları** içerir; pasif veya bağlama uymayan bloklar prompttan
+  çıkarılır.
+- Kriter bazlı değerlendirme (review checklist gibi) yapan
+  sistemlerde her **kriter kendi prompt bloğu**dur; check sözlüğü
+  bu bloklardan türetilir (drift koruması — taksonomi tek kaynaktan).
+- Compose edilmiş prompt her job'da snapshot'lanır (audit ve
+  reproducibility için); admin compose mantığını izleyebilir.
+- Bu prensip review ile sınırlı değildir: ileride listing copy,
+  metadata, recipe instructions vb. tüm prompt-driven sistemler
+  aynı block-compose modeline geçer. Tek parça hardcoded prompt
+  string yeni feature için kabul edilmez.
+- Geçiş modeli: yeni feature day-1'den block-compose ile çıkar;
+  legacy hardcoded promptlar canonical compose'a alınana kadar
+  bridge olarak işaretlenir, "ileride taşırız" yorumu yeterli
+  değildir — replacement path açıldığı an taşınır.
+
 ## Library / Selections / Products — Sınır Invariant'ları
 
 Bu üç ekranı **karıştırmak yasaktır**. Kod, route, copy ve UI seviyesinde

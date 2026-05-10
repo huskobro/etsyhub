@@ -20,6 +20,7 @@ import {
   List,
   Package,
   Settings as SettingsIcon,
+  ShieldCheck,
   Sparkles,
   User,
   Zap,
@@ -53,6 +54,7 @@ export type PaneId =
   | "notifications"
   | "etsy"
   | "providers"
+  | "review"
   | "storage"
   | "scrapers"
   | "users"
@@ -137,6 +139,14 @@ const GROUPS: PaneGroup[] = [
         icon: Sparkles,
         state: "live",
         meta: "Workspace",
+        metaTone: "neutral",
+      },
+      {
+        id: "review",
+        name: "Review",
+        icon: ShieldCheck,
+        state: "live",
+        meta: "Scoring",
         metaTone: "neutral",
       },
       {

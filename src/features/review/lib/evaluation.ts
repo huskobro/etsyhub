@@ -27,6 +27,10 @@
 
 import type { ReviewRiskFlagType } from "@/providers/review/types";
 import { REVIEW_RISK_FLAG_TYPES } from "@/providers/review/types";
+import {
+  BUILTIN_CRITERIA,
+  type ReviewCriterion,
+} from "@/providers/review/criteria";
 
 export type EvaluationLifecycle =
   | "ready"
@@ -128,6 +132,15 @@ export function buildEvaluation(input: {
   /** Optional override — caller knows lifecycle is "error" / "na". */
   forceLifecycle?: EvaluationLifecycle;
   promptVersion?: string | null;
+  /** IA Phase 16 — criteria-aware checklist. Verilirse `BUILTIN_CRITERIA`
+   *  arasından `productType` bağlamına uygun olan **aktif** kriterler
+   *  görünür; kontrolü yalnız bağlamda anlamlı olanlar oluşturur (ör.
+   *  alpha satırları yalnız transparent target ürünlerde). Verilmezse
+   *  tüm 8 sabit taksonomi gösterilir (legacy, geriye uyum). */
+  criteriaContext?: { productType: string };
+  /** Aktif kriter listesi caller tarafından hazırlanmışsa bu kullanılır;
+   *  aksi halde `BUILTIN_CRITERIA` üzerinden filtreleme yapılır. */
+  activeCriteria?: ReadonlyArray<ReviewCriterion>;
 }): Evaluation {
   const {
     reviewedAt,
@@ -138,6 +151,8 @@ export function buildEvaluation(input: {
     operatorOverride,
     forceLifecycle,
     promptVersion,
+    criteriaContext,
+    activeCriteria,
   } = input;
 
   // Failed checks — risk flag entries; index by kind.
@@ -148,14 +163,27 @@ export function buildEvaluation(input: {
     failedReasons.set(k, readReason(f));
   }
 
-  // Build the canonical check list — taksonomi sırasında.
-  const checks: EvaluationCheck[] = REVIEW_RISK_FLAG_TYPES.map((id) => {
-    const isFailed = failedReasons.has(id);
+  // Build the canonical check list. CLAUDE.md Madde O — kriter blokları
+  // bağlama göre filtrelenir; activeCriteria > criteriaContext > legacy
+  // sıralı önceliği.
+  const sourceCriteria: ReadonlyArray<{ id: ReviewRiskFlagType; label: string }> =
+    activeCriteria !== undefined
+      ? activeCriteria
+      : criteriaContext
+        ? BUILTIN_CRITERIA.filter((c) => {
+            if (!c.active) return false;
+            if (c.productTypes === null) return true;
+            return c.productTypes.includes(criteriaContext.productType);
+          })
+        : REVIEW_RISK_FLAG_TYPES.map((id) => ({ id, label: CHECK_LABEL[id] }));
+
+  const checks: EvaluationCheck[] = sourceCriteria.map((c) => {
+    const isFailed = failedReasons.has(c.id);
     return {
-      id,
-      label: CHECK_LABEL[id],
+      id: c.id,
+      label: c.label,
       passed: !isFailed,
-      reason: isFailed ? failedReasons.get(id) ?? null : null,
+      reason: isFailed ? failedReasons.get(c.id) ?? null : null,
     };
   });
 

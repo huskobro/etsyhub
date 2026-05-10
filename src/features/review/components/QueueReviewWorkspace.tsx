@@ -452,10 +452,16 @@ export function QueueReviewWorkspace({
 // ────────────────────────────────────────────────────────────────────────
 
 function QueueInfoRail({ item }: { item: ReviewQueueItem }) {
-  // IA Phase 16 — kaynak-bağımsız Evaluation contract. AI ve Local
-  // aynı panel'i okur; kaynak-spesifik metadata (file/variation) ayrı
-  // bölümde durur. Operator override sinyali Evaluation içinde
-  // taşınır (kart üstünde değil — CLAUDE.md kart minimalizmi).
+  // IA Phase 16 — kaynak-bağımsız Evaluation contract + criteria-aware
+  // checklist. ProductType bağlamı kaynak adapter'dan geliyor (AI'da
+  // source.productTypeKey; Local'de source.folderName ile direkt
+  // bağ yok — fallback bağlamı genel "wall_art"). Bağlam aktif
+  // kriter blokları üzerinden checklist'i daraltır (CLAUDE.md
+  // Madde O — bağlama uymayan bloklar gösterilmez).
+  const productType =
+    item.source?.kind === "design"
+      ? item.source.productTypeKey ?? "wall_art"
+      : "wall_art";
   const evaluation = buildEvaluation({
     reviewedAt: item.reviewedAt,
     reviewScore: item.reviewScore,
@@ -463,6 +469,7 @@ function QueueInfoRail({ item }: { item: ReviewQueueItem }) {
     reviewProviderSnapshot: item.reviewProviderSnapshot,
     riskFlags: item.riskFlags,
     operatorOverride: item.reviewStatusSource === "USER",
+    criteriaContext: { productType },
   });
   return (
     <>
