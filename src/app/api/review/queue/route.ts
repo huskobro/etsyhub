@@ -97,7 +97,20 @@ export const GET = withErrorHandling(async (req: Request) => {
           reviewRiskFlags: true,
           reviewedAt: true,
           reviewProviderSnapshot: true,
-          asset: { select: { storageKey: true } },
+          // Asset metadata — IA Phase 9 (review focus workspace) needs
+          // mimeType / fileSize / dimensions on AI items for the
+          // unified info-rail. Format-capability hint (PNG/WebP can
+          // carry alpha; JPEG cannot) is derived from mimeType in the
+          // UI; we don't run a Sharp probe here for performance.
+          asset: {
+            select: {
+              storageKey: true,
+              mimeType: true,
+              sizeBytes: true,
+              width: true,
+              height: true,
+            },
+          },
           // Phase 7 Task 38 — Quick start CTA için (additive):
           // POST /api/selection/sets/quick-start gövdesi referenceId,
           // batchId (== jobId), productTypeId bekler. Burada toplu seçimle
@@ -162,6 +175,13 @@ export const GET = withErrorHandling(async (req: Request) => {
             productTypeKey: it.productType?.key ?? null,
             referenceShortId: it.referenceId ? it.referenceId.slice(-6) : null,
             createdAt: it.createdAt.toISOString(),
+            // IA Phase 9 — file metadata for the unified focus
+            // workspace info-rail. width/height are nullable on Asset
+            // (legacy rows) so we project them as such.
+            mimeType: it.asset.mimeType,
+            fileSize: it.asset.sizeBytes,
+            width: it.asset.width,
+            height: it.asset.height,
           },
         };
       }),
@@ -205,9 +225,16 @@ export const GET = withErrorHandling(async (req: Request) => {
         fileName: true,
         folderPath: true,
         qualityScore: true,
+        qualityReasons: true,
         width: true,
         height: true,
         dpi: true,
+        // IA Phase 9 — file metadata for the unified focus workspace
+        // info-rail. mimeType drives the transparency-capability hint
+        // (PNG/WebP can carry alpha; JPEG cannot) and fileSize gives
+        // the operator a print-readiness signal.
+        mimeType: true,
+        fileSize: true,
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -248,6 +275,10 @@ export const GET = withErrorHandling(async (req: Request) => {
       width: it.width,
       height: it.height,
       dpi: it.dpi,
+      // IA Phase 9 — file metadata for the unified focus workspace.
+      mimeType: it.mimeType,
+      fileSize: it.fileSize,
+      qualityReasons: it.qualityReasons,
     },
   }));
 

@@ -34,12 +34,21 @@ export type ReviewQueueSourceLocal = {
   width: number;
   height: number;
   dpi: number | null;
+  // IA Phase 9 — focus workspace info-rail metadata.
+  mimeType: string;
+  fileSize: number;
+  qualityReasons: unknown;
 };
 export type ReviewQueueSourceDesign = {
   kind: "design";
   productTypeKey: string | null;
   referenceShortId: string | null;
   createdAt: string;
+  // IA Phase 9 — focus workspace info-rail metadata.
+  mimeType: string;
+  fileSize: number;
+  width: number | null;
+  height: number | null;
 };
 export type ReviewQueueSource =
   | ReviewQueueSourceLocal

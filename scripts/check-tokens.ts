@@ -67,6 +67,12 @@ const whitelist = [
   "src/features/library/components/Modal.tsx",
   "src/features/batches/components/BatchReviewWorkspace.tsx",
   "src/features/batches/components/BatchesIndexClient.tsx",
+  // IA Phase 9 — QueueReviewWorkspace mirrors BatchReviewWorkspace's
+  // dark fullscreen language (canonical /review focus surface for AI +
+  // Local items). Same #1A1815 / #16130F / #1F1C18 hex sabitleri ve
+  // max-w-[760px] stage genişliği — operatör iki workspace'i tek
+  // ürün olarak görür.
+  "src/features/review/components/QueueReviewWorkspace.tsx",
   // Rollout-4 — Selections (B2/B3) recipes.
   //  · SelectionCard → `.k-card--hero` v5 hero card; `aspect-square` + 3-up
   //    thumb composite v5 design layer'ında tanımlı.
