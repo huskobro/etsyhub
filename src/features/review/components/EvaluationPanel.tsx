@@ -259,17 +259,19 @@ export function EvaluationPanel({
            *   üretmiyor. CLAUDE.md Madde Q (information density). */}
           {rerun ? <RerunSection {...rerun} /> : null}
 
-          {/* IA Phase 27 — Decision en altta + collapsible (default
-           *   closed). CLAUDE.md Madde Q + kullanıcı talebi: operatör
-           *   açıklamayı istediğinde okur, kart üstündeki yer Checks +
-           *   Summary + Provider için ayrılır. */}
+          {/* IA Phase 28 (CLAUDE.md Madde S) — Stored decision en
+           *   altta + collapsible. **Canonical truth**: persisted
+           *   reviewStatus + operator override sinyali. Current
+           *   policy preview ayrı bir alan; yalnız stored ≠ preview
+           *   olduğunda görünür ve "with current thresholds" etiketi
+           *   taşır, asla ana karar gibi sunulmaz. */}
           {evaluation.decisionOutcome ? (
             <details
               className="mt-4 group"
               data-testid="evaluation-decision-outcome"
             >
               <summary className="flex cursor-pointer items-center justify-between gap-2 list-none">
-                <SectionTitle>Decision</SectionTitle>
+                <SectionTitle>Stored decision</SectionTitle>
                 <span className="flex items-center gap-1.5">
                   {evaluation.decisionOutcome.reasonKind ===
                   "operator_override" ? (
@@ -280,25 +282,20 @@ export function EvaluationPanel({
                   <span
                     className={cn(
                       "rounded-md px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta",
-                      evaluation.decisionOutcome.reasonKind === "auto_approved"
+                      evaluation.decisionOutcome.status === "APPROVED"
                         ? "bg-emerald-500/15 text-emerald-300"
-                        : evaluation.decisionOutcome.reasonKind === "blocker_fail"
-                          ? "bg-rose-500/15 text-rose-200"
-                          : evaluation.decisionOutcome.reasonKind === "low_score"
-                            ? "bg-rose-500/10 text-rose-200"
-                            : evaluation.decisionOutcome.reasonKind ===
-                                "operator_override"
-                              ? "bg-white/10 text-white"
-                              : "bg-amber-500/10 text-amber-200",
+                        : evaluation.decisionOutcome.status === "REJECTED"
+                          ? "bg-rose-500/20 text-rose-200"
+                          : evaluation.decisionOutcome.status === "NEEDS_REVIEW"
+                            ? evaluation.decisionOutcome.reasonKind ===
+                              "blocker_fail"
+                              ? "bg-rose-500/15 text-rose-200"
+                              : "bg-amber-500/10 text-amber-200"
+                            : "bg-white/10 text-white",
                     )}
                     data-testid="evaluation-decision-status"
                   >
-                    {evaluation.decisionOutcome.reasonKind ===
-                    "operator_override"
-                      ? "Operator decision"
-                      : evaluation.decisionOutcome.status === "APPROVED"
-                        ? "Auto-approved"
-                        : "Needs review"}
+                    {storedDecisionLabel(evaluation.decisionOutcome)}
                   </span>
                   <span
                     className="font-mono text-[10px] uppercase tracking-meta text-white/40"
@@ -320,7 +317,52 @@ export function EvaluationPanel({
               >
                 {evaluation.decisionOutcome.reason}
               </p>
+              <p className="mt-2 text-[10.5px] leading-relaxed text-white/40">
+                Threshold changes do not rewrite stored decisions.
+                The persisted status above is the truth listings,
+                exports and downstream actions follow.
+              </p>
             </details>
+          ) : null}
+
+          {/* IA Phase 28 — Current policy preview. Yalnız stored
+           *   decision'dan farklı çıktığında dolar; canonical
+           *   karar gibi sunulmaz, açık "preview" etiketi taşır. */}
+          {evaluation.currentPolicyPreview ? (
+            <div
+              className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2"
+              data-testid="evaluation-policy-preview"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-meta text-amber-200">
+                  Current policy preview
+                </span>
+                <span
+                  className={cn(
+                    "rounded-md px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta",
+                    evaluation.currentPolicyPreview.status === "APPROVED"
+                      ? "bg-emerald-500/15 text-emerald-300"
+                      : "bg-amber-500/15 text-amber-200",
+                  )}
+                  data-testid="policy-preview-status"
+                >
+                  {evaluation.currentPolicyPreview.status === "APPROVED"
+                    ? "would auto-approve"
+                    : "would need review"}
+                </span>
+              </div>
+              <p
+                className="mt-1.5 text-[11px] leading-relaxed text-white/70"
+                data-testid="policy-preview-reason"
+              >
+                With current thresholds (
+                {evaluation.currentPolicyPreview.thresholds.low}/
+                {evaluation.currentPolicyPreview.thresholds.high}),
+                this asset would be re-evaluated as above. The stored
+                decision stays unchanged until you trigger an
+                explicit rerun.
+              </p>
+            </div>
           ) : null}
         </>
       ) : (
@@ -401,6 +443,25 @@ function ScopeTriggerButton({
       ) : null}
     </div>
   );
+}
+
+// IA Phase 28 — stored decision chip label helper. Operator override
+// her statüsü "Operator decision" olarak gösterir; SYSTEM kararı için
+// status'ten okunaklı bir kelime üretiriz.
+function storedDecisionLabel(
+  outcome: NonNullable<import("@/features/review/lib/evaluation").Evaluation["decisionOutcome"]>,
+): string {
+  if (outcome.reasonKind === "operator_override") return "Operator decision";
+  switch (outcome.status) {
+    case "APPROVED":
+      return "Auto-approved";
+    case "REJECTED":
+      return "Rejected";
+    case "NEEDS_REVIEW":
+      return "Needs review";
+    default:
+      return "Pending";
+  }
 }
 
 function RerunSection({

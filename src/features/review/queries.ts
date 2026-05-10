@@ -217,12 +217,19 @@ export function useReviewQueue(params: Params) {
     refetchInterval: (query) => {
       const data = query.state.data as ReviewQueueResponse | undefined;
       if (!data) return 8000; // first load — try again shortly
-      const liveCount = (data.items ?? []).filter(
+      // IA Phase 28 (CLAUDE.md Madde T) — proof-before-done.
+      // not_queued bir item rerun edildikten sonra aslında "kuyruğa
+      // alınma yolunda" anlamına geliyor (snapshot wipe + enqueue
+      // arasındaki pencere). Polling'i bu durumda da kısa tut
+      // ki worker geçişi UI'da görülebilsin. liveCount eşleşen tüm
+      // 'unsettled' lifecycle'ları sayar.
+      const unsettledCount = (data.items ?? []).filter(
         (it) =>
           it.reviewLifecycle === "queued" ||
-          it.reviewLifecycle === "running",
+          it.reviewLifecycle === "running" ||
+          it.reviewLifecycle === "not_queued",
       ).length;
-      return liveCount > 0 ? 5000 : false;
+      return unsettledCount > 0 ? 5000 : false;
     },
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,

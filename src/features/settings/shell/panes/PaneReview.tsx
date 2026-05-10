@@ -209,6 +209,14 @@ export function PaneReview() {
       {/* 0) Operations — live pipeline state + manual trigger */}
       <ReviewOpsSection ops={data.ops} pickers={data.pickers} />
 
+      {/* IA Phase 28 (CLAUDE.md Madde U) — local auto-review on
+       *   scan automation. Operatör defaultProductTypeKey'i burada
+       *   set eder; null kalırsa scan auto-enqueue yapmaz, manuel
+       *   trigger gerekir. Görünür + ayarlanabilir + ops dashboard'a
+       *   yansır. */}
+      <LocalAutoReviewSection />
+
+
       {/* 1) Decision rule — IA Phase 27 (CLAUDE.md Madde R) editable */}
       <section className="mt-8" data-testid="review-pane-thresholds">
         <div className="flex items-baseline justify-between">
@@ -248,12 +256,38 @@ export function PaneReview() {
             <span className="font-mono">finalScore = max(0, providerRaw − Σ weight(failed warning))</span>
             ; blocker fails force NEEDS_REVIEW regardless of score.
           </dd>
-          <dt className="text-ink-3">Re-score</dt>
-          <dd className="text-ink">
-            Saved threshold changes affect future scoring jobs only;
-            existing decisions stay in place until a manual reset.
-          </dd>
         </dl>
+        {/* IA Phase 28 (CLAUDE.md Madde S) — operatör threshold'u
+         *   değiştirdiğinde ne olur, ne olmaz. Net cümlelerle yazılı:
+         *   stored kararlara dokunmaz, gelecek scoring jobs'a
+         *   uygulanır, preview farkı olabilir. */}
+        <div
+          className="mt-4 rounded-md border border-line bg-bg p-3 text-xs text-ink-2"
+          data-testid="threshold-policy-note"
+        >
+          <div className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+            What changes when you save thresholds
+          </div>
+          <ul className="mt-2 space-y-1.5">
+            <li>
+              <span className="font-medium text-ink">Future scoring jobs</span>{" "}
+              use the new low/high values immediately.
+            </li>
+            <li>
+              <span className="font-medium text-ink">Stored decisions</span> on
+              already-scored assets stay unchanged. The review surface
+              flags any item where the current policy preview differs
+              from the stored decision so you can rerun explicitly.
+            </li>
+            <li>
+              <span className="font-medium text-ink">Re-evaluation</span>{" "}
+              happens only via "Reset and rerun review" or an
+              image-content transform (background-remove, crop,
+              upscale). Saving thresholds alone does not trigger
+              re-scoring.
+            </li>
+          </ul>
+        </div>
       </section>
 
       {/* 2) Master prompt editor */}
@@ -1331,6 +1365,164 @@ function TechnicalRuleEditor({
         ) : null}
       </div>
     </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// IA Phase 28 — LocalAutoReviewSection (CLAUDE.md Madde U)
+//
+// Local scan auto-enqueue policy is operator-visible and editable
+// here. defaultProductTypeKey null ⇒ scan auto-enqueue çalışmaz;
+// operatör explicit bir productType seçtiğinde scan worker
+// freshly discovered + never-scored asset'leri otomatik kuyruğa
+// alır. Cost discipline (Madde N) zaten already-scored guard ile
+// korunuyor; bu sadece tetikleme ucu.
+// ────────────────────────────────────────────────────────────────────────
+
+const PRODUCT_TYPE_OPTIONS = [
+  "wall_art",
+  "clipart",
+  "sticker",
+  "transparent_png",
+  "bookmark",
+  "printable",
+] as const;
+
+type LocalLibrarySettingsView = {
+  rootFolderPath: string | null;
+  targetResolution: { width: number; height: number };
+  targetDpi: number;
+  qualityThresholds: { ok: number; warn: number };
+  defaultProductTypeKey:
+    | "wall_art"
+    | "clipart"
+    | "sticker"
+    | "transparent_png"
+    | "bookmark"
+    | "printable"
+    | null;
+};
+
+function LocalAutoReviewSection() {
+  const qc = useQueryClient();
+  const query = useQuery<{ settings: LocalLibrarySettingsView }>({
+    queryKey: ["settings", "local-library"],
+    queryFn: async () => {
+      const r = await fetch("/api/settings/local-library");
+      if (!r.ok) throw new Error("Could not load local library settings");
+      return r.json();
+    },
+  });
+
+  const mutation = useMutation<
+    { settings: LocalLibrarySettingsView },
+    Error,
+    LocalLibrarySettingsView
+  >({
+    mutationFn: async (next) => {
+      const r = await fetch("/api/settings/local-library", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body?.error ?? `HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+    onSuccess: (res) => {
+      qc.setQueryData(["settings", "local-library"], res);
+    },
+  });
+
+  const [saveState, setSaveState] = useState<
+    "idle" | "saving" | "saved" | { error: string }
+  >("idle");
+
+  if (query.isLoading || !query.data) {
+    return (
+      <section className="mt-8" data-testid="review-pane-local-auto">
+        <h3 className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+          Auto-review on local scan
+        </h3>
+        <p className="mt-2 text-xs text-ink-3">Loading local library settings…</p>
+      </section>
+    );
+  }
+
+  const settings = query.data.settings;
+  const current = settings.defaultProductTypeKey;
+  const automationActive = current !== null;
+
+  const onSelect = async (next: typeof current) => {
+    setSaveState("saving");
+    try {
+      await mutation.mutateAsync({ ...settings, defaultProductTypeKey: next });
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 1500);
+    } catch (err) {
+      setSaveState({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  return (
+    <section className="mt-8" data-testid="review-pane-local-auto">
+      <div className="flex items-baseline justify-between">
+        <h3 className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+          Auto-review on local scan
+        </h3>
+        <span
+          className={cn(
+            "font-mono text-[10px] tracking-wider",
+            automationActive ? "text-k-green" : "text-ink-3",
+          )}
+          data-testid="local-auto-status"
+        >
+          {automationActive ? "ACTIVE" : "INACTIVE"}
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-ink-3">
+        When set, every freshly discovered local asset is auto-enqueued
+        for review using the chosen product type. Already-scored assets
+        are skipped (no double billing). Leave empty to require manual
+        triggers from the Manual trigger panel above.
+      </p>
+      <div className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center">
+        <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+          Default product type
+        </span>
+        <select
+          value={current ?? ""}
+          onChange={(e) =>
+            onSelect((e.target.value || null) as typeof current)
+          }
+          disabled={saveState === "saving"}
+          className="w-full max-w-xs rounded-md border border-line bg-bg px-2 py-1.5 text-sm text-ink"
+          data-testid="local-auto-product-type"
+        >
+          <option value="">— off (manual trigger required) —</option>
+          {PRODUCT_TYPE_OPTIONS.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="mt-2 flex items-center gap-2 text-xs">
+        {saveState === "saving" ? (
+          <span className="text-ink-3">Saving…</span>
+        ) : saveState === "saved" ? (
+          <span className="text-k-green">Saved ✓</span>
+        ) : typeof saveState === "object" ? (
+          <span className="text-rose-600" data-testid="local-auto-save-error">
+            {saveState.error}
+          </span>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

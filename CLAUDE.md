@@ -1696,6 +1696,89 @@ gibi tüm policy-driven sayısal kararlar için geçerlidir. Settings
 Registry pattern'i: değer kod'tan okunmaz, hep resolved config
 helper'ından geçer.
 
+### S. Stored decision vs current policy preview ayrımı
+
+Operatöre gösterilen bir karar **iki ayrı kavram** taşıyabilir:
+
+- **Stored decision** — kayıtta duran, persisted truth. Sistem o
+  anda hangi karar verildiyse veya operatör override yazdıysa,
+  o değer. Listing/export/akış kararları **bu** truth üzerinden
+  ilerler.
+- **Current policy preview** — bugünkü policy ile aynı item bugün
+  yeniden değerlendirilseydi sonuç ne olurdu? Yalnız bilgi
+  amaçlıdır; persisted state'i değiştirmez.
+
+Bu ikisi aynı kart üzerinde **karıştırılamaz**:
+
+- Decision UI'da canonical alan **stored decision**'dır. Operatör
+  "bu görsel ne durumda?" sorusunun cevabını burada okur.
+- Current policy preview yalnız **stored decision'dan farklı**
+  olduğunda gösterilir; gösterimde "Preview" / "would be" /
+  "with current thresholds" gibi açık bir etiket taşır.
+- Aynı görsel için iki farklı status sayısı çelişiyormuş gibi
+  hissettirilmez; preview daima ek bağlam katmanıdır, ana karar
+  değildir.
+
+Re-evaluate kararı ürün sözleşmesidir:
+
+- Default davranış: threshold/policy değişiklikleri **gelecek
+  jobs**'a yansır; mevcut stored kararlar **olduğu gibi** kalır
+  (CLAUDE.md Madde N — already-scored guard).
+- Operatör mevcut kararı current policy ile yeniden hesaplatmak
+  isterse explicit "Reset and rerun review" ile tetikler;
+  preview alanı bu rerun'a kestirme bir entry olabilir ama
+  sessiz re-evaluate yapmaz.
+
+UI dilinde net çeviri:
+
+- Stored decision: "Auto-approved" / "Needs review" / "Operator
+  decision" — kart üst chip'i + sağ panel başlığı.
+- Current policy preview: "With current thresholds (X/Y) this
+  would be …" — yalnız stored ≠ preview olduğunda görünür.
+
+### T. Proof-before-done (lifecycle / automation / policy)
+
+Lifecycle, automation veya scoring policy değişiklikleri
+"tamamlandı" sayılmadan önce **canlı state transition** ile
+doğrulanmalıdır. Yalnız kod / schema seviyesinde tamam saymak
+yeterli değildir:
+
+- Lifecycle değişikliği için: enqueue → queued → running → ready
+  geçişlerinin **en az birini** browser preview üzerinden gözlem.
+  Polling/SSE kanıtı: refresh atmadan UI'da state'in değiştiği
+  görüldü.
+- Automation değişikliği için: gerçek bir asset üzerinde tetiklenen
+  job'ın kuyruğa alındığı + worker tarafından alındığı **en yakın**
+  state kanıtıyla teyit. "Worker kodu gönderildi" kanıt değildir.
+- Scoring policy değişikliği için: PUT sonrası API'nin yeni değeri
+  döndürdüğü + decision engine'in (worker veya client derivation)
+  yeni değerle çalıştığı somut kanıt.
+
+Final raporda hangi proof'un alındığı + neyin gerçek kanıtla
+desteklenmediği açıkça yazılır.
+
+### U. Automation must be provable
+
+Automation kodu (worker auto-enqueue, scan job, retry, polling)
+yalnız backend'de yaşıyorsa ve operatör görmüyor / değiştiremiyor
+ise **eksik** kabul edilir:
+
+- Auto-enqueue / scheduling parametreleri (örn. local scan
+  `defaultProductTypeKey`) admin/settings yüzeyinde **görünür ve
+  ayarlanabilir** olmalıdır. Sessiz default veya yalnız schema
+  field'ı yeterli değildir.
+- Scheduled / triggered automation davranışı operatöre
+  **görünür** olmalı: ops dashboard sayaçları (queued, running,
+  failed), last enqueue/last scan zaman damgaları, otomatik
+  enqueue olduğunda log/notification.
+- Operatör automation'ı manuel tetikleyebilmeli (scope-trigger
+  manual enqueue) ve mevcut state'i sıfırlayabilmeli (reset →
+  rerun).
+
+Bir feature "tamam" sayılmadan önce: schema, worker, settings UI,
+ops görünürlüğü, manual tetik ve canlı state kanıtı **beşi de**
+yerinde olmalı.
+
 ## Library / Selections / Products — Sınır Invariant'ları
 
 Bu üç ekranı **karıştırmak yasaktır**. Kod, route, copy ve UI seviyesinde

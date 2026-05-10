@@ -636,6 +636,11 @@ function QueueInfoRail({
     },
     backendLifecycle: item.reviewLifecycle,
     thresholds,
+    // IA Phase 28 (CLAUDE.md Madde S) — stored decision = persisted
+    // reviewStatus. UI canonical truth olarak burayı render eder;
+    // current policy preview yalnız stored ↔ derived farkında
+    // gösterilir.
+    storedReviewStatus: item.reviewStatus,
   });
   return (
     <>

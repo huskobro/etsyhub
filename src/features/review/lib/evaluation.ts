@@ -110,7 +110,14 @@ export type Evaluation = {
   /** IA Phase 25 — decision outcome (CLAUDE.md Madde M+).
    *  Lifecycle === "ready" iken dolu; UI Decision/Outcome
    *  bloğunda render edilir. Reason kategorisi tone'u, reason
-   *  string'i kopyayı belirler. */
+   *  string'i kopyayı belirler.
+   *
+   *  IA Phase 28 (CLAUDE.md Madde S) — bu artık **stored decision**
+   *  contract'ıdır. Operatör override ise reasonKind =
+   *  operator_override; aksi halde reasonKind, persisted score +
+   *  policy snapshot'ında geçerli olan eşiklere göre sistem
+   *  decision'ı (audit row'da yazılı). UI canonical truth olarak
+   *  burayı render eder. */
   decisionOutcome: {
     status: "APPROVED" | "REJECTED" | "NEEDS_REVIEW" | "PENDING";
     reasonKind:
@@ -121,7 +128,35 @@ export type Evaluation = {
       | "operator_override";
     reason: string;
   } | null;
+  /** IA Phase 28 (CLAUDE.md Madde S) — current policy preview.
+   *  Same item re-evaluated against today's thresholds. Filled
+   *  yalnız stored decision'dan **farklı** olduğunda; aynıysa
+   *  null. UI bunu sadece bilgi amaçlı, açık bir "preview"
+   *  etiketiyle gösterir; persisted state'i değiştirmez. */
+  currentPolicyPreview: {
+    status: "APPROVED" | "REJECTED" | "NEEDS_REVIEW";
+    reasonKind:
+      | "blocker_fail"
+      | "low_score"
+      | "mid_band_safe_default"
+      | "auto_approved";
+    reason: string;
+    /** Kullanıcıya gösterilecek hint — örn. "with current
+     *  thresholds (70/85)". UI başlığa basar. */
+    thresholds: { low: number; high: number };
+  } | null;
 };
+
+/** IA Phase 28 — operator-facing label for a persisted reviewStatus.
+ *  Used in the stored decision reason cümlesi. */
+function humanStatus(s: "APPROVED" | "REJECTED" | "NEEDS_REVIEW" | "PENDING"): string {
+  switch (s) {
+    case "APPROVED": return "Approved";
+    case "REJECTED": return "Rejected";
+    case "NEEDS_REVIEW": return "Needs review";
+    default: return "Pending";
+  }
+}
 
 /** IA Phase 27 (CLAUDE.md Madde R) — builtin defaults that match
  *  the server-side `DEFAULT_REVIEW_THRESHOLDS`. UI never blocks on
@@ -254,6 +289,11 @@ export function buildEvaluation(input: {
    *  the builtin default pair (60/90) takes over so the UI never
    *  blocks on a missing payload. */
   thresholds?: { low: number; high: number };
+  /** IA Phase 28 (CLAUDE.md Madde S) — persisted reviewStatus from
+   *  the database row. Stored decision UI'da canonical truth
+   *  olarak buradan okunur; client-side derivation yalnız
+   *  current policy preview için kullanılır. */
+  storedReviewStatus?: "PENDING" | "APPROVED" | "NEEDS_REVIEW" | "REJECTED";
 }): Evaluation {
   const {
     reviewedAt,
@@ -338,56 +378,120 @@ export function buildEvaluation(input: {
     lifecycle = "not_queued";
   }
 
-  // IA Phase 25 — decision outcome resolve (CLAUDE.md Madde M+).
-  // Operatör override aktifse outcome USER damgasını yansıtır;
-  // aksi halde failed checks + score'a bakılarak server decision
-  // kuralının aynısı client tarafında türetilir.
+  // IA Phase 28 (CLAUDE.md Madde S) — stored decision = canonical;
+  // current policy preview = only when stored ≠ preview.
+  //
+  // decisionOutcome is the **stored truth** rendering. Operator
+  // override → reasonKind=operator_override (status taşır kayıtlı
+  // reviewStatus). Aksi halde reasonKind ve status, asset'in audit
+  // row'unda kayıtlı policy snapshot'ına göre üretilen sistem
+  // decision'ını YANSITIR — yani "bugünkü thresholds" değil,
+  // "kararın verildiği günkü thresholds". Frontend bu snapshot'a
+  // erişemediği için stored outcome'u en yakın kanonik formda
+  // sunuyor: status = storedReviewStatus, reasonKind = persisted
+  // sinyallerden türev (blocker, low score, mid-band).
+  //
+  // currentPolicyPreview ise bugünkü thresholds ile aynı asset
+  // YENİDEN değerlendirilseydi sonuç ne olurdu — yalnız stored
+  // ile farklı çıkarsa dolar. UI bunu "with current thresholds
+  // (X/Y)" etiketiyle gösterir.
   let decisionOutcome: Evaluation["decisionOutcome"] = null;
+  let currentPolicyPreview: Evaluation["currentPolicyPreview"] = null;
   if (lifecycle === "ready" && reviewScore !== null) {
-    if (operatorOverride) {
-      decisionOutcome = {
-        status: "PENDING", // outer caller knows the actual reviewStatus; reason categorical
-        reasonKind: "operator_override",
-        // Decision section header'ında "System eval kept as reference"
-        // caption'ı zaten gösterilir — burada yalnız operator'ün
-        // verdiği aksiyonu özetliyoruz (CLAUDE.md Madde M++).
-        reason: "The current status was set manually by the operator.",
-      };
-    } else {
-      const blockerFailed = checks.some(
-        (c) => c.state === "failed" && c.severity === "blocker",
-      );
-      // IA Phase 27 (CLAUDE.md Madde R) — admin-resolved thresholds
-      // drive client-side decision derivation. Absent payload
-      // (legacy server in flight) → builtin defaults + dev warn.
-      const thresholds =
-        input.thresholds ?? FALLBACK_THRESHOLDS_WITH_WARN();
+    const blockerFailed = checks.some(
+      (c) => c.state === "failed" && c.severity === "blocker",
+    );
+    const thresholds =
+      input.thresholds ?? FALLBACK_THRESHOLDS_WITH_WARN();
+
+    // Helper: thresholds + breakdown'dan canonical decision türev.
+    const derive = (
+      t: { low: number; high: number },
+    ): {
+      status: "APPROVED" | "NEEDS_REVIEW";
+      reasonKind:
+        | "blocker_fail"
+        | "low_score"
+        | "mid_band_safe_default"
+        | "auto_approved";
+      reason: string;
+    } => {
       if (blockerFailed) {
-        decisionOutcome = {
+        return {
           status: "NEEDS_REVIEW",
           reasonKind: "blocker_fail",
           reason:
             "Needs review because at least one blocker-severity criterion failed.",
         };
-      } else if (reviewScore < thresholds.low) {
-        decisionOutcome = {
+      }
+      if (reviewScore < t.low) {
+        return {
           status: "NEEDS_REVIEW",
           reasonKind: "low_score",
-          reason: `Needs review because the final score (${reviewScore}) is below the auto-approve threshold (${thresholds.low}).`,
-        };
-      } else if (reviewScore >= thresholds.high) {
-        decisionOutcome = {
-          status: "APPROVED",
-          reasonKind: "auto_approved",
-          reason: `Auto-approved — no blocker fails and the final score (${reviewScore}) reached the high threshold (${thresholds.high}).`,
-        };
-      } else {
-        decisionOutcome = {
-          status: "NEEDS_REVIEW",
-          reasonKind: "mid_band_safe_default",
-          reason: `Needs review because the final score (${reviewScore}) sits in the mid-band (${thresholds.low}–${thresholds.high - 1}); the safe default routes it to manual review even when no checks failed.`,
+          reason: `Needs review because the final score (${reviewScore}) is below the auto-approve threshold (${t.low}).`,
         };
       }
+      if (reviewScore >= t.high) {
+        return {
+          status: "APPROVED",
+          reasonKind: "auto_approved",
+          reason: `Auto-approved — no blocker fails and the final score (${reviewScore}) reached the high threshold (${t.high}).`,
+        };
+      }
+      return {
+        status: "NEEDS_REVIEW",
+        reasonKind: "mid_band_safe_default",
+        reason: `Needs review because the final score (${reviewScore}) sits in the mid-band (${t.low}–${t.high - 1}); the safe default routes it to manual review even when no checks failed.`,
+      };
+    };
+
+    if (operatorOverride) {
+      // Stored truth = operatör seçimi. Status canonical olarak
+      // storedReviewStatus'tan gelir; UI başlığında "Operator decision"
+      // chip'i görünür.
+      decisionOutcome = {
+        status: input.storedReviewStatus ?? "PENDING",
+        reasonKind: "operator_override",
+        reason: "The current status was set manually by the operator.",
+      };
+    } else {
+      // SYSTEM kararı: stored audit row'undaki kararı bilmediğimiz için
+      // şu an aynı checks + score üzerinden derive ediyoruz. Worker
+      // policy snapshot'ı eski thresholds ile yazdıysa stored
+      // canonical farkı `storedReviewStatus` ↔ derive(thresholds)
+      // çelişkisinden anlaşılır; preview alanı bu farkı gösterir.
+      const derivedNow = derive(thresholds);
+      const storedStatus = input.storedReviewStatus ?? derivedNow.status;
+      // IA Phase 28 — stored status ile derived status farklıysa
+      // (yani mevcut thresholds geçmiş kararı yeniden üretmiyor),
+      // reason satırını stored truth'a çevir. Aksi halde derived
+      // gerekçeyi gösterebiliriz — derived ile stored aynı bilgiyi
+      // anlatıyor.
+      const storedAndDerivedAgree = storedStatus === derivedNow.status;
+      decisionOutcome = {
+        status: storedStatus,
+        reasonKind: storedAndDerivedAgree
+          ? derivedNow.reasonKind
+          : "low_score", // placeholder; reasoning string aşağıda override
+        reason: storedAndDerivedAgree
+          ? derivedNow.reason
+          : `The persisted decision is "${humanStatus(storedStatus)}". It was recorded under different thresholds; current policy would land elsewhere — see the policy preview below.`,
+      };
+    }
+
+    // Current policy preview: derive vs stored canonical farklıysa.
+    // Operatör override'da dahi, bugünkü policy "would auto-approve"
+    // diyorsa operatöre bunu göster (operatör kararını bilerek
+    // korusun). Stored = preview ⇒ null (gürültü yok).
+    const previewDerived = derive(thresholds);
+    const storedStatus = input.storedReviewStatus ?? decisionOutcome.status;
+    if (previewDerived.status !== storedStatus) {
+      currentPolicyPreview = {
+        status: previewDerived.status,
+        reasonKind: previewDerived.reasonKind,
+        reason: previewDerived.reason,
+        thresholds,
+      };
     }
   }
 
@@ -401,6 +505,7 @@ export function buildEvaluation(input: {
     checks,
     riskFlagCount: failedReasons.size,
     decisionOutcome,
+    currentPolicyPreview,
   };
 }
 
