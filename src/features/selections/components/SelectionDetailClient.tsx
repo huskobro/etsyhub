@@ -233,7 +233,9 @@ export function SelectionDetailClient({ set, items }: Props) {
       {tab === "designs" ? (
         <DesignsTab setId={set.id} items={designs} />
       ) : null}
-      {tab === "edits" ? <EditsTab setId={set.id} items={designs} /> : null}
+      {tab === "edits" ? (
+        <EditsTab setId={set.id} items={designs} setStatus={set.status} />
+      ) : null}
       {tab === "mockups" ? <MockupsTab setId={set.id} stage={stage} /> : null}
       {tab === "history" ? <HistoryTab events={history} /> : null}
     </div>
