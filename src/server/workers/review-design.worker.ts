@@ -17,6 +17,7 @@ import { REVIEW_PROMPT_VERSION } from "@/providers/review/prompt";
 import { composeReviewSystemPrompt } from "@/providers/review/criteria";
 import { getResolvedReviewConfig } from "@/server/services/settings/review.service";
 import { readRiskFlagKind } from "@/providers/review/types";
+import { runTechnicalEvaluation } from "@/server/services/review/technical-eval";
 import type { ReviewRiskFlag, ImageInput } from "@/providers/review/types";
 import { getStorage } from "@/providers/storage";
 import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
@@ -204,13 +205,8 @@ async function handleDesignReview(
     { apiKey },
   );
 
-  // Merge alpha + LLM flags
-  const allFlags: ReviewRiskFlag[] = [...alphaFlags, ...llm.riskFlags];
-
   // IA Phase 17 (Madde O) — admin-resolved review config drives compose
-  // and scoring math. coreMasterPrompt override + per-criterion override
-  // (label / weight / severity / applicability) merge done in
-  // getResolvedReviewConfig.
+  // and scoring math.
   const reviewConfig = await getResolvedReviewConfig(payload.userId);
   const ctx = {
     productType: productKey,
@@ -224,16 +220,43 @@ async function handleDesignReview(
     criteria: reviewConfig.criteria,
   });
 
+  // IA Phase 23 — server-side technical criteria evaluator. Runs
+  // alongside the provider response; technical flags merge with
+  // semantic ones into a single `allFlags` list and feed the
+  // unified scoring breakdown.
+  const technicalFlags = runTechnicalEvaluation({
+    criteria: reviewConfig.criteria,
+    ctx,
+    asset: {
+      format: ctx.format,
+      width: design.asset.width,
+      height: design.asset.height,
+      dpi: null,
+      hasAlpha: design.asset.hasAlpha,
+    },
+  });
+
+  const allFlags: ReviewRiskFlag[] = [
+    ...alphaFlags,
+    ...llm.riskFlags,
+    ...technicalFlags,
+  ];
+
   // Weighted scoring math (CLAUDE.md Madde O — score is explainable).
+  // Active criteria pool: semantic ids in compose + every applicable
+  // technical id (technical kriterler prompt-listesinde değildir).
   const flagKinds = allFlags
     .map((f) => readRiskFlagKind(f))
     .filter((k): k is string => k !== null);
+  const activeCriteria = reviewConfig.criteria.filter(
+    (c) =>
+      composed.selectedCriterionIds.includes(c.id) ||
+      (c.family === "technical" && c.active),
+  );
   const breakdown = computeScoringBreakdown({
     providerRaw: llm.score,
     riskFlagKinds: flagKinds,
-    criteria: reviewConfig.criteria.filter((c) =>
-      composed.selectedCriterionIds.includes(c.id),
-    ),
+    criteria: activeCriteria,
   });
   const decision = decideReviewStatusFromBreakdown(breakdown);
 
@@ -428,8 +451,6 @@ async function handleLocalAssetReview(
     { apiKey },
   );
 
-  const allFlags: ReviewRiskFlag[] = [...alphaFlags, ...llm.riskFlags];
-
   // IA Phase 17 — admin-resolved review config + weighted scoring math
   // (design branch ile aynı pipeline).
   const reviewConfig = await getResolvedReviewConfig(payload.userId);
@@ -444,15 +465,38 @@ async function handleLocalAssetReview(
     coreMasterPrompt: reviewConfig.settings.coreMasterPrompt ?? undefined,
     criteria: reviewConfig.criteria,
   });
+
+  // IA Phase 23 — server-side technical criteria evaluator (local).
+  const technicalFlags = runTechnicalEvaluation({
+    criteria: reviewConfig.criteria,
+    ctx,
+    asset: {
+      format: ctx.format,
+      width: asset.width,
+      height: asset.height,
+      dpi: asset.dpi,
+      hasAlpha: asset.hasAlpha,
+    },
+  });
+
+  const allFlags: ReviewRiskFlag[] = [
+    ...alphaFlags,
+    ...llm.riskFlags,
+    ...technicalFlags,
+  ];
+
   const flagKinds = allFlags
     .map((f) => readRiskFlagKind(f))
     .filter((k): k is string => k !== null);
+  const activeCriteria = reviewConfig.criteria.filter(
+    (c) =>
+      composed.selectedCriterionIds.includes(c.id) ||
+      (c.family === "technical" && c.active),
+  );
   const breakdown = computeScoringBreakdown({
     providerRaw: llm.score,
     riskFlagKinds: flagKinds,
-    criteria: reviewConfig.criteria.filter((c) =>
-      composed.selectedCriterionIds.includes(c.id),
-    ),
+    criteria: activeCriteria,
   });
   const decision = decideReviewStatusFromBreakdown(breakdown);
   const providerSnapshot = buildProviderSnapshot(providerId, new Date());

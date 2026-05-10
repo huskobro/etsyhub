@@ -28,14 +28,23 @@ import {
   ReviewSettingsSchema,
   updateReviewSettings,
 } from "@/server/services/settings/review.service";
-import { REVIEW_RISK_FLAG_TYPES } from "@/providers/review/types";
+import {
+  REVIEW_RISK_FLAG_TYPES,
+  TECHNICAL_REVIEW_FLAG_TYPES,
+} from "@/providers/review/types";
+
+const ALL_CRITERION_IDS = [
+  ...REVIEW_RISK_FLAG_TYPES,
+  ...TECHNICAL_REVIEW_FLAG_TYPES,
+] as const;
 import { composeReviewSystemPrompt } from "@/providers/review/criteria";
 import { getReviewOpsCounts } from "@/server/services/review/lifecycle";
+import { listPendingScopes } from "@/server/services/review/next-scope";
 
 const PutSchema = ReviewSettingsSchema.partial();
 
 const PatchSchema = z.object({
-  criterionId: z.enum(REVIEW_RISK_FLAG_TYPES),
+  criterionId: z.enum(ALL_CRITERION_IDS),
 });
 
 export const GET = withErrorHandling(async (req: Request) => {
@@ -50,10 +59,14 @@ export const GET = withErrorHandling(async (req: Request) => {
   const sourceKind: "design" | "local-library" =
     sourceKindRaw === "local-library" ? "local-library" : "design";
 
-  const [resolved, opsCounts] = await Promise.all([
-    getResolvedReviewConfig(user.id),
-    getReviewOpsCounts(user.id),
-  ]);
+  const [resolved, opsCounts, folderScopes, batchScopes, referenceScopes] =
+    await Promise.all([
+      getResolvedReviewConfig(user.id),
+      getReviewOpsCounts(user.id),
+      listPendingScopes({ userId: user.id, kind: "folder" }),
+      listPendingScopes({ userId: user.id, kind: "batch" }),
+      listPendingScopes({ userId: user.id, kind: "reference" }),
+    ]);
   const compose = composeReviewSystemPrompt(
     {
       productType,
@@ -80,6 +93,11 @@ export const GET = withErrorHandling(async (req: Request) => {
       coreOverrideRejected: compose.coreOverrideRejected,
     },
     ops: opsCounts,
+    pickers: {
+      folder: folderScopes,
+      batch: batchScopes,
+      reference: referenceScopes,
+    },
   });
 });
 

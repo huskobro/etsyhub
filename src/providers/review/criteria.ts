@@ -23,7 +23,10 @@
 // buradan beslenir. Yeni risk flag eklenince builtin'e satır
 // eklenmek **zorunlu** — typescript hatası verir.
 
-import type { ReviewRiskFlagType } from "@/providers/review/types";
+import type {
+  AnyReviewCriterionId,
+  ReviewRiskFlagType,
+} from "@/providers/review/types";
 
 /**
  * Severity / fail behavior — CLAUDE.md Madde O. Bir kriter geçmediğinde
@@ -64,16 +67,74 @@ export type CriterionApplicability = {
   requiresAnyTransform: ReadonlyArray<string> | null;
 };
 
+/**
+ * Criterion family — CLAUDE.md Madde O.
+ *   • "semantic"  — provider (Gemini) cevap döndürür; riskFlag
+ *                   varsa fail. Master prompt'a blockText eklenir.
+ *   • "technical" — server-side evaluator asset metadata'sını okur
+ *                   ve technicalRule kuralını uygular. Provider
+ *                   çağrısı gerekmez; promptta görünmez.
+ *
+ * Aynı UI iki aileye de açıktır (label/weight/severity/
+ * applicability/active). Operator family chip'i ile hangi tarafın
+ * çalıştırdığını görür.
+ */
+export type CriterionFamily = "semantic" | "technical";
+
+/**
+ * Technical rule payload — `family === "technical"` kriterin
+ * server-side evaluator parametresi. Discriminated union; her tip
+ * kendi config alanlarını taşır.
+ *
+ * Yeni kural tipi eklemek için: (1) buraya variant ekle, (2)
+ * server/services/review/technical-eval.ts evaluate() switch'ine
+ * implement, (3) builtin satırı criteria.ts BUILTIN_CRITERIA'a
+ * ekle. Drift koruması — type ile evaluator senkron kalır.
+ */
+export type TechnicalRule =
+  | {
+      kind: "min_dpi";
+      /** Minimum DPI (e.g. 300 for print-ready). */
+      minDpi: number;
+    }
+  | {
+      kind: "min_resolution";
+      /** Minimum pixel count on the smaller side. */
+      minMinSidePx: number;
+    }
+  | {
+      kind: "format_whitelist";
+      /** Lowercase format names (png/webp/jpeg/jpg/tiff/gif). */
+      allowed: ReadonlyArray<string>;
+    }
+  | {
+      kind: "aspect_ratio";
+      /** Target ratio (width / height). */
+      target: number;
+      /** Acceptable absolute deviation (e.g. 0.02 = ±2 %). */
+      tolerance: number;
+    }
+  | {
+      kind: "transparency_required";
+      // No payload; rule fails when hasAlpha === false.
+    };
+
 export type ReviewCriterion = {
-  /** Risk flag taksonomisi ile bire bir. UI checklist sözlüğü ve
-   *  provider response schema bu id'yi kullanır. */
-  id: ReviewRiskFlagType;
+  /** Risk flag taksonomisi (semantic için ReviewRiskFlagType; technical
+   *  için TechnicalReviewFlagType). Provider response yalnız semantic
+   *  id'leri döner; technical id'ler server-side evaluator tarafından
+   *  üretilir. */
+  id: AnyReviewCriterionId;
+  /** Family — semantic vs technical. Default semantic (geriye
+   *  uyumlu). */
+  family: CriterionFamily;
   /** Operator-facing English label. EvaluationPanel checklist
    *  reads this directly. */
   label: string;
   /** Operator-facing English description (admin pane'de detay). */
   description: string;
-  /** Master prompt block — provider reads this English instruction. */
+  /** Master prompt block — provider reads this English instruction.
+   *  Technical kriterler için boş string ("not used in compose"). */
   blockText: string;
   /** Active flag — inactive blocks excluded from compose & UI. */
   active: boolean;
@@ -86,6 +147,9 @@ export type ReviewCriterion = {
   severity: CriterionSeverity;
   /** Composite applicability filter. */
   applicability: CriterionApplicability;
+  /** Technical rule payload. Yalnız family === "technical" iken
+   *  dolu; semantic kriterlerde undefined. */
+  technicalRule?: TechnicalRule;
   /** Builtin sürüm — değişikliği prompt versiyonunu etkiler. */
   version: string;
 };
@@ -123,6 +187,7 @@ export const BUILTIN_CRITERIA: ReadonlyArray<ReviewCriterion> = [
     weight: 30,
     severity: "blocker",
     applicability: APPLY_TO_ALL,
+    family: "semantic",
     version: "1.1",
   },
   {
@@ -136,6 +201,7 @@ export const BUILTIN_CRITERIA: ReadonlyArray<ReviewCriterion> = [
     weight: 20,
     severity: "blocker",
     applicability: APPLY_TO_ALL,
+    family: "semantic",
     version: "1.1",
   },
   {
@@ -149,6 +215,7 @@ export const BUILTIN_CRITERIA: ReadonlyArray<ReviewCriterion> = [
     weight: 25,
     severity: "blocker",
     applicability: APPLY_TO_ALL,
+    family: "semantic",
     version: "1.1",
   },
   {
@@ -162,6 +229,7 @@ export const BUILTIN_CRITERIA: ReadonlyArray<ReviewCriterion> = [
     weight: 25,
     severity: "blocker",
     applicability: APPLY_TO_ALL,
+    family: "semantic",
     version: "1.1",
   },
   {
@@ -175,6 +243,7 @@ export const BUILTIN_CRITERIA: ReadonlyArray<ReviewCriterion> = [
     weight: 20,
     severity: "warning",
     applicability: APPLY_TO_TRANSPARENT_TARGET,
+    family: "semantic",
     version: "1.1",
   },
   {
@@ -188,6 +257,7 @@ export const BUILTIN_CRITERIA: ReadonlyArray<ReviewCriterion> = [
     weight: 15,
     severity: "warning",
     applicability: APPLY_TO_TRANSPARENT_TARGET,
+    family: "semantic",
     version: "1.1",
   },
   {
@@ -201,6 +271,7 @@ export const BUILTIN_CRITERIA: ReadonlyArray<ReviewCriterion> = [
     weight: 10,
     severity: "warning",
     applicability: APPLY_TO_ALL,
+    family: "semantic",
     version: "1.1",
   },
   {
@@ -214,7 +285,88 @@ export const BUILTIN_CRITERIA: ReadonlyArray<ReviewCriterion> = [
     weight: 25,
     severity: "blocker",
     applicability: APPLY_TO_ALL,
+    family: "semantic",
     version: "1.1",
+  },
+  // ──────────────────────────────────────────────────────────────────
+  // IA Phase 23 — technical criteria (CLAUDE.md Madde O — teknik
+  // kalite kuralları). Server-side evaluator runs these against
+  // asset metadata; provider call not needed. Same UI knobs as
+  // semantic criteria (active/weight/severity/applicability) +
+  // a `technicalRule` payload that the evaluator switches on.
+  // ──────────────────────────────────────────────────────────────────
+  {
+    id: "tech_min_dpi",
+    label: "Minimum DPI",
+    description:
+      "Image DPI metadata must meet the threshold (300 by default for print-ready outputs).",
+    blockText: "",
+    active: true,
+    weight: 15,
+    severity: "warning",
+    applicability: APPLY_TO_ALL,
+    family: "technical",
+    technicalRule: { kind: "min_dpi", minDpi: 300 },
+    version: "1.0",
+  },
+  {
+    id: "tech_min_resolution",
+    label: "Minimum resolution",
+    description:
+      "Smaller-side pixel count must meet the threshold (1800 px by default — sufficient for premium print).",
+    blockText: "",
+    active: true,
+    weight: 20,
+    severity: "warning",
+    applicability: APPLY_TO_ALL,
+    family: "technical",
+    technicalRule: { kind: "min_resolution", minMinSidePx: 1800 },
+    version: "1.0",
+  },
+  {
+    id: "tech_format_whitelist",
+    label: "Allowed file format",
+    description:
+      "Image format must be one of the allowed list. Defaults: PNG / WebP / JPEG / TIFF.",
+    blockText: "",
+    active: true,
+    weight: 25,
+    severity: "blocker",
+    applicability: APPLY_TO_ALL,
+    family: "technical",
+    technicalRule: {
+      kind: "format_whitelist",
+      allowed: ["png", "webp", "jpeg", "jpg", "tiff"],
+    },
+    version: "1.0",
+  },
+  {
+    id: "tech_aspect_ratio",
+    label: "Aspect ratio target",
+    description:
+      "Image aspect ratio must match the target within tolerance (1:1 default, ±2 %).",
+    blockText: "",
+    active: false,
+    weight: 10,
+    severity: "info",
+    applicability: APPLY_TO_ALL,
+    family: "technical",
+    technicalRule: { kind: "aspect_ratio", target: 1, tolerance: 0.02 },
+    version: "1.0",
+  },
+  {
+    id: "tech_transparency_required",
+    label: "Transparency required",
+    description:
+      "Asset must carry a real alpha channel (Sharp probe). Applicable only to transparent target product types.",
+    blockText: "",
+    active: true,
+    weight: 25,
+    severity: "blocker",
+    applicability: APPLY_TO_TRANSPARENT_TARGET,
+    family: "technical",
+    technicalRule: { kind: "transparency_required" },
+    version: "1.0",
   },
 ];
 
@@ -355,7 +507,10 @@ export type ReviewComposeOptions = {
 export type ReviewComposeResult = {
   systemPrompt: string;
   /** Active applicable criterion ids (= UI checklist). */
-  selectedCriterionIds: ReviewRiskFlagType[];
+  /** Compose semantic kriterleri seçer; technical id'leri içermez.
+   *  Tip union geniş tutuluyor çünkü AnyReviewCriterionId narrowing'i
+   *  caller (worker) ortak listede tüketiyor. */
+  selectedCriterionIds: AnyReviewCriterionId[];
   /** Stable signature (id@version|... over selected criteria) used for
    *  snapshot audit. UI does not show this raw — admin pane shows it
    *  as "Active block fingerprint" under Developer / Audit details. */
@@ -375,7 +530,12 @@ export function composeReviewSystemPrompt(
   options: ReviewComposeOptions = {},
 ): ReviewComposeResult {
   const source = options.criteria ?? BUILTIN_CRITERIA;
-  const selected = selectActiveCriteria(ctx, source);
+  // CLAUDE.md Madde O — yalnız semantic kriterler master prompta
+  // girer. Technical kriterler server-side evaluator tarafından
+  // uygulanır; provider response'a karışmaz.
+  const selected = selectActiveCriteria(ctx, source).filter(
+    (c) => c.family === "semantic",
+  );
   const blockLines = selected.map((c) => `- ${c.blockText}`).join("\n");
 
   let core = BUILTIN_CORE_MASTER_PROMPT;

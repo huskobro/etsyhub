@@ -40,6 +40,7 @@ import {
 } from "@/server/services/review/decision";
 
 type Severity = "info" | "warning" | "blocker";
+type Family = "semantic" | "technical";
 
 type Applicability = {
   productTypes: string[] | null;
@@ -49,8 +50,16 @@ type Applicability = {
   requiresAnyTransform: string[] | null;
 };
 
+type TechnicalRule =
+  | { kind: "min_dpi"; minDpi: number }
+  | { kind: "min_resolution"; minMinSidePx: number }
+  | { kind: "format_whitelist"; allowed: string[] }
+  | { kind: "aspect_ratio"; target: number; tolerance: number }
+  | { kind: "transparency_required" };
+
 type Criterion = {
   id: string;
+  family: Family;
   label: string;
   description: string;
   blockText: string;
@@ -58,6 +67,7 @@ type Criterion = {
   weight: number;
   severity: Severity;
   applicability: Applicability;
+  technicalRule?: TechnicalRule;
   version: string;
 };
 
@@ -81,6 +91,26 @@ type ReviewConfigResponse = {
     failed: number;
     lastEnqueueAt: string | null;
     lastLocalScanAt: string | null;
+  };
+  pickers: {
+    folder: Array<{
+      id: string;
+      label: string;
+      pendingCount: number;
+      firstPendingItemId: string | null;
+    }>;
+    batch: Array<{
+      id: string;
+      label: string;
+      pendingCount: number;
+      firstPendingItemId: string | null;
+    }>;
+    reference: Array<{
+      id: string;
+      label: string;
+      pendingCount: number;
+      firstPendingItemId: string | null;
+    }>;
   };
 };
 
@@ -175,7 +205,7 @@ export function PaneReview() {
       </p>
 
       {/* 0) Operations — live pipeline state + manual trigger */}
-      <ReviewOpsSection ops={data.ops} />
+      <ReviewOpsSection ops={data.ops} pickers={data.pickers} />
 
       {/* 1) Decision rule */}
       <section className="mt-8" data-testid="review-pane-thresholds">
@@ -396,71 +426,64 @@ export function PaneReview() {
 
 function ReviewOpsSection({
   ops,
+  pickers,
 }: {
   ops: ReviewConfigResponse["ops"];
+  pickers: ReviewConfigResponse["pickers"];
 }) {
-  const [folderName, setFolderName] = useState("");
+  // IA Phase 23 — unified scope-trigger picker. Operator selects
+  // a kind (folder / batch / reference) and the scope dropdown
+  // refreshes against the server-provided pending list. No more
+  // free-text inputs; the only typed parameter is the productType
+  // for folder scope (local items lack a productType field).
+  const [scopeKind, setScopeKind] = useState<
+    "folder" | "batch" | "reference"
+  >("folder");
+  const [scopeId, setScopeId] = useState<string>("");
   const [productType, setProductType] = useState("clipart");
-  const [batchId, setBatchId] = useState("");
   const [lastResult, setLastResult] = useState<string | null>(null);
 
-  const triggerFolder = async () => {
-    setLastResult(null);
-    if (!folderName.trim()) {
-      setLastResult("Folder name required.");
-      return;
-    }
-    try {
-      const r = await fetch("/api/review/scope-trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scope: "folder",
-          folderName: folderName.trim(),
-          productTypeKey: productType,
-        }),
-      });
-      const body = await r.json();
-      if (!r.ok) {
-        setLastResult(`Folder trigger failed: ${body?.error ?? r.status}`);
-        return;
-      }
-      setLastResult(
-        `Folder · ${folderName} → enqueued ${body.enqueueSucceeded}/${body.requested} (errors: ${body.enqueueErrors}).`,
-      );
-    } catch (err) {
-      setLastResult(
-        `Folder trigger error: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  };
+  const activePickerList =
+    scopeKind === "folder"
+      ? pickers.folder
+      : scopeKind === "batch"
+        ? pickers.batch
+        : pickers.reference;
+  const activePickerEntry = activePickerList.find((p) => p.id === scopeId);
 
-  const triggerBatch = async () => {
+  const triggerScope = async () => {
     setLastResult(null);
-    if (!batchId.trim()) {
-      setLastResult("Batch id required.");
+    if (!scopeId) {
+      setLastResult("Pick a scope first.");
       return;
     }
     try {
+      const body =
+        scopeKind === "folder"
+          ? {
+              scope: "folder" as const,
+              folderName: scopeId,
+              productTypeKey: productType,
+            }
+          : scopeKind === "batch"
+            ? { scope: "batch" as const, batchId: scopeId }
+            : { scope: "reference" as const, referenceId: scopeId };
       const r = await fetch("/api/review/scope-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scope: "batch",
-          batchId: batchId.trim(),
-        }),
+        body: JSON.stringify(body),
       });
-      const body = await r.json();
+      const data = await r.json();
       if (!r.ok) {
-        setLastResult(`Batch trigger failed: ${body?.error ?? r.status}`);
+        setLastResult(`Trigger failed: ${data?.error ?? r.status}`);
         return;
       }
       setLastResult(
-        `Batch · ${batchId} → enqueued ${body.enqueueSucceeded}/${body.requested} (errors: ${body.enqueueErrors}).`,
+        `${scopeKind} · ${activePickerEntry?.label ?? scopeId} → enqueued ${data.enqueueSucceeded}/${data.requested} (errors: ${data.enqueueErrors}).`,
       );
     } catch (err) {
       setLastResult(
-        `Batch trigger error: ${err instanceof Error ? err.message : String(err)}`,
+        `Trigger error: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   };
@@ -495,64 +518,88 @@ function ReviewOpsSection({
         </dd>
       </dl>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <div
-          className="rounded-md border border-line bg-paper p-3"
-          data-testid="ops-trigger-folder"
-        >
-          <div className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
-            Trigger · folder
+      <div
+        className="mt-4 rounded-md border border-line bg-paper p-3"
+        data-testid="ops-trigger-unified"
+      >
+        <div className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+          Manual trigger
+        </div>
+        <p className="mt-1.5 text-xs text-ink-3">
+          Pick a scope kind, then choose a pending scope from the
+          dropdown. Already-scored items are skipped automatically.
+        </p>
+        <div className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center">
+          <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+            Kind
+          </span>
+          <div className="flex gap-1.5">
+            {(["folder", "batch", "reference"] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  setScopeKind(k);
+                  setScopeId("");
+                }}
+                className={cn(
+                  "rounded-sm border px-2.5 py-1 font-mono text-[10px] uppercase tracking-meta",
+                  scopeKind === k
+                    ? "border-k-orange bg-k-orange/10 text-ink"
+                    : "border-line bg-paper text-ink-3 hover:border-ink-3",
+                )}
+                data-testid={`ops-kind-${k}`}
+              >
+                {k}
+              </button>
+            ))}
           </div>
-          <input
-            value={folderName}
-            onChange={(e) => setFolderName(e.target.value)}
-            placeholder="folderName"
-            className="mt-2 w-full rounded-md border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-ink"
-          />
+          <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+            Scope
+          </span>
           <select
-            value={productType}
-            onChange={(e) => setProductType(e.target.value)}
-            className="mt-2 w-full rounded-md border border-line bg-bg px-2 py-1.5 text-xs text-ink"
+            value={scopeId}
+            onChange={(e) => setScopeId(e.target.value)}
+            className="w-full rounded-md border border-line bg-bg px-2 py-1.5 text-xs text-ink"
+            data-testid="ops-scope-select"
           >
-            <option value="clipart">clipart</option>
-            <option value="sticker">sticker</option>
-            <option value="transparent_png">transparent_png</option>
-            <option value="wall_art">wall_art</option>
-            <option value="bookmark">bookmark</option>
-            <option value="printable">printable</option>
+            <option value="">— select pending {scopeKind} —</option>
+            {activePickerList.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label} · {p.pendingCount} pending
+              </option>
+            ))}
           </select>
-          <button
-            type="button"
-            onClick={triggerFolder}
-            className="mt-2 inline-flex h-8 w-full items-center justify-center rounded-md border border-k-orange bg-k-orange/10 text-xs font-medium text-ink hover:bg-k-orange/20"
-          >
-            Enqueue folder review
-          </button>
+          {scopeKind === "folder" ? (
+            <>
+              <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+                Product
+              </span>
+              <select
+                value={productType}
+                onChange={(e) => setProductType(e.target.value)}
+                className="w-full rounded-md border border-line bg-bg px-2 py-1.5 text-xs text-ink"
+                data-testid="ops-product-select"
+              >
+                <option value="clipart">clipart</option>
+                <option value="sticker">sticker</option>
+                <option value="transparent_png">transparent_png</option>
+                <option value="wall_art">wall_art</option>
+                <option value="bookmark">bookmark</option>
+                <option value="printable">printable</option>
+              </select>
+            </>
+          ) : null}
         </div>
-        <div
-          className="rounded-md border border-line bg-paper p-3"
-          data-testid="ops-trigger-batch"
+        <button
+          type="button"
+          onClick={triggerScope}
+          disabled={!scopeId}
+          className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md border border-k-orange bg-k-orange/15 px-3 text-xs font-medium text-ink hover:bg-k-orange/25 disabled:cursor-not-allowed disabled:opacity-50"
+          data-testid="ops-trigger-btn"
         >
-          <div className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
-            Trigger · batch
-          </div>
-          <input
-            value={batchId}
-            onChange={(e) => setBatchId(e.target.value)}
-            placeholder="batchId"
-            className="mt-2 w-full rounded-md border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-ink"
-          />
-          <div className="mt-2 h-[34px] text-[10px] text-ink-3">
-            Picks every undecided + never-scored design in this batch.
-          </div>
-          <button
-            type="button"
-            onClick={triggerBatch}
-            className="mt-2 inline-flex h-8 w-full items-center justify-center rounded-md border border-k-orange bg-k-orange/10 text-xs font-medium text-ink hover:bg-k-orange/20"
-          >
-            Enqueue batch review
-          </button>
-        </div>
+          Enqueue review for {scopeKind}
+        </button>
       </div>
       {lastResult ? (
         <p
@@ -710,7 +757,9 @@ function CriterionRow({
       draft.severity !== criterion.severity ||
       draft.active !== criterion.active ||
       JSON.stringify(draft.applicability) !==
-        JSON.stringify(criterion.applicability)
+        JSON.stringify(criterion.applicability) ||
+      JSON.stringify(draft.technicalRule ?? null) !==
+        JSON.stringify(criterion.technicalRule ?? null)
     );
   }, [draft, criterion]);
 
@@ -730,6 +779,17 @@ function CriterionRow({
         ) : (
           <ChevronRight className="h-3.5 w-3.5 self-center text-ink-3" />
         )}
+        <span
+          className={cn(
+            "rounded-sm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-meta",
+            criterion.family === "technical"
+              ? "bg-k-orange/15 text-k-orange-ink"
+              : "bg-ink/8 text-ink-2",
+          )}
+          data-testid="criterion-family-chip"
+        >
+          {criterion.family === "technical" ? "tech" : "ai"}
+        </span>
         <span className="font-mono text-[12.5px] text-ink">
           {criterion.id}
         </span>
@@ -844,18 +904,27 @@ function CriterionRow({
               data-testid="criterion-description"
             />
           </label>
-          <label className="mt-3 flex flex-col gap-1 text-xs text-ink-3">
-            Prompt block text
-            <textarea
-              value={draft.blockText}
-              onChange={(e) =>
-                setDraft({ ...draft, blockText: e.target.value })
+          {draft.family === "semantic" ? (
+            <label className="mt-3 flex flex-col gap-1 text-xs text-ink-3">
+              Prompt block text
+              <textarea
+                value={draft.blockText}
+                onChange={(e) =>
+                  setDraft({ ...draft, blockText: e.target.value })
+                }
+                rows={2}
+                className="rounded-md border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-ink"
+                data-testid="criterion-block-text"
+              />
+            </label>
+          ) : draft.technicalRule ? (
+            <TechnicalRuleEditor
+              rule={draft.technicalRule}
+              onChange={(rule) =>
+                setDraft({ ...draft, technicalRule: rule })
               }
-              rows={2}
-              className="rounded-md border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-ink"
-              data-testid="criterion-block-text"
             />
-          </label>
+          ) : null}
 
           {/* IA Phase 22 — Applicability editor (CLAUDE.md Madde O).
               Composite filter: productTypes ∧ formats ∧ transparency
@@ -982,6 +1051,9 @@ function CriterionRow({
                   severity: draft.severity,
                   active: draft.active,
                   applicability: draft.applicability,
+                  ...(draft.technicalRule
+                    ? { technicalRule: draft.technicalRule }
+                    : {}),
                 });
               }}
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-k-orange bg-k-orange/10 px-3 text-xs font-medium text-ink hover:bg-k-orange/20 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1072,6 +1144,137 @@ function ApplicabilityChips({
           })}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// IA Phase 23 — TechnicalRuleEditor
+// Renders a discriminated-union editor for technical criteria. Each
+// rule kind has bespoke fields; the wrapper switches on `rule.kind`.
+// ────────────────────────────────────────────────────────────────────────
+
+function TechnicalRuleEditor({
+  rule,
+  onChange,
+}: {
+  rule: TechnicalRule;
+  onChange: (rule: TechnicalRule) => void;
+}) {
+  return (
+    <div
+      className="mt-3 rounded-md border border-line bg-bg p-3"
+      data-testid="technical-rule-editor"
+    >
+      <div className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+        Technical rule · {rule.kind}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-ink-3">
+        {rule.kind === "min_dpi" ? (
+          <label className="flex flex-col gap-1">
+            Minimum DPI
+            <input
+              type="number"
+              min={1}
+              max={1200}
+              value={rule.minDpi}
+              onChange={(e) =>
+                onChange({ kind: "min_dpi", minDpi: Number(e.target.value) })
+              }
+              className="rounded-md border border-line bg-paper px-2 py-1.5 font-mono text-sm text-ink"
+              data-testid="rule-min-dpi"
+            />
+          </label>
+        ) : null}
+        {rule.kind === "min_resolution" ? (
+          <label className="flex flex-col gap-1">
+            Minimum smaller-side px
+            <input
+              type="number"
+              min={100}
+              max={20000}
+              value={rule.minMinSidePx}
+              onChange={(e) =>
+                onChange({
+                  kind: "min_resolution",
+                  minMinSidePx: Number(e.target.value),
+                })
+              }
+              className="rounded-md border border-line bg-paper px-2 py-1.5 font-mono text-sm text-ink"
+              data-testid="rule-min-resolution"
+            />
+          </label>
+        ) : null}
+        {rule.kind === "format_whitelist" ? (
+          <label className="col-span-2 flex flex-col gap-1">
+            Allowed formats (comma-separated)
+            <input
+              value={rule.allowed.join(", ")}
+              onChange={(e) =>
+                onChange({
+                  kind: "format_whitelist",
+                  allowed: e.target.value
+                    .split(",")
+                    .map((s) => s.trim().toLowerCase())
+                    .filter(Boolean),
+                })
+              }
+              className="rounded-md border border-line bg-paper px-2 py-1.5 font-mono text-sm text-ink"
+              data-testid="rule-format-whitelist"
+            />
+          </label>
+        ) : null}
+        {rule.kind === "aspect_ratio" ? (
+          <>
+            <label className="flex flex-col gap-1">
+              Target ratio (w / h)
+              <input
+                type="number"
+                step="0.01"
+                min={0.1}
+                max={10}
+                value={rule.target}
+                onChange={(e) =>
+                  onChange({
+                    ...rule,
+                    target: Number(e.target.value),
+                  })
+                }
+                className="rounded-md border border-line bg-paper px-2 py-1.5 font-mono text-sm text-ink"
+                data-testid="rule-aspect-target"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              Tolerance (±)
+              <input
+                type="number"
+                step="0.001"
+                min={0}
+                max={1}
+                value={rule.tolerance}
+                onChange={(e) =>
+                  onChange({
+                    ...rule,
+                    tolerance: Number(e.target.value),
+                  })
+                }
+                className="rounded-md border border-line bg-paper px-2 py-1.5 font-mono text-sm text-ink"
+                data-testid="rule-aspect-tolerance"
+              />
+            </label>
+          </>
+        ) : null}
+        {rule.kind === "transparency_required" ? (
+          <p className="col-span-2 text-xs text-ink-3">
+            No parameters — fails when the asset has no alpha channel.
+            Combine with applicability filters to scope (e.g. only
+            <code className="ml-1 rounded bg-ink/5 px-1 font-mono">
+              transparent_png
+            </code>{" "}
+            product types).
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }

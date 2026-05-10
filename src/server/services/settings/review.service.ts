@@ -25,7 +25,15 @@ import {
   BUILTIN_CRITERIA,
   type ReviewCriterion,
 } from "@/providers/review/criteria";
-import { REVIEW_RISK_FLAG_TYPES } from "@/providers/review/types";
+import {
+  REVIEW_RISK_FLAG_TYPES,
+  TECHNICAL_REVIEW_FLAG_TYPES,
+} from "@/providers/review/types";
+
+const ALL_CRITERION_IDS = [
+  ...REVIEW_RISK_FLAG_TYPES,
+  ...TECHNICAL_REVIEW_FLAG_TYPES,
+] as const;
 
 const SETTING_KEY = "review";
 
@@ -57,7 +65,7 @@ const ReviewSettingsSchema = z.object({
   coreMasterPrompt: z.string().max(8000).nullable().default(null),
   criterionOverrides: z
     .record(
-      z.enum(REVIEW_RISK_FLAG_TYPES),
+      z.enum(ALL_CRITERION_IDS),
       CriterionOverrideSchema,
     )
     .default({}),

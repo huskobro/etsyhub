@@ -1573,6 +1573,15 @@ metin** olmamalıdır. Bunun yerine:
   kullanıcı override katmanı vardır; admin override yokken
   builtin'ler etkili. UI yazma yüzeyi her builtin için override
   oluşturup updates yazar (delete override = revert to builtin).
+- Criteria sistemi yalnızca semantic/moderation kuralları (provider'ın
+  cevaplayacağı) için değil, **teknik kalite kuralları** (DPI,
+  resolution, aspect ratio, format, transparency) için de
+  kullanılabilir. Server-side rule evaluator asset metadata'sını
+  okur ve teknik kuralların failed olanlarını risk flag olarak
+  ekler; provider çağrısı gerekmez. Aynı UI (label/description/
+  weight/severity/applicability/active) iki aileye de açıktır
+  — operatör hangi kuralın provider veya local evaluator
+  tarafından kontrol edildiğini bir family chip ile görür.
 
 ### P. Stable interaction surfaces
 

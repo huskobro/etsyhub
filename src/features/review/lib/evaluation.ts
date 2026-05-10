@@ -25,7 +25,10 @@
 // olur (CLAUDE.md'deki "drift koruması — tek kaynaklı sözlük"
 // prensibi).
 
-import type { ReviewRiskFlagType } from "@/providers/review/types";
+import type {
+  AnyReviewCriterionId,
+  ReviewRiskFlagType,
+} from "@/providers/review/types";
 import { REVIEW_RISK_FLAG_TYPES } from "@/providers/review/types";
 import {
   BUILTIN_CRITERIA,
@@ -65,8 +68,9 @@ export type CheckState =
   | "neutral"; // not applicable to this asset's context
 
 export type EvaluationCheck = {
-  /** Kontrol id — risk flag taksonomisinden gelir. */
-  id: ReviewRiskFlagType;
+  /** Kontrol id — risk flag taksonomisinden gelir (semantic veya
+   *  technical). */
+  id: AnyReviewCriterionId;
   /** Operator-facing English label. */
   label: string;
   /** State for the UI (passed / failed / neutral). */
