@@ -1330,6 +1330,54 @@ tamamen `undecided=0`'a düştüğünde operatör akışı **kesilmez**:
   yüzey merge edilmez. Whitelist sadece DS-spec kararıyla yazılır
   (örn. v4 dark workspace hex sabitleri).
 
+### M. Review surface — sabit kararlar
+
+Bu bölüm Phase 6 → Phase 13 boyunca review surface'i için verilen
+ürün/UX kararlarını yazıya bağlar. Yeni feature, refactor veya UI
+polish bu sabitleri korur:
+
+**Top-bar bilgi hiyerarşisi (workspace içinde):**
+
+1. **Primary — current scope summary.** Operatör batch / folder /
+   queue focus'tayken **en görünür yer scope summary**'dir, çünkü
+   "şu an hangi işi yapıyorum, kaç tane kaldı" sorusunun cevabı
+   önce bu satırdadır. Format: `Batch · cmoqxxx · 22 undecided ·
+   4 kept · 2 discarded`. Üç sayım her zaman: undecided / kept /
+   discarded (decided türetilmiş). Undecided > 0 iken
+   `text-k-orange-bright` accent.
+2. **Secondary — total review pending (workspace-wide).** Operatör
+   "tüm queue'da daha kaç iş var" sorusunu **ikincil** sorar — bu
+   sayı top-bar'ın **sağ tarafına küçük bir caption olarak** iner
+   ("Queue · 273 review pending"). Asla scope summary'den daha
+   görünür olmaz; aksi halde batch focus'unda operatör batch
+   sayısıyla queue sayısını karıştırır.
+3. **Tertiary — bookkeeping.** `Item N / M · Page X / Y` küçük
+   mono caption.
+
+**Progress bar:** her zaman **current scope progress** —
+`(kept + discarded) / scopeTotal`. Workspace-wide ilerleme bar'a
+girmez (anchor'a girer).
+
+**Action bar düzeni:** **Keep · Undecided · Discard** (sol → sağ).
+Kullanıcı talimatı: operatör action sırasını decision axis ile
+okur, UI verb ile değil. "Reset" değil "Undecided".
+
+**Filter bar düzeni:** Tek satır, segmented Kivasy DS recipe'ler
+ile (`.k-segment`, `.k-input`):
+- Sol: source segment (AI Designs / Local Library) — `?source=`
+- Orta: decision segment (All / Undecided / Kept / Rejected) —
+  `?decision=`
+- Sağ: search input — `?q=` (placeholder, hızlı arama)
+
+Eski "tab + chip + ayrı arama" dağınıklığı bir bütün filter bar'a
+toplanır. Custom rounded-full button hiyerarşisi yerine DS
+recipe'leri kullanılır (Madde L bağı).
+
+**Scope completion:** undecided=0 olduğunda canonical "Scope
+complete" kart gösterilir (silent teleport yok). Sıradaki scope
+**oldest pending** stratejisi ile resolve edilir (operatör birikmiş
+işi önce kapatır). nextScope null → "All caught up" copy.
+
 ## Library / Selections / Products — Sınır Invariant'ları
 
 Bu üç ekranı **karıştırmak yasaktır**. Kod, route, copy ve UI seviyesinde

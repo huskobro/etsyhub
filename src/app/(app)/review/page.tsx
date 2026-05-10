@@ -40,7 +40,7 @@
 
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/server/auth";
-import { ReviewTabs } from "@/app/(app)/review/_components/ReviewTabs";
+import { ReviewQueueList } from "@/app/(app)/review/_components/ReviewQueueList";
 import { BatchReviewWorkspace } from "@/features/batches/components/BatchReviewWorkspace";
 import { QueueReviewWorkspace } from "@/features/review/components/QueueReviewWorkspace";
 import {
@@ -236,6 +236,10 @@ export default async function ReviewPage({
     );
   }
 
+  // Queue grid mode (no item / batch focus). The unified ReviewQueueList
+  // mounts the canonical toolbar (source segment + decision segment +
+  // search) and the card grid; ReviewTabs was retired in IA Phase 13
+  // because the source segment is now the canonical source switch.
   return (
     <div className="flex h-full flex-col gap-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -258,7 +262,7 @@ export default async function ReviewPage({
           </p>
         </div>
       </header>
-      <ReviewTabs activeTab={activeTab} />
+      <ReviewQueueList scope={focusScope} />
     </div>
   );
 }

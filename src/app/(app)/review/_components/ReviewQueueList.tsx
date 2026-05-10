@@ -27,10 +27,8 @@ import {
 } from "next/navigation";
 import { useReviewQueue } from "@/features/review/queries";
 import { ReviewCard } from "@/app/(app)/review/_components/ReviewCard";
-import {
-  ReviewDecisionFilter,
-  decisionFromParam,
-} from "@/app/(app)/review/_components/ReviewDecisionFilter";
+import { decisionFromParam } from "@/app/(app)/review/_components/ReviewDecisionFilter";
+import { ReviewQueueToolbar } from "@/app/(app)/review/_components/ReviewQueueToolbar";
 import { BulkActionsBar } from "@/app/(app)/review/_components/BulkActionsBar";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { buildReviewUrl } from "@/features/review/lib/search-params";
@@ -76,7 +74,11 @@ export function ReviewQueueList({ scope }: Props) {
   if (isLoading) {
     return (
       <div className="flex flex-col gap-4">
-        <ReviewDecisionFilter active={decisionChip} />
+        <ReviewQueueToolbar
+          source={scope === "design" ? "ai" : "local"}
+          decision={decisionChip}
+          initialQuery={searchParams.get("q") ?? ""}
+        />
         <StateMessage tone="neutral" title="Yükleniyor…" />
       </div>
     );
@@ -84,7 +86,11 @@ export function ReviewQueueList({ scope }: Props) {
   if (error) {
     return (
       <div className="flex flex-col gap-4">
-        <ReviewDecisionFilter active={decisionChip} />
+        <ReviewQueueToolbar
+          source={scope === "design" ? "ai" : "local"}
+          decision={decisionChip}
+          initialQuery={searchParams.get("q") ?? ""}
+        />
         <StateMessage
           tone="error"
           title="Yüklenemedi"
@@ -99,7 +105,11 @@ export function ReviewQueueList({ scope }: Props) {
     const filterActive = decisionParam !== undefined;
     return (
       <div className="flex flex-col gap-4">
-        <ReviewDecisionFilter active={decisionChip} />
+        <ReviewQueueToolbar
+          source={scope === "design" ? "ai" : "local"}
+          decision={decisionChip}
+          initialQuery={searchParams.get("q") ?? ""}
+        />
         {filterActive ? (
           <StateMessage
             tone="neutral"
@@ -141,7 +151,11 @@ export function ReviewQueueList({ scope }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      <ReviewDecisionFilter active={decisionChip} />
+      <ReviewQueueToolbar
+        source={scope === "design" ? "ai" : "local"}
+        decision={decisionChip}
+        initialQuery={searchParams.get("q") ?? ""}
+      />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
         {data.items.map((item) => (
           <ReviewCard key={item.id} item={item} />

@@ -21,7 +21,7 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
-import { Layers } from "lucide-react";
+import { Folder, Image as ImageIcon, Layers } from "lucide-react";
 import type { ReviewQueueItem, ReviewStatusEnum } from "@/features/review/queries";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
@@ -222,6 +222,13 @@ export function ReviewCard({ item }: Props) {
         {/* Pass 24 — Source meta. Kullanıcının "bu görsel nereden geldi?"
             sorusunu kart üzerinden cevaplar. Local: dosya adı + klasör
             (truncate). Design: ProductType key + reference kısa id. */}
+        {/* IA Phase 13 — final card parity. Both source variants now
+         *   share a uniform 3-row metadata block:
+         *     1. Title (filename for local, productType chip for AI)
+         *     2. Origin (folder name for local, ref short id for AI)
+         *     3. Format · Dimensions
+         *   Lucide icons replace the emoji/glyph used in earlier phases
+         *   (📁 / ✦) so the two cards line up at the icon column. */}
         {item.source?.kind === "local-library" ? (
           <div
             className="flex flex-col gap-0.5 text-xs text-text-muted"
@@ -233,38 +240,42 @@ export function ReviewCard({ item }: Props) {
             >
               {item.source.fileName}
             </span>
-            <span className="truncate" title={item.source.folderName}>
-              📁 {item.source.folderName}
+            <span
+              className="flex items-center gap-1 truncate"
+              title={item.source.folderName}
+            >
+              <Folder className="h-3 w-3 shrink-0" aria-hidden />
+              {item.source.folderName}
             </span>
-            <span>
+            <span className="flex items-center gap-1">
+              <ImageIcon className="h-3 w-3 shrink-0" aria-hidden />
+              {item.source.mimeType.replace("image/", "").toUpperCase()}
+              {" · "}
               {item.source.width}×{item.source.height}
               {item.source.dpi ? ` · ${item.source.dpi}dpi` : ""}
             </span>
           </div>
         ) : item.source?.kind === "design" ? (
-          // IA Phase 12 — AI design card parity with the local card.
-          // Three info rows mirror the local layout: title (product
-          // type / ref), origin chip, dimensions. Local card has
-          // file/folder/dimensions; AI mirrors with productType/ref/
-          // dimensions so the two cards read as the same family.
           <div
             className="flex flex-col gap-0.5 text-xs text-text-muted"
             data-testid="source-meta"
           >
             <div className="flex flex-wrap items-center gap-1.5">
               {item.source.productTypeKey ? (
-                <span className="rounded-sm bg-surface-muted px-1.5 py-0.5 font-medium text-text">
+                <span className="truncate rounded-sm bg-surface-muted px-1.5 py-0.5 font-medium text-text">
                   {item.source.productTypeKey}
                 </span>
               ) : null}
-              {item.source.referenceShortId ? (
-                <span className="font-mono">
-                  ref-{item.source.referenceShortId}
-                </span>
-              ) : null}
             </div>
-            <span className="truncate">
-              ✦ {item.source.mimeType.replace("image/", "").toUpperCase()}
+            <span className="flex items-center gap-1 truncate font-mono">
+              <Layers className="h-3 w-3 shrink-0" aria-hidden />
+              {item.source.referenceShortId
+                ? `ref-${item.source.referenceShortId}`
+                : "—"}
+            </span>
+            <span className="flex items-center gap-1">
+              <ImageIcon className="h-3 w-3 shrink-0" aria-hidden />
+              {item.source.mimeType.replace("image/", "").toUpperCase()}
               {item.source.width != null && item.source.height != null
                 ? ` · ${item.source.width}×${item.source.height}`
                 : ""}

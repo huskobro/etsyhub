@@ -292,22 +292,27 @@ export function ReviewWorkspaceShell<TItem>({
       data-decision={currentDecision}
       {...(dataAttributes ?? {})}
     >
-      {/* ── Workspace bar — IA Phase 12 hierarchy ──────────────────────
-       *   1. Workspace anchor (largest): "23 review pending" — operator
-       *      sees the total work outstanding regardless of current
-       *      scope. CLAUDE.md Madde H: total visibility is the
-       *      number that decides "do I have anything else to do?".
-       *   2. Scope summary (mono small): "Batch · 8 undecided · 4
-       *      kept · 2 discarded" — the three-count breakdown for the
-       *      active scope. Undecided is k-orange-bright accented when
-       *      > 0; the gating signal stays loud.
-       *   3. Item / page index (smallest mono): "Item 8 / 24 · Page 2
-       *      / 11" — bookkeeping for the operator's current cursor,
-       *      not the question they ask first.
-       *   4. ProgressBar: tracks the *current scope* progress (kept
-       *      + discarded over scope total). Workspace-wide totals
-       *      live in the anchor above; scope progress is what the
-       *      operator is actively burning down.
+      {/* ── Workspace bar — IA Phase 13 hierarchy ──────────────────────
+       *   CLAUDE.md Madde M: scope summary primary, total pending
+       *   secondary (small caption on the right). Phase 12 had the
+       *   total pending as the workspace anchor; operators reported
+       *   that number competing with the scope summary on batch
+       *   focus pages — the global queue count next to a small
+       *   batch summary is misleading. Phase 13 swaps the priority:
+       *   scope summary is now the loud line, total pending is a
+       *   muted "Queue · 273 review pending" caption next to the
+       *   progress bar.
+       *
+       *   1. Primary (largest, accent on undecided > 0):
+       *        "Batch · cmoqxxx · 22 undecided · 4 kept · 2 discarded"
+       *      Three sayım always: undecided / kept / discarded.
+       *   2. Bookkeeping (small mono):
+       *        "Item 8 / 24 · Page 2 / 11"
+       *   3. Secondary right (small mono, after progress bar):
+       *        "Queue · 273 review pending"
+       *      Operator's "kaç toplam iş var" answer — present, but
+       *      never competing with the scope summary.
+       *   4. ProgressBar: current scope progress.
        */}
       <div className="flex flex-shrink-0 items-center gap-4 border-b border-white/5 bg-[#16130F] px-5 py-3">
         <Link
@@ -319,35 +324,12 @@ export function ReviewWorkspaceShell<TItem>({
         </Link>
 
         <div className="flex flex-1 flex-col items-center justify-center leading-tight">
-          {/* 1. Workspace anchor */}
-          {typeof totalReviewPending === "number" ? (
-            <div className="flex items-baseline gap-2">
-              <span
-                className={cn(
-                  "k-display text-xl font-semibold tabular-nums",
-                  totalReviewPending > 0
-                    ? "text-k-orange-bright"
-                    : "text-white/40",
-                )}
-                data-testid="topbar-total-pending"
-              >
-                {totalReviewPending}
-              </span>
-              <span className="font-mono text-xs uppercase tracking-meta text-white/50">
-                {totalReviewPending === 1
-                  ? "review pending"
-                  : "review pending"}
-              </span>
-            </div>
-          ) : (
-            <div className="font-mono text-xs uppercase tracking-meta text-white/40">
-              {scopeLabel}
-            </div>
-          )}
-
-          {/* 2. Scope summary — three-count breakdown */}
-          <div className="mt-0.5 flex items-center gap-2 font-mono text-xs uppercase tracking-meta">
-            <span className="text-white/40">{scopeLabel}</span>
+          {/* 1. Primary — scope summary three-count breakdown */}
+          <div
+            className="flex items-center gap-2 font-mono text-sm uppercase tracking-meta"
+            data-testid="topbar-scope-summary"
+          >
+            <span className="font-medium text-white/85">{scopeLabel}</span>
             <span className="text-white/20">·</span>
             <span
               className={cn(
@@ -361,18 +343,18 @@ export function ReviewWorkspaceShell<TItem>({
               {undecidedCount} undecided
             </span>
             <span className="text-white/20">·</span>
-            <span className="tabular-nums text-white/50">
+            <span className="tabular-nums text-white/60">
               {keptCount} kept
             </span>
             <span className="text-white/20">·</span>
-            <span className="tabular-nums text-white/50">
+            <span className="tabular-nums text-white/60">
               {discardedCount} discarded
             </span>
           </div>
 
-          {/* 3. Item / page index — bookkeeping line */}
+          {/* 2. Bookkeeping line */}
           {item ? (
-            <div className="mt-0.5 flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-meta text-white/40">
+            <div className="mt-1 flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-meta text-white/40">
               <span className="tabular-nums">
                 Item {cursor + 1} / {total}
               </span>
@@ -394,6 +376,27 @@ export function ReviewWorkspaceShell<TItem>({
           className="w-40"
           ariaLabel={`Scope progress ${decidedCount}/${denom}`}
         />
+
+        {/* 3. Secondary right — workspace-wide queue total. Muted
+         *   mono caption; never competes with the scope summary. */}
+        {typeof totalReviewPending === "number" ? (
+          <div
+            className="flex items-baseline gap-1.5 font-mono text-[10.5px] uppercase tracking-meta text-white/40"
+            data-testid="topbar-total-pending"
+          >
+            <span className="text-white/30">Queue</span>
+            <span className="text-white/20">·</span>
+            <span
+              className={cn(
+                "tabular-nums",
+                totalReviewPending > 0 ? "text-white/70" : "text-white/30",
+              )}
+            >
+              {totalReviewPending}
+            </span>
+            <span className="text-white/30">pending</span>
+          </div>
+        ) : null}
 
         <button
           type="button"

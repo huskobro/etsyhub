@@ -82,6 +82,10 @@ const whitelist = [
   // ama BatchReviewWorkspace.tsx'in geçmiş v4 spec yorumları nedeniyle
   // entry korundu.
   "src/features/review/components/ReviewWorkspaceShell.tsx",
+  // IA Phase 13 — ReviewQueueToolbar uses the Kivasy DS half-pixel
+  // mono caption (`text-[10.5px]`) for the per-segment count chips,
+  // matching the Library/References sub-tab patterns.
+  "src/app/(app)/review/_components/ReviewQueueToolbar.tsx",
   // Rollout-4 — Selections (B2/B3) recipes.
   //  · SelectionCard → `.k-card--hero` v5 hero card; `aspect-square` + 3-up
   //    thumb composite v5 design layer'ında tanımlı.
