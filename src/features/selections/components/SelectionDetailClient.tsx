@@ -40,6 +40,10 @@ export interface SelectionDetailItem {
   status: "pending" | "selected" | "rejected";
   aspectRatio: string | null;
   productTypeKey: string | null;
+  /** IA Phase 7 — heavy edit lock. Non-null while a BullMQ heavy job
+   *  (background-remove / magic-eraser) is in flight on this item. The
+   *  EditsTab uses this to drive its row-level processing UI. */
+  activeHeavyJobId: string | null;
 }
 
 export interface SelectionDetailSet {
@@ -111,6 +115,18 @@ export function SelectionDetailClient({ set, items }: Props) {
     editedAssetId: it.editedAssetId,
     aspectRatio: it.aspectRatio,
     productTypeKey: it.productTypeKey,
+  }));
+
+  // EditsTab needs the heavy lock state on top of the Designs view; we
+  // build a parallel array so DesignsTab keeps its narrow row shape and
+  // EditsTab gets the activeHeavyJobId field it needs.
+  const editsItems = items.map((it) => ({
+    id: it.id,
+    sourceAssetId: it.sourceAssetId,
+    editedAssetId: it.editedAssetId,
+    aspectRatio: it.aspectRatio,
+    productTypeKey: it.productTypeKey,
+    activeHeavyJobId: it.activeHeavyJobId,
   }));
 
   const tabs: TabItem[] = [
@@ -234,7 +250,7 @@ export function SelectionDetailClient({ set, items }: Props) {
         <DesignsTab setId={set.id} items={designs} />
       ) : null}
       {tab === "edits" ? (
-        <EditsTab setId={set.id} items={designs} setStatus={set.status} />
+        <EditsTab setId={set.id} items={editsItems} setStatus={set.status} />
       ) : null}
       {tab === "mockups" ? <MockupsTab setId={set.id} stage={stage} /> : null}
       {tab === "history" ? <HistoryTab events={history} /> : null}

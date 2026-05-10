@@ -70,6 +70,7 @@ export default async function SelectionDetailPage({
         status: it.status,
         aspectRatio: it.aspectRatio,
         productTypeKey: it.productTypeKey,
+        activeHeavyJobId: it.activeHeavyJobId,
       }))}
     />
   );
