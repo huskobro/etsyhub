@@ -50,6 +50,16 @@ interface QueueReviewWorkspaceProps {
    *  queue hook so the workspace and the underlying grid see the same
    *  filtered set. `undefined` = "all" chip. */
   decision: "undecided" | "kept" | "rejected" | undefined;
+  /** IA Phase 12 — workspace anchor (CLAUDE.md Madde H). */
+  totalReviewPending?: number;
+  /** IA Phase 12 — next pending scope; for AI/Local items the
+   *  resolver typically returns the next pending folder (local) or
+   *  the next pending batch (AI item with batch lineage). */
+  nextScope?: {
+    href: string;
+    label: string;
+    kind: "batch" | "folder" | "queue";
+  } | null;
 }
 
 // Pipeline ReviewStatus → canonical operator decision axis. PENDING and
@@ -90,6 +100,8 @@ export function QueueReviewWorkspace({
   itemId,
   page,
   decision,
+  totalReviewPending,
+  nextScope,
 }: QueueReviewWorkspaceProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -307,13 +319,13 @@ export function QueueReviewWorkspace({
 
   // ── Counts ─────────────────────────────────────────────────────────
 
-  const decidedCount = items.filter(
-    (it) => it.reviewStatus === "APPROVED" || it.reviewStatus === "REJECTED",
-  ).length;
   const keptCount = items.filter(
     (it) => it.reviewStatus === "APPROVED",
   ).length;
-  const undecidedCount = items.length - decidedCount;
+  const discardedCount = items.filter(
+    (it) => it.reviewStatus === "REJECTED",
+  ).length;
+  const undecidedCount = items.length - keptCount - discardedCount;
 
   const canGoPrev = idx > 0 || page > 1;
   const canGoNext = idx < items.length - 1 || page < totalPages;
@@ -328,7 +340,15 @@ export function QueueReviewWorkspace({
     <ReviewWorkspaceShell<ReviewQueueItem>
       exitHref={buildReviewUrl(pathname, searchParams, { item: undefined })}
       exitLabel="Review"
-      scopeLabel={scope === "design" ? "AI · Focus" : "Local · Focus"}
+      scopeLabel={
+        scope === "design"
+          ? "AI Designs"
+          : item.source?.kind === "local-library"
+            ? `Folder · ${item.source.folderName}`
+            : "Local Library"
+      }
+      totalReviewPending={totalReviewPending}
+      nextScope={nextScope ?? null}
       items={items}
       cursor={idx}
       onJumpToCursor={(targetIdx) => {
@@ -340,8 +360,8 @@ export function QueueReviewWorkspace({
       canGoNext={canGoNext}
       onGoPrev={goPrev}
       onGoNext={goNext}
-      decidedCount={decidedCount}
       keptCount={keptCount}
+      discardedCount={discardedCount}
       undecidedCount={undecidedCount}
       currentDecision={currentDecision}
       onDecide={async (_it, next) => {

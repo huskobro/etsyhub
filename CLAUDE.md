@@ -1242,6 +1242,24 @@ yüzey yaklaşımı:
   override **explicit** ve audit'lenebilir bir aksiyondur; sessiz
   bypass yoktur.
 
+**Scope completion + auto-progress:** Bir scope (batch / folder)
+tamamen `undecided=0`'a düştüğünde operatör akışı **kesilmez**:
+
+- Workspace canonical "scope tamamlandı" ekranı gösterir
+  (silent teleport yok — operatör nereye geçtiğini bilir).
+- Sıradaki scope **eldeki sırayla deterministik** seçilir:
+  - Batch için: aynı kullanıcının `undecided > 0` olan en eski
+    `Job.metadata.batchId` (oldest pending — operatör birikmiş işi
+    önce kapatır).
+  - Local folder için: `LocalLibraryAsset.folderName` üzerinden
+    gruplanmış; aynı user'ın `undecided > 0` olan en eski folder
+    (oldest pending).
+- Sıra dışı kalan scope yoksa "All caught up" ekranı + canonical
+  exit (queue grid).
+- Bu davranış server-truth'a yaslıdır: client cache'inden değil,
+  her scope-completion sonrasında server'dan "next pending scope"
+  resolve edilir.
+
 ### I. Bakım yükü / shell duplication prensibi
 
 - Aynı deneyimi veren **iki büyük paralel workspace component'i**
@@ -1267,6 +1285,9 @@ yüzey yaklaşımı:
 - Bridge surface'lerin user-facing wording'inde "legacy" kelimesi
   geçmez (operatöre teknik borç sızdırma); ama internal yorum/PR
   notunda açık tutulur.
+- Legacy yüzeyler temizlenirken yerlerine **ad hoc paralel UI** değil,
+  Kivasy design system component / recipe / layout pattern'leri geçer
+  (bkz. Madde L).
 
 ### K. Surface completion disiplini
 
@@ -1287,6 +1308,27 @@ yüzey yaklaşımı:
     veya "coming in phase X" gibi internal etiket sızdırılmaz)
 - Surface'te hâlâ büyük açıklar varsa, yeni yüzeye feature taşımak
   yerine önce mevcut surface kapatılır.
+
+### L. Kivasy design system önceliği
+
+- HTML hedefinde (`docs/design-system/kivasy/ui_kits/kivasy/v4`,
+  `v5`, `v6`) bir yüzey tanımlıysa **ona uyulur** — sapma için
+  gerekçe yorum/PR notunda açıklanır.
+- Hedefte yüzey yoksa yeni yüzeyler Kivasy design system component /
+  recipe / layout mantığıyla kurulur:
+  - Recipe class'ları: `.k-card`, `.k-thumb`, `.k-badge`, `.k-iconbtn`,
+    `.k-stabs/.k-stab`, `.k-fab`, `.k-segment`, `.k-input`,
+    `.k-checkbox`, `.k-ring-selected`, `.k-display`, vb.
+  - Token sistemi: `paper`, `ink/ink-2/ink-3/ink-4`, `line/line-strong/
+    line-soft`, `k-orange/k-orange-soft/k-orange-ink`, `k-bg/k-bg-2`.
+  - Half-pixel typography: `text-[10.5px]`, `text-[12.5px]`,
+    `text-[13.5px]`, `text-[24px] k-display`.
+- Ad hoc paralel UI katmanı (custom div hierarchy + utility soup +
+  inline border-color) yeni feature için kabul edilmez. Eskiden
+  böyle yapılmış yerler legacy temizliği sırasında DS'ye geçirilir.
+- Token discipline (`scripts/check-tokens.ts`) ihlal edilirse yeni
+  yüzey merge edilmez. Whitelist sadece DS-spec kararıyla yazılır
+  (örn. v4 dark workspace hex sabitleri).
 
 ## Library / Selections / Products — Sınır Invariant'ları
 

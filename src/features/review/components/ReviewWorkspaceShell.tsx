@@ -55,6 +55,24 @@ export interface ReviewWorkspaceShellProps<TItem> {
   exitLabel: string;
   /** Mono uppercase scope caption next to the back link. */
   scopeLabel: string;
+  /**
+   * IA Phase 12 — workspace anchor (CLAUDE.md Madde H). Shown as the
+   * primary number in the top bar regardless of which scope the
+   * operator is in. Resolves on the server (queries all sources).
+   */
+  totalReviewPending?: number;
+  /**
+   * IA Phase 12 — scope-completion auto-progress. Pointer to the
+   * next pending scope (batch / folder) for the same user. Null
+   * when nothing else is pending — shell shows "All caught up" CTA.
+   */
+  nextScope?: {
+    href: string;
+    label: string;
+    /** "batch" / "folder" / "queue" — drives the icon hint on the
+     *  CTA. */
+    kind: "batch" | "folder" | "queue";
+  } | null;
 
   // ── Items + cursor ──────────────────────────────────────────────────
   items: TItem[];
@@ -72,12 +90,17 @@ export interface ReviewWorkspaceShellProps<TItem> {
   onGoNext: () => void | Promise<void>;
 
   // ── Counts (operator's "what's left?" block) ────────────────────────
-  decidedCount: number;
+  /** Kept / Discarded / Undecided breakdown for the current scope.
+   *  IA Phase 12 — top-bar surfaces these three (decided dropped as
+   *  redundant; kept + discarded = decided). */
   keptCount: number;
+  /** Renamed from "rejected" for the user-facing copy ("Discard"
+   *  button → "discarded" count). */
+  discardedCount: number;
   undecidedCount: number;
-  /** Total used for the progress bar denominator. Defaults to
-   *  items.length when omitted; queue mode passes the cross-page total
-   *  so the bar tracks the whole filtered scope. */
+  /** IA Phase 12 — current-scope progress bar. Per CLAUDE.md the
+   *  bar tracks the active scope (batch / folder / queue), not
+   *  the workspace-wide total. Adapter passes scope total. */
   progressTotal?: number;
 
   // ── Source-specific render slots ────────────────────────────────────
@@ -132,6 +155,8 @@ export function ReviewWorkspaceShell<TItem>({
   exitHref,
   exitLabel,
   scopeLabel,
+  totalReviewPending,
+  nextScope,
   items,
   cursor,
   onJumpToCursor,
@@ -140,8 +165,8 @@ export function ReviewWorkspaceShell<TItem>({
   canGoNext,
   onGoPrev,
   onGoNext,
-  decidedCount,
   keptCount,
+  discardedCount,
   undecidedCount,
   progressTotal,
   renderStage,
@@ -162,7 +187,12 @@ export function ReviewWorkspaceShell<TItem>({
   const [helpOpen, setHelpOpen] = useState(false);
   const item = items[cursor] ?? null;
   const total = items.length;
+  const decidedCount = keptCount + discardedCount;
   const denom = progressTotal ?? total;
+  // IA Phase 12 — scope-completion detection. When the active scope
+  // has items but every one is decided, switch to the completion
+  // banner instead of the regular item navigator.
+  const scopeComplete = total > 0 && undecidedCount === 0;
 
   const decideAndAdvance = useCallback(
     async (next: CanonicalDecision) => {
@@ -262,8 +292,24 @@ export function ReviewWorkspaceShell<TItem>({
       data-decision={currentDecision}
       {...(dataAttributes ?? {})}
     >
-      {/* ── Workspace bar ─────────────────────────────────────────────── */}
-      <div className="flex flex-shrink-0 items-center gap-3 border-b border-white/5 bg-[#16130F] px-5 py-3">
+      {/* ── Workspace bar — IA Phase 12 hierarchy ──────────────────────
+       *   1. Workspace anchor (largest): "23 review pending" — operator
+       *      sees the total work outstanding regardless of current
+       *      scope. CLAUDE.md Madde H: total visibility is the
+       *      number that decides "do I have anything else to do?".
+       *   2. Scope summary (mono small): "Batch · 8 undecided · 4
+       *      kept · 2 discarded" — the three-count breakdown for the
+       *      active scope. Undecided is k-orange-bright accented when
+       *      > 0; the gating signal stays loud.
+       *   3. Item / page index (smallest mono): "Item 8 / 24 · Page 2
+       *      / 11" — bookkeeping for the operator's current cursor,
+       *      not the question they ask first.
+       *   4. ProgressBar: tracks the *current scope* progress (kept
+       *      + discarded over scope total). Workspace-wide totals
+       *      live in the anchor above; scope progress is what the
+       *      operator is actively burning down.
+       */}
+      <div className="flex flex-shrink-0 items-center gap-4 border-b border-white/5 bg-[#16130F] px-5 py-3">
         <Link
           href={exitHref}
           className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white"
@@ -271,33 +317,38 @@ export function ReviewWorkspaceShell<TItem>({
           <ArrowLeft className="h-4 w-4" aria-hidden />
           {exitLabel}
         </Link>
-        <span className="font-mono text-xs uppercase tracking-meta text-white/40">
-          {scopeLabel}
-        </span>
 
-        {/* Top-bar info hierarchy (CLAUDE.md Madde H — undecided
-         *   görünürlüğü). Big row: Item N / M anchor. Sub-line: page
-         *   info (when present), then accented undecided count, then
-         *   secondary decided / kept counters. */}
         <div className="flex flex-1 flex-col items-center justify-center leading-tight">
-          <div className="flex items-baseline gap-2">
-            <span className="font-mono text-xs uppercase tracking-meta text-white/40">
-              Item
-            </span>
-            <span className="k-display text-xl font-semibold tabular-nums text-white">
-              {cursor + 1}
-              <span className="font-normal text-white/40"> / {total}</span>
-            </span>
-          </div>
+          {/* 1. Workspace anchor */}
+          {typeof totalReviewPending === "number" ? (
+            <div className="flex items-baseline gap-2">
+              <span
+                className={cn(
+                  "k-display text-xl font-semibold tabular-nums",
+                  totalReviewPending > 0
+                    ? "text-k-orange-bright"
+                    : "text-white/40",
+                )}
+                data-testid="topbar-total-pending"
+              >
+                {totalReviewPending}
+              </span>
+              <span className="font-mono text-xs uppercase tracking-meta text-white/50">
+                {totalReviewPending === 1
+                  ? "review pending"
+                  : "review pending"}
+              </span>
+            </div>
+          ) : (
+            <div className="font-mono text-xs uppercase tracking-meta text-white/40">
+              {scopeLabel}
+            </div>
+          )}
+
+          {/* 2. Scope summary — three-count breakdown */}
           <div className="mt-0.5 flex items-center gap-2 font-mono text-xs uppercase tracking-meta">
-            {pageInfo ? (
-              <>
-                <span className="tabular-nums text-white/50">
-                  Page {pageInfo.page} / {pageInfo.total}
-                </span>
-                <span className="text-white/20">·</span>
-              </>
-            ) : null}
+            <span className="text-white/40">{scopeLabel}</span>
+            <span className="text-white/20">·</span>
             <span
               className={cn(
                 "tabular-nums",
@@ -311,20 +362,37 @@ export function ReviewWorkspaceShell<TItem>({
             </span>
             <span className="text-white/20">·</span>
             <span className="tabular-nums text-white/50">
-              {decidedCount} decided
+              {keptCount} kept
             </span>
             <span className="text-white/20">·</span>
             <span className="tabular-nums text-white/50">
-              {keptCount} kept
+              {discardedCount} discarded
             </span>
           </div>
+
+          {/* 3. Item / page index — bookkeeping line */}
+          {item ? (
+            <div className="mt-0.5 flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-meta text-white/40">
+              <span className="tabular-nums">
+                Item {cursor + 1} / {total}
+              </span>
+              {pageInfo ? (
+                <>
+                  <span className="text-white/20">·</span>
+                  <span className="tabular-nums">
+                    Page {pageInfo.page} / {pageInfo.total}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <ProgressBar
           value={denom > 0 ? (decidedCount / denom) * 100 : 0}
           tone="orange"
           className="w-40"
-          ariaLabel={`Review progress ${decidedCount}/${denom}`}
+          ariaLabel={`Scope progress ${decidedCount}/${denom}`}
         />
 
         <button
@@ -350,45 +418,55 @@ export function ReviewWorkspaceShell<TItem>({
         {/* Stage column */}
         <div className="flex flex-col overflow-hidden">
           <div className="relative flex flex-1 items-center justify-center p-10">
-            <div className="relative max-h-full">
-              <div className="aspect-square w-full max-w-[760px] overflow-hidden rounded-lg border border-white/10 bg-black/30 shadow-2xl">
-                {renderStage(item)}
+            {scopeComplete ? (
+              <ScopeCompletionCard
+                keptCount={keptCount}
+                discardedCount={discardedCount}
+                scopeLabel={scopeLabel}
+                nextScope={nextScope ?? null}
+              />
+            ) : (
+              <div className="relative max-h-full">
+                <div className="aspect-square w-full max-w-[760px] overflow-hidden rounded-lg border border-white/10 bg-black/30 shadow-2xl">
+                  {renderStage(item)}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void onGoPrev()}
+                  disabled={!canGoPrev}
+                  aria-label="Previous"
+                  data-testid="review-workspace-prev"
+                  className="absolute -left-14 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 disabled:opacity-30"
+                >
+                  <ArrowLeft className="h-4 w-4" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onGoNext()}
+                  disabled={!canGoNext}
+                  aria-label="Next"
+                  data-testid="review-workspace-next"
+                  className="absolute -right-14 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 disabled:opacity-30"
+                >
+                  <ArrowRight className="h-4 w-4" aria-hidden />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => void onGoPrev()}
-                disabled={!canGoPrev}
-                aria-label="Previous"
-                data-testid="review-workspace-prev"
-                className="absolute -left-14 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 disabled:opacity-30"
-              >
-                <ArrowLeft className="h-4 w-4" aria-hidden />
-              </button>
-              <button
-                type="button"
-                onClick={() => void onGoNext()}
-                disabled={!canGoNext}
-                aria-label="Next"
-                data-testid="review-workspace-next"
-                className="absolute -right-14 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 disabled:opacity-30"
-              >
-                <ArrowRight className="h-4 w-4" aria-hidden />
-              </button>
-            </div>
+            )}
           </div>
 
-          {/* Action bar */}
+          {/* Action bar hidden when scope is complete — operator
+           *   can't decide further, the next-scope CTA in the
+           *   completion card is the only forward action. */}
+          {scopeComplete ? null : (
+          <>
+          {/* Action bar — IA Phase 12 order + label revision.
+           *   Order: Keep · Undecided · Discard (CLAUDE.md Madde H —
+           *   "decide" is the gate, "discard" is the negative outcome,
+           *   "undecided" is the safe middle). Label "Reset" → "Undecided"
+           *   so the operator reads the action by its decision axis,
+           *   not by its UI verb. Shortcut U preserved. */}
           <div className="flex-shrink-0 px-10 pb-5">
             <div className="mx-auto grid max-w-[760px] grid-cols-3 gap-3">
-              <ActionButton
-                tone="reject"
-                label="Discard"
-                shortcut="D"
-                pressed={currentDecision === "REJECTED"}
-                disabled={isPending}
-                onClick={() => void decideAndAdvance("REJECTED")}
-                icon={<XIcon className="h-4 w-4" aria-hidden />}
-              />
               <ActionButton
                 tone="keep"
                 label="Keep"
@@ -400,12 +478,21 @@ export function ReviewWorkspaceShell<TItem>({
               />
               <ActionButton
                 tone="undo"
-                label="Reset"
+                label="Undecided"
                 shortcut="U"
-                pressed={false}
+                pressed={currentDecision === "UNDECIDED"}
                 disabled={isPending || !resetEnabled}
                 onClick={onReset}
                 icon={<RotateCcw className="h-4 w-4" aria-hidden />}
+              />
+              <ActionButton
+                tone="reject"
+                label="Discard"
+                shortcut="D"
+                pressed={currentDecision === "REJECTED"}
+                disabled={isPending}
+                onClick={() => void decideAndAdvance("REJECTED")}
+                icon={<XIcon className="h-4 w-4" aria-hidden />}
               />
             </div>
             {errorMessage ? (
@@ -418,6 +505,8 @@ export function ReviewWorkspaceShell<TItem>({
               </p>
             ) : null}
           </div>
+          </>
+          )}
 
           {/* Filmstrip */}
           <div className="flex-shrink-0 border-t border-white/5 bg-black/30 px-5 py-3">
@@ -711,6 +800,78 @@ function Filmstrip<TItem>({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// ScopeCompletionCard — IA Phase 12 scope-completion banner
+// ────────────────────────────────────────────────────────────────────────
+//
+// Shown in place of the stage when the active scope (batch / folder /
+// queue) has every item decided. Operator never silently teleports;
+// the card explicitly says "this scope is done" and offers an action:
+//   • nextScope present → "Continue with next scope" CTA
+//   • nextScope null    → "All caught up" copy + Exit (banner only,
+//                         no CTA — operator clicks Exit in top bar)
+
+function ScopeCompletionCard({
+  keptCount,
+  discardedCount,
+  scopeLabel,
+  nextScope,
+}: {
+  keptCount: number;
+  discardedCount: number;
+  scopeLabel: string;
+  nextScope: {
+    href: string;
+    label: string;
+    kind: "batch" | "folder" | "queue";
+  } | null;
+}) {
+  return (
+    <div
+      className="flex w-full max-w-[640px] flex-col items-center justify-center gap-5 rounded-lg border border-white/10 bg-black/30 px-10 py-12 text-center shadow-2xl"
+      data-testid="scope-completion-card"
+    >
+      <div className="font-mono text-xs uppercase tracking-meta text-white/40">
+        {scopeLabel}
+      </div>
+      <h2 className="k-display text-2xl font-semibold text-white">
+        Scope complete
+      </h2>
+      <p className="font-mono text-xs uppercase tracking-meta text-white/60">
+        <span className="tabular-nums text-white/85">{keptCount} kept</span>
+        <span className="mx-2 text-white/20">·</span>
+        <span className="tabular-nums text-white/85">
+          {discardedCount} discarded
+        </span>
+      </p>
+      {nextScope ? (
+        <Link
+          href={nextScope.href}
+          data-testid="scope-completion-next"
+          className="inline-flex items-center gap-2 rounded-md border border-k-orange bg-k-orange/15 px-4 py-2 text-sm font-medium text-white hover:bg-k-orange/25"
+        >
+          <ArrowRight className="h-4 w-4" aria-hidden />
+          {nextScope.kind === "batch"
+            ? "Continue with next batch"
+            : nextScope.kind === "folder"
+              ? "Continue with next folder"
+              : "Continue with review queue"}
+          <span className="font-mono text-xs uppercase tracking-meta text-white/70">
+            {nextScope.label}
+          </span>
+        </Link>
+      ) : (
+        <p
+          data-testid="scope-completion-all-caught-up"
+          className="text-sm text-white/70"
+        >
+          All caught up — no other scopes pending review.
+        </p>
+      )}
     </div>
   );
 }

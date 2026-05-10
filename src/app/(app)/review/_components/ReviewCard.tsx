@@ -242,20 +242,33 @@ export function ReviewCard({ item }: Props) {
             </span>
           </div>
         ) : item.source?.kind === "design" ? (
+          // IA Phase 12 — AI design card parity with the local card.
+          // Three info rows mirror the local layout: title (product
+          // type / ref), origin chip, dimensions. Local card has
+          // file/folder/dimensions; AI mirrors with productType/ref/
+          // dimensions so the two cards read as the same family.
           <div
-            className="flex flex-wrap items-center gap-1 text-xs text-text-muted"
+            className="flex flex-col gap-0.5 text-xs text-text-muted"
             data-testid="source-meta"
           >
-            {item.source.productTypeKey ? (
-              <span className="rounded-sm bg-surface-muted px-1.5 py-0.5 font-medium text-text">
-                {item.source.productTypeKey}
-              </span>
-            ) : null}
-            {item.source.referenceShortId ? (
-              <span className="font-mono text-text-muted">
-                ref-{item.source.referenceShortId}
-              </span>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {item.source.productTypeKey ? (
+                <span className="rounded-sm bg-surface-muted px-1.5 py-0.5 font-medium text-text">
+                  {item.source.productTypeKey}
+                </span>
+              ) : null}
+              {item.source.referenceShortId ? (
+                <span className="font-mono">
+                  ref-{item.source.referenceShortId}
+                </span>
+              ) : null}
+            </div>
+            <span className="truncate">
+              ✦ {item.source.mimeType.replace("image/", "").toUpperCase()}
+              {item.source.width != null && item.source.height != null
+                ? ` · ${item.source.width}×${item.source.height}`
+                : ""}
+            </span>
           </div>
         ) : null}
         {item.riskFlagCount > 0 ? (

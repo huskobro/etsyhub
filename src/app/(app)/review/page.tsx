@@ -48,6 +48,12 @@ import {
   getMidjourneyAssetBatchId,
   listBatchReviewItems,
 } from "@/server/services/midjourney/review";
+import {
+  getNextPendingBatchId,
+  getNextPendingFolderName,
+  getTotalReviewPendingCount,
+} from "@/server/services/review/next-scope";
+import { db } from "@/server/db";
 
 export const metadata = { title: "Review · Kivasy" };
 export const dynamic = "force-dynamic";
@@ -106,13 +112,19 @@ export default async function ReviewPage({
   if (batchId) {
     const session = await auth();
     if (!session?.user) redirect("/login");
+    const userId = session.user.id;
 
-    const [summary, page] = await Promise.all([
-      getBatchReviewSummary(batchId, session.user.id),
-      listBatchReviewItems(batchId, session.user.id, {
+    // IA Phase 12 — server-side resolves for the workspace anchor +
+    // scope-completion auto-progress. All four queries run in parallel
+    // so the round-trip cost stays at one tick.
+    const [summary, page, totalReviewPending, nextBatch] = await Promise.all([
+      getBatchReviewSummary(batchId, userId),
+      listBatchReviewItems(batchId, userId, {
         decisions: ["UNDECIDED", "KEPT", "REJECTED"],
         limit: 200,
       }),
+      getTotalReviewPendingCount(userId),
+      getNextPendingBatchId({ userId, currentBatchId: batchId }),
     ]);
 
     if (!summary) notFound();
@@ -131,6 +143,14 @@ export default async function ReviewPage({
       if (firstUndecided >= 0 && !itemId) initialCursor = firstUndecided;
     }
 
+    const nextScope = nextBatch
+      ? {
+          href: `/review?batch=${encodeURIComponent(nextBatch.batchId)}`,
+          label: `batch_${nextBatch.batchId.slice(0, 8)}`,
+          kind: "batch" as const,
+        }
+      : null;
+
     return (
       <BatchReviewWorkspace
         batchId={batchId}
@@ -139,6 +159,8 @@ export default async function ReviewPage({
         initialCursor={initialCursor}
         exitHref="/review"
         exitLabel="Review"
+        totalReviewPending={totalReviewPending}
+        nextScope={nextScope}
       />
     );
   }
@@ -163,12 +185,53 @@ export default async function ReviewPage({
   // legacy ReviewDetailPanel drawer. Same dark fullscreen language as
   // the batch workspace, source-aware info-rail.
   if (itemId) {
+    const session = await auth();
+    if (!session?.user) redirect("/login");
+    const userId = session.user.id;
+
+    // IA Phase 12 — workspace anchor + next-scope resolve.
+    // Local: read the current item's folderName via a tiny query so
+    // we know which folder to exclude when picking the next pending
+    // one. AI: there's no folder concept; we fall back to the
+    // workspace queue itself (no folder-style auto-progress).
+    let currentFolderName: string | null = null;
+    if (focusScope === "local") {
+      const local = await db.localLibraryAsset.findFirst({
+        where: { id: itemId, userId },
+        select: { folderName: true },
+      });
+      currentFolderName = local?.folderName ?? null;
+    }
+
+    const [totalReviewPending, nextFolder] = await Promise.all([
+      getTotalReviewPendingCount(userId),
+      focusScope === "local"
+        ? getNextPendingFolderName({ userId, currentFolderName })
+        : Promise.resolve(null),
+    ]);
+
+    const nextScope = nextFolder
+      ? {
+          // Folder navigation lands the operator on the local queue
+          // grid filtered to that folder; from there the first
+          // undecided item opens the focus workspace via the regular
+          // `?item=` shortcut. We don't deep-link to the first
+          // pending item directly because the grid is the canonical
+          // entry point for a folder scope.
+          href: `/review?source=local`,
+          label: nextFolder.folderName,
+          kind: "folder" as const,
+        }
+      : null;
+
     return (
       <QueueReviewWorkspace
         scope={focusScope}
         itemId={itemId}
         page={pageNum}
         decision={decision}
+        totalReviewPending={totalReviewPending}
+        nextScope={nextScope}
       />
     );
   }

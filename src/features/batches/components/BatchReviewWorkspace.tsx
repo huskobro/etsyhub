@@ -49,6 +49,21 @@ interface BatchReviewWorkspaceProps {
    * `batch_<short>` v4 spec; the canonical host passes "Review".
    */
   exitLabel?: string;
+  /**
+   * IA Phase 12 — workspace anchor (CLAUDE.md Madde H). Total review
+   * pending across all sources for this user. Server resolves before
+   * render.
+   */
+  totalReviewPending?: number;
+  /**
+   * IA Phase 12 — next pending batch for the same user, resolved
+   * server-side. Null when no other batch is pending.
+   */
+  nextScope?: {
+    href: string;
+    label: string;
+    kind: "batch" | "folder" | "queue";
+  } | null;
 }
 
 export function BatchReviewWorkspace({
@@ -58,6 +73,8 @@ export function BatchReviewWorkspace({
   initialCursor = 0,
   exitHref,
   exitLabel,
+  totalReviewPending,
+  nextScope,
 }: BatchReviewWorkspaceProps) {
   const resolvedExitHref = exitHref ?? `/batches/${batchId}`;
   const resolvedExitLabel = exitLabel ?? `batch_${batchId.slice(0, 8)}`;
@@ -81,15 +98,15 @@ export function BatchReviewWorkspace({
     [decisions],
   );
 
-  const decidedCount = items.reduce(
-    (acc, it) => (decisionForAsset(it) !== "UNDECIDED" ? acc + 1 : acc),
-    0,
-  );
   const keptCount = items.reduce(
     (acc, it) => (decisionForAsset(it) === "KEPT" ? acc + 1 : acc),
     0,
   );
-  const undecidedCount = items.length - decidedCount;
+  const discardedCount = items.reduce(
+    (acc, it) => (decisionForAsset(it) === "REJECTED" ? acc + 1 : acc),
+    0,
+  );
+  const undecidedCount = items.length - keptCount - discardedCount;
 
   const writeDecision = useCallback(
     async (asset: ReviewItem, next: CanonicalDecision) => {
@@ -153,7 +170,9 @@ export function BatchReviewWorkspace({
     <ReviewWorkspaceShell<ReviewItem>
       exitHref={resolvedExitHref}
       exitLabel={resolvedExitLabel}
-      scopeLabel="Review workspace"
+      scopeLabel={`Batch · ${batchId.slice(0, 8)}`}
+      totalReviewPending={totalReviewPending}
+      nextScope={nextScope ?? null}
       items={items}
       cursor={cursor}
       onJumpToCursor={setCursor}
@@ -161,8 +180,8 @@ export function BatchReviewWorkspace({
       canGoNext={cursor < items.length - 1}
       onGoPrev={goPrev}
       onGoNext={goNext}
-      decidedCount={decidedCount}
       keptCount={keptCount}
+      discardedCount={discardedCount}
       undecidedCount={undecidedCount}
       currentDecision={currentDecision}
       onDecide={async (asset, next) => {
