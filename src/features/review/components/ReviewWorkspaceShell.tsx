@@ -284,10 +284,14 @@ export function ReviewWorkspaceShell<TItem>({
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         if (canGoNext) void onGoNext();
-      } else if (e.key === ",") {
+      } else if (e.key === "," || e.code === "Comma") {
+        // CLAUDE.md Madde M scope ekseni. Both `e.key` and `e.code`
+        // checked — Turkish/AZERTY/QWERTZ layouts can route the
+        // physical comma key through different `e.key` values
+        // depending on modifier state.
         e.preventDefault();
         if (scopeNav?.prev) router.push(scopeNav.prev.href);
-      } else if (e.key === ".") {
+      } else if (e.key === "." || e.code === "Period") {
         e.preventDefault();
         if (scopeNav?.next) router.push(scopeNav.next.href);
       } else if (e.key === "?") {
@@ -1007,7 +1011,7 @@ function Filmstrip<TItem>({
               type="button"
               onClick={() => onJump(realIdx)}
               className={cn(
-                "h-10 w-10 overflow-hidden rounded ring-1",
+                "relative h-10 w-10 overflow-hidden rounded ring-1",
                 tone,
                 isCursor && "ring-2 ring-white",
               )}
@@ -1023,8 +1027,33 @@ function Filmstrip<TItem>({
                   className="pointer-events-none h-full w-full select-none object-cover"
                   loading="lazy"
                   draggable={false}
+                  onError={(e) => {
+                    // Fallback when the image fails to load (404 /
+                    // signed URL expired / regen pending). Hide the
+                    // broken icon so the parent's decision tone +
+                    // letter fallback render cleanly.
+                    e.currentTarget.style.display = "none";
+                  }}
                 />
               ) : null}
+              {/* Decision-letter fallback — visible only when no
+                * image renders (no URL or onError hid it). Position
+                * absolute keeps the cell square and centred; pointer-
+                * events-none preserves click-through to the button. */}
+              <span
+                aria-hidden
+                className={cn(
+                  "pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[11px] font-semibold uppercase tracking-meta",
+                  thumb.thumbnailUrl ? "opacity-0" : "opacity-100",
+                  dec === "KEPT"
+                    ? "text-emerald-300"
+                    : dec === "REJECTED"
+                      ? "text-rose-300"
+                      : "text-white/50",
+                )}
+              >
+                {dec === "KEPT" ? "K" : dec === "REJECTED" ? "D" : "·"}
+              </span>
             </button>
           );
         })}
