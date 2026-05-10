@@ -16,6 +16,17 @@
 //   • `/review?item=<cuid>`           → drawer detail (alias for ?detail=)
 //   • `/batches/[id]/review`          → redirects to `/review?batch=<id>`
 //
+// IA Phase 8 (single-item focus mode) extends the dispatch:
+//   • `/review?item=<midjourneyAssetId>` resolves the parent batch and
+//     redirects to `/review?batch=<batchId>&item=<id>`. The workspace
+//     opens with the cursor on that item — same canonical focus
+//     experience as `?batch=` alone, just deep-linked to a specific
+//     asset. Filmstrip stays scoped to the batch, never "all of
+//     library".
+//   • `/review?item=<id>` for GeneratedDesign / LocalLibraryAsset items
+//     keeps falling back to the drawer — those sources have no batch
+//     concept and a single-source focus workspace is a follow-up phase.
+//
 // The two render paths in this file (workspace vs grid) intentionally
 // keep their own data model, write endpoints, and state machines for now.
 // The unified-review service-layer (`src/server/services/review/unified.ts`)
@@ -29,6 +40,7 @@ import { ReviewDetailPanel } from "@/app/(app)/review/_components/ReviewDetailPa
 import { BatchReviewWorkspace } from "@/features/batches/components/BatchReviewWorkspace";
 import {
   getBatchReviewSummary,
+  getMidjourneyAssetBatchId,
   listBatchReviewItems,
 } from "@/server/services/midjourney/review";
 
@@ -52,12 +64,33 @@ export default async function ReviewPage({
 }: {
   searchParams: SearchParams;
 }) {
+  const itemId = (searchParams.item ?? searchParams.detail ?? "").trim();
+  const batchId = (searchParams.batch ?? "").trim();
+
+  // Single-item focus shortcut — `?item=<id>` without a batch context.
+  // If the id resolves to a MidjourneyAsset we redirect into the batch
+  // workspace with the cursor pre-positioned on that item; otherwise we
+  // fall through to grid + drawer (the existing experience for
+  // GeneratedDesign and LocalLibraryAsset items).
+  if (itemId && !batchId) {
+    const session = await auth();
+    if (!session?.user) redirect("/login");
+    const resolvedBatchId = await getMidjourneyAssetBatchId(
+      itemId,
+      session.user.id,
+    );
+    if (resolvedBatchId) {
+      redirect(
+        `/review?batch=${encodeURIComponent(resolvedBatchId)}&item=${encodeURIComponent(itemId)}`,
+      );
+    }
+  }
+
   // Workspace mode — ?batch=<cuid>. Server-loads MidjourneyAsset items and
   // hands them to the existing dark-mode BatchReviewWorkspace component
   // (re-used as a sub-mode under the canonical `/review` route). Exit and
   // back-link send the operator to plain `/review` so the unified surface
   // never feels like a deep nested route.
-  const batchId = (searchParams.batch ?? "").trim();
   if (batchId) {
     const session = await auth();
     if (!session?.user) redirect("/login");
@@ -72,10 +105,22 @@ export default async function ReviewPage({
 
     if (!summary) notFound();
 
-    const firstUndecided = page.items.findIndex(
-      (it) => it.decision === "UNDECIDED",
-    );
-    const initialCursor = firstUndecided >= 0 ? firstUndecided : 0;
+    // Cursor priority — when the URL pins a specific item via ?item=<id>
+    // we honour that placement (single-item focus mode). Otherwise we
+    // start on the first undecided item, falling back to index 0.
+    let initialCursor = 0;
+    if (itemId) {
+      const idx = page.items.findIndex(
+        (it) => it.midjourneyAssetId === itemId,
+      );
+      if (idx >= 0) initialCursor = idx;
+    }
+    if (!itemId || initialCursor === 0) {
+      const firstUndecided = page.items.findIndex(
+        (it) => it.decision === "UNDECIDED",
+      );
+      if (firstUndecided >= 0 && !itemId) initialCursor = firstUndecided;
+    }
 
     return (
       <BatchReviewWorkspace
@@ -98,7 +143,7 @@ export default async function ReviewPage({
   const tabParam = (searchParams.tab ?? "").toLowerCase();
   const activeTab: "ai" | "local" =
     sourceParam === "local" || tabParam === "local" ? "local" : "ai";
-  const detailId = searchParams.item ?? searchParams.detail;
+  const detailId = itemId || undefined;
   const detailScope = activeTab === "ai" ? "design" : "local";
 
   return (

@@ -2,17 +2,26 @@
 
 // Phase 6 Dalga B (Task 16+17) — BulkActionsBar
 //
-// Sticky bottom action bar — selectedIds > 0 ise görünür.
-// Karar 6: tek bulk endpoint (approve | reject | delete) — barda 3 buton
-// (delete sadece local scope'ta).
+// IA Phase 8 (review experience finalization) — the bar now delegates
+// its render to the canonical FloatingBulkBar (`k-fab` recipe in
+// globals.css), so review's bulk action surface lives in the same dark
+// pill family as Library / Selections / Batches. The dialog wiring
+// (approve / reject / delete + skip-on-risk + typing-confirm) is
+// unchanged; only the button group, count chip, and close affordance
+// switched recipes.
 //
-// Selection state Zustand store'da; bar store'u dinler. Action sonrası
-// "${result}" mesajı kart altında 4 saniye görünür (basit inline toast),
-// sonra clear() ile selection sıfırlanır.
+// Selection state stays in the Zustand selection store. Action results
+// are surfaced via a small inline status line just above the bar so the
+// dark pill never carries body text — that's the FloatingBulkBar
+// contract Library and Selections already follow.
 
 import { useMemo, useState } from "react";
+import { Check, Trash2, X as XIcon } from "lucide-react";
 import { useReviewSelection } from "@/features/review/stores/selection-store";
-import { Button } from "@/components/ui/Button";
+import {
+  FloatingBulkBar,
+  type BulkAction,
+} from "@/components/ui/FloatingBulkBar";
 import { BulkApproveDialog } from "./BulkApproveDialog";
 import { BulkRejectDialog } from "./BulkRejectDialog";
 import { BulkDeleteDialog } from "./BulkDeleteDialog";
@@ -35,67 +44,53 @@ export function BulkActionsBar({ scope }: Props) {
 
   const close = () => setDialog(null);
 
+  const actions: BulkAction[] = [
+    {
+      label: "Approve",
+      icon: <Check className="h-3.5 w-3.5" aria-hidden />,
+      onClick: () => setDialog("approve"),
+      primary: true,
+    },
+    {
+      label: "Reject",
+      icon: <XIcon className="h-3.5 w-3.5" aria-hidden />,
+      onClick: () => setDialog("reject"),
+    },
+  ];
+  if (scope === "local") {
+    actions.push({
+      label: "Delete",
+      icon: <Trash2 className="h-3.5 w-3.5" aria-hidden />,
+      onClick: () => setDialog("delete"),
+    });
+  }
+
   return (
     <>
-      <div
-        role="region"
-        aria-label="Toplu eylemler"
-        data-testid="bulk-actions-bar"
-        className="sticky bottom-4 z-20 mx-auto flex w-full max-w-screen-xl flex-col gap-2 rounded-md border border-border bg-surface p-3 shadow-popover"
-      >
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-text">
-            {selectedIds.length} selected
-          </span>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setDialog("approve")}
-            data-testid="bulk-approve-trigger"
-          >
-            Approve ({selectedIds.length})
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setDialog("reject")}
-            data-testid="bulk-reject-trigger"
-          >
-            Reject ({selectedIds.length})
-          </Button>
-          {scope === "local" ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setDialog("delete")}
-              data-testid="bulk-delete-trigger"
-            >
-              Delete ({selectedIds.length})
-            </Button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              clear();
-              setResultMessage(null);
-            }}
-            data-testid="bulk-clear"
-            className="ml-auto text-sm text-text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            İptal
-          </button>
+      {/* Status line — FloatingBulkBar carries no body text by design;
+       *   action results live just above it so they survive the bar's
+       *   own state transitions (clear() → bar unmounts after the
+       *   message lands). 4-second auto-clear matches the QuickActions
+       *   pattern. */}
+      {resultMessage ? (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="bulk-result-message"
+          className="pointer-events-none fixed bottom-20 left-1/2 z-30 -translate-x-1/2 rounded-md border border-line bg-paper px-3 py-1.5 text-xs text-text-muted shadow-card"
+        >
+          {resultMessage}
         </div>
-        {resultMessage ? (
-          <p
-            role="status"
-            aria-live="polite"
-            data-testid="bulk-result-message"
-            className="text-xs text-text-muted"
-          >
-            {resultMessage}
-          </p>
-        ) : null}
-      </div>
+      ) : null}
+
+      <FloatingBulkBar
+        count={selectedIds.length}
+        actions={actions}
+        onClear={() => {
+          clear();
+          setResultMessage(null);
+        }}
+      />
 
       <BulkApproveDialog
         scope={scope}

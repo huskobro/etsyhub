@@ -396,3 +396,49 @@ export async function resetBatchReviewDecisions(
 
   return { batchId, resetCount: result.count };
 }
+
+/**
+ * Single MidjourneyAsset → parent batchId resolver.
+ *
+ * IA Phase 8 (single-item focus mode) — when the operator opens
+ * `/review?item=<midjourneyAssetId>`, we want to redirect them into
+ * the canonical batch focus workspace at
+ * `/review?batch=<batchId>&item=<id>` so the filmstrip is scoped to
+ * that batch instead of "all of library". This resolver walks the
+ * MidjourneyAsset → MidjourneyJob → Job lineage and reads
+ * `Job.metadata.batchId` (Pass 84 batch identity).
+ *
+ * Returns null when:
+ *   - the id doesn't exist (or belongs to another user — treated the
+ *     same as "not found" to avoid existence leaks)
+ *   - the asset is orphaned (no MidjourneyJob link) — shouldn't happen
+ *     for production data but the callers must handle it gracefully
+ *   - the linked Job has no metadata.batchId — pre-Pass 84 imports
+ *
+ * The caller falls back to the drawer experience whenever the
+ * resolver returns null; this is the same fallback path used for
+ * GeneratedDesign and LocalLibraryAsset items, which never have a
+ * batch context.
+ */
+export async function getMidjourneyAssetBatchId(
+  midjourneyAssetId: string,
+  userId: string,
+): Promise<string | null> {
+  const asset = await db.midjourneyAsset.findFirst({
+    where: { id: midjourneyAssetId, asset: { userId } },
+    select: {
+      midjourneyJob: {
+        select: {
+          job: {
+            select: { metadata: true },
+          },
+        },
+      },
+    },
+  });
+
+  const metadata = asset?.midjourneyJob?.job?.metadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  const batchId = (metadata as { batchId?: unknown }).batchId;
+  return typeof batchId === "string" && batchId.length > 0 ? batchId : null;
+}

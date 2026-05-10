@@ -24,6 +24,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Layers } from "lucide-react";
 import type { ReviewQueueItem, ReviewStatusEnum } from "@/features/review/queries";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { cn } from "@/lib/cn";
 import { buildReviewUrl } from "@/features/review/lib/search-params";
 import { useReviewSelection } from "@/features/review/stores/selection-store";
 
@@ -57,11 +58,24 @@ export function ReviewCard({ item }: Props) {
 
   const isSelected = useReviewSelection((s) => s.selectedIds.has(item.id));
   const toggle = useReviewSelection((s) => s.toggle);
+  // IA Phase 8 — bulk-mode click pivot (Library parity). When at least
+  // one card is already selected we treat plain card clicks as toggles
+  // so the operator can rake through items without aiming for the
+  // checkbox; with no selection the click opens detail as before.
+  const bulkModeActive = useReviewSelection((s) => s.selectedIds.size > 0);
 
   const openDetail = () => {
     router.push(
       buildReviewUrl(pathname, searchParams, { item: item.id }),
     );
+  };
+
+  const handleCardClick = () => {
+    if (bulkModeActive) {
+      toggle(item.id);
+    } else {
+      openDetail();
+    }
   };
 
   // Phase 7 Task 38 — Quick start canonical entry point.
@@ -105,38 +119,58 @@ export function ReviewCard({ item }: Props) {
     <article
       data-testid="review-card"
       data-selected={isSelected ? "true" : "false"}
+      data-bulk-mode={bulkModeActive ? "true" : "false"}
       role="button"
       tabIndex={0}
-      aria-label={`Review detayını aç: ${STATUS_LABEL[item.reviewStatus]}`}
-      onClick={openDetail}
+      aria-label={
+        bulkModeActive
+          ? `Seçimi değiştir (${STATUS_LABEL[item.reviewStatus]})`
+          : `Review detayını aç: ${STATUS_LABEL[item.reviewStatus]}`
+      }
+      onClick={handleCardClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          openDetail();
+          handleCardClick();
         }
       }}
-      className={`relative flex cursor-pointer flex-col overflow-hidden rounded-md border bg-surface shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-        isSelected ? "border-accent ring-2 ring-accent" : "border-border"
-      }`}
+      className={cn(
+        "k-card relative flex cursor-pointer flex-col overflow-hidden",
+        isSelected && "k-ring-selected",
+      )}
     >
-      {/* Selection checkbox — kart open'ı tetiklememesi için stopPropagation */}
-      <div className="absolute left-2 top-2 z-10">
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => {
+      {/* Selection checkbox — k-checkbox recipe (Library parity). Click
+       *   stops propagation so it never doubles up with the card
+       *   handler in bulk mode (the card click would also toggle). */}
+      <div className="absolute left-3 top-3 z-10">
+        <button
+          type="button"
+          aria-label="Seç"
+          aria-pressed={isSelected}
+          data-testid="review-card-checkbox"
+          data-checked={isSelected || undefined}
+          onClick={(e) => {
             e.stopPropagation();
             toggle(item.id);
           }}
           onKeyDown={(e) => {
-            // Space checkbox üzerindeyken kart open'ını tetiklemesin
-            if (e.key === " ") e.stopPropagation();
+            if (e.key === " " || e.key === "Enter") e.stopPropagation();
           }}
-          aria-label={`Seç`}
-          data-testid="review-card-checkbox"
-          className="h-5 w-5 cursor-pointer rounded border-border accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        />
+          className="k-checkbox"
+        >
+          {isSelected ? (
+            <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden>
+              <path
+                d="M5 12l5 5L20 7"
+                stroke="currentColor"
+                strokeWidth="3"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : null}
+        </button>
       </div>
 
       <div className="relative aspect-square bg-surface-muted">
