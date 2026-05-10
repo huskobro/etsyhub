@@ -258,7 +258,12 @@ async function handleDesignReview(
     riskFlagKinds: flagKinds,
     criteria: activeCriteria,
   });
-  const outcome = decideReviewOutcomeFromBreakdown(breakdown);
+  // IA Phase 27 (CLAUDE.md Madde R) — admin-resolved thresholds
+  // drive the decision; constants are the fallback only.
+  const outcome = decideReviewOutcomeFromBreakdown(
+    breakdown,
+    reviewConfig.thresholds,
+  );
   const decision = outcome.status;
 
   const providerSnapshot = buildProviderSnapshot(providerId, new Date());
@@ -500,7 +505,12 @@ async function handleLocalAssetReview(
     riskFlagKinds: flagKinds,
     criteria: activeCriteria,
   });
-  const outcome = decideReviewOutcomeFromBreakdown(breakdown);
+  // IA Phase 27 (CLAUDE.md Madde R) — admin-resolved thresholds
+  // drive the decision; constants are the fallback only.
+  const outcome = decideReviewOutcomeFromBreakdown(
+    breakdown,
+    reviewConfig.thresholds,
+  );
   const decision = outcome.status;
   const providerSnapshot = buildProviderSnapshot(providerId, new Date());
   const promptSnapshot = `${REVIEW_PROMPT_VERSION}\nfingerprint=${composed.fingerprint}\n${composed.systemPrompt}`;

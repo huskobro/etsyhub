@@ -1650,6 +1650,52 @@ Kullanıcıya gerekli bilgi verilir, ama görsel gürültü üretilmez:
   variation lineage gibi); ana scoring breakdown her zaman
   görünür kalır.
 
+### R. Configurable scoring policy (admin-editable thresholds)
+
+CLAUDE.md ürün anayasası "tüm operatör-facing davranış (prompt,
+threshold, default, scoring rule) Settings Registry üzerinden
+yönetilir; service/pipeline kodunda hardcoded kalmaz." Review
+scoring eşikleri (`thresholdLow` ve `thresholdHigh`) bu kuralın
+kapsamındadır:
+
+- Eşikler **kod sabiti olamaz**; settings store'da yaşar
+  (`UserSetting key="review"` → `thresholds: { low, high }`).
+- Builtin defaults (60 / 90) tek bir referans olarak kalır;
+  user override yoksa builtin etkili. Bu Phase 6 Karar 3
+  (sessiz default YASAK) ile çelişmez — operatör değer atadığı
+  anda explicit konfigürasyon olur, atamadığı sürece "ürün
+  anayasası tarafından belirlenen referans" devrededir.
+- Constraint: `0 ≤ low < high ≤ 100`. Schema seviyesinde
+  enforce; ihlal eden payload PUT'ta 400 döner.
+- Decision engine **kompoze edilen değerleri** parametre olarak
+  alır; `decideReviewOutcomeFromBreakdown(breakdown, { low, high })`.
+  Sabit constant'tan okuma yasaktır.
+- Worker resolved review config'ten thresholds'ı çeker ve outcome
+  çağrısına geçirir. Aynı **snapshot** prensibi (CLAUDE.md ürün
+  anayasası) gereği job başlangıcında thresholds policy snapshot'a
+  yazılır — runtime'da admin değer değiştirirse çalışan job'lar
+  eski eşiklerle bitirir.
+- Queue endpoint thresholds'ı response-level `policy.thresholds`
+  field'ında client'a döner; UI client-side decision türevini
+  (Decision/Outcome bloğu) bu değerlerle hesaplar. Hardcoded
+  60/90 fallback bırakılmaz — payload eksikse builtin defaults
+  kullanılır ve dev console'a warn düşer.
+- Admin paneli (`Settings → Review`) eşikleri **editable input**
+  olarak gösterir: Save / Revert to defaults eylemleri vardır.
+  Save sonrası decision engine yeni değerlerle çalışır; mevcut
+  scored item'lar yeniden değerlendirilmez (re-score yalnız
+  reset/transform ile — CLAUDE.md Madde N).
+- Mid-band policy değişkeni şimdilik sabit (`safe default →
+  NEEDS_REVIEW`). İleride mid-band davranışı da settings'e
+  bağlanırsa aynı admin pane'de yer alır; bu turda "kapı açık,
+  davranış sabit" kararı alınır.
+
+Bu prensip yalnız review için değil, ileride listing pricing
+heuristic'leri, brand-voice scoring, recipe parameter limit'leri
+gibi tüm policy-driven sayısal kararlar için geçerlidir. Settings
+Registry pattern'i: değer kod'tan okunmaz, hep resolved config
+helper'ından geçer.
+
 ## Library / Selections / Products — Sınır Invariant'ları
 
 Bu üç ekranı **karıştırmak yasaktır**. Kod, route, copy ve UI seviyesinde

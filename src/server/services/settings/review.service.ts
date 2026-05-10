@@ -29,6 +29,10 @@ import {
   REVIEW_RISK_FLAG_TYPES,
   TECHNICAL_REVIEW_FLAG_TYPES,
 } from "@/providers/review/types";
+import {
+  DEFAULT_REVIEW_THRESHOLDS,
+  type ReviewThresholds,
+} from "@/server/services/review/decision";
 
 const ALL_CRITERION_IDS = [
   ...REVIEW_RISK_FLAG_TYPES,
@@ -85,6 +89,19 @@ const CriterionOverrideSchema = z
 
 export type CriterionOverride = z.infer<typeof CriterionOverrideSchema>;
 
+// IA Phase 27 (CLAUDE.md Madde R) — admin-editable scoring thresholds.
+// `low < high` enforced via refine; both clamped to 0..100. Builtin
+// defaults (DEFAULT_REVIEW_THRESHOLDS) feed when no override is set.
+const ThresholdsSchema = z
+  .object({
+    low: z.number().int().min(0).max(100),
+    high: z.number().int().min(0).max(100),
+  })
+  .refine((v) => v.low < v.high, {
+    message: "low must be strictly below high",
+    path: ["low"],
+  });
+
 const ReviewSettingsSchema = z.object({
   coreMasterPrompt: z.string().max(8000).nullable().default(null),
   criterionOverrides: z
@@ -93,6 +110,7 @@ const ReviewSettingsSchema = z.object({
       CriterionOverrideSchema,
     )
     .default({}),
+  thresholds: ThresholdsSchema.default(DEFAULT_REVIEW_THRESHOLDS),
 });
 
 export type ReviewSettings = z.infer<typeof ReviewSettingsSchema>;
@@ -100,6 +118,7 @@ export type ReviewSettings = z.infer<typeof ReviewSettingsSchema>;
 const DEFAULTS: ReviewSettings = {
   coreMasterPrompt: null,
   criterionOverrides: {},
+  thresholds: DEFAULT_REVIEW_THRESHOLDS,
 };
 
 export async function getReviewSettings(userId: string): Promise<ReviewSettings> {
@@ -165,6 +184,11 @@ export async function getResolvedReviewConfig(userId: string): Promise<{
   criteria: ReviewCriterion[];
   coreMasterPrompt: string;
   builtinCore: string;
+  /** IA Phase 27 — resolved thresholds. Worker passes this directly
+   *  to `decideReviewOutcomeFromBreakdown`; queue endpoint surfaces
+   *  it to the client. Defaults fall back to builtin pair when no
+   *  override is set. */
+  thresholds: ReviewThresholds;
 }> {
   const settings = await getReviewSettings(userId);
   const criteria = resolveCriteria(settings);
@@ -174,7 +198,41 @@ export async function getResolvedReviewConfig(userId: string): Promise<{
     criteria,
     coreMasterPrompt,
     builtinCore: BUILTIN_CORE_MASTER_PROMPT,
+    thresholds: settings.thresholds,
   };
+}
+
+/**
+ * IA Phase 27 — light helper for callers that only need thresholds
+ * (queue endpoint). Avoids paying for criteria resolution when the
+ * full payload is unnecessary.
+ */
+export async function getReviewThresholds(
+  userId: string,
+): Promise<ReviewThresholds> {
+  const settings = await getReviewSettings(userId);
+  return settings.thresholds;
+}
+
+/**
+ * IA Phase 27 — admin "revert thresholds to defaults" affordance.
+ * Removes the `thresholds` key from settings so the next read falls
+ * back to DEFAULT_REVIEW_THRESHOLDS via Zod default.
+ */
+export async function resetReviewThresholds(
+  userId: string,
+): Promise<ReviewSettings> {
+  const current = await getReviewSettings(userId);
+  const next: ReviewSettings = {
+    ...current,
+    thresholds: DEFAULT_REVIEW_THRESHOLDS,
+  };
+  await db.userSetting.upsert({
+    where: { userId_key: { userId, key: SETTING_KEY } },
+    update: { value: next },
+    create: { userId, key: SETTING_KEY, value: next },
+  });
+  return next;
 }
 
 /**

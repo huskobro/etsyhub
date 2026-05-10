@@ -132,6 +132,13 @@ export type ReviewQueueResponse = {
    *  versions in flight may omit it; UI degrades to items.length /
    *  page-slice counts in that window only. */
   scope?: ReviewQueueScope;
+  /** IA Phase 27 (CLAUDE.md Madde R) — admin-resolved scoring
+   *  policy. Decision/Outcome derivation client-side uses
+   *  `policy.thresholds`; absent payload (legacy server in flight)
+   *  falls back to builtin defaults with a dev console warn. */
+  policy?: {
+    thresholds: { low: number; high: number };
+  };
 };
 
 /**

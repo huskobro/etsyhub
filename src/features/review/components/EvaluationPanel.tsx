@@ -221,51 +221,6 @@ export function EvaluationPanel({
             </ul>
           </div>
 
-          {evaluation.decisionOutcome ? (
-            <div className="mt-4" data-testid="evaluation-decision-outcome">
-              <div className="flex items-center justify-between gap-2">
-                <SectionTitle>Decision</SectionTitle>
-                {evaluation.decisionOutcome.reasonKind ===
-                "operator_override" ? (
-                  <span className="font-mono text-[10px] uppercase tracking-meta text-white/40">
-                    System eval kept as reference
-                  </span>
-                ) : null}
-              </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span
-                  className={cn(
-                    "rounded-md px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta",
-                    evaluation.decisionOutcome.reasonKind === "auto_approved"
-                      ? "bg-emerald-500/15 text-emerald-300"
-                      : evaluation.decisionOutcome.reasonKind === "blocker_fail"
-                        ? "bg-rose-500/15 text-rose-200"
-                        : evaluation.decisionOutcome.reasonKind === "low_score"
-                          ? "bg-rose-500/10 text-rose-200"
-                          : evaluation.decisionOutcome.reasonKind ===
-                              "operator_override"
-                            ? "bg-white/10 text-white"
-                            : "bg-amber-500/10 text-amber-200",
-                  )}
-                  data-testid="evaluation-decision-status"
-                >
-                  {evaluation.decisionOutcome.reasonKind ===
-                  "operator_override"
-                    ? "Operator decision"
-                    : evaluation.decisionOutcome.status === "APPROVED"
-                      ? "Auto-approved"
-                      : "Needs review"}
-                </span>
-              </div>
-              <p
-                className="mt-2 text-xs leading-relaxed text-white/75"
-                data-testid="evaluation-decision-reason"
-              >
-                {evaluation.decisionOutcome.reason}
-              </p>
-            </div>
-          ) : null}
-
           {summary ? (
             <div className="mt-4">
               <SectionTitle>Summary</SectionTitle>
@@ -299,7 +254,74 @@ export function EvaluationPanel({
             </details>
           ) : null}
 
-          {rerun ? <RerunButton {...rerun} /> : null}
+          {/* IA Phase 27 — Rerun collapsible (default closed). Operator
+           *   nadiren açar; default kapalı tutmak panelde gürültü
+           *   üretmiyor. CLAUDE.md Madde Q (information density). */}
+          {rerun ? <RerunSection {...rerun} /> : null}
+
+          {/* IA Phase 27 — Decision en altta + collapsible (default
+           *   closed). CLAUDE.md Madde Q + kullanıcı talebi: operatör
+           *   açıklamayı istediğinde okur, kart üstündeki yer Checks +
+           *   Summary + Provider için ayrılır. */}
+          {evaluation.decisionOutcome ? (
+            <details
+              className="mt-4 group"
+              data-testid="evaluation-decision-outcome"
+            >
+              <summary className="flex cursor-pointer items-center justify-between gap-2 list-none">
+                <SectionTitle>Decision</SectionTitle>
+                <span className="flex items-center gap-1.5">
+                  {evaluation.decisionOutcome.reasonKind ===
+                  "operator_override" ? (
+                    <span className="font-mono text-[10px] uppercase tracking-meta text-white/40">
+                      Operator
+                    </span>
+                  ) : null}
+                  <span
+                    className={cn(
+                      "rounded-md px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta",
+                      evaluation.decisionOutcome.reasonKind === "auto_approved"
+                        ? "bg-emerald-500/15 text-emerald-300"
+                        : evaluation.decisionOutcome.reasonKind === "blocker_fail"
+                          ? "bg-rose-500/15 text-rose-200"
+                          : evaluation.decisionOutcome.reasonKind === "low_score"
+                            ? "bg-rose-500/10 text-rose-200"
+                            : evaluation.decisionOutcome.reasonKind ===
+                                "operator_override"
+                              ? "bg-white/10 text-white"
+                              : "bg-amber-500/10 text-amber-200",
+                    )}
+                    data-testid="evaluation-decision-status"
+                  >
+                    {evaluation.decisionOutcome.reasonKind ===
+                    "operator_override"
+                      ? "Operator decision"
+                      : evaluation.decisionOutcome.status === "APPROVED"
+                        ? "Auto-approved"
+                        : "Needs review"}
+                  </span>
+                  <span
+                    className="font-mono text-[10px] uppercase tracking-meta text-white/40"
+                    aria-hidden
+                  >
+                    +
+                  </span>
+                </span>
+              </summary>
+              {evaluation.decisionOutcome.reasonKind ===
+              "operator_override" ? (
+                <p className="mt-2 text-[10.5px] uppercase tracking-meta text-white/40">
+                  System eval kept as reference
+                </p>
+              ) : null}
+              <p
+                className="mt-2 text-xs leading-relaxed text-white/75"
+                data-testid="evaluation-decision-reason"
+              >
+                {evaluation.decisionOutcome.reason}
+              </p>
+            </details>
+          ) : null}
         </>
       ) : (
         <>
@@ -381,7 +403,7 @@ function ScopeTriggerButton({
   );
 }
 
-function RerunButton({
+function RerunSection({
   enabled,
   onRerun,
 }: {
@@ -391,10 +413,25 @@ function RerunButton({
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // IA Phase 27 — collapsible (default closed). Operatör nadiren rerun
+  // ister; default kapalı tutarak panel gürültüsünü düşürüyoruz
+  // (CLAUDE.md Madde Q + kullanıcı talebi). `<details>` yapısı a11y
+  // ve klavye için native; ek state gereksiz.
   return (
-    <div className="mt-4" data-testid="evaluation-rerun">
-      <SectionTitle>Rerun review</SectionTitle>
-      <p className="mt-1.5 text-[10.5px] leading-relaxed text-white/45">
+    <details
+      className="mt-4 group"
+      data-testid="evaluation-rerun"
+    >
+      <summary className="flex cursor-pointer items-center justify-between gap-2 list-none">
+        <SectionTitle>Rerun review</SectionTitle>
+        <span
+          className="font-mono text-[10px] uppercase tracking-meta text-white/40"
+          aria-hidden
+        >
+          +
+        </span>
+      </summary>
+      <p className="mt-2 text-[10.5px] leading-relaxed text-white/45">
         Discards the current AI snapshot and queues a fresh provider
         call. Costs one Gemini invocation; use only when the existing
         evaluation is wrong or stale.
@@ -446,6 +483,6 @@ function RerunButton({
       {error ? (
         <p className="mt-1.5 text-[11px] text-rose-300">{error}</p>
       ) : null}
-    </div>
+    </details>
   );
 }

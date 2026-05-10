@@ -123,6 +123,27 @@ export type Evaluation = {
   } | null;
 };
 
+/** IA Phase 27 (CLAUDE.md Madde R) — builtin defaults that match
+ *  the server-side `DEFAULT_REVIEW_THRESHOLDS`. UI never blocks on
+ *  a missing payload; fallback runs once with a dev warn so we
+ *  notice if a route forgets to include `policy.thresholds`. */
+const BUILTIN_THRESHOLDS = { low: 60, high: 90 } as const;
+let warnedMissingThresholds = false;
+function FALLBACK_THRESHOLDS_WITH_WARN(): { low: number; high: number } {
+  if (
+    !warnedMissingThresholds &&
+    typeof process !== "undefined" &&
+    process.env.NODE_ENV !== "production"
+  ) {
+    warnedMissingThresholds = true;
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[buildEvaluation] thresholds missing from caller — using builtin (60/90). Pass `thresholds` from queue endpoint `policy.thresholds` to honour admin overrides.",
+    );
+  }
+  return BUILTIN_THRESHOLDS;
+}
+
 /** EN labels — fallback when caller has no resolved criteria list.
  *  Keep in sync with BUILTIN_CRITERIA labels. */
 const CHECK_LABEL: Record<ReviewRiskFlagType, string> = {
@@ -227,6 +248,12 @@ export function buildEvaluation(input: {
    *  reviewedAt/snapshot fields. Server returns this from queue
    *  endpoint per asset. */
   backendLifecycle?: EvaluationLifecycle;
+  /** IA Phase 27 (CLAUDE.md Madde R) — admin-resolved decision
+   *  thresholds. Caller pulls these from the queue endpoint
+   *  `policy.thresholds`; absent triggers a dev console warn and
+   *  the builtin default pair (60/90) takes over so the UI never
+   *  blocks on a missing payload. */
+  thresholds?: { low: number; high: number };
 }): Evaluation {
   const {
     reviewedAt,
@@ -330,8 +357,11 @@ export function buildEvaluation(input: {
       const blockerFailed = checks.some(
         (c) => c.state === "failed" && c.severity === "blocker",
       );
-      const REVIEW_THRESHOLD_LOW = 60;
-      const REVIEW_THRESHOLD_HIGH = 90;
+      // IA Phase 27 (CLAUDE.md Madde R) — admin-resolved thresholds
+      // drive client-side decision derivation. Absent payload
+      // (legacy server in flight) → builtin defaults + dev warn.
+      const thresholds =
+        input.thresholds ?? FALLBACK_THRESHOLDS_WITH_WARN();
       if (blockerFailed) {
         decisionOutcome = {
           status: "NEEDS_REVIEW",
@@ -339,23 +369,23 @@ export function buildEvaluation(input: {
           reason:
             "Needs review because at least one blocker-severity criterion failed.",
         };
-      } else if (reviewScore < REVIEW_THRESHOLD_LOW) {
+      } else if (reviewScore < thresholds.low) {
         decisionOutcome = {
           status: "NEEDS_REVIEW",
           reasonKind: "low_score",
-          reason: `Needs review because the final score (${reviewScore}) is below the auto-approve threshold (${REVIEW_THRESHOLD_LOW}).`,
+          reason: `Needs review because the final score (${reviewScore}) is below the auto-approve threshold (${thresholds.low}).`,
         };
-      } else if (reviewScore >= REVIEW_THRESHOLD_HIGH) {
+      } else if (reviewScore >= thresholds.high) {
         decisionOutcome = {
           status: "APPROVED",
           reasonKind: "auto_approved",
-          reason: `Auto-approved — no blocker fails and the final score (${reviewScore}) reached the high threshold (${REVIEW_THRESHOLD_HIGH}).`,
+          reason: `Auto-approved — no blocker fails and the final score (${reviewScore}) reached the high threshold (${thresholds.high}).`,
         };
       } else {
         decisionOutcome = {
           status: "NEEDS_REVIEW",
           reasonKind: "mid_band_safe_default",
-          reason: `Needs review because the final score (${reviewScore}) sits in the mid-band (${REVIEW_THRESHOLD_LOW}–${REVIEW_THRESHOLD_HIGH - 1}); the safe default routes it to manual review even when no checks failed.`,
+          reason: `Needs review because the final score (${reviewScore}) sits in the mid-band (${thresholds.low}–${thresholds.high - 1}); the safe default routes it to manual review even when no checks failed.`,
         };
       }
     }

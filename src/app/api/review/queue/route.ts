@@ -34,6 +34,7 @@ import { db } from "@/server/db";
 import { getStorage } from "@/providers/storage";
 import { logger } from "@/lib/logger";
 import { resolveReviewLifecycle } from "@/server/services/review/lifecycle";
+import { getReviewThresholds } from "@/server/services/settings/review.service";
 
 const QuerySchema = z.object({
   scope: z.enum(["design", "local"]),
@@ -91,6 +92,12 @@ export const GET = withErrorHandling(async (req: Request) => {
 
   const { scope, status, page, q, folder, reference } = parsed.data;
   const skip = (page - 1) * PAGE_SIZE;
+
+  // IA Phase 27 (CLAUDE.md Madde R) — admin-resolved thresholds flow
+  // alongside the queue payload so the client decision derivation
+  // (Decision/Outcome block) uses the same source of truth as the
+  // worker. Loaded once per request; cheap settings read.
+  const thresholds = await getReviewThresholds(user.id);
 
   if (scope === "design") {
     const where = {
@@ -291,6 +298,10 @@ export const GET = withErrorHandling(async (req: Request) => {
               discarded: discardedCount,
             },
           },
+      // IA Phase 27 (CLAUDE.md Madde R) — settings-driven policy
+      // surfaces alongside the items so client decision derivation
+      // mirrors the worker's source of truth.
+      policy: { thresholds },
     });
   }
 
@@ -467,5 +478,8 @@ export const GET = withErrorHandling(async (req: Request) => {
             discarded: discardedCount,
           },
         },
+    // IA Phase 27 (CLAUDE.md Madde R) — settings-driven policy
+    // surfaces alongside the items.
+    policy: { thresholds },
   });
 });

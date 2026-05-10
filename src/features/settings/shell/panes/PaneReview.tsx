@@ -75,6 +75,7 @@ type ReviewConfigResponse = {
   settings: {
     coreMasterPrompt: string | null;
     criterionOverrides: Record<string, Partial<Criterion> | undefined>;
+    thresholds: { low: number; high: number };
   };
   criteria: Criterion[];
   builtinCore: string;
@@ -139,6 +140,7 @@ export function PaneReview() {
     {
       coreMasterPrompt?: string | null;
       criterionOverrides?: Record<string, Partial<Criterion>>;
+      thresholds?: { low: number; high: number };
     }
   >({
     mutationFn: async (patch) => {
@@ -207,28 +209,49 @@ export function PaneReview() {
       {/* 0) Operations — live pipeline state + manual trigger */}
       <ReviewOpsSection ops={data.ops} pickers={data.pickers} />
 
-      {/* 1) Decision rule */}
+      {/* 1) Decision rule — IA Phase 27 (CLAUDE.md Madde R) editable */}
       <section className="mt-8" data-testid="review-pane-thresholds">
-        <h3 className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
-          Decision rule
-        </h3>
-        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-          <dt className="text-ink-3">Threshold low</dt>
-          <dd className="font-mono text-ink">
-            {REVIEW_THRESHOLD_LOW}/100 — below this, status flips to
-            NEEDS_REVIEW.
-          </dd>
-          <dt className="text-ink-3">Threshold high</dt>
-          <dd className="font-mono text-ink">
-            {REVIEW_THRESHOLD_HIGH}/100 — at or above, auto-approved
-            (when no blocker fails).
-          </dd>
-          <dt className="text-ink-3">Mid-band</dt>
-          <dd className="text-ink">NEEDS_REVIEW (safe default)</dd>
+        <div className="flex items-baseline justify-between">
+          <h3 className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+            Decision rule
+          </h3>
+          <span className="font-mono text-[10px] tracking-wider text-ink-3">
+            {data.settings.thresholds.low === REVIEW_THRESHOLD_LOW &&
+            data.settings.thresholds.high === REVIEW_THRESHOLD_HIGH
+              ? "BUILTIN"
+              : "OVERRIDE ACTIVE"}
+          </span>
+        </div>
+        <p className="mt-2 text-xs text-ink-3">
+          Below <span className="font-mono">low</span> ⇒ NEEDS_REVIEW.
+          At or above <span className="font-mono">high</span> ⇒
+          auto-approved (when no blocker fails). Mid-band stays on the
+          safe default (NEEDS_REVIEW).
+        </p>
+        <ThresholdsEditor
+          value={data.settings.thresholds}
+          onSave={(next) =>
+            updateMutation.mutateAsync({ thresholds: next })
+          }
+          onRevert={() =>
+            updateMutation.mutateAsync({
+              thresholds: {
+                low: REVIEW_THRESHOLD_LOW,
+                high: REVIEW_THRESHOLD_HIGH,
+              },
+            })
+          }
+        />
+        <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
           <dt className="text-ink-3">Score math</dt>
           <dd className="text-ink">
             <span className="font-mono">finalScore = max(0, providerRaw − Σ weight(failed warning))</span>
             ; blocker fails force NEEDS_REVIEW regardless of score.
+          </dd>
+          <dt className="text-ink-3">Re-score</dt>
+          <dd className="text-ink">
+            Saved threshold changes affect future scoring jobs only;
+            existing decisions stay in place until a manual reset.
           </dd>
         </dl>
       </section>
@@ -1305,6 +1328,149 @@ function TechnicalRuleEditor({
             </code>{" "}
             product types).
           </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// IA Phase 27 — ThresholdsEditor (CLAUDE.md Madde R)
+// Editable low/high inputs with refine validation (low < high) +
+// save / revert buttons. Save state mirrors CriterionRow pattern
+// (idle → saving → saved ✓ → idle), error surfaces inline.
+// ────────────────────────────────────────────────────────────────────────
+
+function ThresholdsEditor({
+  value,
+  onSave,
+  onRevert,
+}: {
+  value: { low: number; high: number };
+  onSave: (next: { low: number; high: number }) => Promise<unknown>;
+  onRevert: () => Promise<unknown>;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [saveState, setSaveState] = useState<
+    "idle" | "saving" | "saved" | { error: string }
+  >("idle");
+  useEffect(() => {
+    setDraft(value);
+    setSaveState("idle");
+  }, [value]);
+
+  const dirty = draft.low !== value.low || draft.high !== value.high;
+  const validRange =
+    Number.isInteger(draft.low) &&
+    Number.isInteger(draft.high) &&
+    draft.low >= 0 &&
+    draft.high <= 100 &&
+    draft.low < draft.high;
+  const isOverride =
+    value.low !== REVIEW_THRESHOLD_LOW || value.high !== REVIEW_THRESHOLD_HIGH;
+
+  return (
+    <div
+      className="mt-4 rounded-md border border-line bg-bg p-3"
+      data-testid="thresholds-editor"
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1 text-xs text-ink-3">
+          Threshold low (0–99)
+          <input
+            type="number"
+            min={0}
+            max={99}
+            value={draft.low}
+            onChange={(e) =>
+              setDraft({ ...draft, low: Number(e.target.value) })
+            }
+            className="rounded-md border border-line bg-paper px-2 py-1.5 font-mono text-sm text-ink focus:border-k-orange focus:outline-none"
+            data-testid="threshold-low-input"
+          />
+          <span className="text-[10.5px] text-ink-3">
+            Below this score ⇒ NEEDS_REVIEW.
+          </span>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-ink-3">
+          Threshold high (1–100)
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={draft.high}
+            onChange={(e) =>
+              setDraft({ ...draft, high: Number(e.target.value) })
+            }
+            className="rounded-md border border-line bg-paper px-2 py-1.5 font-mono text-sm text-ink focus:border-k-orange focus:outline-none"
+            data-testid="threshold-high-input"
+          />
+          <span className="text-[10.5px] text-ink-3">
+            At or above ⇒ auto-approved (no blocker fails).
+          </span>
+        </label>
+      </div>
+      {!validRange ? (
+        <p className="mt-2 text-xs text-amber-600">
+          low must be a whole number strictly below high; both within
+          0–100.
+        </p>
+      ) : null}
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          type="button"
+          disabled={!dirty || !validRange || saveState === "saving"}
+          onClick={async () => {
+            setSaveState("saving");
+            try {
+              await onSave(draft);
+              setSaveState("saved");
+              setTimeout(() => setSaveState("idle"), 1500);
+            } catch (err) {
+              setSaveState({
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-k-orange bg-k-orange/10 px-3 text-xs font-medium text-ink hover:bg-k-orange/20 disabled:cursor-not-allowed disabled:opacity-40"
+          data-testid="thresholds-save"
+        >
+          {saveState === "saving"
+            ? "Saving…"
+            : saveState === "saved"
+              ? "Saved ✓"
+              : "Save thresholds"}
+        </button>
+        {isOverride ? (
+          <button
+            type="button"
+            onClick={async () => {
+              setSaveState("saving");
+              try {
+                await onRevert();
+                setSaveState("saved");
+                setTimeout(() => setSaveState("idle"), 1500);
+              } catch (err) {
+                setSaveState({
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }}
+            disabled={saveState === "saving"}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs text-ink-2 hover:border-ink-3 disabled:opacity-50"
+            data-testid="thresholds-revert"
+          >
+            <RotateCcw className="h-3 w-3" aria-hidden />
+            Revert to defaults ({REVIEW_THRESHOLD_LOW}/{REVIEW_THRESHOLD_HIGH})
+          </button>
+        ) : null}
+        {typeof saveState === "object" ? (
+          <span
+            className="text-xs text-rose-600"
+            data-testid="thresholds-save-error"
+          >
+            {saveState.error}
+          </span>
         ) : null}
       </div>
     </div>

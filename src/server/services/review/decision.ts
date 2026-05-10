@@ -26,8 +26,10 @@ import type { ReviewCriterion } from "@/providers/review/criteria";
  * - NEEDS_REVIEW iki seçeneği de açık tutar: USER override sticky
  *   (Task 7) ile kullanıcı manuel APPROVED veya REJECTED yazabilir.
  *
- * Hardcoded threshold (R14) — settings'e taşıma `quality-review-thresholds`
- * carry-forward (Phase 7+).
+ * IA Phase 27 (CLAUDE.md Madde R) — thresholds artık settings-driven.
+ * Builtin defaults (60/90) admin override yokken etkili olur; helper'lar
+ * çağrı bazında `thresholds` parametresi alır. Service/pipeline kodunda
+ * sabit constant okumak YASAK.
  *
  * Score input'u 0–100 arası VALIDATED kabul edilir (Task 4 Zod schema
  * `z.number().int().min(0).max(100)` ile zorlar). Burada ekstra clamp/
@@ -35,23 +37,35 @@ import type { ReviewCriterion } from "@/providers/review/criteria";
  */
 export const REVIEW_THRESHOLD_LOW = 60;
 export const REVIEW_THRESHOLD_HIGH = 90;
+export const DEFAULT_REVIEW_THRESHOLDS: ReviewThresholds = {
+  low: REVIEW_THRESHOLD_LOW,
+  high: REVIEW_THRESHOLD_HIGH,
+};
+
+export type ReviewThresholds = {
+  low: number;
+  high: number;
+};
 
 export type ReviewDecisionInput = {
   score: number;
   riskFlags: ReviewRiskFlag[];
 };
 
-export function decideReviewStatus(input: ReviewDecisionInput): ReviewStatus {
+export function decideReviewStatus(
+  input: ReviewDecisionInput,
+  thresholds: ReviewThresholds = DEFAULT_REVIEW_THRESHOLDS,
+): ReviewStatus {
   // 1) Risk flag her durumda öncelikli — score yüksek olsa bile
   if (input.riskFlags.length > 0) return ReviewStatus.NEEDS_REVIEW;
 
   // 2) Düşük skor — düşük kalite işareti
-  if (input.score < REVIEW_THRESHOLD_LOW) return ReviewStatus.NEEDS_REVIEW;
+  if (input.score < thresholds.low) return ReviewStatus.NEEDS_REVIEW;
 
   // 3) Yüksek skor + risk yok — otomatik onay güvenli
-  if (input.score >= REVIEW_THRESHOLD_HIGH) return ReviewStatus.APPROVED;
+  if (input.score >= thresholds.high) return ReviewStatus.APPROVED;
 
-  // 4) 60–89 + risk yok — orta band, güvenli varsayılan NEEDS_REVIEW
+  // 4) low–(high-1) + risk yok — orta band, güvenli varsayılan NEEDS_REVIEW
   //    (yukarıdaki doc-block'ta gerekçe; LLM dalgalanması + USER override)
   return ReviewStatus.NEEDS_REVIEW;
 }
@@ -146,8 +160,9 @@ export function computeScoringBreakdown(args: {
  */
 export function decideReviewStatusFromBreakdown(
   breakdown: ScoringBreakdown,
+  thresholds: ReviewThresholds = DEFAULT_REVIEW_THRESHOLDS,
 ): ReviewStatus {
-  return decideReviewOutcomeFromBreakdown(breakdown).status;
+  return decideReviewOutcomeFromBreakdown(breakdown, thresholds).status;
 }
 
 /**
@@ -155,9 +170,14 @@ export function decideReviewStatusFromBreakdown(
  * status plus a `reasonKind` + human-readable English `reason`.
  * Worker persists this to the audit row; queue endpoint surfaces
  * it; UI right panel renders it as Decision/Outcome.
+ *
+ * IA Phase 27 (CLAUDE.md Madde R) — thresholds are settings-driven.
+ * Caller passes the resolved `{ low, high }`; defaults fall back to
+ * the builtin pair when no override is set.
  */
 export function decideReviewOutcomeFromBreakdown(
   breakdown: ScoringBreakdown,
+  thresholds: ReviewThresholds = DEFAULT_REVIEW_THRESHOLDS,
 ): DecisionOutcome {
   if (breakdown.hasBlockerFail) {
     return {
@@ -167,23 +187,23 @@ export function decideReviewOutcomeFromBreakdown(
         "Needs review because at least one blocker-severity criterion failed.",
     };
   }
-  if (breakdown.finalScore < REVIEW_THRESHOLD_LOW) {
+  if (breakdown.finalScore < thresholds.low) {
     return {
       status: ReviewStatus.NEEDS_REVIEW,
       reasonKind: "low_score",
-      reason: `Needs review because the final score (${breakdown.finalScore}) is below the auto-approve threshold (${REVIEW_THRESHOLD_LOW}).`,
+      reason: `Needs review because the final score (${breakdown.finalScore}) is below the auto-approve threshold (${thresholds.low}).`,
     };
   }
-  if (breakdown.finalScore >= REVIEW_THRESHOLD_HIGH) {
+  if (breakdown.finalScore >= thresholds.high) {
     return {
       status: ReviewStatus.APPROVED,
       reasonKind: "auto_approved",
-      reason: `Auto-approved — no blocker fails and the final score (${breakdown.finalScore}) reached the high threshold (${REVIEW_THRESHOLD_HIGH}).`,
+      reason: `Auto-approved — no blocker fails and the final score (${breakdown.finalScore}) reached the high threshold (${thresholds.high}).`,
     };
   }
   return {
     status: ReviewStatus.NEEDS_REVIEW,
     reasonKind: "mid_band_safe_default",
-    reason: `Needs review because the final score (${breakdown.finalScore}) sits in the mid-band (${REVIEW_THRESHOLD_LOW}–${REVIEW_THRESHOLD_HIGH - 1}); the safe default routes it to manual review even when no checks failed.`,
+    reason: `Needs review because the final score (${breakdown.finalScore}) sits in the mid-band (${thresholds.low}–${thresholds.high - 1}); the safe default routes it to manual review even when no checks failed.`,
   };
 }

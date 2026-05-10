@@ -571,6 +571,7 @@ export function QueueReviewWorkspace({
                 }
               : undefined
           }
+          thresholds={data?.policy?.thresholds}
         />
       )}
       testId="queue-review-workspace"
@@ -587,6 +588,7 @@ function QueueInfoRail({
   item,
   scopeTrigger,
   rerun,
+  thresholds,
 }: {
   item: ReviewQueueItem;
   scopeTrigger:
@@ -595,6 +597,11 @@ function QueueInfoRail({
   rerun:
     | { enabled: boolean; onRerun: () => Promise<void> }
     | undefined;
+  /** IA Phase 27 (CLAUDE.md Madde R) — admin-resolved decision
+   *  thresholds from the queue endpoint payload. Passed through to
+   *  `buildEvaluation` so the Decision/Outcome derivation respects
+   *  operator overrides instead of hardcoded 60/90. */
+  thresholds: { low: number; high: number } | undefined;
 }) {
   // IA Phase 17 — full applicability context. Product type, format,
   // alpha state, and source kind feed the criteria evaluator so
@@ -628,6 +635,7 @@ function QueueInfoRail({
       transformsApplied: [],
     },
     backendLifecycle: item.reviewLifecycle,
+    thresholds,
   });
   return (
     <>
