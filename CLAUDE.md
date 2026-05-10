@@ -1467,6 +1467,14 @@ yönetilir (CLAUDE.md ürün anayasası: master prompt admin yönetimi).
 Hardcoded sabitler ara katmandadır; canonical kaynak settings
 olduğunda pipeline buradan okur, kod sabit değişmez.
 
+### M++. Information density — no duplication
+
+Sağ panelde aynı bilgi iki farklı section'da tekrar etmez. Operator
+override gibi sinyaller **bir kez** yazılır (en doğru yerde —
+Decision bloğu) ve diğer section'lardan çıkarılır. Geri kalan
+detay (Provider snapshot, prompt version) ihtiyaç anında
+collapsible bloklar ile sunulur.
+
 ### M+. Decision explainability discipline
 
 Bir item `NEEDS_REVIEW` durumuna düştüğünde **sebep operatöre

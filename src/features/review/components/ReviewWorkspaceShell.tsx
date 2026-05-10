@@ -171,8 +171,16 @@ export interface ReviewWorkspaceShellProps<TItem> {
   errorMessage: string | null;
   /** Whether Reset is available for the current item. */
   resetEnabled: boolean;
-  /** Called when Reset is clicked (canonical UNDECIDED write). */
+  /** Called when Reset (Undecided) is clicked. Default semantic
+   *  (preserve snapshot, no rerun) — CLAUDE.md Madde N. */
   onReset: () => void;
+  /** IA Phase 26 — optional explicit "Reset and rerun" action.
+   *  When provided, the right-panel surfaces a separate button next
+   *  to the shortcuts so the operator can intentionally wipe the
+   *  snapshot and enqueue a fresh provider call. Distinct from
+   *  Reset to make the cost trade-off visible. */
+  onRerun?: () => void;
+  rerunEnabled?: boolean;
 
   // ── Test affordance ─────────────────────────────────────────────────
   testId?: string;
@@ -213,6 +221,8 @@ export function ReviewWorkspaceShell<TItem>({
   errorMessage,
   resetEnabled,
   onReset,
+  onRerun,
+  rerunEnabled,
   testId = "review-workspace-shell",
   dataAttributes,
 }: ReviewWorkspaceShellProps<TItem>) {

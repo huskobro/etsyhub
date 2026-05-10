@@ -321,8 +321,10 @@ export function buildEvaluation(input: {
       decisionOutcome = {
         status: "PENDING", // outer caller knows the actual reviewStatus; reason categorical
         reasonKind: "operator_override",
-        reason:
-          "Decided by the operator. The system evaluation above stays as reference.",
+        // Decision section header'ında "System eval kept as reference"
+        // caption'ı zaten gösterilir — burada yalnız operator'ün
+        // verdiği aksiyonu özetliyoruz (CLAUDE.md Madde M++).
+        reason: "The current status was set manually by the operator.",
       };
     } else {
       const blockerFailed = checks.some(

@@ -32,6 +32,7 @@ import { cn } from "@/lib/cn";
 export function EvaluationPanel({
   evaluation,
   scopeTrigger,
+  rerun,
 }: {
   evaluation: Evaluation;
   /** IA Phase 22 — manual trigger affordance for non-ready
@@ -43,6 +44,14 @@ export function EvaluationPanel({
   scopeTrigger?: {
     label: string;
     onTrigger: () => Promise<void>;
+  };
+  /** IA Phase 26 — explicit "Reset and rerun review" affordance.
+   *  Wipes the snapshot and enqueues a fresh provider call. Costs
+   *  one Gemini invocation; the button copy + confirm prompt
+   *  flag this so the operator doesn't trigger it accidentally. */
+  rerun?: {
+    enabled: boolean;
+    onRerun: () => Promise<void>;
   };
 }) {
   const { lifecycle, score, summary, checks, provider, promptVersion } =
@@ -214,7 +223,15 @@ export function EvaluationPanel({
 
           {evaluation.decisionOutcome ? (
             <div className="mt-4" data-testid="evaluation-decision-outcome">
-              <SectionTitle>Decision</SectionTitle>
+              <div className="flex items-center justify-between gap-2">
+                <SectionTitle>Decision</SectionTitle>
+                {evaluation.decisionOutcome.reasonKind ===
+                "operator_override" ? (
+                  <span className="font-mono text-[10px] uppercase tracking-meta text-white/40">
+                    System eval kept as reference
+                  </span>
+                ) : null}
+              </div>
               <div className="mt-2 flex items-baseline gap-2">
                 <span
                   className={cn(
@@ -259,8 +276,19 @@ export function EvaluationPanel({
           ) : null}
 
           {provider ? (
-            <div className="mt-4">
-              <SectionTitle>Provider</SectionTitle>
+            <details
+              className="mt-4 group"
+              data-testid="evaluation-provider-section"
+            >
+              <summary className="flex cursor-pointer items-center justify-between gap-2 list-none">
+                <SectionTitle>Provider</SectionTitle>
+                <span
+                  className="font-mono text-[10px] uppercase tracking-meta text-white/40"
+                  aria-hidden
+                >
+                  +
+                </span>
+              </summary>
               <p
                 className="mt-2 font-mono text-[11px] text-white/55"
                 data-testid="evaluation-provider"
@@ -268,8 +296,10 @@ export function EvaluationPanel({
                 {provider}
                 {promptVersion ? ` · prompt ${promptVersion}` : ""}
               </p>
-            </div>
+            </details>
           ) : null}
+
+          {rerun ? <RerunButton {...rerun} /> : null}
         </>
       ) : (
         <>
@@ -344,6 +374,75 @@ function ScopeTriggerButton({
         Queues undecided items in this scope that do not have a valid
         review yet. Already-scored items are skipped automatically.
       </p>
+      {error ? (
+        <p className="mt-1.5 text-[11px] text-rose-300">{error}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function RerunButton({
+  enabled,
+  onRerun,
+}: {
+  enabled: boolean;
+  onRerun: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="mt-4" data-testid="evaluation-rerun">
+      <SectionTitle>Rerun review</SectionTitle>
+      <p className="mt-1.5 text-[10.5px] leading-relaxed text-white/45">
+        Discards the current AI snapshot and queues a fresh provider
+        call. Costs one Gemini invocation; use only when the existing
+        evaluation is wrong or stale.
+      </p>
+      {!confirming ? (
+        <button
+          type="button"
+          disabled={!enabled || busy}
+          onClick={() => setConfirming(true)}
+          className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-white/15 px-2.5 text-[11px] text-white/75 hover:border-white/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          data-testid="evaluation-rerun-btn"
+        >
+          Reset and rerun review
+        </button>
+      ) : (
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                await onRerun();
+                setConfirming(false);
+              } catch (err) {
+                setError(
+                  err instanceof Error ? err.message : String(err),
+                );
+              } finally {
+                setBusy(false);
+              }
+            }}
+            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-rose-400/60 bg-rose-500/15 px-2.5 text-[11px] font-medium text-rose-100 hover:bg-rose-500/25 disabled:opacity-50"
+            data-testid="evaluation-rerun-confirm"
+          >
+            {busy ? "Rerunning…" : "Confirm rerun"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            disabled={busy}
+            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-white/15 px-2.5 text-[11px] text-white/70 hover:border-white/30"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
       {error ? (
         <p className="mt-1.5 text-[11px] text-rose-300">{error}</p>
       ) : null}

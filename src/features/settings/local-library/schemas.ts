@@ -30,6 +30,24 @@ export const LocalLibrarySettingsSchema = z.object({
   }),
   targetDpi: z.number().int().positive().default(300),
   qualityThresholds: QualityThresholdsSchema.default(DEFAULT_QUALITY_THRESHOLDS),
+  // IA Phase 26 — default productTypeKey for local auto-review.
+  // Local scan worker needs a productTypeKey to enqueue REVIEW_DESIGN
+  // (Phase 6 Karar 3: silent default is forbidden upstream, but a
+  // single user-chosen default in settings is explicit configuration,
+  // not a silent guess). When set, the scan worker auto-enqueues
+  // freshly discovered + never-scored assets so the operator doesn't
+  // have to trigger every folder manually.
+  defaultProductTypeKey: z
+    .enum([
+      "wall_art",
+      "clipart",
+      "sticker",
+      "transparent_png",
+      "bookmark",
+      "printable",
+    ])
+    .nullable()
+    .default(null),
 });
 
 export type LocalLibrarySettings = z.infer<typeof LocalLibrarySettingsSchema>;
@@ -40,4 +58,5 @@ export const DEFAULT_LOCAL_LIBRARY_SETTINGS: LocalLibrarySettings = {
   targetResolution: { width: 4000, height: 4000 },
   targetDpi: 300,
   qualityThresholds: { ok: 75, warn: 40 },
+  defaultProductTypeKey: null,
 };

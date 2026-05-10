@@ -334,6 +334,29 @@ export function QueueReviewWorkspace({
       setErrorMessage("Reset failed — try again in a few seconds."),
   });
 
+  // IA Phase 26 — explicit rerun: wipes snapshot + enqueues a new
+  // provider call (PATCH with `rerun: true`). Server-side preserve
+  // semantic stays the default; this path is opt-in only.
+  const rerunMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = { scope, id: itemId, rerun: true };
+      if (scope === "local") body.productTypeKey = "wall_art";
+      const res = await fetch("/api/review/decisions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error ?? `rerun failed: ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["review-queue"] });
+    },
+  });
+
   // ── Loading / error ────────────────────────────────────────────────
 
   if (isLoading) {
@@ -533,6 +556,21 @@ export function QueueReviewWorkspace({
               },
             };
           })()}
+          rerun={
+            // IA Phase 26 — explicit rerun affordance. Only available
+            // when the asset already has a snapshot (otherwise there
+            // is nothing to "rerun") and a decision job isn't already
+            // in flight. Operator override items can still rerun —
+            // sticky guard at the worker decides whether to overwrite.
+            it.reviewProviderSnapshot
+              ? {
+                  enabled: !rerunMutation.isPending,
+                  onRerun: async () => {
+                    await rerunMutation.mutateAsync();
+                  },
+                }
+              : undefined
+          }
         />
       )}
       testId="queue-review-workspace"
@@ -548,10 +586,14 @@ export function QueueReviewWorkspace({
 function QueueInfoRail({
   item,
   scopeTrigger,
+  rerun,
 }: {
   item: ReviewQueueItem;
   scopeTrigger:
     | { label: string; onTrigger: () => Promise<void> }
+    | undefined;
+  rerun:
+    | { enabled: boolean; onRerun: () => Promise<void> }
     | undefined;
 }) {
   // IA Phase 17 — full applicability context. Product type, format,
@@ -601,17 +643,15 @@ function QueueInfoRail({
         />
       ) : null}
 
-      <EvaluationPanel evaluation={evaluation} scopeTrigger={scopeTrigger} />
-
-      {evaluation.operatorOverride ? (
-        <section data-testid="info-rail-operator-override">
-          <SectionTitle>Operator override</SectionTitle>
-          <p className="mt-2 text-xs leading-relaxed text-white/65">
-            This decision was made by the operator; the system
-            evaluation above stays as reference.
-          </p>
-        </section>
-      ) : null}
+      {/* IA Phase 26 — single source of truth for operator-override
+       *   messaging. EvaluationPanel's Decision block already states
+       *   "Operator decision" + the reason cümlesi; ayrı bir section
+       *   tekrarlamak gerek değil (CLAUDE.md Madde M++ — no duplication). */}
+      <EvaluationPanel
+        evaluation={evaluation}
+        scopeTrigger={scopeTrigger}
+        rerun={rerun}
+      />
     </>
   );
 }
