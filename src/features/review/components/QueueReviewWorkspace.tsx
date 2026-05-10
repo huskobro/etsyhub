@@ -39,6 +39,8 @@ import {
   SectionTitle,
   type CanonicalDecision,
 } from "@/features/review/components/ReviewWorkspaceShell";
+import { EvaluationPanel } from "@/features/review/components/EvaluationPanel";
+import { buildEvaluation } from "@/features/review/lib/evaluation";
 
 interface QueueReviewWorkspaceProps {
   scope: "design" | "local";
@@ -60,6 +62,12 @@ interface QueueReviewWorkspaceProps {
     label: string;
     kind: "batch" | "folder" | "queue";
   } | null;
+  /** IA Phase 16 — scope identity ZOOM (local-only). Page resolves
+   *  current item'ın folderName'ini server-side ve buradan geçirir.
+   *  Queue hook'una `folder=` parametresi olarak iletilir; queue
+   *  endpoint o folder'ın total + scopeBreakdown'ını döner. AI
+   *  scope'ta her zaman null. */
+  focusFolderName?: string | null;
 }
 
 // Pipeline ReviewStatus → canonical operator decision axis. PENDING and
@@ -102,11 +110,20 @@ export function QueueReviewWorkspace({
   decision,
   totalReviewPending,
   nextScope,
+  focusFolderName,
 }: QueueReviewWorkspaceProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+
+  // IA Phase 16 — scope identity ZOOM. Local focus mode'da queue
+  // endpoint'i `folder=<currentFolderName>` ile çağırırız; total +
+  // scopeBreakdown bu folder cardinality'sine daralır. AI scope'ta
+  // folder yok (undefined geçilir).
+  const folderQueryArg = scope === "local" && focusFolderName
+    ? focusFolderName
+    : undefined;
 
   // Live queue data — same key the grid uses, so a decision posted
   // here flushes back to the grid on close.
@@ -114,6 +131,7 @@ export function QueueReviewWorkspace({
     scope,
     decision,
     page,
+    folder: folderQueryArg,
   });
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -142,9 +160,8 @@ export function QueueReviewWorkspace({
   const prefetchNeighbour = useCallback(
     async (neighbourPage: number) => {
       if (neighbourPage < 1 || neighbourPage > totalPages) return;
-      // IA Phase 15 — focus mode prefetch key matches queries.ts 5-tuple
-      // (q empty when not searching). Keeps the underlying React Query
-      // cache hit when the operator returns to the queue grid.
+      // IA Phase 16 — prefetch key matches queries.ts 6-tuple
+      // (q empty when not searching, folder empty when not zoomed).
       await queryClient.prefetchQuery({
         queryKey: [
           "review-queue",
@@ -152,6 +169,7 @@ export function QueueReviewWorkspace({
           decisionToCacheStatus(decision),
           neighbourPage,
           "",
+          folderQueryArg ?? "",
         ],
         queryFn: async () => {
           const url = new URL(
@@ -164,13 +182,14 @@ export function QueueReviewWorkspace({
             if (status !== "ALL") url.searchParams.set("status", status);
           }
           url.searchParams.set("page", String(neighbourPage));
+          if (folderQueryArg) url.searchParams.set("folder", folderQueryArg);
           const res = await fetch(url.toString());
           if (!res.ok) throw new Error(`prefetch failed: ${res.status}`);
           return await res.json();
         },
       });
     },
-    [queryClient, scope, decision, totalPages],
+    [queryClient, scope, decision, totalPages, folderQueryArg],
   );
 
   const goPrev = useCallback(async () => {
@@ -188,6 +207,8 @@ export function QueueReviewWorkspace({
       scope,
       decisionToCacheStatus(decision),
       page - 1,
+      "",
+      folderQueryArg ?? "",
     ]);
     const lastItem =
       prevPageData?.items?.[prevPageData.items.length - 1] ?? null;
@@ -202,6 +223,7 @@ export function QueueReviewWorkspace({
     scope,
     decision,
     navigateToItemOnPage,
+    folderQueryArg,
   ]);
 
   const goNext = useCallback(async () => {
@@ -219,6 +241,8 @@ export function QueueReviewWorkspace({
       scope,
       decisionToCacheStatus(decision),
       page + 1,
+      "",
+      folderQueryArg ?? "",
     ]);
     const firstItem = nextPageData?.items?.[0] ?? null;
     if (!firstItem) return;
@@ -233,6 +257,7 @@ export function QueueReviewWorkspace({
     scope,
     decision,
     navigateToItemOnPage,
+    folderQueryArg,
   ]);
 
   const exitWorkspace = useCallback(() => {
@@ -321,15 +346,25 @@ export function QueueReviewWorkspace({
     );
   }
 
-  // ── Counts ─────────────────────────────────────────────────────────
-
-  const keptCount = items.filter(
+  // ── Scope identity counts (IA Phase 16) ────────────────────────────
+  //
+  // Sayaçlar **server-side scope breakdown**'ından gelir, page slice
+  // değil. Local focus mode'da scope = active folder; aksi halde
+  // scope = entire queue (filtered by decision chip + q). UI'a
+  // CLAUDE.md Madde M scope identity contract'ı gerçek sayılarla
+  // beslenir.
+  //
+  // Backward compat: server scope alanı yoksa (deploy window'unda
+  // legacy yanıt), eski page-slice yöntemi fallback kalır.
+  const breakdown = data?.scope?.breakdown;
+  const cardinality = data?.scope?.cardinality ?? total;
+  const keptCount = breakdown?.kept ?? items.filter(
     (it) => it.reviewStatus === "APPROVED",
   ).length;
-  const discardedCount = items.filter(
+  const discardedCount = breakdown?.discarded ?? items.filter(
     (it) => it.reviewStatus === "REJECTED",
   ).length;
-  const undecidedCount = items.length - keptCount - discardedCount;
+  const undecidedCount = breakdown?.undecided ?? (items.length - keptCount - discardedCount);
 
   const canGoPrev = idx > 0 || page > 1;
   const canGoNext = idx < items.length - 1 || page < totalPages;
@@ -347,9 +382,11 @@ export function QueueReviewWorkspace({
       scopeLabel={
         scope === "design"
           ? "AI Designs"
-          : item.source?.kind === "local-library"
-            ? `Folder · ${item.source.folderName}`
-            : "Local Library"
+          : data?.scope?.kind === "folder"
+            ? `Folder · ${data.scope.label}`
+            : item.source?.kind === "local-library"
+              ? `Folder · ${item.source.folderName}`
+              : "Local Library"
       }
       totalReviewPending={totalReviewPending}
       nextScope={nextScope ?? null}
@@ -359,7 +396,7 @@ export function QueueReviewWorkspace({
         const target = items[targetIdx];
         if (target) navigateToItemOnPage(page, target.id);
       }}
-      scopeTotal={total}
+      scopeTotal={cardinality}
       canGoPrev={canGoPrev}
       canGoNext={canGoNext}
       onGoPrev={goPrev}
@@ -415,48 +452,41 @@ export function QueueReviewWorkspace({
 // ────────────────────────────────────────────────────────────────────────
 
 function QueueInfoRail({ item }: { item: ReviewQueueItem }) {
+  // IA Phase 16 — kaynak-bağımsız Evaluation contract. AI ve Local
+  // aynı panel'i okur; kaynak-spesifik metadata (file/variation) ayrı
+  // bölümde durur. Operator override sinyali Evaluation içinde
+  // taşınır (kart üstünde değil — CLAUDE.md kart minimalizmi).
+  const evaluation = buildEvaluation({
+    reviewedAt: item.reviewedAt,
+    reviewScore: item.reviewScore,
+    reviewSummary: item.reviewSummary,
+    reviewProviderSnapshot: item.reviewProviderSnapshot,
+    riskFlags: item.riskFlags,
+    operatorOverride: item.reviewStatusSource === "USER",
+  });
   return (
     <>
-      {item.reviewStatusSource === "USER" ? (
-        <div className="font-mono text-xs uppercase tracking-meta text-white/40">
-          Operator override
-        </div>
-      ) : null}
-
+      {/* Source-specific metadata (file path / DPI / variation) ayrı
+       *   tutulur; Evaluation onun altında. AI ve Local için section
+       *   sırası ortak: source meta → evaluation → operator override
+       *   hint. */}
       {item.source?.kind === "local-library" ? (
         <LocalSourceSection source={item.source} />
       ) : item.source?.kind === "design" ? (
         <DesignSourceSection
           source={item.source}
           referenceId={item.referenceId}
-          reviewScore={item.reviewScore}
-          riskFlagCount={item.riskFlagCount}
         />
       ) : null}
 
-      {item.reviewSummary ? (
-        <section>
-          <SectionTitle>Summary</SectionTitle>
-          <p className="mt-2 text-xs leading-relaxed text-white/75">
-            {item.reviewSummary}
-          </p>
-        </section>
-      ) : null}
+      <EvaluationPanel evaluation={evaluation} />
 
-      {item.riskFlagCount > 0 ? (
-        <section>
-          <SectionTitle>Risk flags</SectionTitle>
-          <div className="mt-2 text-xs text-white/75">
-            {item.riskFlagCount} işaret
-          </div>
-        </section>
-      ) : null}
-
-      {item.reviewProviderSnapshot ? (
-        <section>
-          <SectionTitle>Provider</SectionTitle>
-          <p className="mt-2 font-mono text-xs text-white/60">
-            {item.reviewProviderSnapshot}
+      {evaluation.operatorOverride ? (
+        <section data-testid="info-rail-operator-override">
+          <SectionTitle>Operator override</SectionTitle>
+          <p className="mt-2 text-xs leading-relaxed text-white/65">
+            Bu kararı kullanıcı verdi; sistem değerlendirmesi referans
+            olarak yukarıda kalır.
           </p>
         </section>
       ) : null}
@@ -472,6 +502,9 @@ function LocalSourceSection({
     { kind: "local-library" }
   >;
 }) {
+  // IA Phase 16 — Quality satırı EvaluationPanel'e taşındı (sistem
+  // skor tek yerde). Hint hâlâ kaynak metadata'da kalır — DPI/Res
+  // hint mekanik bir kural; sistem değerlendirmesinden bağımsızdır.
   const transparency = transparencyDescriptor(source.mimeType, source.hasAlpha);
   const hint = resolutionHint({
     dpi: source.dpi,
@@ -509,12 +542,6 @@ function LocalSourceSection({
         >
           {transparency.label}
         </dd>
-        {source.qualityScore !== null ? (
-          <>
-            <dt className="text-white/40">Quality</dt>
-            <dd className="text-white/75">{source.qualityScore}/100</dd>
-          </>
-        ) : null}
         {hint ? (
           <>
             <dt className="text-white/40">Hint</dt>
@@ -529,17 +556,16 @@ function LocalSourceSection({
 function DesignSourceSection({
   source,
   referenceId,
-  reviewScore,
-  riskFlagCount,
 }: {
   source: Extract<
     NonNullable<ReviewQueueItem["source"]>,
     { kind: "design" }
   >;
   referenceId: string | null;
-  reviewScore: number | null;
-  riskFlagCount: number;
 }) {
+  // IA Phase 16 — Quality + Risk satırları EvaluationPanel'e taşındı
+  // (sistem skor contract'ı tek yerde). Bu bölüm yalnız kaynak/
+  // metadata: variation lineage, file format/boyut.
   const transparency = transparencyDescriptor(source.mimeType, source.hasAlpha);
   return (
     <section data-testid="info-rail-design">
@@ -572,18 +598,6 @@ function DesignSourceSection({
         >
           {transparency.label}
         </dd>
-        {reviewScore !== null ? (
-          <>
-            <dt className="text-white/40">Quality</dt>
-            <dd className="text-white/75">{reviewScore}/100</dd>
-          </>
-        ) : null}
-        {riskFlagCount > 0 ? (
-          <>
-            <dt className="text-white/40">Risk</dt>
-            <dd className="text-amber-300">{riskFlagCount} işaret</dd>
-          </>
-        ) : null}
       </dl>
       {referenceId ? (
         <Link

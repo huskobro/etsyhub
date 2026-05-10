@@ -46,15 +46,13 @@ const QuerySchema = z.object({
     .optional(),
   page: z.coerce.number().int().min(1).default(1),
   // IA Phase 15 — server-side search. Filter scope'a uygun fields:
-  //   • design: ProductType.key + Reference.notes (queue-level
-  //     metadata operatörün gördüğü 'productType + ref-XXXXXX'
-  //     bilgisi). GeneratedDesign tablosunda doğrudan prompt
-  //     field'ı olmadığı için (promptVersion.user_prompt_template
-  //     üzerinden geliyor) prompt search bu turun kapsamı dışı.
+  //   • design: ProductType.key + Reference.notes
   //   • local: fileName + folderName.
-  // Empty string treated as no-filter (alias-pair helper drops the
-  // param at the URL writer side).
   q: z.string().trim().min(1).max(120).optional(),
+  // IA Phase 16 — scope identity ZOOM. Local için tek folder'a
+  // odaklan: queue total + scopeBreakdown bu folder cardinality
+  // üzerinden gelir. Empty/missing ⇒ all-folders queue scope.
+  folder: z.string().trim().min(1).max(512).optional(),
 });
 
 const PAGE_SIZE = 24;
@@ -86,7 +84,7 @@ export const GET = withErrorHandling(async (req: Request) => {
     );
   }
 
-  const { scope, status, page, q } = parsed.data;
+  const { scope, status, page, q, folder } = parsed.data;
   const skip = (page - 1) * PAGE_SIZE;
 
   if (scope === "design") {
@@ -107,7 +105,17 @@ export const GET = withErrorHandling(async (req: Request) => {
           }
         : {}),
     };
-    const [items, total] = await Promise.all([
+    // IA Phase 16 — scope identity breakdown. Three parallel counts
+    // over the same `where` (without status filter) so the operator
+    // top-bar reflects scope-aware undecided/kept/discarded
+    // regardless of which decision chip is active. Without status
+    // filter ⇒ chip "All" sees the true scope cardinality; with
+    // chip ⇒ status filter narrows `total` but breakdown stays
+    // honest.
+    const breakdownWhere: typeof where = { ...where };
+    delete (breakdownWhere as { reviewStatus?: unknown }).reviewStatus;
+    const [items, total, undecidedCount, keptCount, discardedCount] =
+      await Promise.all([
       db.generatedDesign.findMany({
         where,
         select: {
@@ -153,6 +161,16 @@ export const GET = withErrorHandling(async (req: Request) => {
         take: PAGE_SIZE,
       }),
       db.generatedDesign.count({ where }),
+      // Scope-aware breakdown: undecided = PENDING + NEEDS_REVIEW
+      db.generatedDesign.count({
+        where: { ...breakdownWhere, reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] } },
+      }),
+      db.generatedDesign.count({
+        where: { ...breakdownWhere, reviewStatus: "APPROVED" },
+      }),
+      db.generatedDesign.count({
+        where: { ...breakdownWhere, reviewStatus: "REJECTED" },
+      }),
     ]);
 
     const storage = getStorage();
@@ -218,6 +236,25 @@ export const GET = withErrorHandling(async (req: Request) => {
       total,
       page,
       pageSize: PAGE_SIZE,
+      // IA Phase 16 — scope identity contract. AI'da scope = "queue"
+      // (operatörün filtre kombinasyonu); folder kavramı yok.
+      // Breakdown undecided/kept/discarded scope cardinality üzerinden;
+      // decided türetilebilir.
+      scope: {
+        kind: "queue" as const,
+        total: total,
+        // Top-bar `Item N / M`'in M'i: status filter aktifse filtered
+        // total, değilse undecided+kept+discarded toplamı (workspace
+        // anchor ile değil, scope cardinality ile yürür).
+        cardinality: status
+          ? total
+          : undecidedCount + keptCount + discardedCount,
+        breakdown: {
+          undecided: undecidedCount,
+          kept: keptCount,
+          discarded: discardedCount,
+        },
+      },
     });
   }
 
@@ -227,6 +264,10 @@ export const GET = withErrorHandling(async (req: Request) => {
     deletedAt: null,
     isUserDeleted: false,
     ...(status ? { reviewStatus: status } : {}),
+    // IA Phase 16 — scope identity ZOOM. Folder filter aktifse
+    // top-bar sayaçları + Item N/M bu folder cardinality üzerinden
+    // çalışır. Yoksa scope = entire local queue.
+    ...(folder ? { folderName: folder } : {}),
     // IA Phase 15 — search across fileName + folderName. Both indexed
     // by `(userId, folderName)` already; insensitive contains keeps
     // the query cheap on typical libraries.
@@ -239,7 +280,11 @@ export const GET = withErrorHandling(async (req: Request) => {
         }
       : {}),
   };
-  const [items, total] = await Promise.all([
+  // Breakdown without status filter — chip-agnostic scope sayım.
+  const localBreakdownWhere: typeof localWhere = { ...localWhere };
+  delete (localBreakdownWhere as { reviewStatus?: unknown }).reviewStatus;
+  const [items, total, undecidedCount, keptCount, discardedCount] =
+    await Promise.all([
     db.localLibraryAsset.findMany({
       where: localWhere,
       select: {
@@ -279,6 +324,18 @@ export const GET = withErrorHandling(async (req: Request) => {
       take: PAGE_SIZE,
     }),
     db.localLibraryAsset.count({ where: localWhere }),
+    db.localLibraryAsset.count({
+      where: {
+        ...localBreakdownWhere,
+        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      },
+    }),
+    db.localLibraryAsset.count({
+      where: { ...localBreakdownWhere, reviewStatus: "APPROVED" },
+    }),
+    db.localLibraryAsset.count({
+      where: { ...localBreakdownWhere, reviewStatus: "REJECTED" },
+    }),
   ]);
 
   const itemsWithThumbs = items.map((it) => ({
@@ -327,5 +384,37 @@ export const GET = withErrorHandling(async (req: Request) => {
     total,
     page,
     pageSize: PAGE_SIZE,
+    // IA Phase 16 — scope identity contract.
+    //   • folder filter aktif ⇒ scope.kind = "folder", label = folderName
+    //   • aksi halde scope.kind = "queue" (entire local queue)
+    // cardinality: chip "All"da scope toplam item; status chip'i
+    // aktifken filtered total. Operatör Item N/M'yi hangi sayıyla
+    // okuyor: cardinality (UI bunu kullanır).
+    scope: folder
+      ? {
+          kind: "folder" as const,
+          label: folder,
+          total: total,
+          cardinality: status
+            ? total
+            : undecidedCount + keptCount + discardedCount,
+          breakdown: {
+            undecided: undecidedCount,
+            kept: keptCount,
+            discarded: discardedCount,
+          },
+        }
+      : {
+          kind: "queue" as const,
+          total: total,
+          cardinality: status
+            ? total
+            : undecidedCount + keptCount + discardedCount,
+          breakdown: {
+            undecided: undecidedCount,
+            kept: keptCount,
+            discarded: discardedCount,
+          },
+        },
   });
 });

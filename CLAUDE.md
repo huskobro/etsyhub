@@ -1336,17 +1336,25 @@ Bu bölüm Phase 6 → Phase 13 boyunca review surface'i için verilen
 ürün/UX kararlarını yazıya bağlar. Yeni feature, refactor veya UI
 polish bu sabitleri korur:
 
-**Top-bar bilgi hiyerarşisi (workspace içinde):**
+**Scope identity:** Review workspace daima açıkça tanımlı bir
+**aktif scope identity** üzerinde çalışır: `batch` (BatchId), `folder`
+(LocalLibraryAsset.folderName), veya `queue-filter` (operatörün filtre
+kombinasyonu). Tüm sayaçlar (undecided/kept/discarded), `Item N / M`
+ifadesindeki `M`, scope summary ve progress bar **bu scope identity
+üzerinden** server-side hesaplanır. Page size, cache window veya
+filtreli queue total scope cardinality yerine geçmez. Kapsam dışı
+sayılar (workspace-wide pending) **anchor** seviyesinde kalır,
+scope-içi sayımları bastırmaz.
 
-1. **Total review pending** (workspace anchor) — operatör
-   "ne kadar iş kaldı" sorusunun cevabını ilk burada görür.
+**Top-bar bilgi hiyerarşisi:**
+
+1. **Total review pending** (workspace anchor) — workspace çapında
+   "ne kadar iş kaldı" cevabı.
 2. **Scope summary** — `Batch / Folder · N undecided · K kept ·
-   D discarded`. Üç sayım her zaman: undecided / kept / discarded
-   (decided türetilmiş). Undecided > 0 iken accent.
-3. **Aktif item** (`Item N / M`) — `M` her zaman **gerçek scope
-   total** (folder/batch'teki tüm item sayısı). Page size, cache
-   window veya filtrelenmiş slice değildir. Page bilgisi top-bar'da
-   ana bilgi değildir.
+   D discarded`. Üç sayım scope identity üzerinden gelir.
+   Undecided > 0 iken accent.
+3. **Aktif item** (`Item N / M`) — `M` = scope identity'nin
+   gerçek toplam item sayısı. Page bilgisi top-bar'a girmez.
 
 Top-bar **yatay** kalır; uzun scope adları (folder path, batch id)
 truncate ile ezilir, top-bar yüksekliğini artırmaz.
@@ -1375,6 +1383,41 @@ varsa aynı bar'a sığar.
 complete" kart gösterilir (silent teleport yok). Sıradaki scope
 **oldest pending** stratejisi ile resolve edilir (operatör birikmiş
 işi önce kapatır). nextScope null → "All caught up" copy.
+
+**Sistem skor contract'ı (açıklanabilir değerlendirme):** AI / scan
+pipeline çıktısı bir **lifecycle taşıyan değerlendirme**dir, çıplak
+sayı değil. Her review item'ı şu durumlardan birine eşlenir:
+`pending` (henüz değerlendirilmedi), `scoring` (kuyrukta / işleniyor),
+`ready` (sonuç hazır), `error` (provider/parse fail), `na`
+(uygulanabilir değil). UI tüm beş durumu **dürüstçe** gösterir;
+`pending` veya `error` sahte sayıyla maskelenmez. `ready` durumunda
+sonuç şu alanları taşır: `score` (0–100), `summary`, `checksPassed[]`,
+`checksFailed[]` (= riskFlags), `provider`, `promptVersion`,
+`evaluatedAt`. Operator override `reviewStatusSource = USER` info-rail
+sinyalidir; sistem skoru ile karıştırılmaz.
+
+**Sağ panel checklist düzeni:** Sistem değerlendirmesi sağ panele
+kontrol noktası listesi olarak iner — passed (yeşil tik) / failed
+(amber/risk) ayrımı; serbest paragraf değil. Liste taksonomisi sabit
+sözlükten gelir (drift koruması). Summary nihai operatör notu olarak
+ayrı bölümde durur.
+
+**Kart minimalizmi:** Grid kart değerli sinyalin yoğun gösterimi
+içindir. Operatör override / user-source bilgisi karta taşınmaz —
+karttaki yer sistem değerlendirmesi (skor + state + risk hint),
+kaynak metadata (boyut, format, DPI, transparency) ve karar
+chip'i için ayrılır. Operatör override info-rail seviyesinde kalır.
+
+**AI ↔ Local kart/panel parity:** Kart ve sağ panel **kaynak adapter
+seviyesinde** AI ↔ Local farklılaşır; UI dili (section sırası,
+başlıklar, score/checklist/summary/risk yerleşimi) ortak
+contract'tan gelir. İki ayrı UI ailesi yaşatılmaz.
+
+**Settings / admin yönelimi:** Threshold (low/high), prompt template
+ve provider parametreleri uzun vadede **Settings Registry**'den
+yönetilir (CLAUDE.md ürün anayasası: master prompt admin yönetimi).
+Hardcoded sabitler ara katmandadır; canonical kaynak settings
+olduğunda pipeline buradan okur, kod sabit değişmez.
 
 ## Library / Selections / Products — Sınır Invariant'ları
 

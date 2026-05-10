@@ -27,6 +27,7 @@ import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
 import { buildReviewUrl } from "@/features/review/lib/search-params";
 import { useReviewSelection } from "@/features/review/stores/selection-store";
+import { buildEvaluation } from "@/features/review/lib/evaluation";
 
 type Props = { item: ReviewQueueItem };
 
@@ -209,11 +210,37 @@ export function ReviewCard({ item }: Props) {
           >
             {STATUS_LABEL[item.reviewStatus]}
           </Badge>
-          {/* IA Phase 15 — operator override signal kart üzerinden
-           *   tamamen kaldırıldı. Sinyal info-rail'de korunuyor (focus
-           *   workspace'te `Operator override` caption). Kart üzeri
-           *   sistem score / metadata için ayrılır (CLAUDE.md Madde M:
-           *   sistem skorları operator override'ından öne çıkar). */}
+          {/* IA Phase 16 — scoring lifecycle hint. CLAUDE.md sistem
+           *   skor contract'ı: lifecycle pending/scoring/error iken
+           *   operatör sahte skor görmemeli. Kart "..." veya "—"
+           *   rozeti ile dürüstçe işaretler; ready iken sayı zaten
+           *   üstteki score chip'inde. Operator override sinyali
+           *   kart üzerinde değil — info-rail'de.
+           */}
+          {(() => {
+            const evalLifecycle = buildEvaluation({
+              reviewedAt: item.reviewedAt,
+              reviewScore: item.reviewScore,
+              reviewSummary: item.reviewSummary,
+              reviewProviderSnapshot: item.reviewProviderSnapshot,
+              riskFlags: item.riskFlags,
+              operatorOverride: false,
+            }).lifecycle;
+            if (evalLifecycle === "ready") return null;
+            return (
+              <span
+                data-testid="card-eval-state"
+                data-state={evalLifecycle}
+                className="rounded-sm bg-surface-muted px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta text-text-muted"
+              >
+                {evalLifecycle === "pending"
+                  ? "değerlendirilmedi"
+                  : evalLifecycle === "scoring"
+                    ? "değerlendiriliyor"
+                    : "hata"}
+              </span>
+            );
+          })()}
         </div>
         {/* Pass 24 — Source meta. Kullanıcının "bu görsel nereden geldi?"
             sorusunu kart üzerinden cevaplar. Local: dosya adı + klasör

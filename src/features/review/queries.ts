@@ -83,11 +83,37 @@ export type ReviewQueueItem = {
   source?: ReviewQueueSource;
 };
 
+/**
+ * IA Phase 16 — scope identity contract surfaced from the queue
+ * endpoint. Top-bar reads `cardinality` for `Item N / M`, `breakdown`
+ * for the three-count summary. `kind` differentiates the active
+ * scope so the workspace can label it (queue vs folder) without
+ * recomputing client-side.
+ */
+export type ReviewQueueScope =
+  | {
+      kind: "folder";
+      label: string;
+      total: number;
+      cardinality: number;
+      breakdown: { undecided: number; kept: number; discarded: number };
+    }
+  | {
+      kind: "queue";
+      total: number;
+      cardinality: number;
+      breakdown: { undecided: number; kept: number; discarded: number };
+    };
+
 export type ReviewQueueResponse = {
   items: ReviewQueueItem[];
   total: number;
   page: number;
   pageSize: number;
+  /** IA Phase 16 — scope identity (CLAUDE.md Madde M). Older API
+   *  versions in flight may omit it; UI degrades to items.length /
+   *  page-slice counts in that window only. */
+  scope?: ReviewQueueScope;
 };
 
 /**
@@ -127,6 +153,10 @@ type Params = {
   /** IA Phase 15 — server-side search query. Empty string falls
    *  through (helper drops the URL param). */
   q?: string;
+  /** IA Phase 16 — scope identity ZOOM (local-only). When set, the
+   *  queue endpoint narrows total + scopeBreakdown to a single
+   *  `LocalLibraryAsset.folderName`. Ignored for design scope. */
+  folder?: string;
 };
 
 /** Resolve the effective server-side status for cache key + URL. */
@@ -142,6 +172,9 @@ export const reviewQueueQueryKey = (params: Params) =>
     effectiveStatus(params) ?? "ALL",
     params.page ?? 1,
     params.q?.trim() ? params.q.trim() : "",
+    // IA Phase 16 — folder zoom in cache key. Empty string keeps
+    // legacy "no folder" entries hot.
+    params.folder?.trim() ? params.folder.trim() : "",
   ] as const;
 
 export function useReviewQueue(params: Params) {
@@ -155,6 +188,8 @@ export function useReviewQueue(params: Params) {
       if (params.page) url.searchParams.set("page", String(params.page));
       const trimmedQ = params.q?.trim();
       if (trimmedQ) url.searchParams.set("q", trimmedQ);
+      const trimmedFolder = params.folder?.trim();
+      if (trimmedFolder) url.searchParams.set("folder", trimmedFolder);
 
       const res = await fetch(url.toString());
       if (!res.ok) {

@@ -210,18 +210,25 @@ export default async function ReviewPage({
         : Promise.resolve(null),
     ]);
 
+    // IA Phase 16 — auto-next deep-link: sıradaki folder'ın ilk
+    // pending item'ına doğrudan iner (resolver firstPendingItemId
+    // döndürür). Folder grid'inden geçirmeyiz; operatör tek
+    // klikle iş akışına devam eder. Server fallback: pending
+    // item null ise (yarış koşulu) klasik `?source=local` href.
     const nextScope = nextFolder
-      ? {
-          // Folder navigation lands the operator on the local queue
-          // grid filtered to that folder; from there the first
-          // undecided item opens the focus workspace via the regular
-          // `?item=` shortcut. We don't deep-link to the first
-          // pending item directly because the grid is the canonical
-          // entry point for a folder scope.
-          href: `/review?source=local`,
-          label: nextFolder.folderName,
-          kind: "folder" as const,
-        }
+      ? nextFolder.firstPendingItemId
+        ? {
+            href: `/review?source=local&item=${encodeURIComponent(
+              nextFolder.firstPendingItemId,
+            )}`,
+            label: nextFolder.folderName,
+            kind: "folder" as const,
+          }
+        : {
+            href: `/review?source=local`,
+            label: nextFolder.folderName,
+            kind: "folder" as const,
+          }
       : null;
 
     return (
@@ -232,6 +239,11 @@ export default async function ReviewPage({
         decision={decision}
         totalReviewPending={totalReviewPending}
         nextScope={nextScope}
+        // IA Phase 16 — scope identity ZOOM. Local focus mode'da
+        // current item'ın folderName'i scope identity'dir; queue
+        // endpoint bu parametre ile filtreli total + breakdown
+        // döndürür. AI scope'ta folder kavramı yok (null geçilir).
+        focusFolderName={currentFolderName}
       />
     );
   }

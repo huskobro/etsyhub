@@ -124,7 +124,11 @@ void _MJ_BATCH_METADATA_PATH_TYPE_GUARD;
 export async function getNextPendingFolderName(args: {
   userId: string;
   currentFolderName: string | null;
-}): Promise<{ folderName: string; oldestCreatedAt: Date } | null> {
+}): Promise<{
+  folderName: string;
+  oldestCreatedAt: Date;
+  firstPendingItemId: string | null;
+} | null> {
   const { userId, currentFolderName } = args;
 
   // GroupBy folderName, keeping only those with pending rows. Prisma
@@ -160,9 +164,27 @@ export async function getNextPendingFolderName(args: {
 
   const winner = sorted[0];
   if (!winner) return null;
+
+  // IA Phase 16 — sıradaki folder'ın ilk pending item id'sini de
+  // döndür ki UI auto-next CTA'sında deep-link kurabilsin (operatör
+  // folder grid'ine değil, doğrudan ilk pending item'ın focus
+  // workspace'ine iner). 1 row, indexed lookup; cheap.
+  const firstPending = await db.localLibraryAsset.findFirst({
+    where: {
+      userId,
+      deletedAt: null,
+      isUserDeleted: false,
+      folderName: winner.folderName,
+      reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+    },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+
   return {
     folderName: winner.folderName,
     oldestCreatedAt: winner._min.createdAt,
+    firstPendingItemId: firstPending?.id ?? null,
   };
 }
 

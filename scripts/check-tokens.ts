@@ -90,6 +90,12 @@ const whitelist = [
   // for the "override" inline signal (operator override hint replacing
   // the noisier "Kullanıcı" badge).
   "src/app/(app)/review/_components/ReviewCard.tsx",
+  // IA Phase 16 — EvaluationPanel sağ panel checklist + lifecycle
+  //   bilesenidir. Workspace shell'in v4 dark zincirinde calisir;
+  //   text-[10.5px] (mono caption / passed-count chip) ve text-[11px]
+  //   (failed-check secondary reason satiri) yari-piksel hierarchy'si
+  //   QueueReviewWorkspace info-rail tipografi sirasiyla uyumlu.
+  "src/features/review/components/EvaluationPanel.tsx",
   // Rollout-4 — Selections (B2/B3) recipes.
   //  · SelectionCard → `.k-card--hero` v5 hero card; `aspect-square` + 3-up
   //    thumb composite v5 design layer'ında tanımlı.
