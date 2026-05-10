@@ -270,3 +270,64 @@ export async function listUnifiedReviewItems(args: {
 function countRiskFlags(raw: unknown): number {
   return Array.isArray(raw) ? raw.length : 0;
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// URL/source param helpers — used by `/review` host page.
+//
+// IA Phase 2 introduces `?source=ai|local|midjourney` as the canonical
+// taxonomy on the unified review surface. The legacy `?tab=ai|local` keeps
+// working as an alias because the existing `ReviewTabs` client still
+// writes it and shipped links/bookmarks may rely on it. These helpers
+// give every call site one place to interpret the URL — no duplicated
+// alias logic across page, tabs, and detail panel.
+
+/** Canonical decision-axis filter param from URL `?decision=`. */
+export type DecisionFilter = "undecided" | "kept" | "rejected";
+
+/** Parse the canonical `?decision=` param. Returns null for empty/invalid. */
+export function parseDecisionFilter(raw: string | undefined): DecisionFilter | null {
+  if (!raw) return null;
+  const v = raw.toLowerCase();
+  return v === "undecided" || v === "kept" || v === "rejected" ? v : null;
+}
+
+/**
+ * Resolve the active source from the URL — preferring the canonical
+ * `?source=` over the legacy `?tab=`. Returns the union source kind so
+ * call sites can branch on a single discriminant.
+ *
+ * "midjourney" is reserved for batch-workspace mode (host page already
+ * routes that through `?batch=` independently); pass-through here for
+ * future use when a non-batch midjourney scope is added to the grid.
+ */
+export function resolveSourceFromParams(args: {
+  source?: string;
+  tab?: string;
+}): UnifiedReviewSource {
+  const s = (args.source ?? "").toLowerCase();
+  if (s === "midjourney") return "midjourney";
+  if (s === "local") return "local-library";
+  if (s === "ai" || s === "design") return "design";
+  // Legacy tab fallback.
+  const t = (args.tab ?? "").toLowerCase();
+  if (t === "local") return "local-library";
+  return "design";
+}
+
+/**
+ * Reverse of `resolveSourceFromParams` — used when a UI component still
+ * writes the legacy `?tab=` param but wants to keep the canonical token
+ * in sync. `null` for "midjourney" since legacy ?tab has no encoding.
+ */
+export function legacyTabForSource(
+  source: UnifiedReviewSource,
+): "ai" | "local" | null {
+  switch (source) {
+    case "design":
+      return "ai";
+    case "local-library":
+      return "local";
+    case "midjourney":
+      return null;
+  }
+}

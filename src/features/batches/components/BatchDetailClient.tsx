@@ -110,7 +110,7 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
           </Link>
         ) : null}
         <Link
-          href={`/batches/${summary.batchId}/review`}
+          href={`/review?batch=${summary.batchId}`}
           data-size="sm"
           className="k-btn k-btn--primary"
           data-testid="batch-detail-open-review"

@@ -48,6 +48,21 @@ interface BatchReviewWorkspaceProps {
   summary: BatchReviewSummary;
   items: ReviewItem[];
   initialCursor?: number;
+  /**
+   * Where the workspace bar's back-link and Exit button send the operator.
+   * Defaults to the batch detail page (`/batches/[id]`); when this workspace
+   * is embedded under the canonical `/review?batch=...` route, the host
+   * page passes `/review` so Exit returns to the unified review surface.
+   */
+  exitHref?: string;
+  /**
+   * Visible label used in the back-link chip alongside the arrow icon.
+   * Defaults to `batch_<short>` (the original A4 spec). When embedded
+   * under `/review`, the host can pass a more user-facing label like
+   * `Review` so the workspace chrome reads as a sub-mode rather than a
+   * standalone page.
+   */
+  exitLabel?: string;
 }
 
 export function BatchReviewWorkspace({
@@ -55,7 +70,11 @@ export function BatchReviewWorkspace({
   summary,
   items,
   initialCursor = 0,
+  exitHref,
+  exitLabel,
 }: BatchReviewWorkspaceProps) {
+  const resolvedExitHref = exitHref ?? `/batches/${batchId}`;
+  const resolvedExitLabel = exitLabel ?? `batch_${batchId.slice(0, 8)}`;
   const [cursor, setCursor] = useState(initialCursor);
   // Optimistic decision overrides — keyed by midjourneyAssetId
   const [decisions, setDecisions] = useState<Record<string, MJReviewDecision>>(
@@ -174,10 +193,10 @@ export function BatchReviewWorkspace({
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#1A1815] text-white/80">
         <h1 className="text-2xl font-semibold">No items in this batch</h1>
         <Link
-          href={`/batches/${batchId}`}
+          href={resolvedExitHref}
           className="mt-3 text-sm text-white/60 underline"
         >
-          ← back to batch detail
+          ← back
         </Link>
       </div>
     );
@@ -195,11 +214,11 @@ export function BatchReviewWorkspace({
       {/* Workspace bar */}
       <div className="flex flex-shrink-0 items-center gap-3 border-b border-white/5 bg-[#16130F] px-5 py-3">
         <Link
-          href={`/batches/${batchId}`}
+          href={resolvedExitHref}
           className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
-          batch_{batchId.slice(0, 8)}
+          {resolvedExitLabel}
         </Link>
         <span className="font-mono text-xs uppercase tracking-meta text-white/40">
           Review workspace
@@ -229,7 +248,7 @@ export function BatchReviewWorkspace({
           <HelpCircle className="h-3.5 w-3.5" aria-hidden />?
         </button>
         <Link
-          href={`/batches/${batchId}`}
+          href={resolvedExitHref}
           className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/70 hover:border-white/20 hover:text-white"
         >
           <XIcon className="h-3.5 w-3.5" aria-hidden />
