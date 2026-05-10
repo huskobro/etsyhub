@@ -42,9 +42,11 @@ type Props = {
   scope: "design" | "local";
 };
 
+// Canonical decision-axis wording — kept in sync with ReviewCard so the
+// drawer header reads identically to the grid badge it opened from.
 const STATUS_LABEL: Record<ReviewQueueItem["reviewStatus"], string> = {
-  PENDING: "Pending",
-  APPROVED: "Approved",
+  PENDING: "Undecided",
+  APPROVED: "Kept",
   NEEDS_REVIEW: "Needs review",
   REJECTED: "Rejected",
 };
@@ -103,7 +105,7 @@ export function ReviewDetailPanel({ id, scope }: Props) {
 
   const close = () => {
     router.push(
-      buildReviewUrl(pathname, searchParams, { detail: undefined }),
+      buildReviewUrl(pathname, searchParams, { item: undefined }),
     );
   };
 
@@ -115,7 +117,7 @@ export function ReviewDetailPanel({ id, scope }: Props) {
     const target = items[next];
     if (!target) return;
     router.push(
-      buildReviewUrl(pathname, searchParams, { detail: target.id }),
+      buildReviewUrl(pathname, searchParams, { item: target.id }),
     );
   };
 
@@ -136,7 +138,7 @@ export function ReviewDetailPanel({ id, scope }: Props) {
       if (e.key === "Escape") {
         e.preventDefault();
         router.push(
-          buildReviewUrl(pathname, searchParams, { detail: undefined }),
+          buildReviewUrl(pathname, searchParams, { item: undefined }),
         );
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();

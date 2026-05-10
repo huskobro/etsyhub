@@ -16,20 +16,43 @@
 //   - Selection store scope sync — tab değişiminde auto-clear.
 //   - BulkActionsBar bottom (selectedIds > 0 ise görünür).
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import {
   useRouter,
   usePathname,
   useSearchParams,
 } from "next/navigation";
+import { MJReviewDecision } from "@prisma/client";
 import { useReviewQueue } from "@/features/review/queries";
 import { ReviewCard } from "@/app/(app)/review/_components/ReviewCard";
+import {
+  ReviewDecisionFilter,
+  decisionFromParam,
+  type DecisionChipValue,
+} from "@/app/(app)/review/_components/ReviewDecisionFilter";
 import { BulkActionsBar } from "@/app/(app)/review/_components/BulkActionsBar";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { buildReviewUrl } from "@/features/review/lib/search-params";
 import { useReviewSelection } from "@/features/review/stores/selection-store";
+import { toCanonicalDecision } from "@/server/services/review/unified";
 
 type Props = { scope: "design" | "local" };
+
+/** Map a chip value to the canonical decision it filters by (or null = all). */
+function decisionFilterTarget(
+  chip: DecisionChipValue,
+): MJReviewDecision | null {
+  switch (chip) {
+    case "undecided":
+      return MJReviewDecision.UNDECIDED;
+    case "kept":
+      return MJReviewDecision.KEPT;
+    case "rejected":
+      return MJReviewDecision.REJECTED;
+    case "all":
+      return null;
+  }
+}
 
 export function ReviewQueueList({ scope }: Props) {
   const router = useRouter();
@@ -38,8 +61,21 @@ export function ReviewQueueList({ scope }: Props) {
 
   const pageRaw = searchParams.get("page");
   const pageNum = pageRaw && Number(pageRaw) > 0 ? Number(pageRaw) : 1;
+  const decisionChip = decisionFromParam(searchParams.get("decision"));
+  const decisionTarget = decisionFilterTarget(decisionChip);
 
   const { data, isLoading, error } = useReviewQueue({ scope, page: pageNum });
+
+  // Client-side filter — keeps the React Query cache and pagination
+  // contract intact. Server-side filtering is a follow-up once we are
+  // confident the UX hits the right edge cases.
+  const visibleItems = useMemo(() => {
+    if (!data) return [];
+    if (decisionTarget === null) return data.items;
+    return data.items.filter(
+      (it) => toCanonicalDecision(it.reviewStatus) === decisionTarget,
+    );
+  }, [data, decisionTarget]);
 
   // Selection store scope sync: scope prop değişiminde store'u güncelle
   // (auto-clear). Tab değişiminde URL'den de detail/page sıfırlanır;
@@ -96,19 +132,29 @@ export function ReviewQueueList({ scope }: Props) {
     router.push(
       buildReviewUrl(pathname, searchParams, {
         page: next === 1 ? undefined : String(next),
-        // Pagination'da detail kapanır (yeni sayfa cache'inde olmayabilir)
-        detail: undefined,
+        // Pagination closes the drawer — the target id may not be in the
+        // new page's cache. (canonical key: ?item=)
+        item: undefined,
       }),
     );
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-        {data.items.map((item) => (
-          <ReviewCard key={item.id} item={item} />
-        ))}
-      </div>
+      <ReviewDecisionFilter active={decisionChip} />
+      {visibleItems.length === 0 ? (
+        <StateMessage
+          tone="neutral"
+          title="Bu filtreye uyan kayıt yok"
+          body="Decision filter'i değiştirin veya All ile tümünü görün."
+        />
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          {visibleItems.map((item) => (
+            <ReviewCard key={item.id} item={item} />
+          ))}
+        </div>
+      )}
       {showPagination ? (
         <nav
           aria-label="Sayfalama"

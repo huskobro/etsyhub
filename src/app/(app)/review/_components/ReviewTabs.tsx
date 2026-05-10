@@ -39,15 +39,18 @@ export function ReviewTabs({ activeTab }: Props) {
   const searchParams = useSearchParams();
   const tabRefs = useRef<Map<TabValue, HTMLButtonElement | null>>(new Map());
 
-  // Ö-3: Tab değişimi mevcut diğer query param'ları korumalı; ancak page ve
-  // detail tab-specific olduğu için sıfırlanır (yeni tab'da o page/detail
-  // anlamsız).
+  // Switch writes the canonical `?source=` param (legacy `?tab=` is
+  // dropped by buildReviewUrl's alias-pair logic). Page + item are
+  // tab-specific and reset on tab change. Decision filter clears too —
+  // a "kept" filter from one source rarely makes sense on the other and
+  // empty-state confusion is the bigger risk.
   const switchTab = (tab: TabValue) => {
     router.push(
       buildReviewUrl(pathname, searchParams, {
-        tab,
+        source: tab,
         page: undefined,
-        detail: undefined,
+        item: undefined,
+        decision: undefined,
       }),
     );
   };

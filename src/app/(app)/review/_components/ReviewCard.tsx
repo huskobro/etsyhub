@@ -29,9 +29,16 @@ import { useReviewSelection } from "@/features/review/stores/selection-store";
 
 type Props = { item: ReviewQueueItem };
 
+// Canonical decision-axis wording (matches the batch workspace chips).
+// PENDING and NEEDS_REVIEW are pipeline-side signals; we project both to
+// the operator-facing labels:
+//   PENDING       → "Undecided" (no operator action yet)
+//   NEEDS_REVIEW  → "Needs review" (auto-flag — operator should look)
+//   APPROVED      → "Kept"
+//   REJECTED      → "Rejected"
 const STATUS_LABEL: Record<ReviewStatusEnum, string> = {
-  PENDING: "Pending",
-  APPROVED: "Approved",
+  PENDING: "Undecided",
+  APPROVED: "Kept",
   NEEDS_REVIEW: "Needs review",
   REJECTED: "Rejected",
 };
@@ -53,7 +60,7 @@ export function ReviewCard({ item }: Props) {
 
   const openDetail = () => {
     router.push(
-      buildReviewUrl(pathname, searchParams, { detail: item.id }),
+      buildReviewUrl(pathname, searchParams, { item: item.id }),
     );
   };
 
