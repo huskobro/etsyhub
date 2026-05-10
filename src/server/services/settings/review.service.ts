@@ -47,15 +47,39 @@ const ApplicabilitySchema = z.object({
 
 const SeveritySchema = z.enum(["info", "warning", "blocker"]);
 
+// IA Phase 24 — technical criteria carry an empty `blockText`
+// (server-side evaluator runs them; provider doesn't see the
+// instruction). Schema must allow empty strings so the override
+// payload doesn't fail Zod validation on save. Same goes for
+// description on technical-only criterion mods (kept lenient).
+const TechnicalRuleSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("min_dpi"), minDpi: z.number().int().min(1).max(2400) }),
+  z.object({
+    kind: z.literal("min_resolution"),
+    minMinSidePx: z.number().int().min(1).max(40000),
+  }),
+  z.object({
+    kind: z.literal("format_whitelist"),
+    allowed: z.array(z.string()).min(1),
+  }),
+  z.object({
+    kind: z.literal("aspect_ratio"),
+    target: z.number().min(0.01).max(100),
+    tolerance: z.number().min(0).max(1),
+  }),
+  z.object({ kind: z.literal("transparency_required") }),
+]);
+
 const CriterionOverrideSchema = z
   .object({
     label: z.string().min(1).max(120),
-    description: z.string().min(1).max(400),
-    blockText: z.string().min(1).max(400),
+    description: z.string().min(0).max(400),
+    blockText: z.string().min(0).max(400),
     active: z.boolean(),
     weight: z.number().int().min(0).max(100),
     severity: SeveritySchema,
     applicability: ApplicabilitySchema,
+    technicalRule: TechnicalRuleSchema,
   })
   .partial();
 
@@ -121,6 +145,15 @@ export function resolveCriteria(
       weight: o.weight ?? b.weight,
       severity: o.severity ?? b.severity,
       applicability: o.applicability ?? b.applicability,
+      // IA Phase 24 — technical kriterler için technicalRule
+      // merge'i: override varsa builtin yerine kullanır.
+      // Override discriminated union (TechnicalRule) cast,
+      // ReviewCriterion.technicalRule field tipiyle uyumlu.
+      ...(o.technicalRule
+        ? {
+            technicalRule: o.technicalRule as ReviewCriterion["technicalRule"],
+          }
+        : {}),
       // version stays from builtin — overrides do not bump it; admin
       // changes reflect in the fingerprint via id@override-state below.
     };

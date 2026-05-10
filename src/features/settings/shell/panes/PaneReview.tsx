@@ -342,7 +342,7 @@ export function PaneReview() {
                 isOverridden={isOverridden}
                 isIncludedInPreview={isIncluded}
                 onSave={(patch) =>
-                  updateMutation.mutate({
+                  updateMutation.mutateAsync({
                     criterionOverrides: {
                       ...(overrides as Record<string, Partial<Criterion>>),
                       [c.id]: {
@@ -739,13 +739,18 @@ function CriterionRow({
   criterion: Criterion;
   isOverridden: boolean;
   isIncludedInPreview: boolean;
-  onSave: (patch: Partial<Criterion>) => void;
+  onSave: (patch: Partial<Criterion>) => Promise<unknown>;
   onRevert: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Criterion>(criterion);
+  const [saveState, setSaveState] = useState<
+    "idle" | "saving" | "saved" | { error: string }
+  >("idle");
   useEffect(() => {
     setDraft(criterion);
+    // Server cevabı criterion'u güncelleyince saveState idle'a iner.
+    setSaveState("idle");
   }, [criterion]);
 
   const dirty = useMemo(() => {
@@ -1041,25 +1046,44 @@ function CriterionRow({
           <div className="mt-3 flex items-center gap-2">
             <button
               type="button"
-              disabled={!dirty}
-              onClick={() => {
-                onSave({
-                  label: draft.label,
-                  description: draft.description,
-                  blockText: draft.blockText,
-                  weight: draft.weight,
-                  severity: draft.severity,
-                  active: draft.active,
-                  applicability: draft.applicability,
-                  ...(draft.technicalRule
-                    ? { technicalRule: draft.technicalRule }
-                    : {}),
-                });
+              disabled={!dirty || saveState === "saving"}
+              onClick={async () => {
+                setSaveState("saving");
+                try {
+                  await onSave({
+                    label: draft.label,
+                    description: draft.description,
+                    blockText: draft.blockText,
+                    weight: draft.weight,
+                    severity: draft.severity,
+                    active: draft.active,
+                    applicability: draft.applicability,
+                    ...(draft.technicalRule
+                      ? { technicalRule: draft.technicalRule }
+                      : {}),
+                  });
+                  setSaveState("saved");
+                  // 1.5s sonra idle'a iner; query invalidation
+                  // criterion prop'u yeniler ve useEffect saveState'i
+                  // de idle'a çeker.
+                  setTimeout(() => setSaveState("idle"), 1500);
+                } catch (err) {
+                  setSaveState({
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                }
               }}
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-k-orange bg-k-orange/10 px-3 text-xs font-medium text-ink hover:bg-k-orange/20 disabled:cursor-not-allowed disabled:opacity-40"
               data-testid="criterion-save"
+              data-state={
+                typeof saveState === "string" ? saveState : "error"
+              }
             >
-              Save changes
+              {saveState === "saving"
+                ? "Saving…"
+                : saveState === "saved"
+                  ? "Saved ✓"
+                  : "Save changes"}
             </button>
             {isOverridden ? (
               <button
@@ -1071,6 +1095,14 @@ function CriterionRow({
                 <RotateCcw className="h-3 w-3" aria-hidden />
                 Revert to builtin
               </button>
+            ) : null}
+            {typeof saveState === "object" ? (
+              <span
+                className="text-xs text-rose-600"
+                data-testid="criterion-save-error"
+              >
+                {saveState.error}
+              </span>
             ) : null}
           </div>
         </div>
