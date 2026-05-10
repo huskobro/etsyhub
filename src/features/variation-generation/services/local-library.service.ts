@@ -64,6 +64,10 @@ export type AssetMetadata = AssetFile & {
   width: number;
   height: number;
   dpi: number | null;
+  /** IA Phase 11 — true alpha-channel signal from Sharp.
+   *  Persisted on LocalLibraryAsset.hasAlpha so the review focus rail
+   *  can show a real "Yes / No" instead of a format-level guess. */
+  hasAlpha: boolean | null;
 };
 
 export async function readAssetMetadata(file: AssetFile): Promise<AssetMetadata> {
@@ -76,5 +80,9 @@ export async function readAssetMetadata(file: AssetFile): Promise<AssetMetadata>
     width: meta.width ?? 0,
     height: meta.height ?? 0,
     dpi: meta.density ?? null,
+    // Sharp.metadata().hasAlpha is reliable for the formats we
+    // accept (PNG / WebP / JPEG / GIF). Null fallback only when Sharp
+    // returns undefined (extremely rare — unknown image format).
+    hasAlpha: typeof meta.hasAlpha === "boolean" ? meta.hasAlpha : null,
   };
 }

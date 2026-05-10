@@ -5,19 +5,17 @@
 /**
  * Format-level transparency capability based on the MIME type.
  *
- * This is NOT a runtime alpha probe — we don't open the file with
- * Sharp on each request. We surface what the format can carry, which
- * is the operator-meaningful signal for "is this file a candidate for
- * a transparent product (sticker / clipart bundle)?":
+ * IA Phase 11 added a persisted `hasAlpha` Sharp probe on
+ * LocalLibraryAsset / Asset; this helper is the format-only fallback
+ * for legacy rows that haven't been re-scanned. Use
+ * `transparencyDescriptor(mimeType, hasAlpha)` instead when you have
+ * access to the persisted boolean — it picks the strongest signal
+ * available (real probe wins over format hint).
  *
  *   • PNG  → transparency capable (alpha channel supported by spec)
  *   • WebP → transparency capable (alpha channel supported by spec)
  *   • JPEG → no transparency (format cannot carry alpha)
- *   • Anything else → unknown (we don't second-guess uncommon types)
- *
- * Schema extension would let us persist a true `hasAlpha` from the
- * scan worker; deferred to a follow-up phase. The format-level hint
- * is honest and ships today.
+ *   • Anything else → unknown
  */
 export type TransparencyCapability =
   | { kind: "supports-alpha"; format: "PNG" | "WebP" }
@@ -31,9 +29,60 @@ export function transparencyForMime(mimeType: string): TransparencyCapability {
   if (m === "image/jpeg" || m === "image/jpg") {
     return { kind: "no-alpha", format: "JPEG" };
   }
-  // Strip "image/" prefix for the unknown label (UI only).
   const friendly = m.startsWith("image/") ? m.slice(6).toUpperCase() : m;
   return { kind: "unknown", format: friendly };
+}
+
+/**
+ * Operator-facing transparency descriptor — picks the strongest
+ * available signal:
+ *   • persisted hasAlpha === true   → "Yes — alpha channel detected"
+ *   • persisted hasAlpha === false  → "No — flat / no alpha"
+ *   • hasAlpha === null:
+ *       fall back to format-level hint (PNG/WebP supports / JPEG no)
+ *
+ * Returns the format string separately so callers can keep the
+ * "Format" row in sync with what they're claiming about transparency.
+ */
+export interface TransparencyDescriptor {
+  /** "Yes (probed)" / "No (probed)" / "Supported (format-level)" /
+   *  "Not supported (JPEG)" / "Unknown". */
+  label: string;
+  /** True when the call relied on the persisted hasAlpha probe rather
+   *  than the format-level fallback. UI may use this to render a
+   *  small "probed" caption next to the value. */
+  probed: boolean;
+  /** Same format string as `transparencyForMime`. */
+  format: string;
+}
+
+export function transparencyDescriptor(
+  mimeType: string,
+  hasAlpha: boolean | null | undefined,
+): TransparencyDescriptor {
+  const cap = transparencyForMime(mimeType);
+  if (hasAlpha === true) {
+    return { label: "Yes — alpha channel", probed: true, format: cap.format };
+  }
+  if (hasAlpha === false) {
+    return { label: "No — flat image", probed: true, format: cap.format };
+  }
+  // null / undefined → format-level fallback.
+  if (cap.kind === "supports-alpha") {
+    return {
+      label: "Supported (format-level)",
+      probed: false,
+      format: cap.format,
+    };
+  }
+  if (cap.kind === "no-alpha") {
+    return {
+      label: "Not supported (JPEG)",
+      probed: false,
+      format: cap.format,
+    };
+  }
+  return { label: "Unknown", probed: false, format: cap.format };
 }
 
 /**

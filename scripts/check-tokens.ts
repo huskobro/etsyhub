@@ -73,6 +73,15 @@ const whitelist = [
   // max-w-[760px] stage genişliği — operatör iki workspace'i tek
   // ürün olarak görür.
   "src/features/review/components/QueueReviewWorkspace.tsx",
+  // IA Phase 11 — ReviewWorkspaceShell is the shared layout that the
+  // Batch and Queue workspaces both render through. Same v4 dark
+  // surface hex sabitleri (#1A1815 / #16130F / #1F1C18), max-w-[760px]
+  // stage, ve KBD chip min-w-[22px] sabitleri. Adapter pattern: hex
+  // değerleri tek noktada (shell), source-spesifik dosyalar token'a
+  // ihtiyaç duymadığı için artık whitelist'te kalmaları gerekmiyor —
+  // ama BatchReviewWorkspace.tsx'in geçmiş v4 spec yorumları nedeniyle
+  // entry korundu.
+  "src/features/review/components/ReviewWorkspaceShell.tsx",
   // Rollout-4 — Selections (B2/B3) recipes.
   //  · SelectionCard → `.k-card--hero` v5 hero card; `aspect-square` + 3-up
   //    thumb composite v5 design layer'ında tanımlı.

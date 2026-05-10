@@ -38,6 +38,10 @@ export type ReviewQueueSourceLocal = {
   mimeType: string;
   fileSize: number;
   qualityReasons: unknown;
+  /** IA Phase 11 — persisted Sharp `metadata.hasAlpha` probe. Null on
+   *  legacy rows that haven't been re-scanned yet; UI degrades to the
+   *  format-level hint when null. */
+  hasAlpha: boolean | null;
 };
 export type ReviewQueueSourceDesign = {
   kind: "design";
@@ -49,6 +53,9 @@ export type ReviewQueueSourceDesign = {
   fileSize: number;
   width: number | null;
   height: number | null;
+  /** IA Phase 11 — persisted Sharp `metadata.hasAlpha` probe. Same
+   *  semantics as local source. */
+  hasAlpha: boolean | null;
 };
 export type ReviewQueueSource =
   | ReviewQueueSourceLocal

@@ -101,6 +101,9 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
             width: meta.width,
             height: meta.height,
             dpi: meta.dpi,
+            // IA Phase 11 — persist true Sharp alpha probe; review
+            // focus rail surfaces "Yes / No" instead of format hint.
+            hasAlpha: meta.hasAlpha,
             thumbnailPath: thumb,
             qualityScore: score.score,
             qualityReasons: score.reasons,
@@ -117,6 +120,7 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
             width: meta.width,
             height: meta.height,
             dpi: meta.dpi,
+            hasAlpha: meta.hasAlpha,
             thumbnailPath: thumb,
             qualityScore: score.score,
             qualityReasons: score.reasons,

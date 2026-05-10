@@ -109,12 +109,13 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
             Retry-failed-only ({summary.counts.failed})
           </Link>
         ) : null}
-        {/* IA Phase 10 — undecided gate visibility (CLAUDE.md Madde H).
-         *   Operator should see "what's left to review" without entering
-         *   the workspace. Caption is intentionally subtle (text-ink-3
-         *   uppercase mono) so it doesn't compete with the primary CTA;
-         *   the workspace itself surfaces the precise count + accented
-         *   undecided pill. */}
+        {/* IA Phase 11 — undecided gate visibility (CLAUDE.md Madde H).
+         *   Live `reviewCounts.undecided` reads from the batch summary
+         *   so the operator sees the gating signal without entering the
+         *   workspace. When all items are decided we flip to a calmer
+         *   "Review complete" caption; when no assets exist yet (still
+         *   generating) we fall back to a generic "every item decided"
+         *   hint instead of a misleading 0 / 0 display. */}
         <div className="flex flex-col items-end gap-0.5">
           <Link
             href={`/review?batch=${summary.batchId}`}
@@ -125,12 +126,33 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
             <Eye className="h-3 w-3" aria-hidden />
             Open Review
           </Link>
-          <span
-            className="font-mono text-xs uppercase tracking-meta text-ink-3"
-            data-testid="batch-detail-review-hint"
-          >
-            Decide every item before next stage
-          </span>
+          {summary.reviewCounts.total > 0 ? (
+            summary.reviewCounts.undecided > 0 ? (
+              <span
+                className="font-mono text-xs uppercase tracking-meta text-k-orange-bright"
+                data-testid="batch-detail-review-hint"
+                data-state="pending"
+              >
+                {summary.reviewCounts.undecided} undecided · decide before next stage
+              </span>
+            ) : (
+              <span
+                className="font-mono text-xs uppercase tracking-meta text-ink-3"
+                data-testid="batch-detail-review-hint"
+                data-state="complete"
+              >
+                Review complete · {summary.reviewCounts.kept} kept
+              </span>
+            )
+          ) : (
+            <span
+              className="font-mono text-xs uppercase tracking-meta text-ink-3"
+              data-testid="batch-detail-review-hint"
+              data-state="empty"
+            >
+              Decide every item before next stage
+            </span>
+          )}
         </div>
       </header>
 

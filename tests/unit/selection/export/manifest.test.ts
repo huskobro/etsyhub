@@ -67,6 +67,7 @@ function buildAsset(overrides: Partial<Asset> = {}): Asset {
     sizeBytes: 1024,
     width: 2048,
     height: 3072,
+    hasAlpha: null,
     hash: "h1",
     sourceUrl: null,
     sourcePlatform: null,

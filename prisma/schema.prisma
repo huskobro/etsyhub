@@ -354,6 +354,10 @@ model Asset {
   sizeBytes       Int
   width           Int?
   height          Int?
+  /// IA Phase 11 — persisted alpha-channel signal from Sharp
+  /// metadata.hasAlpha during MJ import / asset materialize.
+  /// Nullable: legacy rows fall back to format-level hint.
+  hasAlpha        Boolean?
   hash            String
   sourceUrl       String?
   sourcePlatform  SourcePlatform?
@@ -858,6 +862,10 @@ model LocalLibraryAsset {
   thumbnailPath  String?
   qualityScore   Int?
   qualityReasons Json?
+  /// IA Phase 11 — persisted alpha-channel signal from Sharp
+  /// metadata.hasAlpha during scan. Nullable: legacy rows fall back
+  /// to the format-level hint in the UI until they are re-scanned.
+  hasAlpha       Boolean?
 
   // Phase 6 — Review pipeline
   reviewStatus           ReviewStatus       @default(PENDING)

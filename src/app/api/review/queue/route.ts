@@ -99,9 +99,9 @@ export const GET = withErrorHandling(async (req: Request) => {
           reviewProviderSnapshot: true,
           // Asset metadata — IA Phase 9 (review focus workspace) needs
           // mimeType / fileSize / dimensions on AI items for the
-          // unified info-rail. Format-capability hint (PNG/WebP can
-          // carry alpha; JPEG cannot) is derived from mimeType in the
-          // UI; we don't run a Sharp probe here for performance.
+          // unified info-rail. IA Phase 11 added persisted hasAlpha
+          // (Sharp probe at import time); UI shows real Yes/No when
+          // present, falls back to format-level hint otherwise.
           asset: {
             select: {
               storageKey: true,
@@ -109,6 +109,7 @@ export const GET = withErrorHandling(async (req: Request) => {
               sizeBytes: true,
               width: true,
               height: true,
+              hasAlpha: true,
             },
           },
           // Phase 7 Task 38 — Quick start CTA için (additive):
@@ -182,6 +183,9 @@ export const GET = withErrorHandling(async (req: Request) => {
             fileSize: it.asset.sizeBytes,
             width: it.asset.width,
             height: it.asset.height,
+            // IA Phase 11 — persisted alpha signal (null on legacy
+            // rows; UI degrades to format hint).
+            hasAlpha: it.asset.hasAlpha,
           },
         };
       }),
@@ -230,11 +234,12 @@ export const GET = withErrorHandling(async (req: Request) => {
         height: true,
         dpi: true,
         // IA Phase 9 — file metadata for the unified focus workspace
-        // info-rail. mimeType drives the transparency-capability hint
-        // (PNG/WebP can carry alpha; JPEG cannot) and fileSize gives
-        // the operator a print-readiness signal.
+        // info-rail.
         mimeType: true,
         fileSize: true,
+        // IA Phase 11 — persisted Sharp alpha probe (null on legacy
+        // rows that haven't been re-scanned yet).
+        hasAlpha: true,
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -279,6 +284,8 @@ export const GET = withErrorHandling(async (req: Request) => {
       mimeType: it.mimeType,
       fileSize: it.fileSize,
       qualityReasons: it.qualityReasons,
+      // IA Phase 11 — persisted Sharp alpha probe.
+      hasAlpha: it.hasAlpha,
     },
   }));
 
