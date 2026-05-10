@@ -81,6 +81,15 @@ export type ReviewQueueItem = {
   jobId: string | null;
   // Pass 24 — Source meta (additive, optional for backward compat).
   source?: ReviewQueueSource;
+  // IA Phase 18 — review scoring lifecycle. Backend Job table'dan
+  // türev; UI sahte default göstermez. "not_queued" en son satır
+  // hiç enqueue edilmemiş demek.
+  reviewLifecycle?:
+    | "not_queued"
+    | "queued"
+    | "running"
+    | "failed"
+    | "ready";
 };
 
 /**

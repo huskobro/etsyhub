@@ -49,6 +49,7 @@ import {
   listBatchReviewItems,
 } from "@/server/services/midjourney/review";
 import {
+  getAdjacentPendingFolders,
   getNextPendingBatchId,
   getNextPendingFolderName,
   getTotalReviewPendingCount,
@@ -203,11 +204,14 @@ export default async function ReviewPage({
       currentFolderName = local?.folderName ?? null;
     }
 
-    const [totalReviewPending, nextFolder] = await Promise.all([
+    const [totalReviewPending, nextFolder, adjacentFolders] = await Promise.all([
       getTotalReviewPendingCount(userId),
       focusScope === "local"
         ? getNextPendingFolderName({ userId, currentFolderName })
         : Promise.resolve(null),
+      focusScope === "local"
+        ? getAdjacentPendingFolders({ userId, currentFolderName })
+        : Promise.resolve({ prev: null, next: null }),
     ]);
 
     // IA Phase 16 — auto-next deep-link: sıradaki folder'ın ilk
@@ -231,6 +235,32 @@ export default async function ReviewPage({
           }
       : null;
 
+    // IA Phase 18 — scope navigation (Madde M scope ekseni).
+    // Local için adjacent folder resolver; AI için (folder kavramı yok)
+    // scope ekseni şu an boş — gelecek tur AI batch lineage ile
+    // doldurulabilir.
+    const scopeNav =
+      focusScope === "local"
+        ? {
+            prev: adjacentFolders.prev?.firstPendingItemId
+              ? {
+                  href: `/review?source=local&item=${encodeURIComponent(
+                    adjacentFolders.prev.firstPendingItemId,
+                  )}`,
+                  label: adjacentFolders.prev.folderName,
+                }
+              : null,
+            next: adjacentFolders.next?.firstPendingItemId
+              ? {
+                  href: `/review?source=local&item=${encodeURIComponent(
+                    adjacentFolders.next.firstPendingItemId,
+                  )}`,
+                  label: adjacentFolders.next.folderName,
+                }
+              : null,
+          }
+        : { prev: null, next: null };
+
     return (
       <QueueReviewWorkspace
         scope={focusScope}
@@ -244,6 +274,7 @@ export default async function ReviewPage({
         // endpoint bu parametre ile filtreli total + breakdown
         // döndürür. AI scope'ta folder kavramı yok (null geçilir).
         focusFolderName={currentFolderName}
+        scopeNav={scopeNav}
       />
     );
   }

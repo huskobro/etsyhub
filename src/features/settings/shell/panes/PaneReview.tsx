@@ -75,6 +75,13 @@ type ReviewConfigResponse = {
     fingerprint: string;
     coreOverrideRejected: boolean;
   };
+  ops: {
+    queued: number;
+    running: number;
+    failed: number;
+    lastEnqueueAt: string | null;
+    lastLocalScanAt: string | null;
+  };
 };
 
 const QUERY_KEY = ["settings", "review"] as const;
@@ -166,6 +173,9 @@ export function PaneReview() {
         review. Changes apply to future scoring jobs; existing
         decisions stay in place until reset.
       </p>
+
+      {/* 0) Operations — live pipeline state + manual trigger */}
+      <ReviewOpsSection ops={data.ops} />
 
       {/* 1) Decision rule */}
       <section className="mt-8" data-testid="review-pane-thresholds">
@@ -353,6 +363,216 @@ export function PaneReview() {
           </li>
         </ul>
       </section>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Review operations dashboard + manual trigger
+// ────────────────────────────────────────────────────────────────────────
+
+function ReviewOpsSection({
+  ops,
+}: {
+  ops: ReviewConfigResponse["ops"];
+}) {
+  const [folderName, setFolderName] = useState("");
+  const [productType, setProductType] = useState("clipart");
+  const [batchId, setBatchId] = useState("");
+  const [lastResult, setLastResult] = useState<string | null>(null);
+
+  const triggerFolder = async () => {
+    setLastResult(null);
+    if (!folderName.trim()) {
+      setLastResult("Folder name required.");
+      return;
+    }
+    try {
+      const r = await fetch("/api/review/scope-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope: "folder",
+          folderName: folderName.trim(),
+          productTypeKey: productType,
+        }),
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        setLastResult(`Folder trigger failed: ${body?.error ?? r.status}`);
+        return;
+      }
+      setLastResult(
+        `Folder · ${folderName} → enqueued ${body.enqueueSucceeded}/${body.requested} (errors: ${body.enqueueErrors}).`,
+      );
+    } catch (err) {
+      setLastResult(
+        `Folder trigger error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  const triggerBatch = async () => {
+    setLastResult(null);
+    if (!batchId.trim()) {
+      setLastResult("Batch id required.");
+      return;
+    }
+    try {
+      const r = await fetch("/api/review/scope-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope: "batch",
+          batchId: batchId.trim(),
+        }),
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        setLastResult(`Batch trigger failed: ${body?.error ?? r.status}`);
+        return;
+      }
+      setLastResult(
+        `Batch · ${batchId} → enqueued ${body.enqueueSucceeded}/${body.requested} (errors: ${body.enqueueErrors}).`,
+      );
+    } catch (err) {
+      setLastResult(
+        `Batch trigger error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  return (
+    <section className="mt-8" data-testid="review-pane-ops">
+      <h3 className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+        Review operations
+      </h3>
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <OpsTile label="Queued" value={ops.queued} testId="ops-queued" />
+        <OpsTile label="Running" value={ops.running} testId="ops-running" />
+        <OpsTile
+          label="Failed"
+          value={ops.failed}
+          tone={ops.failed > 0 ? "danger" : "muted"}
+          testId="ops-failed"
+        />
+      </div>
+      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-xs">
+        <dt className="text-ink-3">Last enqueue</dt>
+        <dd className="font-mono text-ink-2">
+          {ops.lastEnqueueAt
+            ? new Date(ops.lastEnqueueAt).toLocaleString("en-US")
+            : "—"}
+        </dd>
+        <dt className="text-ink-3">Last local scan</dt>
+        <dd className="font-mono text-ink-2">
+          {ops.lastLocalScanAt
+            ? new Date(ops.lastLocalScanAt).toLocaleString("en-US")
+            : "—"}
+        </dd>
+      </dl>
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div
+          className="rounded-md border border-line bg-paper p-3"
+          data-testid="ops-trigger-folder"
+        >
+          <div className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+            Trigger · folder
+          </div>
+          <input
+            value={folderName}
+            onChange={(e) => setFolderName(e.target.value)}
+            placeholder="folderName"
+            className="mt-2 w-full rounded-md border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-ink"
+          />
+          <select
+            value={productType}
+            onChange={(e) => setProductType(e.target.value)}
+            className="mt-2 w-full rounded-md border border-line bg-bg px-2 py-1.5 text-xs text-ink"
+          >
+            <option value="clipart">clipart</option>
+            <option value="sticker">sticker</option>
+            <option value="transparent_png">transparent_png</option>
+            <option value="wall_art">wall_art</option>
+            <option value="bookmark">bookmark</option>
+            <option value="printable">printable</option>
+          </select>
+          <button
+            type="button"
+            onClick={triggerFolder}
+            className="mt-2 inline-flex h-8 w-full items-center justify-center rounded-md border border-k-orange bg-k-orange/10 text-xs font-medium text-ink hover:bg-k-orange/20"
+          >
+            Enqueue folder review
+          </button>
+        </div>
+        <div
+          className="rounded-md border border-line bg-paper p-3"
+          data-testid="ops-trigger-batch"
+        >
+          <div className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+            Trigger · batch
+          </div>
+          <input
+            value={batchId}
+            onChange={(e) => setBatchId(e.target.value)}
+            placeholder="batchId"
+            className="mt-2 w-full rounded-md border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-ink"
+          />
+          <div className="mt-2 h-[34px] text-[10px] text-ink-3">
+            Picks every undecided + never-scored design in this batch.
+          </div>
+          <button
+            type="button"
+            onClick={triggerBatch}
+            className="mt-2 inline-flex h-8 w-full items-center justify-center rounded-md border border-k-orange bg-k-orange/10 text-xs font-medium text-ink hover:bg-k-orange/20"
+          >
+            Enqueue batch review
+          </button>
+        </div>
+      </div>
+      {lastResult ? (
+        <p
+          className="mt-2 text-xs text-ink-2"
+          data-testid="ops-last-result"
+        >
+          {lastResult}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function OpsTile({
+  label,
+  value,
+  tone = "muted",
+  testId,
+}: {
+  label: string;
+  value: number;
+  tone?: "muted" | "danger";
+  testId: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-md border bg-paper p-3",
+        tone === "danger" && value > 0 ? "border-rose-300" : "border-line",
+      )}
+      data-testid={testId}
+    >
+      <div className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-1 k-display text-[26px] font-semibold tabular-nums",
+          tone === "danger" && value > 0 ? "text-rose-600" : "text-ink",
+        )}
+      >
+        {value}
+      </div>
     </div>
   );
 }

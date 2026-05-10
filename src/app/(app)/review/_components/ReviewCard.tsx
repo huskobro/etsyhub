@@ -225,19 +225,24 @@ export function ReviewCard({ item }: Props) {
               reviewProviderSnapshot: item.reviewProviderSnapshot,
               riskFlags: item.riskFlags,
               operatorOverride: false,
+              backendLifecycle: item.reviewLifecycle,
             }).lifecycle;
             if (evalLifecycle === "ready") return null;
+            const label =
+              evalLifecycle === "queued"
+                ? "queued"
+                : evalLifecycle === "running" || evalLifecycle === "scoring"
+                  ? "waiting"
+                  : evalLifecycle === "failed" || evalLifecycle === "error"
+                    ? "failed"
+                    : "not queued";
             return (
               <span
                 data-testid="card-eval-state"
                 data-state={evalLifecycle}
                 className="rounded-sm bg-surface-muted px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta text-text-muted"
               >
-                {evalLifecycle === "pending"
-                  ? "not yet scored"
-                  : evalLifecycle === "scoring"
-                    ? "scoring…"
-                    : "score error"}
+                {label}
               </span>
             );
           })()}

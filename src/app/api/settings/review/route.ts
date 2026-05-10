@@ -30,6 +30,7 @@ import {
 } from "@/server/services/settings/review.service";
 import { REVIEW_RISK_FLAG_TYPES } from "@/providers/review/types";
 import { composeReviewSystemPrompt } from "@/providers/review/criteria";
+import { getReviewOpsCounts } from "@/server/services/review/lifecycle";
 
 const PutSchema = ReviewSettingsSchema.partial();
 
@@ -49,7 +50,10 @@ export const GET = withErrorHandling(async (req: Request) => {
   const sourceKind: "design" | "local-library" =
     sourceKindRaw === "local-library" ? "local-library" : "design";
 
-  const resolved = await getResolvedReviewConfig(user.id);
+  const [resolved, opsCounts] = await Promise.all([
+    getResolvedReviewConfig(user.id),
+    getReviewOpsCounts(user.id),
+  ]);
   const compose = composeReviewSystemPrompt(
     {
       productType,
@@ -75,6 +79,7 @@ export const GET = withErrorHandling(async (req: Request) => {
       fingerprint: compose.fingerprint,
       coreOverrideRejected: compose.coreOverrideRejected,
     },
+    ops: opsCounts,
   });
 });
 

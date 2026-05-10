@@ -13,6 +13,19 @@
 //   - Auto-cleanup (diskten silinmiş asset'leri deletedAt set etme)
 //   - Retry policy / exponential backoff (şu an bullmq default)
 //   - Watch folder / fs events
+//
+// IA Phase 18 — auto-review enqueue:
+//   Local scan local asset için **otomatik REVIEW_DESIGN enqueue
+//   YAPMAZ** çünkü REVIEW_DESIGN payload'ı productTypeKey zorunlu
+//   alanı taşır (Phase 6 Karar 3 — sessiz default YASAK). Local
+//   scan tek bir productType varsayamaz; operatör review'i scope
+//   trigger endpoint'i (POST /api/review/scope-trigger) üzerinden
+//   açıkça başlatır.
+//
+//   Aksine: variation worker (AI batch) productType payload'ında
+//   net olduğu için orada auto-enqueue var. Local için auto-enqueue
+//   ileride per-folder productType atanırsa açılabilir; o ana kadar
+//   manual scope trigger canonical yol.
 
 import type { Job } from "bullmq";
 import { db } from "@/server/db";

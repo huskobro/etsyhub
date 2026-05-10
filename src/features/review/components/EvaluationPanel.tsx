@@ -97,33 +97,51 @@ export function EvaluationPanel({
             </div>
             <ul className="mt-2 space-y-1.5">
               {checks.map((c) => {
+                // Severity-aware tone: blocker = red, warning = amber,
+                // info = neutral. CLAUDE.md Madde N+ — failed satırlar
+                // ciddiyet seviyesine göre görsel ayrılır.
                 const tone =
                   c.state === "failed"
-                    ? "text-amber-200"
+                    ? c.severity === "blocker"
+                      ? "text-rose-200"
+                      : c.severity === "warning"
+                        ? "text-amber-200"
+                        : "text-white/70"
                     : c.state === "neutral"
                       ? "text-white/40"
                       : "text-white/70";
+                const iconColor =
+                  c.state === "failed"
+                    ? c.severity === "blocker"
+                      ? "text-rose-400"
+                      : c.severity === "warning"
+                        ? "text-amber-400"
+                        : "text-white/40"
+                    : c.state === "passed"
+                      ? "text-emerald-400"
+                      : "text-white/30";
                 return (
                   <li
                     key={c.id}
                     className={cn("flex items-start gap-2 text-xs", tone)}
                     data-testid="evaluation-check"
                     data-state={c.state}
+                    data-severity={c.severity}
                     data-passed={c.state === "passed" || undefined}
                   >
                     {c.state === "passed" ? (
                       <CheckIcon
-                        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400"
+                        className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", iconColor)}
                         aria-hidden
                       />
                     ) : c.state === "failed" ? (
                       <AlertTriangle
-                        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400"
+                        className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", iconColor)}
                         aria-hidden
                       />
                     ) : (
                       <MinusCircle
-                        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/30"
+                        className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", iconColor)}
                         aria-hidden
                       />
                     )}
@@ -140,7 +158,16 @@ export function EvaluationPanel({
                         </span>
                       ) : null}
                       {c.severity && c.weight !== undefined && c.state !== "neutral" ? (
-                        <span className="ml-1.5 inline-flex items-center gap-1 align-baseline font-mono text-[10px] uppercase tracking-meta text-white/30">
+                        <span
+                          className={cn(
+                            "ml-1.5 inline-flex items-center gap-1 align-baseline font-mono text-[10px] uppercase tracking-meta",
+                            c.severity === "blocker"
+                              ? "text-rose-300"
+                              : c.severity === "warning"
+                                ? "text-amber-300"
+                                : "text-white/30",
+                          )}
+                        >
                           {c.severity}
                           {c.severity !== "info" && c.weight > 0
                             ? ` · w${c.weight}`
@@ -181,13 +208,15 @@ export function EvaluationPanel({
           className="mt-2 text-xs leading-relaxed text-white/60"
           data-testid="evaluation-empty-copy"
         >
-          {lifecycle === "pending"
-            ? "Waiting for AI review — once the provider runs, the result appears here."
-            : lifecycle === "scoring"
-              ? "Provider response in flight — refresh in a few seconds."
-              : lifecycle === "error"
-                ? "Evaluation failed. Check Settings → Review for provider status."
-                : "Evaluation is not applicable for this asset."}
+          {lifecycle === "not_queued" || lifecycle === "pending"
+            ? "This asset has not been queued for review yet."
+            : lifecycle === "queued"
+              ? "Queued for review — the worker will pick this up shortly."
+              : lifecycle === "running" || lifecycle === "scoring"
+                ? "Waiting for AI response — refresh in a few seconds."
+                : lifecycle === "failed" || lifecycle === "error"
+                  ? "Review failed. Check Settings → Review for provider status."
+                  : "Evaluation is not applicable for this asset."}
         </p>
       )}
     </section>

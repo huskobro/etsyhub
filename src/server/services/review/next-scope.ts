@@ -194,6 +194,104 @@ export async function getNextPendingFolderName(args: {
 // ────────────────────────────────────────────────────────────────────────
 
 /**
+ * IA Phase 18 — directional folder navigation (prev/next).
+ *
+ * Returns the folder immediately **before** and **after** the current
+ * one in the deterministic ordering used by the queue (folderName
+ * alphabetical, oldest-pending tiebreaker).
+ *
+ * Operatör scope ekseninde bilinçli olarak ilerlemek istediğinde
+ * (`]` shortcut) sıradaki folder'ın ilk pending item'ına; geri
+ * dönmek istediğinde (`[`) önceki folder'ın ilk pending item'ına
+ * iner. Tamamlanmış folder'lar (undecided=0) gezinti listesinde
+ * yer almaz — sadece içinde iş kalanlara köprü kurarız.
+ */
+export async function getAdjacentPendingFolders(args: {
+  userId: string;
+  currentFolderName: string | null;
+}): Promise<{
+  prev: { folderName: string; firstPendingItemId: string | null } | null;
+  next: { folderName: string; firstPendingItemId: string | null } | null;
+}> {
+  const { userId, currentFolderName } = args;
+  // All folders the user has (alphabetical) plus the pending subset.
+  // Current folder may be all-kept (not pending) — we still need to
+  // know its alphabetical position so we can pick the *adjacent
+  // pending* folders left and right of it.
+  const [allFolders, pendingGrouped] = await Promise.all([
+    db.localLibraryAsset.groupBy({
+      by: ["folderName"],
+      where: {
+        userId,
+        deletedAt: null,
+        isUserDeleted: false,
+      },
+      orderBy: { folderName: "asc" },
+    }),
+    db.localLibraryAsset.groupBy({
+      by: ["folderName"],
+      where: {
+        userId,
+        deletedAt: null,
+        isUserDeleted: false,
+        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      },
+    }),
+  ]);
+  const allNames = allFolders.map((g) => g.folderName);
+  const pendingNames = new Set(pendingGrouped.map((g) => g.folderName));
+  if (pendingNames.size === 0) return { prev: null, next: null };
+
+  // Anchor index — current folder's position in the alphabetical list,
+  // or -1 if it doesn't exist. We then walk left/right looking for
+  // pending neighbours.
+  const idx = currentFolderName ? allNames.indexOf(currentFolderName) : -1;
+  let prevName: string | null = null;
+  let nextName: string | null = null;
+  if (idx >= 0) {
+    for (let i = idx - 1; i >= 0; i--) {
+      if (pendingNames.has(allNames[i]!)) {
+        prevName = allNames[i]!;
+        break;
+      }
+    }
+    for (let i = idx + 1; i < allNames.length; i++) {
+      if (pendingNames.has(allNames[i]!)) {
+        nextName = allNames[i]!;
+        break;
+      }
+    }
+  } else {
+    // Current folder is unknown; default to the first pending folder
+    // as "next" and leave prev empty so the operator at least has one
+    // working direction.
+    nextName = [...pendingNames][0] ?? null;
+  }
+
+  async function firstPending(folderName: string | null) {
+    if (!folderName) return null;
+    const row = await db.localLibraryAsset.findFirst({
+      where: {
+        userId,
+        deletedAt: null,
+        isUserDeleted: false,
+        folderName,
+        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    return { folderName, firstPendingItemId: row?.id ?? null };
+  }
+
+  const [prev, next] = await Promise.all([
+    firstPending(prevName ?? null),
+    firstPending(nextName ?? null),
+  ]);
+  return { prev, next };
+}
+
+/**
  * Total review-pending (UNDECIDED) item count across all sources for
  * this user. Includes:
  *   • MidjourneyAsset.reviewDecision === UNDECIDED

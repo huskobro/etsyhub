@@ -50,7 +50,7 @@ export function BulkDeleteDialog({ ids, open, onClose, onSuccess }: Props) {
       onSuccess(result);
     },
     onError: () => {
-      setError("Silme işlemi başarısız oldu. Tekrar deneyin.");
+      setError("Delete failed. Try again.");
     },
   });
 
@@ -78,11 +78,11 @@ export function BulkDeleteDialog({ ids, open, onClose, onSuccess }: Props) {
           }}
         >
           <Dialog.Title className="text-base font-semibold text-text">
-            {ids.length} asseti sil
+            Delete {ids.length} asset{ids.length === 1 ? "" : "s"}
           </Dialog.Title>
           <Dialog.Description className="mt-2 text-sm text-text-muted">
-            Bu işlem geri alınamaz. Asset&apos;ler local library&apos;den
-            çıkarılır (disk dosyaları silinmez).
+            This cannot be undone. Assets are removed from the local
+            library (disk files are not deleted).
           </Dialog.Description>
 
           <div className="mt-4">
@@ -95,8 +95,8 @@ export function BulkDeleteDialog({ ids, open, onClose, onSuccess }: Props) {
               gözüküyordu (Dalga B polish — UX bug fix).
             */}
             <TypingConfirmation
-              phrase="SİL"
-              buttonLabel={`${ids.length} asseti sil`}
+              phrase="DELETE"
+              buttonLabel={`Delete ${ids.length} asset${ids.length === 1 ? "" : "s"}`}
               isLoading={mutation.isPending}
               onConfirm={() => mutation.mutate()}
             />

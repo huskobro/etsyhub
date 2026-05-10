@@ -1401,6 +1401,20 @@ complete" kart gösterilir (silent teleport yok). Sıradaki scope
 **oldest pending** stratejisi ile resolve edilir (operatör birikmiş
 işi önce kapatır). nextScope null → "All caught up" copy.
 
+**Scope navigation:** Review focus mode'da iki bağımsız navigation
+ekseni vardır:
+- **Item** ekseni (within scope): ←/→ shortcut'larıyla aynı scope
+  içinde geziyoruz.
+- **Scope** ekseni (across scopes): `[` / `]` shortcut'larıyla
+  önceki/sonraki scope'a geçiyoruz (local için folder, batch için
+  batch). Operatör scope tamamlanmadan da bu eksende ilerleyebilir.
+İki eksen birbirine karışmaz; UI yardım modalında ve right-panel
+shortcuts'ta ayrı sıralarda gösterilir.
+
+**Klavye sözleşmesi:** `K` keep · `D` discard · `U` undecided
+(reset) · `←/→` prev/next item · `[ / ]` prev/next scope ·
+`Esc` exit focus → scope grid · `?` shortcut help.
+
 **Sistem skor contract'ı (açıklanabilir değerlendirme):** AI / scan
 pipeline çıktısı bir **lifecycle taşıyan değerlendirme**dir, çıplak
 sayı değil. Her review item'ı şu durumlardan birine eşlenir:
@@ -1436,7 +1450,21 @@ yönetilir (CLAUDE.md ürün anayasası: master prompt admin yönetimi).
 Hardcoded sabitler ara katmandadır; canonical kaynak settings
 olduğunda pipeline buradan okur, kod sabit değişmez.
 
-### N. Scoring cost disiplini
+### N. Scoring lifecycle dürüstlüğü ve cost disiplini
+
+Sistem skoru bir **lifecycle** taşır; UI tek bir "waiting for AI"
+captionı ile bu lifecycle'ı maskeleyemez. Backend ayrımı yapılır,
+UI dürüstçe yansıtır:
+
+- `not_queued` — asset henüz hiç review job'ına alınmadı (scoring
+  pipeline'a girmedi).
+- `queued` — REVIEW_DESIGN job'u kuyruğa alındı, henüz başlamadı.
+- `running` — provider'a gönderildi, response bekleniyor.
+- `ready` — provider response başarıyla yazıldı.
+- `failed` — provider başarısız (audit log'da neden var).
+- `na` — asset için review uygulanabilir değil (gelecek kullanım).
+
+Operatöre + admin'e bu beş durum **ayrı kelimelerle** gösterilir.
 
 AI scoring (Gemini vb.) **pahalı bir işlem** olarak ele alınır. Bu
 nedenle:
@@ -1466,6 +1494,27 @@ nedenle:
 - "Sıraya alındı" (queued) durumu ile "henüz hiç değerlendirilmedi"
   (pending) durumu UI'da ayrı lifecycle olarak temsil edilir; sahte
   default skor gösterilmez.
+
+### N+. Review automation + manual trigger
+
+Review yalnız reaktif değildir; pipeline yeni asset gördüğünde
+otomatik olarak scoring kuyruğa alır (CLAUDE.md ürün anayasası
+"görselleri kalite kontrolünden geçir"). Üç tetikleme yolu vardır:
+
+1. **Production auto-enqueue** — yeni asset üretildiği veya
+   keşfedildiği anda (variation worker, local scan worker)
+   REVIEW_DESIGN job'u otomatik kuyruğa alınır. Aynı asset için
+   geçerli skor varsa enqueue **YAPILMAZ** (already-scored guard
+   pre-filter; cost discipline).
+2. **Manual scope trigger** — operatör Settings → Review pane'den
+   veya review surface'ten "scope için tüm undecided'ları score'la"
+   diyebilir. Scope = batch veya folder (CLAUDE.md scope identity).
+3. **Operator reset** — PATCH'la snapshot temizlenir, rerun enqueue.
+
+Manual trigger ve auto-scan operasyonel görünürlük için admin
+panelinde sayılar olarak yansır: queued / running / failed counts +
+last scan time + last auto-enqueue time. Operatör pipeline'ın gerçek
+durumunu görmeden "review ne durumda?" sorusuna cevap veremez.
 
 ### O. Prompt-block / criteria architecture
 

@@ -33,6 +33,7 @@ import { requireUser } from "@/server/session";
 import { db } from "@/server/db";
 import { getStorage } from "@/providers/storage";
 import { logger } from "@/lib/logger";
+import { resolveReviewLifecycle } from "@/server/services/review/lifecycle";
 
 const QuerySchema = z.object({
   scope: z.enum(["design", "local"]),
@@ -173,6 +174,20 @@ export const GET = withErrorHandling(async (req: Request) => {
       }),
     ]);
 
+    // IA Phase 18 — lifecycle resolve. ready = reviewedAt + provider
+    // snapshot dolu; kalanlar Job tablosundan türev.
+    const readyIds = new Set(
+      items
+        .filter((it) => it.reviewedAt && it.reviewProviderSnapshot)
+        .map((it) => it.id),
+    );
+    const lifecycleMap = await resolveReviewLifecycle({
+      userId: user.id,
+      scope: "design",
+      assetIds: items.map((it) => it.id),
+      readyIds,
+    });
+
     const storage = getStorage();
     const itemsWithThumbs = await Promise.all(
       items.map(async (it) => {
@@ -207,6 +222,8 @@ export const GET = withErrorHandling(async (req: Request) => {
           referenceId: it.referenceId,
           productTypeId: it.productTypeId,
           jobId: it.jobId,
+          // IA Phase 18 — review scoring lifecycle (CLAUDE.md Madde N).
+          reviewLifecycle: lifecycleMap.get(it.id) ?? "not_queued",
           // Pass 24 — source clarity (additive). ProductType.key + reference
           // cuid kısa id; UI ReviewCard "Wall Art · ref-3oa1m" formatında
           // gösterir. Reference detail'e deep-link için referenceId zaten
@@ -338,6 +355,19 @@ export const GET = withErrorHandling(async (req: Request) => {
     }),
   ]);
 
+  // IA Phase 18 — lifecycle resolve (local branch).
+  const localReadyIds = new Set(
+    items
+      .filter((it) => it.reviewedAt && it.reviewProviderSnapshot)
+      .map((it) => it.id),
+  );
+  const localLifecycleMap = await resolveReviewLifecycle({
+    userId: user.id,
+    scope: "local",
+    assetIds: items.map((it) => it.id),
+    readyIds: localReadyIds,
+  });
+
   const itemsWithThumbs = items.map((it) => ({
     id: it.id,
     // Local library: signed URL üretmiyoruz; thumbnailPath varsa proxy
@@ -360,6 +390,8 @@ export const GET = withErrorHandling(async (req: Request) => {
     referenceId: null,
     productTypeId: null,
     jobId: null,
+    // IA Phase 18 — review scoring lifecycle.
+    reviewLifecycle: localLifecycleMap.get(it.id) ?? "not_queued",
     // Pass 24 — source clarity (additive)
     source: {
       kind: "local-library" as const,

@@ -28,6 +28,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
@@ -94,6 +95,15 @@ export interface ReviewWorkspaceShellProps<TItem> {
   canGoNext: boolean;
   onGoPrev: () => void | Promise<void>;
   onGoNext: () => void | Promise<void>;
+  /** IA Phase 18 — scope navigation (CLAUDE.md Madde M, scope ekseni).
+   *  Optional; when defined the shell wires up [ / ] keyboard shortcuts
+   *  and the right-panel shortcut row. Adapter resolves the previous /
+   *  next scope (folder for local, batch for batch) and renders the
+   *  href via routing on click. */
+  scopeNav?: {
+    prev: { href: string; label: string } | null;
+    next: { href: string; label: string } | null;
+  };
 
   // ── Counts (operator's "what's left?" block) ────────────────────────
   /** Kept / Discarded / Undecided breakdown for the current scope.
@@ -171,6 +181,7 @@ export function ReviewWorkspaceShell<TItem>({
   canGoNext,
   onGoPrev,
   onGoNext,
+  scopeNav,
   keptCount,
   discardedCount,
   undecidedCount,
@@ -190,6 +201,7 @@ export function ReviewWorkspaceShell<TItem>({
   testId = "review-workspace-shell",
   dataAttributes,
 }: ReviewWorkspaceShellProps<TItem>) {
+  const router = useRouter();
   const [helpOpen, setHelpOpen] = useState(false);
   const item = items[cursor] ?? null;
   // IA Phase 14 — `total` artık scope-total: queue mode'da
@@ -223,7 +235,8 @@ export function ReviewWorkspaceShell<TItem>({
   );
 
   // ── Keyboard map ────────────────────────────────────────────────────
-  // K=Keep · D=Discard · U=Reset · ←/→=Prev/Next · ?=Help · Esc=Exit/help
+  // K=Keep · D=Discard · U=Reset · ←/→=Prev/Next item · [/]=Prev/Next
+  //   scope · Esc=Exit (or close help) · ?=Help
   // Input/textarea bypass — operator must be able to type in any popup
   // input the adapter mounts (none today, but the rule belongs here).
   useEffect(() => {
@@ -253,14 +266,25 @@ export function ReviewWorkspaceShell<TItem>({
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         if (canGoNext) void onGoNext();
+      } else if (e.key === "[") {
+        e.preventDefault();
+        if (scopeNav?.prev) router.push(scopeNav.prev.href);
+      } else if (e.key === "]") {
+        e.preventDefault();
+        if (scopeNav?.next) router.push(scopeNav.next.href);
       } else if (e.key === "?") {
         e.preventDefault();
         setHelpOpen(true);
       } else if (e.key === "Escape") {
+        // Esc closes the help modal first; otherwise exits the focus
+        // workspace back to the queue/grid context.
         if (helpOpen) {
           e.preventDefault();
           setHelpOpen(false);
+          return;
         }
+        e.preventDefault();
+        router.push(exitHref);
       }
     };
     document.addEventListener("keydown", onKey);
@@ -274,6 +298,9 @@ export function ReviewWorkspaceShell<TItem>({
     resetEnabled,
     onReset,
     helpOpen,
+    scopeNav,
+    router,
+    exitHref,
   ]);
 
   // ── Empty state ─────────────────────────────────────────────────────
@@ -407,6 +434,52 @@ export function ReviewWorkspaceShell<TItem>({
           className="w-32 shrink-0"
           ariaLabel={`Scope progress ${decidedCount}/${denom}`}
         />
+
+        {scopeNav?.prev || scopeNav?.next ? (
+          <div
+            className="flex items-center gap-1"
+            data-testid="scope-nav-controls"
+          >
+            <Link
+              href={scopeNav?.prev?.href ?? "#"}
+              aria-label={
+                scopeNav?.prev
+                  ? `Previous scope: ${scopeNav.prev.label}`
+                  : "No previous scope"
+              }
+              data-testid="scope-nav-prev"
+              data-disabled={scopeNav?.prev ? undefined : "true"}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-1.5 font-mono text-[10.5px] uppercase tracking-meta",
+                scopeNav?.prev
+                  ? "text-white/70 hover:border-white/20 hover:text-white"
+                  : "pointer-events-none text-white/25",
+              )}
+              title={scopeNav?.prev ? scopeNav.prev.label : "No previous scope"}
+            >
+              [
+            </Link>
+            <Link
+              href={scopeNav?.next?.href ?? "#"}
+              aria-label={
+                scopeNav?.next
+                  ? `Next scope: ${scopeNav.next.label}`
+                  : "No next scope"
+              }
+              data-testid="scope-nav-next"
+              data-disabled={scopeNav?.next ? undefined : "true"}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-1.5 font-mono text-[10.5px] uppercase tracking-meta",
+                scopeNav?.next
+                  ? "text-white/70 hover:border-white/20 hover:text-white"
+                  : "pointer-events-none text-white/25",
+              )}
+              title={scopeNav?.next ? scopeNav.next.label : "No next scope"}
+            >
+              ]
+            </Link>
+          </div>
+        ) : null}
 
         <button
           type="button"
@@ -559,10 +632,11 @@ export function ReviewWorkspaceShell<TItem>({
             <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs">
               <ShortcutRow keys="K" label="Keep" />
               <ShortcutRow keys="D" label="Discard" />
-              <ShortcutRow keys="←  →" label="Prev / Next" />
-              <ShortcutRow keys="U" label="Reset" />
+              <ShortcutRow keys="←  →" label="Prev / next item" />
+              <ShortcutRow keys="U" label="Undecided" />
+              <ShortcutRow keys="[  ]" label="Prev / next scope" />
+              <ShortcutRow keys="Esc" label="Exit focus" />
               <ShortcutRow keys="?" label="All shortcuts" />
-              <ShortcutRow keys="Esc" label="Close help" />
             </div>
           </div>
         </aside>
@@ -580,11 +654,12 @@ export function ReviewWorkspaceShell<TItem>({
             <ShortcutHelpRow keys="D" label="Discard / reject (auto-advance)" />
             <ShortcutHelpRow
               keys="U"
-              label="Reset to undecided (only when status is operator)"
+              label="Reset to undecided (when an operator decision exists)"
             />
-            <ShortcutHelpRow keys="←  /  →" label="Prev / Next item" />
+            <ShortcutHelpRow keys="←  /  →" label="Prev / Next item (within scope)" />
+            <ShortcutHelpRow keys="[  /  ]" label="Prev / Next scope (folder or batch)" />
             <ShortcutHelpRow keys="?" label="Show this card" />
-            <ShortcutHelpRow keys="Esc" label="Close help / dialogs" />
+            <ShortcutHelpRow keys="Esc" label="Exit focus to scope grid" />
           </ul>
         </Modal>
       ) : null}

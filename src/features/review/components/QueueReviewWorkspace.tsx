@@ -68,6 +68,13 @@ interface QueueReviewWorkspaceProps {
    *  endpoint o folder'ın total + scopeBreakdown'ını döner. AI
    *  scope'ta her zaman null. */
   focusFolderName?: string | null;
+  /** IA Phase 18 — adjacent scope navigation (CLAUDE.md Madde M
+   *  scope ekseni). When set, the shell wires up [ / ] keyboard
+   *  shortcuts. */
+  scopeNav?: {
+    prev: { href: string; label: string } | null;
+    next: { href: string; label: string } | null;
+  };
 }
 
 // Pipeline ReviewStatus → canonical operator decision axis. PENDING and
@@ -111,6 +118,7 @@ export function QueueReviewWorkspace({
   totalReviewPending,
   nextScope,
   focusFolderName,
+  scopeNav,
 }: QueueReviewWorkspaceProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -401,6 +409,7 @@ export function QueueReviewWorkspace({
       canGoNext={canGoNext}
       onGoPrev={goPrev}
       onGoNext={goNext}
+      scopeNav={scopeNav}
       keptCount={keptCount}
       discardedCount={discardedCount}
       undecidedCount={undecidedCount}
@@ -483,6 +492,7 @@ function QueueInfoRail({ item }: { item: ReviewQueueItem }) {
       sourceKind,
       transformsApplied: [],
     },
+    backendLifecycle: item.reviewLifecycle,
   });
   return (
     <>

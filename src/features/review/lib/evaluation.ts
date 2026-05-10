@@ -34,12 +34,29 @@ import {
   type ReviewCriterion,
 } from "@/providers/review/criteria";
 
+/**
+ * Lifecycle states (CLAUDE.md Madde N — dürüst ayrım):
+ *   • not_queued — asset henüz hiç review job'ına alınmadı
+ *   • queued     — Job tablosunda QUEUED state
+ *   • running    — Job RUNNING (provider yanıtı bekleniyor)
+ *   • ready      — provider response başarıyla persist'lendi
+ *   • failed     — Job FAILED veya CANCELLED
+ *   • na         — uygulanabilir değil
+ *
+ * Eski isimler (`pending`, `scoring`, `error`) geriye uyum için
+ * alias olarak yaşar; yeni kod yeni isimleri kullanır.
+ */
 export type EvaluationLifecycle =
   | "ready"
+  | "not_queued"
+  | "queued"
+  | "running"
+  | "failed"
+  | "na"
+  // Legacy aliases — caller's haven't migrated yet.
   | "pending"
   | "scoring"
-  | "error"
-  | "na";
+  | "error";
 
 /** Per-check applicability state (CLAUDE.md Madde O — neutral state). */
 export type CheckState =
@@ -187,6 +204,11 @@ export function buildEvaluation(input: {
   /** Caller may pass a resolved criteria list (e.g. settings-merged
    *  view from worker); otherwise BUILTIN_CRITERIA is used. */
   resolvedCriteria?: ReadonlyArray<ReviewCriterion>;
+  /** Backend-resolved lifecycle (CLAUDE.md Madde N). When set,
+   *  buildEvaluation honours this directly instead of inferring from
+   *  reviewedAt/snapshot fields. Server returns this from queue
+   *  endpoint per asset. */
+  backendLifecycle?: EvaluationLifecycle;
 }): Evaluation {
   const {
     reviewedAt,
@@ -253,15 +275,22 @@ export function buildEvaluation(input: {
     });
   }
 
+  // Lifecycle resolution priority:
+  //   1. Explicit forceLifecycle (caller knows error/na)
+  //   2. backendLifecycle (server-resolved Job state)
+  //   3. Asset state inference (legacy fallback for clients that
+  //      don't pass backendLifecycle yet)
   let lifecycle: EvaluationLifecycle;
   if (forceLifecycle) {
     lifecycle = forceLifecycle;
+  } else if (input.backendLifecycle) {
+    lifecycle = input.backendLifecycle;
   } else if (reviewedAt && reviewScore !== null) {
     lifecycle = "ready";
   } else if (reviewProviderSnapshot && !reviewedAt) {
-    lifecycle = "scoring";
+    lifecycle = "running";
   } else {
-    lifecycle = "pending";
+    lifecycle = "not_queued";
   }
 
   return {
@@ -284,12 +313,17 @@ export function lifecycleCaption(lifecycle: EvaluationLifecycle): string {
   switch (lifecycle) {
     case "ready":
       return "Evaluation ready";
+    case "queued":
+      return "Queued for review";
+    case "running":
     case "scoring":
-      return "Scoring…";
+      return "Waiting for AI response";
+    case "not_queued":
     case "pending":
-      return "Waiting for AI review";
+      return "Not queued yet";
+    case "failed":
     case "error":
-      return "Evaluation failed";
+      return "Review failed";
     case "na":
       return "Not applicable";
   }
