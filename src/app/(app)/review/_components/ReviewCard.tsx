@@ -65,9 +65,11 @@ export function ReviewCard({ item }: Props) {
   };
 
   // Phase 7 Task 38 — Quick start canonical entry point.
-  // ReviewCard'dan tek tıkla SelectionSet oluşturup /selection/sets/[id]'ye
-  // redirect eder. Yalnız scope === "design" item'larında render edilir
-  // (jobId !== null). Local-library asset'leri için anlamlı değil.
+  // ReviewCard'dan tek tıkla SelectionSet oluşturup canonical
+  // /selections/[id] detail sayfasına redirect eder (IA Phase 4: kullanıcı
+  // önce canonical Selection detail'e iner; oradan Edits tab'ı Edit
+  // Studio'ya köprülenir). Yalnız scope === "design" item'larında render
+  // edilir (jobId !== null). Local-library asset'leri için anlamlı değil.
   const quickStart = useMutation({
     mutationFn: async () => {
       if (!item.referenceId || !item.productTypeId || !item.jobId) {
@@ -95,7 +97,7 @@ export function ReviewCard({ item }: Props) {
       return (await res.json()) as { setId: string };
     },
     onSuccess: (data) => {
-      router.push(`/selection/sets/${data.setId}`);
+      router.push(`/selections/${data.setId}`);
     },
   });
 

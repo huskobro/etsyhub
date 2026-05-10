@@ -86,7 +86,7 @@ export function S3ApplyView({ setId }: { setId: string }) {
             Selections
           </a>
           <span className="mx-1.5">/</span>
-          <a href={`/selection/sets/${setId}`} className="hover:text-text">
+          <a href={`/selections/${setId}`} className="hover:text-text">
             {set.name}
           </a>
           <span className="mx-1.5">/</span>

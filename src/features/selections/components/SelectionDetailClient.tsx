@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback } from "react";
 import {
   ArrowLeft,
   Copy,
@@ -60,8 +61,40 @@ interface Props {
 
 type TabId = "designs" | "edits" | "mockups" | "history";
 
+const TAB_IDS: ReadonlySet<TabId> = new Set([
+  "designs",
+  "edits",
+  "mockups",
+  "history",
+]);
+
+function parseTab(raw: string | null): TabId {
+  return raw && TAB_IDS.has(raw as TabId) ? (raw as TabId) : "designs";
+}
+
 export function SelectionDetailClient({ set, items }: Props) {
-  const [tab, setTab] = useState<TabId>("designs");
+  // IA Phase 4 — canonical edit entry uses URL state (?tab=edits) instead
+  // of useState. Bookmarkable, deep-linkable, parity with the /review
+  // canonical model (?source / ?item / ?decision). Default tab is
+  // "designs" when the param is absent or invalid.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tab = parseTab(searchParams.get("tab"));
+
+  const setTab = useCallback(
+    (next: TabId) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === "designs") {
+        params.delete("tab");
+      } else {
+        params.set("tab", next);
+      }
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
 
   const stage = deriveStage({
     status: set.status,

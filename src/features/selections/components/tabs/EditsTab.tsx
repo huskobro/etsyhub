@@ -26,12 +26,11 @@ import type { DesignsTabItem } from "./DesignsTab";
  *
  * Boundary (docs/IMPLEMENTATION_HANDOFF.md §5):
  *   Edit operations themselves live in `@/server/services/selection/edit-ops/*`
- *   and their Studio modals (Pass 29 Magic Eraser, etc.). R4 surface here
- *   places the *triggers* — modals open from the existing Studio shell
- *   (legacy `/selection/sets/[setId]`). Trigger buttons are rendered as
- *   icon-row; clicking them is wired to a deferred placeholder for R5
- *   (where Selections gains its own edit-op modals — currently the legacy
- *   Studio is the canonical surface).
+ *   and their Studio modals (Pass 29 Magic Eraser, etc.). This tab places
+ *   the *triggers* — clicking them opens the Edit Studio for the set.
+ *   The studio shell still lives at /selection/sets/[id] (Studio
+ *   relocation under /selections/[id]/edits is the next IA phase); the
+ *   URL split is an internal detail, not surfaced to the user.
  */
 
 interface EditsTabProps {
@@ -88,8 +87,7 @@ export function EditsTab({ setId, items }: EditsTabProps) {
       data-set-id={setId}
     >
       <div className="mb-4 font-mono text-xs uppercase tracking-meta text-ink-3">
-        Per-design edit triggers — opens Selection Studio (legacy surface
-        until R5)
+        Per-design edit triggers — opens the Edit Studio for this set
       </div>
 
       {items.length === 0 ? (
@@ -154,15 +152,17 @@ export function EditsTab({ setId, items }: EditsTabProps) {
                   {EDIT_ORDER.map((kind) => {
                     const meta = EDIT_META[kind];
                     const Icon = meta.icon;
-                    // R11.14.9 — Edit op trigger artık legacy Studio'ya
-                    // link'lenir (önceden disabled idi, kullanıcı edit
-                    // ops'u nereden başlatacağını bilmiyordu).
+                    // IA Phase 4 — edit triggers point at the Edit Studio
+                    // for this set. The studio shell still lives at
+                    // /selection/sets/[id]; the URL split is an internal
+                    // detail and the user-facing wording no longer carries
+                    // a "legacy" caveat.
                     return (
                       <a
                         key={kind}
                         href={`/selection/sets/${setId}`}
-                        title={`${meta.label} — opens in Selection Studio`}
-                        aria-label={`${meta.label} (opens in Selection Studio)`}
+                        title={`${meta.label} — opens the Edit Studio`}
+                        aria-label={`${meta.label} (opens the Edit Studio)`}
                         className={cn(
                           "inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper",
                           meta.tone,
@@ -181,15 +181,15 @@ export function EditsTab({ setId, items }: EditsTabProps) {
       )}
 
       <p className="mt-4 text-xs text-text-muted">
-        Edit operations (background remove, color edit, crop, upscale,
-        magic eraser) open inside the legacy{" "}
+        Edit operations — background remove, color edit, crop, upscale,
+        magic eraser — open the{" "}
         <a
           href={`/selection/sets/${setId}`}
           className="text-info underline-offset-2 hover:underline"
         >
-          Selection Studio
-        </a>
-        . The split-modal in-place editor lands post-MVP.
+          Edit Studio
+        </a>{" "}
+        for this set. In-place split-modal editing lands in a later pass.
       </p>
     </div>
   );
