@@ -242,18 +242,46 @@ export default async function ReviewPage({
     // and the shell can resolve adjacent scopes / picker entries.
     let currentFolderName: string | null = null;
     let currentReferenceId: string | null = null;
+    // IA-29 — item-not-found bug fix. Item'ın gerçek decision'u +
+    // sayfası URL ile uyuşmuyorsa kullanıcıyı doğru URL'e redirect et.
+    // Aksi halde grid + workspace farklı queryKey'lerden çalışıyor ve
+    // workspace items.findIndex(itemId) -1 dönüyor → "Item not found".
+    let itemActualStatus: string | null = null;
     if (focusScope === "local") {
       const local = await db.localLibraryAsset.findFirst({
-        where: { id: itemId, userId },
-        select: { folderName: true },
+        where: { id: itemId, userId, deletedAt: null, isUserDeleted: false },
+        select: { folderName: true, reviewStatus: true, reviewStatusSource: true },
       });
       currentFolderName = local?.folderName ?? null;
+      itemActualStatus = local?.reviewStatus ?? null;
     } else {
       const design = await db.generatedDesign.findFirst({
         where: { id: itemId, userId, deletedAt: null },
-        select: { referenceId: true },
+        select: { referenceId: true, reviewStatus: true, reviewStatusSource: true },
       });
       currentReferenceId = design?.referenceId ?? null;
+      itemActualStatus = design?.reviewStatus ?? null;
+    }
+
+    // Item'ın gerçek decision'u URL filter'ından farklıysa, doğru
+    // decision + page=1 ile redirect. (Page'i daima 1 yapıyoruz çünkü
+    // doğru decision filter'ında item büyük olasılıkla ilk sayfada;
+    // workspace cross-page navigation zaten desteklenir.)
+    if (itemActualStatus !== null && decision) {
+      const expectedDecision =
+        itemActualStatus === "APPROVED"
+          ? "kept"
+          : itemActualStatus === "REJECTED"
+            ? "rejected"
+            : "undecided";
+      if (expectedDecision !== decision) {
+        const sp = new URLSearchParams();
+        sp.set("source", focusScope === "design" ? "ai" : "local");
+        sp.set("item", itemId);
+        sp.set("decision", expectedDecision);
+        // page=1 — workspace cross-page nav her zaman çalışır
+        redirect(`/review?${sp.toString()}`);
+      }
     }
 
     const [

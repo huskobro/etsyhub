@@ -221,6 +221,44 @@ export function EvaluationPanel({
             </ul>
           </div>
 
+          {/* IA-29 — AI suggestion (advisory only). Operatör kararına
+           *   karışmaz; küçük inline chip + bir satır gerekçe. Stored
+           *   operator decision varsa onun yanında advisory referans
+           *   olarak durur. */}
+          {evaluation.aiSuggestion ? (
+            <div
+              className="mt-4 rounded-md border border-white/8 bg-white/[0.03] px-3 py-2"
+              data-testid="evaluation-ai-suggestion"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-meta text-white/45">
+                  AI suggestion
+                </span>
+                <span
+                  className={cn(
+                    "rounded-sm px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta",
+                    evaluation.aiSuggestion.status === "APPROVED"
+                      ? "bg-emerald-500/12 text-emerald-200"
+                      : evaluation.aiSuggestion.reasonKind === "blocker_fail"
+                        ? "bg-rose-500/15 text-rose-200"
+                        : "bg-amber-500/12 text-amber-200",
+                  )}
+                  data-testid="ai-suggestion-status"
+                >
+                  {evaluation.aiSuggestion.status === "APPROVED"
+                    ? "Looks good"
+                    : "Review recommended"}
+                </span>
+              </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-white/55">
+                {evaluation.aiSuggestion.reason}
+              </p>
+              <p className="mt-1 text-[10px] leading-relaxed text-white/35">
+                Advisory only — final decision is yours via Keep / Discard.
+              </p>
+            </div>
+          ) : null}
+
           {summary ? (
             <div className="mt-4">
               <SectionTitle>Summary</SectionTitle>

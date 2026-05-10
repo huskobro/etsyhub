@@ -39,7 +39,8 @@ import {
 import { ensureThumbnail } from "@/features/variation-generation/services/thumbnail.service";
 import { computeQualityScore } from "@/features/variation-generation/services/quality-score.service";
 import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
-import { enqueue } from "@/server/queue";
+import { enqueueReviewDesign } from "@/server/services/review/enqueue";
+import { resolveLocalFolder } from "@/features/settings/local-library/folder-mapping";
 import { logger } from "@/lib/logger";
 
 export type ScanLocalFolderPayload = {
@@ -153,51 +154,64 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
       }
     }
 
-    // IA Phase 26 — auto-enqueue REVIEW_DESIGN for freshly
-    // discovered, never-scored local assets (CLAUDE.md Madde N+).
-    // Runs only when the operator has chosen a defaultProductTypeKey
-    // in Settings → Local library. Already-scored guard at the
-    // worker side guarantees we never double-bill, but we filter
-    // here as well to keep enqueue traffic clean.
+    // IA-29 (CLAUDE.md Madde V) — folder bazlı productType mapping.
+    // Global default YOK. Operatör her klasör için açık seçim yapar
+    // (productType atar veya `__ignore__`'a alır). Mapping yoksa
+    // klasördeki asset'ler "pending mapping" sayılır; auto-enqueue
+    // tetiklenmez. UI bu klasörleri listeler.
+    // IA-29 (CLAUDE.md Madde V) — Convention-based folder model.
+    // Operatör root altında productType klasörleri açar
+    // (`clipart/`, `wall_art/`, ...). Scan worker asset'in immediate
+    // parent folder adına bakar; bilinen productType ise auto-enqueue.
+    // Bilinmeyen klasör (örn. `ekmek/`) → pending, operatör UI'da
+    // ya bilinen bir klasöre taşır ya alias yazar ya ignore eder.
     const settings = await getUserLocalLibrarySettings(userId);
-    const productTypeKey = settings.defaultProductTypeKey;
+    const folderMap = settings.folderProductTypeMap ?? {};
+    const pendingAssets = await db.localLibraryAsset.findMany({
+      where: {
+        userId,
+        deletedAt: null,
+        isUserDeleted: false,
+        reviewProviderSnapshot: null, // never-scored
+      },
+      select: { id: true, folderName: true },
+      take: 500,
+    });
     let autoEnqueued = 0;
-    if (productTypeKey) {
-      const pendingAssets = await db.localLibraryAsset.findMany({
-        where: {
-          userId,
-          deletedAt: null,
-          isUserDeleted: false,
-          reviewProviderSnapshot: null, // never-scored
-        },
-        select: { id: true },
-        take: 200,
+    let skippedNoMapping = 0;
+    let skippedIgnored = 0;
+    for (const a of pendingAssets) {
+      const r = resolveLocalFolder({
+        folderName: a.folderName,
+        folderMap,
       });
-      for (const a of pendingAssets) {
-        try {
-          await enqueue(JobType.REVIEW_DESIGN, {
-            scope: "local" as const,
+      if (r.kind === "pending") { skippedNoMapping += 1; continue; }
+      if (r.kind === "ignored") { skippedIgnored += 1; continue; }
+      try {
+        await enqueueReviewDesign({
+          userId,
+          payload: {
+            scope: "local",
             localAssetId: a.id,
+            productTypeKey: r.productTypeKey,
+          },
+        });
+        autoEnqueued += 1;
+      } catch (err) {
+        logger.error(
+          {
+            assetId: a.id,
             userId,
-            productTypeKey,
-          });
-          autoEnqueued += 1;
-        } catch (err) {
-          logger.error(
-            {
-              assetId: a.id,
-              userId,
-              err: err instanceof Error ? err.message : String(err),
-            },
-            "scan auto-enqueue: REVIEW_DESIGN enqueue failed",
-          );
-        }
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "scan auto-enqueue: REVIEW_DESIGN enqueue failed",
+        );
       }
-      logger.info(
-        { userId, jobId, autoEnqueued, productTypeKey },
-        "local scan auto-enqueue summary",
-      );
     }
+    logger.info(
+      { userId, jobId, autoEnqueued, skippedNoMapping, skippedIgnored },
+      "local scan auto-enqueue summary",
+    );
 
     await db.job.update({
       where: { id: jobId },

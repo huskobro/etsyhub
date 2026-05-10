@@ -21,7 +21,7 @@ import { withErrorHandling } from "@/lib/http";
 import { ValidationError } from "@/lib/errors";
 import { requireUser } from "@/server/session";
 import { db } from "@/server/db";
-import { enqueue } from "@/server/queue";
+import { enqueueReviewDesign } from "@/server/services/review/enqueue";
 import { logger } from "@/lib/logger";
 
 const BodySchema = z.discriminatedUnion("scope", [
@@ -68,7 +68,7 @@ export const POST = withErrorHandling(async (req: Request) => {
         // KEPT/REJECTED ones are excluded. Already-scored guard
         // (reviewProviderSnapshot present) excludes those further
         // — no double-billing.
-        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        reviewStatus: "PENDING",
         reviewProviderSnapshot: null,
       },
       select: { id: true },
@@ -89,11 +89,9 @@ export const POST = withErrorHandling(async (req: Request) => {
     const results = await Promise.all(
       candidates.map(async (c) => {
         try {
-          await enqueue(JobType.REVIEW_DESIGN, {
-            scope: "local" as const,
-            localAssetId: c.id,
+          await enqueueReviewDesign({
             userId: user.id,
-            productTypeKey,
+            payload: { scope: "local", localAssetId: c.id, productTypeKey },
           });
           return { ok: true as const };
         } catch (err) {
@@ -130,7 +128,7 @@ export const POST = withErrorHandling(async (req: Request) => {
         userId: user.id,
         deletedAt: null,
         referenceId: targetReferenceId,
-        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        reviewStatus: "PENDING",
         reviewProviderSnapshot: null,
       },
       select: { id: true },
@@ -150,10 +148,9 @@ export const POST = withErrorHandling(async (req: Request) => {
     const refResults = await Promise.all(
       candidates.map(async (c) => {
         try {
-          await enqueue(JobType.REVIEW_DESIGN, {
-            scope: "design" as const,
-            generatedDesignId: c.id,
+          await enqueueReviewDesign({
             userId: user.id,
+            payload: { scope: "design", generatedDesignId: c.id },
           });
           return { ok: true as const };
         } catch (err) {
@@ -235,10 +232,9 @@ export const POST = withErrorHandling(async (req: Request) => {
   const results = await Promise.all(
     candidates.map(async (c) => {
       try {
-        await enqueue(JobType.REVIEW_DESIGN, {
-          scope: "design" as const,
-          generatedDesignId: c.id,
+        await enqueueReviewDesign({
           userId: user.id,
+          payload: { scope: "design", generatedDesignId: c.id },
         });
         return { ok: true as const };
       } catch (err) {

@@ -59,7 +59,7 @@ import { requireUser } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
 import { ValidationError, NotFoundError } from "@/lib/errors";
 import { db } from "@/server/db";
-import { enqueue } from "@/server/queue";
+import { enqueueReviewDesign } from "@/server/services/review/enqueue";
 import { logger } from "@/lib/logger";
 
 // USER yalnızca APPROVED veya REJECTED yazabilir. PENDING/NEEDS_REVIEW SYSTEM
@@ -202,12 +202,16 @@ export const PATCH = withErrorHandling(async (req: Request) => {
     // Opt-in `rerun: true` ⇒ wipe snapshot + enqueue fresh job.
     const rerun = parsed.data.rerun === true;
     if (rerun) {
+      // IA-29 — rerun: advisory + score sıfır, status PENDING (operator
+      // damga zaten USER → null için NEEDS_REVIEW yok)
       await db.generatedDesign.update({
         where: { id: parsed.data.id },
         data: {
           reviewStatus: ReviewStatus.PENDING,
           reviewStatusSource: ReviewStatusSource.SYSTEM,
+          reviewSuggestedStatus: null,
           reviewScore: null,
+          reviewProviderRawScore: null,
           reviewSummary: null,
           reviewRiskFlags: Prisma.DbNull,
           textDetected: false,
@@ -218,6 +222,8 @@ export const PATCH = withErrorHandling(async (req: Request) => {
         },
       });
     } else {
+      // IA-29 — preserve: sadece operatör damgasını geri al; advisory
+      // + score + snapshot kalır (CLAUDE.md Madde N).
       await db.generatedDesign.update({
         where: { id: parsed.data.id },
         data: {
@@ -231,10 +237,9 @@ export const PATCH = withErrorHandling(async (req: Request) => {
     let rerunError: string | undefined;
     if (rerun) {
       try {
-        await enqueue(JobType.REVIEW_DESIGN, {
-          scope: "design" as const,
-          generatedDesignId: parsed.data.id,
+        await enqueueReviewDesign({
           userId: user.id,
+          payload: { scope: "design", generatedDesignId: parsed.data.id },
         });
         rerunEnqueued = true;
       } catch (err) {
@@ -276,7 +281,9 @@ export const PATCH = withErrorHandling(async (req: Request) => {
       data: {
         reviewStatus: ReviewStatus.PENDING,
         reviewStatusSource: ReviewStatusSource.SYSTEM,
+        reviewSuggestedStatus: null,
         reviewScore: null,
+        reviewProviderRawScore: null,
         reviewSummary: null,
         reviewIssues: Prisma.DbNull,
         reviewRiskFlags: Prisma.DbNull,
@@ -299,11 +306,13 @@ export const PATCH = withErrorHandling(async (req: Request) => {
   let rerunError: string | undefined;
   if (rerun) {
     try {
-      await enqueue(JobType.REVIEW_DESIGN, {
-        scope: "local" as const,
-        localAssetId: parsed.data.id,
+      await enqueueReviewDesign({
         userId: user.id,
-        productTypeKey: parsed.data.productTypeKey,
+        payload: {
+          scope: "local",
+          localAssetId: parsed.data.id,
+          productTypeKey: parsed.data.productTypeKey,
+        },
       });
       rerunEnqueued = true;
     } catch (err) {

@@ -24,7 +24,7 @@ import type { Job } from "bullmq";
 import { JobStatus, JobType, ProviderKind, VariationState } from "@prisma/client";
 import { db } from "@/server/db";
 import { logger } from "@/lib/logger";
-import { enqueue } from "@/server/queue";
+import { enqueueReviewDesign } from "@/server/services/review/enqueue";
 import { getImageProvider } from "@/providers/image/registry";
 import type { ImageGenerateInput } from "@/providers/image/types";
 import { notifyUser } from "@/server/services/settings/notifications-inbox.service";
@@ -157,10 +157,11 @@ export async function handleGenerateVariations(
       // olarak kalır. Carry-forward: review-enqueue-recovery /
       // missing-review-job-backfill (Task 19+).
       try {
-        await enqueue(JobType.REVIEW_DESIGN, {
-          scope: "design" as const,
-          generatedDesignId: designId,
+        // IA-29 — central helper writes db.job row + BullMQ enqueue
+        // atomically so lifecycle UI gets truthy queued/running/ready.
+        await enqueueReviewDesign({
           userId: job.data.userId,
+          payload: { scope: "design", generatedDesignId: designId },
         });
       } catch (enqueueErr) {
         logger.error(

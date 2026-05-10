@@ -143,6 +143,9 @@ export const GET = withErrorHandling(async (req: Request) => {
           reviewRiskFlags: true,
           reviewedAt: true,
           reviewProviderSnapshot: true,
+          // IA-29 — advisory + provider raw score (UI debug & audit)
+          reviewSuggestedStatus: true,
+          reviewProviderRawScore: true,
           // Asset metadata — IA Phase 9 (review focus workspace) needs
           // mimeType / fileSize / dimensions on AI items for the
           // unified info-rail. IA Phase 11 added persisted hasAlpha
@@ -177,15 +180,22 @@ export const GET = withErrorHandling(async (req: Request) => {
         take: PAGE_SIZE,
       }),
       db.generatedDesign.count({ where }),
-      // Scope-aware breakdown: undecided = PENDING + NEEDS_REVIEW
+      // IA-29 — undecided = operatör henüz aksiyon almamış. AI artık
+      // reviewStatus'e yazmıyor, sadece reviewSuggestedStatus'a; bu
+      // yüzden undecided yalnız PENDING'i içerir.
       db.generatedDesign.count({
-        where: { ...breakdownWhere, reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] } },
+        where: { ...breakdownWhere, reviewStatus: "PENDING" },
+      }),
+      // IA-29 (CLAUDE.md Madde V) — kept/rejected ARTIK operatör damgası:
+      // status APPROVED/REJECTED + source = USER. Worker advisory'yi
+      // reviewSuggestedStatus'a yazıyor; status'e dokunmuyor. Bu
+      // sayede UI'da "kept" filter'ı yalnız operatörün keep dediği
+      // item'ları sayar.
+      db.generatedDesign.count({
+        where: { ...breakdownWhere, reviewStatus: "APPROVED", reviewStatusSource: "USER" },
       }),
       db.generatedDesign.count({
-        where: { ...breakdownWhere, reviewStatus: "APPROVED" },
-      }),
-      db.generatedDesign.count({
-        where: { ...breakdownWhere, reviewStatus: "REJECTED" },
+        where: { ...breakdownWhere, reviewStatus: "REJECTED", reviewStatusSource: "USER" },
       }),
     ]);
 
@@ -233,6 +243,9 @@ export const GET = withErrorHandling(async (req: Request) => {
           riskFlags: normalizeRiskFlags(it.reviewRiskFlags),
           reviewedAt: it.reviewedAt?.toISOString() ?? null,
           reviewProviderSnapshot: it.reviewProviderSnapshot,
+          // IA-29 — advisory & provider raw score
+          reviewSuggestedStatus: it.reviewSuggestedStatus,
+          reviewProviderRawScore: it.reviewProviderRawScore,
           // Phase 7 Task 38: quick start CTA için (additive).
           referenceId: it.referenceId,
           productTypeId: it.productTypeId,
@@ -344,6 +357,9 @@ export const GET = withErrorHandling(async (req: Request) => {
         reviewRiskFlags: true,
         reviewedAt: true,
         reviewProviderSnapshot: true,
+        // IA-29 — advisory + provider raw score
+        reviewSuggestedStatus: true,
+        reviewProviderRawScore: true,
         thumbnailPath: true,
         // Pass 24 — source/path clarity: kullanıcı review ekranında
         // "bu görsel hangi klasörden / dosyadan geldi" bilgisini almalı.
@@ -371,17 +387,16 @@ export const GET = withErrorHandling(async (req: Request) => {
       take: PAGE_SIZE,
     }),
     db.localLibraryAsset.count({ where: localWhere }),
+    // IA-29 — undecided = PENDING (operatör damgası yok).
     db.localLibraryAsset.count({
-      where: {
-        ...localBreakdownWhere,
-        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
-      },
+      where: { ...localBreakdownWhere, reviewStatus: "PENDING" },
+    }),
+    // IA-29 — kept/rejected operatör damgası.
+    db.localLibraryAsset.count({
+      where: { ...localBreakdownWhere, reviewStatus: "APPROVED", reviewStatusSource: "USER" },
     }),
     db.localLibraryAsset.count({
-      where: { ...localBreakdownWhere, reviewStatus: "APPROVED" },
-    }),
-    db.localLibraryAsset.count({
-      where: { ...localBreakdownWhere, reviewStatus: "REJECTED" },
+      where: { ...localBreakdownWhere, reviewStatus: "REJECTED", reviewStatusSource: "USER" },
     }),
   ]);
 
@@ -414,6 +429,9 @@ export const GET = withErrorHandling(async (req: Request) => {
     riskFlags: normalizeRiskFlags(it.reviewRiskFlags),
     reviewedAt: it.reviewedAt?.toISOString() ?? null,
     reviewProviderSnapshot: it.reviewProviderSnapshot,
+    // IA-29 — advisory + provider raw score
+    reviewSuggestedStatus: it.reviewSuggestedStatus,
+    reviewProviderRawScore: it.reviewProviderRawScore,
     // Phase 7 Task 38 (additive): local-library asset'leri için Quick start
     // anlamlı değil — variation batch / reference / productType yok.
     // UI ReviewCard buton render'ını jobId === null kontrolüyle gizler.

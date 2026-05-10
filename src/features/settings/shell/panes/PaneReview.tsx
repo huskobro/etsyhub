@@ -214,7 +214,7 @@ export function PaneReview() {
        *   set eder; null kalırsa scan auto-enqueue yapmaz, manuel
        *   trigger gerekir. Görünür + ayarlanabilir + ops dashboard'a
        *   yansır. */}
-      <LocalAutoReviewSection />
+      <LocalFolderMappingSection />
 
 
       {/* 1) Decision rule — IA Phase 27 (CLAUDE.md Madde R) editable */}
@@ -1369,14 +1369,14 @@ function TechnicalRuleEditor({
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// IA Phase 28 — LocalAutoReviewSection (CLAUDE.md Madde U)
+// IA-29 (CLAUDE.md Madde V) — LocalFolderMappingSection
 //
-// Local scan auto-enqueue policy is operator-visible and editable
-// here. defaultProductTypeKey null ⇒ scan auto-enqueue çalışmaz;
-// operatör explicit bir productType seçtiğinde scan worker
-// freshly discovered + never-scored asset'leri otomatik kuyruğa
-// alır. Cost discipline (Madde N) zaten already-scored guard ile
-// korunuyor; bu sadece tetikleme ucu.
+// Tek global default YOK. Operatör her klasör için açık seçim yapar:
+//   • bir productType atayabilir (auto-enqueue tetiklenir)
+//   • __ignore__ ile yok sayabilir (klasör atlanır, asla enqueue olmaz)
+//   • mapping yoksa "pending" — UI listede gösterir, operatör atar
+// Aynı bölümde root folder + scan tetikleme de yer alır (yetim
+// LocalLibrarySettingsPanel'i tek surface'e topladık).
 // ────────────────────────────────────────────────────────────────────────
 
 const PRODUCT_TYPE_OPTIONS = [
@@ -1388,24 +1388,40 @@ const PRODUCT_TYPE_OPTIONS = [
   "printable",
 ] as const;
 
+const IGNORE_SENTINEL = "__ignore__";
+
 type LocalLibrarySettingsView = {
   rootFolderPath: string | null;
   targetResolution: { width: number; height: number };
   targetDpi: number;
   qualityThresholds: { ok: number; warn: number };
-  defaultProductTypeKey:
-    | "wall_art"
-    | "clipart"
-    | "sticker"
-    | "transparent_png"
-    | "bookmark"
-    | "printable"
-    | null;
+  folderProductTypeMap: Record<string, string>;
 };
 
-function LocalAutoReviewSection() {
+type FolderMappingEntry = {
+  folderName: string;
+  folderPath: string;
+  assetCount: number;
+  status: "pending" | "convention" | "alias" | "ignored";
+  productTypeKey: string | null;
+};
+
+type FolderMappingResponse = {
+  folders: FolderMappingEntry[];
+  summary: {
+    total: number;
+    pending: number;
+    convention: number;
+    alias: number;
+    ignored: number;
+  };
+  knownProductTypes: ReadonlyArray<string>;
+};
+
+function LocalFolderMappingSection() {
   const qc = useQueryClient();
-  const query = useQuery<{ settings: LocalLibrarySettingsView }>({
+
+  const settingsQuery = useQuery<{ settings: LocalLibrarySettingsView }>({
     queryKey: ["settings", "local-library"],
     queryFn: async () => {
       const r = await fetch("/api/settings/local-library");
@@ -1414,12 +1430,17 @@ function LocalAutoReviewSection() {
     },
   });
 
-  const mutation = useMutation<
-    { settings: LocalLibrarySettingsView },
-    Error,
-    LocalLibrarySettingsView
-  >({
-    mutationFn: async (next) => {
+  const mappingQuery = useQuery<FolderMappingResponse>({
+    queryKey: ["local-library", "folder-mapping"],
+    queryFn: async () => {
+      const r = await fetch("/api/local-library/folder-mapping");
+      if (!r.ok) throw new Error("Could not load folder mapping");
+      return r.json();
+    },
+  });
+
+  const settingsMutation = useMutation({
+    mutationFn: async (next: LocalLibrarySettingsView) => {
       const r = await fetch("/api/settings/local-library", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -1431,98 +1452,319 @@ function LocalAutoReviewSection() {
       }
       return r.json();
     },
-    onSuccess: (res) => {
-      qc.setQueryData(["settings", "local-library"], res);
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings", "local-library"] });
     },
   });
 
-  const [saveState, setSaveState] = useState<
-    "idle" | "saving" | "saved" | { error: string }
-  >("idle");
+  const mappingMutation = useMutation({
+    mutationFn: async (args: { folderKey: string; productTypeKey: string | null }) => {
+      const r = await fetch("/api/local-library/folder-mapping", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["local-library", "folder-mapping"] });
+      qc.invalidateQueries({ queryKey: ["settings", "local-library"] });
+    },
+  });
 
-  if (query.isLoading || !query.data) {
+  const scanMutation = useMutation({
+    mutationFn: async () => {
+      const r = await fetch("/api/local-library/scan", { method: "POST" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<{ jobId: string }>;
+    },
+    onSuccess: () => {
+      // Scan async; mapping listesi 3sn sonra yenilenir.
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["local-library", "folder-mapping"] });
+      }, 3000);
+    },
+  });
+
+  const [rootDraft, setRootDraft] = useState<string>("");
+  useEffect(() => {
+    if (settingsQuery.data) {
+      setRootDraft(settingsQuery.data.settings.rootFolderPath ?? "");
+    }
+  }, [settingsQuery.data]);
+
+  if (settingsQuery.isLoading || !settingsQuery.data) {
     return (
-      <section className="mt-8" data-testid="review-pane-local-auto">
+      <section className="mt-8" data-testid="review-pane-local-mapping">
         <h3 className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
-          Auto-review on local scan
+          Local library
         </h3>
-        <p className="mt-2 text-xs text-ink-3">Loading local library settings…</p>
+        <p className="mt-2 text-xs text-ink-3">Loading…</p>
       </section>
     );
   }
 
-  const settings = query.data.settings;
-  const current = settings.defaultProductTypeKey;
-  const automationActive = current !== null;
+  const settings = settingsQuery.data.settings;
+  const folders = mappingQuery.data?.folders ?? [];
+  const summary = mappingQuery.data?.summary;
+  const rootPath = settings.rootFolderPath;
+  const rootDirty = rootDraft.trim() !== (rootPath ?? "");
+  const rootValid = rootDraft.trim() === "" || rootDraft.trim().startsWith("/");
 
-  const onSelect = async (next: typeof current) => {
-    setSaveState("saving");
-    try {
-      await mutation.mutateAsync({ ...settings, defaultProductTypeKey: next });
-      setSaveState("saved");
-      setTimeout(() => setSaveState("idle"), 1500);
-    } catch (err) {
-      setSaveState({
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+  const saveRoot = async () => {
+    if (!rootValid) return;
+    await settingsMutation.mutateAsync({
+      ...settings,
+      rootFolderPath: rootDraft.trim() || null,
+    });
   };
 
+  const known = folders.filter(
+    (f) => f.status === "convention" || f.status === "alias",
+  );
+  const pending = folders.filter((f) => f.status === "pending");
+  const ignored = folders.filter((f) => f.status === "ignored");
+
   return (
-    <section className="mt-8" data-testid="review-pane-local-auto">
+    <section className="mt-8" data-testid="review-pane-local-mapping">
       <div className="flex items-baseline justify-between">
         <h3 className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
-          Auto-review on local scan
+          Local library
         </h3>
-        <span
-          className={cn(
-            "font-mono text-[10px] tracking-wider",
-            automationActive ? "text-k-green" : "text-ink-3",
-          )}
-          data-testid="local-auto-status"
-        >
-          {automationActive ? "ACTIVE" : "INACTIVE"}
-        </span>
-      </div>
-      <p className="mt-2 text-xs text-ink-3">
-        When set, every freshly discovered local asset is auto-enqueued
-        for review using the chosen product type. Already-scored assets
-        are skipped (no double billing). Leave empty to require manual
-        triggers from the Manual trigger panel above.
-      </p>
-      <div className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center">
-        <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
-          Default product type
-        </span>
-        <select
-          value={current ?? ""}
-          onChange={(e) =>
-            onSelect((e.target.value || null) as typeof current)
-          }
-          disabled={saveState === "saving"}
-          className="w-full max-w-xs rounded-md border border-line bg-bg px-2 py-1.5 text-sm text-ink"
-          data-testid="local-auto-product-type"
-        >
-          <option value="">— off (manual trigger required) —</option>
-          {PRODUCT_TYPE_OPTIONS.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="mt-2 flex items-center gap-2 text-xs">
-        {saveState === "saving" ? (
-          <span className="text-ink-3">Saving…</span>
-        ) : saveState === "saved" ? (
-          <span className="text-k-green">Saved ✓</span>
-        ) : typeof saveState === "object" ? (
-          <span className="text-rose-600" data-testid="local-auto-save-error">
-            {saveState.error}
+        {summary ? (
+          <span className="font-mono text-[10px] tracking-wider text-ink-3">
+            {known.length} known · {pending.length} pending ·{" "}
+            {ignored.length} ignored
           </span>
         ) : null}
       </div>
+      <p className="mt-2 text-xs text-ink-3">
+        Convention: each folder under your root maps to a product type
+        by name (<code className="font-mono">clipart/</code>,{" "}
+        <code className="font-mono">wall_art/</code>,{" "}
+        <code className="font-mono">bookmark/</code>, …). Folders that
+        don't match a known product type land in the "Pending" list —
+        you decide whether to map them (alias) or ignore them.
+      </p>
+
+      {/* Root path + scan */}
+      <div
+        className="mt-3 rounded-md border border-line bg-bg p-3"
+        data-testid="local-root-config"
+      >
+        <label className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+          Root folder (absolute path)
+        </label>
+        <div className="mt-1.5 flex items-center gap-2">
+          <input
+            type="text"
+            value={rootDraft}
+            onChange={(e) => setRootDraft(e.target.value)}
+            placeholder="/Users/you/Pictures"
+            className="flex-1 rounded-md border border-line bg-paper px-2 py-1.5 font-mono text-sm text-ink focus:border-k-orange focus:outline-none"
+            data-testid="local-root-input"
+          />
+          <button
+            type="button"
+            disabled={!rootDirty || !rootValid || settingsMutation.isPending}
+            onClick={() => {
+              void saveRoot();
+            }}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-k-orange bg-k-orange/10 px-3 text-xs font-medium text-ink hover:bg-k-orange/20 disabled:opacity-40"
+            data-testid="local-root-save"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            disabled={!rootPath || scanMutation.isPending}
+            onClick={() => scanMutation.mutate()}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs text-ink-2 hover:border-ink-3 disabled:opacity-40"
+            data-testid="local-scan-now"
+          >
+            {scanMutation.isPending ? "Scanning…" : "Scan now"}
+          </button>
+        </div>
+        {!rootValid ? (
+          <p className="mt-1.5 text-[11px] text-amber-600">
+            Path must be absolute (start with /).
+          </p>
+        ) : null}
+        {scanMutation.isSuccess ? (
+          <p className="mt-1.5 text-[11px] text-ink-3">
+            Scan queued. Folder list refreshes in a few seconds.
+          </p>
+        ) : null}
+      </div>
+
+      {/* Pending folders — operatör action needed */}
+      {pending.length > 0 ? (
+        <div className="mt-4" data-testid="folder-pending-block">
+          <div className="flex items-baseline justify-between">
+            <h4 className="font-mono text-[10px] uppercase tracking-meta text-amber-600">
+              Pending — needs your decision
+            </h4>
+            <span className="font-mono text-[10px] tracking-wider text-ink-3">
+              {pending.length} folder{pending.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <p className="mt-1 text-[11px] text-ink-3">
+            These folders don't match a known product type. Map them
+            to a product type (alias) or ignore them so the scan worker
+            knows what to do.
+          </p>
+          <ul className="mt-2 space-y-2">
+            {pending.map((f) => (
+              <FolderMappingRow
+                key={f.folderPath}
+                entry={f}
+                disabled={mappingMutation.isPending}
+                onChange={(next) =>
+                  mappingMutation.mutate({
+                    folderKey: f.folderName,
+                    productTypeKey: next,
+                  })
+                }
+              />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* Known folders — convention + alias */}
+      {known.length > 0 ? (
+        <div className="mt-4" data-testid="folder-known-block">
+          <h4 className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+            Mapped folders
+          </h4>
+          <ul className="mt-2 space-y-2">
+            {known.map((f) => (
+              <FolderMappingRow
+                key={f.folderPath}
+                entry={f}
+                disabled={mappingMutation.isPending}
+                onChange={(next) =>
+                  mappingMutation.mutate({
+                    folderKey: f.folderName,
+                    productTypeKey: next,
+                  })
+                }
+              />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* Ignored folders — collapsed for cleanliness */}
+      {ignored.length > 0 ? (
+        <details className="mt-4" data-testid="folder-ignored-block">
+          <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-meta text-ink-3">
+            Ignored folders ({ignored.length})
+          </summary>
+          <ul className="mt-2 space-y-2">
+            {ignored.map((f) => (
+              <FolderMappingRow
+                key={f.folderPath}
+                entry={f}
+                disabled={mappingMutation.isPending}
+                onChange={(next) =>
+                  mappingMutation.mutate({
+                    folderKey: f.folderName,
+                    productTypeKey: next,
+                  })
+                }
+              />
+            ))}
+          </ul>
+        </details>
+      ) : null}
+
+      {!rootPath && folders.length === 0 ? (
+        <p className="mt-3 text-xs text-ink-3">
+          Save a root folder first, then click "Scan now". Discovered
+          folders will appear here.
+        </p>
+      ) : null}
+      {rootPath && folders.length === 0 ? (
+        <p className="mt-3 text-xs text-ink-3">
+          No folders yet — run a scan or check the root path.
+        </p>
+      ) : null}
     </section>
+  );
+}
+
+function FolderMappingRow({
+  entry,
+  onChange,
+  disabled,
+}: {
+  entry: FolderMappingEntry;
+  onChange: (next: string | null) => void;
+  disabled: boolean;
+}) {
+  const value =
+    entry.status === "ignored"
+      ? IGNORE_SENTINEL
+      : entry.productTypeKey ?? "";
+  const dotColor =
+    entry.status === "convention"
+      ? "bg-k-green"
+      : entry.status === "alias"
+        ? "bg-k-orange"
+        : entry.status === "ignored"
+          ? "bg-ink-3"
+          : "bg-amber-500";
+  return (
+    <li
+      className="flex items-center gap-3 rounded-md border border-line bg-paper px-3 py-2"
+      data-testid="folder-mapping-row"
+      data-status={entry.status}
+    >
+      <span
+        className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotColor)}
+        aria-hidden
+      />
+      <div className="flex-1 min-w-0">
+        <div className="truncate text-sm text-ink" title={entry.folderName}>
+          {entry.folderName}
+          {entry.status === "convention" ? (
+            <span className="ml-2 font-mono text-[10px] uppercase tracking-meta text-ink-3">
+              auto
+            </span>
+          ) : entry.status === "alias" ? (
+            <span className="ml-2 font-mono text-[10px] uppercase tracking-meta text-k-orange-ink">
+              alias
+            </span>
+          ) : null}
+        </div>
+        <div
+          className="truncate font-mono text-[11px] text-ink-3"
+          title={entry.folderPath}
+        >
+          {entry.folderPath} · {entry.assetCount} assets
+        </div>
+      </div>
+      <select
+        value={value}
+        disabled={disabled || entry.status === "convention"}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === "" ? null : v);
+        }}
+        className="rounded-md border border-line bg-bg px-2 py-1.5 text-xs text-ink disabled:opacity-50"
+        data-testid="folder-mapping-select"
+      >
+        <option value="">— pending (assign) —</option>
+        {PRODUCT_TYPE_OPTIONS.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+        <option value={IGNORE_SENTINEL}>Ignore folder</option>
+      </select>
+    </li>
   );
 }
 

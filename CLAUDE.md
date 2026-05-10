@@ -1779,6 +1779,83 @@ Bir feature "tamam" sayılmadan önce: schema, worker, settings UI,
 ops görünürlüğü, manual tetik ve canlı state kanıtı **beşi de**
 yerinde olmalı.
 
+### V. AI evaluation advisory — operator decision canonical
+
+AI scoring sistemi review pipeline'ında **advisory katmandır**;
+asla persisted final review kararı yazmaz.
+
+- **Schema sözleşmesi**:
+  - `reviewStatus` (enum) = **operatör damgası**. PENDING (default) =
+    operatör henüz aksiyon almadı. APPROVED/REJECTED = operatör
+    kararı. Worker bu alana ASLA dokunmaz.
+  - `reviewSuggestedStatus` (enum, nullable) = AI advisory. Worker
+    yazar; operatörü bağlamaz. UI "AI suggestion" katmanı olarak
+    gösterir.
+  - `reviewScore` = sistem normalize skor (deterministic; aşağıda).
+  - `reviewProviderRawScore` (nullable) = provider'ın döndürdüğü ham
+    skor — **sadece audit/debug**. UI ana score chip'i bu değeri
+    göstermez.
+
+- **Skor modeli** (provider raw'dan bağımsız, deterministic):
+  ```
+  finalScore = clamp(0, 100, 100 − Σ weight(failed warning) − blockerForce)
+  blockerForce = hasBlockerFail ? 100 : 0
+  ```
+  Aynı failed flags = aynı score. Provider raw fluctuation skoru
+  ETKİLEMEZ.
+
+- **Queue endpoint kept/rejected semantiği**:
+  - `kept` = `reviewStatus = APPROVED AND reviewStatusSource = USER`
+  - `rejected` = `reviewStatus = REJECTED AND reviewStatusSource = USER`
+  - `undecided` = `reviewStatus = PENDING`
+  - AI'nın `APPROVED` advisory yazması "kept" sayımını ETKİLEMEZ.
+
+- **UI katmanı**:
+  - Stored decision (canonical) — operatör damgası varsa burada
+    görünür. Kart üst chip'i bu sinyali render eder.
+  - AI suggestion — küçük inline banner (advisory only). "Looks good"
+    veya "Review recommended" + bir cümle gerekçe. Operatör kararını
+    görsel olarak gölgelememeli.
+  - Current policy preview — eski thresholds ile kayıtlı suggestion
+    bugünkü thresholds'tan farklıysa ek bilgi olarak görünür.
+
+- **Folder convention** (local automation):
+  - Operatör root altında productType başına klasör açar
+    (`clipart/`, `wall_art/`, `bookmark/`, ...). Scan worker
+    asset'in bulunduğu üst klasör adına bakar; bilinen
+    productType ise auto-enqueue.
+  - Bilinmeyen klasör (örn. `ekmek/`) "pending" durumunda kalır
+    ve UI'da listelenir. Operatör ya bilinen bir klasöre asset'leri
+    taşır ya alias yazar (`ekmek` → `printable`) ya `__ignore__`
+    eder. Global default fallback YOK — operatöre sessiz default
+    atanmaz.
+
+- **Enqueue truth**: `enqueueReviewDesign` helper'ı `db.job` row'unu
+  ve BullMQ enqueue'yu **tek atomik adımda** yapar; lifecycle UI
+  (queued/running/ready/failed) gerçek backend durumuyla uyuşur.
+  Eski "enqueue but no db.job row" pattern'i artık yasaktır.
+
+### W. Live updates — manuel refresh gerektirmez
+
+Operatör backend değişikliklerini görmek için sayfa yenilemek
+zorunda kalmamalı:
+
+- **Review queue / focus mode**: `useReviewQueue` polling 5s aralık
+  (unsettled lifecycle varsa: queued/running/not_queued).
+- **Library** (server-rendered): `LibraryClient` 8s `router.refresh()`
+  polling. Tab gizlendiğinde durur; geri görününce devam.
+- **Settings → Local library mapping**: scan tetiklendikten 3s
+  sonra mapping list query invalidate.
+
+Polling cadence'leri:
+- Aktif iş varken (queued/running): 5s
+- Server-rendered listeler: 8s
+- Tab hidden: tüm interval'lar pause
+
+Yeni server-rendered surface eklendiğinde aynı pattern (router.refresh
+interval + visibility-aware) uygulanır. SSE/WebSocket gelecekte
+eklenebilir; pattern bozulmaz çünkü polling client-side, izole.
+
 ## Library / Selections / Products — Sınır Invariant'ları
 
 Bu üç ekranı **karıştırmak yasaktır**. Kod, route, copy ve UI seviyesinde

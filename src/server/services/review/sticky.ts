@@ -69,16 +69,18 @@ export function applyReviewDecisionWithSticky(input: StickyInput): StickyOutput 
 export type AlreadyScoredInput = {
   reviewedAt: Date | null;
   reviewProviderSnapshot: string | null;
+  /** IA-29 — eskiden `source` advisory ile karışırdı; artık advisory
+   *  ayrı alan. Guard tamamen "AI run snapshot var mı?" sorusu. */
   source: ReviewStatusSource;
 };
 
 export function isAlreadyScoredBySystem(input: AlreadyScoredInput): boolean {
-  // SYSTEM tarafından dolu snapshot + reviewedAt = en az bir başarılı
-  // provider response'u alınmış demek. Reset yapılmadığı sürece tekrar
-  // scoring yapmıyoruz. (USER source ayrı sticky helper tarafından
-  // erken-return ediliyor; bu guard yalnız SYSTEM kayıtlar için
-  // tetiklenir, defansif olarak source kontrolü tutuyoruz.)
-  if (input.source !== ReviewStatusSource.SYSTEM) return false;
+  // IA-29 — advisory ayrıldıktan sonra guard saf "AI snapshot var mı"
+  // kontrolü: provider snapshot + reviewedAt dolu = en az bir başarılı
+  // provider response'u alınmış. Reset yapılmadığı sürece tekrar
+  // scoring yapmıyoruz. Source artık operatör damgası olduğu için
+  // burada source filtresi yok (eskiden vardı; advisory ayrılınca
+  // gereksiz kaldı).
   if (input.reviewedAt === null) return false;
   if (input.reviewProviderSnapshot === null) return false;
   return true;

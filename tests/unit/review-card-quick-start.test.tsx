@@ -42,6 +42,8 @@ const baseItem: ReviewQueueItem = {
   riskFlags: [],
   reviewedAt: "2026-04-29T00:00:00Z",
   reviewProviderSnapshot: null,
+  reviewSuggestedStatus: null,
+  reviewProviderRawScore: null,
   // Phase 7 Task 38 alanları:
   referenceId: "ref-cuid-1",
   productTypeId: "pt-cuid-1",

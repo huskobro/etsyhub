@@ -636,11 +636,16 @@ function QueueInfoRail({
     },
     backendLifecycle: item.reviewLifecycle,
     thresholds,
-    // IA Phase 28 (CLAUDE.md Madde S) — stored decision = persisted
-    // reviewStatus. UI canonical truth olarak burayı render eder;
-    // current policy preview yalnız stored ↔ derived farkında
-    // gösterilir.
+    // IA Phase 28 — stored decision = persisted reviewStatus (operator).
     storedReviewStatus: item.reviewStatus,
+    // IA-29 — AI advisory ayrı katman. PENDING (henüz scored değil)
+    // null'a çekilir; null → aiSuggestion lifecycle ready iken
+    // derived'a düşer.
+    aiSuggestedStatus:
+      item.reviewSuggestedStatus &&
+      item.reviewSuggestedStatus !== "PENDING"
+        ? (item.reviewSuggestedStatus as "APPROVED" | "NEEDS_REVIEW" | "REJECTED")
+        : null,
   });
   return (
     <>

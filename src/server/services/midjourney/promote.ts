@@ -14,9 +14,11 @@
 //   • Audit log caller (API route) tarafında atılır; service sadece DB
 //     işini yapar.
 
-import { ReviewStatus } from "@prisma/client";
+import { JobType, ReviewStatus } from "@prisma/client";
 import { db } from "@/server/db";
 import { NotFoundError, ValidationError } from "@/lib/errors";
+import { enqueueReviewDesign } from "@/server/services/review/enqueue";
+import { logger } from "@/lib/logger";
 
 export type PromoteInput = {
   midjourneyAssetId: string;
@@ -110,6 +112,26 @@ export async function promoteMidjourneyAssetToGeneratedDesign(
     });
     return design;
   });
+
+  // IA-29 (CLAUDE.md Madde V) — promote sonrası AI advisory pipeline'ı
+  // otomatik tetikle. variation-worker'da yapılan auto-enqueue ile
+  // tutarlı: operatör manual scope-trigger çekmek zorunda kalmaz.
+  // Best-effort: enqueue fail olursa promote başarılı kalır
+  // (operatör ileride explicit rerun edebilir).
+  try {
+    await enqueueReviewDesign({
+      userId: designUserId,
+      payload: { scope: "design", generatedDesignId: result.id },
+    });
+  } catch (err) {
+    logger.error(
+      {
+        designId: result.id,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "MJ promote: REVIEW_DESIGN auto-enqueue failed (promote committed)",
+    );
+  }
 
   return {
     generatedDesignId: result.id,

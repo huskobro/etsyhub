@@ -37,17 +37,28 @@ export const LocalLibrarySettingsSchema = z.object({
   // not a silent guess). When set, the scan worker auto-enqueues
   // freshly discovered + never-scored assets so the operator doesn't
   // have to trigger every folder manually.
-  defaultProductTypeKey: z
-    .enum([
-      "wall_art",
-      "clipart",
-      "sticker",
-      "transparent_png",
-      "bookmark",
-      "printable",
-    ])
-    .nullable()
-    .default(null),
+  // IA-29 (CLAUDE.md Madde V) — folder/path bazlı productType mapping.
+  // Tek global default YOK. Operatör her klasör için açık seçim
+  // yapar. Mapping olmayan klasörler için scan worker auto-enqueue
+  // YAPMAZ; UI'da "pending mapping" listesinde belirir, operatör
+  // atar veya `__ignore__` ile yok sayar.
+  //
+  // Anahtar folderName VEYA folderPath; değer productType key veya
+  // `__ignore__` sentinel.
+  folderProductTypeMap: z
+    .record(
+      z.string(),
+      z.enum([
+        "wall_art",
+        "clipart",
+        "sticker",
+        "transparent_png",
+        "bookmark",
+        "printable",
+        "__ignore__",
+      ]),
+    )
+    .default({}),
 });
 
 export type LocalLibrarySettings = z.infer<typeof LocalLibrarySettingsSchema>;
@@ -58,5 +69,5 @@ export const DEFAULT_LOCAL_LIBRARY_SETTINGS: LocalLibrarySettings = {
   targetResolution: { width: 4000, height: 4000 },
   targetDpi: 300,
   qualityThresholds: { ok: 75, warn: 40 },
-  defaultProductTypeKey: null,
+  folderProductTypeMap: {},
 };

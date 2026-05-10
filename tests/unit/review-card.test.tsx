@@ -50,6 +50,8 @@ const baseItem: ReviewQueueItem = {
   riskFlags: [],
   reviewedAt: "2026-04-29T00:00:00Z",
   reviewProviderSnapshot: null,
+  reviewSuggestedStatus: null,
+  reviewProviderRawScore: null,
   // Phase 7 Task 38 alanları — bu suite Quick start davranışı test etmiyor;
   // null vererek baseline render testlerinde CTA gizli kalır.
   referenceId: null,

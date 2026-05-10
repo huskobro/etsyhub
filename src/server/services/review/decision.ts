@@ -123,6 +123,30 @@ export type DecisionOutcome = {
   reason: string;
 };
 
+/**
+ * IA-29 (CLAUDE.md Madde V) — deterministic system score.
+ *
+ * Önceki davranış: `finalScore = providerRaw − Σweight(failed)`. Provider
+ * iki benzer item'a 105/95 raw verdiğinde aynı tek warning -20 ile 85/75
+ * gibi adaletsiz farklar üretiyordu. Provider raw artık SADECE audit/
+ * debug katmanında (DesignReview.responseSnapshot._providerRaw +
+ * GeneratedDesign.reviewProviderRawScore).
+ *
+ * Yeni model — pure rule-based:
+ *   • Active warning kriteri sayısı = W
+ *   • Failed warning kriteri ağırlık toplamı = Σwf
+ *   • Active blocker kriteri sayısı = B
+ *   • Failed blocker = HB (true/false; hasBlockerFail forces NEEDS_REVIEW)
+ *
+ *   finalScore = clamp(0, 100, 100 − Σwf − BlockerPenalty)
+ *   BlockerPenalty: failed blocker varsa 100'e clamped (yani score 0
+ *     veya altına düşer; blocker zaten NEEDS_REVIEW zorlar).
+ *
+ * Sonuç:
+ *   • Aynı failed flags = aynı score (deterministic).
+ *   • Provider raw fluctuation skoru ETKİLEMEZ.
+ *   • Threshold'a karşı adil ve açıklanabilir.
+ */
 export function computeScoringBreakdown(args: {
   providerRaw: number;
   riskFlagKinds: ReadonlyArray<string>;
@@ -130,7 +154,7 @@ export function computeScoringBreakdown(args: {
 }): ScoringBreakdown {
   const { providerRaw, riskFlagKinds, criteria } = args;
   const failedSet = new Set(riskFlagKinds);
-  let subtotal = providerRaw;
+  let warningPenalty = 0;
   let hasBlockerFail = false;
   const contributions: ScoringBreakdown["contributions"] = [];
   for (const c of criteria) {
@@ -138,7 +162,10 @@ export function computeScoringBreakdown(args: {
     let subtracted = 0;
     if (failed) {
       if (c.severity === "blocker") hasBlockerFail = true;
-      if (c.severity === "warning") subtracted = c.weight;
+      if (c.severity === "warning") {
+        subtracted = c.weight;
+        warningPenalty += c.weight;
+      }
     }
     contributions.push({
       id: c.id,
@@ -147,9 +174,13 @@ export function computeScoringBreakdown(args: {
       failed,
       subtracted,
     });
-    subtotal -= subtracted;
   }
-  const finalScore = Math.max(0, Math.min(100, Math.round(subtotal)));
+  // System score: 100 baz − warning penaltıları − blocker varsa zorla 0
+  const blockerForce = hasBlockerFail ? 100 : 0;
+  const finalScore = Math.max(
+    0,
+    Math.min(100, Math.round(100 - warningPenalty - blockerForce)),
+  );
   return { providerRaw, finalScore, contributions, hasBlockerFail };
 }
 

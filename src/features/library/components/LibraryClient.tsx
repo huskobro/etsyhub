@@ -49,6 +49,9 @@ export function LibraryClient({
     ? cards.find((c) => c.midjourneyAssetId === selectedAssetId) ?? null
     : null;
 
+  // (router declared below as `router` after dismissIntent block; refresh
+  // wiring set in a useEffect right after that for clarity.)
+
   // R11.14.2 — Per-card "Add to Selection" overlay was removed to match
   // v4 A1Library HTML target (CTAs live in detail panel footer, not on
   // cards). Single-asset hand-off lives in LibraryDetailPanel; bulk path
@@ -73,6 +76,30 @@ export function LibraryClient({
     const qs = sp.toString();
     router.replace(qs ? `/library?${qs}` : "/library", { scroll: false });
   }
+
+  // IA-29 (CLAUDE.md Madde W) — live updates. Library is server-rendered;
+  // poll router.refresh() so newly arrived MJ assets / scan items show up
+  // without a manual page reload. 8s cadence; pauses when tab hidden.
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer || (typeof document !== "undefined" && document.hidden)) return;
+      timer = setInterval(() => router.refresh(), 8000);
+    };
+    const stop = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const onVis = () => (document.hidden ? stop() : start());
+    start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      stop();
+    };
+  }, [router]);
 
   return (
     <div className="flex h-full flex-col">

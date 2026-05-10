@@ -72,6 +72,10 @@ export type ReviewQueueItem = {
   riskFlags: ReviewRiskFlag[];
   reviewedAt: string | null;
   reviewProviderSnapshot: string | null;
+  /** IA-29 — AI advisory karar. Operatör truth'tan ayrı. */
+  reviewSuggestedStatus: ReviewStatusEnum | null;
+  /** IA-29 — Provider raw score (debug/audit). UI ana skor reviewScore. */
+  reviewProviderRawScore: number | null;
   // Phase 7 Task 38 — Quick start CTA için (additive).
   // Yalnız scope === "design" item'larında doludur; local-library asset'leri
   // bu üç alanı null taşır (variation batch / reference / productType yok).

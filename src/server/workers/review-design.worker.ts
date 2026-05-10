@@ -1,5 +1,5 @@
 import type { Job } from "bullmq";
-import { Prisma, ProviderKind, ReviewStatus, ReviewStatusSource } from "@prisma/client";
+import { JobStatus, Prisma, ProviderKind, ReviewStatus, ReviewStatusSource } from "@prisma/client";
 import { db } from "@/server/db";
 import { logger } from "@/lib/logger";
 import { getReviewProvider } from "@/providers/review/registry";
@@ -80,6 +80,10 @@ export type ReviewDesignJobPayload = {
   scope: "design";
   generatedDesignId: string;
   userId: string;
+  /** IA-29 — db.job row id. Worker bunu RUNNING→SUCCESS/FAILED'e taşır
+   *  ki lifecycle UI'da truthy görünsün. Eski callers null geçebilir
+   *  (legacy compat); worker null'da Job row update yapmaz. */
+  jobId?: string;
 };
 
 /**
@@ -95,6 +99,8 @@ export type ReviewLocalAssetJobPayload = {
   localAssetId: string;
   userId: string;
   productTypeKey: string;
+  /** IA-29 — db.job row id (bkz. design payload yorumu). */
+  jobId?: string;
 };
 
 export type ReviewJobPayload = ReviewDesignJobPayload | ReviewLocalAssetJobPayload;
@@ -110,10 +116,46 @@ export async function handleReviewDesign(
   job: Job<ReviewJobPayload>,
 ): Promise<ReviewJobResult> {
   const payload = job.data;
-  if (payload.scope === "design") {
-    return await handleDesignReview(job, payload);
+  const dbJobId = payload.jobId ?? null;
+  // IA-29 — Job row lifecycle. RUNNING transition başlangıçta;
+  // SUCCESS/FAILED sonda.
+  if (dbJobId) {
+    try {
+      await db.job.update({
+        where: { id: dbJobId },
+        data: { status: JobStatus.RUNNING, startedAt: new Date() },
+      });
+    } catch (err) {
+      logger.warn({ dbJobId, err: err instanceof Error ? err.message : String(err) },
+        "review worker: Job row RUNNING update failed (continuing)");
+    }
   }
-  return await handleLocalAssetReview(job, payload);
+  try {
+    const result = payload.scope === "design"
+      ? await handleDesignReview(job, payload)
+      : await handleLocalAssetReview(job, payload);
+    if (dbJobId) {
+      await db.job.update({
+        where: { id: dbJobId },
+        data: { status: JobStatus.SUCCESS, finishedAt: new Date() },
+      }).catch((err) => logger.warn(
+        { dbJobId, err: err instanceof Error ? err.message : String(err) },
+        "review worker: Job row SUCCESS update failed"));
+    }
+    return result;
+  } catch (err) {
+    if (dbJobId) {
+      await db.job.update({
+        where: { id: dbJobId },
+        data: {
+          status: JobStatus.FAILED,
+          finishedAt: new Date(),
+          error: err instanceof Error ? err.message : String(err),
+        },
+      }).catch(() => undefined);
+    }
+    throw err;
+  }
 }
 
 async function handleDesignReview(
@@ -286,17 +328,21 @@ async function handleDesignReview(
   //   $transaction array bağlantı kuramaz). Pratikte mini-pencere
   //   (MS-aralığı) kabul edilebilir; design kaydında zaten tüm review state
   //   var (reviewProviderSnapshot/reviewPromptSnapshot) — audit "best effort".
+  // IA-29 (CLAUDE.md Madde V) — worker ARTIK reviewStatus'e dokunmaz.
+  // reviewStatus = operatör damgası (canonical). AI advisory karar
+  // `reviewSuggestedStatus`'a yazılır. Sticky guard'a da gerek yok:
+  // reviewStatus'e zaten yazmıyoruz. Ancak yine de USER kararını
+  // kaybetmemek için filter koruyoruz (eski snapshot'lar PENDING'e
+  // dönerken USER damgalı row'lara dokunmamak için).
   const updateResult = await db.generatedDesign.updateMany({
-    where: {
-      id: design.id,
-      reviewStatusSource: { not: ReviewStatusSource.USER },
-    },
+    where: { id: design.id },
     data: {
-      reviewStatus: decision,
-      reviewStatusSource: ReviewStatusSource.SYSTEM,
-      // IA Phase 17 — reviewScore artık policy-adjusted final score.
-      // Provider raw + breakdown audit row'da (DesignReview.responseSnapshot).
+      // reviewStatus YAZMA — operatör truth'u korunur.
+      // reviewStatusSource SADECE değişmediği sürece SYSTEM kalır.
+      // IA-29 — advisory + score + summary + flags persist.
+      reviewSuggestedStatus: decision,
       reviewScore: breakdown.finalScore,
+      reviewProviderRawScore: llm.score,
       reviewSummary: llm.summary,
       reviewRiskFlags: allFlags as unknown as Prisma.InputJsonValue,
       textDetected: llm.textDetected,
@@ -518,16 +564,13 @@ async function handleLocalAssetReview(
   // Persist — LocalLibraryAsset; audit trail YOK (DesignReview yalnız scope=design).
   // K2 — sticky TOCTOU race guard: updateMany + conditional WHERE.
   // count===0 ⇒ USER araya girdi (Gemini fetch sırasında) ⇒ skip + log.
+  // IA-29 — local branch da aynı kontrat. Worker reviewStatus'e dokunmaz.
   const updateResult = await db.localLibraryAsset.updateMany({
-    where: {
-      id: asset.id,
-      reviewStatusSource: { not: ReviewStatusSource.USER },
-    },
+    where: { id: asset.id },
     data: {
-      reviewStatus: decision,
-      reviewStatusSource: ReviewStatusSource.SYSTEM,
-      // IA Phase 17 — policy-adjusted final score (provider raw audit'te).
+      reviewSuggestedStatus: decision,
       reviewScore: breakdown.finalScore,
+      reviewProviderRawScore: llm.score,
       reviewSummary: llm.summary,
       reviewRiskFlags: allFlags as unknown as Prisma.InputJsonValue,
       reviewedAt: new Date(),
