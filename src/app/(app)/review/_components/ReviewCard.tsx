@@ -125,8 +125,8 @@ export function ReviewCard({ item }: Props) {
       tabIndex={0}
       aria-label={
         bulkModeActive
-          ? `Seçimi değiştir (${STATUS_LABEL[item.reviewStatus]})`
-          : `Review detayını aç: ${STATUS_LABEL[item.reviewStatus]}`
+          ? `Toggle selection (${STATUS_LABEL[item.reviewStatus]})`
+          : `Open review detail: ${STATUS_LABEL[item.reviewStatus]}`
       }
       onClick={handleCardClick}
       onKeyDown={(e) => {
@@ -146,7 +146,7 @@ export function ReviewCard({ item }: Props) {
       <div className="absolute left-3 top-3 z-10">
         <button
           type="button"
-          aria-label="Seç"
+          aria-label="Select"
           aria-pressed={isSelected}
           data-testid="review-card-checkbox"
           data-checked={isSelected || undefined}
@@ -181,7 +181,7 @@ export function ReviewCard({ item }: Props) {
             src={item.thumbnailUrl}
             // a11y (Ö-4): tasarım önizlemesi içerik niteliğinde — kart başlığı
             // ayrı text yok, ekran okuyucu için informative alt metin gerekli.
-            alt="Tasarım önizlemesi"
+            alt="Design preview"
             className="h-full w-full object-cover"
             loading="lazy"
           />
@@ -195,7 +195,7 @@ export function ReviewCard({ item }: Props) {
             data-testid="score-chip"
             // a11y (Ö-4): "87" tek başına anlamsız; ekran okuyucu için
             // semantik etiket. Görsel olarak chip rakamı korunuyor.
-            aria-label={`Kalite skoru: ${item.reviewScore}`}
+            aria-label={`Quality score: ${item.reviewScore}`}
             className="absolute right-2 top-2 rounded-sm bg-text px-2 py-0.5 font-mono text-xs text-bg"
           >
             {item.reviewScore}
@@ -234,10 +234,10 @@ export function ReviewCard({ item }: Props) {
                 className="rounded-sm bg-surface-muted px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta text-text-muted"
               >
                 {evalLifecycle === "pending"
-                  ? "değerlendirilmedi"
+                  ? "not yet scored"
                   : evalLifecycle === "scoring"
-                    ? "değerlendiriliyor"
-                    : "hata"}
+                    ? "scoring…"
+                    : "score error"}
               </span>
             );
           })()}
@@ -310,7 +310,7 @@ export function ReviewCard({ item }: Props) {
             data-testid="risk-flags"
             className="text-xs text-text-muted"
           >
-            {item.riskFlagCount} risk işareti
+            {item.riskFlagCount} risk {item.riskFlagCount === 1 ? "flag" : "flags"}
           </span>
         ) : null}
         {item.jobId ? (
@@ -329,12 +329,12 @@ export function ReviewCard({ item }: Props) {
                 if (e.key === " " || e.key === "Enter") e.stopPropagation();
               }}
               disabled={quickStart.isPending}
-              aria-label="Selection Studio'da aç"
-              title="Selection Studio'da aç"
+              aria-label="Open in Selection Studio"
+              title="Open in Selection Studio"
               className="flex items-center gap-1 rounded-md border border-border bg-transparent px-2 py-1 text-xs text-text-muted hover:border-border-strong hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Layers className="h-3 w-3" aria-hidden="true" />
-              {quickStart.isPending ? "Açılıyor..." : "Studio"}
+              {quickStart.isPending ? "Opening…" : "Studio"}
             </button>
           </div>
         ) : null}

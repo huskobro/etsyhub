@@ -1,5 +1,6 @@
 import { ReviewStatus } from "@prisma/client";
 import type { ReviewRiskFlag } from "@/providers/review/types";
+import type { ReviewCriterion } from "@/providers/review/criteria";
 
 /**
  * Phase 6 review karar kuralı (R8) — pure / deterministic / stateless.
@@ -52,5 +53,87 @@ export function decideReviewStatus(input: ReviewDecisionInput): ReviewStatus {
 
   // 4) 60–89 + risk yok — orta band, güvenli varsayılan NEEDS_REVIEW
   //    (yukarıdaki doc-block'ta gerekçe; LLM dalgalanması + USER override)
+  return ReviewStatus.NEEDS_REVIEW;
+}
+
+/**
+ * IA Phase 17 — explainable scoring math (CLAUDE.md Madde O).
+ *
+ * Final score = max(0, providerRaw − sum(criterion.weight) for each
+ * failed warning-level criterion) where:
+ *   • severity="info"     → never subtracts (informational only)
+ *   • severity="warning"  → subtracts up to weight (cumulative, clamped)
+ *   • severity="blocker"  → forces NEEDS_REVIEW regardless of score
+ *
+ * Provider raw score is persisted alongside the policy-adjusted score
+ * so audit + UI can show both. Admin pane sees the math live.
+ *
+ * Returns a breakdown object the worker writes to the audit row.
+ */
+export type ScoringBreakdown = {
+  /** Provider's raw 0–100 score. */
+  providerRaw: number;
+  /** Final policy-adjusted score (clamped to [0,100]). */
+  finalScore: number;
+  /** Contribution per criterion (positive = subtraction from
+   *  providerRaw because the check failed; 0 = passed or info-only). */
+  contributions: Array<{
+    id: string;
+    severity: "info" | "warning" | "blocker";
+    weight: number;
+    /** Was this criterion failed (risk flag matched)? */
+    failed: boolean;
+    /** Weight subtracted from the score (warning-level fails only). */
+    subtracted: number;
+  }>;
+  /** True when at least one blocker-severity criterion failed. */
+  hasBlockerFail: boolean;
+};
+
+export function computeScoringBreakdown(args: {
+  providerRaw: number;
+  riskFlagKinds: ReadonlyArray<string>;
+  criteria: ReadonlyArray<ReviewCriterion>;
+}): ScoringBreakdown {
+  const { providerRaw, riskFlagKinds, criteria } = args;
+  const failedSet = new Set(riskFlagKinds);
+  let subtotal = providerRaw;
+  let hasBlockerFail = false;
+  const contributions: ScoringBreakdown["contributions"] = [];
+  for (const c of criteria) {
+    const failed = failedSet.has(c.id);
+    let subtracted = 0;
+    if (failed) {
+      if (c.severity === "blocker") hasBlockerFail = true;
+      if (c.severity === "warning") subtracted = c.weight;
+    }
+    contributions.push({
+      id: c.id,
+      severity: c.severity,
+      weight: c.weight,
+      failed,
+      subtracted,
+    });
+    subtotal -= subtracted;
+  }
+  const finalScore = Math.max(0, Math.min(100, Math.round(subtotal)));
+  return { providerRaw, finalScore, contributions, hasBlockerFail };
+}
+
+/**
+ * Decision driven by the breakdown. Same axis as decideReviewStatus
+ * but also considers blocker fails — even a high score is forced
+ * to NEEDS_REVIEW when a blocker-severity criterion fails.
+ */
+export function decideReviewStatusFromBreakdown(
+  breakdown: ScoringBreakdown,
+): ReviewStatus {
+  if (breakdown.hasBlockerFail) return ReviewStatus.NEEDS_REVIEW;
+  if (breakdown.finalScore < REVIEW_THRESHOLD_LOW) {
+    return ReviewStatus.NEEDS_REVIEW;
+  }
+  if (breakdown.finalScore >= REVIEW_THRESHOLD_HIGH) {
+    return ReviewStatus.APPROVED;
+  }
   return ReviewStatus.NEEDS_REVIEW;
 }

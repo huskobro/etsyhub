@@ -14,7 +14,7 @@
 
 "use client";
 
-import { Check as CheckIcon, AlertTriangle, Hourglass } from "lucide-react";
+import { Check as CheckIcon, AlertTriangle, Hourglass, MinusCircle } from "lucide-react";
 import { SectionTitle } from "@/features/review/components/ReviewWorkspaceShell";
 import {
   type Evaluation,
@@ -37,9 +37,13 @@ export function EvaluationPanel({
     evaluation;
   const caption = lifecycleCaption(lifecycle);
 
-  // Counts for the section header chip.
-  const failedCount = checks.filter((c) => !c.passed).length;
-  const passedCount = checks.length - failedCount;
+  // Counts for the section header chip — neutral checks are excluded
+  // from the "X/Y passed" denominator so the operator sees the
+  // applicable check ratio.
+  const applicable = checks.filter((c) => c.state !== "neutral");
+  const failedCount = applicable.filter((c) => c.state === "failed").length;
+  const passedCount = applicable.filter((c) => c.state === "passed").length;
+  const neutralCount = checks.length - applicable.length;
 
   return (
     <section data-testid="evaluation-panel">
@@ -87,41 +91,66 @@ export function EvaluationPanel({
                 className="font-mono text-[10.5px] uppercase tracking-meta text-white/40"
                 data-testid="evaluation-checks-count"
               >
-                {passedCount}/{checks.length} passed
+                {passedCount}/{applicable.length} passed
+                {neutralCount > 0 ? ` · ${neutralCount} n/a` : ""}
               </span>
             </div>
             <ul className="mt-2 space-y-1.5">
-              {checks.map((c) => (
-                <li
-                  key={c.id}
-                  className={cn(
-                    "flex items-start gap-2 text-xs",
-                    c.passed ? "text-white/70" : "text-amber-200",
-                  )}
-                  data-testid="evaluation-check"
-                  data-passed={c.passed || undefined}
-                >
-                  {c.passed ? (
-                    <CheckIcon
-                      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400"
-                      aria-hidden
-                    />
-                  ) : (
-                    <AlertTriangle
-                      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400"
-                      aria-hidden
-                    />
-                  )}
-                  <span>
-                    {c.label}
-                    {!c.passed && c.reason ? (
-                      <span className="block text-[11px] text-white/50">
-                        {c.reason}
-                      </span>
-                    ) : null}
-                  </span>
-                </li>
-              ))}
+              {checks.map((c) => {
+                const tone =
+                  c.state === "failed"
+                    ? "text-amber-200"
+                    : c.state === "neutral"
+                      ? "text-white/40"
+                      : "text-white/70";
+                return (
+                  <li
+                    key={c.id}
+                    className={cn("flex items-start gap-2 text-xs", tone)}
+                    data-testid="evaluation-check"
+                    data-state={c.state}
+                    data-passed={c.state === "passed" || undefined}
+                  >
+                    {c.state === "passed" ? (
+                      <CheckIcon
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400"
+                        aria-hidden
+                      />
+                    ) : c.state === "failed" ? (
+                      <AlertTriangle
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400"
+                        aria-hidden
+                      />
+                    ) : (
+                      <MinusCircle
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/30"
+                        aria-hidden
+                      />
+                    )}
+                    <span>
+                      {c.label}
+                      {c.state === "failed" && c.reason ? (
+                        <span className="block text-[11px] text-white/50">
+                          {c.reason}
+                        </span>
+                      ) : null}
+                      {c.state === "neutral" && c.neutralReason ? (
+                        <span className="block text-[11px] text-white/40">
+                          {c.neutralReason}
+                        </span>
+                      ) : null}
+                      {c.severity && c.weight !== undefined && c.state !== "neutral" ? (
+                        <span className="ml-1.5 inline-flex items-center gap-1 align-baseline font-mono text-[10px] uppercase tracking-meta text-white/30">
+                          {c.severity}
+                          {c.severity !== "info" && c.weight > 0
+                            ? ` · w${c.weight}`
+                            : ""}
+                        </span>
+                      ) : null}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
 
@@ -153,12 +182,12 @@ export function EvaluationPanel({
           data-testid="evaluation-empty-copy"
         >
           {lifecycle === "pending"
-            ? "Bu görsel henüz sistem tarafından değerlendirilmedi. Provider tetiklendiğinde sonuç burada görünür."
+            ? "Waiting for AI review — once the provider runs, the result appears here."
             : lifecycle === "scoring"
-              ? "Provider yanıtı bekleniyor — birkaç saniye içinde güncellenir."
+              ? "Provider response in flight — refresh in a few seconds."
               : lifecycle === "error"
-                ? "Sistem değerlendirmesi başarısız oldu. Yeniden tetiklemek için Settings → Review provider durumunu kontrol edin."
-                : "Bu görsel için sistem değerlendirmesi uygulanabilir değil."}
+                ? "Evaluation failed. Check Settings → Review for provider status."
+                : "Evaluation is not applicable for this asset."}
         </p>
       )}
     </section>

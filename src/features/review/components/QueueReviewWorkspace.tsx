@@ -283,7 +283,7 @@ export function QueueReviewWorkspace({
       setErrorMessage(null);
     },
     onError: () =>
-      setErrorMessage("İşlem başarısız oldu — birkaç saniye sonra tekrar deneyin."),
+      setErrorMessage("Action failed — try again in a few seconds."),
   });
 
   const resetMutation = useMutation({
@@ -302,7 +302,7 @@ export function QueueReviewWorkspace({
       setErrorMessage(null);
     },
     onError: () =>
-      setErrorMessage("Reset başarısız oldu — birkaç saniye sonra tekrar deneyin."),
+      setErrorMessage("Reset failed — try again in a few seconds."),
   });
 
   // ── Loading / error ────────────────────────────────────────────────
@@ -328,12 +328,12 @@ export function QueueReviewWorkspace({
         data-state={error ? "error" : "missing"}
       >
         <h1 className="text-2xl font-semibold">
-          {error ? "Review yüklenemedi" : "Kayıt bulunamadı"}
+          {error ? "Couldn't load review" : "Item not found"}
         </h1>
         <p className="max-w-md text-center text-sm text-white/50">
           {error
-            ? "Sayfayı yenileyin veya birkaç saniye sonra tekrar deneyin."
-            : "Bu öğe silinmiş, başka bir filtrede kalmış ya da farklı bir sayfada olabilir."}
+            ? "Refresh the page or try again in a few seconds."
+            : "This item may be deleted, hidden by a filter, or on a different page."}
         </p>
         <button
           type="button"
@@ -436,7 +436,7 @@ export function QueueReviewWorkspace({
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-sm text-white/40">
-            Önizleme yok
+            No preview
           </div>
         )
       }
@@ -452,16 +452,23 @@ export function QueueReviewWorkspace({
 // ────────────────────────────────────────────────────────────────────────
 
 function QueueInfoRail({ item }: { item: ReviewQueueItem }) {
-  // IA Phase 16 — kaynak-bağımsız Evaluation contract + criteria-aware
-  // checklist. ProductType bağlamı kaynak adapter'dan geliyor (AI'da
-  // source.productTypeKey; Local'de source.folderName ile direkt
-  // bağ yok — fallback bağlamı genel "wall_art"). Bağlam aktif
-  // kriter blokları üzerinden checklist'i daraltır (CLAUDE.md
-  // Madde O — bağlama uymayan bloklar gösterilmez).
+  // IA Phase 17 — full applicability context. Product type, format,
+  // alpha state, and source kind feed the criteria evaluator so
+  // every check renders with the right state (passed / failed /
+  // neutral). Builtin criteria source for now; admin-resolved
+  // criteria flow through worker-side compose, UI side keeps the
+  // builtin labels which are pre-translated to English.
   const productType =
     item.source?.kind === "design"
       ? item.source.productTypeKey ?? "wall_art"
       : "wall_art";
+  const format = item.source?.mimeType
+    ? item.source.mimeType.replace("image/", "").toLowerCase()
+    : "png";
+  const hasAlpha = item.source?.hasAlpha ?? null;
+  const sourceKind: "design" | "local-library" =
+    item.source?.kind === "local-library" ? "local-library" : "design";
+
   const evaluation = buildEvaluation({
     reviewedAt: item.reviewedAt,
     reviewScore: item.reviewScore,
@@ -469,14 +476,19 @@ function QueueInfoRail({ item }: { item: ReviewQueueItem }) {
     reviewProviderSnapshot: item.reviewProviderSnapshot,
     riskFlags: item.riskFlags,
     operatorOverride: item.reviewStatusSource === "USER",
-    criteriaContext: { productType },
+    composeContext: {
+      productType,
+      format,
+      hasAlpha,
+      sourceKind,
+      transformsApplied: [],
+    },
   });
   return (
     <>
-      {/* Source-specific metadata (file path / DPI / variation) ayrı
-       *   tutulur; Evaluation onun altında. AI ve Local için section
-       *   sırası ortak: source meta → evaluation → operator override
-       *   hint. */}
+      {/* Source-specific metadata sits above evaluation; AI + Local
+       *   share the unified info-rail order: source meta → evaluation →
+       *   operator override note. */}
       {item.source?.kind === "local-library" ? (
         <LocalSourceSection source={item.source} />
       ) : item.source?.kind === "design" ? (
@@ -492,8 +504,8 @@ function QueueInfoRail({ item }: { item: ReviewQueueItem }) {
         <section data-testid="info-rail-operator-override">
           <SectionTitle>Operator override</SectionTitle>
           <p className="mt-2 text-xs leading-relaxed text-white/65">
-            Bu kararı kullanıcı verdi; sistem değerlendirmesi referans
-            olarak yukarıda kalır.
+            This decision was made by the operator; the system
+            evaluation above stays as reference.
           </p>
         </section>
       ) : null}

@@ -26,7 +26,24 @@
 
 ## Dil Kuralı
 
-Kullanıcıyla tüm iletişim Türkçe yapılacak. Claude Code açıklamalarını, planlarını, durum güncellemelerini ve final yanıtlarını Türkçe yazacak. Kod, dosya adları, teknik terimler, API alanları ve değişken isimleri İngilizce kalabilir; fakat kullanıcıya dönük tüm anlatım Türkçe olmalıdır.
+Claude Code ↔ kullanıcı iletişimi Türkçe yapılır (açıklamalar, planlar,
+durum güncellemeleri, final yanıtlar). Kod, dosya adları, teknik terimler,
+API alanları ve değişken isimleri İngilizce kalır.
+
+Ancak **ürün UI'ı İngilizce standardize**dir: kullanıcıya görünen tüm
+metinler (button label, badge, lifecycle caption, criterion label,
+admin pane heading, error toast, empty state, completion card, vb.)
+tek dilden — İngilizceden — beslenir. UI içinde TR/EN karışık
+metin **kabul edilmez**: aynı sayfada İngilizce başlık altında
+Türkçe açıklama, ya da İngilizce action button yanında Türkçe
+caption gibi durumlar regresyondur.
+
+Localization mimarisi: İngilizce metinler kod-level sabit veya
+kaynak adı altında string key olarak kalır; ileride i18n katmanı
+(`@/lib/i18n` ya da next-intl benzeri) eklendiğinde key bazında
+ek diller eklenir. Bu turun standartı sadece İngilizce'dir;
+TR'ye geri dönüş veya başka dil eklenmesi i18n katmanı
+açılmadan yapılmaz.
 
 ## Kaynaklar
 
@@ -1455,25 +1472,41 @@ nedenle:
 Sistem genelinde kullanılan master promptlar **tek parça sabit
 metin** olmamalıdır. Bunun yerine:
 
-- Master prompt, ayrı **prompt blokları**ndan compose edilir.
-- Her blok eklenebilir, düzenlenebilir, aktif/pasif yapılabilir,
-  gerekirse stage / source / product type bağlamına hedeflenebilir.
-- Compose edilen final master prompt **yalnız aktif ve ilgili
-  blokları** içerir; pasif veya bağlama uymayan bloklar prompttan
-  çıkarılır.
-- Kriter bazlı değerlendirme (review checklist gibi) yapan
-  sistemlerde her **kriter kendi prompt bloğu**dur; check sözlüğü
-  bu bloklardan türetilir (drift koruması — taksonomi tek kaynaktan).
-- Compose edilmiş prompt her job'da snapshot'lanır (audit ve
-  reproducibility için); admin compose mantığını izleyebilir.
+- Master prompt = **core (admin-editable spine)** + **active applicable
+  blocks**. Compose her job'da bağlama göre yeniden hesaplanır;
+  pasif veya bağlama uymayan bloklar prompttan çıkarılır.
+- Her blok yalnızca prompt metni değil, kendi **config payload'ı**dır:
+  key, label, description, prompt block text, weight (score
+  contribution), severity / fail behavior, applicability rules
+  (product type / format / source type / image state / transform
+  history), active flag, version.
+- Applicability rules **kompozit** (çoklu boyutlar AND'lenir): bir
+  kriter sadece "şu product type'larda" değil, gerekirse "şu
+  format'larda" + "şu image state'inde" + "şu transform sonrası"
+  açılır. Aynı asset farklı yaşam evrelerinde farklı checklist
+  görür (örn. JPEG'in transparent kuralı applicable değildir;
+  background remove sonrası applicable olur).
+- Block-driven scoring: provider raw score ya doğrudan ya da
+  ağırlıklı kriter geçişlerinden türev olarak persist edilir;
+  kriter weight'leri admin tarafından görünür ve ayarlanabilir.
+  Final skor matematiği (additive / weighted / binary fail gate)
+  **kapalı kutu olamaz** — admin paneline açıklanır.
+- Compose edilmiş prompt + block listesi + selected block
+  signature her job'da snapshot'lanır (audit / drift detection /
+  reproducibility).
+- Admin paneli iki ayrı yüzey gösterir: (1) **core master prompt
+  editor** — ana çatı düzenlenebilir; (2) **block manager** — CRUD
+  + active toggle + weight + applicability rules + final compose
+  preview. Operatör/admin "neden bu skor?" sorusuna **prompt + block
+  + weight + applicability** dörtlüsü üzerinden cevap bulabilir.
 - Bu prensip review ile sınırlı değildir: ileride listing copy,
   metadata, recipe instructions vb. tüm prompt-driven sistemler
   aynı block-compose modeline geçer. Tek parça hardcoded prompt
   string yeni feature için kabul edilmez.
-- Geçiş modeli: yeni feature day-1'den block-compose ile çıkar;
-  legacy hardcoded promptlar canonical compose'a alınana kadar
-  bridge olarak işaretlenir, "ileride taşırız" yorumu yeterli
-  değildir — replacement path açıldığı an taşınır.
+- Geçiş modeli: builtin bloklar kod-level kalır, settings store'da
+  kullanıcı override katmanı vardır; admin override yokken
+  builtin'ler etkili. UI yazma yüzeyi her builtin için override
+  oluşturup updates yazar (delete override = revert to builtin).
 
 ## Library / Selections / Products — Sınır Invariant'ları
 

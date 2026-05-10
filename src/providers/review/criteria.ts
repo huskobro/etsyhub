@@ -25,177 +25,389 @@
 
 import type { ReviewRiskFlagType } from "@/providers/review/types";
 
+/**
+ * Severity / fail behavior — CLAUDE.md Madde O. Bir kriter geçmediğinde
+ * ne olur:
+ *   • "info"     — uyarı, skor düşmez (text_detected gibi)
+ *   • "warning"  — skor weight kadar düşer
+ *   • "blocker"  — fail durumunda decision NEEDS_REVIEW'a düşürülür
+ *                   (binary fail gate)
+ * Builtin defaults review prompt'u ile uyumlu; admin override ile
+ * kriter bazında değişebilir.
+ */
+export type CriterionSeverity = "info" | "warning" | "blocker";
+
+/**
+ * Image transparency state — applicability rule key. asset.hasAlpha
+ * sinyalinden türev; null ise "any" olarak değerlendirilir.
+ */
+export type ImageTransparencyState = "with_alpha" | "no_alpha";
+
+/**
+ * Applicability rules — kompozit AND filter. Tüm boyutlar **null
+ * ⇒ "any"** semantiği taşır; en az bir kuralın eşleşmediği context
+ * için kriter not-applicable döner.
+ */
+export type CriterionApplicability = {
+  /** Ürün-tip listesi; null ⇒ tüm product type'lar. */
+  productTypes: ReadonlyArray<string> | null;
+  /** Image format (mime sub-type, lowercase): "png" | "webp" | "jpeg"
+   *  | "jpg" | "gif" | "tiff". null ⇒ tüm format'lar. */
+  formats: ReadonlyArray<string> | null;
+  /** Image transparency state — `no_alpha` ürünlerde transparent
+   *  kuralı applicable değildir. null ⇒ farketmez. */
+  transparency: ImageTransparencyState | null;
+  /** Kaynak tip — "design" (AI variation), "local-library", null ⇒ ikisi. */
+  sourceKinds: ReadonlyArray<"design" | "local-library"> | null;
+  /** Yalnız bu transform'lardan biri uygulanmışsa applicable. Boş
+   *  array ⇒ transform şartı yok (default builtin). */
+  requiresAnyTransform: ReadonlyArray<string> | null;
+};
+
 export type ReviewCriterion = {
   /** Risk flag taksonomisi ile bire bir. UI checklist sözlüğü ve
    *  provider response schema bu id'yi kullanır. */
   id: ReviewRiskFlagType;
-  /** Operatör görünür kısa etiket (TR). EvaluationPanel checklist'i
-   *  bu label'i okur. */
+  /** Operator-facing English label. EvaluationPanel checklist
+   *  reads this directly. */
   label: string;
-  /** Master prompt'a giren talimat satırı (TR). Provider bu blokları
-   *  okur ve karşılığında riskFlag çıkarır. */
+  /** Operator-facing English description (admin pane'de detay). */
+  description: string;
+  /** Master prompt block — provider reads this English instruction. */
   blockText: string;
-  /** Aktif mi — pasif kriterler prompttan çıkarılır. Builtin default
-   *  true; admin override ile false yapılabilir. */
+  /** Active flag — inactive blocks excluded from compose & UI. */
   active: boolean;
-  /** Ürün-tip kapsamı; null ⇒ tüm ürünlerde geçerli. Ör. transparent
-   *  background kuralı yalnız clipart/sticker/transparent_png için.
-   *  Compose context.productType match etmiyorsa blok atlanır. */
-  productTypes: ReadonlyArray<string> | null;
+  /** 0–100 weight (score contribution upper bound). Failed
+   *  warning-level criterion subtracts up to this from a 100 base
+   *  (cumulative; clamped to ≥0). Blocker fail → NEEDS_REVIEW
+   *  regardless of weight. Info-level fails do not subtract. */
+  weight: number;
+  /** Severity / fail behavior. */
+  severity: CriterionSeverity;
+  /** Composite applicability filter. */
+  applicability: CriterionApplicability;
   /** Builtin sürüm — değişikliği prompt versiyonunu etkiler. */
   version: string;
+};
+
+/** Default applicability — applies to every context. */
+const APPLY_TO_ALL: CriterionApplicability = {
+  productTypes: null,
+  formats: null,
+  transparency: null,
+  sourceKinds: null,
+  requiresAnyTransform: null,
+};
+
+/** Transparency-target applicability. Active only when productType is
+ *  transparent-target AND image format/state supports alpha. JPEG
+ *  is excluded (no alpha channel possible) — for JPEG these criteria
+ *  show as not-applicable in UI. */
+const APPLY_TO_TRANSPARENT_TARGET: CriterionApplicability = {
+  productTypes: ["clipart", "sticker", "transparent_png"],
+  formats: ["png", "webp", "tiff"],
+  transparency: null,
+  sourceKinds: null,
+  requiresAnyTransform: null,
 };
 
 export const BUILTIN_CRITERIA: ReadonlyArray<ReviewCriterion> = [
   {
     id: "watermark_detected",
-    label: "Watermark / damga yok",
+    label: "No watermark or stamp",
+    description:
+      "Image must not contain semi-transparent signatures or watermarks.",
     blockText:
-      "watermark_detected: görselde yarı saydam imza/watermark izi var",
+      "watermark_detected: a translucent signature or watermark trace is visible.",
     active: true,
-    productTypes: null,
-    version: "1.0",
+    weight: 30,
+    severity: "blocker",
+    applicability: APPLY_TO_ALL,
+    version: "1.1",
   },
   {
     id: "signature_detected",
-    label: "İmza yok",
+    label: "No artist signature",
+    description:
+      "A handwritten signature or artist mark would conflict with commercial use.",
     blockText:
-      "signature_detected: sanatçı imzası veya el yazısı görünüyor",
+      "signature_detected: an artist signature or handwriting is visible.",
     active: true,
-    productTypes: null,
-    version: "1.0",
+    weight: 20,
+    severity: "blocker",
+    applicability: APPLY_TO_ALL,
+    version: "1.1",
   },
   {
     id: "visible_logo_detected",
-    label: "Görünür marka logosu yok",
+    label: "No visible brand logo",
+    description:
+      "Branded logos pose a trademark risk for digital downloads.",
     blockText:
-      "visible_logo_detected: marka/şirket logosu görünüyor",
+      "visible_logo_detected: a brand or company logo is visible.",
     active: true,
-    productTypes: null,
-    version: "1.0",
+    weight: 25,
+    severity: "blocker",
+    applicability: APPLY_TO_ALL,
+    version: "1.1",
   },
   {
     id: "celebrity_face_detected",
-    label: "Tanınmış yüz yok",
+    label: "No recognizable face",
+    description:
+      "A celebrity face creates IP and right-of-publicity risk.",
     blockText:
-      "celebrity_face_detected: tanınmış bir ünlünün yüzü var",
+      "celebrity_face_detected: a recognizable celebrity face is present.",
     active: true,
-    productTypes: null,
-    version: "1.0",
+    weight: 25,
+    severity: "blocker",
+    applicability: APPLY_TO_ALL,
+    version: "1.1",
   },
   {
     id: "no_alpha_channel",
-    label: "Alfa kanalı uygun",
+    label: "Alpha channel suitable",
+    description:
+      "Transparent target products must ship with a real alpha channel.",
     blockText:
-      "no_alpha_channel: transparent ürün hedefi olmasına rağmen alfa kanalı yok",
+      "no_alpha_channel: the image lacks an alpha channel even though the target product is transparent.",
     active: true,
-    // Yalnız transparent ürünlerde anlamlı; aksi halde compose dışı.
-    productTypes: ["clipart", "sticker", "transparent_png"],
-    version: "1.0",
+    weight: 20,
+    severity: "warning",
+    applicability: APPLY_TO_TRANSPARENT_TARGET,
+    version: "1.1",
   },
   {
     id: "transparent_edge_artifact",
-    label: "Transparent kenar temiz",
+    label: "Clean transparent edges",
+    description:
+      "Edges should not show jagged remnants from poor masking.",
     blockText:
-      "transparent_edge_artifact: transparent görselde kenar kalıntıları var",
+      "transparent_edge_artifact: the transparent image has edge artefacts.",
     active: true,
-    productTypes: ["clipart", "sticker", "transparent_png"],
-    version: "1.0",
+    weight: 15,
+    severity: "warning",
+    applicability: APPLY_TO_TRANSPARENT_TARGET,
+    version: "1.1",
   },
   {
     id: "text_detected",
-    label: "Yazı içermiyor",
+    label: "No embedded text",
+    description:
+      "Embedded text limits resale flexibility and may be off-policy.",
     blockText:
-      "text_detected: görselde yazı var (info amaçlı, risk olmayabilir)",
+      "text_detected: text or words appear in the image (informational; not always a risk).",
     active: true,
-    productTypes: null,
-    version: "1.0",
+    weight: 10,
+    severity: "warning",
+    applicability: APPLY_TO_ALL,
+    version: "1.1",
   },
   {
     id: "gibberish_text_detected",
-    label: "Anlamsız yazı yok",
+    label: "No gibberish text",
+    description:
+      "AI-generated images often contain malformed letters; these must not ship.",
     blockText:
-      "gibberish_text_detected: görseldeki yazı anlamsız/bozuk",
+      "gibberish_text_detected: text in the image is malformed or unreadable.",
     active: true,
-    productTypes: null,
-    version: "1.0",
+    weight: 25,
+    severity: "blocker",
+    applicability: APPLY_TO_ALL,
+    version: "1.1",
   },
 ];
 
 /**
- * Compose context — bağlama göre filtreleme.
+ * Compose context — kompozit applicability filter girdisi. Caller
+ * her boyutu açıkça doldurur; null/undefined kullanmaz (UI/worker
+ * her ikisi de buna güvenir).
  */
 export type ReviewComposeContext = {
   productType: string;
-  /** Transparent target (alpha-checks ile uyumlu). Builtin'lerde
-   *  zaten productTypes filter'ı bu sinyalle eşleniyor; explicit
-   *  alan defansif. */
-  isTransparentTarget: boolean;
+  /** Image MIME sub-type, lowercase: "png" | "webp" | "jpeg" | "jpg"
+   *  | "gif" | "tiff". `image/png` → `png`. */
+  format: string;
+  /** Sharp probe sonucu — alpha kanalı var mı. null = bilinmiyor
+   *  (legacy row); applicability transparency koşulu varsa bu
+   *  bilinmediğinde "uygulanabilir" sayılır. */
+  hasAlpha: boolean | null;
+  /** Source kind — design (AI variation) / local-library. */
+  sourceKind: "design" | "local-library";
+  /** Asset üzerinde uygulanmış transform listesi (background_removed,
+   *  cropped, vb.). invalidation helper sözlüğüyle aynı sözcükler. */
+  transformsApplied: ReadonlyArray<string>;
 };
 
 /**
- * Bağlama uyan aktif kriterlerin listesi. Admin UI / DB override
- * gelene kadar builtin'lerden filtre.
+ * Bir kriter context'e uygulanabilir mi? CLAUDE.md Madde O — kompozit
+ * AND filter. Uymazsa kriter "not-applicable" olarak işaretlenir
+ * (compose dışı + UI neutral state).
+ */
+export function isCriterionApplicable(
+  c: ReviewCriterion,
+  ctx: ReviewComposeContext,
+): boolean {
+  if (!c.active) return false;
+  const a = c.applicability;
+  if (a.productTypes !== null && !a.productTypes.includes(ctx.productType)) {
+    return false;
+  }
+  if (a.formats !== null && !a.formats.includes(ctx.format)) {
+    return false;
+  }
+  if (a.transparency !== null) {
+    if (ctx.hasAlpha === null) {
+      // Bilinmeyen alfa — defansif: kuralı uygulanabilir tut. Sharp
+      // probe legacy row'lar için null; UI neutral state göstermek
+      // yerine kontrol etmeyi tercih eder.
+    } else {
+      const want = a.transparency === "with_alpha" ? true : false;
+      if (ctx.hasAlpha !== want) return false;
+    }
+  }
+  if (a.sourceKinds !== null && !a.sourceKinds.includes(ctx.sourceKind)) {
+    return false;
+  }
+  if (a.requiresAnyTransform !== null && a.requiresAnyTransform.length > 0) {
+    const matches = a.requiresAnyTransform.some((t) =>
+      ctx.transformsApplied.includes(t),
+    );
+    if (!matches) return false;
+  }
+  return true;
+}
+
+/**
+ * Aktif + applicable kriter listesi. Compose ve UI checklist aynı
+ * kaynaktan beslenir.
  */
 export function selectActiveCriteria(
   ctx: ReviewComposeContext,
   source: ReadonlyArray<ReviewCriterion> = BUILTIN_CRITERIA,
 ): ReviewCriterion[] {
-  return source.filter((c) => {
-    if (!c.active) return false;
-    if (c.productTypes === null) return true;
-    return c.productTypes.includes(ctx.productType);
-  });
+  return source.filter((c) => isCriterionApplicable(c, ctx));
 }
 
 /**
- * Final master prompt — block compose. Worker bu çıktıyı provider'a
- * verir, snapshot'lar audit alır. Pasif/bağlam dışı bloklar
- * prompta girmez (CLAUDE.md Madde O).
+ * Tüm kriterleri (active veya not-applicable) UI-ready bir
+ * "applicability decision" ile döner. UI bu listeyi okur:
+ * applicable === true ⇒ checklist satırı; false + active ⇒ neutral
+ * state ("Not applicable for this asset"); active === false ⇒ hiç
+ * gösterilmez.
+ */
+export function evaluateAllCriteria(
+  ctx: ReviewComposeContext,
+  source: ReadonlyArray<ReviewCriterion> = BUILTIN_CRITERIA,
+): Array<{ criterion: ReviewCriterion; applicable: boolean }> {
+  return source
+    .filter((c) => c.active)
+    .map((c) => ({ criterion: c, applicable: isCriterionApplicable(c, ctx) }));
+}
+
+/**
+ * Default core master prompt — admin can override the spine via
+ * settings (key="reviewMasterPrompt"). Two placeholders:
+ *
+ *   {{CRITERIA_BLOCK_LIST}} — replaced with active applicable
+ *                              criterion block lines
+ *
+ * The placeholder discipline keeps the JSON schema invariant outside
+ * the editable area; admins edit only the spine, never the response
+ * contract. Worker validates that {{CRITERIA_BLOCK_LIST}} exists in
+ * the override; missing placeholder → fallback to builtin core.
+ */
+export const BUILTIN_CORE_MASTER_PROMPT = `You are a quality reviewer for Etsy print-on-demand digital downloads.
+For a single image, return ONLY the following JSON shape:
+
+{
+  "score": integer 0-100 (overall quality),
+  "textDetected": boolean (any words in the image),
+  "gibberishDetected": boolean (text is malformed),
+  "riskFlags": [{ "kind": <one of the listed kinds>, "confidence": 0-1, "reason": short note }],
+  "summary": single English sentence
+}
+
+Risk flag kinds — choose only from this list:
+{{CRITERIA_BLOCK_LIST}}
+
+Strict rules:
+- Use the JSON keys exactly: "score", "textDetected", "gibberishDetected", "riskFlags", "kind", "confidence", "reason", "summary".
+- "reason" and "summary" values may be plain English prose; everything else stays as listed.
+- If no risks, return riskFlags = [].
+- Output JSON only — no prose outside the object.`;
+
+const CRITERIA_PLACEHOLDER = "{{CRITERIA_BLOCK_LIST}}";
+
+/**
+ * Compose options — admin override hook.
+ *   • coreMasterPrompt: alternative spine (editable). Validated:
+ *     must contain {{CRITERIA_BLOCK_LIST}}; otherwise builtin core
+ *     is used and a `coreOverrideRejected` flag returns true.
+ *   • criteria: alternative criterion list (admin override stored
+ *     by id; worker merges builtin + override before passing here).
+ */
+export type ReviewComposeOptions = {
+  coreMasterPrompt?: string;
+  criteria?: ReadonlyArray<ReviewCriterion>;
+};
+
+export type ReviewComposeResult = {
+  systemPrompt: string;
+  /** Active applicable criterion ids (= UI checklist). */
+  selectedCriterionIds: ReviewRiskFlagType[];
+  /** Stable signature (id@version|... over selected criteria) used for
+   *  snapshot audit. UI does not show this raw — admin pane shows it
+   *  as "Active block fingerprint" under Developer / Audit details. */
+  fingerprint: string;
+  /** True when the admin core override was rejected (placeholder
+   *  missing). Worker surfaces this in the audit response so admin
+   *  pane can warn. */
+  coreOverrideRejected: boolean;
+};
+
+/**
+ * Final master prompt — block compose. Worker calls this; output
+ * snapshot'lanır. Pasif/bağlam dışı bloklar prompta girmez.
  */
 export function composeReviewSystemPrompt(
   ctx: ReviewComposeContext,
-  source: ReadonlyArray<ReviewCriterion> = BUILTIN_CRITERIA,
-): { systemPrompt: string; selectedCriterionIds: ReviewRiskFlagType[] } {
+  options: ReviewComposeOptions = {},
+): ReviewComposeResult {
+  const source = options.criteria ?? BUILTIN_CRITERIA;
   const selected = selectActiveCriteria(ctx, source);
   const blockLines = selected.map((c) => `- ${c.blockText}`).join("\n");
 
-  const systemPrompt = `Sen bir Etsy print-on-demand görsel kalite denetçisisin.
-Verilen tek görsel için yalnızca aşağıdaki JSON şemasında dönüt ver:
+  let core = BUILTIN_CORE_MASTER_PROMPT;
+  let coreOverrideRejected = false;
+  if (options.coreMasterPrompt !== undefined) {
+    if (options.coreMasterPrompt.includes(CRITERIA_PLACEHOLDER)) {
+      core = options.coreMasterPrompt;
+    } else {
+      coreOverrideRejected = true;
+    }
+  }
 
-{
-  "score": 0-100 arası tam sayı (genel kalite),
-  "textDetected": boolean (görselde herhangi bir yazı/kelime var mı),
-  "gibberishDetected": boolean (var olan yazı anlamsız/hatalı mı),
-  "riskFlags": [{ "kind": <aşağıdaki sabit kind'lardan biri>, "confidence": 0-1, "reason": kısa açıklama }],
-  "summary": kısa cümle
-}
-
-Sabit risk flag kind'ları (yalnız bu listeden seç):
-${blockLines}
-
-KESİN KURAL: JSON anahtarlarını ASLA Türkçeleştirme. Anahtar isimleri tam olarak şu olmalı:
-"score", "textDetected", "gibberishDetected", "riskFlags", "kind", "confidence", "reason", "summary".
-Sadece "reason" ve "summary" değerleri Türkçe yazılabilir; her şey İngilizce kalır.
-KURAL: Hiçbir risk yoksa riskFlags = []. JSON dışında metin yazma.`;
+  const systemPrompt = core.replace(CRITERIA_PLACEHOLDER, blockLines);
+  const fingerprint = selected
+    .map((c) => `${c.id}@${c.version}`)
+    .join("|");
 
   return {
     systemPrompt,
     selectedCriterionIds: selected.map((c) => c.id),
+    fingerprint,
+    coreOverrideRejected,
   };
 }
 
 /**
- * Compose surrogate version — builtin sürümlerin hash'i + aktif
- * id listesi. PROMPT_VERSION snapshot'lanırken bu surrogate'i de
- * audit'e ekleyebiliriz; ileride DB tabanlı override geldiğinde
- * compose deterministically değişir, snapshot drift'i tespit edilir.
+ * Backwards-compat alias — early IA-15/16 callers used this name.
+ * Returns just the fingerprint string (= old "compose token").
  */
 export function composeVersionToken(
   ctx: ReviewComposeContext,
   source: ReadonlyArray<ReviewCriterion> = BUILTIN_CRITERIA,
 ): string {
-  const selected = selectActiveCriteria(ctx, source);
-  const parts = selected.map((c) => `${c.id}@${c.version}`);
-  return parts.join("|");
+  return composeReviewSystemPrompt(ctx, { criteria: source }).fingerprint;
 }

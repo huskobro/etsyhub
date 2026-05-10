@@ -4,17 +4,19 @@ import { db } from "@/server/db";
 import { logger } from "@/lib/logger";
 import { getReviewProvider } from "@/providers/review/registry";
 import { runAlphaChecks } from "@/server/services/review/alpha-checks";
-import { decideReviewStatus } from "@/server/services/review/decision";
+import {
+  computeScoringBreakdown,
+  decideReviewStatusFromBreakdown,
+} from "@/server/services/review/decision";
 import {
   applyReviewDecisionWithSticky,
   isAlreadyScoredBySystem,
 } from "@/server/services/review/sticky";
 import { buildProviderSnapshot } from "@/providers/review/snapshot";
 import { REVIEW_PROMPT_VERSION } from "@/providers/review/prompt";
-import {
-  composeReviewSystemPrompt,
-  composeVersionToken,
-} from "@/providers/review/criteria";
+import { composeReviewSystemPrompt } from "@/providers/review/criteria";
+import { getResolvedReviewConfig } from "@/server/services/settings/review.service";
+import { readRiskFlagKind } from "@/providers/review/types";
 import type { ReviewRiskFlag, ImageInput } from "@/providers/review/types";
 import { getStorage } from "@/providers/storage";
 import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
@@ -205,25 +207,38 @@ async function handleDesignReview(
   // Merge alpha + LLM flags
   const allFlags: ReviewRiskFlag[] = [...alphaFlags, ...llm.riskFlags];
 
-  // Decision (Task 6 deterministic)
-  const decision = decideReviewStatus({ score: llm.score, riskFlags: allFlags });
+  // IA Phase 17 (Madde O) — admin-resolved review config drives compose
+  // and scoring math. coreMasterPrompt override + per-criterion override
+  // (label / weight / severity / applicability) merge done in
+  // getResolvedReviewConfig.
+  const reviewConfig = await getResolvedReviewConfig(payload.userId);
+  const ctx = {
+    productType: productKey,
+    format: design.asset.mimeType.replace("image/", "").toLowerCase(),
+    hasAlpha: design.asset.hasAlpha,
+    sourceKind: "design" as const,
+    transformsApplied: [] as string[],
+  };
+  const composed = composeReviewSystemPrompt(ctx, {
+    coreMasterPrompt: reviewConfig.settings.coreMasterPrompt ?? undefined,
+    criteria: reviewConfig.criteria,
+  });
 
-  // Snapshot — CLAUDE.md kuralı: provider+prompt her review yazımında persist.
-  // Phase 16 (Madde O — criteria block compose): final prompt artık
-  // composeReviewSystemPrompt() üzerinden üretilen aktif kriter
-  // bloklarından oluşur. Snapshot prompt versiyonu + compose token
-  // (aktif blokların id@version listesi) + system prompt'u içerir;
-  // ileride admin override gelince audit drift'i fark eder.
+  // Weighted scoring math (CLAUDE.md Madde O — score is explainable).
+  const flagKinds = allFlags
+    .map((f) => readRiskFlagKind(f))
+    .filter((k): k is string => k !== null);
+  const breakdown = computeScoringBreakdown({
+    providerRaw: llm.score,
+    riskFlagKinds: flagKinds,
+    criteria: reviewConfig.criteria.filter((c) =>
+      composed.selectedCriterionIds.includes(c.id),
+    ),
+  });
+  const decision = decideReviewStatusFromBreakdown(breakdown);
+
   const providerSnapshot = buildProviderSnapshot(providerId, new Date());
-  const composed = composeReviewSystemPrompt({
-    productType: productKey,
-    isTransparentTarget: isTransparent,
-  });
-  const composeToken = composeVersionToken({
-    productType: productKey,
-    isTransparentTarget: isTransparent,
-  });
-  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\nblocks=${composeToken}\n${composed.systemPrompt}`;
+  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\nfingerprint=${composed.fingerprint}\n${composed.systemPrompt}`;
 
   // Persist (K2 — sticky TOCTOU race fix):
   //   T1 sticky read + T2 Gemini fetch (1-30sn) arasında USER "Approve anyway"
@@ -250,7 +265,9 @@ async function handleDesignReview(
     data: {
       reviewStatus: decision,
       reviewStatusSource: ReviewStatusSource.SYSTEM,
-      reviewScore: llm.score,
+      // IA Phase 17 — reviewScore artık policy-adjusted final score.
+      // Provider raw + breakdown audit row'da (DesignReview.responseSnapshot).
+      reviewScore: breakdown.finalScore,
       reviewSummary: llm.summary,
       reviewRiskFlags: allFlags as unknown as Prisma.InputJsonValue,
       textDetected: llm.textDetected,
@@ -258,7 +275,6 @@ async function handleDesignReview(
       reviewedAt: new Date(),
       reviewProviderSnapshot: providerSnapshot,
       reviewPromptSnapshot: promptSnapshot,
-      // reviewIssues legacy alanı YAZILMIYOR (canonical: reviewRiskFlags)
     },
   });
 
@@ -274,16 +290,22 @@ async function handleDesignReview(
   // Audit semantik "son review snapshot'ı" — zaman serisi audit Phase 7+ follow-up.
   // Phase 6 Aşama 2A: audit.model = provider.modelId (gerçek model string;
   // provider id ↔ model id ayrımı reviewer Ö4 carry-forward kapanışı).
+  // IA Phase 17 — audit'e provider raw skor + breakdown + fingerprint
+  // birlikte yazılır. UI/admin "neden bu skor?" sorusuna provider raw
+  // ile policy-adjusted final arasındaki delta'yı görerek cevap verir.
   const auditData = {
     reviewer: "system",
-    score: llm.score,
+    score: breakdown.finalScore,
     decision,
     provider: providerId,
     model: provider.modelId,
-    // Phase 16 — audit'e compose edilmiş final prompt yazılır;
-    // hardcoded REVIEW_SYSTEM_PROMPT artık fallback değil.
     promptSnapshot: composed.systemPrompt,
-    responseSnapshot: llm as unknown as Prisma.InputJsonValue,
+    responseSnapshot: {
+      ...llm,
+      _breakdown: breakdown,
+      _fingerprint: composed.fingerprint,
+      _providerRaw: llm.score,
+    } as unknown as Prisma.InputJsonValue,
   };
   await db.designReview.upsert({
     where: { generatedDesignId: design.id },
@@ -407,19 +429,34 @@ async function handleLocalAssetReview(
   );
 
   const allFlags: ReviewRiskFlag[] = [...alphaFlags, ...llm.riskFlags];
-  const decision = decideReviewStatus({ score: llm.score, riskFlags: allFlags });
 
-  // Phase 16 — criteria block compose (Madde O); design branch ile aynı.
+  // IA Phase 17 — admin-resolved review config + weighted scoring math
+  // (design branch ile aynı pipeline).
+  const reviewConfig = await getResolvedReviewConfig(payload.userId);
+  const ctx = {
+    productType: productKey,
+    format: asset.mimeType.replace("image/", "").toLowerCase(),
+    hasAlpha: asset.hasAlpha,
+    sourceKind: "local-library" as const,
+    transformsApplied: [] as string[],
+  };
+  const composed = composeReviewSystemPrompt(ctx, {
+    coreMasterPrompt: reviewConfig.settings.coreMasterPrompt ?? undefined,
+    criteria: reviewConfig.criteria,
+  });
+  const flagKinds = allFlags
+    .map((f) => readRiskFlagKind(f))
+    .filter((k): k is string => k !== null);
+  const breakdown = computeScoringBreakdown({
+    providerRaw: llm.score,
+    riskFlagKinds: flagKinds,
+    criteria: reviewConfig.criteria.filter((c) =>
+      composed.selectedCriterionIds.includes(c.id),
+    ),
+  });
+  const decision = decideReviewStatusFromBreakdown(breakdown);
   const providerSnapshot = buildProviderSnapshot(providerId, new Date());
-  const composed = composeReviewSystemPrompt({
-    productType: productKey,
-    isTransparentTarget: isTransparent,
-  });
-  const composeToken = composeVersionToken({
-    productType: productKey,
-    isTransparentTarget: isTransparent,
-  });
-  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\nblocks=${composeToken}\n${composed.systemPrompt}`;
+  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\nfingerprint=${composed.fingerprint}\n${composed.systemPrompt}`;
 
   // Persist — LocalLibraryAsset; audit trail YOK (DesignReview yalnız scope=design).
   // K2 — sticky TOCTOU race guard: updateMany + conditional WHERE.
@@ -432,13 +469,13 @@ async function handleLocalAssetReview(
     data: {
       reviewStatus: decision,
       reviewStatusSource: ReviewStatusSource.SYSTEM,
-      reviewScore: llm.score,
+      // IA Phase 17 — policy-adjusted final score (provider raw audit'te).
+      reviewScore: breakdown.finalScore,
       reviewSummary: llm.summary,
       reviewRiskFlags: allFlags as unknown as Prisma.InputJsonValue,
       reviewedAt: new Date(),
       reviewProviderSnapshot: providerSnapshot,
       reviewPromptSnapshot: promptSnapshot,
-      // reviewIssues legacy alanı YAZILMIYOR
     },
   });
 

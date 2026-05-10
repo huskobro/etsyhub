@@ -29,6 +29,8 @@ import type { ReviewRiskFlagType } from "@/providers/review/types";
 import { REVIEW_RISK_FLAG_TYPES } from "@/providers/review/types";
 import {
   BUILTIN_CRITERIA,
+  evaluateAllCriteria,
+  type ReviewComposeContext,
   type ReviewCriterion,
 } from "@/providers/review/criteria";
 
@@ -39,15 +41,30 @@ export type EvaluationLifecycle =
   | "error"
   | "na";
 
+/** Per-check applicability state (CLAUDE.md Madde O — neutral state). */
+export type CheckState =
+  | "passed"   // applicable + risk flag absent
+  | "failed"   // applicable + risk flag present
+  | "neutral"; // not applicable to this asset's context
+
 export type EvaluationCheck = {
   /** Kontrol id — risk flag taksonomisinden gelir. */
   id: ReviewRiskFlagType;
-  /** Operatöre görünür kısa etiket (TR). */
+  /** Operator-facing English label. */
   label: string;
-  /** Bu check passed mi (= ilgili risk flag yok)? */
+  /** State for the UI (passed / failed / neutral). */
+  state: CheckState;
+  /** Backwards-compat — true when state === "passed" or "neutral".
+   *  Older UI sites that only knew about pass/fail still work. */
   passed: boolean;
   /** Failed olduysa provider'ın verdiği gerekçe — aksi halde null. */
   reason?: string | null;
+  /** Why neutral — short EN explanation (e.g. "Not applicable for JPEG"). */
+  neutralReason?: string | null;
+  /** Severity from the criterion (info / warning / blocker). */
+  severity?: "info" | "warning" | "blocker";
+  /** Score weight contribution (admin pane / explainability). */
+  weight?: number;
 };
 
 export type Evaluation = {
@@ -71,19 +88,47 @@ export type Evaluation = {
   riskFlagCount: number;
 };
 
+/** EN labels — fallback when caller has no resolved criteria list.
+ *  Keep in sync with BUILTIN_CRITERIA labels. */
 const CHECK_LABEL: Record<ReviewRiskFlagType, string> = {
-  watermark_detected: "Watermark / damga yok",
-  signature_detected: "İmza yok",
-  visible_logo_detected: "Görünür marka logosu yok",
-  celebrity_face_detected: "Tanınmış yüz yok",
-  no_alpha_channel: "Alfa kanalı uygun",
-  transparent_edge_artifact: "Transparent kenar temiz",
-  text_detected: "Yazı içermiyor",
-  gibberish_text_detected: "Anlamsız yazı yok",
+  watermark_detected: "No watermark or stamp",
+  signature_detected: "No artist signature",
+  visible_logo_detected: "No visible brand logo",
+  celebrity_face_detected: "No recognizable face",
+  no_alpha_channel: "Alpha channel suitable",
+  transparent_edge_artifact: "Clean transparent edges",
+  text_detected: "No embedded text",
+  gibberish_text_detected: "No gibberish text",
 };
 
 export function checkLabel(id: ReviewRiskFlagType): string {
   return CHECK_LABEL[id];
+}
+
+/** Build a short EN reason for a neutral (not-applicable) state.
+ *  Used when applicability rules exclude a criterion from the active
+ *  context (e.g. transparent rule on a JPEG). */
+function neutralReasonFor(
+  c: ReviewCriterion,
+  ctx?: ReviewComposeContext,
+): string {
+  if (!ctx) return "Not applicable in this context";
+  const a = c.applicability;
+  if (a.formats !== null && !a.formats.includes(ctx.format)) {
+    return `Not applicable for ${ctx.format.toUpperCase()}`;
+  }
+  if (a.productTypes !== null && !a.productTypes.includes(ctx.productType)) {
+    return `Not applicable for ${ctx.productType}`;
+  }
+  if (a.transparency !== null && ctx.hasAlpha !== null) {
+    return ctx.hasAlpha
+      ? "Not applicable for opaque images"
+      : "Not applicable without alpha";
+  }
+  if (a.requiresAnyTransform !== null && a.requiresAnyTransform.length > 0) {
+    return "Pending an image transform";
+  }
+  return "Not applicable in this context";
 }
 
 type RawRiskFlag = {
@@ -132,15 +177,16 @@ export function buildEvaluation(input: {
   /** Optional override — caller knows lifecycle is "error" / "na". */
   forceLifecycle?: EvaluationLifecycle;
   promptVersion?: string | null;
-  /** IA Phase 16 — criteria-aware checklist. Verilirse `BUILTIN_CRITERIA`
-   *  arasından `productType` bağlamına uygun olan **aktif** kriterler
-   *  görünür; kontrolü yalnız bağlamda anlamlı olanlar oluşturur (ör.
-   *  alpha satırları yalnız transparent target ürünlerde). Verilmezse
-   *  tüm 8 sabit taksonomi gösterilir (legacy, geriye uyum). */
-  criteriaContext?: { productType: string };
-  /** Aktif kriter listesi caller tarafından hazırlanmışsa bu kullanılır;
-   *  aksi halde `BUILTIN_CRITERIA` üzerinden filtreleme yapılır. */
-  activeCriteria?: ReadonlyArray<ReviewCriterion>;
+  /** Compose context for full applicability evaluation (CLAUDE.md
+   *  Madde O). When passed, every active builtin criterion appears
+   *  in the checklist as either passed / failed / neutral; criteria
+   *  outside the context still render as neutral with an EN reason
+   *  ("Not applicable for JPEG", etc.) so the operator sees the
+   *  full picture. */
+  composeContext?: ReviewComposeContext;
+  /** Caller may pass a resolved criteria list (e.g. settings-merged
+   *  view from worker); otherwise BUILTIN_CRITERIA is used. */
+  resolvedCriteria?: ReadonlyArray<ReviewCriterion>;
 }): Evaluation {
   const {
     reviewedAt,
@@ -151,8 +197,8 @@ export function buildEvaluation(input: {
     operatorOverride,
     forceLifecycle,
     promptVersion,
-    criteriaContext,
-    activeCriteria,
+    composeContext,
+    resolvedCriteria,
   } = input;
 
   // Failed checks — risk flag entries; index by kind.
@@ -163,29 +209,49 @@ export function buildEvaluation(input: {
     failedReasons.set(k, readReason(f));
   }
 
-  // Build the canonical check list. CLAUDE.md Madde O — kriter blokları
-  // bağlama göre filtrelenir; activeCriteria > criteriaContext > legacy
-  // sıralı önceliği.
-  const sourceCriteria: ReadonlyArray<{ id: ReviewRiskFlagType; label: string }> =
-    activeCriteria !== undefined
-      ? activeCriteria
-      : criteriaContext
-        ? BUILTIN_CRITERIA.filter((c) => {
-            if (!c.active) return false;
-            if (c.productTypes === null) return true;
-            return c.productTypes.includes(criteriaContext.productType);
-          })
-        : REVIEW_RISK_FLAG_TYPES.map((id) => ({ id, label: CHECK_LABEL[id] }));
-
-  const checks: EvaluationCheck[] = sourceCriteria.map((c) => {
-    const isFailed = failedReasons.has(c.id);
-    return {
-      id: c.id,
-      label: c.label,
-      passed: !isFailed,
-      reason: isFailed ? failedReasons.get(c.id) ?? null : null,
-    };
-  });
+  // CLAUDE.md Madde O — full evaluation: every active criterion
+  // appears with passed / failed / neutral state. Compose context
+  // drives applicability; absent context falls back to legacy 8-row
+  // taxonomy view (geriye uyum, neutral state yok).
+  let checks: EvaluationCheck[];
+  if (composeContext) {
+    const list = evaluateAllCriteria(composeContext, resolvedCriteria);
+    checks = list.map(({ criterion, applicable }) => {
+      if (!applicable) {
+        return {
+          id: criterion.id,
+          label: criterion.label,
+          state: "neutral" as const,
+          passed: true, // backwards-compat: do not subtract from "passed" counts
+          reason: null,
+          neutralReason: neutralReasonFor(criterion, composeContext),
+          severity: criterion.severity,
+          weight: criterion.weight,
+        };
+      }
+      const failed = failedReasons.has(criterion.id);
+      return {
+        id: criterion.id,
+        label: criterion.label,
+        state: failed ? ("failed" as const) : ("passed" as const),
+        passed: !failed,
+        reason: failed ? failedReasons.get(criterion.id) ?? null : null,
+        severity: criterion.severity,
+        weight: criterion.weight,
+      };
+    });
+  } else {
+    checks = REVIEW_RISK_FLAG_TYPES.map((id) => {
+      const failed = failedReasons.has(id);
+      return {
+        id,
+        label: CHECK_LABEL[id],
+        state: failed ? ("failed" as const) : ("passed" as const),
+        passed: !failed,
+        reason: failed ? failedReasons.get(id) ?? null : null,
+      };
+    });
+  }
 
   let lifecycle: EvaluationLifecycle;
   if (forceLifecycle) {
@@ -217,14 +283,14 @@ export function buildEvaluation(input: {
 export function lifecycleCaption(lifecycle: EvaluationLifecycle): string {
   switch (lifecycle) {
     case "ready":
-      return "Değerlendirme tamamlandı";
+      return "Evaluation ready";
     case "scoring":
-      return "Değerlendiriliyor…";
+      return "Scoring…";
     case "pending":
-      return "Değerlendirme bekleniyor";
+      return "Waiting for AI review";
     case "error":
-      return "Değerlendirme başarısız";
+      return "Evaluation failed";
     case "na":
-      return "Uygulanabilir değil";
+      return "Not applicable";
   }
 }

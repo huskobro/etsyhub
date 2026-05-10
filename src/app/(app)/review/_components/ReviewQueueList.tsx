@@ -82,7 +82,7 @@ export function ReviewQueueList({ scope }: Props) {
           decision={decisionChip}
           initialQuery={searchParams.get("q") ?? ""}
         />
-        <StateMessage tone="neutral" title="Yükleniyor…" />
+        <StateMessage tone="neutral" title="Loading…" />
       </div>
     );
   }
@@ -96,8 +96,8 @@ export function ReviewQueueList({ scope }: Props) {
         />
         <StateMessage
           tone="error"
-          title="Yüklenemedi"
-          body="Review listesi alınamadı. Sayfayı yenileyin veya birkaç saniye sonra tekrar deneyin."
+          title="Couldn't load review queue"
+          body="Refresh the page or try again in a few seconds."
         />
       </div>
     );
@@ -116,21 +116,21 @@ export function ReviewQueueList({ scope }: Props) {
         {filterActive ? (
           <StateMessage
             tone="neutral"
-            title="Bu filtreye uyan kayıt yok"
-            body="Decision filter'i değiştirin veya All ile tümünü görün."
+            title="No items match this filter"
+            body="Change the decision filter or click All to see everything."
           />
         ) : (
           <StateMessage
             tone="neutral"
             title={
               scope === "design"
-                ? "Henüz review için bekleyen AI tasarımı yok"
-                : "Henüz review için bekleyen local asset yok"
+                ? "No AI designs pending review"
+                : "No local assets pending review"
             }
             body={
               scope === "design"
-                ? "Variations sayfasından üretim başlatın; biten tasarımlar burada görünür."
-                : "Local Library'den batch review tetikleyebilirsiniz."
+                ? "Start generation from References → Variations; finished designs land here."
+                : "Trigger a batch review from Local Library."
             }
           />
         )}
@@ -166,7 +166,7 @@ export function ReviewQueueList({ scope }: Props) {
       </div>
       {showPagination ? (
         <nav
-          aria-label="Sayfalama"
+          aria-label="Pagination"
           data-testid="review-pagination"
           className="flex items-center justify-center gap-3"
         >
@@ -177,10 +177,10 @@ export function ReviewQueueList({ scope }: Props) {
             data-testid="review-pagination-prev"
             className="rounded-md border border-border bg-surface px-3 py-1 text-sm text-text disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Önceki
+            Previous
           </button>
           <span className="text-sm text-text-muted">
-            Sayfa {data.page} / {totalPages}
+            Page {data.page} of {totalPages}
           </span>
           <button
             type="button"
@@ -189,7 +189,7 @@ export function ReviewQueueList({ scope }: Props) {
             data-testid="review-pagination-next"
             className="rounded-md border border-border bg-surface px-3 py-1 text-sm text-text disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Sonraki
+            Next
           </button>
         </nav>
       ) : null}
