@@ -64,6 +64,25 @@ interface BatchReviewWorkspaceProps {
     label: string;
     kind: "batch" | "folder" | "queue";
   } | null;
+  /** IA Phase 20 — adjacent batch navigation (CLAUDE.md Madde M
+   *  scope ekseni). prev/next deep-link the operator into the
+   *  workspace of another pending batch. */
+  scopeNav?: {
+    prev: { href: string; label: string } | null;
+    next: { href: string; label: string } | null;
+  };
+  /** IA Phase 20 — top-bar scope picker (CLAUDE.md Madde M unified
+   *  review experience). Drop-down lists pending batches. */
+  scopePicker?: {
+    kind: "batch";
+    activeId: string | null;
+    entries: Array<{
+      id: string;
+      label: string;
+      pendingCount: number;
+      href: string;
+    }>;
+  };
 }
 
 export function BatchReviewWorkspace({
@@ -75,6 +94,8 @@ export function BatchReviewWorkspace({
   exitLabel,
   totalReviewPending,
   nextScope,
+  scopeNav,
+  scopePicker,
 }: BatchReviewWorkspaceProps) {
   const resolvedExitHref = exitHref ?? `/batches/${batchId}`;
   const resolvedExitLabel = exitLabel ?? `batch_${batchId.slice(0, 8)}`;
@@ -173,6 +194,8 @@ export function BatchReviewWorkspace({
       scopeLabel={`Batch · ${batchId.slice(0, 8)}`}
       totalReviewPending={totalReviewPending}
       nextScope={nextScope ?? null}
+      scopeNav={scopeNav}
+      scopePicker={scopePicker}
       items={items}
       cursor={cursor}
       onJumpToCursor={setCursor}

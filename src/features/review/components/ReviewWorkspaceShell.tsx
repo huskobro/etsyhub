@@ -763,7 +763,11 @@ function ScopePickerDropdown({
           </div>
           {picker.entries.length === 0 ? (
             <div className="px-3 py-3 text-xs text-white/50">
-              No pending {picker.kind}s.
+              {picker.kind === "batch"
+                ? "No pending batches."
+                : picker.kind === "folder"
+                  ? "No pending folders."
+                  : "No pending references."}
             </div>
           ) : (
             <ul className="py-1">

@@ -117,10 +117,15 @@ export default async function ReviewPage({
     if (!session?.user) redirect("/login");
     const userId = session.user.id;
 
-    // IA Phase 12 — server-side resolves for the workspace anchor +
-    // scope-completion auto-progress. All four queries run in parallel
-    // so the round-trip cost stays at one tick.
-    const [summary, page, totalReviewPending, nextBatch] = await Promise.all([
+    // IA Phase 12+20 — server-side resolves for the workspace anchor,
+    // scope-completion auto-progress, and the batch scope picker.
+    const [
+      summary,
+      page,
+      totalReviewPending,
+      nextBatch,
+      pendingBatchList,
+    ] = await Promise.all([
       getBatchReviewSummary(batchId, userId),
       listBatchReviewItems(batchId, userId, {
         decisions: ["UNDECIDED", "KEPT", "REJECTED"],
@@ -128,6 +133,7 @@ export default async function ReviewPage({
       }),
       getTotalReviewPendingCount(userId),
       getNextPendingBatchId({ userId, currentBatchId: batchId }),
+      listPendingScopes({ userId, kind: "batch" }),
     ]);
 
     if (!summary) notFound();
@@ -149,10 +155,46 @@ export default async function ReviewPage({
     const nextScope = nextBatch
       ? {
           href: `/review?batch=${encodeURIComponent(nextBatch.batchId)}`,
-          label: `batch_${nextBatch.batchId.slice(0, 8)}`,
+          label: `batch ${nextBatch.batchId.slice(0, 8)}`,
           kind: "batch" as const,
         }
       : null;
+
+    // IA Phase 20 — batch scope navigation. Picker entries +
+    // adjacent prev/next from the alphabetically-stable pending
+    // list. listPendingScopes already orders the result; we walk
+    // from the active batch index for prev/next.
+    const batchIdx = pendingBatchList.findIndex((b) => b.id === batchId);
+    const prevBatch =
+      batchIdx > 0 ? pendingBatchList[batchIdx - 1] ?? null : null;
+    const nextBatchAdj =
+      batchIdx >= 0 && batchIdx < pendingBatchList.length - 1
+        ? pendingBatchList[batchIdx + 1] ?? null
+        : null;
+    const batchScopeNav = {
+      prev: prevBatch
+        ? {
+            href: `/review?batch=${encodeURIComponent(prevBatch.id)}`,
+            label: prevBatch.label,
+          }
+        : null,
+      next: nextBatchAdj
+        ? {
+            href: `/review?batch=${encodeURIComponent(nextBatchAdj.id)}`,
+            label: nextBatchAdj.label,
+          }
+        : null,
+    };
+    const batchPicker = {
+      kind: "batch" as const,
+      activeId: batchId,
+      entries: pendingBatchList.map((b) => ({
+        id: b.id,
+        label: b.label,
+        pendingCount: b.pendingCount,
+        href: `/review?batch=${encodeURIComponent(b.id)}`,
+      })),
+    };
 
     return (
       <BatchReviewWorkspace
@@ -164,6 +206,8 @@ export default async function ReviewPage({
         exitLabel="Review"
         totalReviewPending={totalReviewPending}
         nextScope={nextScope}
+        scopeNav={batchScopeNav}
+        scopePicker={batchPicker}
       />
     );
   }

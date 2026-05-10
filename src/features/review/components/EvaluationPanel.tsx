@@ -170,7 +170,13 @@ export function EvaluationPanel({
                           {c.neutralReason}
                         </span>
                       ) : null}
-                      {c.severity && c.weight !== undefined && c.state !== "neutral" ? (
+                      {c.severity &&
+                      c.weight !== undefined &&
+                      c.state === "failed" ? (
+                        // IA Phase 20 — severity chip yalnız FAILED satırlarında
+                        // görünür. Passed/neutral satırlarda göstermek
+                        // operatörü yanıltıyor (yeşil tikin yanında "BLOCKER"
+                        // ciddiyet çağrıştırıyor).
                         <span
                           className={cn(
                             "ml-1.5 inline-flex items-center gap-1 align-baseline font-mono text-[10px] uppercase tracking-meta",

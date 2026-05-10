@@ -198,17 +198,108 @@ export function ReviewCard({ item }: Props) {
             Önizleme yok
           </div>
         )}
-        {item.reviewScore !== null ? (
-          <span
-            data-testid="score-chip"
-            // a11y (Ö-4): "87" tek başına anlamsız; ekran okuyucu için
-            // semantik etiket. Görsel olarak chip rakamı korunuyor.
-            aria-label={`Quality score: ${item.reviewScore}`}
-            className="absolute right-2 top-2 rounded-sm bg-text px-2 py-0.5 font-mono text-xs text-bg"
-          >
-            {item.reviewScore}
-          </span>
-        ) : null}
+        {/* IA Phase 20 — Score + lifecycle birleşik gösterim
+         *   (CLAUDE.md Madde Q — information density). Sağ üstteki
+         *   tek slot: lifecycle "ready" ise sayı; aksi halde icon.
+         *   Score chip'inin okunabilirliği iyileştirildi: kalın font,
+         *   yüksek-kontrast bg/text + ince halka. */}
+        {(() => {
+          const evalLifecycle = buildEvaluation({
+            reviewedAt: item.reviewedAt,
+            reviewScore: item.reviewScore,
+            reviewSummary: item.reviewSummary,
+            reviewProviderSnapshot: item.reviewProviderSnapshot,
+            riskFlags: item.riskFlags,
+            operatorOverride: false,
+            backendLifecycle: item.reviewLifecycle,
+          }).lifecycle;
+
+          if (evalLifecycle === "ready" && item.reviewScore !== null) {
+            // Yüksek-kontrast score chip (text-bg üzerine bg-text +
+            // tabular-nums; eskisi okunamıyordu thumbnails'in üstünde).
+            return (
+              <span
+                data-testid="score-chip"
+                aria-label={`Quality score: ${item.reviewScore}`}
+                className="absolute right-2 top-2 inline-flex h-6 min-w-[28px] items-center justify-center rounded-md bg-text px-1.5 font-mono text-[13px] font-semibold tabular-nums text-bg shadow-md ring-1 ring-bg/30"
+              >
+                {item.reviewScore}
+              </span>
+            );
+          }
+
+          // Non-ready lifecycle → icon (her durum farklı şekil).
+          const config: Record<
+            string,
+            { icon: typeof Clock; title: string; tone: string; bg: string }
+          > = {
+            queued: {
+              icon: Clock,
+              title: "Queued for review",
+              tone: "text-text",
+              bg: "bg-bg/85 ring-text/20",
+            },
+            running: {
+              icon: Hourglass,
+              title: "Waiting for AI response",
+              tone: "text-text",
+              bg: "bg-bg/85 ring-text/20",
+            },
+            scoring: {
+              icon: Hourglass,
+              title: "Waiting for AI response",
+              tone: "text-text",
+              bg: "bg-bg/85 ring-text/20",
+            },
+            failed: {
+              icon: AlertCircle,
+              title: "Review failed",
+              tone: "text-white",
+              bg: "bg-danger ring-danger/40",
+            },
+            error: {
+              icon: AlertCircle,
+              title: "Review failed",
+              tone: "text-white",
+              bg: "bg-danger ring-danger/40",
+            },
+            pending: {
+              icon: MinusCircle,
+              title: "Not queued yet",
+              tone: "text-text-muted",
+              bg: "bg-bg/85 ring-text/20",
+            },
+            not_queued: {
+              icon: MinusCircle,
+              title: "Not queued yet",
+              tone: "text-text-muted",
+              bg: "bg-bg/85 ring-text/20",
+            },
+            na: {
+              icon: MinusCircle,
+              title: "Not applicable",
+              tone: "text-text-muted",
+              bg: "bg-bg/85 ring-text/20",
+            },
+          };
+          const c = config[evalLifecycle] ?? config.not_queued!;
+          const Icon = c.icon;
+          return (
+            <span
+              data-testid="card-eval-state"
+              data-state={evalLifecycle}
+              title={c.title}
+              aria-label={c.title}
+              className={cn(
+                "absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-md ring-1 shadow-md",
+                c.bg,
+                c.tone,
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" aria-hidden />
+            </span>
+          );
+        })()}
       </div>
       <div className="flex flex-col gap-1 p-2">
         <div className="flex items-center justify-between gap-2">
@@ -218,88 +309,6 @@ export function ReviewCard({ item }: Props) {
           >
             {STATUS_LABEL[item.reviewStatus]}
           </Badge>
-          {/* IA Phase 16 — scoring lifecycle hint. CLAUDE.md sistem
-           *   skor contract'ı: lifecycle pending/scoring/error iken
-           *   operatör sahte skor görmemeli. Kart "..." veya "—"
-           *   rozeti ile dürüstçe işaretler; ready iken sayı zaten
-           *   üstteki score chip'inde. Operator override sinyali
-           *   kart üzerinde değil — info-rail'de.
-           */}
-          {(() => {
-            // CLAUDE.md Madde Q — information density. Card-level
-            // state shrinks to an icon-only badge with a short title;
-            // long copy lives in the right panel under "System
-            // evaluation". Operator scans for amber/red/green icon
-            // first, expands the card via click for the full picture.
-            const evalLifecycle = buildEvaluation({
-              reviewedAt: item.reviewedAt,
-              reviewScore: item.reviewScore,
-              reviewSummary: item.reviewSummary,
-              reviewProviderSnapshot: item.reviewProviderSnapshot,
-              riskFlags: item.riskFlags,
-              operatorOverride: false,
-              backendLifecycle: item.reviewLifecycle,
-            }).lifecycle;
-            if (evalLifecycle === "ready") return null;
-            const config: Record<
-              string,
-              { icon: typeof Clock; title: string; tone: string }
-            > = {
-              queued: {
-                icon: Clock,
-                title: "Queued for review",
-                tone: "text-text-muted",
-              },
-              running: {
-                icon: Hourglass,
-                title: "Waiting for AI response",
-                tone: "text-text-muted",
-              },
-              scoring: {
-                icon: Hourglass,
-                title: "Waiting for AI response",
-                tone: "text-text-muted",
-              },
-              failed: {
-                icon: AlertCircle,
-                title: "Review failed",
-                tone: "text-danger",
-              },
-              error: {
-                icon: AlertCircle,
-                title: "Review failed",
-                tone: "text-danger",
-              },
-              pending: {
-                icon: MinusCircle,
-                title: "Not queued yet",
-                tone: "text-text-muted",
-              },
-              not_queued: {
-                icon: MinusCircle,
-                title: "Not queued yet",
-                tone: "text-text-muted",
-              },
-              na: {
-                icon: MinusCircle,
-                title: "Not applicable",
-                tone: "text-text-muted",
-              },
-            };
-            const c = config[evalLifecycle] ?? config.not_queued!;
-            const Icon = c.icon;
-            return (
-              <span
-                data-testid="card-eval-state"
-                data-state={evalLifecycle}
-                title={c.title}
-                aria-label={c.title}
-                className={cn("inline-flex h-4 w-4 items-center justify-center", c.tone)}
-              >
-                <Icon className="h-3.5 w-3.5" aria-hidden />
-              </span>
-            );
-          })()}
         </div>
         {/* Pass 24 — Source meta. Kullanıcının "bu görsel nereden geldi?"
             sorusunu kart üzerinden cevaplar. Local: dosya adı + klasör
