@@ -21,7 +21,15 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
-import { Folder, Image as ImageIcon, Layers } from "lucide-react";
+import {
+  AlertCircle,
+  Clock,
+  Folder,
+  Hourglass,
+  Image as ImageIcon,
+  Layers,
+  MinusCircle,
+} from "lucide-react";
 import type { ReviewQueueItem, ReviewStatusEnum } from "@/features/review/queries";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
@@ -218,6 +226,11 @@ export function ReviewCard({ item }: Props) {
            *   kart üzerinde değil — info-rail'de.
            */}
           {(() => {
+            // CLAUDE.md Madde Q — information density. Card-level
+            // state shrinks to an icon-only badge with a short title;
+            // long copy lives in the right panel under "System
+            // evaluation". Operator scans for amber/red/green icon
+            // first, expands the card via click for the full picture.
             const evalLifecycle = buildEvaluation({
               reviewedAt: item.reviewedAt,
               reviewScore: item.reviewScore,
@@ -228,21 +241,62 @@ export function ReviewCard({ item }: Props) {
               backendLifecycle: item.reviewLifecycle,
             }).lifecycle;
             if (evalLifecycle === "ready") return null;
-            const label =
-              evalLifecycle === "queued"
-                ? "queued"
-                : evalLifecycle === "running" || evalLifecycle === "scoring"
-                  ? "waiting"
-                  : evalLifecycle === "failed" || evalLifecycle === "error"
-                    ? "failed"
-                    : "not queued";
+            const config: Record<
+              string,
+              { icon: typeof Clock; title: string; tone: string }
+            > = {
+              queued: {
+                icon: Clock,
+                title: "Queued for review",
+                tone: "text-text-muted",
+              },
+              running: {
+                icon: Hourglass,
+                title: "Waiting for AI response",
+                tone: "text-text-muted",
+              },
+              scoring: {
+                icon: Hourglass,
+                title: "Waiting for AI response",
+                tone: "text-text-muted",
+              },
+              failed: {
+                icon: AlertCircle,
+                title: "Review failed",
+                tone: "text-danger",
+              },
+              error: {
+                icon: AlertCircle,
+                title: "Review failed",
+                tone: "text-danger",
+              },
+              pending: {
+                icon: MinusCircle,
+                title: "Not queued yet",
+                tone: "text-text-muted",
+              },
+              not_queued: {
+                icon: MinusCircle,
+                title: "Not queued yet",
+                tone: "text-text-muted",
+              },
+              na: {
+                icon: MinusCircle,
+                title: "Not applicable",
+                tone: "text-text-muted",
+              },
+            };
+            const c = config[evalLifecycle] ?? config.not_queued!;
+            const Icon = c.icon;
             return (
               <span
                 data-testid="card-eval-state"
                 data-state={evalLifecycle}
-                className="rounded-sm bg-surface-muted px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta text-text-muted"
+                title={c.title}
+                aria-label={c.title}
+                className={cn("inline-flex h-4 w-4 items-center justify-center", c.tone)}
               >
-                {label}
+                <Icon className="h-3.5 w-3.5" aria-hidden />
               </span>
             );
           })()}

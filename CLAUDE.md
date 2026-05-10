@@ -1354,14 +1354,26 @@ Bu bölüm Phase 6 → Phase 13 boyunca review surface'i için verilen
 polish bu sabitleri korur:
 
 **Scope identity:** Review workspace daima açıkça tanımlı bir
-**aktif scope identity** üzerinde çalışır: `batch` (BatchId), `folder`
-(LocalLibraryAsset.folderName), veya `queue-filter` (operatörün filtre
-kombinasyonu). Tüm sayaçlar (undecided/kept/discarded), `Item N / M`
-ifadesindeki `M`, scope summary ve progress bar **bu scope identity
-üzerinden** server-side hesaplanır. Page size, cache window veya
-filtreli queue total scope cardinality yerine geçmez. Kapsam dışı
-sayılar (workspace-wide pending) **anchor** seviyesinde kalır,
-scope-içi sayımları bastırmaz.
+**aktif scope identity** üzerinde çalışır:
+- `batch` (BatchId, AI batch review)
+- `folder` (LocalLibraryAsset.folderName, local review)
+- `reference` (Reference.id, AI design review tek reference)
+- `queue-filter` (operatörün filtre kombinasyonu — fallback)
+
+Tüm sayaçlar (undecided/kept/discarded), `Item N / M` ifadesindeki
+`M`, scope summary, progress bar, picker, prev/next scope nav ve
+shortcut'lar **bu scope identity üzerinden** server-side
+hesaplanır. Page size, cache window veya filtreli queue total
+scope cardinality yerine geçmez. Kapsam dışı sayılar (workspace-
+wide pending) **anchor** seviyesinde kalır, scope-içi sayımları
+bastırmaz.
+
+**Tek tip review experience:** folder / batch / reference review
+ayrı ürün değildir — aynı canonical surface'in scope variant'larıdır.
+Top-bar yapısı, scope summary mantığı, item navigation, scope
+navigation, picker, right panel, shortcuts üçü için aynı çatıdan
+beslenir. Source farkı (filename vs prompt vs ref short-id)
+içerikte olur, experience farkı **olmaz**.
 
 **Top-bar bilgi hiyerarşisi:**
 
@@ -1412,8 +1424,13 @@ ekseni vardır:
 shortcuts'ta ayrı sıralarda gösterilir.
 
 **Klavye sözleşmesi:** `K` keep · `D` discard · `U` undecided
-(reset) · `←/→` prev/next item · `[ / ]` prev/next scope ·
+(reset) · `←/→` prev/next item · `,` / `.` prev/next scope ·
 `Esc` exit focus → scope grid · `?` shortcut help.
+
+`,` ve `.` (görsel anlamda `<` / `>` shifted) seçildi:
+- Item navigation (`←/→`) ile aynı tuş ailesinde değil — kazara karışma riski yok.
+- HTML/markdown metin girişinde nadiren kullanılır (`[/]` aksine).
+- macOS / Windows / Linux'ta sistem shortcut'larıyla çakışmaz.
 
 **Sistem skor contract'ı (açıklanabilir değerlendirme):** AI / scan
 pipeline çıktısı bir **lifecycle taşıyan değerlendirme**dir, çıplak
@@ -1556,6 +1573,44 @@ metin** olmamalıdır. Bunun yerine:
   kullanıcı override katmanı vardır; admin override yokken
   builtin'ler etkili. UI yazma yüzeyi her builtin için override
   oluşturup updates yazar (delete override = revert to builtin).
+
+### P. Stable interaction surfaces
+
+Yoğun etkileşimli yüzeylerde (review, batch detail, library grid,
+mockup apply) kazara etkileşim **engellenir**. Operatör niyet
+etmediği halde sayfa cevap vermemeli:
+
+- Boş alana double-click görünür bir state üretmemeli (text
+  selection, focus ring, overlay açma vb.). Default browser
+  selection bu yüzeylerde `user-select: none` ile kapatılır;
+  yalnız yazılabilir input/textarea/code regions text selection'a
+  izin verir.
+- Filmstrip, grid, picker thumb'ları **click-first** davranır.
+  `<img>` child'ları default `draggable` özelliği taşımaz; native
+  drag tetiklemesi (DOM drag-and-drop API) bu yüzeylerde devre
+  dışıdır.
+- Navigation aksiyonları (prev/next item, prev/next scope, exit)
+  hem klavye hem mouse ile **erişilebilir**, ikisi aynı sonucu
+  verir. Klavye-only veya mouse-only davranış kabul edilmez.
+- Klavye shortcut'ları sistem kısayollarıyla çakışmamalı; aynı
+  surface içinde item navigation ile scope navigation ayrı
+  tuş ailesinde durur (ör. `←/→` item, `,/.` scope — `[/]` HTML
+  metin girişinde sık kullanıldığı için ergonomik değildir).
+
+### Q. Information density without clutter
+
+Kullanıcıya gerekli bilgi verilir, ama görsel gürültü üretilmez:
+
+- Kart üzeri durum/state göstergeleri **kompakt** kalır
+  (icon-only badge, kısa harf kodu, küçük chip). Uzun cümle
+  ("Not queued yet" vb.) karta sığmaz.
+- Detaylı lifecycle, scoring breakdown, applicability, summary
+  kart üzerinde değil, **detail panelde** yaşar.
+- Bilgi kaybetmeden sadeleştirmek temel kuraldır: kartta gizlenen
+  her sinyal detail panelde aynen kalır.
+- Section'lar uzunsa collapsible olabilir (operator override info,
+  variation lineage gibi); ana scoring breakdown her zaman
+  görünür kalır.
 
 ## Library / Selections / Products — Sınır Invariant'ları
 

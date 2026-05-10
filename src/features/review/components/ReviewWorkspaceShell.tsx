@@ -34,6 +34,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChevronDown,
   HelpCircle,
   RotateCcw,
   X as XIcon,
@@ -95,14 +96,27 @@ export interface ReviewWorkspaceShellProps<TItem> {
   canGoNext: boolean;
   onGoPrev: () => void | Promise<void>;
   onGoNext: () => void | Promise<void>;
-  /** IA Phase 18 — scope navigation (CLAUDE.md Madde M, scope ekseni).
-   *  Optional; when defined the shell wires up [ / ] keyboard shortcuts
-   *  and the right-panel shortcut row. Adapter resolves the previous /
-   *  next scope (folder for local, batch for batch) and renders the
-   *  href via routing on click. */
+  /** IA Phase 18+19 — scope navigation (CLAUDE.md Madde M, scope
+   *  ekseni). Optional; when defined the shell wires up `,` / `.`
+   *  keyboard shortcuts and the right-panel shortcut row. Adapter
+   *  resolves prev/next scope (folder/batch/reference) and renders
+   *  the href via routing on click. */
   scopeNav?: {
     prev: { href: string; label: string } | null;
     next: { href: string; label: string } | null;
+  };
+  /** IA Phase 19 — scope picker (CLAUDE.md Madde M unified review
+   *  experience). Top-bar dropdown lists pending scopes of the
+   *  active kind so operators can jump directly. */
+  scopePicker?: {
+    kind: "folder" | "reference" | "batch";
+    activeId: string | null;
+    entries: Array<{
+      id: string;
+      label: string;
+      pendingCount: number;
+      href: string;
+    }>;
   };
 
   // ── Counts (operator's "what's left?" block) ────────────────────────
@@ -182,6 +196,7 @@ export function ReviewWorkspaceShell<TItem>({
   onGoPrev,
   onGoNext,
   scopeNav,
+  scopePicker,
   keptCount,
   discardedCount,
   undecidedCount,
@@ -235,8 +250,11 @@ export function ReviewWorkspaceShell<TItem>({
   );
 
   // ── Keyboard map ────────────────────────────────────────────────────
-  // K=Keep · D=Discard · U=Reset · ←/→=Prev/Next item · [/]=Prev/Next
+  // K=Keep · D=Discard · U=Reset · ←/→=Prev/Next item · ,/.=Prev/Next
   //   scope · Esc=Exit (or close help) · ?=Help
+  // CLAUDE.md Madde M: `,` / `.` chosen over `[` / `]` because the
+  // bracket keys are common in HTML/markdown text input and create
+  // operator confusion when shortcuts and form inputs share screen.
   // Input/textarea bypass — operator must be able to type in any popup
   // input the adapter mounts (none today, but the rule belongs here).
   useEffect(() => {
@@ -266,10 +284,10 @@ export function ReviewWorkspaceShell<TItem>({
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         if (canGoNext) void onGoNext();
-      } else if (e.key === "[") {
+      } else if (e.key === ",") {
         e.preventDefault();
         if (scopeNav?.prev) router.push(scopeNav.prev.href);
-      } else if (e.key === "]") {
+      } else if (e.key === ".") {
         e.preventDefault();
         if (scopeNav?.next) router.push(scopeNav.next.href);
       } else if (e.key === "?") {
@@ -324,9 +342,30 @@ export function ReviewWorkspaceShell<TItem>({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex h-screen flex-col bg-[#1A1815] text-white/85"
+      // CLAUDE.md Madde P — stable interaction surfaces. select-none
+      // kills accidental text selection from double-clicks and drag
+      // sweeps; readable text containers (info-rail dl, summary
+      // paragraph) opt back in via select-text class.
+      className="fixed inset-0 z-50 flex h-screen flex-col bg-[#1A1815] text-white/85 select-none"
       data-testid={testId}
       data-decision={currentDecision}
+      onDoubleClick={(e) => {
+        // Defensive: even with select-none, double-click on focusable
+        // children can still produce a selection range. Prevent the
+        // default unless the click landed on an editable surface.
+        const target = e.target as HTMLElement | null;
+        if (
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.isContentEditable)
+        ) {
+          return;
+        }
+        e.preventDefault();
+        const sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
+      }}
       {...(dataAttributes ?? {})}
     >
       {/* ── Workspace bar — IA Phase 14 horizontal hierarchy ───────────
@@ -435,7 +474,7 @@ export function ReviewWorkspaceShell<TItem>({
           ariaLabel={`Scope progress ${decidedCount}/${denom}`}
         />
 
-        {scopeNav?.prev || scopeNav?.next ? (
+        {scopeNav?.prev || scopeNav?.next || scopePicker ? (
           <div
             className="flex items-center gap-1"
             data-testid="scope-nav-controls"
@@ -444,8 +483,8 @@ export function ReviewWorkspaceShell<TItem>({
               href={scopeNav?.prev?.href ?? "#"}
               aria-label={
                 scopeNav?.prev
-                  ? `Previous scope: ${scopeNav.prev.label}`
-                  : "No previous scope"
+                  ? `Previous ${scopePicker?.kind ?? "scope"}: ${scopeNav.prev.label}`
+                  : `No previous ${scopePicker?.kind ?? "scope"}`
               }
               data-testid="scope-nav-prev"
               data-disabled={scopeNav?.prev ? undefined : "true"}
@@ -455,16 +494,18 @@ export function ReviewWorkspaceShell<TItem>({
                   ? "text-white/70 hover:border-white/20 hover:text-white"
                   : "pointer-events-none text-white/25",
               )}
-              title={scopeNav?.prev ? scopeNav.prev.label : "No previous scope"}
+              title={scopeNav?.prev ? scopeNav.prev.label : `No previous ${scopePicker?.kind ?? "scope"}`}
             >
-              [
+              <ArrowLeft className="h-3 w-3" aria-hidden />
+              prev
             </Link>
+            {scopePicker ? <ScopePickerDropdown picker={scopePicker} /> : null}
             <Link
               href={scopeNav?.next?.href ?? "#"}
               aria-label={
                 scopeNav?.next
-                  ? `Next scope: ${scopeNav.next.label}`
-                  : "No next scope"
+                  ? `Next ${scopePicker?.kind ?? "scope"}: ${scopeNav.next.label}`
+                  : `No next ${scopePicker?.kind ?? "scope"}`
               }
               data-testid="scope-nav-next"
               data-disabled={scopeNav?.next ? undefined : "true"}
@@ -474,9 +515,10 @@ export function ReviewWorkspaceShell<TItem>({
                   ? "text-white/70 hover:border-white/20 hover:text-white"
                   : "pointer-events-none text-white/25",
               )}
-              title={scopeNav?.next ? scopeNav.next.label : "No next scope"}
+              title={scopeNav?.next ? scopeNav.next.label : `No next ${scopePicker?.kind ?? "scope"}`}
             >
-              ]
+              next
+              <ArrowRight className="h-3 w-3" aria-hidden />
             </Link>
           </div>
         ) : null}
@@ -634,7 +676,7 @@ export function ReviewWorkspaceShell<TItem>({
               <ShortcutRow keys="D" label="Discard" />
               <ShortcutRow keys="←  →" label="Prev / next item" />
               <ShortcutRow keys="U" label="Undecided" />
-              <ShortcutRow keys="[  ]" label="Prev / next scope" />
+              <ShortcutRow keys=",  ." label="Prev / next scope" />
               <ShortcutRow keys="Esc" label="Exit focus" />
               <ShortcutRow keys="?" label="All shortcuts" />
             </div>
@@ -657,11 +699,105 @@ export function ReviewWorkspaceShell<TItem>({
               label="Reset to undecided (when an operator decision exists)"
             />
             <ShortcutHelpRow keys="←  /  →" label="Prev / Next item (within scope)" />
-            <ShortcutHelpRow keys="[  /  ]" label="Prev / Next scope (folder or batch)" />
+            <ShortcutHelpRow keys=",  /  ." label="Prev / Next scope (folder, reference, or batch)" />
             <ShortcutHelpRow keys="?" label="Show this card" />
             <ShortcutHelpRow keys="Esc" label="Exit focus to scope grid" />
           </ul>
         </Modal>
+      ) : null}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// IA Phase 19 — Scope picker dropdown
+// ────────────────────────────────────────────────────────────────────────
+
+function ScopePickerDropdown({
+  picker,
+}: {
+  picker: NonNullable<ReviewWorkspaceShellProps<unknown>["scopePicker"]>;
+}) {
+  const [open, setOpen] = useState(false);
+  // Click-outside close.
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-testid="scope-picker"]')) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  const kindLabel =
+    picker.kind === "folder"
+      ? "Folders"
+      : picker.kind === "reference"
+        ? "References"
+        : "Batches";
+
+  return (
+    <div className="relative" data-testid="scope-picker">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label={`Pick ${picker.kind}`}
+        aria-expanded={open}
+        data-testid="scope-picker-toggle"
+        className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-1.5 font-mono text-[10.5px] uppercase tracking-meta text-white/70 hover:border-white/20 hover:text-white"
+      >
+        {picker.kind}
+        <ChevronDown className="h-3 w-3" aria-hidden />
+      </button>
+      {open ? (
+        <div
+          className="absolute left-0 top-full z-50 mt-1 max-h-[420px] w-[320px] overflow-y-auto rounded-md border border-white/10 bg-[#16130F] shadow-2xl"
+          role="listbox"
+          aria-label={kindLabel}
+          data-testid="scope-picker-menu"
+        >
+          <div className="px-3 py-2 font-mono text-[10px] uppercase tracking-meta text-white/40">
+            {kindLabel} · {picker.entries.length} pending
+          </div>
+          {picker.entries.length === 0 ? (
+            <div className="px-3 py-3 text-xs text-white/50">
+              No pending {picker.kind}s.
+            </div>
+          ) : (
+            <ul className="py-1">
+              {picker.entries.map((entry) => {
+                const isActive = entry.id === picker.activeId;
+                return (
+                  <li key={entry.id}>
+                    <Link
+                      href={entry.href}
+                      onClick={() => setOpen(false)}
+                      role="option"
+                      aria-selected={isActive}
+                      data-active={isActive || undefined}
+                      data-testid="scope-picker-entry"
+                      className={cn(
+                        "flex items-center justify-between gap-3 px-3 py-1.5 text-xs",
+                        isActive
+                          ? "bg-white/10 text-white"
+                          : "text-white/75 hover:bg-white/5 hover:text-white",
+                      )}
+                    >
+                      <span className="truncate" title={entry.label}>
+                        {entry.label}
+                      </span>
+                      <span className="font-mono text-[10px] tabular-nums text-white/50">
+                        {entry.pendingCount}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       ) : null}
     </div>
   );
@@ -880,8 +1016,9 @@ function Filmstrip<TItem>({
                 <img
                   src={thumb.thumbnailUrl}
                   alt=""
-                  className="h-full w-full object-cover"
+                  className="pointer-events-none h-full w-full select-none object-cover"
                   loading="lazy"
+                  draggable={false}
                 />
               ) : null}
             </button>

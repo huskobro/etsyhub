@@ -108,6 +108,15 @@ export type ReviewQueueScope =
       breakdown: { undecided: number; kept: number; discarded: number };
     }
   | {
+      kind: "reference";
+      /** Reference cuid (scope identity); UI label resolves
+       *  to ref-XXXXXX from item.source.referenceShortId. */
+      label: string;
+      total: number;
+      cardinality: number;
+      breakdown: { undecided: number; kept: number; discarded: number };
+    }
+  | {
       kind: "queue";
       total: number;
       cardinality: number;
@@ -166,6 +175,9 @@ type Params = {
    *  queue endpoint narrows total + scopeBreakdown to a single
    *  `LocalLibraryAsset.folderName`. Ignored for design scope. */
   folder?: string;
+  /** IA Phase 19 — reference scope ZOOM (design-only). Single
+   *  reference's variations form a scope identity. */
+  reference?: string;
 };
 
 /** Resolve the effective server-side status for cache key + URL. */
@@ -184,6 +196,8 @@ export const reviewQueueQueryKey = (params: Params) =>
     // IA Phase 16 — folder zoom in cache key. Empty string keeps
     // legacy "no folder" entries hot.
     params.folder?.trim() ? params.folder.trim() : "",
+    // IA Phase 19 — reference zoom (design-only) in cache key.
+    params.reference?.trim() ? params.reference.trim() : "",
   ] as const;
 
 export function useReviewQueue(params: Params) {
@@ -199,6 +213,8 @@ export function useReviewQueue(params: Params) {
       if (trimmedQ) url.searchParams.set("q", trimmedQ);
       const trimmedFolder = params.folder?.trim();
       if (trimmedFolder) url.searchParams.set("folder", trimmedFolder);
+      const trimmedRef = params.reference?.trim();
+      if (trimmedRef) url.searchParams.set("reference", trimmedRef);
 
       const res = await fetch(url.toString());
       if (!res.ok) {

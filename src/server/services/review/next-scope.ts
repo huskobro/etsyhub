@@ -291,6 +291,250 @@ export async function getAdjacentPendingFolders(args: {
   return { prev, next };
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Reference (AI design) — adjacent + listing
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * IA Phase 19 — reference scope navigation. Reference scope = single
+ * `Reference.id` whose `GeneratedDesign.referenceId` rows form a
+ * review group. Operatör `,` / `.` shortcut'ı veya scope picker ile
+ * önceki/sonraki pending reference'a geçer.
+ */
+export async function getAdjacentPendingReferences(args: {
+  userId: string;
+  currentReferenceId: string | null;
+}): Promise<{
+  prev: { referenceId: string; firstPendingItemId: string | null } | null;
+  next: { referenceId: string; firstPendingItemId: string | null } | null;
+}> {
+  const { userId, currentReferenceId } = args;
+  const [allRefs, pendingGrouped] = await Promise.all([
+    db.generatedDesign.groupBy({
+      by: ["referenceId"],
+      where: { userId, deletedAt: null },
+      orderBy: { referenceId: "asc" },
+    }),
+    db.generatedDesign.groupBy({
+      by: ["referenceId"],
+      where: {
+        userId,
+        deletedAt: null,
+                reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      },
+    }),
+  ]);
+  const allIds = allRefs
+    .map((g) => g.referenceId)
+    .filter((id): id is string => id !== null);
+  const pendingIds = new Set(
+    pendingGrouped
+      .map((g) => g.referenceId)
+      .filter((id): id is string => id !== null),
+  );
+  if (pendingIds.size === 0) return { prev: null, next: null };
+
+  const idx = currentReferenceId ? allIds.indexOf(currentReferenceId) : -1;
+  let prevId: string | null = null;
+  let nextId: string | null = null;
+  if (idx >= 0) {
+    for (let i = idx - 1; i >= 0; i--) {
+      if (pendingIds.has(allIds[i]!)) {
+        prevId = allIds[i]!;
+        break;
+      }
+    }
+    for (let i = idx + 1; i < allIds.length; i++) {
+      if (pendingIds.has(allIds[i]!)) {
+        nextId = allIds[i]!;
+        break;
+      }
+    }
+  } else {
+    nextId = [...pendingIds][0] ?? null;
+  }
+
+  async function firstPending(refId: string | null) {
+    if (!refId) return null;
+    const row = await db.generatedDesign.findFirst({
+      where: {
+        userId,
+        deletedAt: null,
+        referenceId: refId,
+        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    return { referenceId: refId, firstPendingItemId: row?.id ?? null };
+  }
+
+  const [prev, next] = await Promise.all([
+    firstPending(prevId),
+    firstPending(nextId),
+  ]);
+  return { prev, next };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Scope picker — list all pending scopes (folders / batches / refs)
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * IA Phase 19 — top-bar scope picker. Operatör scope kind'ına bağlı
+ * pending scope listesini görür ve birine atlar. Listede yalnız
+ * aktif iş kalan scope'lar (undecided > 0); tamamlanmışlar dışta
+ * tutulur (operatör hâlâ iş olan yere odaklanır).
+ *
+ * Sıralama: folder/reference için alphabetical; batch için
+ * oldest-pending. Sonuçlar pageSize'a sınırlandırılır (UI dropdown
+ * için 50 yeterli).
+ */
+export async function listPendingScopes(args: {
+  userId: string;
+  kind: "folder" | "batch" | "reference";
+}): Promise<Array<{ id: string; label: string; pendingCount: number; firstPendingItemId: string | null }>> {
+  const { userId, kind } = args;
+
+  if (kind === "folder") {
+    const grouped = await db.localLibraryAsset.groupBy({
+      by: ["folderName"],
+      where: {
+        userId,
+        deletedAt: null,
+        isUserDeleted: false,
+        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      },
+      _count: { id: true },
+      orderBy: { folderName: "asc" },
+      take: 50,
+    });
+    const rows = await Promise.all(
+      grouped.map(async (g) => {
+        const first = await db.localLibraryAsset.findFirst({
+          where: {
+            userId,
+            deletedAt: null,
+            isUserDeleted: false,
+            folderName: g.folderName,
+            reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+          },
+          orderBy: { createdAt: "asc" },
+          select: { id: true },
+        });
+        return {
+          id: g.folderName,
+          label: g.folderName,
+          pendingCount: g._count.id,
+          firstPendingItemId: first?.id ?? null,
+        };
+      }),
+    );
+    return rows;
+  }
+
+  if (kind === "reference") {
+    const grouped = await db.generatedDesign.groupBy({
+      by: ["referenceId"],
+      where: {
+        userId,
+        deletedAt: null,
+                reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      },
+      _count: { id: true },
+      orderBy: { referenceId: "asc" },
+      take: 50,
+    });
+    const refs = grouped
+      .map((g) => g.referenceId)
+      .filter((id): id is string => id !== null);
+    const rows = await Promise.all(
+      refs.map(async (refId) => {
+        const [first, count] = await Promise.all([
+          db.generatedDesign.findFirst({
+            where: {
+              userId,
+              deletedAt: null,
+              referenceId: refId,
+              reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+            },
+            orderBy: { createdAt: "asc" },
+            select: { id: true },
+          }),
+          db.generatedDesign.count({
+            where: {
+              userId,
+              deletedAt: null,
+              referenceId: refId,
+              reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+            },
+          }),
+        ]);
+        return {
+          id: refId,
+          label: `ref-${refId.slice(-6)}`,
+          pendingCount: count,
+          firstPendingItemId: first?.id ?? null,
+        };
+      }),
+    );
+    return rows;
+  }
+
+  // kind === "batch" — Job.metadata.batchId path; client-side filter
+  // (matches existing pattern in next-scope.ts).
+  const variationJobs = await db.job.findMany({
+    where: { userId, type: JobType.GENERATE_VARIATIONS },
+    select: { id: true, metadata: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+    take: 500,
+  });
+  const byBatch = new Map<string, { jobIds: string[]; oldest: Date }>();
+  for (const j of variationJobs) {
+    const md = j.metadata as Record<string, unknown> | null;
+    const batchId =
+      md && typeof md === "object" && typeof md.batchId === "string"
+        ? md.batchId
+        : null;
+    if (!batchId) continue;
+    const existing = byBatch.get(batchId);
+    if (existing) existing.jobIds.push(j.id);
+    else byBatch.set(batchId, { jobIds: [j.id], oldest: j.createdAt });
+  }
+  const rows = await Promise.all(
+    [...byBatch.entries()].map(async ([batchId, info]) => {
+      const [first, count] = await Promise.all([
+        db.generatedDesign.findFirst({
+          where: {
+            userId,
+            deletedAt: null,
+            jobId: { in: info.jobIds },
+            reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+          },
+          orderBy: { createdAt: "asc" },
+          select: { id: true },
+        }),
+        db.generatedDesign.count({
+          where: {
+            userId,
+            deletedAt: null,
+            jobId: { in: info.jobIds },
+            reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+          },
+        }),
+      ]);
+      if (count === 0) return null; // closed batch — drop
+      return {
+        id: batchId,
+        label: `batch ${batchId.slice(0, 8)}`,
+        pendingCount: count,
+        firstPendingItemId: first?.id ?? null,
+      };
+    }),
+  );
+  return rows.filter((r): r is NonNullable<typeof r> => r !== null);
+}
+
 /**
  * Total review-pending (UNDECIDED) item count across all sources for
  * this user. Includes:

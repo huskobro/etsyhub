@@ -50,9 +50,11 @@ import {
 } from "@/server/services/midjourney/review";
 import {
   getAdjacentPendingFolders,
+  getAdjacentPendingReferences,
   getNextPendingBatchId,
   getNextPendingFolderName,
   getTotalReviewPendingCount,
+  listPendingScopes,
 } from "@/server/services/review/next-scope";
 import { db } from "@/server/db";
 
@@ -190,21 +192,33 @@ export default async function ReviewPage({
     if (!session?.user) redirect("/login");
     const userId = session.user.id;
 
-    // IA Phase 12 — workspace anchor + next-scope resolve.
-    // Local: read the current item's folderName via a tiny query so
-    // we know which folder to exclude when picking the next pending
-    // one. AI: there's no folder concept; we fall back to the
-    // workspace queue itself (no folder-style auto-progress).
+    // IA Phase 19 — Scope identity resolve (folder for local,
+    // reference for design). Page reads the current item's
+    // scope identity so QueueReviewWorkspace can filter the queue
+    // and the shell can resolve adjacent scopes / picker entries.
     let currentFolderName: string | null = null;
+    let currentReferenceId: string | null = null;
     if (focusScope === "local") {
       const local = await db.localLibraryAsset.findFirst({
         where: { id: itemId, userId },
         select: { folderName: true },
       });
       currentFolderName = local?.folderName ?? null;
+    } else {
+      const design = await db.generatedDesign.findFirst({
+        where: { id: itemId, userId, deletedAt: null },
+        select: { referenceId: true },
+      });
+      currentReferenceId = design?.referenceId ?? null;
     }
 
-    const [totalReviewPending, nextFolder, adjacentFolders] = await Promise.all([
+    const [
+      totalReviewPending,
+      nextFolder,
+      adjacentFolders,
+      adjacentReferences,
+      pickerScopes,
+    ] = await Promise.all([
       getTotalReviewPendingCount(userId),
       focusScope === "local"
         ? getNextPendingFolderName({ userId, currentFolderName })
@@ -212,14 +226,22 @@ export default async function ReviewPage({
       focusScope === "local"
         ? getAdjacentPendingFolders({ userId, currentFolderName })
         : Promise.resolve({ prev: null, next: null }),
+      focusScope === "design"
+        ? getAdjacentPendingReferences({
+            userId,
+            currentReferenceId,
+          })
+        : Promise.resolve({ prev: null, next: null }),
+      // IA Phase 19 — scope picker data. Top-bar dropdown.
+      listPendingScopes({
+        userId,
+        kind: focusScope === "local" ? "folder" : "reference",
+      }),
     ]);
 
     // IA Phase 16 — auto-next deep-link: sıradaki folder'ın ilk
-    // pending item'ına doğrudan iner (resolver firstPendingItemId
-    // döndürür). Folder grid'inden geçirmeyiz; operatör tek
-    // klikle iş akışına devam eder. Server fallback: pending
-    // item null ise (yarış koşulu) klasik `?source=local` href.
-    const nextScope = nextFolder
+    // pending item'ına doğrudan iner.
+    const nextScopeFolder = nextFolder
       ? nextFolder.firstPendingItemId
         ? {
             href: `/review?source=local&item=${encodeURIComponent(
@@ -235,10 +257,24 @@ export default async function ReviewPage({
           }
       : null;
 
-    // IA Phase 18 — scope navigation (Madde M scope ekseni).
-    // Local için adjacent folder resolver; AI için (folder kavramı yok)
-    // scope ekseni şu an boş — gelecek tur AI batch lineage ile
-    // doldurulabilir.
+    // IA Phase 19 — same auto-next behaviour for AI design's
+    // reference scope. Operatör reference X'i bitirdiğinde reference Y'ye
+    // sıçrar.
+    const nextScopeReference = adjacentReferences.next?.firstPendingItemId
+      ? {
+          href: `/review?source=ai&item=${encodeURIComponent(
+            adjacentReferences.next.firstPendingItemId,
+          )}`,
+          label: `ref-${adjacentReferences.next.referenceId.slice(-6)}`,
+          kind: "queue" as const, // shell typing union; canonical "next reference"
+        }
+      : null;
+
+    const nextScope =
+      focusScope === "local" ? nextScopeFolder : nextScopeReference;
+
+    // IA Phase 18+19 — scope navigation (Madde M scope ekseni)
+    // for both folder (local) and reference (design).
     const scopeNav =
       focusScope === "local"
         ? {
@@ -259,7 +295,39 @@ export default async function ReviewPage({
                 }
               : null,
           }
-        : { prev: null, next: null };
+        : {
+            prev: adjacentReferences.prev?.firstPendingItemId
+              ? {
+                  href: `/review?source=ai&item=${encodeURIComponent(
+                    adjacentReferences.prev.firstPendingItemId,
+                  )}`,
+                  label: `ref-${adjacentReferences.prev.referenceId.slice(-6)}`,
+                }
+              : null,
+            next: adjacentReferences.next?.firstPendingItemId
+              ? {
+                  href: `/review?source=ai&item=${encodeURIComponent(
+                    adjacentReferences.next.firstPendingItemId,
+                  )}`,
+                  label: `ref-${adjacentReferences.next.referenceId.slice(-6)}`,
+                }
+              : null,
+          };
+
+    // IA Phase 19 — scope picker entries (top-bar dropdown). Built
+    // for the active scope kind so the picker swaps folder ↔
+    // reference seamlessly. Each entry deep-links to first pending.
+    const pickerEntries = pickerScopes
+      .filter((s) => s.firstPendingItemId !== null)
+      .map((s) => ({
+        id: s.id,
+        label: s.label,
+        pendingCount: s.pendingCount,
+        href:
+          focusScope === "local"
+            ? `/review?source=local&item=${encodeURIComponent(s.firstPendingItemId!)}`
+            : `/review?source=ai&item=${encodeURIComponent(s.firstPendingItemId!)}`,
+      }));
 
     return (
       <QueueReviewWorkspace
@@ -269,12 +337,17 @@ export default async function ReviewPage({
         decision={decision}
         totalReviewPending={totalReviewPending}
         nextScope={nextScope}
-        // IA Phase 16 — scope identity ZOOM. Local focus mode'da
-        // current item'ın folderName'i scope identity'dir; queue
-        // endpoint bu parametre ile filtreli total + breakdown
-        // döndürür. AI scope'ta folder kavramı yok (null geçilir).
+        // IA Phase 16 — scope identity ZOOM (folder for local).
         focusFolderName={currentFolderName}
+        // IA Phase 19 — scope identity ZOOM (reference for design).
+        focusReferenceId={currentReferenceId}
         scopeNav={scopeNav}
+        scopePicker={{
+          kind: focusScope === "local" ? "folder" : "reference",
+          activeId:
+            focusScope === "local" ? currentFolderName : currentReferenceId,
+          entries: pickerEntries,
+        }}
       />
     );
   }

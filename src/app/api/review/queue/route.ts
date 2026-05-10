@@ -54,6 +54,10 @@ const QuerySchema = z.object({
   // odaklan: queue total + scopeBreakdown bu folder cardinality
   // üzerinden gelir. Empty/missing ⇒ all-folders queue scope.
   folder: z.string().trim().min(1).max(512).optional(),
+  // IA Phase 19 — reference scope (AI design only). Tek
+  // referansa zoom yapmak: o reference'ın tüm variation'ları
+  // bir scope identity oluşturur. Folder'a paralel mantık.
+  reference: z.string().trim().min(1).max(120).optional(),
 });
 
 const PAGE_SIZE = 24;
@@ -85,7 +89,7 @@ export const GET = withErrorHandling(async (req: Request) => {
     );
   }
 
-  const { scope, status, page, q, folder } = parsed.data;
+  const { scope, status, page, q, folder, reference } = parsed.data;
   const skip = (page - 1) * PAGE_SIZE;
 
   if (scope === "design") {
@@ -93,6 +97,10 @@ export const GET = withErrorHandling(async (req: Request) => {
       userId: user.id,
       deletedAt: null,
       ...(status ? { reviewStatus: status } : {}),
+      // IA Phase 19 — reference scope ZOOM (design-only). Single
+      // reference's variations form a scope identity (CLAUDE.md
+      // Madde M).
+      ...(reference ? { referenceId: reference } : {}),
       // IA Phase 15 — search across product type key + reference id
       // suffix. Reference.notes is the operator-meaningful free-text
       // field; productType.key is the canonical taxonomy chip the
@@ -257,21 +265,32 @@ export const GET = withErrorHandling(async (req: Request) => {
       // (operatörün filtre kombinasyonu); folder kavramı yok.
       // Breakdown undecided/kept/discarded scope cardinality üzerinden;
       // decided türetilebilir.
-      scope: {
-        kind: "queue" as const,
-        total: total,
-        // Top-bar `Item N / M`'in M'i: status filter aktifse filtered
-        // total, değilse undecided+kept+discarded toplamı (workspace
-        // anchor ile değil, scope cardinality ile yürür).
-        cardinality: status
-          ? total
-          : undecidedCount + keptCount + discardedCount,
-        breakdown: {
-          undecided: undecidedCount,
-          kept: keptCount,
-          discarded: discardedCount,
-        },
-      },
+      scope: reference
+        ? {
+            kind: "reference" as const,
+            label: reference,
+            total: total,
+            cardinality: status
+              ? total
+              : undecidedCount + keptCount + discardedCount,
+            breakdown: {
+              undecided: undecidedCount,
+              kept: keptCount,
+              discarded: discardedCount,
+            },
+          }
+        : {
+            kind: "queue" as const,
+            total: total,
+            cardinality: status
+              ? total
+              : undecidedCount + keptCount + discardedCount,
+            breakdown: {
+              undecided: undecidedCount,
+              kept: keptCount,
+              discarded: discardedCount,
+            },
+          },
     });
   }
 

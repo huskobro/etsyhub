@@ -44,6 +44,13 @@ export function EvaluationPanel({
   const failedCount = applicable.filter((c) => c.state === "failed").length;
   const passedCount = applicable.filter((c) => c.state === "passed").length;
   const neutralCount = checks.length - applicable.length;
+  // CLAUDE.md Madde N+ — blocker fail forces NEEDS_REVIEW regardless
+  // of score. Score chip turns red when a blocker is failed, so the
+  // operator instantly reads "high score is misleading — there's a
+  // blocker."
+  const hasBlockerFail = applicable.some(
+    (c) => c.state === "failed" && c.severity === "blocker",
+  );
 
   return (
     <section data-testid="evaluation-panel">
@@ -57,8 +64,14 @@ export function EvaluationPanel({
       >
         {lifecycle === "ready" && score !== null ? (
           <span
-            className="rounded-md bg-white/10 px-2 py-0.5 font-mono text-xs text-white"
+            className={cn(
+              "rounded-md px-2 py-0.5 font-mono text-xs",
+              hasBlockerFail
+                ? "bg-rose-500/20 text-rose-200"
+                : "bg-white/10 text-white",
+            )}
             data-testid="evaluation-score"
+            data-blocker-fail={hasBlockerFail || undefined}
           >
             {score}/100
           </span>

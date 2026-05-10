@@ -68,12 +68,28 @@ interface QueueReviewWorkspaceProps {
    *  endpoint o folder'ın total + scopeBreakdown'ını döner. AI
    *  scope'ta her zaman null. */
   focusFolderName?: string | null;
+  /** IA Phase 19 — scope identity ZOOM (design-only). Reference
+   *  scope identity. Queue hook'una `reference=` parametresi
+   *  olarak iletilir. Local scope'ta her zaman null. */
+  focusReferenceId?: string | null;
   /** IA Phase 18 — adjacent scope navigation (CLAUDE.md Madde M
-   *  scope ekseni). When set, the shell wires up [ / ] keyboard
-   *  shortcuts. */
+   *  scope ekseni). When set, the shell wires up scope-axis
+   *  keyboard shortcuts (`,` / `.`). */
   scopeNav?: {
     prev: { href: string; label: string } | null;
     next: { href: string; label: string } | null;
+  };
+  /** IA Phase 19 — scope picker dropdown data. Operatör top-bar'dan
+   *  başka bir folder/reference'a hızlıca atlayabilir. */
+  scopePicker?: {
+    kind: "folder" | "reference";
+    activeId: string | null;
+    entries: Array<{
+      id: string;
+      label: string;
+      pendingCount: number;
+      href: string;
+    }>;
   };
 }
 
@@ -118,20 +134,24 @@ export function QueueReviewWorkspace({
   totalReviewPending,
   nextScope,
   focusFolderName,
+  focusReferenceId,
   scopeNav,
+  scopePicker,
 }: QueueReviewWorkspaceProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
 
-  // IA Phase 16 — scope identity ZOOM. Local focus mode'da queue
-  // endpoint'i `folder=<currentFolderName>` ile çağırırız; total +
-  // scopeBreakdown bu folder cardinality'sine daralır. AI scope'ta
-  // folder yok (undefined geçilir).
+  // IA Phase 16 + 19 — scope identity ZOOM.
+  //   • Local focus mode: queue?folder=<currentFolderName>.
+  //   • Design focus mode: queue?reference=<currentReferenceId>.
+  // Both narrow total + scopeBreakdown to the active scope cardinality.
   const folderQueryArg = scope === "local" && focusFolderName
     ? focusFolderName
     : undefined;
+  const referenceQueryArg =
+    scope === "design" && focusReferenceId ? focusReferenceId : undefined;
 
   // Live queue data — same key the grid uses, so a decision posted
   // here flushes back to the grid on close.
@@ -140,6 +160,7 @@ export function QueueReviewWorkspace({
     decision,
     page,
     folder: folderQueryArg,
+    reference: referenceQueryArg,
   });
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -389,7 +410,11 @@ export function QueueReviewWorkspace({
       exitLabel="Review"
       scopeLabel={
         scope === "design"
-          ? "AI Designs"
+          ? data?.scope?.kind === "reference"
+            ? `Reference · ref-${data.scope.label.slice(-6)}`
+            : item.source?.kind === "design" && item.source.referenceShortId
+              ? `Reference · ref-${item.source.referenceShortId}`
+              : "AI Designs"
           : data?.scope?.kind === "folder"
             ? `Folder · ${data.scope.label}`
             : item.source?.kind === "local-library"
@@ -410,6 +435,7 @@ export function QueueReviewWorkspace({
       onGoPrev={goPrev}
       onGoNext={goNext}
       scopeNav={scopeNav}
+      scopePicker={scopePicker}
       keptCount={keptCount}
       discardedCount={discardedCount}
       undecidedCount={undecidedCount}
@@ -441,7 +467,8 @@ export function QueueReviewWorkspace({
           <img
             src={it.thumbnailUrl}
             alt={`${it.source?.kind ?? scope} review item`}
-            className="h-full w-full object-contain"
+            className="pointer-events-none h-full w-full select-none object-contain"
+            draggable={false}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-sm text-white/40">
@@ -592,13 +619,42 @@ function DesignSourceSection({
   >;
   referenceId: string | null;
 }) {
-  // IA Phase 16 — Quality + Risk satırları EvaluationPanel'e taşındı
-  // (sistem skor contract'ı tek yerde). Bu bölüm yalnız kaynak/
-  // metadata: variation lineage, file format/boyut.
+  // IA Phase 19 — Variation section is collapsible (CLAUDE.md
+  // Madde Q — information density). Default closed; operator
+  // expands it when curious about lineage. Saves vertical space
+  // so Evaluation + checklist sit above the fold.
+  const [open, setOpen] = useState(false);
   const transparency = transparencyDescriptor(source.mimeType, source.hasAlpha);
   return (
     <section data-testid="info-rail-design">
-      <SectionTitle>Variation</SectionTitle>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-2 text-left"
+        aria-expanded={open}
+        data-testid="info-rail-design-toggle"
+      >
+        <SectionTitle>Variation</SectionTitle>
+        <span
+          className="font-mono text-[10px] uppercase tracking-meta text-white/40"
+          aria-hidden
+        >
+          {open ? "−" : "+"}
+        </span>
+      </button>
+      {!open ? (
+        <div
+          className="mt-1 font-mono text-[11px] text-white/50"
+          data-testid="info-rail-design-summary"
+        >
+          {source.productTypeKey ?? "—"} ·{" "}
+          {source.referenceShortId
+            ? `ref-${source.referenceShortId}`
+            : "no ref"}{" "}
+          · {transparency.format}
+        </div>
+      ) : null}
+      {open ? (
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
         <dt className="text-white/40">Product</dt>
         <dd className="font-mono text-white/75">
@@ -628,7 +684,8 @@ function DesignSourceSection({
           {transparency.label}
         </dd>
       </dl>
-      {referenceId ? (
+      ) : null}
+      {open && referenceId ? (
         <Link
           href={`/references/${referenceId}/variations`}
           className="mt-3 inline-flex items-center gap-1 font-mono text-xs text-white/75 underline-offset-2 hover:underline"
