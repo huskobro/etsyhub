@@ -53,6 +53,10 @@ export function ReviewDecisionFilter({
     router.push(
       buildReviewUrl(pathname, searchParams, {
         decision: next === "all" ? undefined : next,
+        // Reset pagination — the new filter has its own page count and
+        // staying on `?page=3` after a filter switch usually lands on
+        // an empty/short page.
+        page: undefined,
         // Reset the open drawer — the current item may be filtered out.
         item: undefined,
       }),

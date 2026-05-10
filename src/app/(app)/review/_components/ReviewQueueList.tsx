@@ -11,48 +11,32 @@
 // Error state: raw error.message UI'a yansıtılmaz (PII / iç hata
 // detayları kullanıcıya sızmasın). Generic mesaj + öneri.
 //
-// Dalga B:
-//   - URL ?page=N pagination (Ö-6) — total > pageSize ise altta navigasyon.
-//   - Selection store scope sync — tab değişiminde auto-clear.
-//   - BulkActionsBar bottom (selectedIds > 0 ise görünür).
+// IA Phase 4: server-side decision filter
+//   - chip URL `?decision=` üzerinden okunur, hook'a canonical decision
+//     parametresi olarak geçer; hook bunu server'ın anladığı
+//     `?status=ReviewStatus`'a map eder (queries.ts → decisionToStatus).
+//   - Bu sayede pagination (total + page count) gerçek filtrelenmiş
+//     veri üzerinden hesaplanır; eski client-side filter pagination'ı
+//     kirletiyordu.
 
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import {
   useRouter,
   usePathname,
   useSearchParams,
 } from "next/navigation";
-import { MJReviewDecision } from "@prisma/client";
 import { useReviewQueue } from "@/features/review/queries";
 import { ReviewCard } from "@/app/(app)/review/_components/ReviewCard";
 import {
   ReviewDecisionFilter,
   decisionFromParam,
-  type DecisionChipValue,
 } from "@/app/(app)/review/_components/ReviewDecisionFilter";
 import { BulkActionsBar } from "@/app/(app)/review/_components/BulkActionsBar";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { buildReviewUrl } from "@/features/review/lib/search-params";
 import { useReviewSelection } from "@/features/review/stores/selection-store";
-import { toCanonicalDecision } from "@/server/services/review/unified";
 
 type Props = { scope: "design" | "local" };
-
-/** Map a chip value to the canonical decision it filters by (or null = all). */
-function decisionFilterTarget(
-  chip: DecisionChipValue,
-): MJReviewDecision | null {
-  switch (chip) {
-    case "undecided":
-      return MJReviewDecision.UNDECIDED;
-    case "kept":
-      return MJReviewDecision.KEPT;
-    case "rejected":
-      return MJReviewDecision.REJECTED;
-    case "all":
-      return null;
-  }
-}
 
 export function ReviewQueueList({ scope }: Props) {
   const router = useRouter();
@@ -62,20 +46,14 @@ export function ReviewQueueList({ scope }: Props) {
   const pageRaw = searchParams.get("page");
   const pageNum = pageRaw && Number(pageRaw) > 0 ? Number(pageRaw) : 1;
   const decisionChip = decisionFromParam(searchParams.get("decision"));
-  const decisionTarget = decisionFilterTarget(decisionChip);
+  // chip "all" ⇒ undefined ⇒ server tüm decision'ları döner.
+  const decisionParam = decisionChip === "all" ? undefined : decisionChip;
 
-  const { data, isLoading, error } = useReviewQueue({ scope, page: pageNum });
-
-  // Client-side filter — keeps the React Query cache and pagination
-  // contract intact. Server-side filtering is a follow-up once we are
-  // confident the UX hits the right edge cases.
-  const visibleItems = useMemo(() => {
-    if (!data) return [];
-    if (decisionTarget === null) return data.items;
-    return data.items.filter(
-      (it) => toCanonicalDecision(it.reviewStatus) === decisionTarget,
-    );
-  }, [data, decisionTarget]);
+  const { data, isLoading, error } = useReviewQueue({
+    scope,
+    decision: decisionParam,
+    page: pageNum,
+  });
 
   // Selection store scope sync: scope prop değişiminde store'u güncelle
   // (auto-clear). Tab değişiminde URL'den de detail/page sıfırlanır;
@@ -96,32 +74,54 @@ export function ReviewQueueList({ scope }: Props) {
   }, [pageNum, setPage]);
 
   if (isLoading) {
-    return <StateMessage tone="neutral" title="Yükleniyor…" />;
+    return (
+      <div className="flex flex-col gap-4">
+        <ReviewDecisionFilter active={decisionChip} />
+        <StateMessage tone="neutral" title="Yükleniyor…" />
+      </div>
+    );
   }
   if (error) {
     return (
-      <StateMessage
-        tone="error"
-        title="Yüklenemedi"
-        body="Review listesi alınamadı. Sayfayı yenileyin veya birkaç saniye sonra tekrar deneyin."
-      />
+      <div className="flex flex-col gap-4">
+        <ReviewDecisionFilter active={decisionChip} />
+        <StateMessage
+          tone="error"
+          title="Yüklenemedi"
+          body="Review listesi alınamadı. Sayfayı yenileyin veya birkaç saniye sonra tekrar deneyin."
+        />
+      </div>
     );
   }
   if (!data || data.items.length === 0) {
+    // Decision filter aktif ve sonuç boşsa filter-aware mesaj göster;
+    // aksi halde scope-spesifik "henüz review yok" mesajı.
+    const filterActive = decisionParam !== undefined;
     return (
-      <StateMessage
-        tone="neutral"
-        title={
-          scope === "design"
-            ? "Henüz review için bekleyen AI tasarımı yok"
-            : "Henüz review için bekleyen local asset yok"
-        }
-        body={
-          scope === "design"
-            ? "Variations sayfasından üretim başlatın; biten tasarımlar burada görünür."
-            : "Local Library'den batch review tetikleyebilirsiniz."
-        }
-      />
+      <div className="flex flex-col gap-4">
+        <ReviewDecisionFilter active={decisionChip} />
+        {filterActive ? (
+          <StateMessage
+            tone="neutral"
+            title="Bu filtreye uyan kayıt yok"
+            body="Decision filter'i değiştirin veya All ile tümünü görün."
+          />
+        ) : (
+          <StateMessage
+            tone="neutral"
+            title={
+              scope === "design"
+                ? "Henüz review için bekleyen AI tasarımı yok"
+                : "Henüz review için bekleyen local asset yok"
+            }
+            body={
+              scope === "design"
+                ? "Variations sayfasından üretim başlatın; biten tasarımlar burada görünür."
+                : "Local Library'den batch review tetikleyebilirsiniz."
+            }
+          />
+        )}
+      </div>
     );
   }
 
@@ -142,19 +142,11 @@ export function ReviewQueueList({ scope }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <ReviewDecisionFilter active={decisionChip} />
-      {visibleItems.length === 0 ? (
-        <StateMessage
-          tone="neutral"
-          title="Bu filtreye uyan kayıt yok"
-          body="Decision filter'i değiştirin veya All ile tümünü görün."
-        />
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-          {visibleItems.map((item) => (
-            <ReviewCard key={item.id} item={item} />
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+        {data.items.map((item) => (
+          <ReviewCard key={item.id} item={item} />
+        ))}
+      </div>
       {showPagination ? (
         <nav
           aria-label="Sayfalama"

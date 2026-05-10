@@ -74,14 +74,55 @@ export type ReviewQueueResponse = {
   pageSize: number;
 };
 
+/**
+ * Canonical operator decision filter. Mirrors the URL `?decision=` param
+ * and the chip vocabulary. The hook maps this onto the legacy
+ * `?status=ReviewStatus` query the server already understands:
+ *
+ *   undecided → PENDING    (operator hasn't acted yet — NEEDS_REVIEW
+ *                           is intentionally NOT included; that is a
+ *                           pipeline auto-flag, not an operator state)
+ *   kept      → APPROVED
+ *   rejected  → REJECTED
+ *
+ * `status` is still accepted for callers that already hold a
+ * ReviewStatus value (e.g. tests, future surfaces); when both are set
+ * `decision` wins so the canonical name is the source of truth.
+ */
+export type CanonicalDecisionFilter = "undecided" | "kept" | "rejected";
+
+function decisionToStatus(d: CanonicalDecisionFilter): ReviewStatusEnum {
+  switch (d) {
+    case "undecided":
+      return "PENDING";
+    case "kept":
+      return "APPROVED";
+    case "rejected":
+      return "REJECTED";
+  }
+}
+
 type Params = {
   scope: "design" | "local";
+  decision?: CanonicalDecisionFilter;
+  /** Legacy escape hatch — prefer `decision` for new call sites. */
   status?: ReviewStatusEnum;
   page?: number;
 };
 
+/** Resolve the effective server-side status for cache key + URL. */
+function effectiveStatus(params: Params): ReviewStatusEnum | undefined {
+  if (params.decision) return decisionToStatus(params.decision);
+  return params.status;
+}
+
 export const reviewQueueQueryKey = (params: Params) =>
-  ["review-queue", params.scope, params.status ?? "ALL", params.page ?? 1] as const;
+  [
+    "review-queue",
+    params.scope,
+    effectiveStatus(params) ?? "ALL",
+    params.page ?? 1,
+  ] as const;
 
 export function useReviewQueue(params: Params) {
   return useQuery<ReviewQueueResponse>({
@@ -89,7 +130,8 @@ export function useReviewQueue(params: Params) {
     queryFn: async () => {
       const url = new URL("/api/review/queue", window.location.origin);
       url.searchParams.set("scope", params.scope);
-      if (params.status) url.searchParams.set("status", params.status);
+      const status = effectiveStatus(params);
+      if (status) url.searchParams.set("status", status);
       if (params.page) url.searchParams.set("page", String(params.page));
 
       const res = await fetch(url.toString());
