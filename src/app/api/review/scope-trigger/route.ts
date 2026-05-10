@@ -34,6 +34,13 @@ const BodySchema = z.discriminatedUnion("scope", [
     scope: z.literal("batch"),
     batchId: z.string().min(1).max(120),
   }),
+  // IA Phase 22 — reference scope (AI design). All variations under
+  // a Reference share the scope identity; trigger fires every
+  // pending + never-scored design row.
+  z.object({
+    scope: z.literal("reference"),
+    referenceId: z.string().min(1).max(120),
+  }),
 ]);
 
 const MAX_PER_TRIGGER = 200;
@@ -111,6 +118,66 @@ export const POST = withErrorHandling(async (req: Request) => {
       skippedAlreadyScored: 0,
       skippedNoTarget: 0,
       enqueueErrors: errors,
+    });
+  }
+
+  if (parsed.data.scope === "reference") {
+    // IA Phase 22 — reference scope. All variations under the
+    // reference; same already-scored guard applies.
+    const targetReferenceId = parsed.data.referenceId;
+    const candidates = await db.generatedDesign.findMany({
+      where: {
+        userId: user.id,
+        deletedAt: null,
+        referenceId: targetReferenceId,
+        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        reviewProviderSnapshot: null,
+      },
+      select: { id: true },
+      take: MAX_PER_TRIGGER,
+    });
+    if (candidates.length === 0) {
+      return NextResponse.json({
+        scope: "reference",
+        referenceId: targetReferenceId,
+        requested: 0,
+        enqueueSucceeded: 0,
+        skippedAlreadyScored: 0,
+        skippedNoTarget: 0,
+        enqueueErrors: 0,
+      });
+    }
+    const refResults = await Promise.all(
+      candidates.map(async (c) => {
+        try {
+          await enqueue(JobType.REVIEW_DESIGN, {
+            scope: "design" as const,
+            generatedDesignId: c.id,
+            userId: user.id,
+          });
+          return { ok: true as const };
+        } catch (err) {
+          logger.error(
+            {
+              designId: c.id,
+              userId: user.id,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            "scope-trigger reference: enqueue failed",
+          );
+          return { ok: false as const };
+        }
+      }),
+    );
+    const refErrors = refResults.filter((r) => !r.ok).length;
+    return NextResponse.json({
+      scope: "reference",
+      referenceId: targetReferenceId,
+      requested: candidates.length,
+      enqueueSucceeded: candidates.length - refErrors,
+      skippedAlreadyScored: 0,
+      skippedNoTarget: 0,
+      enqueueErrors: refErrors,
     });
   }
 

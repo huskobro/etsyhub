@@ -327,11 +327,34 @@ export function PaneReview() {
             );
           })}
         </ul>
-        <p className="mt-3 text-xs text-ink-3">
-          New criterion ids cannot be added through this surface — the
-          provider response schema enumerates them. Future versions will
-          allow custom kinds via separate audit-flagged storage.
-        </p>
+        <div className="mt-3 rounded-md border border-dashed border-line bg-bg p-3">
+          <div className="flex items-baseline justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+              Add custom criterion
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+              Soon
+            </span>
+          </div>
+          <p className="mt-1.5 text-xs text-ink-3">
+            New criterion kinds cannot be added today — the provider
+            response schema enumerates the eight builtin ids. The next
+            phase ships a custom-kind path: provider parser becomes
+            lenient, the prompt includes operator-defined blocks, and
+            unknown kinds return as warnings instead of decision
+            blockers. Until then, every builtin row above is fully
+            editable (label, description, prompt block, weight,
+            severity, applicability).
+          </p>
+          <button
+            type="button"
+            disabled
+            className="mt-2 inline-flex h-7 cursor-not-allowed items-center gap-1.5 rounded-md border border-line px-3 text-xs text-ink-3 opacity-60"
+            data-testid="custom-criterion-add"
+          >
+            + New criterion
+          </button>
+        </div>
       </section>
 
       {/* 5) Cost discipline reminder */}
@@ -685,7 +708,9 @@ function CriterionRow({
       draft.blockText !== criterion.blockText ||
       draft.weight !== criterion.weight ||
       draft.severity !== criterion.severity ||
-      draft.active !== criterion.active
+      draft.active !== criterion.active ||
+      JSON.stringify(draft.applicability) !==
+        JSON.stringify(criterion.applicability)
     );
   }, [draft, criterion]);
 
@@ -832,49 +857,115 @@ function CriterionRow({
             />
           </label>
 
-          {/* Applicability snapshot — read-only in this turn; full
-              applicability editor (formats, transparency, transforms)
-              is part of the planned admin extension. The fields below
-              show what's effective so the operator understands why a
-              criterion is or isn't in the preview. */}
-          <div className="mt-3 grid grid-cols-2 gap-3 rounded-md border border-line bg-bg p-3 text-xs text-ink-3">
-            <div>
-              <div className="font-mono text-[10px] uppercase tracking-meta">
-                Product types
-              </div>
-              <div className="mt-1 text-ink-2">
-                {criterion.applicability.productTypes
-                  ? criterion.applicability.productTypes.join(", ")
-                  : "all"}
-              </div>
+          {/* IA Phase 22 — Applicability editor (CLAUDE.md Madde O).
+              Composite filter: productTypes ∧ formats ∧ transparency
+              ∧ sourceKinds ∧ requiresAnyTransform. "all" toggle
+              clears the array (= null = matches everything); chip
+              click toggles membership. */}
+          <div className="mt-3 rounded-md border border-line bg-bg p-3">
+            <div className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+              Applicability
             </div>
-            <div>
-              <div className="font-mono text-[10px] uppercase tracking-meta">
-                Formats
+            <div className="mt-3 space-y-3 text-xs text-ink-2">
+              <ApplicabilityChips
+                label="Product types"
+                value={draft.applicability.productTypes}
+                options={[
+                  "wall_art",
+                  "clipart",
+                  "sticker",
+                  "transparent_png",
+                  "bookmark",
+                  "printable",
+                ]}
+                onChange={(productTypes) =>
+                  setDraft({
+                    ...draft,
+                    applicability: { ...draft.applicability, productTypes },
+                  })
+                }
+              />
+              <ApplicabilityChips
+                label="Formats"
+                value={draft.applicability.formats}
+                options={["png", "webp", "jpeg", "jpg", "gif", "tiff"]}
+                onChange={(formats) =>
+                  setDraft({
+                    ...draft,
+                    applicability: { ...draft.applicability, formats },
+                  })
+                }
+              />
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+                  Transparency
+                </div>
+                <div className="mt-1.5 flex gap-1.5">
+                  {(["any", "with_alpha", "no_alpha"] as const).map((opt) => {
+                    const active =
+                      (draft.applicability.transparency ?? "any") === opt;
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            applicability: {
+                              ...draft.applicability,
+                              transparency:
+                                opt === "any" ? null : opt,
+                            },
+                          })
+                        }
+                        className={cn(
+                          "rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-meta",
+                          active
+                            ? "border-k-orange bg-k-orange/10 text-ink"
+                            : "border-line bg-paper text-ink-3 hover:border-ink-3",
+                        )}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="mt-1 text-ink-2">
-                {criterion.applicability.formats
-                  ? criterion.applicability.formats.join(", ")
-                  : "all"}
-              </div>
-            </div>
-            <div>
-              <div className="font-mono text-[10px] uppercase tracking-meta">
-                Transparency
-              </div>
-              <div className="mt-1 text-ink-2">
-                {criterion.applicability.transparency ?? "any"}
-              </div>
-            </div>
-            <div>
-              <div className="font-mono text-[10px] uppercase tracking-meta">
-                Source kinds
-              </div>
-              <div className="mt-1 text-ink-2">
-                {criterion.applicability.sourceKinds
-                  ? criterion.applicability.sourceKinds.join(", ")
-                  : "all"}
-              </div>
+              <ApplicabilityChips
+                label="Source kinds"
+                value={draft.applicability.sourceKinds}
+                options={["design", "local-library"]}
+                onChange={(sourceKinds) =>
+                  setDraft({
+                    ...draft,
+                    applicability: {
+                      ...draft.applicability,
+                      sourceKinds: (sourceKinds as Applicability["sourceKinds"]) ?? null,
+                    },
+                  })
+                }
+              />
+              <ApplicabilityChips
+                label="Requires any transform"
+                value={draft.applicability.requiresAnyTransform}
+                options={[
+                  "background_removed",
+                  "cropped",
+                  "upscaled",
+                  "remastered",
+                  "re_exported",
+                  "color_edited",
+                ]}
+                onChange={(requiresAnyTransform) =>
+                  setDraft({
+                    ...draft,
+                    applicability: {
+                      ...draft.applicability,
+                      requiresAnyTransform,
+                    },
+                  })
+                }
+              />
             </div>
           </div>
 
@@ -890,6 +981,7 @@ function CriterionRow({
                   weight: draft.weight,
                   severity: draft.severity,
                   active: draft.active,
+                  applicability: draft.applicability,
                 });
               }}
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-k-orange bg-k-orange/10 px-3 text-xs font-medium text-ink hover:bg-k-orange/20 disabled:cursor-not-allowed disabled:opacity-40"
@@ -912,5 +1004,74 @@ function CriterionRow({
         </div>
       ) : null}
     </li>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// ApplicabilityChips — toggleable chip group for array filters.
+// `value === null` ⇒ "all" mode (matches everything); chip click
+// flips into a discrete subset; clearing every chip returns to null.
+// ────────────────────────────────────────────────────────────────────────
+
+function ApplicabilityChips({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string[] | null;
+  options: ReadonlyArray<string>;
+  onChange: (next: string[] | null) => void;
+}) {
+  const isAll = value === null;
+  return (
+    <div data-testid="applicability-chips" data-label={label}>
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+          {label}
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange(isAll ? [] : null)}
+          className={cn(
+            "rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-meta",
+            isAll
+              ? "border-k-orange bg-k-orange/10 text-ink"
+              : "border-line bg-paper text-ink-3 hover:border-ink-3",
+          )}
+        >
+          {isAll ? "all" : "subset"}
+        </button>
+      </div>
+      {!isAll ? (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {options.map((opt) => {
+            const active = value?.includes(opt) ?? false;
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => {
+                  if (active) {
+                    onChange((value ?? []).filter((v) => v !== opt));
+                  } else {
+                    onChange([...(value ?? []), opt]);
+                  }
+                }}
+                className={cn(
+                  "rounded-sm border px-2 py-0.5 font-mono text-[10px]",
+                  active
+                    ? "border-k-orange bg-k-orange/10 text-ink"
+                    : "border-line bg-paper text-ink-3 hover:border-ink-3",
+                )}
+              >
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }

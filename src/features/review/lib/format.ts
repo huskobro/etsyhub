@@ -100,13 +100,19 @@ export function formatFileSize(bytes: number): string {
 }
 
 /**
- * Print-readiness hint derived from DPI + dimensions. Used as a
- * passive caption next to the resolution row — not a blocking gate.
+ * Print-readiness hint — pixel-count first, DPI metadata is treated
+ * as a secondary signal because PNG/JPEG metadata fields are often
+ * stripped or set to a generic 72 by image editors even when the
+ * raw resolution is print-grade (e.g. 4096×4096 @ 72 DPI is still
+ * a 13.6"×13.6" 300-DPI print). Anchoring the hint on min-side
+ * pixel count matches the scan worker's quality scorer.
  *
- * Heuristic mirrors the scan worker's quality scorer (DPI ≥ target
- * + resolution within 80% of target == "Print-ready"); without DPI
- * we degrade gracefully to a "DPI unreadable" caption instead of
- * pretending the file is OK.
+ * Tiers:
+ *   • min ≥ 3000 px ⇒ Print-ready (regardless of DPI tag)
+ *   • min ≥ 1800 px AND DPI ≥ 200 ⇒ Print-ready (DPI confirms)
+ *   • min ≥ 1800 px ⇒ Print-ready (large pixel count rescues)
+ *   • min ≥ 1000 px ⇒ Web-only — not enough for premium print
+ *   • else ⇒ Low resolution — upscale recommended
  */
 export function resolutionHint(input: {
   dpi: number | null;
@@ -114,10 +120,12 @@ export function resolutionHint(input: {
   height: number | null;
 }): string | null {
   if (input.width == null || input.height == null) return null;
-  if (input.dpi == null) return "DPI bilgisi okunamadı";
-  if (input.dpi >= 300 && Math.min(input.width, input.height) >= 2400) {
+  const minSide = Math.min(input.width, input.height);
+  if (minSide >= 1800) {
     return "Print-ready";
   }
-  if (input.dpi >= 200) return "Web-only — yüksek kaliteli baskı için yetersiz";
-  return "Düşük çözünürlük — upscale gerekebilir";
+  if (minSide >= 1000) {
+    return "Web-only — not large enough for premium print";
+  }
+  return "Low resolution — upscale recommended";
 }

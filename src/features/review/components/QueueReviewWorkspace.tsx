@@ -476,7 +476,65 @@ export function QueueReviewWorkspace({
           </div>
         )
       }
-      renderInfoRail={(it) => <QueueInfoRail item={it} />}
+      renderInfoRail={(it) => (
+        <QueueInfoRail
+          item={it}
+          scopeTrigger={(() => {
+            // IA Phase 22 — focus mode trigger CTA. Local: folder
+            // scope; Design: reference scope. Both gate on having
+            // a real scope identity so we never fire a queue-wide
+            // trigger by accident.
+            if (scope === "local") {
+              const folder =
+                it.source?.kind === "local-library"
+                  ? it.source.folderName
+                  : null;
+              if (!folder) return undefined;
+              return {
+                label: `“${folder}” folder`,
+                onTrigger: async () => {
+                  const r = await fetch("/api/review/scope-trigger", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                      scope: "folder",
+                      folderName: folder,
+                      productTypeKey: "wall_art",
+                    }),
+                  });
+                  if (!r.ok) {
+                    const body = await r.json().catch(() => ({}));
+                    throw new Error(body?.error ?? `HTTP ${r.status}`);
+                  }
+                  // Refresh the queue so the lifecycle promotes.
+                  await queryClient.invalidateQueries({ queryKey: ["review-queue"] });
+                },
+              };
+            }
+            const refId =
+              it.source?.kind === "design" ? it.referenceId : null;
+            if (!refId) return undefined;
+            return {
+              label: `ref-${refId.slice(-6)}`,
+              onTrigger: async () => {
+                const r = await fetch("/api/review/scope-trigger", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({
+                    scope: "reference",
+                    referenceId: refId,
+                  }),
+                });
+                if (!r.ok) {
+                  const body = await r.json().catch(() => ({}));
+                  throw new Error(body?.error ?? `HTTP ${r.status}`);
+                }
+                await queryClient.invalidateQueries({ queryKey: ["review-queue"] });
+              },
+            };
+          })()}
+        />
+      )}
       testId="queue-review-workspace"
       dataAttributes={{ "data-source": item.source?.kind ?? scope }}
     />
@@ -487,7 +545,15 @@ export function QueueReviewWorkspace({
 // Source-aware info-rail content
 // ────────────────────────────────────────────────────────────────────────
 
-function QueueInfoRail({ item }: { item: ReviewQueueItem }) {
+function QueueInfoRail({
+  item,
+  scopeTrigger,
+}: {
+  item: ReviewQueueItem;
+  scopeTrigger:
+    | { label: string; onTrigger: () => Promise<void> }
+    | undefined;
+}) {
   // IA Phase 17 — full applicability context. Product type, format,
   // alpha state, and source kind feed the criteria evaluator so
   // every check renders with the right state (passed / failed /
@@ -535,7 +601,7 @@ function QueueInfoRail({ item }: { item: ReviewQueueItem }) {
         />
       ) : null}
 
-      <EvaluationPanel evaluation={evaluation} />
+      <EvaluationPanel evaluation={evaluation} scopeTrigger={scopeTrigger} />
 
       {evaluation.operatorOverride ? (
         <section data-testid="info-rail-operator-override">

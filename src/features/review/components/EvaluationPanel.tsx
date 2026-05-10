@@ -14,7 +14,8 @@
 
 "use client";
 
-import { Check as CheckIcon, AlertTriangle, Hourglass, MinusCircle } from "lucide-react";
+import { useState } from "react";
+import { Check as CheckIcon, AlertTriangle, Hourglass, MinusCircle, Zap } from "lucide-react";
 import { SectionTitle } from "@/features/review/components/ReviewWorkspaceShell";
 import {
   type Evaluation,
@@ -30,8 +31,19 @@ import { cn } from "@/lib/cn";
 
 export function EvaluationPanel({
   evaluation,
+  scopeTrigger,
 }: {
   evaluation: Evaluation;
+  /** IA Phase 22 — manual trigger affordance for non-ready
+   *  lifecycles. When provided, an "Enqueue review for this scope"
+   *  button appears in the empty-state copy. Operator clicks once;
+   *  the parent runs the POST /api/review/scope-trigger and the
+   *  queue cache invalidates so the lifecycle promotes to
+   *  `queued`. */
+  scopeTrigger?: {
+    label: string;
+    onTrigger: () => Promise<void>;
+  };
 }) {
   const { lifecycle, score, summary, checks, provider, promptVersion } =
     evaluation;
@@ -223,21 +235,77 @@ export function EvaluationPanel({
           ) : null}
         </>
       ) : (
-        <p
-          className="mt-2 text-xs leading-relaxed text-white/60"
-          data-testid="evaluation-empty-copy"
-        >
-          {lifecycle === "not_queued" || lifecycle === "pending"
-            ? "This asset has not been queued for review yet."
-            : lifecycle === "queued"
-              ? "Queued for review — the worker will pick this up shortly."
-              : lifecycle === "running" || lifecycle === "scoring"
-                ? "Waiting for AI response — refresh in a few seconds."
-                : lifecycle === "failed" || lifecycle === "error"
-                  ? "Review failed. Check Settings → Review for provider status."
-                  : "Evaluation is not applicable for this asset."}
-        </p>
+        <>
+          <p
+            className="mt-2 text-xs leading-relaxed text-white/60"
+            data-testid="evaluation-empty-copy"
+          >
+            {lifecycle === "not_queued" || lifecycle === "pending"
+              ? "This asset has not been queued for review yet."
+              : lifecycle === "queued"
+                ? "Queued for review — the worker will pick this up shortly."
+                : lifecycle === "running" || lifecycle === "scoring"
+                  ? "Waiting for AI response — refresh in a few seconds."
+                  : lifecycle === "failed" || lifecycle === "error"
+                    ? "Review failed. Check Settings → Review for provider status."
+                    : "Evaluation is not applicable for this asset."}
+          </p>
+          {scopeTrigger &&
+          (lifecycle === "not_queued" ||
+            lifecycle === "pending" ||
+            lifecycle === "failed" ||
+            lifecycle === "error") ? (
+            <ScopeTriggerButton
+              label={scopeTrigger.label}
+              onTrigger={scopeTrigger.onTrigger}
+            />
+          ) : null}
+        </>
       )}
     </section>
+  );
+}
+
+function ScopeTriggerButton({
+  label,
+  onTrigger,
+}: {
+  label: string;
+  onTrigger: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="mt-3" data-testid="evaluation-scope-trigger">
+      <button
+        type="button"
+        disabled={busy || done}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            await onTrigger();
+            setDone(true);
+          } catch (err) {
+            setError(err instanceof Error ? err.message : String(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-k-orange bg-k-orange/15 px-3 text-xs font-medium text-white hover:bg-k-orange/25 disabled:cursor-not-allowed disabled:opacity-60"
+        data-testid="evaluation-trigger-btn"
+      >
+        <Zap className="h-3 w-3" aria-hidden />
+        {busy
+          ? "Enqueueing…"
+          : done
+            ? "Enqueued"
+            : `Enqueue review for ${label}`}
+      </button>
+      {error ? (
+        <p className="mt-1.5 text-[11px] text-rose-300">{error}</p>
+      ) : null}
+    </div>
   );
 }
