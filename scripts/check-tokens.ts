@@ -86,6 +86,10 @@ const whitelist = [
   // mono caption (`text-[10.5px]`) for the per-segment count chips,
   // matching the Library/References sub-tab patterns.
   "src/app/(app)/review/_components/ReviewQueueToolbar.tsx",
+  // IA Phase 14 — ReviewCard uses the same DS half-pixel mono caption
+  // for the "override" inline signal (operator override hint replacing
+  // the noisier "Kullanıcı" badge).
+  "src/app/(app)/review/_components/ReviewCard.tsx",
   // Rollout-4 — Selections (B2/B3) recipes.
   //  · SelectionCard → `.k-card--hero` v5 hero card; `aspect-square` + 3-up
   //    thumb composite v5 design layer'ında tanımlı.

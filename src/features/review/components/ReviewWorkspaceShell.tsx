@@ -292,111 +292,111 @@ export function ReviewWorkspaceShell<TItem>({
       data-decision={currentDecision}
       {...(dataAttributes ?? {})}
     >
-      {/* ── Workspace bar — IA Phase 13 hierarchy ──────────────────────
-       *   CLAUDE.md Madde M: scope summary primary, total pending
-       *   secondary (small caption on the right). Phase 12 had the
-       *   total pending as the workspace anchor; operators reported
-       *   that number competing with the scope summary on batch
-       *   focus pages — the global queue count next to a small
-       *   batch summary is misleading. Phase 13 swaps the priority:
-       *   scope summary is now the loud line, total pending is a
-       *   muted "Queue · 273 review pending" caption next to the
-       *   progress bar.
+      {/* ── Workspace bar — IA Phase 14 horizontal hierarchy ───────────
+       *   Phase 13 had scope summary primary + queue caption secondary,
+       *   but with long folder names / batch ids the scope summary
+       *   wrapped over 4-5 vertical rows and pushed the bar tall.
+       *   Phase 14 keeps the bar **single-row horizontal**:
        *
-       *   1. Primary (largest, accent on undecided > 0):
-       *        "Batch · cmoqxxx · 22 undecided · 4 kept · 2 discarded"
-       *      Three sayım always: undecided / kept / discarded.
-       *   2. Bookkeeping (small mono):
-       *        "Item 8 / 24 · Page 2 / 11"
-       *   3. Secondary right (small mono, after progress bar):
-       *        "Queue · 273 review pending"
-       *      Operator's "kaç toplam iş var" answer — present, but
-       *      never competing with the scope summary.
-       *   4. ProgressBar: current scope progress.
+       *     [Exit] [scope label · truncate] | total pending anchor |
+       *       [N undecided · K kept · D discarded] | Item N/M |
+       *       progress bar | Help / Exit
+       *
+       *   Scope label truncates with a tooltip; the three-count summary
+       *   stays on one line; page index dropped (CLAUDE.md Madde M —
+       *   page bilgisi top-bar'da ana bilgi değildir, scope-içi cursor
+       *   yeterli). Total pending is the workspace anchor again —
+       *   operator's "ne kadar iş kaldı" question gets the loudest
+       *   answer, then scope-specific counts.
        */}
-      <div className="flex flex-shrink-0 items-center gap-4 border-b border-white/5 bg-[#16130F] px-5 py-3">
+      <div className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-white/5 bg-[#16130F] px-5">
         <Link
           href={exitHref}
-          className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white"
+          className="inline-flex shrink-0 items-center gap-2 text-sm text-white/60 hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
           {exitLabel}
         </Link>
 
-        <div className="flex flex-1 flex-col items-center justify-center leading-tight">
-          {/* 1. Primary — scope summary three-count breakdown */}
-          <div
-            className="flex items-center gap-2 font-mono text-sm uppercase tracking-meta"
-            data-testid="topbar-scope-summary"
-          >
-            <span className="font-medium text-white/85">{scopeLabel}</span>
-            <span className="text-white/20">·</span>
-            <span
-              className={cn(
-                "tabular-nums",
-                undecidedCount > 0
-                  ? "text-k-orange-bright"
-                  : "text-white/40",
-              )}
-              data-testid="topbar-undecided-count"
-            >
-              {undecidedCount} undecided
-            </span>
-            <span className="text-white/20">·</span>
-            <span className="tabular-nums text-white/60">
-              {keptCount} kept
-            </span>
-            <span className="text-white/20">·</span>
-            <span className="tabular-nums text-white/60">
-              {discardedCount} discarded
-            </span>
-          </div>
+        {/* Scope label — truncates with tooltip */}
+        <span
+          className="min-w-0 max-w-[28ch] truncate font-mono text-xs uppercase tracking-meta text-white/50"
+          title={scopeLabel}
+          data-testid="topbar-scope-label"
+        >
+          {scopeLabel}
+        </span>
 
-          {/* 2. Bookkeeping line */}
-          {item ? (
-            <div className="mt-1 flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-meta text-white/40">
-              <span className="tabular-nums">
-                Item {cursor + 1} / {total}
-              </span>
-              {pageInfo ? (
-                <>
-                  <span className="text-white/20">·</span>
-                  <span className="tabular-nums">
-                    Page {pageInfo.page} / {pageInfo.total}
-                  </span>
-                </>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+        <div className="h-6 w-px bg-white/10" aria-hidden />
 
-        <ProgressBar
-          value={denom > 0 ? (decidedCount / denom) * 100 : 0}
-          tone="orange"
-          className="w-40"
-          ariaLabel={`Scope progress ${decidedCount}/${denom}`}
-        />
-
-        {/* 3. Secondary right — workspace-wide queue total. Muted
-         *   mono caption; never competes with the scope summary. */}
+        {/* Total review pending — workspace anchor */}
         {typeof totalReviewPending === "number" ? (
           <div
-            className="flex items-baseline gap-1.5 font-mono text-[10.5px] uppercase tracking-meta text-white/40"
+            className="flex shrink-0 items-baseline gap-1.5"
             data-testid="topbar-total-pending"
           >
-            <span className="text-white/30">Queue</span>
-            <span className="text-white/20">·</span>
             <span
               className={cn(
-                "tabular-nums",
-                totalReviewPending > 0 ? "text-white/70" : "text-white/30",
+                "k-display text-lg font-semibold tabular-nums",
+                totalReviewPending > 0
+                  ? "text-k-orange-bright"
+                  : "text-white/40",
               )}
             >
               {totalReviewPending}
             </span>
-            <span className="text-white/30">pending</span>
+            <span className="font-mono text-xs uppercase tracking-meta text-white/50">
+              review pending
+            </span>
           </div>
         ) : null}
+
+        <div className="h-6 w-px bg-white/10" aria-hidden />
+
+        {/* Scope summary three-count breakdown */}
+        <div
+          className="flex shrink-0 items-center gap-2 font-mono text-xs uppercase tracking-meta"
+          data-testid="topbar-scope-summary"
+        >
+          <span
+            className={cn(
+              "tabular-nums",
+              undecidedCount > 0
+                ? "text-k-orange-bright"
+                : "text-white/40",
+            )}
+            data-testid="topbar-undecided-count"
+          >
+            {undecidedCount} undecided
+          </span>
+          <span className="text-white/20">·</span>
+          <span className="tabular-nums text-white/60">
+            {keptCount} kept
+          </span>
+          <span className="text-white/20">·</span>
+          <span className="tabular-nums text-white/60">
+            {discardedCount} discarded
+          </span>
+        </div>
+
+        {/* Active item index — scope-internal cursor (no page) */}
+        {item ? (
+          <>
+            <div className="h-6 w-px bg-white/10" aria-hidden />
+            <span className="shrink-0 font-mono text-xs uppercase tracking-meta tabular-nums text-white/40">
+              Item {cursor + 1} / {total}
+            </span>
+          </>
+        ) : null}
+
+        <div className="flex-1" />
+
+        <ProgressBar
+          value={denom > 0 ? (decidedCount / denom) * 100 : 0}
+          tone="orange"
+          className="w-32 shrink-0"
+          ariaLabel={`Scope progress ${decidedCount}/${denom}`}
+        />
 
         <button
           type="button"
