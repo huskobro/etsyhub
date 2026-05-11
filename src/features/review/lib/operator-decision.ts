@@ -50,35 +50,112 @@ export function operatorDecisionLabel(d: OperatorDecision): string {
 // ────────────────────────────────────────────────────────────────────────
 // AI score tone — advisory chip rengini deterministic system score'a
 // göre üretir. Operator decision badge'i ile karışmasın diye AYRI
-// helper. Eşikler decision thresholds (low/high) + risk flag varlığı.
+// helper. 5 kademe — ama sabit aralık DEĞİL: kullanıcı/admin'in
+// belirlediği `low/high` threshold'lara göre orantısal hesap.
+//   • Risk flag tone'u EZMEZ — risk ayrı `getRiskTone` helper'ında.
+//   • score null → neutral
+//
+// Eşikler decision policy'den gelir (Settings → Review). Default
+// 60/90 yalnız fallback'tir (CLAUDE.md Madde R).
 // ────────────────────────────────────────────────────────────────────────
 
-export type AiScoreTone = "destructive" | "warning" | "success" | "neutral";
+export type AiScoreTone =
+  | "critical"  // band çok altı — AI çok zayıf gördü
+  | "poor"      // band altı — düşük kalite, low'a yaklaşıyor
+  | "warning"   // band içi alt yarı — geçmeye uzak
+  | "caution"   // band içi üst yarı — geçmeye yakın (near-pass)
+  | "success"   // band üstü — auto-approve threshold'ı geçti
+  | "neutral";  // AI hiç skor üretmedi
 
 export interface AiScoreToneInput {
   /** System (deterministic) score; null = AI henüz çalışmadı. */
   score: number | null;
-  /** Failed risk flag sayısı; > 0 ise tone "review recommended"a iter. */
-  riskFlagCount: number;
-  /** Decision thresholds — settings'ten gelir; varsayılan 60/90. */
+  /** Decision thresholds — settings'ten gelir; default 60/90 fallback. */
   thresholds?: { low: number; high: number };
 }
 
 const DEFAULT_THRESHOLDS = { low: 60, high: 90 } as const;
 
 /**
- * AI score chip tonunu döndürür. Decision engine ile uyumlu kural:
- *   • score < low veya risk flag varsa → destructive (kırmızı)
- *   • score >= high ve risk yoksa     → success (yeşil)
- *   • diğer                          → warning (sarı)
- *   • score null                    → neutral (advisory yok)
+ * Score tonunu threshold'a göre döndürür. Kural:
+ *   • score >= high                       → success
+ *   • low <= score < high (band içi):
+ *       midpoint = (low + high) / 2
+ *       score < midpoint                  → warning
+ *       else                              → caution (near-pass)
+ *   • score < low (band altı):
+ *       halfLow = low / 2
+ *       score < halfLow                   → critical
+ *       else                              → poor
+ *   • score null/undefined                → neutral
+ *
+ * Default 60/90 ile örnekler:
+ *   5  → critical (halfLow=30, 5<30)
+ *   45 → poor    (45>=30 ama <60)
+ *   65 → warning (band içi, midpoint=75, 65<75)
+ *   85 → caution (band içi, 85>=75)
+ *   95 → success (95>=90)
+ *
+ * Custom 70/95:
+ *   65 → poor    (65>=35, <70)
+ *   90 → caution (band içi, midpoint=82.5, 90>=82.5)
+ *   96 → success
  */
 export function getAiScoreTone(input: AiScoreToneInput): AiScoreTone {
-  const { score, riskFlagCount } = input;
-  const t = input.thresholds ?? DEFAULT_THRESHOLDS;
+  const { score } = input;
   if (score === null || score === undefined) return "neutral";
-  if (riskFlagCount > 0) return "destructive";
-  if (score < t.low) return "destructive";
+  const t = input.thresholds ?? DEFAULT_THRESHOLDS;
   if (score >= t.high) return "success";
-  return "warning";
+  if (score >= t.low) {
+    // Band içi — midpoint'e göre warning/caution ayır
+    const midpoint = (t.low + t.high) / 2;
+    return score < midpoint ? "warning" : "caution";
+  }
+  // Band altı — half-low'a göre critical/poor ayır
+  const halfLow = t.low / 2;
+  return score < halfLow ? "critical" : "poor";
+}
+
+/** Optional human-friendly "where is this score" copy. */
+export function getAiScoreDistanceLabel(
+  input: AiScoreToneInput,
+): string | null {
+  const { score } = input;
+  if (score === null || score === undefined) return null;
+  const t = input.thresholds ?? DEFAULT_THRESHOLDS;
+  if (score >= t.high) return "passes threshold";
+  if (score >= t.low) {
+    const midpoint = (t.low + t.high) / 2;
+    return score >= midpoint ? "near pass" : "near review threshold";
+  }
+  return "far below threshold";
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Risk indicator — score'tan AYRI. Risk flag sayısı + blocker varlığı
+// kullanıcıya net "1 warning" / "Critical risk" mesajı verir. Score
+// chip yeşil olsa bile critical risk varsa operatör fark eder.
+// ────────────────────────────────────────────────────────────────────────
+
+export type RiskTone = "critical" | "warning" | "none";
+
+export interface RiskToneInput {
+  /** Toplam failed risk flag sayısı. */
+  count: number;
+  /** Herhangi bir blocker-severity risk var mı? Critical sinyal. */
+  hasBlocker?: boolean;
+}
+
+export function getRiskTone(input: RiskToneInput): RiskTone {
+  if (input.hasBlocker) return "critical";
+  if (input.count > 0) return "warning";
+  return "none";
+}
+
+/** Operator-facing risk indicator copy. */
+export function riskIndicatorLabel(input: RiskToneInput): string | null {
+  if (input.hasBlocker) return "Critical risk";
+  if (input.count <= 0) return null;
+  if (input.count === 1) return "1 warning";
+  return `${input.count} risks`;
 }

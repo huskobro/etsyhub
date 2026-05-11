@@ -121,7 +121,16 @@ function canonicalToWriteDecision(
 
 // Decision filter → server status param. Mirrors useReviewQueue's
 // internal mapping; duplicated here for the prefetch query key
-// reconstruction (unfortunately the cache key shape is exposed).
+// reconstruction (cache key shape is exposed by the query layer).
+//
+// IA-30/IA-31 reminder (CLAUDE.md Madde V): "kept" UI semantik
+// olarak operatör damgası (`reviewStatus = APPROVED AND
+// reviewStatusSource = USER`) demek. Cache key ile server status
+// filter aynı raw enum değerini taşır (`APPROVED`), ama queue
+// endpoint kept/rejected sayımlarını **source = USER** kısıtıyla
+// hesaplar (route.ts breakdownWhere). AI advisory hiçbir yerde
+// "kept" sayımına sızmaz — burada "APPROVED" sadece prefetch
+// cache key normalization'ı içindir, downstream gate değildir.
 function decisionToCacheStatus(
   decision: "undecided" | "kept" | "rejected" | undefined,
 ): "ALL" | "PENDING" | "APPROVED" | "REJECTED" {

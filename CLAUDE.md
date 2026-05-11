@@ -1835,26 +1835,75 @@ asla persisted final review kararı yazmaz.
   (queued/running/ready/failed) gerçek backend durumuyla uyuşur.
   Eski "enqueue but no db.job row" pattern'i artık yasaktır.
 
-### V'. UI single-source semantik helper'ları (IA-30)
+### V'. UI single-source semantik helper'ları (IA-30 + IA-31)
 
-`getOperatorDecision({ reviewStatus, reviewStatusSource })` ve
-`getAiScoreTone({ score, riskFlagCount, thresholds })` review
-surface'inin tek doğruluk kaynağıdır:
+`getOperatorDecision`, `getAiScoreTone` ve `getRiskTone` review
+surface'inin tek doğruluk kaynağıdır. Kart, focus mode, filmstrip,
+breakdown sayıları, bulk action eşikleri hepsi aynı helper'lardan
+beslenir:
 
-- **`getOperatorDecision`** — kart badge'i, focus mode decision pill,
-  filmstrip rengi, breakdown count'ları **aynı** helper'dan beslenir.
-  `source !== USER` ise operator axis'te UNDECIDED. AI advisory hiçbir
-  yerde "Kept/Rejected" görsel diliyle karıştırılmaz.
-- **`getAiScoreTone`** — AI score chip rengi (destructive/warning/
-  success/neutral) deterministic sistem skoruna ve risk flag varlığına
-  göre üretilir. Operator decision badge'i ile **karışmaz**; renk
-  yalnız AI advisory katmanına aittir. Hardcoded hex yok; design
-  system semantic class aileleri kullanılır.
+- **`getOperatorDecision({ reviewStatus, reviewStatusSource })`** —
+  operator damgası canonical eksen. `source !== USER` ise UNDECIDED.
+  AI advisory hiçbir yerde "Kept/Rejected" görsel diliyle
+  karıştırılmaz.
+
+- **`getAiScoreTone({ score, thresholds })`** — threshold-aware,
+  5 kademeli AI score tone (`critical` / `poor` / `warning` /
+  `caution` / `success` / `neutral`). Sabit magic number yasak;
+  her kademe operatör/admin'in belirlediği `low/high` threshold'lara
+  orantısal hesap yapar:
+  - `score >= high` → `success`
+  - band içi (`low ≤ score < high`): midpoint `(low+high)/2` altı
+    `warning`, üstü `caution` (near-pass)
+  - band altı (`score < low`): half-low `low/2` altı `critical`,
+    üstü `poor`
+  - `score === null` → `neutral`
+  Default 60/90 yalnızca fallback'tir (Settings Registry değer
+  bulunmazsa). Hardcoded hex yok; Tailwind palette token'ları
+  (rose/orange/amber/yellow/emerald) kullanılır.
+
+- **`getRiskTone({ count, hasBlocker })`** — risk indicator score
+  rengini **EZMEZ**. Ayrı badge:
+  - `hasBlocker === true` → `critical` (dolu kırmızı)
+  - `count > 0` → `warning` (amber outline)
+  - aksi halde `none` (badge render edilmez)
+  Score yüksek + risk varsa: score chip success kalır, risk badge
+  ayrıca görünür (CLAUDE.md Madde Q — information density without
+  conflict). Operator hem AI'nın yüksek puan verdiğini hem dikkat
+  edilmesi gereken risk olduğunu **aynı anda** okuyabilir.
+
+- **Lazy recompute (CLAUDE.md Madde S kapsamı)** — Queue endpoint
+  eski snapshot'lardaki `reviewScore`'u bugünkü criteria + risk
+  kinds matematiğiyle yeniden hesaplayıp response'a projekte eder
+  (`recomputeStoredScore`). Persist YAPILMAZ — provider çağrılmaz,
+  DB güncellenmez. Operatör 85/75 gibi eski algoritma çıktısı yerine
+  bugünkü deterministic skoru görür. Re-score için explicit
+  "Reset and rerun review" akışı zorunlu (CLAUDE.md Madde N — cost
+  discipline).
+
 - **Local rerun productTypeKey** — UI hardcoded değer **gönderir
   değildir**. Server tarafı asset'in `folderName`'i + operatör
   mapping'i (alias) + convention'dan resolve eder. Mapping yoksa
   endpoint 400 döner ve operatöre Settings → Review → Local library
   altında mapping atamasını söyler.
+
+### V''. Downstream gate — operator-only "kept" zinciri (IA-31)
+
+Library/Selection/Product/Etsy Draft hattı boyunca bir asset'in
+ilerlemesi, sadece operatör damgasıyla mümkündür:
+
+- AI advisory (`reviewSuggestedStatus`) hiçbir downstream gate'te
+  "kept" olarak sayılmaz. `reviewStatus = APPROVED` tek başına
+  yeterli değildir — `reviewStatusSource = USER` **zorunlu**.
+- Downstream akış kendi gate'ini operatör kararına yaslar:
+  Library'den selection set'e ekleme operatörün UI'da tetiklediği
+  bir aksiyondur (silent auto-add yok); selection finalize ve mockup
+  apply `SelectionItem.status` üzerinden gate'lenir; Etsy draft
+  push ise listing handoff'undan ilerler.
+- Yeni downstream consumer'lar eklenirken aynı kural geçerli:
+  `reviewStatus = APPROVED AND reviewStatusSource = USER` veya
+  selection layer'a teslim edilmiş status. Worker veya AI'nın
+  yazdığı advisory sinyalleri downstream'e sızdırılamaz.
 
 ### W. Live updates — manuel refresh gerektirmez
 

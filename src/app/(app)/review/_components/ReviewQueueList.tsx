@@ -161,7 +161,11 @@ export function ReviewQueueList({ scope }: Props) {
       />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
         {data.items.map((item) => (
-          <ReviewCard key={item.id} item={item} />
+          <ReviewCard
+            key={item.id}
+            item={item}
+            thresholds={data.policy?.thresholds}
+          />
         ))}
       </div>
       {showPagination ? (

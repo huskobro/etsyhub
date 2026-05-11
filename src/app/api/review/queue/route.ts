@@ -34,8 +34,52 @@ import { db } from "@/server/db";
 import { getStorage } from "@/providers/storage";
 import { logger } from "@/lib/logger";
 import { resolveReviewLifecycle } from "@/server/services/review/lifecycle";
-import { getReviewThresholds } from "@/server/services/settings/review.service";
+import { getResolvedReviewConfig } from "@/server/services/settings/review.service";
 import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
+import { computeScoringBreakdown } from "@/server/services/review/decision";
+
+/**
+ * IA-31 (CLAUDE.md Madde S — stored decision vs current policy preview) —
+ * lazy recompute helper. Eski snapshot'larda yazılı `reviewScore` worker
+ * eski algoritmasına göre üretilmiş olabilir (provider raw etkili dönem,
+ * pre-deterministic breakdown). UI'da system score'u **bugünkü kurallarla**
+ * göstermek için aynı `computeScoringBreakdown` formülünü mevcut risk
+ * flag kinds + active criteria üzerinden çalıştırırız.
+ *
+ * - **Persist YAPILMAZ** — provider çağrılmaz, DB güncellenmez. Sadece
+ *   response payload'una projecte edilir.
+ * - Cost koruması: yalnız aktif criteria + persisted risk kinds ile
+ *   matematik; provider, settings'in dışındadır.
+ * - Snapshot eksik (reviewedAt veya reviewProviderSnapshot null) →
+ *   `reviewScore`'u dokunmadan döndürürüz (lifecycle zaten not_queued/
+ *   queued/running göstereceği için chip hiç render edilmez).
+ */
+function recomputeStoredScore(
+  storedScore: number | null,
+  riskFlags: unknown,
+  criteria: Parameters<typeof computeScoringBreakdown>[0]["criteria"],
+): number | null {
+  if (storedScore === null) return null;
+  // Risk flag kinds'i normalize et (Json → string[])
+  const kinds: string[] = Array.isArray(riskFlags)
+    ? (riskFlags
+        .filter(
+          (f): f is { kind: string } =>
+            typeof f === "object" &&
+            f !== null &&
+            typeof (f as { kind?: unknown }).kind === "string",
+        )
+        .map((f) => f.kind))
+    : [];
+  const breakdown = computeScoringBreakdown({
+    // providerRaw lazy recompute'ta etkili değil (yeni model rule-based);
+    // sadece breakdown.providerRaw field'ı için audit amaçlı set ederiz.
+    providerRaw: storedScore,
+    riskFlagKinds: kinds,
+    criteria,
+  });
+  return breakdown.finalScore;
+}
 
 const QuerySchema = z.object({
   scope: z.enum(["design", "local"]),
@@ -98,7 +142,12 @@ export const GET = withErrorHandling(async (req: Request) => {
   // alongside the queue payload so the client decision derivation
   // (Decision/Outcome block) uses the same source of truth as the
   // worker. Loaded once per request; cheap settings read.
-  const thresholds = await getReviewThresholds(user.id);
+  //
+  // IA-31 — criteria de yüklenir; eski snapshot'lardaki `reviewScore`
+  // bugünkü criteria + risk kinds matematiğiyle yeniden hesaplanır
+  // (`recomputeStoredScore`). Persist yok — yalnız response'a yansır
+  // (CLAUDE.md Madde S — stored decision vs current policy preview).
+  const { thresholds, criteria } = await getResolvedReviewConfig(user.id);
 
   if (scope === "design") {
     const where = {
@@ -238,7 +287,15 @@ export const GET = withErrorHandling(async (req: Request) => {
           thumbnailUrl,
           reviewStatus: it.reviewStatus,
           reviewStatusSource: it.reviewStatusSource,
-          reviewScore: it.reviewScore,
+          // IA-31 — lazy recompute (CLAUDE.md Madde S). Eski snapshot'lar
+          // (worker eski algoritma döneminde yazılmış) provider raw etkili
+          // olabilir; UI sistem skoru bugünkü rule-based formülden gelir.
+          // Persist YOK — sadece response projection.
+          reviewScore: recomputeStoredScore(
+            it.reviewScore,
+            it.reviewRiskFlags,
+            criteria,
+          ),
           reviewSummary: it.reviewSummary,
           riskFlagCount: riskFlagCount(it.reviewRiskFlags),
           riskFlags: normalizeRiskFlags(it.reviewRiskFlags),
@@ -428,7 +485,9 @@ export const GET = withErrorHandling(async (req: Request) => {
       : null,
     reviewStatus: it.reviewStatus,
     reviewStatusSource: it.reviewStatusSource,
-    reviewScore: it.reviewScore,
+    // IA-31 — lazy recompute (CLAUDE.md Madde S). Local branch için de
+    // aynı kural geçerli; stored score eski algoritma döneminden olabilir.
+    reviewScore: recomputeStoredScore(it.reviewScore, it.reviewRiskFlags, criteria),
     reviewSummary: it.reviewSummary,
     riskFlagCount: riskFlagCount(it.reviewRiskFlags),
     riskFlags: normalizeRiskFlags(it.reviewRiskFlags),

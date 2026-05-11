@@ -40,11 +40,19 @@ import {
   getOperatorDecision,
   operatorDecisionLabel,
   getAiScoreTone,
+  getRiskTone,
+  riskIndicatorLabel,
   type OperatorDecision,
   type AiScoreTone,
+  type RiskTone,
 } from "@/features/review/lib/operator-decision";
 
-type Props = { item: ReviewQueueItem };
+type Props = {
+  item: ReviewQueueItem;
+  /** IA-31 — decision policy thresholds from queue response.
+   *  Score chip tone'u threshold'a göre dinamik hesaplar. */
+  thresholds?: { low: number; high: number };
+};
 
 // IA-30 (CLAUDE.md Madde V) — operator decision badge SADECE USER
 // damgalı item'lar için Kept/Rejected gösterir; AI advisory hiçbir
@@ -56,17 +64,28 @@ const DECISION_TONE: Record<OperatorDecision, BadgeTone> = {
   UNDECIDED: "neutral",
 };
 
-// AI score chip tonu — design-system semantic class'larına eşle.
-// Hardcoded hex/rgb yasak (CLAUDE.md kuralı); paper/ink/k-orange
-// token aileleri kullanılır.
+// IA-31 — AI score chip 5-kademe tone class'ları. Tailwind palette
+// tokens (hardcoded hex YASAK). Kademe sırası: critical < poor <
+// warning < caution < success. Risk indicator AYRI; bu sadece
+// system score'un threshold'a uzaklığını anlatır.
 const AI_SCORE_TONE_CLASS: Record<AiScoreTone, string> = {
-  destructive: "bg-rose-500 text-white ring-rose-700/40",
+  critical: "bg-rose-600 text-white ring-rose-800/40",
+  poor: "bg-orange-500 text-white ring-orange-700/40",
   warning: "bg-amber-500 text-ink ring-amber-700/30",
+  caution: "bg-yellow-300 text-ink ring-yellow-600/30",
   success: "bg-emerald-500 text-white ring-emerald-700/40",
   neutral: "bg-text text-bg ring-bg/30",
 };
 
-export function ReviewCard({ item }: Props) {
+// IA-31 — Risk indicator tone class'ları. Score chip'inden bağımsız
+// renk dili: critical = dolu kırmızı, warning = amber outline.
+const RISK_TONE_CLASS: Record<RiskTone, string> = {
+  critical: "bg-rose-600 text-white",
+  warning: "bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/40",
+  none: "",
+};
+
+export function ReviewCard({ item, thresholds }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -223,12 +242,12 @@ export function ReviewCard({ item }: Props) {
           }).lifecycle;
 
           if (evalLifecycle === "ready" && item.reviewScore !== null) {
-            // IA-30 — AI score chip tone (advisory; operator decision
-            // badge ile karışmaz). Düşük skor / risk flag = destructive,
-            // orta = warning, yüksek + risk-yok = success.
+            // IA-31 — AI score chip tone, threshold-aware ve 5 kademe.
+            // Risk indicator score rengini EZMEZ; risk ayrı badge'de
+            // (aşağıdaki render block'unda).
             const tone = getAiScoreTone({
               score: item.reviewScore,
-              riskFlagCount: item.riskFlagCount,
+              thresholds,
             });
             return (
               <span
@@ -393,14 +412,41 @@ export function ReviewCard({ item }: Props) {
             </span>
           </div>
         ) : null}
-        {item.riskFlagCount > 0 ? (
-          <span
-            data-testid="risk-flags"
-            className="text-xs text-text-muted"
-          >
-            {item.riskFlagCount} risk {item.riskFlagCount === 1 ? "flag" : "flags"}
-          </span>
-        ) : null}
+        {(() => {
+          // IA-31 — Risk indicator AYRI badge. Score chip rengini
+          // ezmez; critical risk varsa kırmızı dolu, sadece warning'ler
+          // varsa amber outline. None ise hiç render edilmez.
+          const hasBlocker = Array.isArray(item.riskFlags)
+            ? item.riskFlags.some(
+                (f) =>
+                  f &&
+                  typeof f === "object" &&
+                  (f as { severity?: string }).severity === "blocker",
+              )
+            : false;
+          const riskTone = getRiskTone({
+            count: item.riskFlagCount,
+            hasBlocker,
+          });
+          if (riskTone === "none") return null;
+          const label = riskIndicatorLabel({
+            count: item.riskFlagCount,
+            hasBlocker,
+          });
+          return (
+            <span
+              data-testid="risk-indicator"
+              data-tone={riskTone}
+              className={cn(
+                "inline-flex w-fit items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] font-medium",
+                RISK_TONE_CLASS[riskTone],
+              )}
+            >
+              <AlertCircle className="h-3 w-3" aria-hidden />
+              {label}
+            </span>
+          );
+        })()}
         {item.jobId ? (
           <div className="flex items-center justify-end pt-1">
             <button

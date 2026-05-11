@@ -85,22 +85,43 @@ describe("ReviewCard", () => {
     }
   });
 
-  it("score chip — score değerini ve tone'u gösteriyor", () => {
+  // IA-31 — score chip tone'u threshold-aware ve 5 kademe (critical/poor/
+  // warning/caution/success/neutral). Risk indicator AYRI badge; score
+  // rengini EZMEZ. Default thresholds 60/90 — midpoint 75, halfLow 30.
+
+  it("score 87 → caution (band içi, midpoint=75 üstü)", () => {
     renderCard({ ...baseItem, reviewScore: 87 });
     const chip = screen.getByTestId("score-chip");
     expect(chip).toHaveTextContent("87");
-    // 87 — risk yok, threshold 60/90 → warning
-    expect(chip).toHaveAttribute("data-tone", "warning");
+    expect(chip).toHaveAttribute("data-tone", "caution");
   });
 
-  it("score 95 + risk yok => success tone", () => {
+  it("score 65 → warning (band içi, midpoint=75 altı)", () => {
+    renderCard({ ...baseItem, reviewScore: 65 });
+    expect(screen.getByTestId("score-chip")).toHaveAttribute("data-tone", "warning");
+  });
+
+  it("score 45 → poor (band altı, halfLow=30 üstü)", () => {
+    renderCard({ ...baseItem, reviewScore: 45 });
+    expect(screen.getByTestId("score-chip")).toHaveAttribute("data-tone", "poor");
+  });
+
+  it("score 5 → critical (band altı, halfLow=30 altı)", () => {
+    renderCard({ ...baseItem, reviewScore: 5 });
+    expect(screen.getByTestId("score-chip")).toHaveAttribute("data-tone", "critical");
+  });
+
+  it("score 95 → success (high üstü)", () => {
     renderCard({ ...baseItem, reviewScore: 95, riskFlagCount: 0 });
     expect(screen.getByTestId("score-chip")).toHaveAttribute("data-tone", "success");
   });
 
-  it("score yüksek ama risk flag varsa destructive tone", () => {
+  it("score yüksek + risk flag → score chip success kalır (risk ayrı badge)", () => {
     renderCard({ ...baseItem, reviewScore: 95, riskFlagCount: 1 });
-    expect(screen.getByTestId("score-chip")).toHaveAttribute("data-tone", "destructive");
+    // IA-31 sözleşmesi: risk score rengini EZMEZ.
+    expect(screen.getByTestId("score-chip")).toHaveAttribute("data-tone", "success");
+    // Risk indicator AYRI badge olarak görünür.
+    expect(screen.getByTestId("risk-indicator")).toBeInTheDocument();
   });
 
   it("score null => chip görünmüyor", () => {
@@ -108,14 +129,28 @@ describe("ReviewCard", () => {
     expect(screen.queryByTestId("score-chip")).toBeNull();
   });
 
-  it("riskFlagCount > 0 => risk işaretleri satırı görünür", () => {
+  // IA-31 — risk indicator: ayrı badge, score chip rengini ezmez.
+  // count > 0 ve blocker yok → warning tone. count > 0 ve blocker var
+  // → critical tone. count === 0 → indicator gizli.
+  it("riskFlagCount > 0 (blocker yok) => warning tone risk indicator", () => {
     renderCard({ ...baseItem, riskFlagCount: 2 });
-    expect(screen.getByTestId("risk-flags")).toBeInTheDocument();
+    const indicator = screen.getByTestId("risk-indicator");
+    expect(indicator).toBeInTheDocument();
+    expect(indicator).toHaveAttribute("data-tone", "warning");
   });
 
-  it("riskFlagCount === 0 => risk satırı gizli", () => {
+  it("riskFlags blocker severity => critical tone risk indicator", () => {
+    renderCard({
+      ...baseItem,
+      riskFlagCount: 1,
+      riskFlags: [{ severity: "blocker", code: "test" }] as never,
+    });
+    expect(screen.getByTestId("risk-indicator")).toHaveAttribute("data-tone", "critical");
+  });
+
+  it("riskFlagCount === 0 => risk indicator gizli", () => {
     renderCard({ ...baseItem, riskFlagCount: 0 });
-    expect(screen.queryByTestId("risk-flags")).toBeNull();
+    expect(screen.queryByTestId("risk-indicator")).toBeNull();
   });
 
   it("thumbnailUrl null => 'No preview' fallback", () => {
