@@ -117,6 +117,45 @@ ile uyuşmaz) ve güveni sarsar.
 > risk indicator artık `buildEvaluation` çıktısından beslenir —
 > detail panel ile aynı sayıyı verir.
 
+## No Hidden Behavior — Admin Visibility
+
+Davranışı **anlamlı şekilde etkileyen** her şey admin tarafından
+**görülebilir ve düzenlenebilir** olmalıdır. Kullanıcının ürün
+deneyimini etkileyen ama yalnız kod içinde saklı kalan davranış
+kabul edilmez.
+
+Bu kuralın somut uygulamaları:
+
+- **Scoring**: Formül, kriterler, severity, weight, applicability
+  rules, threshold'lar — hepsi `Settings → Review` altında
+  görünür ve admin tarafından düzenlenebilir. "Bir kriter
+  blocker olduğunda score 0 zorlanır" gibi gizli hardcoded
+  kararlar yasaktır. Bir kriterin score'u 0'a çekmesi
+  isteniyorsa admin'de `weight = 100` set edilir; davranış
+  şeffaf kalır.
+- **Severity**: UI tone + AI suggestion önem sinyali için
+  kullanılır (`blocker` → `Critical risk` badge, `warning` →
+  amber). Severity tek başına gizli score kuralı üretmez.
+- **Prompts**: Master prompt + criteria block'lar admin
+  paneline gelir; prompt'a gömülü ama panelde görünmeyen
+  davranış yasaktır (CLAUDE.md Madde O).
+- **Policy & defaults**: Builtin defaults (örn. 60/90) bir
+  fallback referansıdır; admin override ettiği anda explicit
+  konfigürasyon olur. "Sessiz default" yasaktır (Phase 6
+  Karar 3).
+- **AI suggestion outcome**: Provider raw, score, threshold,
+  blocker flag — outcome'ı belirleyen alanların hepsi admin
+  paneline yansır ve operator-truth'tan ayrı **advisory**
+  katmanında yaşar.
+
+Yeni davranış eklerken kontrol: bu davranışı admin görebilir mi /
+değiştirebilir mi? Eğer "hayır" ise ya admin yüzeyi eklenir ya
+da davranış kaldırılır. Hiçbir ciddi davranış kabuk altında kalmaz.
+
+> IA-38 review final close turunda uygulandı: `blockerForce = 100`
+> hidden auto-zero davranışı kaldırıldı; score yalnız
+> weight-based formülle çalışır (admin panel'inde görünür).
+
 ## Kaynaklar
 
 Bu proje planı aşağıdaki kaynaklar incelenerek oluşturuldu.

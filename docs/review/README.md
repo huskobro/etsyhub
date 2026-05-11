@@ -18,7 +18,7 @@ için tam dokümantasyonu.
 
 ## Kapsam ve mevcut durum
 
-Review modülünün IA-30..IA-37 turları boyunca eklenen davranışları:
+Review modülünün IA-30..IA-38 turları boyunca eklenen davranışları:
 
 - Operator truth vs AI suggestion ayrımı (CLAUDE.md Madde V).
 - Deterministic, rule-based score modeli (IA-31).
@@ -43,6 +43,15 @@ Review modülünün IA-30..IA-37 turları boyunca eklenen davranışları:
 - **Risk count cross-surface consistency (IA-37)** — Kart üzerindeki
   risk indicator artık detail panel'la aynı `buildEvaluation` çıktısından
   beslenir. Eski ham `riskFlagCount` array length kullanımı kaldırıldı.
+- **Score modeli severity-agnostic, weight-only (IA-38)** — Eski gizli
+  "blockerForce = 100 auto-zero" davranışı kaldırıldı. `finalScore =
+  clamp(0, 100, 100 − Σ weight(failed))`. Severity yalnız UI tone +
+  AI suggestion önem sinyali için. Bir kriter score'u 0'a çekecekse
+  admin paneline gidip weight=100 set edilir.
+- **MJ promote batch lineage (IA-38)** — Promote ederken GeneratedDesign
+  `jobId` MJ asset'in BullMQ Job row id'sine bağlanır; queue endpoint
+  bu jobId üzerinden `Job.metadata.batchId` resolve eder ve UI primary
+  lineage gösterir.
 
 ## Review done checklist (IA-36)
 
@@ -62,7 +71,10 @@ işaretlendi.
 | Folder mapping path-based (collision yok) + legacy fallback | ✓ | IA-35 |
 | Batch > reference scope priority — grid card + focus topbar + info-rail | ✓ | IA-34 + IA-36 |
 | Batch lineage real-data path (variation worker emits batchId) | ✓ | IA-37 |
+| Batch lineage MJ promote path (jobId aktarımı) | ✓ | IA-38 |
 | Risk count tek kaynak — kart = detail (applicability-aware) | ✓ | IA-37 |
+| Score modeli severity-agnostic, weight-only (hidden auto-zero yok) | ✓ | IA-38 |
+| Admin paneli scoring/threshold/criterion/severity/weight kontrolleri görünür | ✓ | IA-38 |
 | Live update polling: gerçek iş varken 5s, idle'da kapalı | ✓ | IA-35 |
 | Vitest workspace tek `npm test` ile UI + node combined | ✓ | IA-35 |
 | Targeted review test suite clean | ✓ | 79+ targeted pass |

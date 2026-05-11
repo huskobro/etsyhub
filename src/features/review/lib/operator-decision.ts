@@ -132,17 +132,28 @@ export function getAiScoreDistanceLabel(
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// Risk indicator — score'tan AYRI. Risk flag sayısı + blocker varlığı
-// kullanıcıya net "1 warning" / "Critical risk" mesajı verir. Score
-// chip yeşil olsa bile critical risk varsa operatör fark eder.
+// Risk indicator — score'tan AYRI presentation katmanı.
+//
+// IA-38 (kullanıcı kararı): "Critical risk" sistemde **üçüncü bir
+// severity sınıfı DEĞİL** — yalnız UI presentation tone'udur.
+// Sistemde iki severity vardır: `blocker` ve `warning` (criteria.ts).
+// Bir veya daha fazla blocker-severity fail varsa risk indicator
+// "Critical risk" yazar; bu copy operatöre "burada blocker bulundu,
+// dikkat" anlamına gelir. Score üzerinde hiçbir direkt etkisi yoktur —
+// score yalnız weight tabanlı düşer (computeScoringBreakdown).
+//
+// Score chip yeşil olsa bile bir blocker varsa risk badge ayrı olarak
+// görünür; iki sinyal birbirini ezmez (CLAUDE.md cross-surface metric
+// consistency — kart ve detail panel aynı evaluation kaynağından beslenir).
 // ────────────────────────────────────────────────────────────────────────
 
 export type RiskTone = "critical" | "warning" | "none";
 
 export interface RiskToneInput {
-  /** Toplam failed risk flag sayısı. */
+  /** Failed applicable risk flag sayısı (buildEvaluation çıktısından). */
   count: number;
-  /** Herhangi bir blocker-severity risk var mı? Critical sinyal. */
+  /** Herhangi bir blocker-severity risk var mı? Yalnız UI tone +
+   *  copy seçimi için — score'a direkt etkisi YOK. */
   hasBlocker?: boolean;
 }
 
@@ -152,7 +163,8 @@ export function getRiskTone(input: RiskToneInput): RiskTone {
   return "none";
 }
 
-/** Operator-facing risk indicator copy. */
+/** Operator-facing risk indicator copy. "Critical risk" yalnız
+ *  presentation tone'dur — yeni severity sınıfı değildir. */
 export function riskIndicatorLabel(input: RiskToneInput): string | null {
   if (input.hasBlocker) return "Critical risk";
   if (input.count <= 0) return null;

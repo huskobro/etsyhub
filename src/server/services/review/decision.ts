@@ -124,28 +124,32 @@ export type DecisionOutcome = {
 };
 
 /**
- * IA-29 (CLAUDE.md Madde V) — deterministic system score.
+ * IA-29 + IA-38 (CLAUDE.md Madde V) — deterministic, severity-agnostic
+ * system score.
  *
- * Önceki davranış: `finalScore = providerRaw − Σweight(failed)`. Provider
- * iki benzer item'a 105/95 raw verdiğinde aynı tek warning -20 ile 85/75
- * gibi adaletsiz farklar üretiyordu. Provider raw artık SADECE audit/
- * debug katmanında (DesignReview.responseSnapshot._providerRaw +
- * GeneratedDesign.reviewProviderRawScore).
+ * **Final formül** (IA-38 — gizli kural yok, sürpriz yok):
  *
- * Yeni model — pure rule-based:
- *   • Active warning kriteri sayısı = W
- *   • Failed warning kriteri ağırlık toplamı = Σwf
- *   • Active blocker kriteri sayısı = B
- *   • Failed blocker = HB (true/false; hasBlockerFail forces NEEDS_REVIEW)
+ *   finalScore = clamp(0, 100, 100 − Σ weight(failed applicable criteria))
  *
- *   finalScore = clamp(0, 100, 100 − Σwf − BlockerPenalty)
- *   BlockerPenalty: failed blocker varsa 100'e clamped (yani score 0
- *     veya altına düşer; blocker zaten NEEDS_REVIEW zorlar).
+ * Severity (`blocker` / `warning`) **score'u etkilemez**:
+ *   • blocker = UI tone + AI suggestion önem sinyali (presentation
+ *     layer)
+ *   • warning = daha hafif tone
+ *   • score etkisi yalnız `weight` üzerinden
+ *
+ * Operatör bir kriterin skoru sıfırlamasını istiyorsa admin paneline
+ * gidip o kriterin `weight`'ini 100'e set eder; davranış admin'de
+ * görünür ve düzenlenebilir kalır. Eski "blockerForce = 100 hidden
+ * zero" davranışı IA-38'de KALDIRILDI — kullanıcı şikâyeti: gizli
+ * auto-zero ürün sözleşmesini ihlal ediyordu.
  *
  * Sonuç:
- *   • Aynı failed flags = aynı score (deterministic).
- *   • Provider raw fluctuation skoru ETKİLEMEZ.
- *   • Threshold'a karşı adil ve açıklanabilir.
+ *   • Aynı failed criteria + aynı weight = aynı score (deterministic).
+ *   • Provider raw fluctuation skoru ETKİLEMEZ (audit/debug only).
+ *   • Birden çok failed criterion weight'leri toplanır; clamp 0'da
+ *     tutar.
+ *   • blocker fail → AI suggestion outcome NEEDS_REVIEW (advisory)
+ *     ama score üzerinde **direkt etki yok**.
  */
 export function computeScoringBreakdown(args: {
   providerRaw: number;
@@ -154,18 +158,21 @@ export function computeScoringBreakdown(args: {
 }): ScoringBreakdown {
   const { providerRaw, riskFlagKinds, criteria } = args;
   const failedSet = new Set(riskFlagKinds);
-  let warningPenalty = 0;
+  let totalPenalty = 0;
   let hasBlockerFail = false;
   const contributions: ScoringBreakdown["contributions"] = [];
   for (const c of criteria) {
     const failed = failedSet.has(c.id);
     let subtracted = 0;
     if (failed) {
+      // IA-38 — Severity-agnostic weight subtraction. Hem warning
+      // hem blocker kriterler aynı kurala uyar: weight kadar düşer.
+      // `hasBlockerFail` yalnız AI suggestion presentation katmanı
+      // için (`decideReviewOutcomeFromBreakdown` advisory NEEDS_REVIEW
+      // tetikleyebilir) — score üzerinde direkt etki YOK.
+      subtracted = c.weight;
+      totalPenalty += c.weight;
       if (c.severity === "blocker") hasBlockerFail = true;
-      if (c.severity === "warning") {
-        subtracted = c.weight;
-        warningPenalty += c.weight;
-      }
     }
     contributions.push({
       id: c.id,
@@ -175,11 +182,10 @@ export function computeScoringBreakdown(args: {
       subtracted,
     });
   }
-  // System score: 100 baz − warning penaltıları − blocker varsa zorla 0
-  const blockerForce = hasBlockerFail ? 100 : 0;
+  // Sadece weight tabanlı; clamp 0..100. Eski blockerForce KALDIRILDI.
   const finalScore = Math.max(
     0,
-    Math.min(100, Math.round(100 - warningPenalty - blockerForce)),
+    Math.min(100, Math.round(100 - totalPenalty)),
   );
   return { providerRaw, finalScore, contributions, hasBlockerFail };
 }

@@ -254,8 +254,14 @@ export function PaneReview() {
         <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
           <dt className="text-ink-3">Score math</dt>
           <dd className="text-ink">
-            <span className="font-mono">finalScore = max(0, providerRaw − Σ weight(failed warning))</span>
-            ; blocker fails force NEEDS_REVIEW regardless of score.
+            {/* IA-38 — severity-agnostic, weight-only model. */}
+            <span className="font-mono">
+              finalScore = clamp(0, 100, 100 − Σ weight(failed applicable criteria))
+            </span>
+            . Severity (blocker / warning) score'u etkilemez — yalnız
+            UI tone ve AI suggestion önem sinyali için kullanılır. Bir
+            kriterin score'u 0'a çekmesini istersen weight'ini 100'e
+            set et; davranış burada görünür kalır.
           </dd>
         </dl>
         {/* IA Phase 28 (CLAUDE.md Madde S) — operatör threshold'u

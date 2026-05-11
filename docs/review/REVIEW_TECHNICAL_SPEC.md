@@ -65,15 +65,25 @@ undecided = reviewStatusSource != USER (PENDING + legacy SYSTEM-source APPROVED/
 
 ---
 
-## 2. Score modeli — deterministic, rule-based
+## 2. Score modeli — deterministic, severity-agnostic, weight-only (IA-38)
 
 Provider raw fluctuation skoru **etkilemez**. Sistem skoru kriterler
 ve risk flag kinds üzerinden hesaplanır:
 
 ```
-finalScore = clamp(0, 100, 100 − Σ weight(failed warning) − blockerForce)
-blockerForce = hasBlockerFail ? 100 : 0
+finalScore = clamp(0, 100, 100 − Σ weight(failed applicable criteria))
 ```
+
+**Severity (blocker / warning) score'u etkilemez.** Severity yalnız:
+- UI risk indicator tone seçimi (`Critical risk` vs `1 warning`)
+- AI suggestion outcome (advisory NEEDS_REVIEW için blocker tetikleyici)
+
+için kullanılır — **score üzerinde direkt etki yoktur**. Eski
+"blockerForce = 100 hidden zero" davranışı IA-38'de **kaldırıldı**
+(kullanıcı kararı: gizli auto-zero ürün sözleşmesini ihlal ediyordu).
+
+Bir kriterin score'u 0'a çekmesi isteniyorsa: admin paneline gidip
+o kriterin `weight`'ini 100'e set et. Davranış görünür ve düzenlenebilir.
 
 Aynı failed flags → aynı score. Provider birinde 95, ötekinde 105
 verirse bile ikisi de aynı kriterleri tetiklediyse aynı `finalScore`'u

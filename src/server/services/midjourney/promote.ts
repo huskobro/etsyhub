@@ -48,7 +48,17 @@ export async function promoteMidjourneyAssetToGeneratedDesign(
       gridIndex: true,
       assetId: true,
       generatedDesignId: true,
-      midjourneyJob: { select: { userId: true } },
+      midjourneyJob: {
+        select: {
+          userId: true,
+          // IA-38 — MJ promote sırasında batch lineage taşınır.
+          // MidjourneyJob.job (BullMQ Job row) metadata.batchId'sini
+          // GeneratedDesign.jobId'ye eşliyoruz; review queue endpoint
+          // bu jobId üzerinden batch'i resolve eder ve UI primary
+          // lineage (batch-XXXXXX) gösterir.
+          job: { select: { id: true } },
+        },
+      },
     },
   });
   if (!mjAsset) {
@@ -101,6 +111,12 @@ export async function promoteMidjourneyAssetToGeneratedDesign(
         productTypeId: productType.id,
         assetId: mjAsset.assetId,
         reviewStatus: ReviewStatus.PENDING,
+        // IA-38 — Batch lineage. MJ job'un BullMQ Job row id'sine
+        // bağla; queue endpoint Job.metadata.batchId'yi resolve
+        // edip review primary lineage olarak gösterir. Job yoksa
+        // (eski MJ asset'ler) null kalır — UI reference fallback'i
+        // gösterir.
+        jobId: mjAsset.midjourneyJob.job?.id ?? null,
         // similarity/qualityScore/promptSnapshot Pass 55'te boş;
         // Phase 6 review job çalıştığında doldurur.
       },

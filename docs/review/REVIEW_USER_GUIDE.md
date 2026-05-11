@@ -284,16 +284,28 @@ kaynaktan** beslenir:
 - Provider geçmişten kalan duplicate flag'lar otomatik elenir.
 
 Score şu kuralla üretilir:
-- Her warning check kendi ağırlığını puandan düşer (ör. "No
-  watermark" → 20 puan).
-- Bir **blocker** check fail olduğunda score 0'a iner — operatöre
-  "bu görsel başka kontrollerden geçse bile blocker var, bakmadan
-  geçme" sinyalidir.
+
+```
+score = max(0, 100 − failed her kriterin weight'lerinin toplamı)
+```
+
+- Her failed (applicable) check **weight kadar** puandan düşer.
+  Blocker ve warning aynı kurala uyar; severity score'u
+  doğrudan etkilemez.
+- Severity yalnız UI tone'unu ve AI suggestion önem mesajını
+  belirler:
+  - **blocker** = `Critical risk` badge, AI suggestion `REVIEW
+    RECOMMENDED`
+  - **warning** = amber tone, daha hafif copy
+- Bir kriterin score'u 0'a indirmesini istiyorsan admin panelinde
+  o kriterin weight'ini 100'e set edersin. Sürpriz "hidden zero"
+  yoktur.
 - Tüm check'ler N/A veya passed ise score 100.
 
-> Yani: score 0 görüyorsan ve sağ panelde tek bir blocker (örn.
-> "No gibberish text") varsa, davranış doğrudur — yüksek diğer
-> sayılar bu yargıyı değiştirmez.
+> Yani: score düşükse her zaman sebebini sağ panelin check listesinde
+> görürsün. Yüksek score + blocker var senaryosunda "Critical risk"
+> badge görürsün ama score yine weight matematiğinden çıkar — gizli
+> zorlama yok.
 
 ## 12. Bilinen sınırlar (Known limitations)
 
