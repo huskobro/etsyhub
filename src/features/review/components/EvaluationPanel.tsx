@@ -504,7 +504,7 @@ export function EvaluationPanel({
             data-testid="evaluation-empty-copy"
           >
             {lifecycle === "not_queued" || lifecycle === "pending"
-              ? "AI has not evaluated this asset yet."
+              ? "AI has not evaluated this asset yet — auto-enqueue runs when the source pipeline produces a fresh asset (AI variation create or local scan). If you added a folder mapping after the last scan, click \"Enqueue review for this scope\" to score the existing files."
               : lifecycle === "queued"
                 ? "Queued for review — the worker will pick this up shortly."
                 : lifecycle === "running" || lifecycle === "scoring"

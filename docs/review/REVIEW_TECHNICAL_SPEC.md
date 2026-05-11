@@ -227,6 +227,38 @@ PATCH /api/review/decisions
 
 ---
 
+### Automation truth — mevcut otomasyon davranışı
+
+Üretim hattında **otomatik** AI scoring tetikleme noktaları:
+
+| Source | Otomatik tetik | Kural | Tetiklenmeme nedeni |
+|---|---|---|---|
+| AI Designs (variation) | Variation worker design oluşturduğu anda | `enqueueReviewDesign` her yeni design için | Worker fail (audit log'da görünür) |
+| AI Designs (MJ promote) | `promoteMidjourneyAssetToGeneratedDesign` sonunda | Best-effort enqueue | Enqueue exception (logged, promote commit olur) |
+| Local Library | Scan worker keşfedilen yeni asset için (`reviewProviderSnapshot: null` filter'ı) | Folder mapping resolved olmalı (path-based > legacy folderName > convention) | Mapping pending / ignored / scan tetiklenmemiş |
+
+**Local scan tetikleme**: Scan job operatör tarafından `Settings →
+Local Library → Scan` veya admin script ile başlatılır. **Düzenli
+otomatik schedule eklenmedi**; bu future work — bir cron veya
+file-watcher (Tauri `notify` plugin'i) ileride değerlendirilebilir
+(CLAUDE.md "Local File Watch Folder" maddesi).
+
+**Mapping sonradan eklenen klasörler**: Operatör yeni folder
+mapping atadığında, o klasördeki **mevcut** asset'ler otomatik
+score'lanmaz (auto-enqueue zaten "yeni keşfedildi" filter'ında).
+Mevcut dosyalar için focus mode `scopeTrigger` CTA'sı veya admin
+ops dashboard manuel scope-trigger kullanılır.
+
+**Operatör görünürlüğü**:
+- Kart'taki minus icon `not_queued` lifecycle title'ında neden
+  açıklanır.
+- Focus mode info-rail evaluation empty copy'sinde detaylı
+  açıklama + scope-trigger CTA.
+- Settings → Review ops dashboard'unda queued/running/failed
+  sayaçları + last enqueue/scan timestamps.
+
+---
+
 ## 5. `enqueueReviewDesign` helper — single source of truth
 
 `src/features/review/server/enqueue-review.ts` (veya benzer yol):

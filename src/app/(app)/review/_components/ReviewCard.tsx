@@ -315,13 +315,15 @@ export function ReviewCard({ item, thresholds }: Props) {
             },
             pending: {
               icon: MinusCircle,
-              title: "Not queued yet",
+              title:
+                "Not queued yet — auto-enqueue runs on fresh source items (variation create / local scan). Open focus mode to manually trigger.",
               tone: "text-text-muted",
               bg: "bg-bg/85 ring-text/20",
             },
             not_queued: {
               icon: MinusCircle,
-              title: "Not queued yet",
+              title:
+                "Not queued yet — auto-enqueue runs on fresh source items (variation create / local scan). Open focus mode to manually trigger.",
               tone: "text-text-muted",
               bg: "bg-bg/85 ring-text/20",
             },

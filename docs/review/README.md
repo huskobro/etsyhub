@@ -85,6 +85,7 @@ işaretlendi.
 | Score full explainability — visible failed = score deductions birebir | ✓ | IA-38b |
 | Score breakdown UI (Base → -W → Final) detail panelde görünür | ✓ | IA-38b |
 | Admin paneli scoring/threshold/criterion/severity/weight kontrolleri görünür | ✓ | IA-38 |
+| Automation truth görünür — `not_queued` nedeni operatöre açıklanır | ✓ | IA-38c |
 | Live update polling: gerçek iş varken 5s, idle'da kapalı | ✓ | IA-35 |
 | Vitest workspace tek `npm test` ile UI + node combined | ✓ | IA-35 |
 | Targeted review test suite clean | ✓ | 79+ targeted pass |

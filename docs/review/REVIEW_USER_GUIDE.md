@@ -209,6 +209,44 @@ localStorage'a yazılır; default kapalı.
 
 ---
 
+## 8.5. Otomatik AI scoring ne zaman çalışır?
+
+Sistem aşağıdaki durumlarda **otomatik** olarak AI scoring tetikler:
+
+- **AI Designs** — Variation worker yeni bir görsel ürettiği anda
+  o item için review job otomatik enqueue olur.
+- **Local Library** — Scan worker yeni dosya keşfettiğinde, o
+  klasörün productType mapping'i resolved'sa (mapping atanmış veya
+  convention) otomatik enqueue. Mapping pending veya ignored ise
+  otomatik enqueue **yapılmaz**.
+
+Otomatik tetiklemenin **yapılmadığı** durumlar:
+
+- Folder mapping henüz atanmamış (`Settings → Review → Local library
+  → Pending folders`).
+- Folder explicit olarak `__ignore__` işaretli.
+- Asset zaten daha önce scoring almış (already-scored guard).
+- Aktif root değişti, dosya yeni root altında değil.
+- Worker/queue geçici hata aldı (focus mode'da `failed` lifecycle
+  görünür).
+
+> **Önemli**: Yeni bir folder mapping eklediğinde, o klasördeki
+> **mevcut** asset'ler otomatik olarak score'lanmaz — auto-enqueue
+> yalnız scan worker'ın o turda yeni gördüğü asset'lerde çalışır.
+> Mevcut dosyaları score'lamak için focus mode'da **"Enqueue review
+> for this scope"** veya Settings → Review → ops dashboard'undan
+> manuel scope-trigger tetikle.
+
+Her item'ın scoring durumu (lifecycle) kart üzerindeki icon ve
+focus mode'da sağ panelde açıkça gösterilir:
+
+- `not_queued` → "AI has not evaluated this asset yet — …" mesajı
+  + scope-trigger CTA
+- `queued` / `running` → bekleniyor
+- `ready` → puan + checks + summary
+- `failed` → "Review failed. Check Settings → Review for provider
+  status."
+
 ## 9. Local source vs AI source
 
 İki tarafın da review ekranı aynıdır, ama altyapı şu farklarla
