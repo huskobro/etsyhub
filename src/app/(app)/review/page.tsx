@@ -392,6 +392,13 @@ export default async function ReviewPage({
 
     // IA Phase 18+19 — scope navigation (Madde M scope ekseni)
     // for both folder (local) and reference (design).
+    // IA-36 — scopeNav scope priority ile hizalı:
+    //   • Local → adjacentFolders üzerinden
+    //   • Design + batch dominant → şimdilik scopeNav null (batch
+    //     adjacent navigation helper'ı eksik; operatör scope picker
+    //     dropdown'unu kullanır — Known limitation, docs'ta yazılı)
+    //   • Design + reference (batch yok veya explicit) → adjacent
+    //     references üzerinden
     const scopeNav =
       focusScope === "local"
         ? {
@@ -412,24 +419,28 @@ export default async function ReviewPage({
                 }
               : null,
           }
-        : {
-            prev: adjacentReferences.prev?.firstPendingItemId
-              ? {
-                  href: `/review?source=ai&item=${encodeURIComponent(
-                    adjacentReferences.prev.firstPendingItemId,
-                  )}`,
-                  label: `ref-${adjacentReferences.prev.referenceId.slice(-6)}`,
-                }
-              : null,
-            next: adjacentReferences.next?.firstPendingItemId
-              ? {
-                  href: `/review?source=ai&item=${encodeURIComponent(
-                    adjacentReferences.next.firstPendingItemId,
-                  )}`,
-                  label: `ref-${adjacentReferences.next.referenceId.slice(-6)}`,
-                }
-              : null,
-          };
+        : batchDominantForResolvers
+          ? // Batch dominant moddayken adjacent reference göstermek
+            // yanıltıcı — picker dropdown kullanılır.
+            { prev: null, next: null }
+          : {
+              prev: adjacentReferences.prev?.firstPendingItemId
+                ? {
+                    href: `/review?source=ai&item=${encodeURIComponent(
+                      adjacentReferences.prev.firstPendingItemId,
+                    )}`,
+                    label: `ref-${adjacentReferences.prev.referenceId.slice(-6)}`,
+                  }
+                : null,
+              next: adjacentReferences.next?.firstPendingItemId
+                ? {
+                    href: `/review?source=ai&item=${encodeURIComponent(
+                      adjacentReferences.next.firstPendingItemId,
+                    )}`,
+                    label: `ref-${adjacentReferences.next.referenceId.slice(-6)}`,
+                  }
+                : null,
+            };
 
     // IA Phase 19 — scope picker entries (top-bar dropdown). Built
     // for the active scope kind so the picker swaps folder ↔

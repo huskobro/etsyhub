@@ -878,10 +878,15 @@ function DesignSourceSection({
           className="mt-1 font-mono text-[11px] text-white/50"
           data-testid="info-rail-design-summary"
         >
+          {/* IA-34/IA-36 — scope priority: batch > reference. Variation
+              summary primary lineage label batch'i tercih eder; reference
+              fallback yalnız batch lineage yoksa görünür. */}
           {source.productTypeKey ?? "—"} ·{" "}
-          {source.referenceShortId
-            ? `ref-${source.referenceShortId}`
-            : "no ref"}{" "}
+          {source.batchShortId
+            ? `batch-${source.batchShortId}`
+            : source.referenceShortId
+              ? `ref-${source.referenceShortId}`
+              : "no lineage"}{" "}
           · {transparency.format}
         </div>
       ) : null}
@@ -891,6 +896,17 @@ function DesignSourceSection({
         <dd className="font-mono text-white/75">
           {source.productTypeKey ?? "—"}
         </dd>
+        {/* IA-36 — Batch primary, reference fallback. Batch lineage
+            varsa onu ön plana al; reference yine de görünür ama ikincil
+            satır olarak (operator hem batch'i hem reference'ı gör). */}
+        {source.batchShortId ? (
+          <>
+            <dt className="text-white/40">Batch</dt>
+            <dd className="font-mono text-white/75">
+              batch-{source.batchShortId}
+            </dd>
+          </>
+        ) : null}
         <dt className="text-white/40">Reference</dt>
         <dd className="font-mono text-white/75">
           {source.referenceShortId ? `ref-${source.referenceShortId}` : "—"}

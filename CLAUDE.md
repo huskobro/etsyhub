@@ -45,6 +45,39 @@ ek diller eklenir. Bu turun standartı sadece İngilizce'dir;
 TR'ye geri dönüş veya başka dil eklenmesi i18n katmanı
 açılmadan yapılmaz.
 
+## Model Esnekliği — Verification Esnekliği DEĞİL
+
+Bu proje üzerinde kod yazımı **tek bir modele bağlı değildir**.
+Genelde Claude Opus 4.7 ile çalışılır; gerektiğinde Sonnet,
+Haiku veya başka bir model (Anthropic veya başka sağlayıcı)
+kullanılabilir. Hız, maliyet, görev tipi (refactor / küçük fix /
+docs / debug) modele göre değişebilir; bu bir tercih meselesidir.
+
+**Verification standardı esnek değildir.** Hangi model kullanılırsa
+kullanılsın, bir turun "done" sayılabilmesi için aşağıdakiler
+zorunludur (uygun olduğu ölçüde):
+
+1. **Typecheck** — `npx tsc --noEmit` (TypeScript projelerde).
+2. **İlgili targeted testler** — değişikliklerin dokunduğu modülün
+   test suite'leri. Yeni davranış eklendiyse yeni test ile gelir.
+3. **Build** — `npm run build` (Next.js / Vite tarafı temizse).
+4. **Browser verification** — UI değişikliği veya runtime davranış
+   varsa preview server üzerinden gerçek akış. Snapshot, network,
+   console kontrol edilir; "iddia" yerine "kanıt" yazılır.
+5. **Ürün sözleşmesi kontrolü** — CLAUDE.md (Madde V vb.) ve modül
+   bazlı `docs/<modül>/` paketleri ile çelişen davranış üretilmiş
+   mi? Eğer üretilmişse ya kod düzeltilir ya da sözleşme açıkça
+   güncellenir; ikisi sessizce ayrışmaz.
+
+Hızlı / kabukta görünmez bir refactor için bile bu beşinin
+**uygulanmadığı** kombinasyonlar finalize edilmez. Modeli
+değiştirmek bu gerekliliklerin atlanması için bahane değildir.
+Bir tur "kapatma" diyorsa, bu beş madde checklist olarak
+geçirilmiş olmalı.
+
+> Bu ilke review modülünün IA-36 done checklist'inde de
+> uygulanmıştır (bkz. `docs/review/README.md`).
+
 ## Kaynaklar
 
 Bu proje planı aşağıdaki kaynaklar incelenerek oluşturuldu.
