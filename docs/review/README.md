@@ -11,8 +11,12 @@ için tam dokümantasyonu.
 >
 > **Review core flow kapanmış sayılır** — bu sözleşmenin tam anlamı:
 > scoring/explainability/operator-truth/lifecycle/automation toggles
-> tamamdır; bir runtime prerequisite (worker process) kalmaktadır ve
-> bu explicit documented edilmiştir, silent failure değildir.
+> tamamdır. Runtime prerequisite (worker process) artık **çözülmüştür**:
+> `src/instrumentation.ts` Next.js instrumentation hook ile BullMQ workers
+> + chokidar watcher'ı `npm run dev`/`start` sırasında otomatik başlatır.
+> Ayrı `npm run worker` komutu gerekmez. Kanıtlandı: 2026-05-11 runtime
+> log'ları workers started + watcher started gösterdi; 500 page yok,
+> production build ✓, typecheck ✓.
 
 ## Doküman seti
 
@@ -85,8 +89,10 @@ Review modülünün IA-30..IA-38 turları boyunca eklenen davranışları:
   activity-based proxy ile belirlenir (son 5 dakikada biten job var mı?).
   BullMQ `getWorkersCount()` kullanılmadı — Redis CLIENT LIST stale entry
   problemi. `workerRunning: false` olduğunda Settings → Review ops section'ında
-  amber banner gösterilir ("Worker process not running — start with
-  `npm run worker`"). Manual "Scan now" worker bağımsız çalışmaya devam eder.
+  amber banner gösterilir. **Not (2026-05-11):** instrumentation hook
+  çalışır hale getirildi; workers artık `npm run dev`/`start` ile otomatik
+  başlar. `workerRunning: false` yalnızca ilk açılışta kısa süreyle veya
+  gerçekten sorun varsa görünür. Manual "Scan now" her zaman çalışır.
   `discoveryMode` `workerRunning: false` ise her koşulda `manual_only` döner —
   settings'teki watcher/periodic config'e bakılmaz, gerçek durum gösterilir.
 

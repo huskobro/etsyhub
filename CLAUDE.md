@@ -1994,17 +1994,37 @@ watcherActive && !hasPeriodic → "event_only"
 !watcherActive && !hasPeriodic → "manual_only"
 ```
 
-**Mimari kısıt — chokidar webpack-safe:**
+**Mimari kısıt — chokidar + tüm native binary'ler webpack-safe:**
 
-chokidar (`fsevents` native binary) Next.js webpack bundle'ına **girmez**;
-`serverExternalPackages: ["chokidar", "fsevents"]` ile exclude edilir ve
-Node.js runtime'da resolve edilir. `instrumentation.ts` ise Next.js'in
-Node.js server process'inde çalışır — webpack bundle'ı değil. Bu nedenle
-`instrumentation.ts`'den chokidar güvenle import edilebilir.
+chokidar (`fsevents` native binary), sharp, @imgly/background-removal-node,
+apify-client ve diğer server-only paketler Next.js webpack bundle'ına
+**girmez**; `experimental.serverComponentsExternalPackages` + `webpack.externals`
+callback ile exclude edilir ve Node.js runtime'da resolve edilir.
+`instrumentation.ts` Next.js'in Node.js server process'inde çalışır —
+webpack bundle'ı değil. `src/instrumentation.ts` konumunda bulunur
+(`src/app` layout için `src/` gerekli; proje root'u taranmaz).
+
+`next.config.mjs` iki katmanlı external stratejisi kullanır:
+1. `experimental.serverComponentsExternalPackages` — Server Component
+   ve API route bundle'ları için.
+2. `webpack.externals` callback — instrumentation + worker chain bundle'ı
+   için; `node:` prefix'li built-in'ler + tüm server-only paketler dahil.
+3. Client-side `resolve.fallback = false` — tarayıcı bundle'ına hiçbir
+   Node.js modülü polyfill'lenmez.
 
 API route'ları watcher modülünü hâlâ **import etmez** (bundle güvenliği).
 Watcher state, aynı process içindeki `getWatcherStatusMap()` ile okunur
 ve `getReviewOpsCounts(opts.watcherInfo)` üzerinden inject edilir.
+
+**Runtime kanıt (2026-05-11):**
+`npm run dev` başlatıldığında log çıktısı:
+```
+✓ Compiled /instrumentation in 1777ms (1619 modules)
+workers started  (active: 15 worker type)
+local-library watcher started  (userId=..., rootPath=...)
+✓ Ready in 3.9s
+```
+500 page yok. Production build `✓ Compiled successfully`. `npx tsc --noEmit` hatasız.
 
 **Worker liveness detection (`workerRunning` field):**
 
