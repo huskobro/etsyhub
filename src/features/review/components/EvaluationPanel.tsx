@@ -14,7 +14,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Check as CheckIcon, AlertTriangle, Hourglass, MinusCircle, Zap } from "lucide-react";
 import { SectionTitle } from "@/features/review/components/ReviewWorkspaceShell";
 import {
@@ -266,6 +266,62 @@ export function EvaluationPanel({
                 {summary}
               </p>
             </div>
+          ) : null}
+
+          {/* IA-38b — Score breakdown collapsible. Default kapalı;
+           *   operatör açtığında score'un nasıl oluştuğunu satır satır
+           *   görür. Base 100 → her failed applicable kriterin weight'i
+           *   ayrı satır → final score. Hidden contribution yok; matematik
+           *   tam görünür. */}
+          {score !== null && applicable.length > 0 ? (
+            <details
+              className="mt-4 group"
+              data-testid="evaluation-score-breakdown"
+            >
+              <summary className="flex cursor-pointer items-center justify-between gap-2 list-none">
+                <SectionTitle>Score breakdown</SectionTitle>
+                <span
+                  className="font-mono text-[10px] uppercase tracking-meta text-white/40"
+                  aria-hidden
+                >
+                  +
+                </span>
+              </summary>
+              <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 font-mono text-[11px]">
+                <dt className="text-white/55">Base</dt>
+                <dd className="tabular-nums text-white/75">100</dd>
+                {applicable
+                  .filter((c) => c.state === "failed" && (c.weight ?? 0) > 0)
+                  .map((c) => (
+                    <Fragment key={c.id}>
+                      <dt
+                        className={cn(
+                          "truncate",
+                          c.severity === "blocker"
+                            ? "text-rose-200/80"
+                            : "text-amber-200/80",
+                        )}
+                        title={c.label}
+                      >
+                        {c.label}
+                      </dt>
+                      <dd className="tabular-nums text-rose-300/90">
+                        −{c.weight}
+                      </dd>
+                    </Fragment>
+                  ))}
+                <dt className="border-t border-white/10 pt-1 text-white/60">
+                  Final
+                </dt>
+                <dd className="border-t border-white/10 pt-1 font-semibold tabular-nums text-white">
+                  {score}
+                </dd>
+              </dl>
+              <p className="mt-2 text-[10.5px] leading-relaxed text-white/40">
+                N/A criteria score'a girmez. Severity (blocker / warning)
+                yalnız UI tone — score yalnız weight'lerden hesaplanır.
+              </p>
+            </details>
           ) : null}
 
           {provider ? (

@@ -141,4 +141,60 @@ describe("computeScoringBreakdown — IA-38 weight-only model", () => {
       { id: "b", severity: "blocker", weight: 30, failed: true, subtracted: 30 },
     ]);
   });
+
+  it("IA-38b — composeContext geçilirse N/A kriterler score'a düşmez", () => {
+    // no_alpha_channel benzeri: transparency: true istiyor, asset JPEG.
+    // Bu kriter "Not applicable" — score'a düşmemeli.
+    const naCriterion = {
+      id: "needs_alpha",
+      label: "Alpha required",
+      description: "Asset must have alpha",
+      blockText: "alpha required",
+      active: true,
+      weight: 20,
+      severity: "blocker",
+      applicability: {
+        productTypes: null,
+        formats: ["png"], // JPEG için N/A
+        transparency: true,
+        requiresAnyTransform: null,
+        sourceKinds: null,
+      },
+      family: "technical",
+      version: "1.0",
+    } as unknown as ReviewCriterion;
+    const textCriterion = C("text_detected", "warning", 10);
+
+    // Context yok → N/A bilinmiyor, naCriterion score'a düşer (eski davranış)
+    const withoutCtx = computeScoringBreakdown({
+      providerRaw: 0,
+      riskFlagKinds: ["needs_alpha", "text_detected"],
+      criteria: [naCriterion, textCriterion],
+    });
+    expect(withoutCtx.finalScore).toBe(70); // 100 - 20 - 10
+
+    // Context var (JPEG) → naCriterion N/A → score'a düşmez
+    const withCtx = computeScoringBreakdown({
+      providerRaw: 0,
+      riskFlagKinds: ["needs_alpha", "text_detected"],
+      criteria: [naCriterion, textCriterion],
+      composeContext: {
+        productType: "clipart",
+        format: "jpeg",
+        hasAlpha: false,
+        sourceKind: "local-library",
+        transformsApplied: [],
+      },
+    });
+    expect(withCtx.finalScore).toBe(90); // 100 - 10 (alpha N/A → atlanır)
+  });
+
+  it("IA-38b — duplicate kind'lar Set ile unique, weight tek sayılır", () => {
+    const r = computeScoringBreakdown({
+      providerRaw: 0,
+      riskFlagKinds: ["a", "a", "a"], // 3x duplicate
+      criteria: [C("a", "warning", 25)],
+    });
+    expect(r.finalScore).toBe(75); // 100 - 25 (75 değil 25 değil 0)
+  });
 });

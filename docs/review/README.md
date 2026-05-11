@@ -48,6 +48,14 @@ Review modülünün IA-30..IA-38 turları boyunca eklenen davranışları:
   clamp(0, 100, 100 − Σ weight(failed))`. Severity yalnız UI tone +
   AI suggestion önem sinyali için. Bir kriter score'u 0'a çekecekse
   admin paneline gidip weight=100 set edilir.
+- **Score applicability-aware, full explainability (IA-38b)** —
+  Detail panel'da "Not applicable" gösterilen kriterler score'a
+  **düşmez**. Lazy recompute path'i her item için composeContext
+  (productType, format, hasAlpha, sourceKind) kurar. Görünen failed
+  applicable checks = score deductions birebir eşit. Yeni
+  **Score breakdown** collapsible: `Base 100 → −W → ... → Final`
+  satır satır gösterir; hidden contribution yok. Duplicate risk
+  flag'ler `Set` ile unique'leştirilir.
 - **MJ promote batch lineage (IA-38)** — Promote ederken GeneratedDesign
   `jobId` MJ asset'in BullMQ Job row id'sine bağlanır; queue endpoint
   bu jobId üzerinden `Job.metadata.batchId` resolve eder ve UI primary
@@ -74,6 +82,8 @@ işaretlendi.
 | Batch lineage MJ promote path (jobId aktarımı) | ✓ | IA-38 |
 | Risk count tek kaynak — kart = detail (applicability-aware) | ✓ | IA-37 |
 | Score modeli severity-agnostic, weight-only (hidden auto-zero yok) | ✓ | IA-38 |
+| Score full explainability — visible failed = score deductions birebir | ✓ | IA-38b |
+| Score breakdown UI (Base → -W → Final) detail panelde görünür | ✓ | IA-38b |
 | Admin paneli scoring/threshold/criterion/severity/weight kontrolleri görünür | ✓ | IA-38 |
 | Live update polling: gerçek iş varken 5s, idle'da kapalı | ✓ | IA-35 |
 | Vitest workspace tek `npm test` ile UI + node combined | ✓ | IA-35 |

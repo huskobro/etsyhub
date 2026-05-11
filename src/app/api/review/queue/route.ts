@@ -60,9 +60,11 @@ function recomputeStoredScore(
   storedScore: number | null,
   riskFlags: unknown,
   criteria: Parameters<typeof computeScoringBreakdown>[0]["criteria"],
+  composeContext?: Parameters<typeof computeScoringBreakdown>[0]["composeContext"],
 ): number | null {
   if (storedScore === null) return null;
-  // Risk flag kinds'i normalize et (Json → string[])
+  // Risk flag kinds'i normalize et (Json → string[]). Duplicate'lar
+  // computeScoringBreakdown içinde Set ile unique'leştirilir.
   const kinds: string[] = Array.isArray(riskFlags)
     ? (riskFlags
         .filter(
@@ -79,6 +81,11 @@ function recomputeStoredScore(
     providerRaw: storedScore,
     riskFlagKinds: kinds,
     criteria,
+    // IA-38b — composeContext geçilirse N/A kriterler score'a düşmez;
+    // detail panel "Not applicable" gösterimi ile score deductions
+    // birebir eşit olur (kullanıcıya görünen failed applicable checks =
+    // weight subtractions).
+    composeContext,
   });
   return breakdown.finalScore;
 }
@@ -355,14 +362,21 @@ export const GET = withErrorHandling(async (req: Request) => {
           fullResolutionUrl: thumbnailUrl,
           reviewStatus: it.reviewStatus,
           reviewStatusSource: it.reviewStatusSource,
-          // IA-31 — lazy recompute (CLAUDE.md Madde S). Eski snapshot'lar
-          // (worker eski algoritma döneminde yazılmış) provider raw etkili
-          // olabilir; UI sistem skoru bugünkü rule-based formülden gelir.
-          // Persist YOK — sadece response projection.
+          // IA-31 + IA-38b — lazy recompute (CLAUDE.md Madde S).
+          // composeContext geçilir; N/A kriterler score'a düşmez —
+          // detail panel "Not applicable" diye gösterdiği kriterlerle
+          // weight subtractions birebir eşitlenir.
           reviewScore: recomputeStoredScore(
             it.reviewScore,
             it.reviewRiskFlags,
             criteria,
+            {
+              productType: it.productType?.key ?? "wall_art",
+              format: it.asset.mimeType.replace("image/", "").toLowerCase(),
+              hasAlpha: it.asset.hasAlpha,
+              sourceKind: "design",
+              transformsApplied: [],
+            },
           ),
           reviewSummary: it.reviewSummary,
           riskFlagCount: riskFlagCount(it.reviewRiskFlags),
@@ -591,9 +605,31 @@ export const GET = withErrorHandling(async (req: Request) => {
     fullResolutionUrl: `/api/local-library/asset?hash=${encodeURIComponent(it.hash)}`,
     reviewStatus: it.reviewStatus,
     reviewStatusSource: it.reviewStatusSource,
-    // IA-31 — lazy recompute (CLAUDE.md Madde S). Local branch için de
-    // aynı kural geçerli; stored score eski algoritma döneminden olabilir.
-    reviewScore: recomputeStoredScore(it.reviewScore, it.reviewRiskFlags, criteria),
+    // IA-31 + IA-38b — lazy recompute (CLAUDE.md Madde S). Local branch
+    // için composeContext: productType resolve edilir (folder mapping >
+    // legacy folderName fallback > convention); null ise compose
+    // verilmez (geriye dönük TÜM aktif kriterlerle hesap).
+    reviewScore: (() => {
+      const productType = resolveLocalProductTypeKey({
+        folderName: it.folderName,
+        folderPath: it.folderPath,
+        folderMap: localFolderMap,
+      });
+      return recomputeStoredScore(
+        it.reviewScore,
+        it.reviewRiskFlags,
+        criteria,
+        productType !== null
+          ? {
+              productType,
+              format: it.mimeType.replace("image/", "").toLowerCase(),
+              hasAlpha: it.hasAlpha,
+              sourceKind: "local-library",
+              transformsApplied: [],
+            }
+          : undefined,
+      );
+    })(),
     reviewSummary: it.reviewSummary,
     riskFlagCount: riskFlagCount(it.reviewRiskFlags),
     riskFlags: normalizeRiskFlags(it.reviewRiskFlags),

@@ -1,6 +1,10 @@
 import { ReviewStatus } from "@prisma/client";
 import type { ReviewRiskFlag } from "@/providers/review/types";
-import type { ReviewCriterion } from "@/providers/review/criteria";
+import {
+  isCriterionApplicable,
+  type ReviewCriterion,
+  type ReviewComposeContext,
+} from "@/providers/review/criteria";
 
 /**
  * Phase 6 review karar kuralı (R8) — pure / deterministic / stateless.
@@ -155,13 +159,27 @@ export function computeScoringBreakdown(args: {
   providerRaw: number;
   riskFlagKinds: ReadonlyArray<string>;
   criteria: ReadonlyArray<ReviewCriterion>;
+  /** IA-38b — Applicability context (opsiyonel). Geçildiğinde N/A
+   *  kriterler score'a düşmez; detail panel "Not applicable" diye
+   *  gösterilen aynı kriterler score'a girmez. Caller geçirmezse
+   *  geriye dönük davranış: TÜM aktif kriterler (legacy). */
+  composeContext?: ReviewComposeContext;
 }): ScoringBreakdown {
-  const { providerRaw, riskFlagKinds, criteria } = args;
+  const { providerRaw, riskFlagKinds, criteria, composeContext } = args;
+  // IA-38b — duplicate kind'lar Set ile unique'leştirilir (DB'de aynı
+  // kind iki kez yazılmış olabilir; provider snapshot duplicate
+  // göndermiş). Skor iki kez sayılmaz.
   const failedSet = new Set(riskFlagKinds);
   let totalPenalty = 0;
   let hasBlockerFail = false;
   const contributions: ScoringBreakdown["contributions"] = [];
   for (const c of criteria) {
+    // IA-38b — N/A kriterler atlanır. Detail panel'in "Not applicable"
+    // diye gösterdiği kriterler score'a girmez; kullanıcıya görünen
+    // failed applicable checks = score deductions birebir eşit olur.
+    if (composeContext && !isCriterionApplicable(c, composeContext)) {
+      continue;
+    }
     const failed = failedSet.has(c.id);
     let subtracted = 0;
     if (failed) {

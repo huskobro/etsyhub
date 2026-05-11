@@ -300,7 +300,15 @@ score = max(0, 100 − failed her kriterin weight'lerinin toplamı)
 - Bir kriterin score'u 0'a indirmesini istiyorsan admin panelinde
   o kriterin weight'ini 100'e set edersin. Sürpriz "hidden zero"
   yoktur.
+- N/A (Not applicable) işaretli check'ler **score'a düşmez** — sağ
+  panelde N/A diye gördüğün her kriter score matematiğinin dışında
+  kalır.
 - Tüm check'ler N/A veya passed ise score 100.
+
+Sağ panelde **Score breakdown** açılır bloku score'un nasıl
+hesaplandığını satır satır gösterir: `Base 100 → her failed
+weight → Final`. Görünen failed applicable checks ile score
+deductions birebir eşittir; gizli katkı yoktur.
 
 > Yani: score düşükse her zaman sebebini sağ panelin check listesinde
 > görürsün. Yüksek score + blocker var senaryosunda "Critical risk"

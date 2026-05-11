@@ -65,7 +65,7 @@ undecided = reviewStatusSource != USER (PENDING + legacy SYSTEM-source APPROVED/
 
 ---
 
-## 2. Score modeli — deterministic, severity-agnostic, weight-only (IA-38)
+## 2. Score modeli — deterministic, severity-agnostic, weight-only, applicability-aware (IA-38b)
 
 Provider raw fluctuation skoru **etkilemez**. Sistem skoru kriterler
 ve risk flag kinds üzerinden hesaplanır:
@@ -73,6 +73,17 @@ ve risk flag kinds üzerinden hesaplanır:
 ```
 finalScore = clamp(0, 100, 100 − Σ weight(failed applicable criteria))
 ```
+
+**Applicability-aware**: Detail panel'da "Not applicable" diye N/A
+gösterilen kriterler score'a **düşmez** (IA-38b). Lazy recompute path'i
+queue endpoint'inde her item için `composeContext` (productType +
+format + hasAlpha + sourceKind) kurar; `isCriterionApplicable` ile
+N/A kriterler atlanır. Sonuç: **kullanıcıya görünen failed applicable
+checks = score deductions** birebir eşit.
+
+**Duplicate risk flags**: Provider snapshot aynı kind'ı iki kez
+yazmış olabilir; `failedSet = new Set(riskFlagKinds)` ile unique'leştirilir.
+Aynı kind iki kez bayrak alsa bile weight tek kez sayılır.
 
 **Severity (blocker / warning) score'u etkilemez.** Severity yalnız:
 - UI risk indicator tone seçimi (`Critical risk` vs `1 warning`)
