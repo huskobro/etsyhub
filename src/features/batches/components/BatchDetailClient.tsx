@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, ChevronRight, Layers, RotateCw, Eye } from "lucide-react";
+import { ArrowLeft, ChevronRight, Layers, RotateCw, Eye, CheckCircle2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -20,22 +20,50 @@ import type { BatchSummary } from "@/server/services/midjourney/batches";
 /**
  * BatchDetailClient — Kivasy A3 Batch detail.
  *
- * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/screens-a3-a4.jsx
- * → A3BatchDetail.
+ * Batch-first Phase 1: CTA stage logic.
  *
- * Tabs (4): Overview · Items · Logs · Costs (per design Wave A — Review is
- * a dedicated full-screen workspace at /batches/[id]/review, NOT a tab).
- * Per docs/IMPLEMENTATION_HANDOFF.md §5: this surface owns generation +
- * review-routing only — no listing, no mockup CRUD here.
+ * Stage A — üretim devam ediyor (running/queued):
+ *   Primary CTA yok; progress görünür; failed varsa retry affordance.
+ *
+ * Stage B — üretim bitti, review tamamlanmadı (undecided > 0):
+ *   Primary CTA = "Open Review" → /review?batch={batchId}
+ *   Hint: "N undecided · decide before next stage"
+ *
+ * Stage C — review tamamlandı, kept > 0, selection var:
+ *   Primary CTA = "Continue in Selection" → /selections/{setId}
+ *
+ * Stage D — review tamamlandı, kept > 0, selection yok:
+ *   Primary CTA = "Open Review" (kept badge) — operator review'dan
+ *   selection başlatabilir.
+ *
+ * Stage E — review tamamlandı, kept = 0:
+ *   Primary CTA = "New Batch" → /batches ile retry yönlendirmesi.
  */
 
 interface BatchDetailClientProps {
   summary: BatchSummary;
+  existingSelectionSet: { id: string; name: string } | null;
 }
 
 type TabId = "overview" | "items" | "logs" | "costs";
 
-export function BatchDetailClient({ summary }: BatchDetailClientProps) {
+type BatchStage = "running" | "review-pending" | "selection-ready" | "no-kept";
+
+function deriveBatchStage(
+  summary: BatchSummary,
+  existingSelectionSet: { id: string; name: string } | null,
+): BatchStage {
+  const status = batchAggregateStatus(summary.counts);
+  if (status === "running" || status === "queued") return "running";
+  if (summary.reviewCounts.total === 0) return "review-pending";
+  if (summary.reviewCounts.undecided > 0) return "review-pending";
+  if (summary.reviewCounts.kept === 0) return "no-kept";
+  // kept > 0, undecided = 0
+  if (existingSelectionSet) return "selection-ready";
+  return "selection-ready"; // kept > 0 but no set yet — still show review CTA with kept hint
+}
+
+export function BatchDetailClient({ summary, existingSelectionSet }: BatchDetailClientProps) {
   const [tab, setTab] = useState<TabId>("overview");
 
   const status = batchAggregateStatus(summary.counts);
@@ -48,6 +76,8 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
   const succeededPct = total > 0
     ? Math.round((summary.counts.completed / total) * 100)
     : 0;
+
+  const stage = deriveBatchStage(summary, existingSelectionSet);
 
   const tabs: TabItem[] = [
     { id: "overview", label: "Overview" },
@@ -100,60 +130,12 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
             </span>
           </div>
         </div>
-        {summary.counts.failed > 0 ? (
-          <Link
-            href={`/batches/${summary.batchId}?action=retry-failed`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink"
-          >
-            <RotateCw className="h-3 w-3" aria-hidden />
-            Retry-failed-only ({summary.counts.failed})
-          </Link>
-        ) : null}
-        {/* IA Phase 11 — undecided gate visibility (CLAUDE.md Madde H).
-         *   Live `reviewCounts.undecided` reads from the batch summary
-         *   so the operator sees the gating signal without entering the
-         *   workspace. When all items are decided we flip to a calmer
-         *   "Review complete" caption; when no assets exist yet (still
-         *   generating) we fall back to a generic "every item decided"
-         *   hint instead of a misleading 0 / 0 display. */}
-        <div className="flex flex-col items-end gap-0.5">
-          <Link
-            href={`/review?batch=${summary.batchId}`}
-            data-size="sm"
-            className="k-btn k-btn--primary"
-            data-testid="batch-detail-open-review"
-          >
-            <Eye className="h-3 w-3" aria-hidden />
-            Open Review
-          </Link>
-          {summary.reviewCounts.total > 0 ? (
-            summary.reviewCounts.undecided > 0 ? (
-              <span
-                className="font-mono text-xs uppercase tracking-meta text-k-orange-bright"
-                data-testid="batch-detail-review-hint"
-                data-state="pending"
-              >
-                {summary.reviewCounts.undecided} undecided · decide before next stage
-              </span>
-            ) : (
-              <span
-                className="font-mono text-xs uppercase tracking-meta text-ink-3"
-                data-testid="batch-detail-review-hint"
-                data-state="complete"
-              >
-                Review complete · {summary.reviewCounts.kept} kept
-              </span>
-            )
-          ) : (
-            <span
-              className="font-mono text-xs uppercase tracking-meta text-ink-3"
-              data-testid="batch-detail-review-hint"
-              data-state="empty"
-            >
-              Decide every item before next stage
-            </span>
-          )}
-        </div>
+        {/* Batch-first Phase 1 — stage-aware CTA block (CLAUDE.md Madde H). */}
+        <BatchStageCTA
+          summary={summary}
+          stage={stage}
+          existingSelectionSet={existingSelectionSet}
+        />
       </header>
 
       {/* Summary strip — A3 Pattern */}
@@ -453,6 +435,156 @@ function EmptyTabPlaceholder({
       <h3 className="text-base font-semibold text-ink">{title}</h3>
       <p className="mt-1 text-sm text-text-muted">{blurb}</p>
       <ChevronRight className="mx-auto mt-3 h-3 w-3 text-ink-3" aria-hidden />
+    </div>
+  );
+}
+
+/**
+ * Batch-first Phase 1 — stage-aware CTA block.
+ *
+ * Üretim durumuna göre sağ header'da doğru primary CTA ve hint caption'ı
+ * gösterir. Operatör ne yapması gerektiğini sayfadan okur, hover'a gizlenmiş
+ * aksiyon arayarak vakit kaybetmez.
+ */
+function BatchStageCTA({
+  summary,
+  stage,
+  existingSelectionSet,
+}: {
+  summary: BatchSummary;
+  stage: BatchStage;
+  existingSelectionSet: { id: string; name: string } | null;
+}) {
+  if (stage === "running") {
+    return (
+      <div className="flex flex-col items-end gap-0.5" data-testid="batch-stage-cta" data-stage="running">
+        <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-3">
+          <RefreshCw className="h-3 w-3 animate-spin" aria-hidden />
+          Generating…
+        </div>
+        {summary.counts.failed > 0 ? (
+          <Link
+            href={`/batches/${summary.batchId}?action=retry-failed`}
+            className="font-mono text-xs uppercase tracking-meta text-danger underline-offset-2 hover:underline"
+          >
+            {summary.counts.failed} failed · retry
+          </Link>
+        ) : (
+          <span className="font-mono text-xs uppercase tracking-meta text-ink-3">
+            {summary.counts.completed}/{summary.counts.total} done
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (stage === "review-pending") {
+    return (
+      <div className="flex flex-col items-end gap-0.5" data-testid="batch-stage-cta" data-stage="review-pending">
+        <Link
+          href={`/review?batch=${summary.batchId}`}
+          data-size="sm"
+          className="k-btn k-btn--primary"
+          data-testid="batch-detail-open-review"
+        >
+          <Eye className="h-3 w-3" aria-hidden />
+          Open Review
+        </Link>
+        {summary.reviewCounts.total > 0 ? (
+          <span
+            className="font-mono text-xs uppercase tracking-meta text-k-orange-bright"
+            data-testid="batch-detail-review-hint"
+            data-state="pending"
+          >
+            {summary.reviewCounts.undecided} undecided · decide before next stage
+          </span>
+        ) : (
+          <span
+            className="font-mono text-xs uppercase tracking-meta text-ink-3"
+            data-testid="batch-detail-review-hint"
+            data-state="empty"
+          >
+            Review every item before proceeding
+          </span>
+        )}
+        {summary.counts.failed > 0 ? (
+          <Link
+            href={`/batches/${summary.batchId}?action=retry-failed`}
+            className="font-mono text-xs uppercase tracking-meta text-ink-3 underline-offset-2 hover:underline"
+          >
+            <RotateCw className="inline h-3 w-3" aria-hidden />{" "}
+            Retry {summary.counts.failed} failed
+          </Link>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (stage === "no-kept") {
+    return (
+      <div className="flex flex-col items-end gap-0.5" data-testid="batch-stage-cta" data-stage="no-kept">
+        <Link
+          href="/batches"
+          data-size="sm"
+          className="k-btn k-btn--primary"
+        >
+          <RefreshCw className="h-3 w-3" aria-hidden />
+          New Batch
+        </Link>
+        <span
+          className="font-mono text-xs uppercase tracking-meta text-ink-3"
+          data-testid="batch-detail-review-hint"
+          data-state="no-kept"
+        >
+          No items kept · start a new batch
+        </span>
+      </div>
+    );
+  }
+
+  // stage === "selection-ready" — kept > 0, review complete
+  if (existingSelectionSet) {
+    return (
+      <div className="flex flex-col items-end gap-0.5" data-testid="batch-stage-cta" data-stage="selection-ready">
+        <Link
+          href={`/selections/${existingSelectionSet.id}`}
+          data-size="sm"
+          className="k-btn k-btn--primary"
+          data-testid="batch-detail-continue-selection"
+        >
+          <CheckCircle2 className="h-3 w-3" aria-hidden />
+          Continue in Selection
+        </Link>
+        <span
+          className="font-mono text-xs uppercase tracking-meta text-ink-3"
+          data-testid="batch-detail-review-hint"
+          data-state="complete"
+        >
+          {summary.reviewCounts.kept} kept · selection started
+        </span>
+      </div>
+    );
+  }
+
+  // kept > 0 but no selection set yet — kept available, review complete
+  return (
+    <div className="flex flex-col items-end gap-0.5" data-testid="batch-stage-cta" data-stage="kept-no-selection">
+      <Link
+        href={`/review?batch=${summary.batchId}`}
+        data-size="sm"
+        className="k-btn k-btn--primary"
+        data-testid="batch-detail-open-review"
+      >
+        <CheckCircle2 className="h-3 w-3" aria-hidden />
+        Open Review
+      </Link>
+      <span
+        className="font-mono text-xs uppercase tracking-meta text-success"
+        data-testid="batch-detail-review-hint"
+        data-state="complete"
+      >
+        Review complete · {summary.reviewCounts.kept} kept
+      </span>
     </div>
   );
 }

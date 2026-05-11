@@ -2458,6 +2458,79 @@ Bunlar **opsiyonel değil**:
 - Fan-in / fan-out: Reference × N → Variations × M; Library × M →
   Selections × K; Selection × 1 → Mockup template × T → Products × T
 
+## Z. Review Modülü — Freeze (2026-05-11)
+
+**Review modülü 2026-05-11 itibarıyla tamamlanmış ve kilitli kabul edilir.**
+
+Bu tarihten sonra review modülüne yalnız şu üç nedenle dokunulur:
+1. Açık kullanıcı talebi
+2. Bug fix (davranış bozukluğu)
+3. Zorunlu altyapı (schema migration, dependency update)
+
+### Kilitli sözleşmeler
+
+- **Operator truth vs. AI advisory ayrımı** — `reviewStatus` operatör damgası; `reviewSuggestedStatus` AI advisory. Worker `reviewStatus`'e dokunmaz.
+- **Score modeli** — weight-only, deterministic: `100 - Σweight(failed)`. Hidden auto-zero (blockerForce) kaldırıldı.
+- **Advisory/operator downstream gate** — Library → Selection → Product hattı yalnız `reviewStatus=APPROVED AND reviewStatusSource=USER` ile ilerler.
+- **Review UI semantics** — `getOperatorDecision`, `getAiScoreTone`, `getRiskTone` single-source helpers; tüm yüzeyler bu helper'lardan beslenir.
+- **Automation contract** — `aiAutoEnqueue`, `localAutoEnqueue`, `localScanIntervalMinutes` Settings → Review → Automation altında yönetilir.
+- **Worker auto-start** — BullMQ workers + chokidar watcher `instrumentation.ts` hook ile `npm run dev`/`start` anında başlar.
+- **Review ops visibility** — `workerRunning`, `discoveryMode`, queued/running/failed counts admin panelinde görünür.
+
+### Bundan sonra odak
+
+Batch-first production pipeline: **Reference → Batch → Review → Selection → Product**
+
+---
+
+## AA. Batch-First Production Pipeline (2026-05-12)
+
+**Batch, üretim pipeline'ının merkezi çalışma birimidir.**
+
+Canonical tek yönlü akış:
+
+```
+Reference  →  Batch  →  Review  →  Selection  →  Product  →  Etsy Draft
+```
+
+Her ok bir **action** (single primary CTA). Geri yazım yok.
+
+### Roller
+
+| Yüzey | Tek-cümle tanım |
+|---|---|
+| **Reference** | Üretim öncesi input/havuz. "Bu kaynak için kaç batch üretildi?" özeti gösterir. Primary CTA: "Create Variations" → yeni batch. |
+| **Batch** | Tek üretim birimi. Başı/sonu olan, izlenebilir, kararla kapatılan iş birimi. Stage logic: running → review-pending → selection-ready → no-kept. |
+| **Review** | `/review?batch={id}` — canonical scope. Freeze altında (Madde Z). |
+| **Selection** | Kürate edilmiş set. Batch lineage header'da görünür. "Apply Mockups" → Product. |
+| **Product** | Mockup + listing + Etsy draft. |
+
+### Batch page stage logic (CTA)
+
+| Aşama | Koşul | Primary CTA |
+|---|---|---|
+| Running | `running + queued > 0` | Spinner (bekleniyor) |
+| Review pending | `undecided > 0` veya `reviewCounts.total = 0` | **Open Review** |
+| Selection ready | `undecided = 0, kept > 0, set var` | **Continue in Selection** |
+| Kept no set | `undecided = 0, kept > 0, set yok` | **Open Review** (kept badge) |
+| No kept | `kept = 0` | **New Batch** |
+
+### Teknik kararlar (schema-zero)
+
+- Batch kimliği: `Job.metadata.batchId` JSON field (schema migration yok).
+- Batch → SelectionSet bağlantısı: `SelectionSet.sourceMetadata.mjOrigin.batchIds[]` JSON array (FK yok; `findSelectionSetForBatch` Prisma JSON path query ile bulur).
+- SelectionSet → Batch lineage: `sourceMetadata.mjOrigin.batchIds[0]` veya `sourceMetadata.batchId` (variation-batch).
+- Reference production history: `_count: { generatedDesigns, midjourneyJobs }` kart meta bloğunda gösterilir.
+
+### Değişmeyenler
+
+- Review freeze (Madde Z) korunur.
+- `WorkflowRun` tablosu eklenmez (IA Phase 11 kapsamı).
+- Schema migration yapılmaz.
+- Yeni büyük abstraction açılmaz.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

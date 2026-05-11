@@ -59,6 +59,11 @@ type ReferenceLite = {
     sourcePlatform?: string | null;
   } | null;
   tags: { tag: { id: string; name: string; color: string | null } }[];
+  /** Batch-first Phase 1 — production history counts. */
+  _count?: {
+    generatedDesigns: number;
+    midjourneyJobs: number;
+  } | null;
 };
 
 type ListResponse = {
@@ -728,7 +733,37 @@ function ReferencePoolCard({
             {createdLabel}
           </span>
         </div>
+        {/* Batch-first Phase 1 — production history summary. */}
+        <ReferenceBatchSummary count={reference._count} referenceId={reference.id} />
       </div>
+    </div>
+  );
+}
+
+// ─── ReferenceBatchSummary ───────────────────────────────────────────────
+// Batch-first Phase 1 — kart altında üretim geçmişi özeti.
+// Kaç design üretildi + Batches sayfasına köprü.
+function ReferenceBatchSummary({
+  count,
+  referenceId,
+}: {
+  count?: { generatedDesigns: number; midjourneyJobs: number } | null;
+  referenceId: string;
+}) {
+  if (!count) return null;
+  const total = (count.generatedDesigns ?? 0) + (count.midjourneyJobs ?? 0);
+  if (total === 0) return null;
+
+  return (
+    <div className="mt-1.5 flex items-center gap-1">
+      <Link
+        href={`/batches?referenceId=${referenceId}`}
+        className="font-mono text-[10.5px] tracking-wider text-ink-3 underline-offset-2 hover:text-ink hover:underline"
+        onClick={(e) => e.stopPropagation()}
+        title="View batches for this reference"
+      >
+        {total} designs
+      </Link>
     </div>
   );
 }

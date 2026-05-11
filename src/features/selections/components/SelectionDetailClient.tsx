@@ -56,6 +56,8 @@ export interface SelectionDetailSet {
   lastExportedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Batch-first Phase 1 — source lineage. JSON blob from SelectionSet.sourceMetadata. */
+  sourceMetadata?: unknown;
 }
 
 interface Props {
@@ -174,6 +176,8 @@ export function SelectionDetailClient({ set, items }: Props) {
             <span className="whitespace-nowrap font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
               SEL · {set.id.slice(0, 8)}
             </span>
+            {/* Batch-first Phase 1 — batch lineage link. */}
+            <SelectionBatchLineage sourceMetadata={set.sourceMetadata} />
           </div>
         </div>
         <button
@@ -296,4 +300,61 @@ function buildPlaceholderHistory(set: SelectionDetailSet): HistoryEvent[] {
     (a, b) =>
       new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
   );
+}
+
+/**
+ * Batch-first Phase 1 — Selection header'ında batch lineage linki.
+ *
+ * sourceMetadata iki kaynak taşıyabilir:
+ *   1. mjOrigin (MJ kept handoff): mjOrigin.batchIds[0] → /batches/{batchId}
+ *   2. variation-batch (quickStart): batchId doğrudan → /batches (genel)
+ *      Not: variation-batch batchId'si Job.id — MJ batch sayfasına değil,
+ *      ileride variation batch detail sayfasına yönlendirilecek.
+ *
+ * Schema-zero: JSON okuma, tablo değişikliği yok.
+ */
+function SelectionBatchLineage({ sourceMetadata }: { sourceMetadata?: unknown }) {
+  if (!sourceMetadata || typeof sourceMetadata !== "object") return null;
+  const meta = sourceMetadata as Record<string, unknown>;
+
+  // MJ kept handoff: mjOrigin.batchIds[]
+  const mjOrigin = meta["mjOrigin"];
+  if (mjOrigin && typeof mjOrigin === "object") {
+    const o = mjOrigin as Record<string, unknown>;
+    if (o["kindFamily"] === "midjourney_kept") {
+      const batchIds = Array.isArray(o["batchIds"])
+        ? (o["batchIds"] as unknown[]).filter((x): x is string => typeof x === "string")
+        : [];
+      if (batchIds.length > 0) {
+        const primaryBatchId = batchIds[0]!;
+        return (
+          <Link
+            href={`/batches/${primaryBatchId}`}
+            className="whitespace-nowrap font-mono text-[10.5px] uppercase tracking-meta text-info underline-offset-2 hover:underline"
+            title={`Source batch: ${primaryBatchId}`}
+            data-testid="selection-batch-lineage"
+          >
+            ↗ BATCH {primaryBatchId.slice(0, 8).toUpperCase()}
+          </Link>
+        );
+      }
+    }
+  }
+
+  // variation-batch (quickStart): kind = "variation-batch" + batchId
+  const kind = meta["kind"];
+  const batchId = meta["batchId"];
+  if (kind === "variation-batch" && typeof batchId === "string") {
+    return (
+      <span
+        className="whitespace-nowrap font-mono text-[10.5px] uppercase tracking-meta text-ink-3"
+        title={`Source batch: ${batchId}`}
+        data-testid="selection-batch-lineage"
+      >
+        ↗ BATCH {batchId.slice(0, 8).toUpperCase()}
+      </span>
+    );
+  }
+
+  return null;
 }

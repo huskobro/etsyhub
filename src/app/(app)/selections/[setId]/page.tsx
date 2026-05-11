@@ -61,6 +61,7 @@ export default async function SelectionDetailPage({
           : null,
         createdAt: detail.createdAt.toISOString(),
         updatedAt: detail.updatedAt.toISOString(),
+        sourceMetadata: detail.sourceMetadata as unknown,
       }}
       items={detail.items.map((it) => ({
         id: it.id,

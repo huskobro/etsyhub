@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/server/auth";
-import { getBatchSummary } from "@/server/services/midjourney/batches";
+import { getBatchSummary, findSelectionSetForBatch } from "@/server/services/midjourney/batches";
 import { BatchDetailClient } from "@/features/batches/components/BatchDetailClient";
 
 /**
@@ -26,8 +26,16 @@ export default async function BatchDetailPage({
   if (!session?.user) redirect("/login");
 
   const resolved = await Promise.resolve(params);
-  const summary = await getBatchSummary(resolved.batchId, session.user.id);
+  const [summary, existingSelectionSet] = await Promise.all([
+    getBatchSummary(resolved.batchId, session.user.id),
+    findSelectionSetForBatch(session.user.id, resolved.batchId),
+  ]);
   if (!summary) notFound();
 
-  return <BatchDetailClient summary={summary} />;
+  return (
+    <BatchDetailClient
+      summary={summary}
+      existingSelectionSet={existingSelectionSet}
+    />
+  );
 }

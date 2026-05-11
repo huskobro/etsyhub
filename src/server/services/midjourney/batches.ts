@@ -15,6 +15,33 @@
 import { JobType, MidjourneyJobState } from "@prisma/client";
 import { db } from "@/server/db";
 
+/**
+ * Batch-first Phase 1 — bu batchId'yi kaynak olarak kullanan SelectionSet var mı?
+ *
+ * MJ kept handoff, SelectionSet.sourceMetadata.mjOrigin.batchIds[] içine
+ * batch id'lerini yazar. JSON path array-contains sorgusu ile tersine buluruz.
+ * Birden fazla batch'ten oluşan set'lerde ilkini (en eski) döndürürüz.
+ *
+ * Schema-zero: tablo değişikliği yok, JSON query yeterli.
+ */
+export async function findSelectionSetForBatch(
+  userId: string,
+  batchId: string,
+): Promise<{ id: string; name: string } | null> {
+  const set = await db.selectionSet.findFirst({
+    where: {
+      userId,
+      sourceMetadata: {
+        path: ["mjOrigin", "batchIds"],
+        array_contains: batchId,
+      },
+    },
+    select: { id: true, name: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return set ?? null;
+}
+
 const MJ_BATCH_METADATA_PATH = ["batchId"]; // Job.metadata.batchId
 
 export type BatchJobRow = {

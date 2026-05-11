@@ -45,6 +45,7 @@ export async function listReferences(args: {
       collection: { select: { id: true, name: true } },
       bookmark: { select: { id: true, title: true, sourceUrl: true } },
       tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
+      _count: { select: { generatedDesigns: true, midjourneyJobs: true } },
     },
   });
 
