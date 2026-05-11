@@ -3,10 +3,11 @@
 Kivasy review modülünün operatör, ürün/teknik ekip ve operasyon
 için tam dokümantasyonu.
 
-> IA-36 kapanış turu sonrası yazıldı. CLAUDE.md Madde V / V' / V'' /
-> X+ / X++ ile tutarlı. Sayfalar mevcut branch davranışı gerçeğini
-> anlatır; "tamamen kesin" gibi mutlak iddialar yumuşatılmış,
-> known limitations görünür şekilde işaretlenmiştir.
+> IA-36 kapanış turu sonrası yazıldı; IA-39 ile güncellendi.
+> CLAUDE.md Madde V / V' / V'' / U / X+ / X++ ile tutarlı.
+> Sayfalar mevcut branch davranışı gerçeğini anlatır; "tamamen
+> kesin" gibi mutlak iddialar yumuşatılmış, known limitations
+> görünür şekilde işaretlenmiştir.
 
 ## Doküman seti
 
@@ -60,6 +61,21 @@ Review modülünün IA-30..IA-38 turları boyunca eklenen davranışları:
   `jobId` MJ asset'in BullMQ Job row id'sine bağlanır; queue endpoint
   bu jobId üzerinden `Job.metadata.batchId` resolve eder ve UI primary
   lineage gösterir.
+- **Automation toggles + not_queued reason taxonomy (IA-39)** —
+  `Settings → Review → Automation` altında üç admin-editable toggle:
+  `aiAutoEnqueue`, `localAutoEnqueue`, `localScanIntervalMinutes`.
+  Workers enqueue öncesi `getResolvedReviewConfig` okur; disabled
+  ise enqueue yapmaz, info log düşer, job SUCCESS biter.
+  `not_queued` reason kodu (`pending_mapping` / `ignored` /
+  `auto_enqueue_disabled` / `design_pending_worker` / `legacy` /
+  `unknown`) lifecycle resolver → queue API → evaluation → UI copy
+  zinciriyle operatöre actionable mesaj olarak ulaşır.
+  `localScanIntervalMinutes > 0` → BullMQ per-user repeat job
+  `local-scan-periodic-<userId>` key'iyle upsert/cancel edilir.
+- **Rerun live-refresh (IA-39)** — Rerun `onSuccess` artık
+  `refetchQueries` kullanır (immediate network isteği); önceki
+  `invalidateQueries` sadece stale işaretliyordu ve UI `queued`
+  state'ini gecikmeli gösteriyordu.
 
 ## Review done checklist (IA-36)
 
@@ -86,6 +102,10 @@ işaretlendi.
 | Score breakdown UI (Base → -W → Final) detail panelde görünür | ✓ | IA-38b |
 | Admin paneli scoring/threshold/criterion/severity/weight kontrolleri görünür | ✓ | IA-38 |
 | Automation truth görünür — `not_queued` nedeni operatöre açıklanır | ✓ | IA-38c |
+| `aiAutoEnqueue` / `localAutoEnqueue` worker-side disable + Settings UI toggle | ✓ | IA-39 |
+| `not_queued` reason 6-kod taxonomy end-to-end (lifecycle → API → UI copy) | ✓ | IA-39 |
+| Periodic local scan BullMQ repeat job per-user (settings PUT sync) | ✓ | IA-39 |
+| Rerun mutation `refetchQueries` (immediate) — `queued` state anında görünür | ✓ | IA-39 |
 | Live update polling: gerçek iş varken 5s, idle'da kapalı | ✓ | IA-35 |
 | Vitest workspace tek `npm test` ile UI + node combined | ✓ | IA-35 |
 | Targeted review test suite clean | ✓ | 79+ targeted pass |
@@ -111,7 +131,7 @@ işaretlendi.
 
 | Kapsam | Durum | Anlamı |
 |---|---|---|
-| **Review modülü targeted suites** | **96 / 96 pass** | IA-30..IA-35 boyunca eklenen helper + UI + endpoint testleri tamamı geçer. Review davranışı için güven yüksek. |
+| **Review modülü targeted suites** | **pass** | IA-30..IA-39 boyunca eklenen helper + UI + endpoint testleri tamamı geçer. Review davranışı için güven yüksek. |
 | **Workspace-wide combined run** (`npx vitest run`) | **~2641 pass / ~141 fail** | Repo bütünü **tamamen green değil**. Fail'lerin tamamı review modülü dışındaki pre-existing borçlar (Phase 3/4 sayfaları: bookmarks, competitors, references, collections, trend-*; bulk-* eski semantik; mockup UI eski expectation'lar). |
 | **Production build** (`npm run build`) | **PASS** | Type ve build tarafı temiz. |
 

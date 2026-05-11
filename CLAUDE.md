@@ -1890,6 +1890,61 @@ Bir feature "tamam" sayılmadan önce: schema, worker, settings UI,
 ops görünürlüğü, manual tetik ve canlı state kanıtı **beşi de**
 yerinde olmalı.
 
+**IA-39 uygulaması — Review automation toggles:**
+
+`Settings → Review → Automation` altında üç admin-editable alan bulunur:
+
+| Alan | Tip | Default | Açıklama |
+|---|---|---|---|
+| `aiAutoEnqueue` | boolean | `true` | AI variation worker SUCCESS sonrası REVIEW_DESIGN otomatik kuyruğa alınır |
+| `localAutoEnqueue` | boolean | `true` | Local folder scan worker yeni asset bulduğunda REVIEW_DESIGN otomatik kuyruğa alınır |
+| `localScanIntervalMinutes` | int 0–1440 | `0` | 0 = periodic scan devre dışı; >0 = dakika cinsinden BullMQ repeat job aralığı |
+
+Worker davranışı (her iki worker aynı sözleşmeyi izler):
+
+1. Worker `getResolvedReviewConfig(userId)` çağırır.
+2. İlgili flag (`aiAutoEnqueue` veya `localAutoEnqueue`) `false` ise
+   enqueue YAPILMAZ; `logger.info(...)` ile durum kaydedilir; job
+   SUCCESS olarak biter.
+3. Flag `true` ise mevcut `already-scored guard` (CLAUDE.md Madde N)
+   hâlâ geçerlidir — geçerli skoru olan asset tekrar kuyruğa alınmaz.
+
+Periodic scan (`localScanIntervalMinutes > 0`):
+
+- `Settings → Review` PUT handler'ı değer değiştiğinde
+  `syncLocalScanSchedule(userId, intervalMinutes)` çağırır.
+- `intervalMinutes > 0` → BullMQ repeat job `local-scan-periodic-<userId>`
+  key'iyle upsert edilir (cron pattern: `*/N * * * *`).
+- `intervalMinutes = 0` → repeat job iptal edilir.
+- Root path yoksa (`localSettings.rootFolderPath` null) schedule
+  oluşturulmaz; operatör önce root path atamalı.
+
+`not_queued` reason taxonomy (queue endpoint → lifecycle resolver →
+UI copy):
+
+| Reason | Açıklama |
+|---|---|
+| `pending_mapping` | Folder → productType mapping yok; operatör Settings → Review → Local library'den atamalı |
+| `ignored` | Folder `__ignore__` olarak etiketlenmiş |
+| `auto_enqueue_disabled` | `aiAutoEnqueue` veya `localAutoEnqueue` kapalı; Settings → Review → Automation'dan etkinleştirilebilir |
+| `design_pending_worker` | Design henüz QUEUED/RUNNING; worker tamamlandığında scoring otomatik başlar |
+| `legacy` | Pre-IA-29 satırı; yeniden scan veya rerun ile düzelir |
+| `unknown` | Sınıflandırılamayan durum; worker log'larına bakılmalı |
+
+Reason UI copy pattern: `EvaluationPanel` her reason için operatöre
+actionable mesaj gösterir (ne yapması gerektiğini söyler, teknik kod vermez).
+
+**Rerun live-refresh contract:**
+
+- Rerun mutation `onSuccess` → `refetchQueries` (immediate, stale-while-revalidate değil).
+- Refetch sonrası lifecycle `queued` → UI anında döner.
+- 5s polling `useReviewQueue` aktif item varken devam eder;
+  `running → ready` geçişi de otomatik yakalanır.
+- `invalidateQueries` yerine `refetchQueries` seçildi: invalidate
+  sadece "stale" işaretler, client arka planda fetch atar;
+  refetch immediate network isteği açar — rerun action'ı için
+  "değişti, yenile" semantiği doğrudur.
+
 ### V. AI evaluation advisory — operator decision canonical
 
 AI scoring sistemi review pipeline'ında **advisory katmandır**;
