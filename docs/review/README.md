@@ -3,11 +3,16 @@
 Kivasy review modülünün operatör, ürün/teknik ekip ve operasyon
 için tam dokümantasyonu.
 
-> IA-36 kapanış turu sonrası yazıldı; IA-39 ile güncellendi.
-> CLAUDE.md Madde V / V' / V'' / U / X+ / X++ ile tutarlı.
+> IA-36 kapanış turu sonrası yazıldı; IA-39+ ile güncellendi (2026-05-11).
+> CLAUDE.md Madde V / V' / V'' / U / X+ / X++ / N+ ile tutarlı.
 > Sayfalar mevcut branch davranışı gerçeğini anlatır; "tamamen
 > kesin" gibi mutlak iddialar yumuşatılmış, known limitations
 > görünür şekilde işaretlenmiştir.
+>
+> **Review core flow kapanmış sayılır** — bu sözleşmenin tam anlamı:
+> scoring/explainability/operator-truth/lifecycle/automation toggles
+> tamamdır; bir runtime prerequisite (worker process) kalmaktadır ve
+> bu explicit documented edilmiştir, silent failure değildir.
 
 ## Doküman seti
 
@@ -76,6 +81,14 @@ Review modülünün IA-30..IA-38 turları boyunca eklenen davranışları:
   `refetchQueries` kullanır (immediate network isteği); önceki
   `invalidateQueries` sadece stale işaretliyordu ve UI `queued`
   state'ini gecikmeli gösteriyordu.
+- **Worker health visibility (IA-39+)** — `ReviewOpsCounts.workerRunning`
+  activity-based proxy ile belirlenir (son 5 dakikada biten job var mı?).
+  BullMQ `getWorkersCount()` kullanılmadı — Redis CLIENT LIST stale entry
+  problemi. `workerRunning: false` olduğunda Settings → Review ops section'ında
+  amber banner gösterilir ("Worker process not running — start with
+  `npm run worker`"). Manual "Scan now" worker bağımsız çalışmaya devam eder.
+  `discoveryMode` `workerRunning: false` ise her koşulda `manual_only` döner —
+  settings'teki watcher/periodic config'e bakılmaz, gerçek durum gösterilir.
 
 ## Review done checklist (IA-36)
 
@@ -106,6 +119,9 @@ işaretlendi.
 | `not_queued` reason 6-kod taxonomy end-to-end (lifecycle → API → UI copy) | ✓ | IA-39 |
 | Periodic local scan BullMQ repeat job per-user (settings PUT sync) | ✓ | IA-39 |
 | Rerun mutation `refetchQueries` (immediate) — `queued` state anında görünür | ✓ | IA-39 |
+| Worker health banner — `workerRunning: false` → amber banner + remediation | ✓ | IA-39+ |
+| `discoveryMode` worker-aware — worker yoksa her koşulda `manual_only` | ✓ | IA-39+ |
+| Worker dependency explicit documented (deployment prerequisite, not silent) | ✓ | IA-39+ |
 | Live update polling: gerçek iş varken 5s, idle'da kapalı | ✓ | IA-35 |
 | Vitest workspace tek `npm test` ile UI + node combined | ✓ | IA-35 |
 | Targeted review test suite clean | ✓ | 79+ targeted pass |
@@ -115,6 +131,15 @@ işaretlendi.
 
 **Non-blocker known limitations** (kapanışı engellemez):
 
+- **Worker process runtime prerequisite** — Event-driven watcher
+  ve periodic scan için `npm run worker` ayrı process olarak
+  çalışıyor olmalıdır. Otomatik başlamaz; iki terminal komutu
+  gerekir (`npm run dev` + `npm run worker`). Bu sessiz failure
+  **değildir**: `workerRunning: false` olduğunda admin panelinde
+  amber banner gösterilir, remediation adımı açıklanır, manual
+  "Scan now" hâlâ çalışır. Deployment prerequisite olarak
+  dokümante edildi; ürün "fully self-managed automation" iddiası
+  yapmaz.
 - Batch'ler arası klavye prev/next scope shortcut'ı eksik —
   picker dropdown workaround.
 - Batch lineage gerçek üretim verisinde **browser-proof**
@@ -144,6 +169,23 @@ işaretlendi.
 ## Known limitations / açık kenarlar (detay)
 
 Done checklist'in "non-blocker" bölümünün detay açıklamaları:
+
+- **Worker process runtime prerequisite** — Chokidar (`fsevents`
+  native binary) Next.js webpack ile bundlelanamaz; watcher yalnızca
+  `scripts/dev-worker.ts` içinde yaşar. Sonuç: event-driven watcher
+  ve BullMQ periodic scan, `npm run worker` process'i çalışmadan
+  aktif olamaz. Bu teknik kısıt olmadan da benzer bir durum ortaya
+  çıkıyordu (worker olmadan BullMQ consumer yok = job işlenmiyor).
+  Fark: artık bu durum **görünür** — `workerRunning` activity proxy
+  ile tespit edilir, admin panelinde amber banner gösterilir. Ürün
+  "fully self-managed" olmadığını açıkça söyler. Deployment guide
+  iki komutu (`npm run dev` + `npm run worker`) gerektirir; bu
+  localhost-first mimari için uygun kabul edildi.
+
+- **`workerRunning` activity proxy gap** — Yeni başlatılmış worker
+  ilk job'unu tamamlayana kadar `workerRunning: false` görünür.
+  Aktif queue'da saniyeler içinde düzelir. Ops hint olarak kullanılır,
+  hard liveness guarantee değildir.
 
 - **Batch'ler arası klavye prev/next scope shortcut'ı eksik** —
   AI Designs batch baskın moddayken `,` / `.` boş düşer

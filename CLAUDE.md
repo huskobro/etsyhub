@@ -2,9 +2,12 @@
 
 > **Status:** Implementation **R1 → R11.5 complete** (2026-05-09). MVP
 > omurgası canlı; production build PASSING; %99.4 test pass; settings/
-> providers/notifications stabilize. IA-39+ review automation (hybrid
-> discovery: chokidar event-driven + periodic + manual) final close
-> 2026-05-11. MVP Final Acceptance gate operatör onayını bekliyor.
+> providers/notifications stabilize. IA-39+ review automation final close
+> 2026-05-11: scoring/explainability/operator-truth/lifecycle/automation
+> toggles/worker health visibility tamamdır. Worker process (`npm run
+> worker`) event-driven watcher + periodic scan için runtime prerequisite
+> olarak dokümante edildi — sessiz failure değil, banner + remediation
+> görünür. MVP Final Acceptance gate operatör onayını bekliyor.
 >
 > Source of truth ağacı:
 > - **MVP acceptance + readiness** → [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md)
