@@ -99,6 +99,10 @@ type ReviewConfigResponse = {
     failed: number;
     lastEnqueueAt: string | null;
     lastLocalScanAt: string | null;
+    discoveryMode: "event+periodic" | "event_only" | "periodic_only" | "manual_only";
+    watcherActive: boolean;
+    watcherTriggerCount: number | null;
+    watcherLastTriggerAt: string | null;
   };
   pickers: {
     folder: Array<{
@@ -596,6 +600,43 @@ function ReviewOpsSection({
             ? new Date(ops.lastLocalScanAt).toLocaleString("en-US")
             : "—"}
         </dd>
+        <dt className="text-ink-3">Discovery mode</dt>
+        <dd
+          className="font-mono text-ink-2"
+          data-testid="ops-discovery-mode"
+          title={
+            ops.discoveryMode === "event+periodic"
+              ? "File watcher active + periodic scan scheduled"
+              : ops.discoveryMode === "event_only"
+                ? "File watcher active (no periodic scan)"
+                : ops.discoveryMode === "periodic_only"
+                  ? "Periodic scan only (no real-time watcher)"
+                  : "Manual scan only — no automatic discovery active"
+          }
+        >
+          {ops.discoveryMode}
+        </dd>
+        <dt className="text-ink-3">File watcher</dt>
+        <dd className="font-mono text-ink-2" data-testid="ops-watcher-active">
+          {ops.watcherActive ? (
+            <span className="text-emerald-600">
+              active
+              {ops.watcherTriggerCount != null
+                ? ` · ${ops.watcherTriggerCount} trigger${ops.watcherTriggerCount === 1 ? "" : "s"}`
+                : ""}
+            </span>
+          ) : (
+            <span className="text-ink-3">inactive</span>
+          )}
+        </dd>
+        {ops.watcherLastTriggerAt ? (
+          <>
+            <dt className="text-ink-3">Last watcher event</dt>
+            <dd className="font-mono text-ink-2">
+              {new Date(ops.watcherLastTriggerAt).toLocaleString("en-US")}
+            </dd>
+          </>
+        ) : null}
       </dl>
 
       <div
@@ -1967,8 +2008,11 @@ function AutomationSection({
       </h3>
       <p className="mt-2 text-xs text-ink-3">
         Controls whether the system auto-enqueues review scoring when
-        new assets are produced or discovered. Disabling stops new
-        enqueues; existing queued jobs are unaffected.
+        new assets are produced or discovered. Local discovery uses a
+        real-time file watcher (event-driven) plus an optional periodic
+        scan fallback. Disabling stops new enqueues; existing queued
+        jobs are unaffected. Current discovery status is shown in
+        Review operations above.
       </p>
       <div className="mt-3 space-y-2.5" data-testid="automation-toggles">
         <label

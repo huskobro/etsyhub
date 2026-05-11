@@ -88,13 +88,11 @@ export type EvaluationCheck = {
   weight?: number;
 };
 
-export type NotQueuedReason =
-  | "pending_mapping"
-  | "ignored"
-  | "auto_enqueue_disabled"
-  | "design_pending_worker"
-  | "legacy"
-  | "unknown";
+// Import from canonical lifecycle module — single source of truth.
+// Re-exported so callers (EvaluationPanel, ReviewCard) don't depend on
+// the server-only lifecycle module directly.
+import type { NotQueuedReason as _NotQueuedReason } from "@/server/services/review/lifecycle";
+export type NotQueuedReason = _NotQueuedReason;
 
 export type Evaluation = {
   lifecycle: EvaluationLifecycle;

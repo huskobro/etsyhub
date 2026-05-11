@@ -18,6 +18,7 @@ import { JobType, ReviewStatus } from "@prisma/client";
 import { db } from "@/server/db";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { enqueueReviewDesign } from "@/server/services/review/enqueue";
+import { getResolvedReviewConfig } from "@/server/services/settings/review.service";
 import { logger } from "@/lib/logger";
 
 export type PromoteInput = {
@@ -130,19 +131,29 @@ export async function promoteMidjourneyAssetToGeneratedDesign(
   });
 
   // IA-29 (CLAUDE.md Madde V) — promote sonrası AI advisory pipeline'ı
-  // otomatik tetikle. variation-worker'da yapılan auto-enqueue ile
+  // otomatik tetikle. variation-worker + generate-variations worker ile
   // tutarlı: operatör manual scope-trigger çekmek zorunda kalmaz.
-  // Best-effort: enqueue fail olursa promote başarılı kalır
-  // (operatör ileride explicit rerun edebilir).
+  // IA-39 (CLAUDE.md Madde U) — aiAutoEnqueue toggle'ına uyar; disabled
+  // ise enqueue yapılmaz, info log düşer. Promote başarılı kalır.
+  // Best-effort: enqueue fail olursa promote başarılı kalır.
   try {
-    await enqueueReviewDesign({
-      userId: designUserId,
-      payload: { scope: "design", generatedDesignId: result.id },
-    });
+    const reviewConfig = await getResolvedReviewConfig(designUserId);
+    if (!reviewConfig.automation.aiAutoEnqueue) {
+      logger.info(
+        { designId: result.id, userId: designUserId },
+        "MJ promote: review auto-enqueue skipped: aiAutoEnqueue disabled in Settings → Review",
+      );
+    } else {
+      await enqueueReviewDesign({
+        userId: designUserId,
+        payload: { scope: "design", generatedDesignId: result.id },
+      });
+    }
   } catch (err) {
     logger.error(
       {
         designId: result.id,
+        userId: designUserId,
         err: err instanceof Error ? err.message : String(err),
       },
       "MJ promote: REVIEW_DESIGN auto-enqueue failed (promote committed)",

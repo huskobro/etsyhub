@@ -1,5 +1,5 @@
 // IA Phase 18 — review scoring lifecycle resolver.
-// IA-39 — not_queued reason codes: operatöre neden asset henüz
+// IA-39 / IA-39+ — not_queued reason codes: operatöre neden asset henüz
 //   scoring'e alınmadığı açıklanır.
 //
 // CLAUDE.md Madde N — sistem skoru lifecycle taşır. Bu modül
@@ -13,6 +13,8 @@
 //       - pending_mapping: local asset için folder mapping atanmamış.
 //       - ignored: folder __ignore__ işaretli.
 //       - auto_enqueue_disabled: ayarlardan auto-enqueue devre dışı.
+//       - discovery_not_run: local asset hiç scan/watcher tetiklenmemiş;
+//           operatör "Scan now" ile manuel tetiklemeli veya watcher beklemeli.
 //       - legacy: IA-29 öncesi oluşturulmuş, henüz hiç job tetiklenmedi.
 //       - design_pending_worker: AI design için variation worker henüz
 //         tamamlanmamış (design QUEUED/RUNNING state).
@@ -56,6 +58,7 @@ export type NotQueuedReason =
   | "pending_mapping"         // local: folder has no productType mapping
   | "ignored"                 // local: folder is __ignore__
   | "auto_enqueue_disabled"   // settings: local or AI auto-enqueue turned off
+  | "discovery_not_run"       // local: scan/watcher has never run; trigger manually
   | "design_pending_worker"   // AI design: variation job not finished yet
   | "legacy"                  // pre-IA-29 row, never had a review job
   | "unknown";
@@ -192,9 +195,40 @@ export type ReviewOpsCounts = {
   lastEnqueueAt: string | null;
   /** Last successful local scan (SCAN_LOCAL_FOLDER row, this user). */
   lastLocalScanAt: string | null;
+  /**
+   * IA-39+ — local discovery mode visible to admin:
+   *   "event+periodic" — watcher active AND periodic scan interval > 0
+   *   "event_only"     — watcher active, no periodic scan
+   *   "periodic_only"  — no watcher, periodic scan interval > 0
+   *   "manual_only"    — neither watcher nor periodic scan active
+   */
+  discoveryMode: "event+periodic" | "event_only" | "periodic_only" | "manual_only";
+  /** True if the chokidar file watcher is running for this user. */
+  watcherActive: boolean;
+  /** Trigger count from watcher since last startup (null if watcher not active). */
+  watcherTriggerCount: number | null;
+  /** Last time watcher triggered a scan (null if none). */
+  watcherLastTriggerAt: string | null;
 };
 
-export async function getReviewOpsCounts(userId: string): Promise<ReviewOpsCounts> {
+export async function getReviewOpsCounts(
+  userId: string,
+  opts?: {
+    /** Resolved from ReviewSettings.automation.localScanIntervalMinutes */
+    localScanIntervalMinutes?: number;
+    /**
+     * IA-39+ — watcher state injected by the caller (worker process only).
+     * API routes running in Next.js must NOT import the watcher module
+     * (chokidar native binary incompatible with webpack bundling). When
+     * omitted, watcherActive defaults to false and watcher fields are null.
+     */
+    watcherInfo?: {
+      active: boolean;
+      triggerCount: number;
+      lastTriggerAt: Date | null;
+    };
+  },
+): Promise<ReviewOpsCounts> {
   const [queued, running, failed, lastEnqueue, lastScan] = await Promise.all([
     db.job.count({
       where: {
@@ -232,11 +266,32 @@ export async function getReviewOpsCounts(userId: string): Promise<ReviewOpsCount
       select: { finishedAt: true },
     }),
   ]);
+
+  // IA-39+ — watcher state injected by caller (worker context only).
+  // API routes in Next.js omit this; watcher fields default to inactive.
+  const watcherActive = opts?.watcherInfo?.active ?? false;
+  const watcherTriggerCount = watcherActive ? (opts?.watcherInfo?.triggerCount ?? 0) : null;
+  const watcherLastTriggerAt = opts?.watcherInfo?.lastTriggerAt?.toISOString() ?? null;
+
+  const hasPeriodic = (opts?.localScanIntervalMinutes ?? 0) > 0;
+  const discoveryMode: ReviewOpsCounts["discoveryMode"] =
+    watcherActive && hasPeriodic
+      ? "event+periodic"
+      : watcherActive
+        ? "event_only"
+        : hasPeriodic
+          ? "periodic_only"
+          : "manual_only";
+
   return {
     queued,
     running,
     failed,
     lastEnqueueAt: lastEnqueue?.createdAt.toISOString() ?? null,
     lastLocalScanAt: lastScan?.finishedAt?.toISOString() ?? null,
+    discoveryMode,
+    watcherActive,
+    watcherTriggerCount,
+    watcherLastTriggerAt,
   };
 }

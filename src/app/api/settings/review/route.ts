@@ -62,10 +62,12 @@ export const GET = withErrorHandling(async (req: Request) => {
   const sourceKind: "design" | "local-library" =
     sourceKindRaw === "local-library" ? "local-library" : "design";
 
-  const [resolved, opsCounts, folderScopes, batchScopes, referenceScopes] =
+  const resolved = await getResolvedReviewConfig(user.id);
+  const [opsCounts, folderScopes, batchScopes, referenceScopes] =
     await Promise.all([
-      getResolvedReviewConfig(user.id),
-      getReviewOpsCounts(user.id),
+      getReviewOpsCounts(user.id, {
+        localScanIntervalMinutes: resolved.automation.localScanIntervalMinutes,
+      }),
       listPendingScopes({ userId: user.id, kind: "folder" }),
       listPendingScopes({ userId: user.id, kind: "batch" }),
       listPendingScopes({ userId: user.id, kind: "reference" }),
@@ -171,6 +173,10 @@ export const PUT = withErrorHandling(async (req: Request) => {
   if (parsed.data.automation?.localScanIntervalMinutes !== undefined) {
     await syncLocalScanSchedule(user.id, settings.automation.localScanIntervalMinutes);
   }
+  // Note: chokidar file watcher lives in the worker process only —
+  // API routes must not import watcher.ts (native binary incompatible
+  // with Next.js webpack). The worker process re-checks settings on
+  // next restart or periodic sync.
   return NextResponse.json({ settings });
 });
 

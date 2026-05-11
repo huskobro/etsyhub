@@ -35,6 +35,8 @@ function notQueuedCopy(reason?: NotQueuedReason): string {
       return "This folder is marked as ignored — scoring is intentionally skipped. To re-enable, go to Settings → Review → Local library and change the mapping.";
     case "auto_enqueue_disabled":
       return "Automatic review scoring is disabled in Settings → Review → Automation. Toggle it on to re-enable auto-enqueue, or use \"Enqueue review for this scope\" to score manually.";
+    case "discovery_not_run":
+      return "Your local folder has never been scanned. Click \"Scan now\" in Settings → Review → Local library, or wait for the file watcher / periodic scan to trigger automatically.";
     case "design_pending_worker":
       return "Variation generation is still in progress — review scoring will start automatically once the worker finishes.";
     case "legacy":

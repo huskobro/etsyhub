@@ -1,6 +1,14 @@
 // User Settings — local-library — Phase 5 §8 (Q3), Task 15
 // GET → effective settings (default merge); PUT → validate + persist.
 // UserSetting [userId, key] composite PK üzerinden cross-user izolasyon.
+//
+// IA-39+ (watcher sync): the chokidar file watcher lives only in the
+// worker process (scripts/dev-worker.ts). API routes do NOT import the
+// watcher module — chokidar is a native binary that cannot be bundled
+// by Next.js webpack. When rootFolderPath changes here, the worker
+// process picks up the new setting on its next watcher-sync check
+// (syncWatchersForAllUsers is called at startup; settings changes are
+// reflected on next worker restart or periodic settings re-check).
 
 import { NextResponse } from "next/server";
 import { requireUser } from "@/server/session";

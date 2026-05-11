@@ -629,10 +629,22 @@ export const GET = withErrorHandling(async (req: Request) => {
       .filter((it) => it.reviewedAt && it.reviewProviderSnapshot)
       .map((it) => it.id),
   );
-  // IA-39 — per-asset not_queued reason hints for local items.
+  // IA-39 / IA-39+ — per-asset not_queued reason hints for local items.
   // Resolve folder mapping for each non-ready item so the lifecycle
-  // resolver can report "pending_mapping" or "ignored" instead of
-  // the generic "legacy" fallback.
+  // resolver can report "pending_mapping", "ignored", or
+  // "discovery_not_run" instead of the generic "legacy" fallback.
+  //
+  // discovery_not_run: user has a mapped folder but SCAN_LOCAL_FOLDER
+  // has never successfully run. One DB check per queue request (not per
+  // asset). If scan has run at least once, we assume the watcher or
+  // periodic scan will handle future discoveries; "legacy" is the right
+  // fallback for items that pre-date IA-29.
+  const lastScanJob = await db.job.findFirst({
+    where: { userId: user.id, type: "SCAN_LOCAL_FOLDER", status: "SUCCESS" },
+    select: { id: true },
+  });
+  const hasScanEverRun = lastScanJob !== null;
+
   const localNotQueuedHints = new Map<string, NotQueuedReason>();
   for (const it of items) {
     if (localReadyIds.has(it.id)) continue;
@@ -645,8 +657,13 @@ export const GET = withErrorHandling(async (req: Request) => {
       localNotQueuedHints.set(it.id, "pending_mapping");
     } else if (r.kind === "ignored") {
       localNotQueuedHints.set(it.id, "ignored");
+    } else if (!hasScanEverRun) {
+      // Folder is mapped but scan has never run → operator needs to
+      // trigger a scan (manually or wait for watcher/periodic).
+      localNotQueuedHints.set(it.id, "discovery_not_run");
     }
-    // "mapped" → no hint; resolver falls through to Job table check → "legacy" if no job
+    // "mapped" + scan has run → no hint; resolver falls through to
+    // Job table check → "legacy" if no job row exists.
   }
   const localLifecycleMap = await resolveReviewLifecycle({
     userId: user.id,

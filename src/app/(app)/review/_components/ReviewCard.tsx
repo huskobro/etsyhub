@@ -56,6 +56,8 @@ function notQueuedCardTitle(reason?: NotQueuedReason): string {
       return "Not queued — folder is ignored. Open Settings → Review to change.";
     case "auto_enqueue_disabled":
       return "Not queued — auto-scoring is disabled. Open Settings → Review → Automation.";
+    case "discovery_not_run":
+      return "Not queued — scan has never run. Use \"Scan now\" in Settings → Review.";
     case "design_pending_worker":
       return "Variation generation in progress — review will start automatically.";
     case "legacy":

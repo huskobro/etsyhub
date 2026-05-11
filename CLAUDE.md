@@ -2,8 +2,9 @@
 
 > **Status:** Implementation **R1 → R11.5 complete** (2026-05-09). MVP
 > omurgası canlı; production build PASSING; %99.4 test pass; settings/
-> providers/notifications stabilize. MVP Final Acceptance gate operatör
-> onayını bekliyor.
+> providers/notifications stabilize. IA-39+ review automation (hybrid
+> discovery: chokidar event-driven + periodic + manual) final close
+> 2026-05-11. MVP Final Acceptance gate operatör onayını bekliyor.
 >
 > Source of truth ağacı:
 > - **MVP acceptance + readiness** → [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md)
@@ -1927,12 +1928,49 @@ UI copy):
 | `pending_mapping` | Folder → productType mapping yok; operatör Settings → Review → Local library'den atamalı |
 | `ignored` | Folder `__ignore__` olarak etiketlenmiş |
 | `auto_enqueue_disabled` | `aiAutoEnqueue` veya `localAutoEnqueue` kapalı; Settings → Review → Automation'dan etkinleştirilebilir |
+| `discovery_not_run` | Folder mapped ama SCAN_LOCAL_FOLDER henüz hiç başarıyla çalışmadı; operatör "Scan now" ile manuel tetiklemeli veya watcher/periodic scan beklemeli |
 | `design_pending_worker` | Design henüz QUEUED/RUNNING; worker tamamlandığında scoring otomatik başlar |
 | `legacy` | Pre-IA-29 satırı; yeniden scan veya rerun ile düzelir |
 | `unknown` | Sınıflandırılamayan durum; worker log'larına bakılmalı |
 
 Reason UI copy pattern: `EvaluationPanel` her reason için operatöre
 actionable mesaj gösterir (ne yapması gerektiğini söyler, teknik kod vermez).
+
+**Local discovery — hybrid model (IA-39+ final karar):**
+
+Local asset keşfi üç tetikleme yolundan biriyle yapılır; bunlar birbirini
+dışlamaz ve aynı anda aktif olabilir:
+
+| Yol | Tetikleyici | Nasıl çalışır |
+|---|---|---|
+| **Event-driven** (chokidar) | Dosya/klasör sisteme eklenince | Worker process'te chokidar v3 FSWatcher; 1s debounce; `SCAN_LOCAL_FOLDER` kuyruğa alır |
+| **Periodic** (BullMQ repeat) | Belirli aralıklarla | `localScanIntervalMinutes > 0` ise `*/N * * * *` cron pattern; Settings PUT'ta upsert/cancel |
+| **Manuel** | Operatör "Scan now" tıklar | Anında SCAN_LOCAL_FOLDER job kuyruğa alınır |
+
+`discoveryMode` hesaplama (Settings → Review → ops alanı):
+
+```
+watcherActive && hasPeriodic → "event+periodic"
+watcherActive && !hasPeriodic → "event_only"
+!watcherActive && hasPeriodic → "periodic_only"
+!watcherActive && !hasPeriodic → "manual_only"
+```
+
+**Mimari kısıt — chokidar worker-only:**
+
+chokidar (`fsevents` native binary) Next.js webpack tarafından bundlelanamaz.
+Çözüm: watcher yalnızca `scripts/dev-worker.ts` (ayrı Node process) içinde
+yaşar. API route'ları watcher modülünü **import etmez**. `next.config.mjs`:
+`serverExternalPackages: ["chokidar", "fsevents"]` — gerekli ama yeterli
+değil; API route'larının import-free kalması zorunlu.
+
+`getReviewOpsCounts` watcher bilgisini `opts.watcherInfo?` ile caller'dan
+alır. Next.js API route'ları bu parametreyi geçmez (default: inactive);
+gelecekte worker process metrics endpoint'i eklenince oradan inject edilebilir.
+
+`syncWatchersForAllUsers()` worker startup'ta: tüm `userSetting key=localLibrary`
+row'larını okur, `rootFolderPath + localAutoEnqueue=true` olan kullanıcılar
+için watcher başlatır. SIGINT/SIGTERM: `stopAllLocalLibraryWatchers()`.
 
 **Rerun live-refresh contract:**
 
