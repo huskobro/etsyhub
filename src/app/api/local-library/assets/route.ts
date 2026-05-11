@@ -6,17 +6,21 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/server/session";
 import { db } from "@/server/db";
 import { withErrorHandling } from "@/lib/http";
+import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
 
 export const GET = withErrorHandling(async (req: Request) => {
   const user = await requireUser();
   const { searchParams } = new URL(req.url);
   const folder = searchParams.get("folder");
   const showNegativesOnly = searchParams.get("negativesOnly") === "true";
+  // IA-29 — aktif rootFolderPath dışı asset'ler listede görünmez.
+  const rootFilter = await getActiveLocalRootFilter(user.id);
 
   const assets = await db.localLibraryAsset.findMany({
     where: {
       userId: user.id,
       isUserDeleted: false,
+      ...rootFilter,
       ...(folder ? { folderName: folder } : {}),
       ...(showNegativesOnly ? { isNegative: true } : {}),
     },

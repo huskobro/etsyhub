@@ -16,6 +16,7 @@
 
 import { JobType, MJReviewDecision, type Prisma } from "@prisma/client";
 import { db } from "@/server/db";
+import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
 
 // ────────────────────────────────────────────────────────────────────────
 // MJ batch — next pending batchId for the same user
@@ -130,6 +131,7 @@ export async function getNextPendingFolderName(args: {
   firstPendingItemId: string | null;
 } | null> {
   const { userId, currentFolderName } = args;
+  const rootFilter = await getActiveLocalRootFilter(userId);
 
   // GroupBy folderName, keeping only those with pending rows. Prisma
   // groupBy aggregations + ordering by min(createdAt) gives us the
@@ -141,6 +143,7 @@ export async function getNextPendingFolderName(args: {
       deletedAt: null,
       isUserDeleted: false,
       reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      ...rootFilter,
       ...(currentFolderName !== null
         ? { folderName: { not: currentFolderName } }
         : {}),
@@ -176,6 +179,7 @@ export async function getNextPendingFolderName(args: {
       isUserDeleted: false,
       folderName: winner.folderName,
       reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      ...rootFilter,
     },
     orderBy: { createdAt: "asc" },
     select: { id: true },
@@ -214,6 +218,7 @@ export async function getAdjacentPendingFolders(args: {
   next: { folderName: string; firstPendingItemId: string | null } | null;
 }> {
   const { userId, currentFolderName } = args;
+  const rootFilter = await getActiveLocalRootFilter(userId);
   // All folders the user has (alphabetical) plus the pending subset.
   // Current folder may be all-kept (not pending) — we still need to
   // know its alphabetical position so we can pick the *adjacent
@@ -225,6 +230,7 @@ export async function getAdjacentPendingFolders(args: {
         userId,
         deletedAt: null,
         isUserDeleted: false,
+        ...rootFilter,
       },
       orderBy: { folderName: "asc" },
     }),
@@ -235,6 +241,7 @@ export async function getAdjacentPendingFolders(args: {
         deletedAt: null,
         isUserDeleted: false,
         reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        ...rootFilter,
       },
     }),
   ]);
@@ -277,6 +284,7 @@ export async function getAdjacentPendingFolders(args: {
         isUserDeleted: false,
         folderName,
         reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        ...rootFilter,
       },
       orderBy: { createdAt: "asc" },
       select: { id: true },
@@ -397,6 +405,7 @@ export async function listPendingScopes(args: {
   const { userId, kind } = args;
 
   if (kind === "folder") {
+    const rootFilter = await getActiveLocalRootFilter(userId);
     const grouped = await db.localLibraryAsset.groupBy({
       by: ["folderName"],
       where: {
@@ -404,6 +413,7 @@ export async function listPendingScopes(args: {
         deletedAt: null,
         isUserDeleted: false,
         reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        ...rootFilter,
       },
       _count: { id: true },
       orderBy: { folderName: "asc" },
@@ -418,6 +428,7 @@ export async function listPendingScopes(args: {
             isUserDeleted: false,
             folderName: g.folderName,
             reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+            ...rootFilter,
           },
           orderBy: { createdAt: "asc" },
           select: { id: true },
@@ -549,6 +560,11 @@ export async function listPendingScopes(args: {
 export async function getTotalReviewPendingCount(
   userId: string,
 ): Promise<number> {
+  // IA-29 — local branch'i aktif rootFolderPath ile sınırla
+  // (CLAUDE.md Madde V). AI design + MJ asset cloud-stored → path
+  // filtresinden bağımsız.
+  const rootFilter = await getActiveLocalRootFilter(userId);
+
   const [mj, ai, local] = await Promise.all([
     db.midjourneyAsset.count({
       where: {
@@ -569,6 +585,7 @@ export async function getTotalReviewPendingCount(
         deletedAt: null,
         isUserDeleted: false,
         reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        ...rootFilter,
       },
     }),
   ]);

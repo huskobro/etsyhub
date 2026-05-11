@@ -35,7 +35,7 @@ import { getStorage } from "@/providers/storage";
 import { logger } from "@/lib/logger";
 import { resolveReviewLifecycle } from "@/server/services/review/lifecycle";
 import { getReviewThresholds } from "@/server/services/settings/review.service";
-import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
+import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
 
 const QuerySchema = z.object({
   scope: z.enum(["design", "local"]),
@@ -321,17 +321,13 @@ export const GET = withErrorHandling(async (req: Request) => {
 
   // scope === "local"
   // IA-29 — aktif rootFolderPath dışındaki asset'ler review listesinde
-  // gözükmez. Asset'ler silinmiyor (hash unique + soft-delete preserve),
-  // sadece UI aktif root'u yansıtıyor. Operatör root'u eski yola
-  // çevirir + scan basarsa, eski asset'ler `deletedAt: null` reset ile
-  // tekrar görünür hale gelir (review state korunur).
-  const localSettings = await getUserLocalLibrarySettings(user.id);
-  const activeRoot = localSettings.rootFolderPath;
+  // gözükmez (CLAUDE.md Madde V). Asset'ler silinmiyor, sadece gizli.
+  const rootFilter = await getActiveLocalRootFilter(user.id);
   const localWhere = {
     userId: user.id,
     deletedAt: null,
     isUserDeleted: false,
-    ...(activeRoot ? { folderPath: { startsWith: activeRoot } } : {}),
+    ...rootFilter,
     ...(status ? { reviewStatus: status } : {}),
     // IA Phase 16 — scope identity ZOOM. Folder filter aktifse
     // top-bar sayaçları + Item N/M bu folder cardinality üzerinden

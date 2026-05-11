@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/server/session";
 import { db } from "@/server/db";
 import { withErrorHandling } from "@/lib/http";
+import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
 
 type FolderSummary = {
   name: string;
@@ -23,11 +24,13 @@ type FolderSummary = {
 
 export const GET = withErrorHandling(async () => {
   const user = await requireUser();
+  // IA-29 — aktif rootFolderPath dışındaki folder'ları gizle.
+  const rootFilter = await getActiveLocalRootFilter(user.id);
 
   // 1) Klasör grupları + count
   const groups = await db.localLibraryAsset.groupBy({
     by: ["folderName", "folderPath"],
-    where: { userId: user.id, isUserDeleted: false },
+    where: { userId: user.id, isUserDeleted: false, ...rootFilter },
     _count: { _all: true },
   });
 

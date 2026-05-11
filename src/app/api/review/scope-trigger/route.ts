@@ -22,6 +22,7 @@ import { ValidationError } from "@/lib/errors";
 import { requireUser } from "@/server/session";
 import { db } from "@/server/db";
 import { enqueueReviewDesign } from "@/server/services/review/enqueue";
+import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
 import { logger } from "@/lib/logger";
 
 const BodySchema = z.discriminatedUnion("scope", [
@@ -57,13 +58,17 @@ export const POST = withErrorHandling(async (req: Request) => {
   }
 
   if (parsed.data.scope === "folder") {
-    // Local — collect undecided + never-scored asset ids in folder.
+    // IA-29 — scope-trigger folder branch also honours active root.
+    // Operator may have a stale folder ref from picker; backend
+    // defends.
+    const rootFilter = await getActiveLocalRootFilter(user.id);
     const candidates = await db.localLibraryAsset.findMany({
       where: {
         userId: user.id,
         deletedAt: null,
         isUserDeleted: false,
         folderName: parsed.data.folderName,
+        ...rootFilter,
         // Operator wants undecided rows (PENDING / NEEDS_REVIEW);
         // KEPT/REJECTED ones are excluded. Already-scored guard
         // (reviewProviderSnapshot present) excludes those further

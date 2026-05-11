@@ -45,6 +45,7 @@ import {
   ReviewStatus,
 } from "@prisma/client";
 import { db } from "@/server/db";
+import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
 
 /** The three sources that contribute review items today. */
 export type UnifiedReviewSource =
@@ -167,6 +168,8 @@ export async function listUnifiedReviewItems(args: {
 }): Promise<UnifiedReviewItem[]> {
   const userId = args.userId;
   const perSource = Math.min(Math.max(args.limit ?? 50, 1), 200);
+  // IA-29 — local list aktif rootFolderPath ile sınırlı.
+  const rootFilter = await getActiveLocalRootFilter(userId);
 
   const [mjAssets, designs, locals] = await Promise.all([
     db.midjourneyAsset.findMany({
@@ -201,7 +204,7 @@ export async function listUnifiedReviewItems(args: {
       },
     }),
     db.localLibraryAsset.findMany({
-      where: { userId, deletedAt: null, isUserDeleted: false },
+      where: { userId, deletedAt: null, isUserDeleted: false, ...rootFilter },
       orderBy: { createdAt: "desc" },
       take: perSource,
       select: {

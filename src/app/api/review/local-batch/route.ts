@@ -42,6 +42,7 @@ import { withErrorHandling } from "@/lib/http";
 import { ValidationError } from "@/lib/errors";
 import { db } from "@/server/db";
 import { enqueue } from "@/server/queue";
+import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
 import { logger } from "@/lib/logger";
 
 const BodySchema = z.object({
@@ -64,12 +65,15 @@ export const POST = withErrorHandling(async (req: Request) => {
 
   // Ownership + soft-delete filter.
   // Aktif asset = userId match + deletedAt null + isUserDeleted false.
+  // IA-29 — aktif rootFolderPath dışı asset'ler trigger'a kabul edilmez.
+  const rootFilter = await getActiveLocalRootFilter(user.id);
   const ownedAssets = await db.localLibraryAsset.findMany({
     where: {
       id: { in: uniqueIds },
       userId: user.id,
       deletedAt: null,
       isUserDeleted: false,
+      ...rootFilter,
     },
     // CLAUDE.md Madde N — scoring cost disiplini. Zaten SYSTEM
     // tarafından scoring almış asset'leri (reviewedAt + provider
