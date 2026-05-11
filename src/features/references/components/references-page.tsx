@@ -83,7 +83,6 @@ type ProductTypeOption = { id: string; displayName: string };
 type Density = "comfortable" | "dense";
 
 export function ReferencesPage({
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   productTypes: _productTypes,
 }: {
   productTypes: ProductTypeOption[];
@@ -777,9 +776,8 @@ function SkeletonGrid({ density }: { density: Density }) {
         <div key={i} className="k-card overflow-hidden">
           <div className="p-2 pb-0">
             <div
-              className="k-thumb animate-pulse"
+              className="k-thumb animate-pulse bg-[--k-bg-2]"
               data-aspect="square"
-              style={{ background: "var(--k-bg-2)" }}
             />
           </div>
           <div className="p-3.5">

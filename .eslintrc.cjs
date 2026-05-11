@@ -16,8 +16,10 @@ module.exports = {
         message: "Raw hex renk yasak. design-tokens.ts üzerinden CSS variable kullan.",
       },
       {
-        selector: "Literal[value=/\\[(#[0-9a-fA-F]{3,8}|[0-9]+px)\\]/]",
-        message: "Tailwind arbitrary value (hex veya px) yasak. Token scale veya CSS variable kullan.",
+        // Disallow arbitrary hex colors only. Arbitrary px values are allowed for Kivasy DS
+        // small-type and half-pixel typography (CLAUDE.md Madde L). Only hex colors banned here.
+        selector: "Literal[value=/\\[#[0-9a-fA-F]{3,8}\\]/]",
+        message: "Tailwind arbitrary hex renk yasak. design-tokens.ts üzerinden CSS variable kullan.",
       },
       {
         selector: "JSXAttribute[name.name='style'] ObjectExpression",

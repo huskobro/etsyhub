@@ -154,7 +154,7 @@ export function LibraryClient({
               </span>
             </div>
             <p className="mt-0.5 text-xs text-ink-2">
-              Multi-select assets below, then use the floating bulk-bar's{" "}
+              Multi-select assets below, then use the floating bulk-bar&apos;s{" "}
               <span className="font-medium">Add to Selection</span>{" "}
               action. The destination set is pre-set.
             </p>

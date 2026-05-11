@@ -279,9 +279,9 @@ export function PaneReview() {
             <span className="font-mono">
               finalScore = clamp(0, 100, 100 − Σ weight(failed applicable criteria))
             </span>
-            . Severity (blocker / warning) score'u etkilemez — yalnız
+            . Severity (blocker / warning) score&apos;u etkilemez — yalnız
             UI tone ve AI suggestion önem sinyali için kullanılır. Bir
-            kriterin score'u 0'a çekmesini istersen weight'ini 100'e
+            kriterin score&apos;u 0&apos;a çekmesini istersen weight&apos;ini 100&apos;e
             set et; davranış burada görünür kalır.
           </dd>
         </dl>
@@ -309,7 +309,7 @@ export function PaneReview() {
             </li>
             <li>
               <span className="font-medium text-ink">Re-evaluation</span>{" "}
-              happens only via "Reset and rerun review" or an
+              happens only via &quot;Reset and rerun review&quot; or an
               image-content transform (background-remove, crop,
               upscale). Saving thresholds alone does not trigger
               re-scoring.
@@ -1567,7 +1567,7 @@ function ConventionReference({
         </p>
       ) : !rootFolderPath ? (
         <p className="mt-1.5 text-[10.5px] text-ink-3">
-          Save a root path first to enable "Create folders".
+          Save a root path first to enable &quot;Create folders&quot;.
         </p>
       ) : null}
     </div>
@@ -1737,8 +1737,8 @@ function LocalFolderMappingSection() {
       </div>
       <p className="mt-2 text-xs text-ink-3">
         Convention: each folder under your root maps to a product type
-        by name. Folders that don't match a known product type land in
-        the "Pending" list — assign one or ignore them.
+        by name. Folders that don&apos;t match a known product type land in
+        the &quot;Pending&quot; list — assign one or ignore them.
       </p>
       {/* IA-29 — review state preservation note + reviewedCount. */}
       {summary && rootPath ? (
@@ -1831,7 +1831,7 @@ function LocalFolderMappingSection() {
             </span>
           </div>
           <p className="mt-1 text-[11px] text-ink-3">
-            These folders don't match a known product type. Map them
+            These folders don&apos;t match a known product type. Map them
             to a product type (alias) or ignore them so the scan worker
             knows what to do.
           </p>
@@ -1906,7 +1906,7 @@ function LocalFolderMappingSection() {
 
       {!rootPath && folders.length === 0 ? (
         <p className="mt-3 text-xs text-ink-3">
-          Save a root folder first, then click "Scan now". Discovered
+          Save a root folder first, then click &quot;Scan now&quot;. Discovered
           folders will appear here.
         </p>
       ) : null}

@@ -339,8 +339,8 @@ export function EvaluationPanel({
                 </dd>
               </dl>
               <p className="mt-2 text-[10.5px] leading-relaxed text-white/40">
-                N/A criteria score'a girmez. Severity (blocker / warning)
-                yalnız UI tone — score yalnız weight'lerden hesaplanır.
+                N/A criteria score&apos;a girmez. Severity (blocker / warning)
+                yalnız UI tone — score yalnız weight&apos;lerden hesaplanır.
               </p>
             </details>
           ) : null}
