@@ -1518,6 +1518,8 @@ type FolderMappingResponse = {
     convention: number;
     alias: number;
     ignored: number;
+    /** IA-29 — AI scoring tamamlanmış asset sayısı (aktif root altında). */
+    reviewedCount: number;
   };
   knownProductTypes: ReadonlyArray<string>;
 };
@@ -1656,6 +1658,22 @@ function LocalFolderMappingSection() {
         by name. Folders that don't match a known product type land in
         the "Pending" list — assign one or ignore them.
       </p>
+      {/* IA-29 — review state preservation note + reviewedCount. */}
+      {summary && rootPath ? (
+        <p
+          className="mt-1 text-[11px] text-ink-3"
+          data-testid="review-preservation-note"
+        >
+          <span className="font-medium text-ink-2">
+            {summary.reviewedCount}
+          </span>{" "}
+          asset
+          {summary.reviewedCount === 1 ? " has" : "s have"} an AI
+          evaluation under this root. Changing the root hides them
+          from review (data is preserved — re-saving the old root
+          brings them back).
+        </p>
+      ) : null}
 
       {/* IA-29 — compact convention reference + create-folders helper.
        *   Single row: inline chips for each productType + an action

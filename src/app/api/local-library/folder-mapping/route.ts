@@ -96,6 +96,21 @@ export const GET = withErrorHandling(async () => {
     return a.folderName.localeCompare(b.folderName);
   });
 
+  // IA-29 — "N items reviewed under this root" sayısı: aktif root
+  // altında AI scoring tamamlanmış asset sayısı. Operatör root
+  // değişikliğinin ne kadar review state'i gizleyeceğini bilir.
+  const reviewedCount = rootFolderPath
+    ? await db.localLibraryAsset.count({
+        where: {
+          userId: user.id,
+          deletedAt: null,
+          isUserDeleted: false,
+          folderPath: { startsWith: rootFolderPath },
+          reviewedAt: { not: null },
+        },
+      })
+    : 0;
+
   return NextResponse.json({
     folders,
     summary: {
@@ -104,6 +119,7 @@ export const GET = withErrorHandling(async () => {
       convention: folders.filter((f) => f.status === "convention").length,
       alias: folders.filter((f) => f.status === "alias").length,
       ignored: folders.filter((f) => f.status === "ignored").length,
+      reviewedCount,
     },
     knownProductTypes: KNOWN_PRODUCT_TYPES,
   });

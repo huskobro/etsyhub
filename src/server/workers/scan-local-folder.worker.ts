@@ -139,6 +139,13 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
             thumbnailPath: thumb,
             qualityScore: score.score,
             qualityReasons: score.reasons,
+            // IA-29 — rediscovery clears soft-delete. Operatör eski
+            // root'a geri döndüğünde veya dosyayı kopyaladığında
+            // asset DB'de "geri canlanır"; review state (score,
+            // suggestion, operatör damgası) hash unique key sayesinde
+            // ZATEN korunur, sadece silinme bayrağını sıfırlıyoruz.
+            deletedAt: null,
+            isUserDeleted: false,
           },
           create: {
             userId,
