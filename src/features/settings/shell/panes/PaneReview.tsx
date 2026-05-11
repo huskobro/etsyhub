@@ -99,6 +99,7 @@ type ReviewConfigResponse = {
     failed: number;
     lastEnqueueAt: string | null;
     lastLocalScanAt: string | null;
+    workerRunning: boolean;
     discoveryMode: "event+periodic" | "event_only" | "periodic_only" | "manual_only";
     watcherActive: boolean;
     watcherTriggerCount: number | null;
@@ -587,6 +588,26 @@ function ReviewOpsSection({
           testId="ops-failed"
         />
       </div>
+      {/* Worker health banner — visible when worker process is not running */}
+      {!ops.workerRunning && (
+        <div
+          className="mt-3 flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900"
+          data-testid="ops-worker-offline-banner"
+        >
+          <span className="mt-px shrink-0 text-amber-500">⚠</span>
+          <div>
+            <div className="font-medium">Worker process not running</div>
+            <div className="mt-0.5 text-amber-800">
+              AI review scoring, background scans, and file watcher are
+              inactive. Start the worker to enable automation:{" "}
+              <code className="rounded bg-amber-100 px-1 font-mono">
+                npm run worker
+              </code>
+              . Manual &ldquo;Scan now&rdquo; still works without the worker.
+            </div>
+          </div>
+        </div>
+      )}
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-xs">
         <dt className="text-ink-3">Last enqueue</dt>
         <dd className="font-mono text-ink-2">

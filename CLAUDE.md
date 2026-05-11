@@ -1976,6 +1976,26 @@ değil; API route'larının import-free kalması zorunlu.
 alır. Next.js API route'ları bu parametreyi geçmez (default: inactive);
 gelecekte worker process metrics endpoint'i eklenince oradan inject edilebilir.
 
+**Worker liveness detection (`workerRunning` field):**
+
+`ReviewOpsCounts.workerRunning` — son 5 dakika içinde herhangi bir
+`REVIEW_DESIGN` veya `SCAN_LOCAL_FOLDER` job'unun `SUCCESS/FAILED`
+state'ine geçip geçmediğini DB'den kontrol eder. Next.js API route'unda
+çalışır; chokidar veya BullMQ Redis CLIENT LIST gerektirmez.
+
+- **Avantaj**: Stale Redis kayıtlarından etkilenmez. False negative olmaz
+  (çalışan worker'ın işlediği job'lar anında yansır).
+- **Bilinen gap**: Yeni başlatılmış worker ilk job'unu tamamlayana kadar
+  `false` görünür (~saniyeler içinde düzelir aktif queue'da).
+- **Kullanım**: Ops panelinde "worker offline" banner'ını tetikler.
+  Hard guarantee değil — ops hint olarak kullanılır.
+
+Admin panel davranışı:
+- `workerRunning: false` → amber banner: "Worker process not running — start
+  with `npm run worker`". Manual Scan now hâlâ çalışır.
+- `workerRunning: true` → banner görünmez; `discoveryMode` field'ı gerçek
+  aktif modu gösterir (event+periodic / event_only / periodic_only).
+
 `syncWatchersForAllUsers()` worker startup'ta: tüm `userSetting key=localLibrary`
 row'larını okur, `rootFolderPath + localAutoEnqueue=true` olan kullanıcılar
 için watcher başlatır. SIGINT/SIGTERM: `stopAllLocalLibraryWatchers()`.

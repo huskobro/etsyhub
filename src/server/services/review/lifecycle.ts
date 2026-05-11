@@ -196,6 +196,17 @@ export type ReviewOpsCounts = {
   /** Last successful local scan (SCAN_LOCAL_FOLDER row, this user). */
   lastLocalScanAt: string | null;
   /**
+   * True if a REVIEW_DESIGN or SCAN_LOCAL_FOLDER job finished within the
+   * last 5 minutes. This is a recent-activity proxy for worker liveness —
+   * more reliable than BullMQ getWorkersCount() (which can return stale
+   * Redis CLIENT LIST entries). Safe to call from Next.js; no chokidar.
+   *
+   * Known gap: a freshly started worker with no recent completions shows
+   * false until its first job finishes (~seconds for an active queue).
+   * Acceptable for ops display; not a real-time liveness guarantee.
+   */
+  workerRunning: boolean;
+  /**
    * IA-39+ — local discovery mode visible to admin:
    *   "event+periodic" — watcher active AND periodic scan interval > 0
    *   "event_only"     — watcher active, no periodic scan
@@ -229,7 +240,7 @@ export async function getReviewOpsCounts(
     };
   },
 ): Promise<ReviewOpsCounts> {
-  const [queued, running, failed, lastEnqueue, lastScan] = await Promise.all([
+  const [queued, running, failed, lastEnqueue, lastScan, workerCheck] = await Promise.all([
     db.job.count({
       where: {
         userId,
@@ -265,6 +276,20 @@ export async function getReviewOpsCounts(
       orderBy: { finishedAt: "desc" },
       select: { finishedAt: true },
     }),
+    // Worker liveness: did any REVIEW_DESIGN or SCAN_LOCAL_FOLDER job
+    // finish within the last 5 minutes? If yes, the worker process was
+    // active recently. This is more reliable than BullMQ getWorkersCount()
+    // (which can have stale Redis CLIENT LIST entries). Not a real-time
+    // signal — a freshly started worker with no recent completions shows
+    // false until its first job finishes. Acceptable for ops display.
+    db.job.findFirst({
+      where: {
+        type: { in: [JobType.REVIEW_DESIGN, JobType.SCAN_LOCAL_FOLDER] },
+        finishedAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
+        status: { in: [JobStatus.SUCCESS, JobStatus.FAILED] },
+      },
+      select: { id: true },
+    }).catch(() => null),
   ]);
 
   // IA-39+ — watcher state injected by caller (worker context only).
@@ -273,15 +298,24 @@ export async function getReviewOpsCounts(
   const watcherTriggerCount = watcherActive ? (opts?.watcherInfo?.triggerCount ?? 0) : null;
   const watcherLastTriggerAt = opts?.watcherInfo?.lastTriggerAt?.toISOString() ?? null;
 
+  const recentJob = workerCheck as { id: string } | null;
+  // workerRunning = true if a job finished within the last 5 minutes.
+  // Caveat: false for a freshly started worker with no completions yet.
+  const workerRunning = recentJob !== null;
   const hasPeriodic = (opts?.localScanIntervalMinutes ?? 0) > 0;
+  // discoveryMode reflects what is ACTUALLY running, not what is configured.
+  // Both watcher and periodic require the worker process; if worker is not
+  // running neither is active regardless of settings.
   const discoveryMode: ReviewOpsCounts["discoveryMode"] =
-    watcherActive && hasPeriodic
-      ? "event+periodic"
-      : watcherActive
-        ? "event_only"
-        : hasPeriodic
-          ? "periodic_only"
-          : "manual_only";
+    !workerRunning
+      ? "manual_only"
+      : watcherActive && hasPeriodic
+        ? "event+periodic"
+        : watcherActive
+          ? "event_only"
+          : hasPeriodic
+            ? "periodic_only"
+            : "manual_only";
 
   return {
     queued,
@@ -289,6 +323,7 @@ export async function getReviewOpsCounts(
     failed,
     lastEnqueueAt: lastEnqueue?.createdAt.toISOString() ?? null,
     lastLocalScanAt: lastScan?.finishedAt?.toISOString() ?? null,
+    workerRunning,
     discoveryMode,
     watcherActive,
     watcherTriggerCount,
