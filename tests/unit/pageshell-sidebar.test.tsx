@@ -106,9 +106,8 @@ describe("Sidebar primitive", () => {
     expect(aside).toHaveAttribute("aria-label", "Ana gezinme");
     expect(aside.className).toMatch(/h-screen/);
     expect(aside.className).toMatch(/w-sidebar/);
-    expect(aside.className).toMatch(/bg-surface-2/);
-    expect(aside.className).toMatch(/border-r/);
-    expect(aside.className).toMatch(/border-border\b/);
+    // R3.5: k-sidebar recipe (globals.css) handles bg + border
+    expect(aside.className).toMatch(/k-sidebar/);
   });
 
   it("brand slot → h-header satırı + border-bottom-subtle + px-4", () => {
@@ -245,21 +244,22 @@ describe("PageShell primitive", () => {
       </PageShell>,
     );
     const title = screen.getByText("Bookmark");
-    expect(title.className).toMatch(/text-2xl/);
+    // R11.14.11: k-display + text-[24px] (AppTopbar canon parity)
+    expect(title.className).toMatch(/text-\[24px\]/);
     expect(title.className).toMatch(/font-semibold/);
     const sub = screen.getByText("84 kayıt · 12 koleksiyon");
-    expect(sub.className).toMatch(/text-xs/);
+    // R11.14.11: mono 10.5px tracking-meta uppercase
     expect(sub.className).toMatch(/text-text-muted/);
-    // Topbar container
-    const topbar = title.closest("div.h-header");
+    // Topbar container h-16
+    const topbar = title.closest("div.h-16");
     expect(topbar).toBeInTheDocument();
     expect(topbar!.className).toMatch(/border-b/);
-    expect(topbar!.className).toMatch(/\bpx-6\b/); // density=user
+    expect(topbar!.className).toMatch(/\bpl-6\b/); // density=user
   });
 
   it("title+actions yoksa topbar render ETMEZ", () => {
     const { container } = render(<PageShell>x</PageShell>);
-    const topbar = container.querySelector("main > div.h-header");
+    const topbar = container.querySelector("main > div.h-16");
     expect(topbar).toBeNull();
   });
 

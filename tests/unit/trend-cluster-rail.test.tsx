@@ -81,7 +81,7 @@ beforeEach(() => {
 });
 
 describe("TrendClusterRail — header", () => {
-  it("Header: 'Trend Kümeleri' + '{N} küme' mono muted render eder", () => {
+  it("Header: 'Trend clusters' + '{N} clusters' mono muted render eder", () => {
     setClustersMock({
       data: {
         clusters: [makeCluster({ id: "c-1" }), makeCluster({ id: "c-2" })],
@@ -89,9 +89,9 @@ describe("TrendClusterRail — header", () => {
     });
     wrapper(<TrendClusterRail windowDays={7} onOpenCluster={vi.fn()} />);
     expect(
-      screen.getByRole("heading", { name: /Trend Kümeleri/i }),
+      screen.getByRole("heading", { name: /Trend clusters/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/2 küme/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 clusters/i)).toBeInTheDocument();
   });
 });
 
@@ -117,24 +117,24 @@ describe("TrendClusterRail — states", () => {
     expect(alert).toBeInTheDocument();
   });
 
-  it("empty → StateMessage 'Bu pencerede trend kümesi henüz yok' render eder", () => {
+  it("empty → StateMessage 'No trend clusters in this window' render eder", () => {
     setClustersMock({ data: { clusters: [] } });
     wrapper(<TrendClusterRail windowDays={7} onOpenCluster={vi.fn()} />);
     expect(
-      screen.getByText(/Bu pencerede trend kümesi henüz yok/i),
+      screen.getByText(/No trend clusters in this window/i),
     ).toBeInTheDocument();
   });
 });
 
 describe("TrendClusterCard — primitive consumption", () => {
-  it("Card as='button' render eder (data-variant + role=button + aria-label)", () => {
+  it("Card as='button' render eder (k-card class + role=button + aria-label)", () => {
     render(<TrendClusterCard cluster={makeCluster()} onOpen={vi.fn()} />);
     const btn = screen.getByRole("button", {
-      name: /Trend kümesi: Boho Wall Art/i,
+      name: /Trend cluster: Boho Wall Art/i,
     });
     expect(btn).toBeInTheDocument();
-    // Card primitive data-variant attribute ile işaretler
-    expect(btn).toHaveAttribute("data-variant");
+    // R11.14.12: TrendClusterCard uses k-card class directly (not Card primitive)
+    expect(btn.className).toMatch(/k-card/);
     expect(btn.tagName).toBe("BUTTON");
   });
 
@@ -146,29 +146,23 @@ describe("TrendClusterCard — primitive consumption", () => {
         onOpen={onOpen}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /Trend kümesi:/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Trend cluster:/i }));
     expect(onOpen).toHaveBeenCalledWith("cluster-42");
   });
 
-  it("Mağaza ve Ürün count Badge tone=neutral olarak render eder (2 adet)", () => {
-    const { container } = render(
+  it("Mağaza ve Ürün count text render eder (shops · items)", () => {
+    render(
       <TrendClusterCard
         cluster={makeCluster({ storeCount: 5, memberCount: 18 })}
         onOpen={vi.fn()}
       />,
     );
-    // Badge primitive font-mono + bg-surface-2 (neutral) class'larını içerir
-    const storeBadge = screen.getByText(/5 mağaza/i);
-    const memberBadge = screen.getByText(/18 ürün/i);
-    expect(storeBadge.className).toMatch(/font-mono/);
-    expect(storeBadge.className).toMatch(/bg-surface-2/);
-    expect(memberBadge.className).toMatch(/font-mono/);
-    expect(memberBadge.className).toMatch(/bg-surface-2/);
-    // Eski bg-surface-muted pill kalmamış olmalı (Badge'e dönüştü)
-    expect(container.querySelectorAll(".bg-surface-muted")).toHaveLength(0);
+    // R11.14.12: counts rendered as "5 shops · 18 items" in a single mono div
+    expect(screen.getByText(/5 shops/i)).toBeInTheDocument();
+    expect(screen.getByText(/18 items/i)).toBeInTheDocument();
   });
 
-  it("ProductType varsa Badge tone=accent render eder", () => {
+  it("ProductType varsa k-badge[data-tone='accent'] render eder", () => {
     render(
       <TrendClusterCard
         cluster={makeCluster({
@@ -182,8 +176,8 @@ describe("TrendClusterCard — primitive consumption", () => {
       />,
     );
     const accentBadge = screen.getByText("Wall Art");
-    expect(accentBadge.className).toMatch(/font-mono/);
-    expect(accentBadge.className).toMatch(/bg-accent-soft/);
+    // k-badge uses data-tone attribute (CSS recipe in globals.css)
+    expect(accentBadge).toHaveAttribute("data-tone", "accent");
   });
 
   it("SeasonalBadge yerel pill olarak render edilmeye devam eder (carry-forward)", () => {

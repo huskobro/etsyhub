@@ -51,7 +51,7 @@ describe("PricingSection", () => {
 
   it("renders materials textarea with initial value", () => {
     render(<PricingSection listing={mockListing} />);
-    const materialsInput = screen.getByLabelText("Malzemeler");
+    const materialsInput = screen.getByLabelText("Materials");
     expect(materialsInput).toHaveValue("Digital download");
   });
 
@@ -71,7 +71,7 @@ describe("PricingSection", () => {
 
   it("enables Save button when materials change", () => {
     render(<PricingSection listing={mockListing} />);
-    const materialsInput = screen.getByLabelText("Malzemeler");
+    const materialsInput = screen.getByLabelText("Materials");
     fireEvent.change(materialsInput, { target: { value: "PNG + Vector" } });
     const saveButton = screen.getByRole("button", { name: /Kaydet/i });
     expect(saveButton).not.toBeDisabled();
@@ -119,7 +119,7 @@ describe("PricingSection", () => {
 
     render(<PricingSection listing={mockListing} />);
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("Kaydetme başarısız: Save failed");
+    expect(alert).toHaveTextContent("Save failed: Save failed");
   });
 
   it("shows pending state on Save button during mutation", () => {

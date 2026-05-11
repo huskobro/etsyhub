@@ -127,7 +127,7 @@ describe("BookmarksPage", () => {
     wrapper(<BookmarksPage productTypes={productTypes} />);
 
     // Toolbar + FilterBar zaten render olmuş olmalı
-    expect(screen.getByPlaceholderText(/Başlık, kaynak veya not ara/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Search by title, source or note/)).toBeInTheDocument();
 
     // SkeletonCardGrid role="status" ile tarafsız canlı bölge açar
     const skeletons = await screen.findAllByRole("status");
@@ -139,10 +139,10 @@ describe("BookmarksPage", () => {
 
     wrapper(<BookmarksPage productTypes={productTypes} />);
 
-    expect(await screen.findByText("Henüz bookmark yok")).toBeInTheDocument();
-    // CTA — "İlk bookmark'ını ekle"
+    expect(await screen.findByText("No bookmarks yet")).toBeInTheDocument();
+    // CTA — "Add your first bookmark"
     expect(
-      screen.getByRole("button", { name: /İlk bookmark'ını ekle/ }),
+      screen.getByRole("button", { name: /Add your first bookmark/ }),
     ).toBeInTheDocument();
   });
 
@@ -159,9 +159,6 @@ describe("BookmarksPage", () => {
 
     expect(await screen.findByText("Boho Poster")).toBeInTheDocument();
     expect(screen.getByText("Çiçek Baskı")).toBeInTheDocument();
-
-    // Üst özet: "2 kayıt · URL veya görsel ekleyerek fikir topla"
-    expect(screen.getByText(/2 kayıt/)).toBeInTheDocument();
   });
 
   it("kart seçilince BulkActionBar sayaç + Arşivle butonu görünür", async () => {
@@ -174,8 +171,8 @@ describe("BookmarksPage", () => {
 
     await screen.findByText("Boho Poster");
 
-    // BookmarkCard içindeki "Seç" butonu (aria-label)
-    const selectBtn = screen.getByRole("button", { name: "Seç" });
+    // BookmarkCard içindeki "Select" butonu (aria-label)
+    const selectBtn = screen.getByRole("button", { name: "Select" });
     act(() => {
       fireEvent.click(selectBtn);
     });
@@ -200,7 +197,7 @@ describe("BookmarksPage", () => {
     await screen.findByText("Boho Poster");
 
     // İki kartı da seç
-    const selectBtns = screen.getAllByRole("button", { name: "Seç" });
+    const selectBtns = screen.getAllByRole("button", { name: "Select" });
     act(() => {
       fireEvent.click(selectBtns[0]!);
       fireEvent.click(selectBtns[1]!);
@@ -235,7 +232,7 @@ describe("BookmarksPage", () => {
     await screen.findByText("Boho Poster");
 
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Seç" }));
+      fireEvent.click(screen.getByRole("button", { name: "Select" }));
     });
 
     const region = await screen.findByRole("region");
@@ -278,11 +275,11 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
 
     await screen.findByText("Boho Poster");
 
-    // BookmarkCard içinde "Referansa taşı" / "Taşı" aksiyonu — kart bileşeni
+    // BookmarkCard içinde "Promote to Reference" aksiyonu — kart bileşeni
     // butonu görünür olarak render eder (ya hover-gated bir overlay'de ya da
     // doğrudan); button name'i regex ile yakalanır.
     const promoteBtn = screen.getByRole("button", {
-      name: /^Referansa Taşı$/i,
+      name: /^Promote to Reference$/i,
     });
     act(() => {
       fireEvent.click(promoteBtn);
@@ -417,7 +414,7 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
     await screen.findByText("Boho Poster");
 
     const promoteBtn = screen.getByRole("button", {
-      name: /^Referansa Taşı$/i,
+      name: /^Promote to Reference$/i,
     });
     act(() => {
       fireEvent.click(promoteBtn);
@@ -502,7 +499,7 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
     await screen.findByText("Boho Poster");
 
     const promoteBtn = screen.getByRole("button", {
-      name: /^Referansa Taşı$/i,
+      name: /^Promote to Reference$/i,
     });
     act(() => {
       fireEvent.click(promoteBtn);

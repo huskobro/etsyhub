@@ -112,12 +112,13 @@ beforeEach(() => {
 });
 
 describe("TrendStoriesPage — header", () => {
-  it("PageShell title='Trend Akışı' ve subtitle render eder", () => {
+  it("PageShell toolbar WindowTabs render eder (R11.14.3 title boş)", () => {
     wrapper(<TrendStoriesPage />);
-    expect(screen.getByText("Trend Akışı")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Rakip mağazalardaki yeni listing/i),
-    ).toBeInTheDocument();
+    // R11.14.3: title="" — tablist varlığı canonical giriş noktası.
+    const tablist = screen.getByRole("tablist", {
+      name: /Trend zaman penceresi/i,
+    });
+    expect(tablist).toBeInTheDocument();
   });
 
   it("toolbar slot'unda WindowTabs render edilir (role=tablist + 3 tab)", () => {
@@ -174,7 +175,7 @@ describe("TrendStoriesPage — WindowTabs ARIA", () => {
 
   it("tab click → aria-selected=true geçer + useFeed window param ile re-call edilir", () => {
     wrapper(<TrendStoriesPage />);
-    const tab30 = screen.getByRole("tab", { name: /30 Gün/i });
+    const tab30 = screen.getByRole("tab", { name: /30 days/i });
     fireEvent.click(tab30);
     expect(tab30).toHaveAttribute("aria-selected", "true");
     const lastCall = mockedUseFeed.mock.calls.at(-1);

@@ -242,11 +242,11 @@ describe("CompetitorDetailPage — header", () => {
     expect(link).toHaveAttribute("href", "https://etsy.com/shop/alphashop");
   });
 
-  it("breadcrumb minimal nav 'Rakipler · {shopLabel}' render eder", () => {
+  it("breadcrumb minimal nav 'Shops · {shopLabel}' render eder", () => {
     wrapper(
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
-    const crumbLink = screen.getByRole("link", { name: /Rakipler/i });
+    const crumbLink = screen.getByRole("link", { name: /^Shops$/i });
     expect(crumbLink).toHaveAttribute("href", "/competitors");
   });
 
@@ -255,27 +255,27 @@ describe("CompetitorDetailPage — header", () => {
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
     expect(
-      screen.getByText(/Son tarama:/i),
+      screen.getByText(/Last scan:/i),
     ).toBeInTheDocument();
   });
 
-  it("'Yeni Tarama' Button click → scan mutation çağrılır", () => {
+  it("'New Scan' Button click → scan mutation çağrılır", () => {
     const { mutate } = setScanMock();
     wrapper(
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /Yeni Tarama/i }));
+    fireEvent.click(screen.getByRole("button", { name: /New Scan/i }));
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(mutate.mock.calls[0]?.[0]).toEqual({ type: "MANUAL_REFRESH" });
   });
 });
 
 describe("CompetitorDetailPage — date-range tabs ARIA", () => {
-  it("role='tablist' mevcut + 4 tab (30d / 90d / 365d / Tümü)", () => {
+  it("role='tablist' mevcut + 4 tab (30d / 90d / 365d / All time)", () => {
     wrapper(
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
-    const tablist = screen.getByRole("tablist", { name: /Tarih aralığı/i });
+    const tablist = screen.getByRole("tablist", { name: /Date range/i });
     expect(tablist).toBeInTheDocument();
     const tabs = within(tablist).getAllByRole("tab");
     expect(tabs).toHaveLength(4);
@@ -316,7 +316,7 @@ describe("CompetitorDetailPage — date-range tabs ARIA", () => {
     wrapper(
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
-    const tab90 = screen.getByRole("tab", { name: /Son 90 gün/i });
+    const tab90 = screen.getByRole("tab", { name: /Last 90 days/i });
     fireEvent.click(tab90);
     expect(tab90).toHaveAttribute("aria-selected", "true");
     // En son call'da window="90d"
@@ -340,53 +340,53 @@ describe("CompetitorDetailPage — date-range tabs klavye gez (T-41)", () => {
     wrapper(
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
-    const tab30d = screen.getByRole("tab", { name: /Son 30 gün/i });
+    const tab30d = screen.getByRole("tab", { name: /Last 30 days/i });
     fireEvent.click(tab30d);
     fireEvent.keyDown(tab30d, { key: "ArrowRight" });
-    const tab90d = screen.getByRole("tab", { name: /Son 90 gün/i });
+    const tab90d = screen.getByRole("tab", { name: /Last 90 days/i });
     expect(tab90d).toHaveAttribute("aria-selected", "true");
     expect(tab90d).toHaveFocus();
   });
 
-  it("ArrowLeft (ilk tab 30d) → son tab Tümü'ye wrap", () => {
+  it("ArrowLeft (ilk tab 30d) → son tab 'All time'ye wrap", () => {
     wrapper(
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
-    const tab30d = screen.getByRole("tab", { name: /Son 30 gün/i });
+    const tab30d = screen.getByRole("tab", { name: /Last 30 days/i });
     fireEvent.click(tab30d);
     fireEvent.keyDown(tab30d, { key: "ArrowLeft" });
-    const tabAll = screen.getByRole("tab", { name: /^Tümü$/i });
+    const tabAll = screen.getByRole("tab", { name: /^All time$/i });
     expect(tabAll).toHaveAttribute("aria-selected", "true");
     expect(tabAll).toHaveFocus();
   });
 
-  it("ArrowRight (son tab Tümü) → ilk tab 30d'ye wrap", () => {
+  it("ArrowRight (son tab 'All time') → ilk tab 30d'ye wrap", () => {
     wrapper(
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
-    // Default window="all" — Tümü tab aktif.
-    const tabAll = screen.getByRole("tab", { name: /^Tümü$/i });
+    // Default window="all" — All time tab aktif.
+    const tabAll = screen.getByRole("tab", { name: /^All time$/i });
     // Focus geçişi için önce click (focus + aria-selected garanti).
     fireEvent.click(tabAll);
     fireEvent.keyDown(tabAll, { key: "ArrowRight" });
-    const tab30d = screen.getByRole("tab", { name: /Son 30 gün/i });
+    const tab30d = screen.getByRole("tab", { name: /Last 30 days/i });
     expect(tab30d).toHaveAttribute("aria-selected", "true");
     expect(tab30d).toHaveFocus();
   });
 
-  it("Home → ilk tab 30d, End → son tab Tümü", () => {
+  it("Home → ilk tab 30d, End → son tab 'All time'", () => {
     wrapper(
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
-    const tab90d = screen.getByRole("tab", { name: /Son 90 gün/i });
+    const tab90d = screen.getByRole("tab", { name: /Last 90 days/i });
     fireEvent.click(tab90d);
     fireEvent.keyDown(tab90d, { key: "Home" });
-    const tab30d = screen.getByRole("tab", { name: /Son 30 gün/i });
+    const tab30d = screen.getByRole("tab", { name: /Last 30 days/i });
     expect(tab30d).toHaveAttribute("aria-selected", "true");
     expect(tab30d).toHaveFocus();
 
     fireEvent.keyDown(tab30d, { key: "End" });
-    const tabAll = screen.getByRole("tab", { name: /^Tümü$/i });
+    const tabAll = screen.getByRole("tab", { name: /^All time$/i });
     expect(tabAll).toHaveAttribute("aria-selected", "true");
     expect(tabAll).toHaveFocus();
   });
@@ -395,10 +395,10 @@ describe("CompetitorDetailPage — date-range tabs klavye gez (T-41)", () => {
     wrapper(
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
-    const tab365d = screen.getByRole("tab", { name: /Son 365 gün/i });
+    const tab365d = screen.getByRole("tab", { name: /Last 365 days/i });
     fireEvent.click(tab365d);
     fireEvent.keyDown(tab365d, { key: "ArrowLeft" });
-    const tab90d = screen.getByRole("tab", { name: /Son 90 gün/i });
+    const tab90d = screen.getByRole("tab", { name: /Last 90 days/i });
     expect(tab90d).toHaveAttribute("aria-selected", "true");
     expect(tab90d).toHaveFocus();
   });
@@ -407,7 +407,7 @@ describe("CompetitorDetailPage — date-range tabs klavye gez (T-41)", () => {
     wrapper(
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
-    const tab30d = screen.getByRole("tab", { name: /Son 30 gün/i });
+    const tab30d = screen.getByRole("tab", { name: /Last 30 days/i });
     fireEvent.click(tab30d);
     fireEvent.keyDown(tab30d, { key: "Tab" });
     expect(tab30d).toHaveAttribute("aria-selected", "true");
@@ -425,15 +425,15 @@ describe("CompetitorDetailPage — ReviewCountDisclaimer + states", () => {
     expect(screen.getByRole("note")).toBeInTheDocument();
   });
 
-  it("listings loading → StateMessage tone neutral 'Yükleniyor' render eder", () => {
+  it("listings loading → StateMessage tone neutral 'Loading…' render eder", () => {
     setListingsMock({ isLoading: true });
     wrapper(
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
-    expect(screen.getByText(/yükleniyor/i)).toBeInTheDocument();
+    expect(screen.getByText(/Loading…/i)).toBeInTheDocument();
   });
 
-  it("listings empty → StateMessage 'Bu aralıkta gösterilecek listing yok'", () => {
+  it("listings empty → StateMessage 'No listings in this range'", () => {
     setListingsMock({
       data: {
         items: [],
@@ -446,7 +446,7 @@ describe("CompetitorDetailPage — ReviewCountDisclaimer + states", () => {
       <CompetitorDetailPage competitorId="c-1" productTypes={productTypes} />,
     );
     expect(
-      screen.getByText(/Bu aralıkta gösterilecek listing yok/i),
+      screen.getByText(/No listings in this range/i),
     ).toBeInTheDocument();
   });
 

@@ -79,20 +79,20 @@ describe("AiQualityPanel — review yok (null)", () => {
 });
 
 describe("AiQualityPanel — score + status", () => {
-  it("score 92 + status approved → '92' + 'Onaylandı' badge", () => {
+  it("score 92 + status approved → '92' + 'Approved' badge", () => {
     render(<AiQualityPanel item={makeItem(makeReview({ score: 92, status: "approved" }))} />);
     expect(screen.getByText("92")).toBeInTheDocument();
-    expect(screen.getByText(/onaylandı/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Approved$/i)).toBeInTheDocument();
   });
 
-  it("score 50 + status needs_review → '50' + 'Gözden geçir' badge", () => {
+  it("score 50 + status needs_review → '50' + 'Review' badge", () => {
     render(
       <AiQualityPanel
         item={makeItem(makeReview({ score: 50, status: "needs_review" }))}
       />,
     );
     expect(screen.getByText("50")).toBeInTheDocument();
-    expect(screen.getByText(/gözden geçir/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Review$/i)).toBeInTheDocument();
   });
 
   it("score 30 + status rejected → '30' + 'Reddedildi' badge", () => {
@@ -134,7 +134,7 @@ describe("AiQualityPanel — score + status", () => {
 });
 
 describe("AiQualityPanel — sinyal display", () => {
-  it("resolution=ok → 'OK'; resolution=low → 'Düşük'; resolution=unknown → 'Bilinmiyor'", () => {
+  it("resolution=ok → 'OK'; resolution=low → 'Low'; resolution=unknown → 'Bilinmiyor'", () => {
     const { rerender } = render(
       <AiQualityPanel
         item={makeItem(makeReview({ signals: {
@@ -157,8 +157,8 @@ describe("AiQualityPanel — sinyal display", () => {
         } }))}
       />,
     );
-    // 'Düşük' iki yerde olabilir (resolution + trademark) → en az bir tane
-    expect(screen.getAllByText(/düşük/i).length).toBeGreaterThanOrEqual(1);
+    // 'Low' iki yerde olabilir (resolution + trademark) → en az bir tane
+    expect(screen.getAllByText(/^Low$/i).length).toBeGreaterThanOrEqual(1);
 
     rerender(
       <AiQualityPanel
@@ -213,7 +213,7 @@ describe("AiQualityPanel — sinyal display", () => {
     expect(screen.getByText("İşaret var")).toBeInTheDocument();
   });
 
-  it("trademarkRisk=low → 'Düşük'; high → 'Yüksek'", () => {
+  it("trademarkRisk=low → 'Low'; high → 'High'", () => {
     const { rerender } = render(
       <AiQualityPanel
         item={makeItem(makeReview({ signals: {
@@ -224,7 +224,7 @@ describe("AiQualityPanel — sinyal display", () => {
         } }))}
       />,
     );
-    expect(screen.getAllByText(/düşük/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/^Low$/i).length).toBeGreaterThanOrEqual(1);
 
     rerender(
       <AiQualityPanel
@@ -236,7 +236,7 @@ describe("AiQualityPanel — sinyal display", () => {
         } }))}
       />,
     );
-    expect(screen.getByText(/yüksek/i)).toBeInTheDocument();
+    expect(screen.getByText(/^High$/i)).toBeInTheDocument();
   });
 });
 

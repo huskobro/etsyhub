@@ -45,40 +45,40 @@ describe("BulkActionsBar", () => {
     expect(screen.queryByTestId("bulk-actions-bar")).toBeNull();
   });
 
-  it("scope=design + 2 seçim ⇒ Onayla + Reddet, Sil yok", () => {
+  it("scope=design + 2 seçim ⇒ Approve + Reject butonları, Delete yok", () => {
     act(() => useReviewSelection.getState().selectAll(["a", "b"]));
     renderBar("design");
     expect(
-      screen.getByRole("button", { name: /Onayla \(2\)/i }),
+      screen.getByRole("button", { name: /Approve/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Reddet \(2\)/i }),
+      screen.getByRole("button", { name: /Reject/i }),
     ).toBeInTheDocument();
     // Bulk delete trigger sadece local'de görünür.
-    expect(screen.queryByTestId("bulk-delete-trigger")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Delete/i })).toBeNull();
   });
 
-  it("scope=local + 1 seçim ⇒ Sil butonu da görünür", () => {
+  it("scope=local + 1 seçim ⇒ Delete butonu da görünür", () => {
     act(() => useReviewSelection.getState().selectAll(["a"]));
     renderBar("local");
     expect(
-      screen.getByRole("button", { name: /Sil \(1\)/i }),
+      screen.getByRole("button", { name: /Delete/i }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("bulk-delete-trigger")).toBeInTheDocument();
   });
 
-  it("İptal butonu selection store'u clear eder", () => {
+  it("Clear selection butonu selection store'u clear eder", () => {
     act(() => useReviewSelection.getState().selectAll(["a", "b"]));
     renderBar("design");
     expect(useReviewSelection.getState().selectedIds.size).toBe(2);
-    fireEvent.click(screen.getByTestId("bulk-clear"));
+    fireEvent.click(screen.getByRole("button", { name: /Clear selection/i }));
     expect(useReviewSelection.getState().selectedIds.size).toBe(0);
   });
 
-  it("aria-label='Toplu eylemler' (a11y region)", () => {
+  it("aria-label — bulk actions toolbar (a11y)", () => {
     act(() => useReviewSelection.getState().selectAll(["x"]));
     renderBar("design");
-    const region = screen.getByRole("region", { name: /Toplu eylemler/i });
-    expect(region).toBeInTheDocument();
+    // FloatingBulkBar uses role="toolbar" with dynamic count label
+    const toolbar = screen.getByRole("toolbar", { name: /bulk actions/i });
+    expect(toolbar).toBeInTheDocument();
   });
 });

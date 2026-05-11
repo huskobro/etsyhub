@@ -202,12 +202,18 @@ describe("handleReviewDesign — scope=design", () => {
 
     expect(result.skipped).toBe(false);
     expect(result.status).toBe(ReviewStatus.APPROVED);
+    // result.score is raw LLM score (95)
     expect(result.score).toBe(95);
 
     const updated = await db.generatedDesign.findUnique({ where: { id: designId } });
-    expect(updated?.reviewStatus).toBe(ReviewStatus.APPROVED);
+    // IA-29: worker writes to reviewSuggestedStatus (advisory), NOT reviewStatus (operator)
+    expect(updated?.reviewSuggestedStatus).toBe(ReviewStatus.APPROVED);
+    // reviewStatus stays PENDING — worker never touches it
+    expect(updated?.reviewStatus).toBe(ReviewStatus.PENDING);
+    // reviewStatusSource stays SYSTEM (unchanged)
     expect(updated?.reviewStatusSource).toBe(ReviewStatusSource.SYSTEM);
-    expect(updated?.reviewScore).toBe(95);
+    // reviewScore = breakdown.finalScore = 100 (no penalty — all criteria pass)
+    expect(updated?.reviewScore).toBe(100);
     expect(updated?.reviewSummary).toBe("clean illustration");
     expect(updated?.textDetected).toBe(false);
     expect(updated?.gibberishDetected).toBe(false);
@@ -226,7 +232,8 @@ describe("handleReviewDesign — scope=design", () => {
     expect(audit?.provider).toBe("google-gemini-flash");
     // Aşama 2A: audit.model = provider.modelId (gerçek model string).
     expect(audit?.model).toBe("gemini-2-5-flash");
-    expect(audit?.score).toBe(95);
+    // audit.score = breakdown.finalScore = 100 (no penalty — all criteria pass)
+    expect(audit?.score).toBe(100);
     expect(audit?.decision).toBe(ReviewStatus.APPROVED);
     expect(audit?.reviewer).toBe("system");
   });
@@ -339,7 +346,7 @@ describe("handleReviewDesign — scope=design", () => {
     expect(alphaMock).not.toHaveBeenCalled();
   });
 
-  it("K1 idempotent rerun: aynı design 2 kez review ⇒ ikinci PASS, audit row override (1 row)", async () => {
+  it("K1 already-scored guard: aynı design 2 kez review ⇒ ikinci already_scored skip edilir (CLAUDE.md Madde N cost discipline)", async () => {
     const { designId } = await seedDesign();
 
     reviewMock.mockResolvedValueOnce({
@@ -353,43 +360,39 @@ describe("handleReviewDesign — scope=design", () => {
       makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
     );
     expect(result1.skipped).toBe(false);
-    expect(result1.score).toBe(95);
+    expect(result1.score).toBe(95); // raw LLM score
 
-    // İkinci run — yeni provider çıktısı; eski impl P2002 ile crash ediyordu.
-    reviewMock.mockResolvedValueOnce({
-      score: 80,
-      textDetected: false,
-      gibberishDetected: false,
-      riskFlags: [],
-      summary: "second review",
-    });
+    // İkinci run — already_scored guard tetiklenir (reviewedAt + snapshot set).
+    // CLAUDE.md Madde N: geçerli skoru olan asset tekrar kuyruğa alınmaz.
     const result2 = await handleReviewDesign(
       makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
     );
-    expect(result2.skipped).toBe(false);
-    expect(result2.score).toBe(80);
+    expect(result2.skipped).toBe(true);
+    expect(result2.reason).toBe("already_scored");
 
-    // Audit row 1 adet (upsert override) — son review snapshot'ı.
+    // Audit row: sadece ilk review'dan gelen 1 adet.
     const audits = await db.designReview.findMany({
       where: { generatedDesignId: designId },
     });
     expect(audits).toHaveLength(1);
-    expect(audits[0]?.score).toBe(80);
+    // audit.score = breakdown.finalScore = 100 (no penalty)
+    expect(audits[0]?.score).toBe(100);
 
-    // Design row da güncel (son review).
+    // Design row: ilk review değerleri korundu.
     const updated = await db.generatedDesign.findUnique({
       where: { id: designId },
     });
-    expect(updated?.reviewScore).toBe(80);
-    expect(updated?.reviewSummary).toBe("second review");
+    // reviewScore = breakdown.finalScore = 100 (no penalty)
+    expect(updated?.reviewScore).toBe(100);
+    expect(updated?.reviewSummary).toBe("first review");
   });
 
-  it("K2 sticky race: Gemini fetch sırasında USER yazarsa SYSTEM override etmez", async () => {
+  it("K2 IA-29 advisory independence: Gemini fetch sırasında USER reviewStatus yazsa bile SYSTEM advisory yazılır (parallel axes)", async () => {
     const { designId } = await seedDesign();
 
     // Provider mock: Gemini fetch'i simüle ediyoruz; mid-call'da USER endpoint
-    // yazısını taklit etmek için DB'yi update ediyoruz. Worker T2 sonrası
-    // updateMany WHERE'inde reviewStatusSource ≠ USER guard'a yakalanmalı.
+    // reviewStatus'e APPROVED yazıyor. IA-29 sonrası worker reviewStatus'e
+    // dokunmaz — sadece reviewSuggestedStatus (advisory) yazar. İki eksen bağımsız.
     reviewMock.mockImplementationOnce(async () => {
       await db.generatedDesign.update({
         where: { id: designId },
@@ -404,7 +407,7 @@ describe("handleReviewDesign — scope=design", () => {
         textDetected: false,
         gibberishDetected: false,
         riskFlags: [],
-        summary: "system would say needs review",
+        summary: "system says needs review",
       };
     });
 
@@ -412,26 +415,20 @@ describe("handleReviewDesign — scope=design", () => {
       makeJob({ scope: "design", generatedDesignId: designId, userId: USER_ID }),
     );
 
-    // Worker race detect ediyor.
-    expect(result.skipped).toBe(true);
-    expect(result.reason).toBe("user_sticky_race");
+    // IA-29: worker proceeds — advisory and operator axes are independent.
+    expect(result.skipped).toBe(false);
 
-    // USER yazısı korundu.
+    // USER reviewStatus korundu (worker dokunmadı).
     const updated = await db.generatedDesign.findUnique({
       where: { id: designId },
     });
     expect(updated?.reviewStatus).toBe(ReviewStatus.APPROVED);
     expect(updated?.reviewStatusSource).toBe(ReviewStatusSource.USER);
-    // SYSTEM yazmadı: review alanları null kaldı.
-    expect(updated?.reviewScore).toBeNull();
-    expect(updated?.reviewSummary).toBeNull();
-    expect(updated?.reviewProviderSnapshot).toBeNull();
-
-    // Audit insert YAPILMADI (race detect ⇒ audit upsert atlandı).
-    const audits = await db.designReview.findMany({
-      where: { generatedDesignId: designId },
-    });
-    expect(audits).toHaveLength(0);
+    // Advisory yazıldı (worker advisory).
+    expect(updated?.reviewSuggestedStatus).toBeDefined();
+    // Score + summary advisory olarak persist edildi.
+    expect(updated?.reviewScore).not.toBeNull();
+    expect(updated?.reviewSummary).toBe("system says needs review");
   });
 });
 

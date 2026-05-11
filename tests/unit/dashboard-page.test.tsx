@@ -276,9 +276,10 @@ describe("RecentCollectionsGrid", () => {
     expect(screen.getByText("Nursery Clipart")).toBeInTheDocument();
     expect(screen.getByText("Halloween Stickers")).toBeInTheDocument();
     expect(screen.getByText("Boho Canvas")).toBeInTheDocument();
-    expect(screen.getByText("5 kayıt")).toBeInTheDocument();
-    expect(screen.getByText("7 referans")).toBeInTheDocument();
-    expect(screen.getByText("4 bookmark")).toBeInTheDocument();
+    // CollectionCard uses English: "items" / "references" / "bookmarks"
+    expect(screen.getByText(/5 items/)).toBeInTheDocument();
+    expect(screen.getByText(/7 references/)).toBeInTheDocument();
+    expect(screen.getByText(/4 bookmarks/)).toBeInTheDocument();
   });
 
   it("5+ koleksiyon verilse bile 4 ile sınırlanır (slice(0,4))", () => {
@@ -333,45 +334,29 @@ describe("Empty state — full dashboard composition", () => {
 });
 
 describe("DashboardQuickActions yerleşim regresyonu", () => {
-  it("page kompozisyonu: QuickActions stat row ile iki kolon arasında durmalı", async () => {
-    // Page server component (async) ve `requireUser` + Prisma çağırır;
-    // direkt render edilemez. Bunun yerine page kaynak metnini okuyup
-    // composition order'ını statik kontrol ederiz.
+  it("page kompozisyonu: dashboard/page.tsx /overview'a redirect eder, overview/page.tsx OverviewClient tüketir", async () => {
+    // R11.14: dashboard/page.tsx artık /overview'a redirect ediyor.
+    // Bu test: (1) redirect davranışı korunuyor, (2) overview/page.tsx
+    // canonical OverviewClient tüketiyor, (3) eski "Son Bookmark'lar" yok.
     const fs = await import("node:fs");
     const path = await import("node:path");
-    const src = fs.readFileSync(
+
+    const dashSrc = fs.readFileSync(
       path.resolve(process.cwd(), "src/app/(app)/dashboard/page.tsx"),
       "utf8",
     );
-    const idxStat = src.indexOf("DashboardStatRow");
-    const idxQa = src.indexOf("DashboardQuickActions");
-    const idxJobs = src.indexOf("RecentJobsCard");
-    const idxRefs = src.indexOf("RecentReferencesCard");
-    const idxColls = src.indexOf("RecentCollectionsGrid");
+    // Dashboard redirect to /overview korunmalı
+    expect(dashSrc).toContain('redirect("/overview")');
 
-    // Tüm parçalar mevcut olmalı.
-    expect(idxStat).toBeGreaterThan(-1);
-    expect(idxQa).toBeGreaterThan(-1);
-    expect(idxJobs).toBeGreaterThan(-1);
-    expect(idxRefs).toBeGreaterThan(-1);
-    expect(idxColls).toBeGreaterThan(-1);
+    const overviewSrc = fs.readFileSync(
+      path.resolve(process.cwd(), "src/app/(app)/overview/page.tsx"),
+      "utf8",
+    );
+    // Overview page OverviewClient tüketiyor
+    expect(overviewSrc).toContain("OverviewClient");
 
-    // composition order: stat row → QuickActions → iki kolon → koleksiyonlar
-    // (idxQa, importun referansı değil JSX render referansı olabilir; bu
-    // yüzden son geçişin pozisyonunu alıyoruz)
-    const lastStat = src.lastIndexOf("<DashboardStatRow");
-    const lastQa = src.lastIndexOf("<DashboardQuickActions");
-    const lastJobs = src.lastIndexOf("<RecentJobsCard");
-    const lastRefs = src.lastIndexOf("<RecentReferencesCard");
-    const lastColls = src.lastIndexOf("<RecentCollectionsGrid");
-
-    expect(lastStat).toBeLessThan(lastQa);
-    expect(lastQa).toBeLessThan(lastJobs);
-    expect(lastQa).toBeLessThan(lastRefs);
-    expect(Math.max(lastJobs, lastRefs)).toBeLessThan(lastColls);
-
-    // Eski "Son Bookmark'lar" section'ı silinmiş olmalı.
-    expect(src).not.toContain("Son Bookmark");
-    expect(src).not.toContain("recentBookmarks");
+    // Eski "Son Bookmark'lar" section'ı dashboard page'den silinmiş olmalı.
+    expect(dashSrc).not.toContain("Son Bookmark");
+    expect(dashSrc).not.toContain("recentBookmarks");
   });
 });

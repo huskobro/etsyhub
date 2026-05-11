@@ -201,7 +201,7 @@ describe("/api/settings/ai-mode", () => {
     expect(body.settings.geminiApiKey).toBeNull();
   });
 
-  it("PUT geminiApiKey null → 400 (anlamsız: explicit silme bu surface'te yok)", async () => {
+  it("PUT geminiApiKey null → 200 (explicit disconnect: key cleared)", async () => {
     (requireUser as any).mockResolvedValue({ id: USER_A });
     const res = await aiPut(
       jsonReq("http://localhost/api/settings/ai-mode", {
@@ -209,7 +209,10 @@ describe("/api/settings/ai-mode", () => {
         geminiApiKey: null,
       }),
     );
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // null sentinel disconnects geminiApiKey; masked response null.
+    expect(body.settings.geminiApiKey).toBeNull();
   });
 
   it("PUT malformed body → 400", async () => {
