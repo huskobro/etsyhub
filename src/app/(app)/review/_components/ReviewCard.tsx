@@ -30,34 +30,40 @@ import {
   Layers,
   MinusCircle,
 } from "lucide-react";
-import type { ReviewQueueItem, ReviewStatusEnum } from "@/features/review/queries";
+import type { ReviewQueueItem } from "@/features/review/queries";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
 import { buildReviewUrl } from "@/features/review/lib/search-params";
 import { useReviewSelection } from "@/features/review/stores/selection-store";
 import { buildEvaluation } from "@/features/review/lib/evaluation";
+import {
+  getOperatorDecision,
+  operatorDecisionLabel,
+  getAiScoreTone,
+  type OperatorDecision,
+  type AiScoreTone,
+} from "@/features/review/lib/operator-decision";
 
 type Props = { item: ReviewQueueItem };
 
-// Canonical decision-axis wording (matches the batch workspace chips).
-// PENDING and NEEDS_REVIEW are pipeline-side signals; we project both to
-// the operator-facing labels:
-//   PENDING       → "Undecided" (no operator action yet)
-//   NEEDS_REVIEW  → "Needs review" (auto-flag — operator should look)
-//   APPROVED      → "Kept"
-//   REJECTED      → "Rejected"
-const STATUS_LABEL: Record<ReviewStatusEnum, string> = {
-  PENDING: "Undecided",
-  APPROVED: "Kept",
-  NEEDS_REVIEW: "Needs review",
-  REJECTED: "Rejected",
+// IA-30 (CLAUDE.md Madde V) — operator decision badge SADECE USER
+// damgalı item'lar için Kept/Rejected gösterir; AI advisory hiçbir
+// koşulda kart üstündeki final badge'i kontrol etmez. AI ton ayrı
+// score chip'inde yaşar.
+const DECISION_TONE: Record<OperatorDecision, BadgeTone> = {
+  KEPT: "success",
+  REJECTED: "danger",
+  UNDECIDED: "neutral",
 };
 
-const STATUS_TONE: Record<ReviewStatusEnum, BadgeTone> = {
-  PENDING: "neutral",
-  APPROVED: "success",
-  NEEDS_REVIEW: "warning",
-  REJECTED: "danger",
+// AI score chip tonu — design-system semantic class'larına eşle.
+// Hardcoded hex/rgb yasak (CLAUDE.md kuralı); paper/ink/k-orange
+// token aileleri kullanılır.
+const AI_SCORE_TONE_CLASS: Record<AiScoreTone, string> = {
+  destructive: "bg-rose-500 text-white ring-rose-700/40",
+  warning: "bg-amber-500 text-ink ring-amber-700/30",
+  success: "bg-emerald-500 text-white ring-emerald-700/40",
+  neutral: "bg-text text-bg ring-bg/30",
 };
 
 export function ReviewCard({ item }: Props) {
@@ -131,11 +137,13 @@ export function ReviewCard({ item }: Props) {
       data-bulk-mode={bulkModeActive ? "true" : "false"}
       role="button"
       tabIndex={0}
-      aria-label={
-        bulkModeActive
-          ? `Toggle selection (${STATUS_LABEL[item.reviewStatus]})`
-          : `Open review detail: ${STATUS_LABEL[item.reviewStatus]}`
-      }
+      aria-label={(() => {
+        const d = getOperatorDecision(item);
+        const label = operatorDecisionLabel(d);
+        return bulkModeActive
+          ? `Toggle selection (${label})`
+          : `Open review detail: ${label}`;
+      })()}
       onClick={handleCardClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -195,7 +203,7 @@ export function ReviewCard({ item }: Props) {
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-text-muted">
-            Önizleme yok
+            No preview
           </div>
         )}
         {/* IA Phase 20 — Score + lifecycle birleşik gösterim
@@ -215,13 +223,23 @@ export function ReviewCard({ item }: Props) {
           }).lifecycle;
 
           if (evalLifecycle === "ready" && item.reviewScore !== null) {
-            // Yüksek-kontrast score chip (text-bg üzerine bg-text +
-            // tabular-nums; eskisi okunamıyordu thumbnails'in üstünde).
+            // IA-30 — AI score chip tone (advisory; operator decision
+            // badge ile karışmaz). Düşük skor / risk flag = destructive,
+            // orta = warning, yüksek + risk-yok = success.
+            const tone = getAiScoreTone({
+              score: item.reviewScore,
+              riskFlagCount: item.riskFlagCount,
+            });
             return (
               <span
                 data-testid="score-chip"
-                aria-label={`Quality score: ${item.reviewScore}`}
-                className="absolute right-2 top-2 inline-flex h-6 min-w-[28px] items-center justify-center rounded-md bg-text px-1.5 font-mono text-[13px] font-semibold tabular-nums text-bg shadow-md ring-1 ring-bg/30"
+                data-tone={tone}
+                aria-label={`AI suggestion score: ${item.reviewScore}`}
+                title="AI advisory score — not a final decision"
+                className={cn(
+                  "absolute right-2 top-2 inline-flex h-6 min-w-[28px] items-center justify-center rounded-md px-1.5 font-mono text-[13px] font-semibold tabular-nums shadow-md ring-1",
+                  AI_SCORE_TONE_CLASS[tone],
+                )}
               >
                 {item.reviewScore}
               </span>
@@ -303,12 +321,14 @@ export function ReviewCard({ item }: Props) {
       </div>
       <div className="flex flex-col gap-1 p-2">
         <div className="flex items-center justify-between gap-2">
-          <Badge
-            tone={STATUS_TONE[item.reviewStatus]}
-            data-testid="status-badge"
-          >
-            {STATUS_LABEL[item.reviewStatus]}
-          </Badge>
+          {(() => {
+            const d = getOperatorDecision(item);
+            return (
+              <Badge tone={DECISION_TONE[d]} data-testid="status-badge">
+                {operatorDecisionLabel(d)}
+              </Badge>
+            );
+          })()}
         </div>
         {/* Pass 24 — Source meta. Kullanıcının "bu görsel nereden geldi?"
             sorusunu kart üzerinden cevaplar. Local: dosya adı + klasör

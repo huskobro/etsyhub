@@ -118,7 +118,7 @@ export function BulkDeleteDialog({ ids, open, onClose, onSuccess }: Props) {
               disabled={mutation.isPending}
               className="inline-flex items-center justify-center rounded-md border border-border bg-surface-muted px-4 py-2 text-sm font-medium text-text hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-70"
             >
-              Vazgeç
+              Cancel
             </button>
           </div>
         </Dialog.Content>

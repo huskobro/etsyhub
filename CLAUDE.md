@@ -1835,6 +1835,27 @@ asla persisted final review kararı yazmaz.
   (queued/running/ready/failed) gerçek backend durumuyla uyuşur.
   Eski "enqueue but no db.job row" pattern'i artık yasaktır.
 
+### V'. UI single-source semantik helper'ları (IA-30)
+
+`getOperatorDecision({ reviewStatus, reviewStatusSource })` ve
+`getAiScoreTone({ score, riskFlagCount, thresholds })` review
+surface'inin tek doğruluk kaynağıdır:
+
+- **`getOperatorDecision`** — kart badge'i, focus mode decision pill,
+  filmstrip rengi, breakdown count'ları **aynı** helper'dan beslenir.
+  `source !== USER` ise operator axis'te UNDECIDED. AI advisory hiçbir
+  yerde "Kept/Rejected" görsel diliyle karıştırılmaz.
+- **`getAiScoreTone`** — AI score chip rengi (destructive/warning/
+  success/neutral) deterministic sistem skoruna ve risk flag varlığına
+  göre üretilir. Operator decision badge'i ile **karışmaz**; renk
+  yalnız AI advisory katmanına aittir. Hardcoded hex yok; design
+  system semantic class aileleri kullanılır.
+- **Local rerun productTypeKey** — UI hardcoded değer **gönderir
+  değildir**. Server tarafı asset'in `folderName`'i + operatör
+  mapping'i (alias) + convention'dan resolve eder. Mapping yoksa
+  endpoint 400 döner ve operatöre Settings → Review → Local library
+  altında mapping atamasını söyler.
+
 ### W. Live updates — manuel refresh gerektirmez
 
 Operatör backend değişikliklerini görmek için sayfa yenilemek

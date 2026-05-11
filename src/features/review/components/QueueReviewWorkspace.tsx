@@ -41,6 +41,7 @@ import {
 } from "@/features/review/components/ReviewWorkspaceShell";
 import { EvaluationPanel } from "@/features/review/components/EvaluationPanel";
 import { buildEvaluation } from "@/features/review/lib/evaluation";
+import { getOperatorDecision } from "@/features/review/lib/operator-decision";
 
 interface QueueReviewWorkspaceProps {
   scope: "design" | "local";
@@ -93,15 +94,19 @@ interface QueueReviewWorkspaceProps {
   };
 }
 
-// Pipeline ReviewStatus → canonical operator decision axis. PENDING and
-// NEEDS_REVIEW collapse to UNDECIDED on the operator axis (NEEDS_REVIEW
-// is a pipeline auto-flag — surfaced separately as a risk hint).
+// IA-30 (CLAUDE.md Madde V) — canonical operator decision axis SADECE
+// USER damgalı item'lardan beslenir. AI advisory (suggested status)
+// final karar değildir; source !== USER ise operator axis'te
+// UNDECIDED. Helper tek nokta: getOperatorDecision (cards, filmstrip,
+// scope counts hepsi aynı semantikten geçer).
 function statusToCanonical(
-  s: ReviewQueueItem["reviewStatus"],
+  status: ReviewQueueItem["reviewStatus"],
+  source: ReviewQueueItem["reviewStatusSource"],
 ): CanonicalDecision {
-  if (s === "APPROVED") return "KEPT";
-  if (s === "REJECTED") return "REJECTED";
-  return "UNDECIDED";
+  return getOperatorDecision({
+    reviewStatus: status,
+    reviewStatusSource: source,
+  });
 }
 
 // Reverse map for the legacy /api/review/decisions write path. KEPT →
@@ -317,8 +322,10 @@ export function QueueReviewWorkspace({
 
   const resetMutation = useMutation({
     mutationFn: async () => {
+      // IA-30 — local productTypeKey artık server tarafında resolve
+      // ediliyor (folder mapping > convention > body override). UI
+      // hardcoded değer GÖNDERMEZ.
       const body: Record<string, unknown> = { scope, id: itemId };
-      if (scope === "local") body.productTypeKey = "wall_art";
       const res = await fetch("/api/review/decisions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -339,8 +346,8 @@ export function QueueReviewWorkspace({
   // semantic stays the default; this path is opt-in only.
   const rerunMutation = useMutation({
     mutationFn: async () => {
+      // IA-30 — local productTypeKey server-side resolve (folder mapping).
       const body: Record<string, unknown> = { scope, id: itemId, rerun: true };
-      if (scope === "local") body.productTypeKey = "wall_art";
       const res = await fetch("/api/review/decisions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -421,7 +428,7 @@ export function QueueReviewWorkspace({
   const canGoPrev = idx > 0 || page > 1;
   const canGoNext = idx < items.length - 1 || page < totalPages;
 
-  const currentDecision = statusToCanonical(item.reviewStatus);
+  const currentDecision = statusToCanonical(item.reviewStatus, item.reviewStatusSource);
   const resetEnabled =
     item.reviewStatusSource === "USER" &&
     !decisionMutation.isPending &&
@@ -473,7 +480,7 @@ export function QueueReviewWorkspace({
       errorMessage={errorMessage}
       resetEnabled={resetEnabled}
       itemId={(it) => it.id}
-      filmstripDecisionFor={(it) => statusToCanonical(it.reviewStatus)}
+      filmstripDecisionFor={(it) => statusToCanonical(it.reviewStatus, it.reviewStatusSource)}
       filmstripThumb={(it) => ({ thumbnailUrl: it.thumbnailUrl })}
       itemTitle={(it) =>
         it.source?.kind === "local-library"
@@ -516,13 +523,15 @@ export function QueueReviewWorkspace({
               return {
                 label: `“${folder}” folder`,
                 onTrigger: async () => {
+                  // IA-30 — productTypeKey server-resolve (folder
+                  // mapping → convention). UI hardcoded değer
+                  // göndermez.
                   const r = await fetch("/api/review/scope-trigger", {
                     method: "POST",
                     headers: { "content-type": "application/json" },
                     body: JSON.stringify({
                       scope: "folder",
                       folderName: folder,
-                      productTypeKey: "wall_art",
                     }),
                   });
                   if (!r.ok) {
@@ -603,12 +612,13 @@ function QueueInfoRail({
    *  operator overrides instead of hardcoded 60/90. */
   thresholds: { low: number; high: number } | undefined;
 }) {
-  // IA Phase 17 — full applicability context. Product type, format,
-  // alpha state, and source kind feed the criteria evaluator so
-  // every check renders with the right state (passed / failed /
-  // neutral). Builtin criteria source for now; admin-resolved
-  // criteria flow through worker-side compose, UI side keeps the
-  // builtin labels which are pre-translated to English.
+  // IA Phase 17 — full applicability context. Design item'larda
+  // productType backend'den item.source.productTypeKey ile gelir.
+  // Local item'larda backend mapping'den resolve ediyor (server'da),
+  // UI render için criteria evaluator'ün bir productType'a ihtiyacı
+  // var; backend zaten gerçek productType'la skoru üretti, bu sadece
+  // **görüntüleme** için checklist applicability hesabı. Operatöre
+  // gösterdiğimiz score backend'in deterministic system score'u.
   const productType =
     item.source?.kind === "design"
       ? item.source.productTypeKey ?? "wall_art"

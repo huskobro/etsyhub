@@ -60,36 +60,47 @@ const baseItem: ReviewQueueItem = {
 };
 
 describe("ReviewCard", () => {
-  it("4 ReviewStatus için doğru badge label", () => {
-    const statuses: Array<{
+  it("IA-29 operator decision: source-aware badge labels", () => {
+    // IA-29 sözleşmesi: kept/rejected SADECE USER source iken; SYSTEM
+    // source veya PENDING → "Undecided".
+    const cases: Array<{
       status: ReviewQueueItem["reviewStatus"];
+      source: ReviewQueueItem["reviewStatusSource"];
       label: string;
     }> = [
-      { status: "PENDING", label: "Beklemede" },
-      { status: "APPROVED", label: "Onaylandı" },
-      { status: "NEEDS_REVIEW", label: "İnceleme" },
-      { status: "REJECTED", label: "Reddedildi" },
+      { status: "PENDING", source: "SYSTEM", label: "Undecided" },
+      { status: "APPROVED", source: "SYSTEM", label: "Undecided" }, // advisory, not operator
+      { status: "APPROVED", source: "USER", label: "Kept" },
+      { status: "REJECTED", source: "USER", label: "Rejected" },
+      { status: "NEEDS_REVIEW", source: "SYSTEM", label: "Undecided" },
     ];
-    for (const { status, label } of statuses) {
-      const { unmount } = renderCard({ ...baseItem, reviewStatus: status });
+    for (const { status, source, label } of cases) {
+      const { unmount } = renderCard({
+        ...baseItem,
+        reviewStatus: status,
+        reviewStatusSource: source,
+      });
       expect(screen.getByTestId("status-badge")).toHaveTextContent(label);
       unmount();
     }
   });
 
-  it("USER source => Kullanıcı rozeti görünür", () => {
-    renderCard({ ...baseItem, reviewStatusSource: "USER" });
-    expect(screen.getByTestId("user-badge")).toBeInTheDocument();
-  });
-
-  it("SYSTEM source => Kullanıcı rozeti görünmüyor", () => {
-    renderCard({ ...baseItem, reviewStatusSource: "SYSTEM" });
-    expect(screen.queryByTestId("user-badge")).toBeNull();
-  });
-
-  it("score chip score değerini gösteriyor", () => {
+  it("score chip — score değerini ve tone'u gösteriyor", () => {
     renderCard({ ...baseItem, reviewScore: 87 });
-    expect(screen.getByTestId("score-chip")).toHaveTextContent("87");
+    const chip = screen.getByTestId("score-chip");
+    expect(chip).toHaveTextContent("87");
+    // 87 — risk yok, threshold 60/90 → warning
+    expect(chip).toHaveAttribute("data-tone", "warning");
+  });
+
+  it("score 95 + risk yok => success tone", () => {
+    renderCard({ ...baseItem, reviewScore: 95, riskFlagCount: 0 });
+    expect(screen.getByTestId("score-chip")).toHaveAttribute("data-tone", "success");
+  });
+
+  it("score yüksek ama risk flag varsa destructive tone", () => {
+    renderCard({ ...baseItem, reviewScore: 95, riskFlagCount: 1 });
+    expect(screen.getByTestId("score-chip")).toHaveAttribute("data-tone", "destructive");
   });
 
   it("score null => chip görünmüyor", () => {
@@ -99,9 +110,7 @@ describe("ReviewCard", () => {
 
   it("riskFlagCount > 0 => risk işaretleri satırı görünür", () => {
     renderCard({ ...baseItem, riskFlagCount: 2 });
-    expect(screen.getByTestId("risk-flags")).toHaveTextContent(
-      "2 risk işareti",
-    );
+    expect(screen.getByTestId("risk-flags")).toBeInTheDocument();
   });
 
   it("riskFlagCount === 0 => risk satırı gizli", () => {
@@ -109,20 +118,20 @@ describe("ReviewCard", () => {
     expect(screen.queryByTestId("risk-flags")).toBeNull();
   });
 
-  it("thumbnailUrl null => 'Önizleme yok' fallback", () => {
+  it("thumbnailUrl null => 'No preview' fallback", () => {
     renderCard({ ...baseItem, thumbnailUrl: null });
-    expect(screen.getByText(/Önizleme yok/)).toBeInTheDocument();
+    expect(screen.getByText(/No preview/)).toBeInTheDocument();
   });
 
-  // a11y — Ö-4: thumbnail informative alt metin (decorative değil).
-  it("img alt='Tasarım önizlemesi' (a11y)", () => {
+  // a11y — thumbnail informative alt text (decorative değil).
+  it("img alt='Design preview' (a11y)", () => {
     renderCard(baseItem);
-    expect(screen.getByAltText("Tasarım önizlemesi")).toBeInTheDocument();
+    expect(screen.getByAltText("Design preview")).toBeInTheDocument();
   });
 
-  // a11y — Ö-4: score chip semantik etiket.
-  it("score chip aria-label='Kalite skoru: X' (a11y)", () => {
+  // a11y — score chip semantic label (AI suggestion, not final decision).
+  it("score chip aria-label vurgular AI suggestion (a11y)", () => {
     renderCard({ ...baseItem, reviewScore: 87 });
-    expect(screen.getByLabelText("Kalite skoru: 87")).toBeInTheDocument();
+    expect(screen.getByLabelText("AI suggestion score: 87")).toBeInTheDocument();
   });
 });

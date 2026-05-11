@@ -6,7 +6,7 @@
 //   - Click → POST /api/selection/sets/quick-start { source, referenceId,
 //     batchId, productTypeId } gönderilir.
 //   - Click sırasında kart open (detail drawer) tetiklenmez (stopPropagation).
-//   - Pending state: buton disabled + label "Açılıyor..."
+//   - Pending state: buton disabled + label "Opening…"
 //   - Success: router.push(`/selection/sets/${setId}`) çağrılır.
 //
 // Phase 6 baseline regression: yeni alanlar opsiyonel — mevcut testler
@@ -128,7 +128,7 @@ describe("ReviewCard — Phase 7 Task 38 Quick start CTA", () => {
     fireEvent.click(screen.getByTestId("quick-start-button"));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/selection/sets/set-cuid-42");
+      expect(pushMock).toHaveBeenCalledWith("/selections/set-cuid-42");
     });
   });
 
@@ -144,7 +144,7 @@ describe("ReviewCard — Phase 7 Task 38 Quick start CTA", () => {
     fireEvent.click(screen.getByTestId("quick-start-button"));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/selection/sets/set-cuid-99");
+      expect(pushMock).toHaveBeenCalledWith("/selections/set-cuid-99");
     });
     // Hiçbir push çağrısı detail URL pattern'i içermemeli (?detail=...).
     for (const call of pushMock.mock.calls) {
@@ -170,7 +170,7 @@ describe("ReviewCard — Phase 7 Task 38 Quick start CTA", () => {
 
     await waitFor(() => {
       expect(btn).toBeDisabled();
-      expect(btn).toHaveTextContent("Açılıyor...");
+      expect(btn).toHaveTextContent("Opening…");
     });
 
     // cleanup: pending promise'i çöz

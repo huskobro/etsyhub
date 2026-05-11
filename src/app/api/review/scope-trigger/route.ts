@@ -23,13 +23,18 @@ import { requireUser } from "@/server/session";
 import { db } from "@/server/db";
 import { enqueueReviewDesign } from "@/server/services/review/enqueue";
 import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
+import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
+import { resolveLocalFolder } from "@/features/settings/local-library/folder-mapping";
 import { logger } from "@/lib/logger";
 
 const BodySchema = z.discriminatedUnion("scope", [
   z.object({
     scope: z.literal("folder"),
     folderName: z.string().min(1).max(512),
-    productTypeKey: z.string().min(1),
+    // IA-30 — UI artık hardcoded productTypeKey GÖNDERMEZ. Server
+    // folderProductTypeMap (alias) veya convention'dan resolve eder;
+    // mapping yoksa 400 döner ve operatöre mapping atamasını söyler.
+    productTypeKey: z.string().min(1).optional(),
   }),
   z.object({
     scope: z.literal("batch"),
@@ -90,7 +95,22 @@ export const POST = withErrorHandling(async (req: Request) => {
         enqueueErrors: 0,
       });
     }
-    const productTypeKey = parsed.data.productTypeKey;
+    // IA-30 — productTypeKey resolve: body override → folderProductTypeMap
+    // → convention. Mapping yoksa rerun yapamayız.
+    let productTypeKey: string | null = parsed.data.productTypeKey ?? null;
+    if (!productTypeKey) {
+      const settings = await getUserLocalLibrarySettings(user.id);
+      const r = resolveLocalFolder({
+        folderName: parsed.data.folderName,
+        folderMap: settings.folderProductTypeMap ?? {},
+      });
+      if (r.kind === "mapped") productTypeKey = r.productTypeKey;
+    }
+    if (!productTypeKey) {
+      throw new ValidationError(
+        `No productType mapping for folder "${parsed.data.folderName}". Assign one in Settings → Review → Local library, or include productTypeKey in the request body.`,
+      );
+    }
     const results = await Promise.all(
       candidates.map(async (c) => {
         try {
@@ -217,7 +237,7 @@ export const POST = withErrorHandling(async (req: Request) => {
       userId: user.id,
       deletedAt: null,
       jobId: { in: batchJobs.map((j) => j.id) },
-      reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      reviewStatus: "PENDING",
       reviewProviderSnapshot: null,
     },
     select: { id: true },

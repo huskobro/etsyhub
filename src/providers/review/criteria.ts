@@ -485,7 +485,7 @@ Risk flag kinds — choose only from this list:
 
 Strict rules:
 - Use the JSON keys exactly: "score", "textDetected", "gibberishDetected", "riskFlags", "kind", "confidence", "reason", "summary".
-- "reason" and "summary" values may be plain English prose; everything else stays as listed.
+- "reason" and "summary" values MUST be written in English ONLY. Do not respond in Turkish, German, French, or any other language under any circumstances.
 - If no risks, return riskFlags = [].
 - Output JSON only — no prose outside the object.`;
 

@@ -22,8 +22,6 @@ import { getActiveLocalRootFilter } from "@/server/services/local-library/active
 // MJ batch — next pending batchId for the same user
 // ────────────────────────────────────────────────────────────────────────
 
-const MJ_BATCH_METADATA_PATH = ["batchId"];
-
 /**
  * Resolve the next batch (other than `currentBatchId`) that has
  * undecided MidjourneyAssets for this user. Returns null when no
@@ -101,11 +99,6 @@ export async function getNextPendingBatchId(args: {
   return { batchId: oldestBatchId, createdAt: oldestCreatedAt };
 }
 
-// Type sanity check — used by the JSON path filter on batchId queries.
-const _MJ_BATCH_METADATA_PATH_TYPE_GUARD: ReadonlyArray<string> =
-  MJ_BATCH_METADATA_PATH;
-void _MJ_BATCH_METADATA_PATH_TYPE_GUARD;
-
 // ────────────────────────────────────────────────────────────────────────
 // Local folder — next pending folder for the same user
 // ────────────────────────────────────────────────────────────────────────
@@ -142,7 +135,7 @@ export async function getNextPendingFolderName(args: {
       userId,
       deletedAt: null,
       isUserDeleted: false,
-      reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      reviewStatus: "PENDING",
       ...rootFilter,
       ...(currentFolderName !== null
         ? { folderName: { not: currentFolderName } }
@@ -178,7 +171,7 @@ export async function getNextPendingFolderName(args: {
       deletedAt: null,
       isUserDeleted: false,
       folderName: winner.folderName,
-      reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+      reviewStatus: "PENDING",
       ...rootFilter,
     },
     orderBy: { createdAt: "asc" },
@@ -240,7 +233,7 @@ export async function getAdjacentPendingFolders(args: {
         userId,
         deletedAt: null,
         isUserDeleted: false,
-        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        reviewStatus: "PENDING",
         ...rootFilter,
       },
     }),
@@ -283,7 +276,7 @@ export async function getAdjacentPendingFolders(args: {
         deletedAt: null,
         isUserDeleted: false,
         folderName,
-        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        reviewStatus: "PENDING",
         ...rootFilter,
       },
       orderBy: { createdAt: "asc" },
@@ -328,7 +321,7 @@ export async function getAdjacentPendingReferences(args: {
       where: {
         userId,
         deletedAt: null,
-                reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+                reviewStatus: "PENDING",
       },
     }),
   ]);
@@ -369,7 +362,7 @@ export async function getAdjacentPendingReferences(args: {
         userId,
         deletedAt: null,
         referenceId: refId,
-        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        reviewStatus: "PENDING",
       },
       orderBy: { createdAt: "asc" },
       select: { id: true },
@@ -412,7 +405,7 @@ export async function listPendingScopes(args: {
         userId,
         deletedAt: null,
         isUserDeleted: false,
-        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        reviewStatus: "PENDING",
         ...rootFilter,
       },
       _count: { id: true },
@@ -427,7 +420,7 @@ export async function listPendingScopes(args: {
             deletedAt: null,
             isUserDeleted: false,
             folderName: g.folderName,
-            reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+            reviewStatus: "PENDING",
             ...rootFilter,
           },
           orderBy: { createdAt: "asc" },
@@ -450,7 +443,7 @@ export async function listPendingScopes(args: {
       where: {
         userId,
         deletedAt: null,
-                reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+                reviewStatus: "PENDING",
       },
       _count: { id: true },
       orderBy: { referenceId: "asc" },
@@ -467,7 +460,7 @@ export async function listPendingScopes(args: {
               userId,
               deletedAt: null,
               referenceId: refId,
-              reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+              reviewStatus: "PENDING",
             },
             orderBy: { createdAt: "asc" },
             select: { id: true },
@@ -477,7 +470,7 @@ export async function listPendingScopes(args: {
               userId,
               deletedAt: null,
               referenceId: refId,
-              reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+              reviewStatus: "PENDING",
             },
           }),
         ]);
@@ -520,7 +513,7 @@ export async function listPendingScopes(args: {
             userId,
             deletedAt: null,
             jobId: { in: info.jobIds },
-            reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+            reviewStatus: "PENDING",
           },
           orderBy: { createdAt: "asc" },
           select: { id: true },
@@ -530,7 +523,7 @@ export async function listPendingScopes(args: {
             userId,
             deletedAt: null,
             jobId: { in: info.jobIds },
-            reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+            reviewStatus: "PENDING",
           },
         }),
       ]);
@@ -576,7 +569,7 @@ export async function getTotalReviewPendingCount(
       where: {
         userId,
         deletedAt: null,
-        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        reviewStatus: "PENDING",
       },
     }),
     db.localLibraryAsset.count({
@@ -584,7 +577,7 @@ export async function getTotalReviewPendingCount(
         userId,
         deletedAt: null,
         isUserDeleted: false,
-        reviewStatus: { in: ["PENDING", "NEEDS_REVIEW"] },
+        reviewStatus: "PENDING",
         ...rootFilter,
       },
     }),

@@ -1375,8 +1375,7 @@ function TechnicalRuleEditor({
 //   • bir productType atayabilir (auto-enqueue tetiklenir)
 //   • __ignore__ ile yok sayabilir (klasör atlanır, asla enqueue olmaz)
 //   • mapping yoksa "pending" — UI listede gösterir, operatör atar
-// Aynı bölümde root folder + scan tetikleme de yer alır (yetim
-// LocalLibrarySettingsPanel'i tek surface'e topladık).
+// Aynı bölümde root folder + scan tetikleme de yer alır.
 // ────────────────────────────────────────────────────────────────────────
 
 const PRODUCT_TYPE_OPTIONS = [

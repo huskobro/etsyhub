@@ -60,6 +60,8 @@ import { withErrorHandling } from "@/lib/http";
 import { ValidationError, NotFoundError } from "@/lib/errors";
 import { db } from "@/server/db";
 import { enqueueReviewDesign } from "@/server/services/review/enqueue";
+import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
+import { resolveLocalFolder } from "@/features/settings/local-library/folder-mapping";
 import { logger } from "@/lib/logger";
 
 // USER yalnızca APPROVED veya REJECTED yazabilir. PENDING/NEEDS_REVIEW SYSTEM
@@ -88,7 +90,11 @@ const PatchSchema = z.discriminatedUnion("scope", [
   z.object({
     scope: z.literal("local"),
     id: z.string().cuid(),
-    productTypeKey: z.string().min(1),
+    // IA-30 — productTypeKey artık optional. UI hardcoded "wall_art"
+    // göndermek zorunda değil; server folder mapping veya asset'in
+    // folderName'inden resolve eder. Yine de override için body'de
+    // gelebilir (örn. admin script).
+    productTypeKey: z.string().min(1).optional(),
     rerun: z.boolean().optional(),
   }),
 ]);
@@ -259,7 +265,12 @@ export const PATCH = withErrorHandling(async (req: Request) => {
     });
   }
 
-  // scope === "local" — productTypeKey Zod garanti ediyor (string min(1)).
+  // scope === "local"
+  // IA-30 — productTypeKey resolve sırası:
+  //   1. body.productTypeKey (operator/admin override)
+  //   2. folderProductTypeMap[asset.folderName] (operator alias)
+  //   3. convention: folderName bilinen productType ise onu kullan
+  //   4. yoksa rerun yapılamaz (400) — operatöre mapping atamasını söyle
   const asset = await db.localLibraryAsset.findFirst({
     where: {
       id: parsed.data.id,
@@ -267,10 +278,27 @@ export const PATCH = withErrorHandling(async (req: Request) => {
       deletedAt: null,
       isUserDeleted: false,
     },
-    select: { id: true },
+    select: { id: true, folderName: true },
   });
   if (!asset) {
     throw new NotFoundError();
+  }
+  let resolvedProductTypeKey = parsed.data.productTypeKey ?? null;
+  if (!resolvedProductTypeKey) {
+    const settings = await getUserLocalLibrarySettings(user.id);
+    const folderMap = settings.folderProductTypeMap ?? {};
+    const r = resolveLocalFolder({
+      folderName: asset.folderName,
+      folderMap,
+    });
+    if (r.kind === "mapped") resolvedProductTypeKey = r.productTypeKey;
+  }
+  // Rerun istenmiyorsa productTypeKey gerekli değil (sadece reset).
+  const wantsRerun = parsed.data.rerun === true;
+  if (wantsRerun && !resolvedProductTypeKey) {
+    throw new ValidationError(
+      "Could not resolve productTypeKey for this local asset. Map the folder in Settings → Review → Local library first, or include productTypeKey in the request body.",
+    );
   }
 
   // IA Phase 25 — preserve-by-default reset (local branch).
@@ -311,7 +339,8 @@ export const PATCH = withErrorHandling(async (req: Request) => {
         payload: {
           scope: "local",
           localAssetId: parsed.data.id,
-          productTypeKey: parsed.data.productTypeKey,
+          // IA-30 — server-resolved (mapping > convention > body override)
+          productTypeKey: resolvedProductTypeKey!,
         },
       });
       rerunEnqueued = true;

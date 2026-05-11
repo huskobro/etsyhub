@@ -83,10 +83,10 @@ export function BulkApproveDialog({
 
   const description = (
     <span>
-      <strong className="text-text">{hint.riskyCount}</strong> design(s) with
+      <strong className="text-text">{hint.riskyCount}</strong> item(s) with
       risk flags will be skipped;{" "}
-      <strong className="text-text">{hint.safeCount}</strong> clean design(s)
-      will be marked as Approve anyway.
+      <strong className="text-text">{hint.safeCount}</strong> clean item(s)
+      will be marked as Kept.
     </span>
   );
 
@@ -96,9 +96,9 @@ export function BulkApproveDialog({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`Approve ${ids.length} design${ids.length === 1 ? "" : "s"}`}
+      title={`Keep ${ids.length} item${ids.length === 1 ? "" : "s"}`}
       description={description}
-      confirmLabel="Approve"
+      confirmLabel="Keep"
       cancelLabel="Cancel"
       tone="neutral"
       busy={mutation.isPending}

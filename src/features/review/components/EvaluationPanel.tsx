@@ -405,12 +405,50 @@ export function EvaluationPanel({
         </>
       ) : (
         <>
+          {/* IA-30 (B3) — Operator decision lifecycle-bağımsız.
+           *   Operatör Keep/Reject damgalı item için panel "not queued"
+           *   empty state göstermez; canonical karar görünür. */}
+          {evaluation.decisionOutcome ? (
+            <div
+              className="mt-3 rounded-md border border-white/10 bg-white/[0.04] px-3 py-2"
+              data-testid="evaluation-decision-outcome"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-meta text-white/55">
+                  Stored decision
+                </span>
+                <span
+                  className={cn(
+                    "rounded-md px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta",
+                    evaluation.decisionOutcome.status === "APPROVED"
+                      ? "bg-emerald-500/15 text-emerald-200"
+                      : evaluation.decisionOutcome.status === "REJECTED"
+                        ? "bg-rose-500/15 text-rose-200"
+                        : "bg-white/10 text-white/75",
+                  )}
+                  data-testid="evaluation-decision-status"
+                >
+                  {evaluation.decisionOutcome.status === "APPROVED"
+                    ? "Kept"
+                    : evaluation.decisionOutcome.status === "REJECTED"
+                      ? "Rejected"
+                      : "Operator decision"}
+                </span>
+              </div>
+              <p
+                className="mt-1.5 text-[11px] leading-relaxed text-white/65"
+                data-testid="evaluation-decision-reason"
+              >
+                {evaluation.decisionOutcome.reason}
+              </p>
+            </div>
+          ) : null}
           <p
             className="mt-2 text-xs leading-relaxed text-white/60"
             data-testid="evaluation-empty-copy"
           >
             {lifecycle === "not_queued" || lifecycle === "pending"
-              ? "This asset has not been queued for review yet."
+              ? "AI has not evaluated this asset yet."
               : lifecycle === "queued"
                 ? "Queued for review — the worker will pick this up shortly."
                 : lifecycle === "running" || lifecycle === "scoring"

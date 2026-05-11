@@ -102,8 +102,8 @@ export function BulkActionsBar({ scope }: Props) {
           clear();
           setResultMessage(
             result.skippedRisky > 0
-              ? `${result.approved} tasarım onaylandı, ${result.skippedRisky} risk işaretli atlandı.`
-              : `${result.approved} tasarım onaylandı.`,
+              ? `${result.approved} kept, ${result.skippedRisky} risky skipped.`
+              : `${result.approved} kept.`,
           );
         }}
       />
@@ -115,7 +115,7 @@ export function BulkActionsBar({ scope }: Props) {
         onSuccess={(result) => {
           close();
           clear();
-          setResultMessage(`${result.rejected} tasarım reddedildi.`);
+          setResultMessage(`${result.rejected} rejected.`);
         }}
       />
       {scope === "local" ? (
@@ -126,7 +126,7 @@ export function BulkActionsBar({ scope }: Props) {
           onSuccess={(result) => {
             close();
             clear();
-            setResultMessage(`${result.deleted} asset silindi.`);
+            setResultMessage(`${result.deleted} asset${result.deleted === 1 ? "" : "s"} deleted.`);
           }}
         />
       ) : null}
