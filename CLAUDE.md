@@ -1938,14 +1938,22 @@ actionable mesaj gösterir (ne yapması gerektiğini söyler, teknik kod vermez)
 
 **Local discovery — hybrid model (IA-39+ final karar):**
 
-Local asset keşfi üç tetikleme yolundan biriyle yapılır; bunlar birbirini
-dışlamaz ve aynı anda aktif olabilir:
+**Garanti / ortam bağımlı ayrımı — bu ayrım kritiktir:**
 
-| Yol | Tetikleyici | Nasıl çalışır |
+- **Garanti (her ortamda):** Manuel "Scan now" — yalnız Next.js web app ayakta
+  olması yeterli. Worker process gerektirmez.
+- **Ortam bağımlı (worker process gerektirir):** Event-driven watcher ve
+  periodic scan, yalnız `npm run worker` çalışırken aktiftir. Worker yoksa
+  her ikisi de devre dışıdır; `discoveryMode = "manual_only"` görünür.
+- **Deployment koşulu:** Bu proje localhost-first, single-machine. Operatör
+  iki ayrı process başlatmak zorundadır: `npm run dev` + `npm run worker`.
+  Worker otomatik başlamaz. Bu belgelenmiş bir deployment koşuludur.
+
+| Yol | Koşul | Garanti mi? |
 |---|---|---|
-| **Event-driven** (chokidar) | Dosya/klasör sisteme eklenince | Worker process'te chokidar v3 FSWatcher; 1s debounce; `SCAN_LOCAL_FOLDER` kuyruğa alır |
-| **Periodic** (BullMQ repeat) | Belirli aralıklarla | `localScanIntervalMinutes > 0` ise `*/N * * * *` cron pattern; Settings PUT'ta upsert/cancel |
-| **Manuel** | Operatör "Scan now" tıklar | Anında SCAN_LOCAL_FOLDER job kuyruğa alınır |
+| **Event-driven** (chokidar) | `npm run worker` çalışıyor + `localAutoEnqueue=true` | **Ortam bağımlı** |
+| **Periodic** (BullMQ repeat) | `npm run worker` çalışıyor + `localScanIntervalMinutes > 0` | **Ortam bağımlı** |
+| **Manuel** ("Scan now") | Yalnız web app ayakta olması yeterli | **Garanti** |
 
 `discoveryMode` hesaplama (Settings → Review → ops alanı):
 

@@ -606,12 +606,12 @@ function ReviewOpsSection({
           data-testid="ops-discovery-mode"
           title={
             ops.discoveryMode === "event+periodic"
-              ? "File watcher active + periodic scan scheduled"
+              ? "Worker running: file watcher active + periodic scan scheduled"
               : ops.discoveryMode === "event_only"
-                ? "File watcher active (no periodic scan)"
+                ? "Worker running: file watcher active, no periodic scan"
                 : ops.discoveryMode === "periodic_only"
-                  ? "Periodic scan only (no real-time watcher)"
-                  : "Manual scan only — no automatic discovery active"
+                  ? "Worker running: periodic scan only, file watcher inactive"
+                  : "Worker not running — only manual Scan now is available"
           }
         >
           {ops.discoveryMode}
@@ -626,7 +626,7 @@ function ReviewOpsSection({
                 : ""}
             </span>
           ) : (
-            <span className="text-ink-3">inactive</span>
+            <span className="text-ink-3">inactive — start worker to enable</span>
           )}
         </dd>
         {ops.watcherLastTriggerAt ? (
@@ -2008,11 +2008,13 @@ function AutomationSection({
       </h3>
       <p className="mt-2 text-xs text-ink-3">
         Controls whether the system auto-enqueues review scoring when
-        new assets are produced or discovered. Local discovery uses a
-        real-time file watcher (event-driven) plus an optional periodic
-        scan fallback. Disabling stops new enqueues; existing queued
-        jobs are unaffected. Current discovery status is shown in
-        Review operations above.
+        new assets are produced or discovered. Local auto-discovery
+        (file watcher + periodic scan) requires the worker process to
+        be running (<code className="font-mono">npm run worker</code>).
+        If the worker is not running, the file watcher shows{" "}
+        <span className="font-mono">inactive</span> and only manual
+        "Scan now" is available. Disabling these toggles stops new
+        enqueues; existing queued jobs are unaffected.
       </p>
       <div className="mt-3 space-y-2.5" data-testid="automation-toggles">
         <label
