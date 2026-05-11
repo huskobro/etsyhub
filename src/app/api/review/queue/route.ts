@@ -104,6 +104,12 @@ const QuerySchema = z.object({
   // referansa zoom yapmak: o reference'ın tüm variation'ları
   // bir scope identity oluşturur. Folder'a paralel mantık.
   reference: z.string().trim().min(1).max(120).optional(),
+  // IA-34 — batch scope (AI design only). Job.metadata.batchId
+  // üzerinden filtre. Aynı reference'tan farklı batch'lerde üretilen
+  // variation'lar var; default deep-link scope = batch (reference
+  // ancak explicit verildiğinde baskın). Reference + batch ikisi de
+  // varsa batch baskın (page loader explicit kontrole sahip).
+  batch: z.string().trim().min(1).max(120).optional(),
 });
 
 const PAGE_SIZE = 24;
@@ -135,8 +141,33 @@ export const GET = withErrorHandling(async (req: Request) => {
     );
   }
 
-  const { scope, status, page, q, folder, reference } = parsed.data;
+  const { scope, status, page, q, folder, reference, batch } = parsed.data;
   const skip = (page - 1) * PAGE_SIZE;
+
+  // IA-34 — batch lineage `Job.metadata.batchId` üzerinden filtre.
+  // Aynı batchId taşıyan tüm jobId'leri toplar; design row'larını bu
+  // jobId set'iyle filtreler. Reference ile birlikte verilirse batch
+  // baskındır (page loader explicit kontrole sahip; queue endpoint
+  // sadece filter uygular).
+  let batchJobIds: string[] | null = null;
+  if (batch && scope === "design") {
+    const jobs = await db.job.findMany({
+      where: { userId: user.id, type: "GENERATE_VARIATIONS" as never },
+      select: { id: true, metadata: true },
+    });
+    batchJobIds = jobs
+      .filter((j) => {
+        const md = j.metadata as Record<string, unknown> | null;
+        return (
+          md && typeof md === "object" && md.batchId === batch
+        );
+      })
+      .map((j) => j.id);
+    // Batch hiçbir job'la eşleşmiyorsa empty result için sentinel
+    // ([""]) — Prisma `jobId in []` boş set'i geri döner ama bu
+    // davranış sürüm-bağımlı; explicit "" garanti boş.
+    if (batchJobIds.length === 0) batchJobIds = [""];
+  }
 
   // IA Phase 27 (CLAUDE.md Madde R) — admin-resolved thresholds flow
   // alongside the queue payload so the client decision derivation
@@ -154,10 +185,15 @@ export const GET = withErrorHandling(async (req: Request) => {
       userId: user.id,
       deletedAt: null,
       ...(status ? { reviewStatus: status } : {}),
-      // IA Phase 19 — reference scope ZOOM (design-only). Single
-      // reference's variations form a scope identity (CLAUDE.md
-      // Madde M).
-      ...(reference ? { referenceId: reference } : {}),
+      // IA-34 — scope priority: batch > reference. Batch dominantsa
+      // referenceId filter UYGULAMA (queue scope'u batch ile tanımlı).
+      // Caller (page loader) batch baskınsa reference param'ını
+      // göndermez; bu doğrudan koruma sadece API guard'ı.
+      ...(batchJobIds
+        ? { jobId: { in: batchJobIds } }
+        : reference
+          ? { referenceId: reference }
+          : {}),
       // IA Phase 15 — search across product type key + reference id
       // suffix. Reference.notes is the operator-meaningful free-text
       // field; productType.key is the canonical taxonomy chip the
@@ -262,6 +298,25 @@ export const GET = withErrorHandling(async (req: Request) => {
         .filter((it) => it.reviewedAt && it.reviewProviderSnapshot)
         .map((it) => it.id),
     );
+    // IA-34 — batchId resolve. Job.metadata.batchId üzerinden. Card
+    // primary scope label batch baskın olduğundan UI'a `batchShortId`
+    // expose ediyoruz. Tek round-trip; jobId in (...) ile bulk fetch.
+    const jobIds = items
+      .map((it) => it.jobId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const jobBatchMap = new Map<string, string>();
+    if (jobIds.length > 0) {
+      const jobs = await db.job.findMany({
+        where: { id: { in: jobIds } },
+        select: { id: true, metadata: true },
+      });
+      for (const j of jobs) {
+        const md = j.metadata as Record<string, unknown> | null;
+        if (md && typeof md === "object" && typeof md.batchId === "string") {
+          jobBatchMap.set(j.id, md.batchId);
+        }
+      }
+    }
     const lifecycleMap = await resolveReviewLifecycle({
       userId: user.id,
       scope: "design",
@@ -329,6 +384,13 @@ export const GET = withErrorHandling(async (req: Request) => {
             kind: "design" as const,
             productTypeKey: it.productType?.key ?? null,
             referenceShortId: it.referenceId ? it.referenceId.slice(-6) : null,
+            // IA-34 — batch dominance. Card primary scope label batch
+            // varsa "batch-XXXXXX" gösterir; yoksa reference. UI tek
+            // helper'dan resolve eder.
+            batchId: it.jobId ? jobBatchMap.get(it.jobId) ?? null : null,
+            batchShortId: it.jobId
+              ? (jobBatchMap.get(it.jobId)?.slice(-6) ?? null)
+              : null,
             createdAt: it.createdAt.toISOString(),
             // IA Phase 9 — file metadata for the unified focus
             // workspace info-rail. width/height are nullable on Asset
@@ -354,10 +416,11 @@ export const GET = withErrorHandling(async (req: Request) => {
       // (operatörün filtre kombinasyonu); folder kavramı yok.
       // Breakdown undecided/kept/discarded scope cardinality üzerinden;
       // decided türetilebilir.
-      scope: reference
+      // IA-34 — scope priority: batch > reference > queue.
+      scope: batch
         ? {
-            kind: "reference" as const,
-            label: reference,
+            kind: "batch" as const,
+            label: batch,
             total: total,
             cardinality: status
               ? total
@@ -368,18 +431,32 @@ export const GET = withErrorHandling(async (req: Request) => {
               discarded: discardedCount,
             },
           }
-        : {
-            kind: "queue" as const,
-            total: total,
-            cardinality: status
-              ? total
-              : undecidedCount + keptCount + discardedCount,
-            breakdown: {
-              undecided: undecidedCount,
-              kept: keptCount,
-              discarded: discardedCount,
+        : reference
+          ? {
+              kind: "reference" as const,
+              label: reference,
+              total: total,
+              cardinality: status
+                ? total
+                : undecidedCount + keptCount + discardedCount,
+              breakdown: {
+                undecided: undecidedCount,
+                kept: keptCount,
+                discarded: discardedCount,
+              },
+            }
+          : {
+              kind: "queue" as const,
+              total: total,
+              cardinality: status
+                ? total
+                : undecidedCount + keptCount + discardedCount,
+              breakdown: {
+                undecided: undecidedCount,
+                kept: keptCount,
+                discarded: discardedCount,
+              },
             },
-          },
       // IA Phase 27 (CLAUDE.md Madde R) — settings-driven policy
       // surfaces alongside the items so client decision derivation
       // mirrors the worker's source of truth.

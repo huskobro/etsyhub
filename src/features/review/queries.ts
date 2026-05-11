@@ -47,6 +47,12 @@ export type ReviewQueueSourceDesign = {
   kind: "design";
   productTypeKey: string | null;
   referenceShortId: string | null;
+  /** IA-34 — batch lineage. Card primary scope label batch baskın
+   *  olduğundan UI bu alanı önce kontrol eder; batch yoksa reference
+   *  shortId'ye düşer. `batchId` deep-link için tam id, `batchShortId`
+   *  display için son 6 karakter. */
+  batchId: string | null;
+  batchShortId: string | null;
   createdAt: string;
   // IA Phase 9 — focus workspace info-rail metadata.
   mimeType: string;
@@ -195,6 +201,10 @@ type Params = {
   /** IA Phase 19 — reference scope ZOOM (design-only). Single
    *  reference's variations form a scope identity. */
   reference?: string;
+  /** IA-34 — batch scope ZOOM (design-only). `Job.metadata.batchId`
+   *  üzerinden filtre. Default deep-link scope = batch (reference
+   *  ancak explicit verildiğinde baskın). */
+  batch?: string;
 };
 
 /** Resolve the effective server-side status for cache key + URL. */
@@ -215,6 +225,8 @@ export const reviewQueueQueryKey = (params: Params) =>
     params.folder?.trim() ? params.folder.trim() : "",
     // IA Phase 19 — reference zoom (design-only) in cache key.
     params.reference?.trim() ? params.reference.trim() : "",
+    // IA-34 — batch zoom (design-only) in cache key.
+    params.batch?.trim() ? params.batch.trim() : "",
   ] as const;
 
 export function useReviewQueue(params: Params) {
@@ -255,6 +267,8 @@ export function useReviewQueue(params: Params) {
       if (trimmedFolder) url.searchParams.set("folder", trimmedFolder);
       const trimmedRef = params.reference?.trim();
       if (trimmedRef) url.searchParams.set("reference", trimmedRef);
+      const trimmedBatch = params.batch?.trim();
+      if (trimmedBatch) url.searchParams.set("batch", trimmedBatch);
 
       const res = await fetch(url.toString());
       if (!res.ok) {

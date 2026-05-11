@@ -1961,26 +1961,63 @@ yönlendirmeye yol açar.
 Yeni count consumer eklenirken aynı axis kullanılır. PENDING-only
 axis kullanılmaz — invariant kırılır.
 
-### X+. Topbar workspace anchor vs scope copy (IA-33)
+### X+. Topbar source-specific pending vs scope copy (IA-34)
 
-Review topbar iki ayrı sayım blokunu **görsel olarak ayırır**:
+Review focus topbar üç ayrı sayım katmanını **görsel olarak ayırır**:
 
-- **Sol blok** — `141 ALL PENDING`. Bu **workspace anchor**: MJ + AI +
-  Local tüm source/scope'ların `reviewStatusSource != USER` toplam
-  sayısı (`getTotalReviewPendingCount`). AI ve Local focus mode'da
-  aynı sayı görünür çünkü bilinçli olarak global. Copy "ALL PENDING"
-  → operatör bu sayıyı current scope sanmaz. (CLAUDE.md Madde H —
-  workspace-wide anchor.)
+- **Sol blok** — `22 AI PENDING` veya `67 LOCAL PENDING`. Bu
+  **current source pending**: hangi source'a bakılıyorsa o source'un
+  operator-undecided sayısı (`getSourcePendingCount({ source })`).
+  AI ve Local focus mode'da farklı sayılar görünür — operatör hangi
+  source'a baktığını sayıdan da okur. Workspace-wide global anchor
+  (`getTotalReviewPendingCount`, "ALL PENDING") **review focus
+  topbar'da kullanılmaz**; gelecekte dashboard gibi başka surface'lere
+  ayrı olarak tüketilir (IA-33 kararı IA-34'te revize: "ALL PENDING"
+  topbar'da yanıltıcıydı — kaldırıldı).
 - **Sağ blok** — `THIS SCOPE 12 UNDECIDED · 0 KEPT · 0 DISCARDED`.
   Bu **current scope breakdown**: queue endpoint
-  `scope.breakdown` payload'ı (folder/reference/batch/queue
-  cardinality üzerinden). "THIS SCOPE" prefix etiketi ile anchor'dan
-  net ayrılır.
+  `scope.breakdown` payload'ı (batch / folder / reference / queue
+  cardinality üzerinden). "THIS SCOPE" prefix etiketi ile source
+  pending'den net ayrılır.
+- **Item index** — `Item N / M`. M = current scope cardinality
+  (resolved scope kind'a göre — batch dominant ise batch toplam).
 
-Yeni count consumer eklenirken aynı dil kullanılır: workspace-wide
-sayım "ALL …" veya "global …" prefix'i; scope-içi sayım "THIS
-SCOPE …" prefix'i. Tek-kelime label (sadece "REVIEW PENDING")
-operatörü yanıltır — kullanılmaz.
+Yeni count consumer eklenirken aynı dil kullanılır: source-içi sayım
+"ai pending" / "local pending" prefix'i; scope-içi sayım "THIS
+SCOPE …" prefix'i. Workspace-wide global anchor (eğer ileride başka
+yüzeyde gösterilirse) "ALL …" prefix'i ve **ayrı bir surface
+sorumluluğu** olarak yaşamalı — review focus topbar'a sızdırılmaz.
+
+### X++. Scope priority — batch > folder > reference > source all (IA-34)
+
+AI Designs source'da bir item hem batch hem reference lineage'i
+taşıyorsa, **default scope = batch**:
+
+- Aynı reference görselinden farklı batch'lerde farklı variation
+  setleri üretilebilir; operatör çoğu zaman "şu batch'i temizliyorum"
+  mantığıyla çalışır.
+- Page loader item'ın `jobId`'sini → `Job.metadata.batchId`'sini
+  resolve eder; batchId varsa default scope batch, picker kind
+  batch, queue API param `batch=<id>`.
+- Explicit `?scope=reference` URL param'ı dominance'ı override eder;
+  operatör reference scope'a düşmek isterse açıkça seçer.
+- Reference fallback: batch lineage yok veya explicit reference
+  scope seçili → `kind: "reference"`.
+- Local source: folder zaten doğal dominant (batch lineage local
+  asset'lerde uygulanmaz).
+- Source all: hiçbir scope identity verilmemişse `kind: "queue"`
+  (default queue mode).
+
+Bu öncelik **hem focus mode hem grid kart metadata** seviyesinde
+uygulanır:
+- ReviewCard `source.batchShortId` → `batch-XXXXXX` (primary scope
+  label); yoksa `source.referenceShortId` → `ref-XXXXXX` (fallback).
+- Focus topbar scope label, scope picker kind, filmstrip, next/prev
+  scope navigation aynı priority'yi takip eder.
+
+Queue endpoint response'unda her design item için `source.batchId` +
+`source.batchShortId` projecte edilir (job metadata bulk fetch ile;
+N+1 yok). UI bu alanları source-agnostic helper olarak kullanır.
 
 ### Y. Card preview parity — content-type aware object-fit (IA-32)
 
@@ -2000,6 +2037,22 @@ import zamanında doldurulur; UI bu sinyale yaslanır.
 
 Legacy rows (`hasAlpha = null`) fallback olarak `object-cover`
 alır — eski JPEG fotografik content için doğru karar.
+
+### Y++. Info-rail collapsible sections — visual consistency (IA-34)
+
+Review focus mode sağ panelinde uzun metadata blokları (`File`,
+`Variation`, `Provider`, `Rerun review`, `Stored decision`)
+**collapsible** olur; default kapalı. Visual pattern aynı:
+
+- Header: `<button aria-expanded aria-controls>` + `SectionTitle`
+- Toggle glyph: `+` (kapalı) / `−` (açık). **`Show / Hide` metni
+  kullanılmaz** — text varyasyonu görsel gürültü yapar.
+- Kapalı durumda kısa özet satırı (örn. file name) operatörü
+  bağlamda tutar; tam detay açıldığında görünür.
+
+CLAUDE.md Madde Q (information density without clutter) gereği:
+operatör panelin scroll'una düşmemeli. Yeni info-rail section
+eklenirken aynı pattern kullanılır.
 
 ### Y+. Focus stage full-resolution asset (IA-33)
 

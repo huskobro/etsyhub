@@ -54,6 +54,7 @@ import {
   getNextPendingBatchId,
   getNextPendingFolderName,
   getTotalReviewPendingCount,
+  getSourcePendingCount,
   listPendingScopes,
 } from "@/server/services/review/next-scope";
 import { db } from "@/server/db";
@@ -71,6 +72,8 @@ type SearchParams = {
   source?: string;
   item?: string;
   decision?: string;
+  // IA-34 — explicit scope override (default batch dominant for design).
+  scope?: string;
 };
 
 function parseDecisionParam(
@@ -242,6 +245,7 @@ export default async function ReviewPage({
     // and the shell can resolve adjacent scopes / picker entries.
     let currentFolderName: string | null = null;
     let currentReferenceId: string | null = null;
+    let currentBatchId: string | null = null;
     // IA-29 — item-not-found bug fix. Item'ın gerçek decision'u +
     // sayfası URL ile uyuşmuyorsa kullanıcıyı doğru URL'e redirect et.
     // Aksi halde grid + workspace farklı queryKey'lerden çalışıyor ve
@@ -255,13 +259,39 @@ export default async function ReviewPage({
       currentFolderName = local?.folderName ?? null;
       itemActualStatus = local?.reviewStatus ?? null;
     } else {
+      // IA-34 — AI scope priority: batch > reference. Aynı reference'tan
+      // farklı batch'lerde üretilen variation'lar var; operatör "şu
+      // batch'i temizliyorum" mantığıyla çalışır. Default deep-link
+      // scope = batch; reference ancak explicit `?scope=reference`
+      // veya item'ın batch lineage'i olmadığında baskındır.
       const design = await db.generatedDesign.findFirst({
         where: { id: itemId, userId, deletedAt: null },
-        select: { referenceId: true, reviewStatus: true, reviewStatusSource: true },
+        select: {
+          referenceId: true,
+          jobId: true,
+          reviewStatus: true,
+          reviewStatusSource: true,
+        },
       });
       currentReferenceId = design?.referenceId ?? null;
       itemActualStatus = design?.reviewStatus ?? null;
+      // Batch lineage Job.metadata.batchId üzerinden (schema-zero pattern,
+      // CLAUDE.md Madde G — WorkflowRun gelecek).
+      if (design?.jobId) {
+        const job = await db.job.findFirst({
+          where: { id: design.jobId, userId },
+          select: { metadata: true },
+        });
+        const md = job?.metadata as Record<string, unknown> | null;
+        if (md && typeof md === "object" && typeof md.batchId === "string") {
+          currentBatchId = md.batchId;
+        }
+      }
     }
+    // IA-34 — explicit scope param. Operatör `?scope=reference` derse
+    // batch dominance'ı override eder. Default: batch baskın.
+    const explicitScope = (searchParams.scope ?? "").trim();
+    const referenceForcedExplicit = explicitScope === "reference";
 
     // Item'ın gerçek decision'u URL filter'ından farklıysa, doğru
     // decision + page=1 ile redirect. (Page'i daima 1 yapıyoruz çünkü
@@ -284,6 +314,20 @@ export default async function ReviewPage({
       }
     }
 
+    // IA-34 — batch dominance kararı resolver'lar çağrılmadan önce
+    // alınmalı: picker kind (batch / reference / folder) ve scope-axis
+    // navigation bu karara göre seçilir.
+    const batchDominantForResolvers =
+      focusScope === "design" &&
+      currentBatchId !== null &&
+      !referenceForcedExplicit;
+    const pickerKind: "folder" | "reference" | "batch" =
+      focusScope === "local"
+        ? "folder"
+        : batchDominantForResolvers
+          ? "batch"
+          : "reference";
+
     const [
       totalReviewPending,
       nextFolder,
@@ -291,7 +335,10 @@ export default async function ReviewPage({
       adjacentReferences,
       pickerScopes,
     ] = await Promise.all([
-      getTotalReviewPendingCount(userId),
+      // IA-34 — review focus topbar artık workspace global anchor
+      // göstermez; current source pending gösterir. Operatör
+      // hangi source'a baktığını sayıdan da okuyabilsin.
+      getSourcePendingCount({ userId, source: focusScope }),
       focusScope === "local"
         ? getNextPendingFolderName({ userId, currentFolderName })
         : Promise.resolve(null),
@@ -304,11 +351,9 @@ export default async function ReviewPage({
             currentReferenceId,
           })
         : Promise.resolve({ prev: null, next: null }),
-      // IA Phase 19 — scope picker data. Top-bar dropdown.
-      listPendingScopes({
-        userId,
-        kind: focusScope === "local" ? "folder" : "reference",
-      }),
+      // IA-34 — picker kind: batch dominant ise batch listesi;
+      // aksi halde folder (local) veya reference (design).
+      listPendingScopes({ userId, kind: pickerKind }),
     ]);
 
     // IA Phase 16 — auto-next deep-link: sıradaki folder'ın ilk
@@ -401,6 +446,14 @@ export default async function ReviewPage({
             : `/review?source=ai&item=${encodeURIComponent(s.firstPendingItemId!)}`,
       }));
 
+    // IA-34 — scope priority: batch > reference (design only).
+    // Batch lineage varsa default scope = batch; explicit `?scope=reference`
+    // ile operatör reference scope'a düşebilir.
+    const batchDominant =
+      focusScope === "design" && currentBatchId !== null &&
+      !referenceForcedExplicit;
+    const resolvedBatchId = batchDominant ? currentBatchId : null;
+    const resolvedReferenceId = batchDominant ? null : currentReferenceId;
     return (
       <QueueReviewWorkspace
         scope={focusScope}
@@ -408,16 +461,31 @@ export default async function ReviewPage({
         page={pageNum}
         decision={decision}
         totalReviewPending={totalReviewPending}
+        // IA-34 — source-specific pending label.
+        sourcePendingLabel={
+          focusScope === "design" ? "ai pending" : "local pending"
+        }
         nextScope={nextScope}
         // IA Phase 16 — scope identity ZOOM (folder for local).
         focusFolderName={currentFolderName}
-        // IA Phase 19 — scope identity ZOOM (reference for design).
-        focusReferenceId={currentReferenceId}
+        // IA Phase 19 + IA-34 — scope identity ZOOM (batch dominant
+        // for design; reference fallback).
+        focusReferenceId={resolvedReferenceId}
+        focusBatchId={resolvedBatchId}
         scopeNav={scopeNav}
         scopePicker={{
-          kind: focusScope === "local" ? "folder" : "reference",
-          activeId:
-            focusScope === "local" ? currentFolderName : currentReferenceId,
+          // IA-34 — scope priority. Batch dominant ise picker batch
+          // tipinde; aksi halde folder (local) veya reference (design).
+          kind: batchDominant
+            ? "batch"
+            : focusScope === "local"
+              ? "folder"
+              : "reference",
+          activeId: batchDominant
+            ? currentBatchId
+            : focusScope === "local"
+              ? currentFolderName
+              : currentReferenceId,
           entries: pickerEntries,
         }}
       />

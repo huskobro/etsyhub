@@ -58,11 +58,22 @@ export interface ReviewWorkspaceShellProps<TItem> {
   /** Mono uppercase scope caption next to the back link. */
   scopeLabel: string;
   /**
-   * IA Phase 12 — workspace anchor (CLAUDE.md Madde H). Shown as the
-   * primary number in the top bar regardless of which scope the
-   * operator is in. Resolves on the server (queries all sources).
+   * IA-34 — Topbar primary pending count. Caller (page loader)
+   * resolves source-scoped value: `getSourcePendingCount({ source })`.
+   * Workspace-wide global anchor (`getTotalReviewPendingCount`) ARTIK
+   * review focus topbar'da DEĞİL — operatör hangi source'a baktığını
+   * sayıdan da okuyabilsin. Global anchor başka surface'lerde
+   * (dashboard vb.) tüketilebilir.
    */
   totalReviewPending?: number;
+  /**
+   * IA-34 — Source label for the topbar pending block. Caller geçer:
+   *   • "ai pending" (scope=design)
+   *   • "local pending" (scope=local)
+   * Default fallback "pending" — generic, ama page loader her zaman
+   * doğru label'ı sağlar.
+   */
+  sourcePendingLabel?: string;
   /**
    * IA Phase 12 — scope-completion auto-progress. Pointer to the
    * next pending scope (batch / folder) for the same user. Null
@@ -194,6 +205,7 @@ export function ReviewWorkspaceShell<TItem>({
   exitLabel,
   scopeLabel,
   totalReviewPending,
+  sourcePendingLabel,
   nextScope,
   items,
   cursor,
@@ -446,18 +458,20 @@ export function ReviewWorkspaceShell<TItem>({
 
         <div className="h-6 w-px bg-white/10" aria-hidden />
 
-        {/* IA-33 — Workspace anchor (CLAUDE.md Madde H). Bu sayı
-         *   `getTotalReviewPendingCount` çıktısı: MJ + AI + Local
-         *   tüm source/scope'lardaki toplam undecided. AI ve Local
-         *   focus mode'da aynı sayı görünür çünkü gerçekten total.
-         *   Label "ALL PENDING" → operatör bunu current scope sanmaz;
-         *   scope sayıları sağdaki `undecided · kept · discarded`
-         *   bloğunda yaşar. */}
+        {/* IA-34 — Topbar primary pending = current source pending.
+         *   Page loader `getSourcePendingCount({ source })` ile resolve
+         *   eder; label "ai pending" / "local pending" (caller sağlar)
+         *   → operatör AI'a baktığında AI sayısını, Local'e baktığında
+         *   Local sayısını okur. Workspace-wide anchor ("all pending")
+         *   review focus topbar'dan kaldırıldı (CLAUDE.md Madde X+ →
+         *   IA-34 revize). Scope sayıları sağdaki `THIS SCOPE …`
+         *   bloğunda yaşar — iki bilgi net ayrışır. */}
         {typeof totalReviewPending === "number" ? (
           <div
             className="flex shrink-0 items-baseline gap-1.5"
             data-testid="topbar-total-pending"
-            title="Total review pending across all sources (workspace anchor)"
+            data-source-label={sourcePendingLabel ?? "pending"}
+            title={`Pending in this source (${sourcePendingLabel ?? "current"})`}
           >
             <span
               className={cn(
@@ -470,7 +484,7 @@ export function ReviewWorkspaceShell<TItem>({
               {totalReviewPending}
             </span>
             <span className="font-mono text-xs uppercase tracking-meta text-white/50">
-              all pending
+              {sourcePendingLabel ?? "pending"}
             </span>
           </div>
         ) : null}

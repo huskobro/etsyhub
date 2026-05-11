@@ -590,6 +590,44 @@ export async function getTotalReviewPendingCount(
   return mj + ai + local;
 }
 
+/**
+ * IA-34 — Source-scoped pending count. Review focus topbar artık
+ * workspace-wide global anchor değil, **current source pending**
+ * gösterir:
+ *   • scope=design → AI Designs pending (deletedAt=null +
+ *     reviewStatusSource != USER)
+ *   • scope=local  → Local active-root pending (isUserDeleted=false +
+ *     deletedAt=null + reviewStatusSource != USER + rootFilter)
+ *
+ * `getTotalReviewPendingCount` workspace anchor olarak kalır;
+ * gelecekte dashboard veya başka surface'lerden tüketilebilir.
+ * Review focus topbar bu source helper'ını kullanır.
+ */
+export async function getSourcePendingCount(args: {
+  userId: string;
+  source: "design" | "local";
+}): Promise<number> {
+  if (args.source === "design") {
+    return db.generatedDesign.count({
+      where: {
+        userId: args.userId,
+        deletedAt: null,
+        reviewStatusSource: { not: "USER" },
+      },
+    });
+  }
+  const rootFilter = await getActiveLocalRootFilter(args.userId);
+  return db.localLibraryAsset.count({
+    where: {
+      userId: args.userId,
+      deletedAt: null,
+      isUserDeleted: false,
+      reviewStatusSource: { not: "USER" },
+      ...rootFilter,
+    },
+  });
+}
+
 // Type sanity (Prisma JSON filter shape). Not exported — keeps the
 // linter happy when the helper is referenced indirectly by future
 // resolvers expanding this module.

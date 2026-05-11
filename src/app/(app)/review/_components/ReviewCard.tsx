@@ -410,11 +410,27 @@ export function ReviewCard({ item, thresholds }: Props) {
                 </span>
               ) : null}
             </div>
-            <span className="flex items-center gap-1 truncate font-mono">
+            <span
+              className="flex items-center gap-1 truncate font-mono"
+              data-testid="card-scope-label"
+              title={
+                item.source.batchShortId
+                  ? `Batch ${item.source.batchId ?? ""}`
+                  : item.source.referenceShortId
+                    ? `Reference ${item.source.referenceShortId}`
+                    : undefined
+              }
+            >
               <Layers className="h-3 w-3 shrink-0" aria-hidden />
-              {item.source.referenceShortId
-                ? `ref-${item.source.referenceShortId}`
-                : "—"}
+              {/* IA-34 — scope priority on the card: batch > reference.
+                  Same priority as focus mode (page loader). Reference
+                  short id surfaces only when there is no batch lineage
+                  for this item. */}
+              {item.source.batchShortId
+                ? `batch-${item.source.batchShortId}`
+                : item.source.referenceShortId
+                  ? `ref-${item.source.referenceShortId}`
+                  : "—"}
             </span>
             <span className="flex items-center gap-1">
               <ImageIcon className="h-3 w-3 shrink-0" aria-hidden />

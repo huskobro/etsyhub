@@ -55,6 +55,8 @@ interface QueueReviewWorkspaceProps {
   decision: "undecided" | "kept" | "rejected" | undefined;
   /** IA Phase 12 — workspace anchor (CLAUDE.md Madde H). */
   totalReviewPending?: number;
+  /** IA-34 — Source label for topbar pending block. */
+  sourcePendingLabel?: string;
   /** IA Phase 12 — next pending scope; for AI/Local items the
    *  resolver typically returns the next pending folder (local) or
    *  the next pending batch (AI item with batch lineage). */
@@ -73,6 +75,12 @@ interface QueueReviewWorkspaceProps {
    *  scope identity. Queue hook'una `reference=` parametresi
    *  olarak iletilir. Local scope'ta her zaman null. */
   focusReferenceId?: string | null;
+  /** IA-34 — scope identity ZOOM (design-only): batch lineage.
+   *  Default deep-link scope = batch (reference baskın olmak için
+   *  explicit `?scope=reference` gerekir). Queue hook'una `batch=`
+   *  param'ı olarak iletilir; batch dominant ise reference param'ı
+   *  GÖNDERILMEZ. */
+  focusBatchId?: string | null;
   /** IA Phase 18 — adjacent scope navigation (CLAUDE.md Madde M
    *  scope ekseni). When set, the shell wires up scope-axis
    *  keyboard shortcuts (`,` / `.`). */
@@ -83,7 +91,7 @@ interface QueueReviewWorkspaceProps {
   /** IA Phase 19 — scope picker dropdown data. Operatör top-bar'dan
    *  başka bir folder/reference'a hızlıca atlayabilir. */
   scopePicker?: {
-    kind: "folder" | "reference";
+    kind: "folder" | "reference" | "batch";
     activeId: string | null;
     entries: Array<{
       id: string;
@@ -146,9 +154,11 @@ export function QueueReviewWorkspace({
   page,
   decision,
   totalReviewPending,
+  sourcePendingLabel,
   nextScope,
   focusFolderName,
   focusReferenceId,
+  focusBatchId,
   scopeNav,
   scopePicker,
 }: QueueReviewWorkspaceProps) {
@@ -157,15 +167,23 @@ export function QueueReviewWorkspace({
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
 
-  // IA Phase 16 + 19 — scope identity ZOOM.
+  // IA Phase 16 + 19 + IA-34 — scope identity ZOOM.
   //   • Local focus mode: queue?folder=<currentFolderName>.
-  //   • Design focus mode: queue?reference=<currentReferenceId>.
-  // Both narrow total + scopeBreakdown to the active scope cardinality.
+  //   • Design focus mode default: queue?batch=<currentBatchId>.
+  //   • Design focus mode (reference explicit): queue?reference=<...>.
+  // Scope priority: batch > reference > queue.
   const folderQueryArg = scope === "local" && focusFolderName
     ? focusFolderName
     : undefined;
+  // Batch ile reference ikisi de varsa batch baskın — caller (page
+  // loader) `focusReferenceId`'i null'a çekerek explicit reference
+  // dominance'ı override edebilir.
+  const batchQueryArg =
+    scope === "design" && focusBatchId ? focusBatchId : undefined;
   const referenceQueryArg =
-    scope === "design" && focusReferenceId ? focusReferenceId : undefined;
+    scope === "design" && !batchQueryArg && focusReferenceId
+      ? focusReferenceId
+      : undefined;
 
   // Live queue data — same key the grid uses, so a decision posted
   // here flushes back to the grid on close.
@@ -175,6 +193,7 @@ export function QueueReviewWorkspace({
     page,
     folder: folderQueryArg,
     reference: referenceQueryArg,
+    batch: batchQueryArg,
   });
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -461,6 +480,7 @@ export function QueueReviewWorkspace({
               : "Local Library"
       }
       totalReviewPending={totalReviewPending}
+      sourcePendingLabel={sourcePendingLabel}
       nextScope={nextScope ?? null}
       items={items}
       cursor={idx}
@@ -708,6 +728,13 @@ function LocalSourceSection({
     { kind: "local-library" }
   >;
 }) {
+  // IA-34 — File section collapsible (default closed). Folder/Path/
+  // Format/Size/Resolution/Transparency/Hint dikey alanı yiyordu;
+  // operatör ihtiyaç duyduğunda açar. Provider / Rerun Review /
+  // Variation / Stored decision aynı görsel pattern'i kullanır:
+  // button + SectionTitle + `+`/`−` glyph (`Show/Hide` metni YOK).
+  // CLAUDE.md Madde Q — information density without clutter.
+  const [open, setOpen] = useState(false);
   // IA Phase 16 — Quality satırı EvaluationPanel'e taşındı (sistem
   // skor tek yerde). Hint hâlâ kaynak metadata'da kalır — DPI/Res
   // hint mekanik bir kural; sistem değerlendirmesinden bağımsızdır.
@@ -719,42 +746,73 @@ function LocalSourceSection({
   });
   return (
     <section data-testid="info-rail-local">
-      <SectionTitle>File</SectionTitle>
-      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
-        <dt className="text-white/40">Folder</dt>
-        <dd
-          className="break-all font-mono text-white/75"
-          title={source.folderPath}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-2 text-left"
+        aria-expanded={open}
+        aria-controls="info-rail-local-content"
+        data-testid="info-rail-local-toggle"
+      >
+        <SectionTitle>File</SectionTitle>
+        <span
+          className="font-mono text-[10px] uppercase tracking-meta text-white/40"
+          aria-hidden
         >
-          {source.folderName}
-        </dd>
-        <dt className="text-white/40">Path</dt>
-        <dd className="break-all font-mono text-white/50">
-          {source.folderPath}
-        </dd>
-        <dt className="text-white/40">Format</dt>
-        <dd className="font-mono text-white/75">{transparency.format}</dd>
-        <dt className="text-white/40">Size</dt>
-        <dd className="text-white/75">{formatFileSize(source.fileSize)}</dd>
-        <dt className="text-white/40">Resolution</dt>
-        <dd className="text-white/75">
-          {source.width}×{source.height}
-          {source.dpi ? ` · ${source.dpi} DPI` : ""}
-        </dd>
-        <dt className="text-white/40">Transparency</dt>
-        <dd
-          className="text-white/75"
-          data-probed={transparency.probed || undefined}
+          {open ? "−" : "+"}
+        </span>
+      </button>
+      {!open ? (
+        // Kapalı durum: file adı tek satır özet — operatör hangi
+        // file'a baktığını sabit tutar; full path açıldığında görünür.
+        <div
+          className="mt-1 truncate font-mono text-[11px] text-white/50"
+          title={source.fileName}
+          data-testid="info-rail-local-summary"
         >
-          {transparency.label}
-        </dd>
-        {hint ? (
-          <>
-            <dt className="text-white/40">Hint</dt>
-            <dd className="text-white/60">{hint}</dd>
-          </>
-        ) : null}
-      </dl>
+          {source.fileName}
+        </div>
+      ) : (
+        <dl
+          id="info-rail-local-content"
+          className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs"
+          data-testid="info-rail-local-detail"
+        >
+          <dt className="text-white/40">Folder</dt>
+          <dd
+            className="break-all font-mono text-white/75"
+            title={source.folderPath}
+          >
+            {source.folderName}
+          </dd>
+          <dt className="text-white/40">Path</dt>
+          <dd className="break-all font-mono text-white/50">
+            {source.folderPath}
+          </dd>
+          <dt className="text-white/40">Format</dt>
+          <dd className="font-mono text-white/75">{transparency.format}</dd>
+          <dt className="text-white/40">Size</dt>
+          <dd className="text-white/75">{formatFileSize(source.fileSize)}</dd>
+          <dt className="text-white/40">Resolution</dt>
+          <dd className="text-white/75">
+            {source.width}×{source.height}
+            {source.dpi ? ` · ${source.dpi} DPI` : ""}
+          </dd>
+          <dt className="text-white/40">Transparency</dt>
+          <dd
+            className="text-white/75"
+            data-probed={transparency.probed || undefined}
+          >
+            {transparency.label}
+          </dd>
+          {hint ? (
+            <>
+              <dt className="text-white/40">Hint</dt>
+              <dd className="text-white/60">{hint}</dd>
+            </>
+          ) : null}
+        </dl>
+      )}
     </section>
   );
 }
