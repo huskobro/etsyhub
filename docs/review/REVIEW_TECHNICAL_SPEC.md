@@ -382,6 +382,59 @@ focusScope = "design" →
 biri için "kept" derken diğeri için "reject" diyebilir. Reference
 scope tek başına bu ayrımı yapamaz; batch yapar.
 
+### 9.1. Batch lineage data path (IA-37)
+
+`createVariationJobs` (`src/features/variation-generation/services/
+ai-generation.service.ts`) bir çağrıdan oluşan **N variation job**'a
+aynı `batchId`'yi paylaştırır:
+
+- `cuid2.createId()` ile generate edilir.
+- Her job'un `metadata.batchId` alanına yazılır (designId +
+  referenceId ile birlikte).
+- Queue endpoint bu metadata'yı `db.job.findMany({ id: { in: ... } })`
+  ile resolve eder; her design item'a `source.batchId` +
+  `source.batchShortId` projecte edilir.
+- UI bu alanları "primary lineage" olarak kullanır; reference
+  fallback yalnız batch yoksa görünür.
+
+**Eski jobs**: IA-37 öncesinde oluşturulmuş variation job'lar
+`metadata.batchId` taşımıyor (schema-zero pattern, default null
+geçer). UI bu durumda zarif şekilde `referenceShortId` fallback'ine
+düşer. Migration yapmıyoruz; yeni üretim ile birlikte batch
+lineage otomatik dolacak (Known limitation, docs README'de).
+
+> **Schema-zero pattern**: `Job.metadata` bir JSON alanı; batchId
+> dahil olmak üzere lineage anahtarları burada string olarak
+> taşınır. `WorkflowRun` canonical lineage tablosu gelecek faza
+> alındı (CLAUDE.md Madde G).
+
+---
+
+### 9.2. Risk count & failed checks — tek kaynak (IA-37)
+
+Kart ve detail panel **aynı sayıyı** göstermeli. Eski davranışta:
+
+- Kart `item.riskFlagCount` → DB `reviewRiskFlags` array length.
+- Detail panel `EvaluationPanel` → `composeContext` sonrası
+  applicable + failed check sayımı.
+
+Bu iki sayı farklı senaryolarda farklı çıkıyordu:
+
+- Provider snapshot'a duplicate flag yazmış olabilir (örn. iki
+  kez `no_alpha_channel`). DB count = 4, detail = 2.
+- "Not applicable for JPEG" gibi N/A check'ler DB array length'e
+  girer ama detail'de neutral state olarak sayılmaz.
+
+**IA-37 düzeltmesi**: kart artık `buildEvaluation` çıktısından
+beslenir — aynı `composeContext` + applicability rules + criteria
+katalogundan geçer. `evaluation.checks.filter(state === "failed").
+length` ve `severity === "blocker"` kontrolü kart ve detail
+panelde **aynı sayıyı** üretir.
+
+> `item.riskFlagCount` payload alanı sözleşme olarak kalır
+> (geriye uyumluluk), ama UI kart artık bu ham sayıyı görsel
+> sinyal için doğrudan kullanmaz.
+
 ---
 
 ## 10. UI <-> server tek doğruluk kaynağı helper'ları

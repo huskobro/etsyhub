@@ -128,6 +128,15 @@ export async function createVariationJobs(
       ? VariationCapability.IMAGE_TO_IMAGE
       : VariationCapability.TEXT_TO_IMAGE;
 
+  // IA-37 — Batch lineage. Bu çağrıdan oluşan tüm N variation job
+  // aynı `batchId`'yi paylaşır; review queue scope priority bu kimliği
+  // batch > reference baskınlığına göre kullanır (CLAUDE.md Madde G,
+  // schema-zero pattern). cuid2 ile generate ederiz; ileride
+  // `WorkflowRun` tablosu canonical lineage'ı taşıdığında bu alan
+  // o tabloyla mapping'lenir.
+  const { createId } = await import("@paralleldrive/cuid2");
+  const batchId = createId();
+
   // Transaction: N design + N job atomik commit. Hiçbiri yarıda kalmaz.
   // designId ↔ jobId eşlemesi index'le korunur (transaction içinde job
   // create design'a ait metadata.designId set eder).
@@ -163,7 +172,13 @@ export async function createVariationJobs(
           status: JobStatus.QUEUED,
           userId: input.userId,
           progress: 0,
-          metadata: { designId: d.id, referenceId: input.reference.id },
+          // IA-37 — batchId share'lenir; review scope priority
+          // (batch > reference) bu alandan beslenir.
+          metadata: {
+            designId: d.id,
+            referenceId: input.reference.id,
+            batchId,
+          },
         },
       });
       pairs.push({ design: d, job });

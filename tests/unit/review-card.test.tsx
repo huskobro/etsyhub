@@ -58,6 +58,22 @@ const baseItem: ReviewQueueItem = {
   referenceId: null,
   productTypeId: null,
   jobId: null,
+  // IA-37 — risk indicator applicability-aware buildEvaluation
+  // çıktısına yaslı. composeContext kurabilmek için source.productTypeKey
+  // gerekli; aksi halde compose çalışmaz ve risk indicator gizli kalır.
+  source: {
+    kind: "design",
+    productTypeKey: "wall_art",
+    referenceShortId: null,
+    batchId: null,
+    batchShortId: null,
+    createdAt: "2026-04-29T00:00:00Z",
+    mimeType: "image/png",
+    fileSize: 1024,
+    width: 1024,
+    height: 1024,
+    hasAlpha: false,
+  },
 };
 
 describe("ReviewCard", () => {
@@ -118,7 +134,15 @@ describe("ReviewCard", () => {
   });
 
   it("score yüksek + risk flag → score chip success kalır (risk ayrı badge)", () => {
-    renderCard({ ...baseItem, reviewScore: 95, riskFlagCount: 1 });
+    // IA-37 — risk indicator artık applicability-aware buildEvaluation
+    // çıktısından hesaplanır; fixture gerçek riskFlags array entries
+    // ile gelir. Eski "yalnız riskFlagCount" davranışı kaldırıldı.
+    renderCard({
+      ...baseItem,
+      reviewScore: 95,
+      riskFlagCount: 1,
+      riskFlags: [{ kind: "text_detected", severity: "warning" }] as never,
+    });
     // IA-31 sözleşmesi: risk score rengini EZMEZ.
     expect(screen.getByTestId("score-chip")).toHaveAttribute("data-tone", "success");
     // Risk indicator AYRI badge olarak görünür.
@@ -130,11 +154,22 @@ describe("ReviewCard", () => {
     expect(screen.queryByTestId("score-chip")).toBeNull();
   });
 
-  // IA-31 — risk indicator: ayrı badge, score chip rengini ezmez.
-  // count > 0 ve blocker yok → warning tone. count > 0 ve blocker var
-  // → critical tone. count === 0 → indicator gizli.
-  it("riskFlagCount > 0 (blocker yok) => warning tone risk indicator", () => {
-    renderCard({ ...baseItem, riskFlagCount: 2 });
+  // IA-31 + IA-37 — risk indicator: ayrı badge, score chip rengini
+  // ezmez. Yeni sözleşme: indicator applicability-aware buildEvaluation
+  // failed check sayımından beslenir. Fixture gerçek riskFlags entries
+  // taşımalı.
+  it("riskFlags > 0 (blocker yok) => warning tone risk indicator", () => {
+    // IA-37: severity criteria katalogundan resolve edilir; warning-only
+    // bir set kullanmak için `text_detected` seçildi (criteria.ts'de
+    // severity=warning). watermark_detected = blocker olduğu için
+    // bu test'te kullanılmaz.
+    renderCard({
+      ...baseItem,
+      riskFlagCount: 1,
+      riskFlags: [
+        { kind: "text_detected", severity: "warning" },
+      ] as never,
+    });
     const indicator = screen.getByTestId("risk-indicator");
     expect(indicator).toBeInTheDocument();
     expect(indicator).toHaveAttribute("data-tone", "warning");
@@ -144,7 +179,9 @@ describe("ReviewCard", () => {
     renderCard({
       ...baseItem,
       riskFlagCount: 1,
-      riskFlags: [{ severity: "blocker", code: "test" }] as never,
+      riskFlags: [
+        { kind: "gibberish_text_detected", severity: "blocker" },
+      ] as never,
     });
     expect(screen.getByTestId("risk-indicator")).toHaveAttribute("data-tone", "critical");
   });

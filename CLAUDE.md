@@ -78,6 +78,45 @@ geçirilmiş olmalı.
 > Bu ilke review modülünün IA-36 done checklist'inde de
 > uygulanmıştır (bkz. `docs/review/README.md`).
 
+## Cross-surface Metric Consistency
+
+Kullanıcıya gösterilen özet metrikler — count, risk sayısı, score,
+state badge'leri, "pending" sayıları, lifecycle göstergeleri —
+**farklı yüzeylerde birbiriyle çelişmemeli**. Aynı kavram iki
+yerde gösteriliyorsa:
+
+1. **Tek kaynaktan türetilmeli** — örn. risk sayımı hem kart
+   üzerinde hem detail panelde gösteriliyorsa, ikisi de aynı
+   helper'dan (`buildEvaluation` → `applicable.filter(state ===
+   "failed")`) beslenmeli. DB'deki ham `reviewRiskFlags` array
+   length ile UI'da görünen check sayısı farklılaşamaz.
+2. **Veya açıkça farklı kavramlar olarak etiketlenmeli** —
+   örn. "Workspace pending" (workspace anchor) ile "This scope
+   undecided" (current scope breakdown) farklı sayılar olabilir,
+   ama her ikisinin de **net etiketi** olmalı; tek-kelime label
+   (sadece "REVIEW PENDING") operatörü yanıltır.
+
+Çelişkinin sık kök nedenleri:
+
+- **Context-aware filtre eksikliği**: Ham DB array length UI'da
+  doğrudan kullanılıyor; halbuki detail panel applicability
+  rules sonrası filtrelenmiş sayım gösteriyor.
+- **Duplicate yazımlar**: Provider snapshot'a aynı flag'i birden
+  fazla kez yazmış olabilir; UI bunu unique'leştirmeden ham
+  sayıyor.
+- **Eski semantic vs yeni semantic**: Schema'da eski rol taşıyan
+  alan UI tarafında yeniyi yansıtmaya başlayınca, başka yüzeyler
+  eskiyi okumaya devam ediyor.
+
+Yeni feature eklerken kontrol: bu metric başka bir yüzeyde de
+gösteriliyor mu? Eğer evet, ikisi de aynı helper'dan beslenmeli.
+Drift olursa bug açıkça operatörün gözüne çarpar (bir sayı diğeri
+ile uyuşmaz) ve güveni sarsar.
+
+> Bu ilke review modülünün IA-37 turunda uygulandı: kart üzerindeki
+> risk indicator artık `buildEvaluation` çıktısından beslenir —
+> detail panel ile aynı sayıyı verir.
+
 ## Kaynaklar
 
 Bu proje planı aşağıdaki kaynaklar incelenerek oluşturuldu.

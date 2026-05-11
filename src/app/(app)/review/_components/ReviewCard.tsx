@@ -442,24 +442,61 @@ export function ReviewCard({ item, thresholds }: Props) {
           </div>
         ) : null}
         {(() => {
-          // IA-31 — Risk indicator AYRI badge. Score chip rengini
-          // ezmez; critical risk varsa kırmızı dolu, sadece warning'ler
-          // varsa amber outline. None ise hiç render edilmez.
-          const hasBlocker = Array.isArray(item.riskFlags)
-            ? item.riskFlags.some(
-                (f) =>
-                  f &&
-                  typeof f === "object" &&
-                  (f as { severity?: string }).severity === "blocker",
-              )
-            : false;
+          // IA-37 — Risk indicator artık **applicability-aware** sayım
+          // kullanır (CLAUDE.md cross-surface metric consistency).
+          // Eski davranış: kart `item.riskFlagCount` (DB array length)
+          // kullanıyordu — detail panel ise `composeContext` sonrası
+          // failed check sayısını gösteriyordu. İki yer farklı sayı
+          // veriyordu (ör. DB'de 4 risk, detail'de 2 failed). Kart
+          // artık `buildEvaluation` çıktısından applicable + failed
+          // sayımını alır; detail panel aynı kaynaktan beslenir.
+          const productType =
+            item.source?.kind === "design"
+              ? item.source.productTypeKey ?? null
+              : item.source?.kind === "local-library"
+                ? item.source.productTypeKey
+                : null;
+          const format =
+            item.source?.mimeType
+              ? item.source.mimeType.replace("image/", "").toLowerCase()
+              : "png";
+          const hasAlpha = item.source?.hasAlpha ?? null;
+          const sourceKind: "design" | "local-library" =
+            item.source?.kind === "local-library" ? "local-library" : "design";
+          const evaluation = buildEvaluation({
+            reviewedAt: item.reviewedAt,
+            reviewScore: item.reviewScore,
+            reviewSummary: item.reviewSummary,
+            reviewProviderSnapshot: item.reviewProviderSnapshot,
+            riskFlags: item.riskFlags,
+            operatorOverride: false,
+            backendLifecycle: item.reviewLifecycle,
+            thresholds,
+            composeContext:
+              productType !== null
+                ? {
+                    productType,
+                    format,
+                    hasAlpha,
+                    sourceKind,
+                    transformsApplied: [],
+                  }
+                : undefined,
+          });
+          const failedApplicable = evaluation.checks.filter(
+            (c) => c.state === "failed",
+          );
+          const failedCount = failedApplicable.length;
+          const hasBlocker = failedApplicable.some(
+            (c) => c.severity === "blocker",
+          );
           const riskTone = getRiskTone({
-            count: item.riskFlagCount,
+            count: failedCount,
             hasBlocker,
           });
           if (riskTone === "none") return null;
           const label = riskIndicatorLabel({
-            count: item.riskFlagCount,
+            count: failedCount,
             hasBlocker,
           });
           return (

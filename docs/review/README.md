@@ -18,7 +18,7 @@ için tam dokümantasyonu.
 
 ## Kapsam ve mevcut durum
 
-Review modülünün IA-30..IA-36 turları boyunca eklenen davranışları:
+Review modülünün IA-30..IA-37 turları boyunca eklenen davranışları:
 
 - Operator truth vs AI suggestion ayrımı (CLAUDE.md Madde V).
 - Deterministic, rule-based score modeli (IA-31).
@@ -36,6 +36,13 @@ Review modülünün IA-30..IA-36 turları boyunca eklenen davranışları:
 - Polling cadence düzeltmesi (IA-35 — not_queued artık unsettled
   değil).
 - Vitest workspace pattern (IA-35).
+- **Batch lineage data path tamamlandı (IA-37)** — `createVariationJobs`
+  artık `Job.metadata.batchId` emit eder; queue endpoint design item'ları
+  için `source.batchId + batchShortId` projecte eder. UI primary lineage
+  artık real-data ile beslenir.
+- **Risk count cross-surface consistency (IA-37)** — Kart üzerindeki
+  risk indicator artık detail panel'la aynı `buildEvaluation` çıktısından
+  beslenir. Eski ham `riskFlagCount` array length kullanımı kaldırıldı.
 
 ## Review done checklist (IA-36)
 
@@ -54,6 +61,8 @@ işaretlendi.
 | Local productType context gerçek mapping ile resolve (sahte fallback yok) | ✓ | IA-35 |
 | Folder mapping path-based (collision yok) + legacy fallback | ✓ | IA-35 |
 | Batch > reference scope priority — grid card + focus topbar + info-rail | ✓ | IA-34 + IA-36 |
+| Batch lineage real-data path (variation worker emits batchId) | ✓ | IA-37 |
+| Risk count tek kaynak — kart = detail (applicability-aware) | ✓ | IA-37 |
 | Live update polling: gerçek iş varken 5s, idle'da kapalı | ✓ | IA-35 |
 | Vitest workspace tek `npm test` ile UI + node combined | ✓ | IA-35 |
 | Targeted review test suite clean | ✓ | 79+ targeted pass |
@@ -98,9 +107,10 @@ Done checklist'in "non-blocker" bölümünün detay açıklamaları:
   (`adjacentReferences` artık batch dominantsa scopeNav null'a
   düşer; reference adjacent göstermek yerine doğru olan davranış
   — IA-36). Scope picker dropdown çalışır.
-- **Batch lineage gerçek üretim verisinde browser-proof
-  yapılmadı** — Dev DB'sinde `Job.metadata.batchId` taşıyan
-  variation job yok. UI render path'i:
+- **Eski variation job'lar batch lineage taşımıyor** — IA-37 öncesi
+  oluşturulmuş `Job.metadata.batchId` taşımayan kayıtlar için UI
+  reference fallback'i gösterir. Yeni üretim batchId emit'li yola
+  düşer; migration yapılmadı (bilinçli karar). UI render path'i:
   - `ReviewCard` batch dominance: `batchShortId ? "batch-…" :
     "ref-…"`
   - Focus topbar scope label: `scope.kind === "batch" ?

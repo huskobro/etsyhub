@@ -271,6 +271,30 @@ aynı önceliği yansıtır: batch varsa batch, yoksa reference.
 
 ---
 
+## Risk sayısı, failed checks ve score — aynı hikâye
+
+Sağ panelde "Checks 7/9 passed" gibi bir sayı görürsün; kart üzerinde
+de bir risk indicator (örn. "1 warning") olabilir. Bu iki sayı **aynı
+kaynaktan** beslenir:
+
+- Kart üstündeki risk indicator = sağ paneldeki failed (applicable)
+  check sayısı.
+- "Not applicable for JPEG" gibi N/A check'ler iki tarafta da
+  sayılmaz.
+- Provider geçmişten kalan duplicate flag'lar otomatik elenir.
+
+Score şu kuralla üretilir:
+- Her warning check kendi ağırlığını puandan düşer (ör. "No
+  watermark" → 20 puan).
+- Bir **blocker** check fail olduğunda score 0'a iner — operatöre
+  "bu görsel başka kontrollerden geçse bile blocker var, bakmadan
+  geçme" sinyalidir.
+- Tüm check'ler N/A veya passed ise score 100.
+
+> Yani: score 0 görüyorsan ve sağ panelde tek bir blocker (örn.
+> "No gibberish text") varsa, davranış doğrudur — yüksek diğer
+> sayılar bu yargıyı değiştirmez.
+
 ## 12. Bilinen sınırlar (Known limitations)
 
 Bunlar mevcut durumda çalışmıyor / eksik olan ufak yerler.
