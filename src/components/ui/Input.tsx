@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Input — spec A.2.3.
+ * Kivasy Input — spec A.2.3.
  * Wrapper flex container; fokus `:focus-within` ile wrapper'a akar (ring YOK, border accent).
  * Prefix/suffix slotları wrapper seviyesinde; prefix defaultta text-subtle.
  */

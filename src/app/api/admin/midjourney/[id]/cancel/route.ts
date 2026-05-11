@@ -10,7 +10,7 @@
 //   1. requireAdmin
 //   2. MidjourneyJob lookup
 //   3. Bridge cancelJob (best-effort; bridge offline ise DB update yine yap)
-//   4. DB MidjourneyJob + EtsyHub Job → CANCELLED
+//   4. DB MidjourneyJob + Kivasy Job → CANCELLED
 //   5. Audit log
 //
 // Bridge unreachable durumunda DB CANCELLED'a alınır (operatör explicit

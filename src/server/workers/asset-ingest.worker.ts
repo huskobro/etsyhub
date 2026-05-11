@@ -33,7 +33,7 @@ type ParserExtras = {
 const PARSER_CONFIDENCE_THRESHOLD = 30;
 
 const USER_AGENT =
-  "EtsyHub/0.1 (localhost) bookmark-preview; https://example.local";
+  "Kivasy/0.1 (localhost) bookmark-preview; https://example.local";
 
 export async function handleAssetIngestFromUrl(job: Job<AssetIngestPayload>) {
   const { jobId, userId, sourceUrl } = job.data;

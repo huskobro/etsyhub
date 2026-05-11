@@ -550,7 +550,7 @@ export default function PrimitivesShowcasePage() {
             sidebar={
               <Sidebar
                 className="h-full"
-                brand={<SidebarBrand name="EtsyHub" />}
+                brand={<SidebarBrand name="Kivasy" />}
                 footer={
                   <>
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-3 font-mono text-xs font-semibold">
@@ -703,7 +703,7 @@ export default function PrimitivesShowcasePage() {
             sidebar={
               <Sidebar
                 className="h-full"
-                brand={<SidebarBrand name="EtsyHub" />}
+                brand={<SidebarBrand name="Kivasy" />}
               >
                 <SidebarGroup title="Kütüphane">
                   <NavItem
@@ -794,7 +794,7 @@ export default function PrimitivesShowcasePage() {
             sidebar={
               <Sidebar
                 className="h-full"
-                brand={<SidebarBrand name="EtsyHub" scope="admin" />}
+                brand={<SidebarBrand name="Kivasy" scope="admin" />}
               >
                 <SidebarGroup title="İzleme">
                   <NavItem href="#over" label="Overview" icon={<BookmarkIcon size={14} />} active />

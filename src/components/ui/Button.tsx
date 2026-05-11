@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Button — spec A.2.2.
+ * Kivasy Button — spec A.2.2.
  * Variant isimleri tek kaynak: primary · secondary · ghost · destructive.
  * Icon-only boyut kare; padding'den türemez, sabit kare ölçü kullanılır.
  */

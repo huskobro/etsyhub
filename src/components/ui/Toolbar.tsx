@@ -6,7 +6,7 @@ import {
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Toolbar — spec A.1.11 · canvas screens.jsx:141.
+ * Kivasy Toolbar — spec A.1.11 · canvas screens.jsx:141.
  *
  * **Rol:** sayfa başlığı altında opsiyonel üst bant — shell/container. Kendi
  * border'ını taşımaz; çünkü `PageShell.toolbar` slot'u zaten bant

@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode, type MouseEvent 
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Chip — spec A.2.5 (filter/category).
+ * Kivasy Chip — spec A.2.5 (filter/category).
  * 28h · sans 13 · active → accent-soft bg.
  *
  * Not: Chip bir **toggle/filter** elemanıdır; eylem (form submit, navigation,

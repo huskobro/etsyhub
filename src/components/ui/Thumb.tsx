@@ -7,7 +7,7 @@ import {
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Thumb / AssetSurface — spec A.2.9.
+ * Kivasy Thumb / AssetSurface — spec A.2.9.
  *
  * Asset'in görsel yüzeyi. Kart, bookmark, reference, trend story kartlarında
  * kullanılır. Spec kuralları:

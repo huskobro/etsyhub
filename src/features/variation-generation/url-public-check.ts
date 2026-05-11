@@ -1,7 +1,7 @@
 // URL Public Check — Phase 5 §4.1 (Q5)
 //
 // Sözleşme: pure HEAD request — pattern match YASAK; URL judgment yok.
-// UA "EtsyHub/0.1"; timeout 5s; redirect follow; in-memory cache 5dk.
+// UA "Kivasy/0.1"; timeout 5s; redirect follow; in-memory cache 5dk.
 //
 // Hata da cache'lenir (DDoS önleme): network error sonrası 5dk içinde
 // aynı URL'e tekrar fetch atılmaz.
@@ -52,7 +52,7 @@ export async function checkUrlPublic(url: string): Promise<UrlCheckResult> {
   try {
     const res = await fetch(url, {
       method: "HEAD",
-      headers: { "User-Agent": "EtsyHub/0.1" },
+      headers: { "User-Agent": "Kivasy/0.1" },
       redirect: "follow",
       signal: controller.signal,
     });

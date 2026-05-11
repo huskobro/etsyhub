@@ -6,7 +6,7 @@ import {
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Sidebar — spec A.1.10 · canvas app-shell.jsx:6.
+ * Kivasy Sidebar — spec A.1.10 · canvas app-shell.jsx:6.
  *
  * 232w dikey panel, surface-2 bg, sağda 1px border. İçerik slotları:
  * - `brand`: üst 56h brand satırı (logo mark + ad + opsiyonel scope etiketi)

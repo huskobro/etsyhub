@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub StateMessage — spec A.2.8.
+ * Kivasy StateMessage — spec A.2.8.
  * Empty / warning / error state'leri için tek primitive.
  *
  * Kural:

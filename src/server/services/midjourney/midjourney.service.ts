@@ -2,7 +2,7 @@
 //
 // Sözleşme:
 //   1. createMidjourneyJob: kullanıcıdan gelen prompt+params'ı bridge'e
-//      gönderir, EtsyHub `Job` + `MidjourneyJob` row'larını açar, BullMQ
+//      gönderir, Kivasy `Job` + `MidjourneyJob` row'larını açar, BullMQ
 //      MIDJOURNEY_BRIDGE worker'ı tetikler.
 //   2. pollAndUpdate: worker'ın çağırdığı; bridge'den state çeker, DB'yi
 //      senkronize eder, terminal state'te ingest tetikler.
@@ -271,7 +271,7 @@ function validateCharacterReferenceUrls(
 
 export type CreateMidjourneyJobResult = {
   midjourneyJob: MidjourneyJob;
-  /** EtsyHub Job entity id — admin/jobs sayfasında görünür. */
+  /** Kivasy Job entity id — admin/jobs sayfasında görünür. */
   jobId: string;
   /** Bridge tarafı UUID. */
   bridgeJobId: string;
@@ -282,8 +282,8 @@ export type CreateMidjourneyJobResult = {
  *
  * Akış:
  *   1. Bridge'e POST /jobs (sync — bridge anında accept eder, state QUEUED).
- *   2. EtsyHub `Job` row açılır (type: MIDJOURNEY_BRIDGE).
- *   3. EtsyHub `MidjourneyJob` row açılır (bridgeJobId + jobId bağlı).
+ *   2. Kivasy `Job` row açılır (type: MIDJOURNEY_BRIDGE).
+ *   3. Kivasy `MidjourneyJob` row açılır (bridgeJobId + jobId bağlı).
  *   4. BullMQ MIDJOURNEY_BRIDGE queue'ya polling job ekle.
  *   5. Caller (Variation Atölyesi UI veya admin) snapshot döndürülür.
  */
@@ -426,7 +426,7 @@ export async function createMidjourneyJob(
   });
 
   // Pass 50 — eksik BullMQ enqueue. Bridge job kabul etti; şimdi
-  // EtsyHub worker'ı polling'e yönelik tetikle.
+  // Kivasy worker'ı polling'e yönelik tetikle.
   const payload: MidjourneyBridgeJobPayload = {
     userId: input.userId,
     midjourneyJobId: result.mjJob.id,
@@ -459,7 +459,7 @@ export async function createMidjourneyJob(
  * Akış:
  *   1. imageUrl HTTPS validation (R17.2)
  *   2. Bridge'e POST /jobs (kind="describe", imageUrl)
- *   3. EtsyHub Job + MidjourneyJob (kind=DESCRIBE) row açılır
+ *   3. Kivasy Job + MidjourneyJob (kind=DESCRIBE) row açılır
  *   4. BullMQ MIDJOURNEY_BRIDGE worker poll'a alır
  *   5. Driver describe akışını çalıştırır → COMPLETED state'te
  *      mjMetadata.describePrompts[] dolar (pollAndUpdate snapshot'ı yansıtır)
@@ -952,7 +952,7 @@ export async function pollAndUpdate(
           failedAt: new Date(),
         },
       });
-      // EtsyHub Job side
+      // Kivasy Job side
       if (mjJob.jobId) {
         await db.job.update({
           where: { id: mjJob.jobId },
@@ -994,7 +994,7 @@ export async function pollAndUpdate(
     data: updates,
   });
 
-  // EtsyHub Job side senkron.
+  // Kivasy Job side senkron.
   if (mjJob.jobId) {
     const jobStatus =
       newState === "COMPLETED"

@@ -6,7 +6,7 @@ import {
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub PageShell — spec A.1.10 · canvas app-shell.jsx:133.
+ * Kivasy PageShell — spec A.1.10 · canvas app-shell.jsx:133.
  *
  * Editoryal kokpit. Solda Sidebar slot, sağda dikey stack:
  *   Topbar (56h, title + subtitle + actions) → opsiyonel Toolbar band →

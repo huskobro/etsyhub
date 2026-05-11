@@ -18,7 +18,7 @@ import { db } from "@/server/db";
 const MJ_BATCH_METADATA_PATH = ["batchId"]; // Job.metadata.batchId
 
 export type BatchJobRow = {
-  /** Job (EtsyHub Job entity) id. */
+  /** Job (Kivasy Job entity) id. */
   jobId: string;
   /** MidjourneyJob id (varsa — bridge accepted ile yazıldı). */
   midjourneyJobId: string | null;
