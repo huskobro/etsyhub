@@ -13,8 +13,27 @@
 //   - Auto-cleanup (diskten silinmiş asset'leri deletedAt set etme)
 //   - Retry policy / exponential backoff (şu an bullmq default)
 //   - Watch folder / fs events
+//
+// IA-29/IA-35 — local auto-review enqueue:
+//   Local scan freshly discovered, never-scored asset için
+//   otomatik REVIEW_DESIGN enqueue YAPAR — yalnız asset'in folder
+//   mapping'i resolved ise (path-based mapping > legacy folderName
+//   fallback > convention). Mapping yoksa o asset için scan
+//   auto-enqueue çalışmaz; operator review'i Settings → Review →
+//   Local library altında folder'a productType atayarak veya
+//   scope-trigger endpoint'i ile tetikler.
+//
+//   Eski tek-global `defaultProductTypeKey` modeli IA-29'da
+//   kaldırıldı (27+ klasörlü kütüphanelerde adaletsiz). Phase 6
+//   Karar 3 "sessiz default YASAK" kuralı korunur — productType
+//   operator-chosen veya convention'a göre mapping'lenir; sahte
+//   global fallback yoktur.
+//
+//   Already-scored guard (worker tarafında) çift-billing'i her
+//   durumda engeller.
 
 import type { Job } from "bullmq";
+import { JobType } from "@prisma/client";
 import { db } from "@/server/db";
 import {
   discoverFolders,
@@ -25,6 +44,11 @@ import {
 } from "@/features/variation-generation/services/local-library.service";
 import { ensureThumbnail } from "@/features/variation-generation/services/thumbnail.service";
 import { computeQualityScore } from "@/features/variation-generation/services/quality-score.service";
+import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
+import { enqueueReviewDesign } from "@/server/services/review/enqueue";
+import { getResolvedReviewConfig } from "@/server/services/settings/review.service";
+import { resolveLocalFolder } from "@/features/settings/local-library/folder-mapping";
+import { logger } from "@/lib/logger";
 
 export type ScanLocalFolderPayload = {
   jobId: string;
@@ -61,6 +85,21 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
   });
 
   try {
+    // IA-29 — root path değiştiğinde eski path altındaki asset'leri
+    // soft-delete et. Aksi halde folder-mapping endpoint eski
+    // klasörleri pending olarak gösterir (UI'da yabancı path'ler).
+    // Asset row'ları korunur (deletedAt set) ki re-scan ile geri
+    // getirilebilsin; ama aktif görünümde gözükmezler.
+    await db.localLibraryAsset.updateMany({
+      where: {
+        userId,
+        deletedAt: null,
+        isUserDeleted: false,
+        folderPath: { not: { startsWith: rootFolderPath } },
+      },
+      data: { deletedAt: new Date() },
+    });
+
     const folders = await discoverFolders(rootFolderPath);
 
     // Önce tüm aday dosyaları topla — total processed/total hesabı için baştan netleşir.
@@ -101,9 +140,19 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
             width: meta.width,
             height: meta.height,
             dpi: meta.dpi,
+            // IA Phase 11 — persist true Sharp alpha probe; review
+            // focus rail surfaces "Yes / No" instead of format hint.
+            hasAlpha: meta.hasAlpha,
             thumbnailPath: thumb,
             qualityScore: score.score,
             qualityReasons: score.reasons,
+            // IA-29 — rediscovery clears soft-delete. Operatör eski
+            // root'a geri döndüğünde veya dosyayı kopyaladığında
+            // asset DB'de "geri canlanır"; review state (score,
+            // suggestion, operatör damgası) hash unique key sayesinde
+            // ZATEN korunur, sadece silinme bayrağını sıfırlıyoruz.
+            deletedAt: null,
+            isUserDeleted: false,
           },
           create: {
             userId,
@@ -117,6 +166,7 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
             width: meta.width,
             height: meta.height,
             dpi: meta.dpi,
+            hasAlpha: meta.hasAlpha,
             thumbnailPath: thumb,
             qualityScore: score.score,
             qualityReasons: score.reasons,
@@ -132,6 +182,88 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
         });
       }
     }
+
+    // IA-29 (CLAUDE.md Madde V) — folder bazlı productType mapping.
+    // Global default YOK. Operatör her klasör için açık seçim yapar
+    // (productType atar veya `__ignore__`'a alır). Mapping yoksa
+    // klasördeki asset'ler "pending mapping" sayılır; auto-enqueue
+    // tetiklenmez. UI bu klasörleri listeler.
+    // IA-29 (CLAUDE.md Madde V) — Convention-based folder model.
+    // Operatör root altında productType klasörleri açar
+    // (`clipart/`, `wall_art/`, ...). Scan worker asset'in immediate
+    // parent folder adına bakar; bilinen productType ise auto-enqueue.
+    // Bilinmeyen klasör (örn. `ekmek/`) → pending, operatör UI'da
+    // ya bilinen bir klasöre taşır ya alias yazar ya ignore eder.
+    // IA-39 (CLAUDE.md Madde U) — localAutoEnqueue toggle.
+    // Admin panel'inde Settings → Review → Automation altında görünür.
+    // Disabled ise scan başarılı tamamlanır ama hiçbir asset enqueue edilmez.
+    const reviewConfig = await getResolvedReviewConfig(userId);
+    if (!reviewConfig.automation.localAutoEnqueue) {
+      logger.info(
+        { userId, jobId },
+        "local scan auto-enqueue skipped: localAutoEnqueue disabled in Settings → Review",
+      );
+      await db.job.update({
+        where: { id: jobId },
+        data: {
+          status: "SUCCESS",
+          progress: 100,
+          finishedAt: new Date(),
+          metadata: skippedFiles.length > 0 ? { skippedFiles } : {},
+        },
+      });
+      return;
+    }
+
+    const settings = await getUserLocalLibrarySettings(userId);
+    const folderMap = settings.folderProductTypeMap ?? {};
+    const pendingAssets = await db.localLibraryAsset.findMany({
+      where: {
+        userId,
+        deletedAt: null,
+        isUserDeleted: false,
+        reviewProviderSnapshot: null, // never-scored
+      },
+      // IA-35 — folderPath path-based mapping resolve için gerekli.
+      select: { id: true, folderName: true, folderPath: true },
+      take: 500,
+    });
+    let autoEnqueued = 0;
+    let skippedNoMapping = 0;
+    let skippedIgnored = 0;
+    for (const a of pendingAssets) {
+      const r = resolveLocalFolder({
+        folderName: a.folderName,
+        folderPath: a.folderPath,
+        folderMap,
+      });
+      if (r.kind === "pending") { skippedNoMapping += 1; continue; }
+      if (r.kind === "ignored") { skippedIgnored += 1; continue; }
+      try {
+        await enqueueReviewDesign({
+          userId,
+          payload: {
+            scope: "local",
+            localAssetId: a.id,
+            productTypeKey: r.productTypeKey,
+          },
+        });
+        autoEnqueued += 1;
+      } catch (err) {
+        logger.error(
+          {
+            assetId: a.id,
+            userId,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "scan auto-enqueue: REVIEW_DESIGN enqueue failed",
+        );
+      }
+    }
+    logger.info(
+      { userId, jobId, autoEnqueued, skippedNoMapping, skippedIgnored },
+      "local scan auto-enqueue summary",
+    );
 
     await db.job.update({
       where: { id: jobId },

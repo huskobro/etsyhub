@@ -82,8 +82,10 @@ function useMjPreferences(): {
     try {
       window.localStorage.setItem(
         `mj-pref:${def.storageKey}`,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (def.serialize as (v: any) => string)(value),
+        // Generic serializer — pref shape değer tip-değer eşlemesi runtime
+        // safe (MJ_PREFERENCE_DEFS map). @typescript-eslint plugin yüklü
+        // değil; `unknown` cast yeterli.
+        (def.serialize as (v: unknown) => string)(value),
       );
     } catch {
       // ignore

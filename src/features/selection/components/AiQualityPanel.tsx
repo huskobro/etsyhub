@@ -63,23 +63,23 @@ function signalTone(key: SignalKey, value: string): SignalTone {
 function signalDisplay(key: SignalKey, value: string): string {
   if (key === "resolution") {
     if (value === "ok") return "OK";
-    if (value === "low") return "Düşük";
+    if (value === "low") return "Low";
     return "Bilinmiyor";
   }
   if (key === "textDetection" || key === "artifactCheck") {
     return value === "clean" ? "Temiz" : "İşaret var";
   }
   if (key === "trademarkRisk") {
-    return value === "low" ? "Düşük" : "Yüksek";
+    return value === "low" ? "Low" : "High";
   }
   return value;
 }
 
 /** Phase 6 review.status enum → TR label + Badge tone. */
 function statusDisplay(status: string): { label: string; tone: BadgeTone } {
-  if (status === "approved") return { label: "Onaylandı", tone: "success" };
+  if (status === "approved") return { label: "Approved", tone: "success" };
   if (status === "needs_review")
-    return { label: "Gözden geçir", tone: "warning" };
+    return { label: "Review", tone: "warning" };
   if (status === "rejected") return { label: "Reddedildi", tone: "danger" };
   return { label: "Beklemede", tone: "neutral" };
 }

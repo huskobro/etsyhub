@@ -11,10 +11,13 @@
 // Error state: raw error.message UI'a yansıtılmaz (PII / iç hata
 // detayları kullanıcıya sızmasın). Generic mesaj + öneri.
 //
-// Dalga B:
-//   - URL ?page=N pagination (Ö-6) — total > pageSize ise altta navigasyon.
-//   - Selection store scope sync — tab değişiminde auto-clear.
-//   - BulkActionsBar bottom (selectedIds > 0 ise görünür).
+// IA Phase 4: server-side decision filter
+//   - chip URL `?decision=` üzerinden okunur, hook'a canonical decision
+//     parametresi olarak geçer; hook bunu server'ın anladığı
+//     `?status=ReviewStatus`'a map eder (queries.ts → decisionToStatus).
+//   - Bu sayede pagination (total + page count) gerçek filtrelenmiş
+//     veri üzerinden hesaplanır; eski client-side filter pagination'ı
+//     kirletiyordu.
 
 import { useEffect } from "react";
 import {
@@ -24,6 +27,8 @@ import {
 } from "next/navigation";
 import { useReviewQueue } from "@/features/review/queries";
 import { ReviewCard } from "@/app/(app)/review/_components/ReviewCard";
+import { decisionFromParam } from "@/app/(app)/review/_components/ReviewDecisionFilter";
+import { ReviewQueueToolbar } from "@/app/(app)/review/_components/ReviewQueueToolbar";
 import { BulkActionsBar } from "@/app/(app)/review/_components/BulkActionsBar";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { buildReviewUrl } from "@/features/review/lib/search-params";
@@ -38,8 +43,18 @@ export function ReviewQueueList({ scope }: Props) {
 
   const pageRaw = searchParams.get("page");
   const pageNum = pageRaw && Number(pageRaw) > 0 ? Number(pageRaw) : 1;
+  const decisionChip = decisionFromParam(searchParams.get("decision"));
+  // chip "all" ⇒ undefined ⇒ server tüm decision'ları döner.
+  const decisionParam = decisionChip === "all" ? undefined : decisionChip;
+  // IA Phase 15 — server-side search.
+  const queryRaw = searchParams.get("q") ?? "";
 
-  const { data, isLoading, error } = useReviewQueue({ scope, page: pageNum });
+  const { data, isLoading, error } = useReviewQueue({
+    scope,
+    decision: decisionParam,
+    page: pageNum,
+    q: queryRaw,
+  });
 
   // Selection store scope sync: scope prop değişiminde store'u güncelle
   // (auto-clear). Tab değişiminde URL'den de detail/page sıfırlanır;
@@ -60,32 +75,66 @@ export function ReviewQueueList({ scope }: Props) {
   }, [pageNum, setPage]);
 
   if (isLoading) {
-    return <StateMessage tone="neutral" title="Yükleniyor…" />;
+    return (
+      <div className="flex flex-col gap-4">
+        <ReviewQueueToolbar
+          source={scope === "design" ? "ai" : "local"}
+          decision={decisionChip}
+          initialQuery={searchParams.get("q") ?? ""}
+        />
+        <StateMessage tone="neutral" title="Loading…" />
+      </div>
+    );
   }
   if (error) {
     return (
-      <StateMessage
-        tone="error"
-        title="Yüklenemedi"
-        body="Review listesi alınamadı. Sayfayı yenileyin veya birkaç saniye sonra tekrar deneyin."
-      />
+      <div className="flex flex-col gap-4">
+        <ReviewQueueToolbar
+          source={scope === "design" ? "ai" : "local"}
+          decision={decisionChip}
+          initialQuery={searchParams.get("q") ?? ""}
+        />
+        <StateMessage
+          tone="error"
+          title="Couldn't load review queue"
+          body="Refresh the page or try again in a few seconds."
+        />
+      </div>
     );
   }
   if (!data || data.items.length === 0) {
+    // Decision filter aktif ve sonuç boşsa filter-aware mesaj göster;
+    // aksi halde scope-spesifik "henüz review yok" mesajı.
+    const filterActive = decisionParam !== undefined;
     return (
-      <StateMessage
-        tone="neutral"
-        title={
-          scope === "design"
-            ? "Henüz review için bekleyen AI tasarımı yok"
-            : "Henüz review için bekleyen local asset yok"
-        }
-        body={
-          scope === "design"
-            ? "Variations sayfasından üretim başlatın; biten tasarımlar burada görünür."
-            : "Local Library'den batch review tetikleyebilirsiniz."
-        }
-      />
+      <div className="flex flex-col gap-4">
+        <ReviewQueueToolbar
+          source={scope === "design" ? "ai" : "local"}
+          decision={decisionChip}
+          initialQuery={searchParams.get("q") ?? ""}
+        />
+        {filterActive ? (
+          <StateMessage
+            tone="neutral"
+            title="No items match this filter"
+            body="Change the decision filter or click All to see everything."
+          />
+        ) : (
+          <StateMessage
+            tone="neutral"
+            title={
+              scope === "design"
+                ? "No AI designs pending review"
+                : "No local assets pending review"
+            }
+            body={
+              scope === "design"
+                ? "Start generation from References → Variations; finished designs land here."
+                : "Trigger a batch review from Local Library."
+            }
+          />
+        )}
+      </div>
     );
   }
 
@@ -96,22 +145,32 @@ export function ReviewQueueList({ scope }: Props) {
     router.push(
       buildReviewUrl(pathname, searchParams, {
         page: next === 1 ? undefined : String(next),
-        // Pagination'da detail kapanır (yeni sayfa cache'inde olmayabilir)
-        detail: undefined,
+        // Pagination closes the drawer — the target id may not be in the
+        // new page's cache. (canonical key: ?item=)
+        item: undefined,
       }),
     );
   };
 
   return (
     <div className="flex flex-col gap-4">
+      <ReviewQueueToolbar
+        source={scope === "design" ? "ai" : "local"}
+        decision={decisionChip}
+        initialQuery={searchParams.get("q") ?? ""}
+      />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
         {data.items.map((item) => (
-          <ReviewCard key={item.id} item={item} />
+          <ReviewCard
+            key={item.id}
+            item={item}
+            thresholds={data.policy?.thresholds}
+          />
         ))}
       </div>
       {showPagination ? (
         <nav
-          aria-label="Sayfalama"
+          aria-label="Pagination"
           data-testid="review-pagination"
           className="flex items-center justify-center gap-3"
         >
@@ -122,10 +181,10 @@ export function ReviewQueueList({ scope }: Props) {
             data-testid="review-pagination-prev"
             className="rounded-md border border-border bg-surface px-3 py-1 text-sm text-text disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Önceki
+            Previous
           </button>
           <span className="text-sm text-text-muted">
-            Sayfa {data.page} / {totalPages}
+            Page {data.page} of {totalPages}
           </span>
           <button
             type="button"
@@ -134,7 +193,7 @@ export function ReviewQueueList({ scope }: Props) {
             data-testid="review-pagination-next"
             className="rounded-md border border-border bg-surface px-3 py-1 text-sm text-text disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Sonraki
+            Next
           </button>
         </nav>
       ) : null}

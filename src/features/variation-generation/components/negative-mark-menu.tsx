@@ -44,7 +44,7 @@ export function NegativeMarkMenu({
         onClick={() => setOpen((v) => !v)}
         className="text-xs text-text underline hover:text-accent"
       >
-        Negatif İşaretle
+        Mark as negative
       </button>
       {open ? (
         <div className="absolute z-10 mt-1 flex w-64 flex-col gap-1 rounded-md border border-border bg-surface p-2 shadow-popover">

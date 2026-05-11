@@ -38,6 +38,7 @@ import { withErrorHandling } from "@/lib/http";
 import { ValidationError } from "@/lib/errors";
 import { requireUser } from "@/server/session";
 import { db } from "@/server/db";
+import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
 
 const ApproveSchema = z.object({
   action: z.literal("approve"),
@@ -86,6 +87,13 @@ export const POST = withErrorHandling(async (req: Request) => {
   // için her satır gerekir (approve dalı). reject + delete dalları için de
   // aynı sorguyu kullanmak basit: gereksiz field; performans etkisi marjinal
   // (bulk en fazla 100 id).
+  // IA-29 — local scope bulk decisions de aktif root altındaki
+  // asset'lerle sınırlı. Operatör eski path'lerde bulunan stale
+  // selection ile bulk action denemesi yapamaz.
+  const rootFilter =
+    scope === "local"
+      ? await getActiveLocalRootFilter(user.id)
+      : {};
   const ownedRows =
     scope === "design"
       ? await db.generatedDesign.findMany({
@@ -98,6 +106,7 @@ export const POST = withErrorHandling(async (req: Request) => {
             userId: user.id,
             deletedAt: null,
             isUserDeleted: false,
+            ...rootFilter,
           },
           select: { id: true, reviewRiskFlags: true },
         });

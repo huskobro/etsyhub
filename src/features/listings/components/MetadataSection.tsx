@@ -85,7 +85,7 @@ export function MetadataSection({ listing }: { listing: ListingDraftView }) {
             className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Etsy'de gözükecek ana başlık (140 karaktere kadar)
+            Etsy&apos;de gözükecek ana başlık (140 karaktere kadar)
           </p>
         </div>
 
@@ -128,7 +128,7 @@ export function MetadataSection({ listing }: { listing: ListingDraftView }) {
         {/* AI Generation Status */}
         {aiMutation.isSuccess && (
           <p className="text-xs text-text-subtle" role="status">
-            AI önerisi alanlara yazıldı. İncele ve "Kaydet" ile kaydet.
+            AI önerisi alanlara yazıldı. İncele ve &quot;Kaydet&quot; ile kaydet.
           </p>
         )}
 

@@ -30,7 +30,230 @@ const whitelist = [
   // 2. tüketicisi (Tailwind arbitrary `w-[X%]` yasak). 3. tüketici geldiğinde
   // `src/components/ui/progress-bar.tsx`'e terfi edilir.
   "src/app/(admin)/admin/midjourney/batches/[batchId]/review/page.tsx",
+  // Rollout-1 — Kivasy app-shell. v4 spec'in yarı-piksel mono caption
+  // hierarchy'si (text-[10px] / text-[10.5px]) Tailwind text-xs (11px) ile
+  // karşılanmıyor. Active Tasks panel keskin 340w boyutu da v4 spec sabiti
+  // (k-tasks recipe). Sidebar admin badge'i v4 base.jsx ile eşit.
+  "src/features/app-shell/Sidebar.tsx",
+  "src/features/app-shell/ActiveTasksPanel.tsx",
+  "src/features/app-shell/RolloutPlaceholder.tsx",
+  // Rollout-1 — Kivasy brand mark / wordmark canonical SVG geometry. The
+  // `rgba()` strokes and inline `style` props are part of the byte-canonical
+  // mark (matches docs/design-system/kivasy/ui_kits/kivasy/v4/base.jsx
+  // KivasyMark / KivasyWord).
+  "src/components/ui/KivasyMark.tsx",
+  // Rollout-2 — Library primitives. v4 spec sabit ölçüler:
+  //  · DetailPanel  → w-[460px], max-w-[90vw] (panel width canonical)
+  //  · Checkbox     → border-[1.5px] (k-checkbox recipe)
+  //  · FloatingBulkBar → comment'de canonical dark surface hex (#16130F)
+  "src/components/ui/DetailPanel.tsx",
+  "src/components/ui/FloatingBulkBar.tsx",
+  "src/features/library/components/Checkbox.tsx",
+  // Rollout-3 — Batches/Review/Modal primitives.
+  //  · ProgressBar  → style.width % escape hatch (RolloutBar pattern, 3rd
+  //    consumer threshold; dynamic percent cannot be a Tailwind class).
+  //  · Modal        → v4 modal-sm/md/lg sabit max-width sözleşmesi
+  //    (420 / 720 / 1100), dark variant'ın canonical #1F1C18 / #16130F
+  //    surface'leri. Bunlar token sistemine alınmadı çünkü modal canonical
+  //    boyutları ve dark workspace tek-tip.
+  //  · BatchReviewWorkspace → A4 dark workspace. v4 #1A1815 (canvas) /
+  //    #16130F (workspace bar) / #1F1C18 (info rail) sabitleri sadece bu
+  //    surface'te kullanılır; light theme yok. Filmstrip + KBD chip
+  //    boyutları (min-w-[22px], min-w-[28px], text-[8px]/[9px]) v4 spec.
+  //  · BatchesIndexClient → text-[13.5px] yarı-piksel (Kivasy v4 row
+  //    typography sabitlerinden), Tailwind text-sm 13px / text-base 14px
+  //    arasında token tier yok.
+  "src/components/ui/ProgressBar.tsx",
+  "src/features/library/components/Modal.tsx",
+  "src/features/batches/components/BatchReviewWorkspace.tsx",
+  "src/features/batches/components/BatchesIndexClient.tsx",
+  // IA Phase 9 — QueueReviewWorkspace mirrors BatchReviewWorkspace's
+  // dark fullscreen language (canonical /review focus surface for AI +
+  // Local items). Same #1A1815 / #16130F / #1F1C18 hex sabitleri ve
+  // max-w-[760px] stage genişliği — operatör iki workspace'i tek
+  // ürün olarak görür.
+  "src/features/review/components/QueueReviewWorkspace.tsx",
+  // IA Phase 11 — ReviewWorkspaceShell is the shared layout that the
+  // Batch and Queue workspaces both render through. Same v4 dark
+  // surface hex sabitleri (#1A1815 / #16130F / #1F1C18), max-w-[760px]
+  // stage, ve KBD chip min-w-[22px] sabitleri. Adapter pattern: hex
+  // değerleri tek noktada (shell), source-spesifik dosyalar token'a
+  // ihtiyaç duymadığı için artık whitelist'te kalmaları gerekmiyor —
+  // ama BatchReviewWorkspace.tsx'in geçmiş v4 spec yorumları nedeniyle
+  // entry korundu.
+  "src/features/review/components/ReviewWorkspaceShell.tsx",
+  // IA Phase 13 — ReviewQueueToolbar uses the Kivasy DS half-pixel
+  // mono caption (`text-[10.5px]`) for the per-segment count chips,
+  // matching the Library/References sub-tab patterns.
+  "src/app/(app)/review/_components/ReviewQueueToolbar.tsx",
+  // IA Phase 14 — ReviewCard uses the same DS half-pixel mono caption
+  // for the "override" inline signal (operator override hint replacing
+  // the noisier "Kullanıcı" badge).
+  "src/app/(app)/review/_components/ReviewCard.tsx",
+  // IA Phase 16 — EvaluationPanel sağ panel checklist + lifecycle
+  //   bilesenidir. Workspace shell'in v4 dark zincirinde calisir;
+  //   text-[10.5px] (mono caption / passed-count chip) ve text-[11px]
+  //   (failed-check secondary reason satiri) yari-piksel hierarchy'si
+  //   QueueReviewWorkspace info-rail tipografi sirasiyla uyumlu.
+  "src/features/review/components/EvaluationPanel.tsx",
+  // Rollout-4 — Selections (B2/B3) recipes.
+  //  · SelectionCard → `.k-card--hero` v5 hero card; `aspect-square` + 3-up
+  //    thumb composite v5 design layer'ında tanımlı.
+  //  · SelectionsIndexClient → toolbar `max-w-[420px]` + search input
+  //    `rounded-md` Library/Batches ile birebir patern.
+  //  · DesignsTab → 4-col grid + drag handle + bulk-bar; v5 spec sabit
+  //    `text-[10.5px]` mono caption (Library/Batches ile tutarlı).
+  //  · EditsTab → before/after `!w-12 !aspect-square` thumb pairing +
+  //    `bg-k-purple` v2 badge (purple = edit stage canonical).
+  "src/features/selections/components/SelectionCard.tsx",
+  "src/features/selections/components/SelectionsIndexClient.tsx",
+  "src/features/selections/components/tabs/DesignsTab.tsx",
+  "src/features/selections/components/tabs/EditsTab.tsx",
+  // Rollout-5 — Products (B4 / A5) recipes.
+  //  · ProductsIndexClient → B4 table sabit ölçüler: text-[13.5px] /
+  //    text-[12.5px] / text-[11px] / text-[10.5px] / text-[9.5px] /
+  //    text-[10px] yarı-piksel mono caption hierarchy + 4-up thumb cell
+  //    rounded-[3px] / w-12 grid sabitleri (Batches table paterni).
+  //    Listing health bar inline `style={{width:health+%}}` — RolloutBar
+  //    pattern (Tailwind arbitrary `w-[X%]` yasak, dinamik percent).
+  //  · ListingTab → A5 form layout sabitleri: max-w-[820px] form panel +
+  //    grid-cols-[1fr_360px] split rail + text-[12.5px] / text-[11.5px] /
+  //    text-[10.5px] / text-[36px] / text-[24px] / text-[14px] yarı-piksel
+  //    typography (Kivasy v4 listing form canon). min-h-[60px] tag chip
+  //    container + h-12 format toggle button.
+  //  · FilesTab → A5 stat tile sabit boyutu (text-[24px]) + table cell
+  //    text-[10.5px] / text-[12px] / text-[12.5px] / text-[13px] yarı-
+  //    piksel typography (A5 file table canon).
+  "src/features/products/components/ProductsIndexClient.tsx",
+  "src/features/products/components/tabs/ListingTab.tsx",
+  "src/features/products/components/tabs/FilesTab.tsx",
+  //  · MockupsTab → A5 mockup grid kart başlığı text-[15px] semibold +
+  //    mono caption text-[10.5px] (Selections Mockups read-only ile aynı
+  //    spec; v4 base.jsx section header canon).
+  //  · HistoryTab → A5 timeline mono ts text-[11px] yarı-piksel.
+  "src/features/products/components/tabs/MockupsTab.tsx",
+  "src/features/products/components/tabs/HistoryTab.tsx",
+  // Rollout-6 — Templates (C1) + Settings (C2/D1) recipes.
+  //  · TemplatesIndexClient → v6 sub-tab segment + table cell typography
+  //    (text-[13.5px] / text-[10.5px] yarı-piksel) + max-w-sm search +
+  //    hero recipe card text-[14.5px].
+  //  · SettingsShell → v6 detail-list grid-cols-[260px_1fr] + left-rail
+  //    text-[13px] / text-[10px] / text-[9.5px] mono group label canon.
+  //  · PaneGeneral / PaneEtsy / PaneAIProviders → v6/v7 max-w-[680px] +
+  //    max-w-[920px] pane container + text-[26px] k-display title +
+  //    text-[13.5px] / text-[12px] / text-[11.5px] / text-[10.5px] /
+  //    text-[10px] / text-[9.5px] yarı-piksel typography (Settings canon).
+  //  · PaneAIProviders → ProviderCard mono badge canonical hex'leri
+  //    (#E89B5B/#8E3A12 warm, #5B9BD5/#1E4F7B blue, #4A4640/#16130F ink,
+  //    #8A60C9/#4A2E7A purple) — D1 spec'in mono kimliği.
+  "src/features/templates/components/TemplatesIndexClient.tsx",
+  "src/features/settings/shell/SettingsShell.tsx",
+  "src/features/settings/shell/panes/PaneGeneral.tsx",
+  "src/features/settings/shell/panes/PaneEtsy.tsx",
+  "src/features/settings/shell/panes/PaneAIProviders.tsx",
+  "src/features/settings/shell/panes/PaneDeferred.tsx",
+  // Rollout-7 — Templates CRUD + Settings persist + remaining panes.
+  //  · PromptTemplateEditorModal → Modal lg + ModalSplit (340/1fr) +
+  //    text-[12.5px] / text-[11.5px] / text-[10.5px] / text-[11px]
+  //    yarı-piksel form labels + max-h-[88vh] viewport limit (Modal canon).
+  //  · StylePresetsSubview → text-[14px] preset card title + text-[10px] /
+  //    text-[10.5px] / text-[11px] yarı-piksel mono labels (v6 C1 canon).
+  //  · PaneWorkspace → max-w-[680px] container + text-[26px] k-display
+  //    title + text-[12.5px] / text-[11.5px] / text-[10.5px] yarı-piksel
+  //    typography (Settings canon).
+  //  · PaneNotifications → text-[13px] / text-[11.5px] / text-[10.5px] /
+  //    text-[9.5px] yarı-piksel + h-5/w-9 toggle (v6 ToggleRow pattern).
+  //  · PaneStorage → text-[26px] k-display title + text-[20px] / text-[15px]
+  //    / text-[13px] / text-[12px] / text-[11px] / text-[10.5px] / text-[10px]
+  //    yarı-piksel typography (Settings canon).
+  "src/features/templates/components/PromptTemplateEditorModal.tsx",
+  "src/features/templates/components/StylePresetsSubview.tsx",
+  "src/features/settings/shell/panes/PaneWorkspace.tsx",
+  "src/features/settings/shell/panes/PaneNotifications.tsx",
+  "src/features/settings/shell/panes/PaneStorage.tsx",
+  // Rollout-8 — Recipe runner + Mockup upload + remaining panes.
+  //  · RunRecipeModal → Modal md (max-w-[720px]) + chain step
+  //    text-[12.5px] / text-[11px] / text-[10.5px] yarı-piksel.
+  //  · UploadMockupTemplateModal → Modal md + drop zone border-dashed
+  //    + text-[10.5px] / text-[12px] / text-[12.5px] / text-[13px]
+  //    yarı-piksel labels.
+  //  · PaneEditor → text-[12.5px] / text-[12px] / text-[11.5px] /
+  //    text-[10.5px] / text-[13px] / text-[13.5px] yarı-piksel
+  //    typography (Settings canon).
+  //  · PaneScrapers → admin scope text-[12.5px] / text-[10.5px] /
+  //    text-[11px] / text-[12px] yarı-piksel typography.
+  "src/features/templates/components/RunRecipeModal.tsx",
+  "src/features/templates/components/UploadMockupTemplateModal.tsx",
+  "src/features/settings/shell/panes/PaneEditor.tsx",
+  "src/features/settings/shell/panes/PaneScrapers.tsx",
+  // IA Phase 16 — PaneReview review scoring config snapshot pane.
+  //   Settings v6 canon zinciriyle aynı half-pixel hierarchy:
+  //   text-[10px] / text-[11px] / text-[12.5px] / text-[26px] k-display.
+  "src/features/settings/shell/panes/PaneReview.tsx",
+  // R11.14 — Overview C3 4-block view (Pipeline pulse / Pending actions /
+  //   Active batches / Recent activity). v6 spec'in yarı-piksel mono caption
+  //   hierarchy'si (text-[9.5px] / text-[10px] / text-[10.5px] / text-[11px]
+  //   / text-[12.5px] / text-[13.5px] / text-[26px] k-display) Tailwind
+  //   token tier'ında yok. Inline style: ProgressBar yüzdesi (RolloutBar
+  //   emsali) + Recent activity grid-template-columns (5-column ızgara
+  //   sabitleri canonical: 60px / 1fr / 1fr / 90px / 24px).
+  "src/features/overview/components/OverviewClient.tsx",
+  // R11.14 — References B1 sibling-tab shell. v5 spec'in text-[12.5px] tab
+  //   label + text-[10.5px] mono count chip yarı-piksel hierarchy.
+  "src/features/references/components/ReferencesShellTabs.tsx",
+  // R11.14.4 — ReferencesPage v5 B1.SubPool full implementation.
+  //   v5 SubPool kart başlığı text-[13px] + meta caption text-[10.5px] mono
+  //   (screens-b1.jsx lines 124-150). Library/Selections/Products kartlarıyla
+  //   tutarlı yarı-piksel hierarchy; Tailwind tier'da text-sm (14px) ve
+  //   text-xs (12px) arası geçiş yok. Eski reference-card.tsx kaldırıldı.
+  "src/features/references/components/references-page.tsx",
+  // R11.14.4 — LibraryAssetCard v4 A1 recipe parity (k-card + k-thumb +
+  //   k-checkbox + k-iconbtn). Title text-[13px] + meta mono text-[10.5px]
+  //   yarı-piksel hierarchy v5 SubPool ile birebir.
+  "src/features/library/components/LibraryAssetCard.tsx",
+  // R11.14.5 — References page topbar v5 spec (h1 text-[24px] k-display,
+  //   subtitle text-[10.5px] mono inline). Tailwind text-2xl (24px) tier
+  //   var ama k-display font-family + leading-none kombinasyonu için
+  //   half-pixel tracking gerekli.
+  "src/app/(app)/references/page.tsx",
+  // R11.14.5 — Shared ReferencesTopbar (References family tek doğruluk
+  //   kaynağı). Aynı half-pixel typography hierarchy.
+  "src/features/references/components/ReferencesTopbar.tsx",
+  // R11.14.6 — Generic AppTopbar (tüm uygulama yüzeylerinin tek topbar
+  //   kaynağı). v4 base.jsx Topbar parity (h-16 + h1 text-[24px] k-display
+  //   + subtitle text-[10.5px] mono inline). Tailwind text-2xl 24px tier
+  //   var ama k-display + leading-none + tracking-tight kombinasyonu için
+  //   half-pixel arbitrary value gerekiyor.
+  "src/components/ui/AppTopbar.tsx",
+  // R11.14.7 — Detail page headers (Selection / Product / Batch) bespoke
+  //   topbar (back-arrow + title + status badge + sub-copy combined).
+  //   AppTopbar canon h1 24px + mono 10.5px subtitle inline; detail
+  //   header'ları aynı half-pixel hierarchy'de tutar.
+  "src/features/selections/components/SelectionDetailClient.tsx",
+  "src/features/products/components/ProductDetailClient.tsx",
+  "src/features/batches/components/BatchDetailClient.tsx",
+  // R11.14.10 — CompetitorCard k-card recipe migration (legacy Card+Button
+  //   primitive removed). v5 SubShops paritesi: text-[13px] title +
+  //   text-[10.5px]/text-[12.5px] mono caption hierarchy.
+  "src/features/competitors/components/competitor-card.tsx",
+  // R11.14.11 — PageShell topbar AppTopbar canon parity (h-16 + h1 24px
+  //   k-display + subtitle 10.5px mono inline). Tüm PageShell tüketici
+  //   sayfalar (competitor-list, trend-stories, variations) artık aynı
+  //   topbar typography hierarchy'sinde.
+  "src/components/ui/PageShell.tsx",
+  // R11.14.12 — Sub-route card recipe migrations (Library + References
+  //   Pool + Competitor card paritesiyle aynı k-card pattern):
+  //     · BookmarkCard (Inbox sub-view)
+  //     · CollectionCard (Collections sub-view)
+  //     · TrendClusterCard (Stories sub-view)
+  //   Half-pixel typography hierarchy: text-[13px] title + text-[10.5px]
+  //   mono meta caption.
+  "src/features/bookmarks/components/bookmark-card.tsx",
+  "src/features/collections/components/collection-card.tsx",
+  "src/features/trend-stories/components/trend-cluster-card.tsx",
 ];
+// Note: Rollout-9 keeps existing whitelisted files; no new client tsx with
+// half-pixel typography added.
 
 let hadError = false;
 

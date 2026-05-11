@@ -57,6 +57,19 @@ import {
   type ImageUploadResult,
 } from "./image-upload.service";
 import type { ListingImageOrderEntry } from "@/features/listings/types";
+import {
+  notifyUser,
+  type NotifyInput,
+} from "@/server/services/settings/notifications-inbox.service";
+
+/** R10 — best-effort dispatch; submit success path'i kesintiye uğramasın. */
+async function notifyUserSafe(input: NotifyInput): Promise<void> {
+  try {
+    await notifyUser(input);
+  } catch {
+    // sessiz: notify dahili try/catch'lı; reach buraya düşmemeli ama defansif.
+  }
+}
 
 // ────────────────────────────────────────────────────────────
 // Submit-specific errors
@@ -275,6 +288,15 @@ export async function submitListingDraft(
         submittedAt: new Date(),
       },
     });
+    // R10 — notify user on submit failure (listingSubmitted preference;
+    // failure path da bu kind'a düşer çünkü "submit oldu mu?" soru tek).
+    await notifyUserSafe({
+      userId,
+      kind: "listingSubmitted",
+      title: "Listing submit failed",
+      body: failedReason.slice(0, 120),
+      href: `/products/${listingId}`,
+    });
     throw err;
   }
 
@@ -326,6 +348,17 @@ export async function submitListingDraft(
       publishedAt: new Date(),
       failedReason: imageUploadFailedReason, // Partial varsa not, tam başarıda null
     },
+  });
+
+  // R10 — notifications inbox dispatch (listingSubmitted preference).
+  await notifyUserSafe({
+    userId,
+    kind: "listingSubmitted",
+    title: imageUploadFailedReason
+      ? "Listing submitted (partial)"
+      : "Listing submitted to Etsy",
+    body: `Etsy draft ${createResult.etsyListingId.slice(0, 12)} created${imageUploadFailedReason ? " · image upload partial" : ""}.`,
+    href: `/products/${listingId}`,
   });
 
   return {

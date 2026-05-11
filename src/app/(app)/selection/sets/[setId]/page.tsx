@@ -19,7 +19,7 @@ import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { StudioShell } from "@/features/selection/components/StudioShell";
 
-export const metadata = { title: "Set düzenle — EtsyHub" };
+export const metadata = { title: "Selection Studio · Kivasy" };
 
 export default async function Page({
   params,

@@ -30,6 +30,35 @@ export const LocalLibrarySettingsSchema = z.object({
   }),
   targetDpi: z.number().int().positive().default(300),
   qualityThresholds: QualityThresholdsSchema.default(DEFAULT_QUALITY_THRESHOLDS),
+  // IA Phase 26 — default productTypeKey for local auto-review.
+  // Local scan worker needs a productTypeKey to enqueue REVIEW_DESIGN
+  // (Phase 6 Karar 3: silent default is forbidden upstream, but a
+  // single user-chosen default in settings is explicit configuration,
+  // not a silent guess). When set, the scan worker auto-enqueues
+  // freshly discovered + never-scored assets so the operator doesn't
+  // have to trigger every folder manually.
+  // IA-29 (CLAUDE.md Madde V) — folder/path bazlı productType mapping.
+  // Tek global default YOK. Operatör her klasör için açık seçim
+  // yapar. Mapping olmayan klasörler için scan worker auto-enqueue
+  // YAPMAZ; UI'da "pending mapping" listesinde belirir, operatör
+  // atar veya `__ignore__` ile yok sayar.
+  //
+  // Anahtar folderName VEYA folderPath; değer productType key veya
+  // `__ignore__` sentinel.
+  folderProductTypeMap: z
+    .record(
+      z.string(),
+      z.enum([
+        "wall_art",
+        "clipart",
+        "sticker",
+        "transparent_png",
+        "bookmark",
+        "printable",
+        "__ignore__",
+      ]),
+    )
+    .default({}),
 });
 
 export type LocalLibrarySettings = z.infer<typeof LocalLibrarySettingsSchema>;
@@ -40,4 +69,5 @@ export const DEFAULT_LOCAL_LIBRARY_SETTINGS: LocalLibrarySettings = {
   targetResolution: { width: 4000, height: 4000 },
   targetDpi: 300,
   qualityThresholds: { ok: 75, warn: 40 },
+  folderProductTypeMap: {},
 };

@@ -2,6 +2,33 @@ import type { Config } from "tailwindcss";
 
 export default {
   content: ["./src/**/*.{ts,tsx}"],
+  // R3.5 — Kivasy v4 component recipes are defined in globals.css under
+  // `@layer base`. JIT purges class definitions whose selectors aren't
+  // matched in `content`, so recipes that aren't yet used by any
+  // component (e.g. `.k-card--hero` waits for rollout-4 selection cards)
+  // get dropped from the production bundle. Safelist ensures the recipe
+  // CSS ships even if the className appears for the first time at runtime.
+  safelist: [
+    "k-mono",
+    "k-display",
+    "k-tnum",
+    "k-wordmark",
+    "k-btn",
+    "k-btn--primary",
+    "k-btn--publish",
+    "k-btn--edit",
+    "k-btn--secondary",
+    "k-btn--ghost",
+    "k-btn--destructive",
+    "k-card",
+    "k-card--hero",
+    "k-sidebar",
+    "k-fab",
+    "k-fab__count",
+    "k-fab__btn",
+    "k-fab__btn--primary",
+    "k-fab__close",
+  ],
   theme: {
     extend: {
       colors: {
@@ -43,6 +70,43 @@ export default {
         sidebar: "hsl(var(--color-sidebar) / <alpha-value>)",
         "sidebar-foreground": "hsl(var(--color-sidebar-foreground) / <alpha-value>)",
         "sidebar-accent": "hsl(var(--color-sidebar-accent) / <alpha-value>)",
+
+        // ════ Kivasy v4 canonical bindings (rollout-1 zemin) ════════════
+        // Yeni surface'ler bunları kullanır. `--k-*` hex literal olduğu için
+        // Tailwind opacity sistemine girmez (hsl tuple değil); ihtiyaç olunca
+        // ayrı utility eklenir. Yeterli rolü `bg-paper`, `text-ink` vs.
+        paper: "var(--k-paper)",
+        ink: "var(--k-ink)",
+        "ink-2": "var(--k-ink-2)",
+        "ink-3": "var(--k-ink-3)",
+        "ink-4": "var(--k-ink-4)",
+        line: "var(--k-line)",
+        "line-strong": "var(--k-line-strong)",
+        "line-soft": "var(--k-line-soft)",
+        // Kivasy tinted bg (warm paper) — `--k-bg`/`--k-bg-2`
+        "k-bg": "var(--k-bg)",
+        "k-bg-2": "var(--k-bg-2)",
+        // Stage palette (orange + blue + purple)
+        "k-orange": "var(--k-orange)",
+        "k-orange-deep": "var(--k-orange-deep)",
+        "k-orange-bright": "var(--k-orange-bright)",
+        "k-orange-soft": "var(--k-orange-soft)",
+        "k-orange-ink": "var(--k-orange-ink)",
+        "k-blue": "var(--k-blue)",
+        "k-blue-deep": "var(--k-blue-deep)",
+        "k-blue-bright": "var(--k-blue-bright)",
+        "k-blue-soft": "var(--k-blue-soft)",
+        "k-purple": "var(--k-purple)",
+        "k-purple-deep": "var(--k-purple-deep)",
+        "k-purple-bright": "var(--k-purple-bright)",
+        "k-purple-soft": "var(--k-purple-soft)",
+        // Status (Kivasy modifiers)
+        "k-green": "var(--k-green)",
+        "k-green-soft": "var(--k-green-soft)",
+        "k-amber": "var(--k-amber)",
+        "k-amber-soft": "var(--k-amber-soft)",
+        "k-red": "var(--k-red)",
+        "k-red-soft": "var(--k-red-soft)",
       },
       borderRadius: {
         sm: "var(--radius-sm)",
@@ -55,8 +119,13 @@ export default {
         popover: "var(--shadow-popover)",
       },
       fontFamily: {
+        // R3.5 — Kivasy v4 type stack: General Sans / Geist Mono / Clash Display.
+        // The legacy --font-sans / --font-mono CSS variables in globals.css now
+        // resolve to Kivasy fonts directly (no longer pointing at next/font
+        // Inter / Plex Mono).
         sans: "var(--font-sans)",
         mono: "var(--font-mono)",
+        display: "var(--font-display)",
       },
       fontSize: {
         xs: "var(--text-xs)",

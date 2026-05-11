@@ -100,7 +100,7 @@ export function ArchiveAction({ setId, setStatus }: ArchiveActionProps) {
       queryClient.invalidateQueries({ queryKey: selectionSetQueryKey(setId) });
       setConfirmOpen(false);
       setErrorMessage(null);
-      router.push("/selection");
+      router.push("/selections");
     },
     onError: (err: Error) => {
       setErrorMessage(err.message);
@@ -159,7 +159,7 @@ export function ArchiveAction({ setId, setStatus }: ArchiveActionProps) {
         description={
           <>
             Bu set arşivlenecek.{" "}
-            <strong className="text-text">Geri alınamaz</strong> (Phase 7).
+            <strong className="text-text">Cannot be undone</strong>
             Arşivlenmiş set&apos;ler /selection ana sayfasında görünmez. Set
             verisi silinmez — ileride archive yönetimi eklendiğinde
             erişilebilir olur.

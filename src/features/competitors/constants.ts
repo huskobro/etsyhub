@@ -8,8 +8,8 @@
  */
 
 /**
- * Yorum sayısı tahmini popülerlik göstergesidir; kesin satış rakamı değildir.
- * UI bu sabiti import edip kullanıcıya disclaimer olarak gösterir.
+ * Review count is an estimated popularity signal, not an exact sales figure.
+ * UI imports this constant to display the disclaimer to the user.
  */
 export const REVIEW_COUNT_DISCLAIMER =
-  "Yorum sayısı tahmini popülerlik göstergesidir; kesin satış rakamı değildir.";
+  "Review count is an estimated popularity signal, not an exact sales figure.";

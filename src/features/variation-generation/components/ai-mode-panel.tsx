@@ -40,17 +40,18 @@ export function AiModePanel({ referenceId }: { referenceId: string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-md border border-warning bg-warning-soft px-4 py-3 text-sm text-text">
-        <div className="font-medium">AI üretimi maliyet üretir</div>
+        <div className="font-medium">AI generation incurs cost</div>
         <p className="mt-1 text-text-muted">
-          Her görsel ayrı kuyruk işidir; provider&apos;a istek atılır. Üretim
-          onay adımıyla başlar; tahmini maliyet sözleşme dışı.
+          Each image is a separate queue job; the provider is hit per request.
+          Generation starts with a confirm step; the cost estimate is
+          best-effort, not contractual.
         </p>
       </div>
 
       <div className="rounded-md border border-border bg-surface p-3 text-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-text-muted">
-            Reference URL durumu (image-to-image için zorunlu)
+            Reference URL status (required for image-to-image)
           </span>
           {!hasPublicUrl ? (
             <span className="rounded-md bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger">

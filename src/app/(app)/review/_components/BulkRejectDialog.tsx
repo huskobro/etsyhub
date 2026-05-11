@@ -57,20 +57,21 @@ export function BulkRejectDialog({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`${ids.length} tasarımı reddet`}
+      title={`Reject ${ids.length} item${ids.length === 1 ? "" : "s"}`}
       description={
         <span>
-          Seçilen <strong className="text-text">{ids.length}</strong> tasarım
-          reddedilecek (Reject). Bu kullanıcı kararı olarak işaretlenir, SYSTEM
-          override etmez.
+          The selected <strong className="text-text">{ids.length}</strong>{" "}
+          item{ids.length === 1 ? "" : "s"} will be marked as Rejected.
+          This counts as an operator decision; the AI pipeline will not
+          override it.
         </span>
       }
-      confirmLabel="Reddet"
-      cancelLabel="Vazgeç"
+      confirmLabel="Reject"
+      cancelLabel="Cancel"
       tone="destructive"
       busy={mutation.isPending}
       errorMessage={
-        mutation.isError ? "İşlem başarısız oldu. Tekrar deneyin." : null
+        mutation.isError ? "Action failed. Please try again." : null
       }
       onConfirm={async () => {
         await mutation.mutateAsync();

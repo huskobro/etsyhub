@@ -25,38 +25,34 @@ export function TrendClusterRail({ windowDays, onOpenCluster }: Props) {
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-lg font-semibold text-text">Trend Kümeleri</h2>
+        <h2 className="text-lg font-semibold text-text">Trend clusters</h2>
         {query.data ? (
           <p className="font-mono text-xs tracking-meta text-text-muted">
-            {query.data.clusters.length} küme
+            {query.data.clusters.length} clusters
           </p>
         ) : null}
       </div>
 
       {query.isLoading ? (
-        <StateMessage tone="neutral" title="Kümeler yükleniyor…" />
+        <StateMessage tone="neutral" title="Loading clusters…" />
       ) : query.isError ? (
         <StateMessage
           tone="error"
-          title="Kümeler yüklenemedi"
+          title="Couldn't load clusters"
           body={(query.error as Error).message}
         />
       ) : !query.data || query.data.clusters.length === 0 ? (
-        // Pass 34 — Empty state'e yönlendirme eklendi. Pre-Pass 34: sadece
-        // "farklı bir aralık dene" — ama kullanıcı henüz rakip eklememişse
-        // veya rakipleri taranmamışsa hiç cluster oluşmaz. CTA: Rakiplere
-        // git → mağaza ekle/tara → buradaki feed dolar.
         <StateMessage
           tone="neutral"
-          title="Bu pencerede trend kümesi henüz yok"
-          body="Pencere aralığını değiştir ya da rakip mağaza ekleyip taramaya başla."
+          title="No trend clusters in this window"
+          body="Change the window range, or add a competitor shop and start scanning."
           action={
             <Link
               href="/competitors"
               className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-foreground hover:opacity-90"
               data-testid="trend-empty-cta"
             >
-              Rakiplere git
+              Open Shops
             </Link>
           }
         />

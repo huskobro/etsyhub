@@ -18,9 +18,9 @@ type Props = {
 };
 
 const LABELS: Record<WindowDays, string> = {
-  1: "1 Gün",
-  7: "7 Gün",
-  30: "30 Gün",
+  1: "1 day",
+  7: "7 days",
+  30: "30 days",
 };
 
 /**

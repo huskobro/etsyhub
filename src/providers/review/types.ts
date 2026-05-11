@@ -33,6 +33,36 @@ export function isReviewRiskFlagType(value: string): value is ReviewRiskFlagType
   return (REVIEW_RISK_FLAG_TYPES as readonly string[]).includes(value);
 }
 
+/**
+ * IA Phase 23 — technical criteria taksonomisi (CLAUDE.md Madde O,
+ * teknik kalite kuralları). Server-side evaluator bu id'leri
+ * üretir; provider response schema'sına dahil değildir (provider
+ * yalnızca REVIEW_RISK_FLAG_TYPES'tan dönüt verir). UI iki
+ * taksonomiyi tek criterion list'inde birleştirir.
+ */
+export const TECHNICAL_REVIEW_FLAG_TYPES = [
+  "tech_min_dpi",
+  "tech_min_resolution",
+  "tech_format_whitelist",
+  "tech_aspect_ratio",
+  "tech_transparency_required",
+] as const;
+
+export type TechnicalReviewFlagType =
+  (typeof TECHNICAL_REVIEW_FLAG_TYPES)[number];
+
+/** Combined id namespace — UI/state uses both families. Provider
+ *  response stays narrowed to ReviewRiskFlagType. */
+export type AnyReviewCriterionId =
+  | ReviewRiskFlagType
+  | TechnicalReviewFlagType;
+
+export function isTechnicalReviewFlagType(
+  value: string,
+): value is TechnicalReviewFlagType {
+  return (TECHNICAL_REVIEW_FLAG_TYPES as readonly string[]).includes(value);
+}
+
 export type ReviewRiskFlag = {
   /**
    * Risk flag türü. Drift #5 (2026-04-30) sonrası alan adı `kind`.

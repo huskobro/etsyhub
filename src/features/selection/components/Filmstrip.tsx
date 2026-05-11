@@ -45,7 +45,7 @@ export type FilmstripProps = {
 };
 
 const FILTER_OPTIONS: Array<{ value: FilmstripFilter; label: string }> = [
-  { value: "all", label: "Tümü" },
+  { value: "all", label: "All" },
   { value: "active", label: "Aktif" },
   { value: "rejected", label: "Reddedilenler" },
 ];
@@ -221,7 +221,7 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
                   {isEdited ? (
                     <div
                       aria-hidden
-                      title="Düzenlenmiş"
+                      title="Edited"
                       data-testid="filmstrip-edited-dot"
                       className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-success ring-2 ring-bg"
                     />

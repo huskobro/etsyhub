@@ -193,7 +193,8 @@ describe("GENERATE_VARIATIONS auto-enqueue REVIEW_DESIGN", () => {
     expect(reviewCalls).toHaveLength(1);
 
     const [, payload] = reviewCalls[0]!;
-    expect(payload).toEqual({
+    // IA-29 — enqueueReviewDesign now includes jobId (db.job row id)
+    expect(payload).toMatchObject({
       scope: "design",
       generatedDesignId: designId,
       userId: USER_ID,

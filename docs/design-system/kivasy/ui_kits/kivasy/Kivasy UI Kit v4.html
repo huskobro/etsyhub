@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Kivasy · v4 — A1–A7 surfaces</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin/>
+  <link href="https://api.fontshare.com/v2/css?f[]=general-sans@300,400,500,600,700&f[]=clash-display@500,600,700&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com/3.4.10"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="v4/tokens.css"/>
+  <style>
+    .v4-picker { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 70; background: #16130F; color: #fff; padding: 4px; border-radius: 12px; display: flex; gap: 2px; box-shadow: 0 12px 32px rgba(0,0,0,0.30); }
+    .v4-picker button { padding: 7px 12px; border-radius: 9px; font-size: 12px; font-family: var(--k-font-mono); letter-spacing: 0.04em; color: rgba(255,255,255,0.6); border: none; background: transparent; cursor: pointer; transition: all 140ms; }
+    .v4-picker button[aria-pressed="true"] { background: var(--k-orange); color: #fff; }
+    .v4-picker button:hover:not([aria-pressed="true"]) { color: #fff; background: rgba(255,255,255,0.08); }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="v4/base.jsx" data-presets="env,react"></script>
+<script type="text/babel" src="v4/screens-a1-a2.jsx" data-presets="env,react"></script>
+<script type="text/babel" src="v4/screens-a3-a4.jsx" data-presets="env,react"></script>
+<script type="text/babel" src="v4/screens-a5.jsx" data-presets="env,react"></script>
+<script type="text/babel" src="v4/screens-a6-a7.jsx" data-presets="env,react"></script>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect } = React;
+
+const SURFACES = [
+  { id:"a1", short:"A1", label:"Library",          screen:"library",   sidebar:"library",    component:"A1Library",       full:false },
+  { id:"a2", short:"A2", label:"Batches",          screen:"batches",   sidebar:"batches",    component:"A2BatchesIndex",  full:false },
+  { id:"a3", short:"A3", label:"Batch · Detail",   screen:"batch",     sidebar:"batches",    component:"A3BatchDetail",   full:false },
+  { id:"a4", short:"A4", label:"Batch · Review",   screen:"review",    sidebar:null,         component:"A4BatchReview",   full:true },
+  { id:"a5", short:"A5", label:"Product · Detail", screen:"product",   sidebar:"products",   component:"A5ProductDetail", full:false },
+  { id:"a6", short:"A6", label:"Create Variations",screen:"varmodal",  sidebar:"library",    component:"A1Library",       modal:"A6CreateVariations" },
+  { id:"a7", short:"A7", label:"Apply Mockups",    screen:"mockmodal", sidebar:"selections", component:"A1Library",       modal:"A7ApplyMockups" },
+];
+
+function App() {
+  const [active, setActive] = useState(() => {
+    const h = (location.hash || "").replace("#","");
+    const m = SURFACES.find(s => s.id === h);
+    return m ? m.id : "a1";
+  });
+  useEffect(() => {
+    const onHash = () => {
+      const h = (location.hash || "").replace("#","");
+      const m = SURFACES.find(s => s.id === h);
+      if (m) setActive(m.id);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const surface = SURFACES.find(s => s.id === active) || SURFACES[0];
+  const Screen = window[surface.component];
+  const ModalComp = surface.modal ? window[surface.modal] : null;
+
+  const close = () => { location.hash = "a1"; };
+
+  return (
+    <div className="flex h-screen w-screen overflow-hidden">
+      {!surface.full && surface.sidebar && <Sidebar active={surface.sidebar}/>}
+      {Screen ? <Screen/> : <div className="p-10">Loading…</div>}
+      {ModalComp && <ModalComp onClose={close}/>}
+
+      <div className="v4-picker">
+        {SURFACES.map(s => (
+          <button key={s.id} aria-pressed={s.id === active} onClick={() => { location.hash = s.id; setActive(s.id); }}>
+            {s.short} · {s.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App/>);
+</script>
+</body>
+</html>

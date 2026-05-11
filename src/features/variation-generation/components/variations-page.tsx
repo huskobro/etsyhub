@@ -27,28 +27,28 @@ export function VariationsPage({ referenceId }: { referenceId: string }) {
     <PageShell
       title={
         <span className="flex items-center gap-2">
-          <span>Üretim Atölyesi</span>
-          {/* Pass 25 — workspace label clarity. Production = burası,
-              Decision = /review. Aynı dil iki yüzeyde tutarlı. */}
+          <span>Production workshop</span>
+          {/* Pass 25 — workspace label clarity. Production = here,
+              Decision = /review. Consistent language across surfaces. */}
           <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-text">
-            Üretim
+            Production
           </span>
         </span>
       }
       subtitle={
         <span>
-          Bu referansa benzer yeni tasarım üret. Local: lokal kütüphaneden seç · AI: provider ile yeni varyant üret. Üretilen görseller{" "}
+          Generate new variants from this reference. Local: pick from your library · AI: ask the provider for new variants. New visuals land in{" "}
           <a
             href="/review"
             className="text-accent underline hover:text-accent-hover"
           >
-            Karar Atölyesi (Review)
+            the Decision workspace (Review)
           </a>
-          &apos;ne düşer.
+          .
         </span>
       }
       toolbar={
-        <div role="tablist" aria-label="Variations modu" className="flex gap-2">
+        <div role="tablist" aria-label="Variations mode" className="flex gap-2">
           <button
             type="button"
             role="tab"

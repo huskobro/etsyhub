@@ -154,7 +154,7 @@ export function ExportButton({
           }
           loading={exportMutation.isPending}
         >
-          {exportMutation.isPending ? "Hazırlanıyor..." : "İndir (ZIP)"}
+          {exportMutation.isPending ? "Preparing…" : "Download (ZIP)"}
         </Button>
       </ExportButtonShell>
     );
@@ -169,7 +169,7 @@ export function ExportButton({
         <Button variant="secondary" disabled>
           <span
             className="mr-2 inline-block h-3 w-3 animate-spin rounded-full border-2 border-text-muted border-t-transparent"
-            aria-label="Yükleniyor"
+            aria-label="Loading"
           />
           Export hazırlanıyor...
         </Button>
@@ -215,7 +215,7 @@ export function ExportButton({
           title="Önceki indirme süresi doldu, yeniden hazırla"
           loading={exportMutation.isPending}
         >
-          {exportMutation.isPending ? "Hazırlanıyor..." : "Yeniden hazırla"}
+          {exportMutation.isPending ? "Preparing…" : "Re-prepare"}
         </Button>
       </ExportButtonShell>
     );
@@ -234,7 +234,7 @@ export function ExportButton({
         title={activeExport.failedReason ?? "Export başarısız oldu"}
         loading={exportMutation.isPending}
       >
-        {exportMutation.isPending ? "Hazırlanıyor..." : "Tekrar dene"}
+        {exportMutation.isPending ? "Preparing…" : "Try again"}
       </Button>
     </ExportButtonShell>
   );

@@ -1,27 +1,35 @@
+/**
+ * R3.5 — defaultTokens Kivasy v4 paletine hizalandı.
+ *
+ * Bu değerler ThemeProvider tarafından runtime'da `<body>` element'ine
+ * yazılır (admin Theme editor için override pipeline). globals.css :root
+ * default'larıyla aynı palet olmalı; aksi halde canlı render globals'ı
+ * runtime override ediyor ve eski "Editorial Cockpit" hissi sızıyor.
+ */
 export const defaultTokens = {
   colors: {
-    // Surfaces — warm off-white family
-    bg: "60 23% 97%",
-    surface: "0 0% 100%",
-    surfaceMuted: "51 23% 94%",
-    surface2: "51 23% 94%",
-    surface3: "47 18% 90%",
+    // Surfaces — Kivasy v4 warm paper
+    bg: "45 36% 95%",          // --k-bg #F7F5EF
+    surface: "0 0% 100%",      // --k-paper #FFFFFF
+    surfaceMuted: "45 27% 92%", // --k-bg-2 #F1EEE5
+    surface2: "45 27% 92%",
+    surface3: "43 23% 86%",    // --k-line tier as hover row tint
 
-    // Text
-    text: "24 11% 9%",
-    textMuted: "30 6% 40%",
-    textSubtle: "32 6% 58%",
+    // Text — Kivasy v4 ink
+    text: "34 19% 7%",          // --k-ink #16130F
+    textMuted: "36 8% 27%",     // --k-ink-2 #4A4640
+    textSubtle: "33 8% 52%",    // --k-ink-3 #8B857C
 
     // Borders
-    border: "45 14% 89%",
-    borderStrong: "45 13% 82%",
-    borderSubtle: "51 18% 92%",
+    border: "43 23% 86%",       // --k-line #E4E0D5
+    borderStrong: "40 19% 78%", // --k-line-strong #D2CCBE
+    borderSubtle: "43 27% 91%", // --k-line-soft #EFEBE0
 
-    // Accent — #E85D25 family
-    accent: "17 81% 53%",
-    accentHover: "17 78% 46%",
-    accentSoft: "24 78% 93%",
-    accentText: "18 77% 39%",
+    // Accent — Kivasy v4 orange
+    accent: "17 81% 53%",       // --k-orange #E85D25
+    accentHover: "17 78% 45%",  // --k-orange-deep #C9491A
+    accentSoft: "24 78% 93%",   // --k-orange-soft #FBEADF
+    accentText: "18 78% 31%",   // --k-orange-ink #8E3A12
     accentForeground: "0 0% 100%",
 
     // Status
@@ -34,16 +42,16 @@ export const defaultTokens = {
     info: "209 52% 37%",
     infoSoft: "207 55% 92%",
 
-    // Sidebar legacy aliases (ThemeProvider uyumu)
-    sidebar: "51 23% 94%",
-    sidebarForeground: "24 11% 9%",
+    // Sidebar legacy aliases (ThemeProvider runtime override uyumu)
+    sidebar: "45 27% 92%",       // --k-bg-2
+    sidebarForeground: "34 19% 7%",
     sidebarAccent: "17 81% 53%",
   },
-  radius: { sm: "4px", md: "6px", lg: "10px", full: "9999px" },
+  radius: { sm: "5px", md: "8px", lg: "14px", full: "9999px" },
   shadow: {
-    card: "0 1px 2px rgba(26, 23, 21, 0.04), 0 1px 1px rgba(26, 23, 21, 0.03)",
+    card: "0 1px 1px rgba(22, 19, 15, 0.03)",
     popover:
-      "0 12px 32px rgba(26, 23, 21, 0.12), 0 2px 6px rgba(26, 23, 21, 0.06)",
+      "0 12px 32px rgba(22, 19, 15, 0.12), 0 2px 6px rgba(22, 19, 15, 0.06)",
   },
   spacing: {
     "1": "4px",
@@ -60,11 +68,13 @@ export const defaultTokens = {
     "20": "80px",
   },
   font: {
-    sans: 'var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    mono: 'var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace',
+    // Kivasy stack (R3.5). Legacy `--font-inter` / `--font-plex-mono`
+    // hâlâ next/font tarafından dolduruluyor ama kullanılmıyor.
+    sans: '"General Sans", ui-sans-serif, system-ui, sans-serif',
+    mono: '"Geist Mono", ui-monospace, Menlo, monospace',
   },
   layout: {
-    sidebarWidth: "232px",
+    sidebarWidth: "248px", // Kivasy v4 sidebar width
     headerHeight: "56px",
     contentMaxWidth: "1440px",
   },

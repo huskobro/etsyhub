@@ -47,17 +47,13 @@ export function TrendStoriesPage() {
   const activeTabId = tabIds[windowDays];
   const activePanelId = panelIds[windowDays];
 
-  const subtitle = (
-    <span>
-      Rakip mağazalardaki yeni listing&apos;leri pencere bazında izle,
-      kümelenmiş trendleri gör ve beğendiklerini Bookmark Inbox&apos;a at.
-    </span>
-  );
+  // R11.14.3 — title/subtitle References shell tarafından üst topbar'da
+  // gösteriliyor; PageShell başlığı boş bırakıldı (çift header kaldırma).
 
   return (
     <PageShell
-      title="Trend Akışı"
-      subtitle={subtitle}
+      title=""
+      subtitle=""
       toolbar={
         <WindowTabs
           value={windowDays}

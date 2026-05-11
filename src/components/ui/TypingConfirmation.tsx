@@ -56,20 +56,20 @@ export function TypingConfirmation({
     <div className="flex flex-col gap-3" data-testid="typing-confirmation">
       {message ? <p className="text-sm text-text">{message}</p> : null}
       <p className="text-sm text-text-muted">
-        Onaylamak için aşağıya{" "}
+        Type{" "}
         <code
           className="rounded-sm bg-surface-muted px-1 font-mono text-text"
           data-testid="typing-confirmation-phrase"
         >
           {phrase}
         </code>{" "}
-        yazın:
+        below to confirm:
       </p>
       <input
         type="text"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        aria-label={`Onay phrase: ${phrase}`}
+        aria-label={`Confirmation phrase: ${phrase}`}
         data-testid="typing-confirmation-input"
         className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       />
@@ -80,7 +80,7 @@ export function TypingConfirmation({
         data-testid="typing-confirmation-confirm"
         className="rounded-md bg-danger px-4 py-2 text-sm font-medium text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
-        {isLoading ? "Çalışıyor…" : (buttonLabel ?? phrase)}
+        {isLoading ? "Working…" : (buttonLabel ?? phrase)}
       </button>
     </div>
   );

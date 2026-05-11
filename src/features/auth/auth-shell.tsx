@@ -87,9 +87,9 @@ function BrandPanel() {
           aria-hidden
           className="flex h-7 w-7 items-center justify-center rounded-sm bg-accent font-mono text-sm font-semibold text-accent-foreground"
         >
-          E
+          K
         </span>
-        <span className="text-md font-semibold text-text">EtsyHub</span>
+        <span className="text-md font-semibold text-text">Kivasy</span>
       </div>
 
       <div className="mt-auto flex max-w-md flex-col gap-3">

@@ -59,7 +59,9 @@ import { requireUser } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
 import { ValidationError, NotFoundError } from "@/lib/errors";
 import { db } from "@/server/db";
-import { enqueue } from "@/server/queue";
+import { enqueueReviewDesign } from "@/server/services/review/enqueue";
+import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
+import { resolveLocalFolder } from "@/features/settings/local-library/folder-mapping";
 import { logger } from "@/lib/logger";
 
 // USER yalnızca APPROVED veya REJECTED yazabilir. PENDING/NEEDS_REVIEW SYSTEM
@@ -71,15 +73,29 @@ const PostSchema = z.object({
 });
 
 // Discriminated union — local scope productTypeKey ZORUNLU (Karar 3).
+// IA Phase 25 — `rerun` opt-in flag (default false). When true,
+// the snapshot is wiped and a fresh REVIEW_DESIGN job is enqueued.
+// When false (default), only the operator-decision layer is
+// rolled back: status → PENDING, source → SYSTEM. The existing
+// AI evaluation (score / summary / risk flags / provider snapshot)
+// stays as a reference so undecided'a alma tek başına re-score
+// sebebi olmaz (CLAUDE.md Madde N — kept/rejected → undecided
+// preserve).
 const PatchSchema = z.discriminatedUnion("scope", [
   z.object({
     scope: z.literal("design"),
     id: z.string().cuid(),
+    rerun: z.boolean().optional(),
   }),
   z.object({
     scope: z.literal("local"),
     id: z.string().cuid(),
-    productTypeKey: z.string().min(1),
+    // IA-30 — productTypeKey artık optional. UI hardcoded "wall_art"
+    // göndermek zorunda değil; server folder mapping veya asset'in
+    // folderName'inden resolve eder. Yine de override için body'de
+    // gelebilir (örn. admin script).
+    productTypeKey: z.string().min(1).optional(),
+    rerun: z.boolean().optional(),
   }),
 ]);
 
@@ -187,55 +203,74 @@ export const PATCH = withErrorHandling(async (req: Request) => {
       throw new NotFoundError();
     }
 
-    // Reset state — ATOMIK commit. USER damgası silinir, SYSTEM PENDING'e
-    // döner; review snapshot/score/summary/riskFlags null'lanır.
-    // textDetected/gibberishDetected schema default (false) — sıfırla.
-    // Prisma.DbNull: Json? alanı için DB NULL set etmek (JsonNull JSON null
-    // value'su, DbNull SQL NULL — burada satırı temizliyoruz).
-    await db.generatedDesign.update({
-      where: { id: parsed.data.id },
-      data: {
-        reviewStatus: ReviewStatus.PENDING,
-        reviewStatusSource: ReviewStatusSource.SYSTEM,
-        reviewScore: null,
-        reviewSummary: null,
-        reviewRiskFlags: Prisma.DbNull,
-        textDetected: false,
-        gibberishDetected: false,
-        reviewedAt: null,
-        reviewProviderSnapshot: null,
-        reviewPromptSnapshot: null,
-      },
-    });
-
-    // Rerun BEST-EFFORT (Karar 2). DesignReview audit row SİLİNMEZ — worker
-    // rerun'da upsert update dalı override edecek; o ana kadar eski SYSTEM
-    // kanıt zinciri kalır.
-    let rerunEnqueued = true;
-    let rerunError: string | undefined;
-    try {
-      await enqueue(JobType.REVIEW_DESIGN, {
-        scope: "design" as const,
-        generatedDesignId: parsed.data.id,
-        userId: user.id,
+    // IA Phase 25 — preserve-by-default reset (CLAUDE.md Madde N).
+    // Default: only roll back the USER decision layer. snapshot stays.
+    // Opt-in `rerun: true` ⇒ wipe snapshot + enqueue fresh job.
+    const rerun = parsed.data.rerun === true;
+    if (rerun) {
+      // IA-29 — rerun: advisory + score sıfır, status PENDING (operator
+      // damga zaten USER → null için NEEDS_REVIEW yok)
+      await db.generatedDesign.update({
+        where: { id: parsed.data.id },
+        data: {
+          reviewStatus: ReviewStatus.PENDING,
+          reviewStatusSource: ReviewStatusSource.SYSTEM,
+          reviewSuggestedStatus: null,
+          reviewScore: null,
+          reviewProviderRawScore: null,
+          reviewSummary: null,
+          reviewRiskFlags: Prisma.DbNull,
+          textDetected: false,
+          gibberishDetected: false,
+          reviewedAt: null,
+          reviewProviderSnapshot: null,
+          reviewPromptSnapshot: null,
+        },
       });
-    } catch (err) {
-      rerunEnqueued = false;
-      rerunError = err instanceof Error ? err.message : String(err);
-      logger.error(
-        { designId: parsed.data.id, userId: user.id, err: rerunError },
-        "review reset: rerun enqueue failed (state reset committed)",
-      );
+    } else {
+      // IA-29 — preserve: sadece operatör damgasını geri al; advisory
+      // + score + snapshot kalır (CLAUDE.md Madde N).
+      await db.generatedDesign.update({
+        where: { id: parsed.data.id },
+        data: {
+          reviewStatus: ReviewStatus.PENDING,
+          reviewStatusSource: ReviewStatusSource.SYSTEM,
+        },
+      });
+    }
+
+    let rerunEnqueued = false;
+    let rerunError: string | undefined;
+    if (rerun) {
+      try {
+        await enqueueReviewDesign({
+          userId: user.id,
+          payload: { scope: "design", generatedDesignId: parsed.data.id },
+        });
+        rerunEnqueued = true;
+      } catch (err) {
+        rerunError = err instanceof Error ? err.message : String(err);
+        logger.error(
+          { designId: parsed.data.id, userId: user.id, err: rerunError },
+          "review reset: rerun enqueue failed (state reset committed)",
+        );
+      }
     }
 
     return NextResponse.json({
       reset: true,
+      rerun,
       rerunEnqueued,
       ...(rerunError !== undefined && { rerunError }),
     });
   }
 
-  // scope === "local" — productTypeKey Zod garanti ediyor (string min(1)).
+  // scope === "local"
+  // IA-30 — productTypeKey resolve sırası:
+  //   1. body.productTypeKey (operator/admin override)
+  //   2. folderProductTypeMap[asset.folderName] (operator alias)
+  //   3. convention: folderName bilinen productType ise onu kullan
+  //   4. yoksa rerun yapılamaz (400) — operatöre mapping atamasını söyle
   const asset = await db.localLibraryAsset.findFirst({
     where: {
       id: parsed.data.id,
@@ -243,50 +278,87 @@ export const PATCH = withErrorHandling(async (req: Request) => {
       deletedAt: null,
       isUserDeleted: false,
     },
-    select: { id: true },
+    select: { id: true, folderName: true, folderPath: true },
   });
   if (!asset) {
     throw new NotFoundError();
   }
-
-  // Reset state — LocalLibraryAsset reviewIssues alanı da var (design'da yok),
-  // null'lanır. textDetected/gibberishDetected LocalLibraryAsset'te yok.
-  // Json? alanlar için Prisma.DbNull (SQL NULL).
-  await db.localLibraryAsset.update({
-    where: { id: parsed.data.id },
-    data: {
-      reviewStatus: ReviewStatus.PENDING,
-      reviewStatusSource: ReviewStatusSource.SYSTEM,
-      reviewScore: null,
-      reviewSummary: null,
-      reviewIssues: Prisma.DbNull,
-      reviewRiskFlags: Prisma.DbNull,
-      reviewedAt: null,
-      reviewProviderSnapshot: null,
-      reviewPromptSnapshot: null,
-    },
-  });
-
-  let rerunEnqueued = true;
-  let rerunError: string | undefined;
-  try {
-    await enqueue(JobType.REVIEW_DESIGN, {
-      scope: "local" as const,
-      localAssetId: parsed.data.id,
-      userId: user.id,
-      productTypeKey: parsed.data.productTypeKey,
+  let resolvedProductTypeKey = parsed.data.productTypeKey ?? null;
+  if (!resolvedProductTypeKey) {
+    const settings = await getUserLocalLibrarySettings(user.id);
+    const folderMap = settings.folderProductTypeMap ?? {};
+    // IA-35 — path-based mapping resolution. Aynı isimli farklı
+    // path'teki klasörler birbirini etkilemez.
+    const r = resolveLocalFolder({
+      folderName: asset.folderName,
+      folderPath: asset.folderPath,
+      folderMap,
     });
-  } catch (err) {
-    rerunEnqueued = false;
-    rerunError = err instanceof Error ? err.message : String(err);
-    logger.error(
-      { assetId: parsed.data.id, userId: user.id, err: rerunError },
-      "review reset: rerun enqueue failed (state reset committed)",
+    if (r.kind === "mapped") resolvedProductTypeKey = r.productTypeKey;
+  }
+  // Rerun istenmiyorsa productTypeKey gerekli değil (sadece reset).
+  const wantsRerun = parsed.data.rerun === true;
+  if (wantsRerun && !resolvedProductTypeKey) {
+    throw new ValidationError(
+      "Could not resolve productTypeKey for this local asset. Map the folder in Settings → Review → Local library first, or include productTypeKey in the request body.",
     );
+  }
+
+  // IA Phase 25 — preserve-by-default reset (local branch).
+  const rerun = parsed.data.rerun === true;
+  if (rerun) {
+    await db.localLibraryAsset.update({
+      where: { id: parsed.data.id },
+      data: {
+        reviewStatus: ReviewStatus.PENDING,
+        reviewStatusSource: ReviewStatusSource.SYSTEM,
+        reviewSuggestedStatus: null,
+        reviewScore: null,
+        reviewProviderRawScore: null,
+        reviewSummary: null,
+        reviewIssues: Prisma.DbNull,
+        reviewRiskFlags: Prisma.DbNull,
+        reviewedAt: null,
+        reviewProviderSnapshot: null,
+        reviewPromptSnapshot: null,
+      },
+    });
+  } else {
+    await db.localLibraryAsset.update({
+      where: { id: parsed.data.id },
+      data: {
+        reviewStatus: ReviewStatus.PENDING,
+        reviewStatusSource: ReviewStatusSource.SYSTEM,
+      },
+    });
+  }
+
+  let rerunEnqueued = false;
+  let rerunError: string | undefined;
+  if (rerun) {
+    try {
+      await enqueueReviewDesign({
+        userId: user.id,
+        payload: {
+          scope: "local",
+          localAssetId: parsed.data.id,
+          // IA-30 — server-resolved (mapping > convention > body override)
+          productTypeKey: resolvedProductTypeKey!,
+        },
+      });
+      rerunEnqueued = true;
+    } catch (err) {
+      rerunError = err instanceof Error ? err.message : String(err);
+      logger.error(
+        { assetId: parsed.data.id, userId: user.id, err: rerunError },
+        "review reset: rerun enqueue failed (state reset committed)",
+      );
+    }
   }
 
   return NextResponse.json({
     reset: true,
+    rerun,
     rerunEnqueued,
     ...(rerunError !== undefined && { rerunError }),
   });

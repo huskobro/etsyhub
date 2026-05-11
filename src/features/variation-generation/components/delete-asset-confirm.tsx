@@ -27,7 +27,7 @@ export function DeleteAssetConfirm({
         <>
           <span className="block">Bu görsel:</span>
           <ul className="mt-2 list-disc pl-5 text-xs text-text">
-            <li>EtsyHub uygulamasından silinecek</li>
+            <li>Kivasy uygulamasından silinecek</li>
             <li>
               <strong>DİSKTEN de silinecek (kalıcı, geri alınamaz)</strong>
             </li>
@@ -42,7 +42,7 @@ export function DeleteAssetConfirm({
           </dl>
         </>
       }
-      confirmLabel="Diskten Sil"
+      confirmLabel="Delete from disk"
       cancelLabel="Vazgeç"
       tone="destructive"
       busy={del.isPending}

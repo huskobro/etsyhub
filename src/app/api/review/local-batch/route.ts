@@ -3,15 +3,18 @@
 // Local mode toplu review tetikleme endpoint'i. Kullanıcı bir veya birkaç
 // LocalLibraryAsset için Gemini review'i kuyruğa atar.
 //
-// Response invariant:
-//   requested = enqueueSucceeded + skippedDuplicates + skippedNotFound + enqueueErrors
+// Response invariant (IA Phase 16 — already-scored skip):
+//   requested = enqueueSucceeded + skippedDuplicates + skippedNotFound
+//             + skippedAlreadyScored + enqueueErrors
 //
 // Field anlamları:
 //   - requested: body'deki ham assetIds sayısı (dedup öncesi)
-//   - enqueueSucceeded: ownership PASS + enqueue PASS olan asset sayısı
+//   - enqueueSucceeded: ownership PASS + already-scored değil + enqueue PASS
 //   - skippedDuplicates: body'de tekrar eden id'ler
 //   - skippedNotFound: ownership FAIL (başka user, deletedAt, isUserDeleted)
-//   - enqueueErrors: ownership PASS olup enqueue çağrısında throw alan asset sayısı
+//   - skippedAlreadyScored: SYSTEM tarafından zaten review edilmiş; tekrar
+//     Gemini çağrısı tetiklemez (CLAUDE.md Madde N — scoring cost disiplini)
+//   - enqueueErrors: enqueue çağrısında throw alan asset sayısı
 //
 // Sözleşme:
 //   - Auth: requireUser (Phase 5).
@@ -39,6 +42,7 @@ import { withErrorHandling } from "@/lib/http";
 import { ValidationError } from "@/lib/errors";
 import { db } from "@/server/db";
 import { enqueue } from "@/server/queue";
+import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
 import { logger } from "@/lib/logger";
 
 const BodySchema = z.object({
@@ -61,24 +65,53 @@ export const POST = withErrorHandling(async (req: Request) => {
 
   // Ownership + soft-delete filter.
   // Aktif asset = userId match + deletedAt null + isUserDeleted false.
+  // IA-29 — aktif rootFolderPath dışı asset'ler trigger'a kabul edilmez.
+  const rootFilter = await getActiveLocalRootFilter(user.id);
   const ownedAssets = await db.localLibraryAsset.findMany({
     where: {
       id: { in: uniqueIds },
       userId: user.id,
       deletedAt: null,
       isUserDeleted: false,
+      ...rootFilter,
     },
-    select: { id: true },
+    // CLAUDE.md Madde N — scoring cost disiplini. Zaten SYSTEM
+    // tarafından scoring almış asset'leri (reviewedAt + provider
+    // snapshot dolu) ikinci kez kuyruğa atmıyoruz. UI tetiklemesi,
+    // tekrar gelmiş webhook, retry, ya da idempotency olmayan eski
+    // çağrı senaryolarında dahi maliyet doğmaz.
+    select: {
+      id: true,
+      reviewedAt: true,
+      reviewProviderSnapshot: true,
+      reviewStatusSource: true,
+    },
   });
   const ownedIdSet = new Set(ownedAssets.map((a) => a.id));
   const acceptedIds = uniqueIds.filter((id) => ownedIdSet.has(id));
   const skippedNotFound = uniqueIds.length - acceptedIds.length;
 
+  // Already-scored skip (canonical guard, sticky.ts'le aynı semantik).
+  // İmport etmek yerine endpoint'in karar mantığını burada tutuyoruz
+  // (yalnız iki alan kontrolü, modül bağımlılığı şişmesin).
+  const alreadyScoredIds = new Set(
+    ownedAssets
+      .filter(
+        (a) =>
+          a.reviewStatusSource === "SYSTEM" &&
+          a.reviewedAt !== null &&
+          a.reviewProviderSnapshot !== null,
+      )
+      .map((a) => a.id),
+  );
+  const enqueueIds = acceptedIds.filter((id) => !alreadyScoredIds.has(id));
+  const skippedAlreadyScored = acceptedIds.length - enqueueIds.length;
+
   // Per-asset enqueue paralel: Phase 5 ai-generation.service.ts paterni.
   // Race-safe: her async fn kendi try/catch'ini taşıyor; counter mutation yok,
   // immutable filter sayım. 100 asset × Redis RTT (~5-10ms) = ~1s tasarruf.
   const enqueueResults = await Promise.all(
-    acceptedIds.map(async (assetId) => {
+    enqueueIds.map(async (assetId) => {
       try {
         await enqueue(JobType.REVIEW_DESIGN, {
           scope: "local" as const,
@@ -104,9 +137,10 @@ export const POST = withErrorHandling(async (req: Request) => {
 
   return NextResponse.json({
     requested: parsed.data.assetIds.length,
-    enqueueSucceeded: acceptedIds.length - enqueueErrors,
+    enqueueSucceeded: enqueueIds.length - enqueueErrors,
     skippedDuplicates,
     skippedNotFound,
+    skippedAlreadyScored,
     enqueueErrors,
   });
 });

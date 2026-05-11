@@ -46,10 +46,10 @@ import { Toast } from "@/components/ui/Toast";
 type ProductTypeOption = { id: string; displayName: string };
 
 const WINDOW_OPTIONS: { value: ReviewWindow; label: string }[] = [
-  { value: "30d", label: "Son 30 gün" },
-  { value: "90d", label: "Son 90 gün" },
-  { value: "365d", label: "Son 365 gün" },
-  { value: "all", label: "Tümü" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "365d", label: "Last 365 days" },
+  { value: "all", label: "All time" },
 ];
 
 type ToastState = { kind: "success" | "error"; message: string } | null;
@@ -293,7 +293,7 @@ export function CompetitorDetailPage({
           disabled={scan.isPending}
           loading={scan.isPending}
         >
-          {scan.isPending ? "Başlatılıyor…" : "Yeni Tarama"}
+          {scan.isPending ? "Starting…" : "New Scan"}
         </Button>
       }
     >
@@ -305,7 +305,7 @@ export function CompetitorDetailPage({
             href="/competitors"
             className="hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Rakipler
+            Shops
           </Link>
           <span> · </span>
           <span>{shopLabel}</span>
@@ -313,15 +313,15 @@ export function CompetitorDetailPage({
 
         {lastScan ? (
           <p className="text-xs text-text-muted">
-            Son tarama: {lastScan.status} ·{" "}
-            {new Date(lastScan.createdAt).toLocaleString("tr-TR")} ·{" "}
-            {lastScan.listingsFound} bulundu, {lastScan.listingsNew} yeni
+            Last scan: {lastScan.status} ·{" "}
+            {new Date(lastScan.createdAt).toLocaleString("en-US")} ·{" "}
+            {lastScan.listingsFound} found, {lastScan.listingsNew} new
           </p>
         ) : null}
 
         <div
           role="tablist"
-          aria-label="Tarih aralığı"
+          aria-label="Date range"
           className="flex flex-wrap gap-2"
         >
           {WINDOW_OPTIONS.map((opt) => {
@@ -369,7 +369,7 @@ export function CompetitorDetailPage({
               onClick={() => setToast(null)}
               className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-text underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              Kapat
+              Close
             </button>
           </div>
         ) : null}
@@ -382,19 +382,19 @@ export function CompetitorDetailPage({
           className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-md"
         >
           {listings.isLoading ? (
-            <StateMessage tone="neutral" title="Yükleniyor…" />
+            <StateMessage tone="neutral" title="Loading…" />
           ) : listings.isError ? (
             <StateMessage
               tone="error"
-              title="Listing akışı yüklenemedi"
+              title="Couldn't load listing feed"
               body={(listings.error as Error).message}
             />
           ) : items.length === 0 ? (
             <StateMessage
               tone="neutral"
-              title="Bu aralıkta gösterilecek listing yok"
+              title="No listings in this range"
               body={
-                'Veriyi yenilemek için yukarıdaki "Yeni Tarama" düğmesini kullan.'
+                'Use "New Scan" above to refresh the data.'
               }
             />
           ) : (

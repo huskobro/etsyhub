@@ -67,8 +67,8 @@ export function S7JobView({ setId, jobId }: { setId: string; jobId: string }) {
     <main className="p-8 max-w-2xl mx-auto">
       <header className="mb-8">
         <h1 className="text-2xl font-bold">Pack Hazırlanıyor</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          /selection/sets/{setId}/mockup/jobs/{jobId}
+        <p className="mt-1 font-mono text-xs uppercase tracking-meta text-muted-foreground">
+          job · {jobId.slice(0, 8)} · set {setId.slice(0, 8)}
         </p>
       </header>
 
@@ -176,7 +176,7 @@ export function S7JobView({ setId, jobId }: { setId: string; jobId: string }) {
             variant="secondary"
             onClick={() => router.push(`/selection/sets/${setId}/mockup/apply`)}
           >
-            S3'e dön
+            S3&apos;e dön
           </Button>
         </div>
       )}
@@ -189,7 +189,7 @@ export function S7JobView({ setId, jobId }: { setId: string; jobId: string }) {
             variant="secondary"
             onClick={() => router.push(`/selection/sets/${setId}/mockup/apply`)}
           >
-            S3'e dön
+            S3&apos;e dön
           </Button>
         </div>
       )}

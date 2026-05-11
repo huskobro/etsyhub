@@ -49,6 +49,8 @@ function buildGeneratedDesign(
     reviewStatusSource: ReviewStatusSource.SYSTEM,
     reviewScore: null,
     reviewProviderSnapshot: null,
+    reviewSuggestedStatus: null,
+    reviewProviderRawScore: null,
     reviewPromptSnapshot: null,
     reviewRiskFlags: null,
     createdAt: new Date(),

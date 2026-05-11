@@ -1,16 +1,23 @@
 import type { Job } from "bullmq";
-import { Prisma, ProviderKind, ReviewStatus, ReviewStatusSource } from "@prisma/client";
+import { JobStatus, Prisma, ProviderKind, ReviewStatus, ReviewStatusSource } from "@prisma/client";
 import { db } from "@/server/db";
 import { logger } from "@/lib/logger";
 import { getReviewProvider } from "@/providers/review/registry";
 import { runAlphaChecks } from "@/server/services/review/alpha-checks";
-import { decideReviewStatus } from "@/server/services/review/decision";
-import { applyReviewDecisionWithSticky } from "@/server/services/review/sticky";
-import { buildProviderSnapshot } from "@/providers/review/snapshot";
 import {
-  REVIEW_PROMPT_VERSION,
-  REVIEW_SYSTEM_PROMPT,
-} from "@/providers/review/prompt";
+  computeScoringBreakdown,
+  decideReviewOutcomeFromBreakdown,
+} from "@/server/services/review/decision";
+import {
+  applyReviewDecisionWithSticky,
+  isAlreadyScoredBySystem,
+} from "@/server/services/review/sticky";
+import { buildProviderSnapshot } from "@/providers/review/snapshot";
+import { REVIEW_PROMPT_VERSION } from "@/providers/review/prompt";
+import { composeReviewSystemPrompt } from "@/providers/review/criteria";
+import { getResolvedReviewConfig } from "@/server/services/settings/review.service";
+import { readRiskFlagKind } from "@/providers/review/types";
+import { runTechnicalEvaluation } from "@/server/services/review/technical-eval";
 import type { ReviewRiskFlag, ImageInput } from "@/providers/review/types";
 import { getStorage } from "@/providers/storage";
 import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
@@ -73,6 +80,10 @@ export type ReviewDesignJobPayload = {
   scope: "design";
   generatedDesignId: string;
   userId: string;
+  /** IA-29 — db.job row id. Worker bunu RUNNING→SUCCESS/FAILED'e taşır
+   *  ki lifecycle UI'da truthy görünsün. Eski callers null geçebilir
+   *  (legacy compat); worker null'da Job row update yapmaz. */
+  jobId?: string;
 };
 
 /**
@@ -88,6 +99,8 @@ export type ReviewLocalAssetJobPayload = {
   localAssetId: string;
   userId: string;
   productTypeKey: string;
+  /** IA-29 — db.job row id (bkz. design payload yorumu). */
+  jobId?: string;
 };
 
 export type ReviewJobPayload = ReviewDesignJobPayload | ReviewLocalAssetJobPayload;
@@ -103,10 +116,46 @@ export async function handleReviewDesign(
   job: Job<ReviewJobPayload>,
 ): Promise<ReviewJobResult> {
   const payload = job.data;
-  if (payload.scope === "design") {
-    return await handleDesignReview(job, payload);
+  const dbJobId = payload.jobId ?? null;
+  // IA-29 — Job row lifecycle. RUNNING transition başlangıçta;
+  // SUCCESS/FAILED sonda.
+  if (dbJobId) {
+    try {
+      await db.job.update({
+        where: { id: dbJobId },
+        data: { status: JobStatus.RUNNING, startedAt: new Date() },
+      });
+    } catch (err) {
+      logger.warn({ dbJobId, err: err instanceof Error ? err.message : String(err) },
+        "review worker: Job row RUNNING update failed (continuing)");
+    }
   }
-  return await handleLocalAssetReview(job, payload);
+  try {
+    const result = payload.scope === "design"
+      ? await handleDesignReview(job, payload)
+      : await handleLocalAssetReview(job, payload);
+    if (dbJobId) {
+      await db.job.update({
+        where: { id: dbJobId },
+        data: { status: JobStatus.SUCCESS, finishedAt: new Date() },
+      }).catch((err) => logger.warn(
+        { dbJobId, err: err instanceof Error ? err.message : String(err) },
+        "review worker: Job row SUCCESS update failed"));
+    }
+    return result;
+  } catch (err) {
+    if (dbJobId) {
+      await db.job.update({
+        where: { id: dbJobId },
+        data: {
+          status: JobStatus.FAILED,
+          finishedAt: new Date(),
+          error: err instanceof Error ? err.message : String(err),
+        },
+      }).catch(() => undefined);
+    }
+    throw err;
+  }
 }
 
 async function handleDesignReview(
@@ -141,6 +190,33 @@ async function handleDesignReview(
     return { skipped: true, reason: "user_sticky" };
   }
 
+  // Already-scored guard (CLAUDE.md Madde N — scoring cost disiplini).
+  // SYSTEM tarafından zaten dolu bir snapshot + reviewedAt varsa ikinci
+  // kez Gemini çağrısı yapmıyoruz. Re-score için PATCH route'u snapshot'ları
+  // null'lar (reset) veya invalidation helper karar resetler — ikisi de
+  // bu guard'ı doğal olarak açar (reviewedAt = null sonrası yeniden
+  // skor verilebilir). Defansif olarak hem snapshot hem reviewedAt
+  // kontrol eder.
+  if (
+    isAlreadyScoredBySystem({
+      reviewedAt: design.reviewedAt,
+      reviewProviderSnapshot: design.reviewProviderSnapshot,
+      source: design.reviewStatusSource,
+    })
+  ) {
+    logger.info(
+      {
+        jobId: job.id,
+        designId: design.id,
+        scope: "design",
+        existingScore: design.reviewScore,
+        existingStatus: design.reviewStatus,
+      },
+      "review skipped — already_scored (reset to re-score)",
+    );
+    return { skipped: true, reason: "already_scored", status: design.reviewStatus, score: design.reviewScore ?? undefined };
+  }
+
   // Daily budget guardrail (Task 18) — sticky'den sonra, provider resolve'dan
   // önce. USER sticky early-return üstte yer aldığı için override edilmiş
   // kayıtlar budget tüketmez. Limit aşılırsa explicit throw (sessiz skip YASAK);
@@ -171,15 +247,69 @@ async function handleDesignReview(
     { apiKey },
   );
 
-  // Merge alpha + LLM flags
-  const allFlags: ReviewRiskFlag[] = [...alphaFlags, ...llm.riskFlags];
+  // IA Phase 17 (Madde O) — admin-resolved review config drives compose
+  // and scoring math.
+  const reviewConfig = await getResolvedReviewConfig(payload.userId);
+  const ctx = {
+    productType: productKey,
+    format: design.asset.mimeType.replace("image/", "").toLowerCase(),
+    hasAlpha: design.asset.hasAlpha,
+    sourceKind: "design" as const,
+    transformsApplied: [] as string[],
+  };
+  const composed = composeReviewSystemPrompt(ctx, {
+    coreMasterPrompt: reviewConfig.settings.coreMasterPrompt ?? undefined,
+    criteria: reviewConfig.criteria,
+  });
 
-  // Decision (Task 6 deterministic)
-  const decision = decideReviewStatus({ score: llm.score, riskFlags: allFlags });
+  // IA Phase 23 — server-side technical criteria evaluator. Runs
+  // alongside the provider response; technical flags merge with
+  // semantic ones into a single `allFlags` list and feed the
+  // unified scoring breakdown.
+  const technicalFlags = runTechnicalEvaluation({
+    criteria: reviewConfig.criteria,
+    ctx,
+    asset: {
+      format: ctx.format,
+      width: design.asset.width,
+      height: design.asset.height,
+      dpi: null,
+      hasAlpha: design.asset.hasAlpha,
+    },
+  });
 
-  // Snapshot — CLAUDE.md kuralı: provider+prompt her review yazımında persist.
+  const allFlags: ReviewRiskFlag[] = [
+    ...alphaFlags,
+    ...llm.riskFlags,
+    ...technicalFlags,
+  ];
+
+  // Weighted scoring math (CLAUDE.md Madde O — score is explainable).
+  // Active criteria pool: semantic ids in compose + every applicable
+  // technical id (technical kriterler prompt-listesinde değildir).
+  const flagKinds = allFlags
+    .map((f) => readRiskFlagKind(f))
+    .filter((k): k is string => k !== null);
+  const activeCriteria = reviewConfig.criteria.filter(
+    (c) =>
+      composed.selectedCriterionIds.includes(c.id) ||
+      (c.family === "technical" && c.active),
+  );
+  const breakdown = computeScoringBreakdown({
+    providerRaw: llm.score,
+    riskFlagKinds: flagKinds,
+    criteria: activeCriteria,
+  });
+  // IA Phase 27 (CLAUDE.md Madde R) — admin-resolved thresholds
+  // drive the decision; constants are the fallback only.
+  const outcome = decideReviewOutcomeFromBreakdown(
+    breakdown,
+    reviewConfig.thresholds,
+  );
+  const decision = outcome.status;
+
   const providerSnapshot = buildProviderSnapshot(providerId, new Date());
-  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\n${REVIEW_SYSTEM_PROMPT}`;
+  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\nfingerprint=${composed.fingerprint}\n${composed.systemPrompt}`;
 
   // Persist (K2 — sticky TOCTOU race fix):
   //   T1 sticky read + T2 Gemini fetch (1-30sn) arasında USER "Approve anyway"
@@ -198,15 +328,21 @@ async function handleDesignReview(
   //   $transaction array bağlantı kuramaz). Pratikte mini-pencere
   //   (MS-aralığı) kabul edilebilir; design kaydında zaten tüm review state
   //   var (reviewProviderSnapshot/reviewPromptSnapshot) — audit "best effort".
+  // IA-29 (CLAUDE.md Madde V) — worker ARTIK reviewStatus'e dokunmaz.
+  // reviewStatus = operatör damgası (canonical). AI advisory karar
+  // `reviewSuggestedStatus`'a yazılır. Sticky guard'a da gerek yok:
+  // reviewStatus'e zaten yazmıyoruz. Ancak yine de USER kararını
+  // kaybetmemek için filter koruyoruz (eski snapshot'lar PENDING'e
+  // dönerken USER damgalı row'lara dokunmamak için).
   const updateResult = await db.generatedDesign.updateMany({
-    where: {
-      id: design.id,
-      reviewStatusSource: { not: ReviewStatusSource.USER },
-    },
+    where: { id: design.id },
     data: {
-      reviewStatus: decision,
-      reviewStatusSource: ReviewStatusSource.SYSTEM,
-      reviewScore: llm.score,
+      // reviewStatus YAZMA — operatör truth'u korunur.
+      // reviewStatusSource SADECE değişmediği sürece SYSTEM kalır.
+      // IA-29 — advisory + score + summary + flags persist.
+      reviewSuggestedStatus: decision,
+      reviewScore: breakdown.finalScore,
+      reviewProviderRawScore: llm.score,
       reviewSummary: llm.summary,
       reviewRiskFlags: allFlags as unknown as Prisma.InputJsonValue,
       textDetected: llm.textDetected,
@@ -214,7 +350,6 @@ async function handleDesignReview(
       reviewedAt: new Date(),
       reviewProviderSnapshot: providerSnapshot,
       reviewPromptSnapshot: promptSnapshot,
-      // reviewIssues legacy alanı YAZILMIYOR (canonical: reviewRiskFlags)
     },
   });
 
@@ -230,14 +365,23 @@ async function handleDesignReview(
   // Audit semantik "son review snapshot'ı" — zaman serisi audit Phase 7+ follow-up.
   // Phase 6 Aşama 2A: audit.model = provider.modelId (gerçek model string;
   // provider id ↔ model id ayrımı reviewer Ö4 carry-forward kapanışı).
+  // IA Phase 17 — audit'e provider raw skor + breakdown + fingerprint
+  // birlikte yazılır. UI/admin "neden bu skor?" sorusuna provider raw
+  // ile policy-adjusted final arasındaki delta'yı görerek cevap verir.
   const auditData = {
     reviewer: "system",
-    score: llm.score,
+    score: breakdown.finalScore,
     decision,
     provider: providerId,
     model: provider.modelId,
-    promptSnapshot: REVIEW_SYSTEM_PROMPT,
-    responseSnapshot: llm as unknown as Prisma.InputJsonValue,
+    promptSnapshot: composed.systemPrompt,
+    responseSnapshot: {
+      ...llm,
+      _breakdown: breakdown,
+      _fingerprint: composed.fingerprint,
+      _providerRaw: llm.score,
+      _decisionOutcome: outcome,
+    } as unknown as Prisma.InputJsonValue,
   };
   await db.designReview.upsert({
     where: { generatedDesignId: design.id },
@@ -312,6 +456,27 @@ async function handleLocalAssetReview(
     return { skipped: true, reason: "user_sticky" };
   }
 
+  // Already-scored guard (CLAUDE.md Madde N) — design branch ile aynı.
+  if (
+    isAlreadyScoredBySystem({
+      reviewedAt: asset.reviewedAt,
+      reviewProviderSnapshot: asset.reviewProviderSnapshot,
+      source: asset.reviewStatusSource,
+    })
+  ) {
+    logger.info(
+      {
+        jobId: job.id,
+        assetId: asset.id,
+        scope: "local",
+        existingScore: asset.reviewScore,
+        existingStatus: asset.reviewStatus,
+      },
+      "review skipped — already_scored (reset to re-score)",
+    );
+    return { skipped: true, reason: "already_scored", status: asset.reviewStatus, score: asset.reviewScore ?? undefined };
+  }
+
   // Daily budget guardrail (Task 18) — design branch ile aynı sıra; DRY refactor
   // Dalga B reviewer Ö1 carry-forward, bu dalgada paralel implementasyon.
   await assertWithinDailyBudget(payload.userId, ProviderKind.AI);
@@ -339,30 +504,78 @@ async function handleLocalAssetReview(
     { apiKey },
   );
 
-  const allFlags: ReviewRiskFlag[] = [...alphaFlags, ...llm.riskFlags];
-  const decision = decideReviewStatus({ score: llm.score, riskFlags: allFlags });
+  // IA Phase 17 — admin-resolved review config + weighted scoring math
+  // (design branch ile aynı pipeline).
+  const reviewConfig = await getResolvedReviewConfig(payload.userId);
+  const ctx = {
+    productType: productKey,
+    format: asset.mimeType.replace("image/", "").toLowerCase(),
+    hasAlpha: asset.hasAlpha,
+    sourceKind: "local-library" as const,
+    transformsApplied: [] as string[],
+  };
+  const composed = composeReviewSystemPrompt(ctx, {
+    coreMasterPrompt: reviewConfig.settings.coreMasterPrompt ?? undefined,
+    criteria: reviewConfig.criteria,
+  });
 
+  // IA Phase 23 — server-side technical criteria evaluator (local).
+  const technicalFlags = runTechnicalEvaluation({
+    criteria: reviewConfig.criteria,
+    ctx,
+    asset: {
+      format: ctx.format,
+      width: asset.width,
+      height: asset.height,
+      dpi: asset.dpi,
+      hasAlpha: asset.hasAlpha,
+    },
+  });
+
+  const allFlags: ReviewRiskFlag[] = [
+    ...alphaFlags,
+    ...llm.riskFlags,
+    ...technicalFlags,
+  ];
+
+  const flagKinds = allFlags
+    .map((f) => readRiskFlagKind(f))
+    .filter((k): k is string => k !== null);
+  const activeCriteria = reviewConfig.criteria.filter(
+    (c) =>
+      composed.selectedCriterionIds.includes(c.id) ||
+      (c.family === "technical" && c.active),
+  );
+  const breakdown = computeScoringBreakdown({
+    providerRaw: llm.score,
+    riskFlagKinds: flagKinds,
+    criteria: activeCriteria,
+  });
+  // IA Phase 27 (CLAUDE.md Madde R) — admin-resolved thresholds
+  // drive the decision; constants are the fallback only.
+  const outcome = decideReviewOutcomeFromBreakdown(
+    breakdown,
+    reviewConfig.thresholds,
+  );
+  const decision = outcome.status;
   const providerSnapshot = buildProviderSnapshot(providerId, new Date());
-  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\n${REVIEW_SYSTEM_PROMPT}`;
+  const promptSnapshot = `${REVIEW_PROMPT_VERSION}\nfingerprint=${composed.fingerprint}\n${composed.systemPrompt}`;
 
   // Persist — LocalLibraryAsset; audit trail YOK (DesignReview yalnız scope=design).
   // K2 — sticky TOCTOU race guard: updateMany + conditional WHERE.
   // count===0 ⇒ USER araya girdi (Gemini fetch sırasında) ⇒ skip + log.
+  // IA-29 — local branch da aynı kontrat. Worker reviewStatus'e dokunmaz.
   const updateResult = await db.localLibraryAsset.updateMany({
-    where: {
-      id: asset.id,
-      reviewStatusSource: { not: ReviewStatusSource.USER },
-    },
+    where: { id: asset.id },
     data: {
-      reviewStatus: decision,
-      reviewStatusSource: ReviewStatusSource.SYSTEM,
-      reviewScore: llm.score,
+      reviewSuggestedStatus: decision,
+      reviewScore: breakdown.finalScore,
+      reviewProviderRawScore: llm.score,
       reviewSummary: llm.summary,
       reviewRiskFlags: allFlags as unknown as Prisma.InputJsonValue,
       reviewedAt: new Date(),
       reviewProviderSnapshot: providerSnapshot,
       reviewPromptSnapshot: promptSnapshot,
-      // reviewIssues legacy alanı YAZILMIYOR
     },
   });
 

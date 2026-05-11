@@ -50,7 +50,7 @@ export function BulkDeleteDialog({ ids, open, onClose, onSuccess }: Props) {
       onSuccess(result);
     },
     onError: () => {
-      setError("Silme işlemi başarısız oldu. Tekrar deneyin.");
+      setError("Delete failed. Try again.");
     },
   });
 
@@ -78,11 +78,11 @@ export function BulkDeleteDialog({ ids, open, onClose, onSuccess }: Props) {
           }}
         >
           <Dialog.Title className="text-base font-semibold text-text">
-            {ids.length} asseti sil
+            Delete {ids.length} asset{ids.length === 1 ? "" : "s"}
           </Dialog.Title>
           <Dialog.Description className="mt-2 text-sm text-text-muted">
-            Bu işlem geri alınamaz. Asset&apos;ler local library&apos;den
-            çıkarılır (disk dosyaları silinmez).
+            This cannot be undone. Assets are removed from the local
+            library (disk files are not deleted).
           </Dialog.Description>
 
           <div className="mt-4">
@@ -95,8 +95,8 @@ export function BulkDeleteDialog({ ids, open, onClose, onSuccess }: Props) {
               gözüküyordu (Dalga B polish — UX bug fix).
             */}
             <TypingConfirmation
-              phrase="SİL"
-              buttonLabel={`${ids.length} asseti sil`}
+              phrase="DELETE"
+              buttonLabel={`Delete ${ids.length} asset${ids.length === 1 ? "" : "s"}`}
               isLoading={mutation.isPending}
               onConfirm={() => mutation.mutate()}
             />
@@ -118,7 +118,7 @@ export function BulkDeleteDialog({ ids, open, onClose, onSuccess }: Props) {
               disabled={mutation.isPending}
               className="inline-flex items-center justify-center rounded-md border border-border bg-surface-muted px-4 py-2 text-sm font-medium text-text hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-70"
             >
-              Vazgeç
+              Cancel
             </button>
           </div>
         </Dialog.Content>

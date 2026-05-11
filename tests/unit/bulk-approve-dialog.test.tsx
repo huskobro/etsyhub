@@ -51,6 +51,7 @@ function makeItem(
   return {
     id,
     thumbnailUrl: null,
+    fullResolutionUrl: null,
     reviewStatus: "NEEDS_REVIEW",
     reviewStatusSource: "SYSTEM",
     reviewScore: 60,
@@ -59,6 +60,8 @@ function makeItem(
     riskFlags: [],
     reviewedAt: null,
     reviewProviderSnapshot: null,
+  reviewSuggestedStatus: null,
+  reviewProviderRawScore: null,
     // Phase 7 Task 38: alanlar additive — bulk dialog ile alakasız, null.
     referenceId: null,
     productTypeId: null,

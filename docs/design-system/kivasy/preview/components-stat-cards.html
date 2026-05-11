@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/>
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&f[]=clash-display@500,600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="../ui_kits/kivasy/v4/tokens.css"/>
+<style>
+  body { margin: 0; padding: 28px; background: var(--k-bg); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .stat { padding: 18px; }
+  .label { font-family: var(--k-font-mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--k-ink-3); }
+  .value { font-family: var(--k-font-display); font-weight: 600; font-size: 36px; letter-spacing: -0.025em; color: var(--k-ink); margin-top: 8px; line-height: 1; }
+  .delta { font-family: var(--k-font-mono); font-size: 11px; color: var(--k-green); margin-top: 6px; letter-spacing: 0.04em; }
+</style></head><body>
+  <div class="grid">
+    <div class="k-card k-card--hero stat">
+      <div class="label">Active batches</div>
+      <div class="value">3</div>
+      <div class="delta">▲ 1 today</div>
+    </div>
+    <div class="k-card k-card--hero stat">
+      <div class="label">Library assets</div>
+      <div class="value">1,248</div>
+      <div class="delta">▲ 248 this week</div>
+    </div>
+    <div class="k-card k-card--hero stat">
+      <div class="label">Etsy drafts sent</div>
+      <div class="value">24</div>
+      <div class="delta" style="color:var(--k-ink-3);">— this week</div>
+    </div>
+  </div>
+</body></html>

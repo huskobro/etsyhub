@@ -91,22 +91,22 @@ export function LocalModePanel() {
                 toplam N klasör" idi; şimdi badge ile mod ayrımı görsel. */}
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-text">
-                Lokal kütüphane
+                Local library
               </span>
               <span className="text-sm text-text-muted">
-                Toplam {list.length} klasör · diskinizdeki taranmış görseller
+                {list.length} folders · scanned images on your disk
               </span>
             </div>
             {rootPath ? (
               <div className="text-xs text-text-muted">
-                Kök:{" "}
+                Root:{" "}
                 <span className="break-all font-mono text-text">
                   {rootPath}
                 </span>
               </div>
             ) : (
               <div className="text-xs text-warning">
-                Kök klasör tanımlı değil — Ayarlar &rsaquo; Yerel kütüphane.
+                Root folder not configured — Settings &rsaquo; Local library.
               </div>
             )}
           </div>
@@ -116,7 +116,7 @@ export function LocalModePanel() {
               onClick={() => scan.mutate()}
               loading={scan.isPending}
             >
-              {scan.isPending ? "Taranıyor…" : "Yenile"}
+              {scan.isPending ? "Scanning…" : "Refresh"}
             </Button>
             {scan.error ? (
               <span className="text-xs text-danger">
@@ -128,8 +128,8 @@ export function LocalModePanel() {
         {list.length === 0 ? (
           <StateMessage
             tone="neutral"
-            title="Henüz indeks yok"
-            body="Ayarlardan kök klasörü belirledikten sonra 'Yenile' ile lokal kütüphaneyi tara."
+            title="No index yet"
+            body="Configure the root folder in Settings, then click 'Refresh' to scan your local library."
           />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-4">

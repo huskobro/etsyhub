@@ -48,3 +48,40 @@ export function applyReviewDecisionWithSticky(input: StickyInput): StickyOutput 
     newSource: ReviewStatusSource.SYSTEM,
   };
 }
+
+/**
+ * Already-scored guard (CLAUDE.md Madde N — scoring cost disiplini).
+ *
+ * Bir asset için SYSTEM tarafından zaten başarılı bir review yapılmışsa
+ * (snapshot + reviewedAt dolu, source SYSTEM), aynı içeriğe ikinci kez
+ * provider çağrısı yapılmaz. Operatör kararı (KEPT/REJECTED) bu kapsamı
+ * **kapsar** — "kept/rejected item için yeniden scoring yapma" ayrı
+ * kural değil, bunun **özel hali**: `reviewedAt != null` her durumda
+ * skip sinyalidir. Re-score yalnızca explicit reset (PATCH route'u
+ * snapshot'ları temizler ve rerun enqueue eder) veya invalidation
+ * helper'ı (image-content değişikliği) ile tetiklenir.
+ *
+ * Worker bu guard'ı sticky check'ten sonra, daily-budget ve provider
+ * resolve'dan **önce** çağırır — en pahalı yola girmeden erken-return.
+ *
+ * Pure / deterministic / stateless. Side effect yok.
+ */
+export type AlreadyScoredInput = {
+  reviewedAt: Date | null;
+  reviewProviderSnapshot: string | null;
+  /** IA-29 — eskiden `source` advisory ile karışırdı; artık advisory
+   *  ayrı alan. Guard tamamen "AI run snapshot var mı?" sorusu. */
+  source: ReviewStatusSource;
+};
+
+export function isAlreadyScoredBySystem(input: AlreadyScoredInput): boolean {
+  // IA-29 — advisory ayrıldıktan sonra guard saf "AI snapshot var mı"
+  // kontrolü: provider snapshot + reviewedAt dolu = en az bir başarılı
+  // provider response'u alınmış. Reset yapılmadığı sürece tekrar
+  // scoring yapmıyoruz. Source artık operatör damgası olduğu için
+  // burada source filtresi yok (eskiden vardı; advisory ayrılınca
+  // gereksiz kaldı).
+  if (input.reviewedAt === null) return false;
+  if (input.reviewProviderSnapshot === null) return false;
+  return true;
+}

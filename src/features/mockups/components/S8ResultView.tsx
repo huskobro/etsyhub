@@ -37,7 +37,7 @@ function AllFailedView({ setId, job }: { setId: string; job: MockupJobView }) {
           variant="secondary"
           onClick={() => router.push(`/selection/sets/${setId}/mockup/apply`)}
         >
-          S3'e dön
+          S3&apos;e dön
         </Button>
       </div>
     </main>
@@ -90,7 +90,7 @@ function CoverSlot({
               onClick={() => setShowCoverSwap(true)}
               className="w-full"
             >
-              Cover'ı Değiştir
+              Cover&apos;ı Değiştir
             </Button>
           )}
           <a
@@ -180,8 +180,11 @@ export function S8ResultView({ setId, jobId }: { setId: string; jobId: string })
       const result = await createListingMutation.mutateAsync({
         mockupJobId: jobId,
       });
-      // Navigate to listing draft detail page
-      router.push(`/listings/draft/${result.listingId}`);
+      // R5 — Selection → Product handoff: mockup job listing draft yarattı,
+      // operatörü Product detail'a (Kivasy A5) götür. Legacy /listings/draft/
+      // [id] hâlâ erişilebilir (listings/* navigasyon altında); ana ürün
+      // yüzeyi /products/[id]'dir.
+      router.push(`/products/${result.listingId}`);
     } finally {
       setIsCreatingListing(false);
     }

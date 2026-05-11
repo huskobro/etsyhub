@@ -354,6 +354,10 @@ model Asset {
   sizeBytes       Int
   width           Int?
   height          Int?
+  /// IA Phase 11 — persisted alpha-channel signal from Sharp
+  /// metadata.hasAlpha during MJ import / asset materialize.
+  /// Nullable: legacy rows fall back to format-level hint.
+  hasAlpha        Boolean?
   hash            String
   sourceUrl       String?
   sourcePlatform  SourcePlatform?
@@ -592,11 +596,23 @@ model GeneratedDesign {
   reviewedAt        DateTime?
 
   // Phase 6 — Review pipeline (additive)
+  // IA-29 (CLAUDE.md Madde V): `reviewStatus` artık SADECE operatör
+  // damgası — operatör dokunmadıysa PENDING. AI'nın advisory kararı
+  // `reviewSuggestedStatus`'ta yaşar. Worker reviewStatus'e ASLA
+  // dokunmaz; sadece suggested + score + summary + flags yazar.
   reviewStatusSource     ReviewStatusSource @default(SYSTEM)
   reviewScore            Int?
   reviewProviderSnapshot String?
   reviewPromptSnapshot   String?            @db.Text
   reviewRiskFlags        Json?
+  /// IA-29 — AI advisory: worker'ın "Auto-approved / Needs review"
+  /// türevi. Operatörü bağlamaz; final karar `reviewStatus`'te kalır.
+  /// Worker bunu yazar; operatör override anında null kalır (advisory
+  /// hâlâ history için audit row'da).
+  reviewSuggestedStatus  ReviewStatus?
+  /// IA-29 — Provider'ın döndürdüğü raw score (debug/audit). UI ana
+  /// skoru `reviewScore`'tur (system-normalized).
+  reviewProviderRawScore Int?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -858,8 +874,13 @@ model LocalLibraryAsset {
   thumbnailPath  String?
   qualityScore   Int?
   qualityReasons Json?
+  /// IA Phase 11 — persisted alpha-channel signal from Sharp
+  /// metadata.hasAlpha during scan. Nullable: legacy rows fall back
+  /// to the format-level hint in the UI until they are re-scanned.
+  hasAlpha       Boolean?
 
   // Phase 6 — Review pipeline
+  // IA-29: reviewStatus artık SADECE operatör. AI suggestion ayrı.
   reviewStatus           ReviewStatus       @default(PENDING)
   reviewStatusSource     ReviewStatusSource @default(SYSTEM)
   reviewScore            Int?
@@ -869,6 +890,10 @@ model LocalLibraryAsset {
   reviewedAt             DateTime?
   reviewProviderSnapshot String?
   reviewPromptSnapshot   String?            @db.Text
+  /// IA-29 — AI advisory (worker yazar; operatörü bağlamaz).
+  reviewSuggestedStatus  ReviewStatus?
+  /// IA-29 — Provider raw score (debug/audit).
+  reviewProviderRawScore Int?
 
   isNegative     Boolean   @default(false)
   negativeReason String?

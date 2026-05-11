@@ -14,9 +14,12 @@
 //   • Audit log caller (API route) tarafında atılır; service sadece DB
 //     işini yapar.
 
-import { ReviewStatus } from "@prisma/client";
+import { JobType, ReviewStatus } from "@prisma/client";
 import { db } from "@/server/db";
 import { NotFoundError, ValidationError } from "@/lib/errors";
+import { enqueueReviewDesign } from "@/server/services/review/enqueue";
+import { getResolvedReviewConfig } from "@/server/services/settings/review.service";
+import { logger } from "@/lib/logger";
 
 export type PromoteInput = {
   midjourneyAssetId: string;
@@ -46,7 +49,17 @@ export async function promoteMidjourneyAssetToGeneratedDesign(
       gridIndex: true,
       assetId: true,
       generatedDesignId: true,
-      midjourneyJob: { select: { userId: true } },
+      midjourneyJob: {
+        select: {
+          userId: true,
+          // IA-38 — MJ promote sırasında batch lineage taşınır.
+          // MidjourneyJob.job (BullMQ Job row) metadata.batchId'sini
+          // GeneratedDesign.jobId'ye eşliyoruz; review queue endpoint
+          // bu jobId üzerinden batch'i resolve eder ve UI primary
+          // lineage (batch-XXXXXX) gösterir.
+          job: { select: { id: true } },
+        },
+      },
     },
   });
   if (!mjAsset) {
@@ -99,6 +112,12 @@ export async function promoteMidjourneyAssetToGeneratedDesign(
         productTypeId: productType.id,
         assetId: mjAsset.assetId,
         reviewStatus: ReviewStatus.PENDING,
+        // IA-38 — Batch lineage. MJ job'un BullMQ Job row id'sine
+        // bağla; queue endpoint Job.metadata.batchId'yi resolve
+        // edip review primary lineage olarak gösterir. Job yoksa
+        // (eski MJ asset'ler) null kalır — UI reference fallback'i
+        // gösterir.
+        jobId: mjAsset.midjourneyJob.job?.id ?? null,
         // similarity/qualityScore/promptSnapshot Pass 55'te boş;
         // Phase 6 review job çalıştığında doldurur.
       },
@@ -110,6 +129,36 @@ export async function promoteMidjourneyAssetToGeneratedDesign(
     });
     return design;
   });
+
+  // IA-29 (CLAUDE.md Madde V) — promote sonrası AI advisory pipeline'ı
+  // otomatik tetikle. variation-worker + generate-variations worker ile
+  // tutarlı: operatör manual scope-trigger çekmek zorunda kalmaz.
+  // IA-39 (CLAUDE.md Madde U) — aiAutoEnqueue toggle'ına uyar; disabled
+  // ise enqueue yapılmaz, info log düşer. Promote başarılı kalır.
+  // Best-effort: enqueue fail olursa promote başarılı kalır.
+  try {
+    const reviewConfig = await getResolvedReviewConfig(designUserId);
+    if (!reviewConfig.automation.aiAutoEnqueue) {
+      logger.info(
+        { designId: result.id, userId: designUserId },
+        "MJ promote: review auto-enqueue skipped: aiAutoEnqueue disabled in Settings → Review",
+      );
+    } else {
+      await enqueueReviewDesign({
+        userId: designUserId,
+        payload: { scope: "design", generatedDesignId: result.id },
+      });
+    }
+  } catch (err) {
+    logger.error(
+      {
+        designId: result.id,
+        userId: designUserId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "MJ promote: REVIEW_DESIGN auto-enqueue failed (promote committed)",
+    );
+  }
 
   return {
     generatedDesignId: result.id,

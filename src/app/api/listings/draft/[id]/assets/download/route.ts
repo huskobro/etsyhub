@@ -33,13 +33,15 @@ import { buildMockupZip } from "@/features/mockups/server/download.service";
 // otomatik HTTP'ye map eder; burada ayrıca yakalamaya gerek yok.
 // ────────────────────────────────────────────────────────────
 
-export class ListingDownloadNotFoundError extends AppError {
+// R11 — Next.js Route file'da class export yasak; local helper class.
+// Test'ler import etmek isterse `assets-download.errors.ts` ayrı modül.
+class ListingDownloadNotFoundError extends AppError {
   constructor() {
     super("Listing bulunamadı", "LISTING_DOWNLOAD_NOT_FOUND", 404);
   }
 }
 
-export class ListingAssetsNotReadyError extends AppError {
+class ListingAssetsNotReadyError extends AppError {
   constructor() {
     super(
       "Listing'in mockup paketi yok — ZIP indirilemez",

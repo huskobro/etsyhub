@@ -117,21 +117,30 @@ export const PageShell = forwardRef<HTMLDivElement, PageShellProps>(
         {sidebar}
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {hasTopbar ? (
+            // R11.14.11 — PageShell topbar AppTopbar canon parity:
+            //   - h-16 (64px), pl-6 pr-5 (admin density korur 16px pad)
+            //   - title <h1> k-display + text-[24px] + leading-none + tracking-tight
+            //   - subtitle inline mono + 10.5px + tracking-meta + uppercase
+            // Önceden: title <div class="text-2xl"> + subtitle alt satır xs.
+            // AppTopbar (Library/Overview/References/Batches/Selections/
+            // Products/Templates/Settings) ile birebir hierarchy parity.
             <div
               className={cn(
-                "flex h-header flex-shrink-0 items-center gap-4 border-b border-border bg-bg",
-                density === "admin" ? "px-4" : "px-6",
+                "flex h-16 flex-shrink-0 items-center gap-4 border-b border-border bg-bg",
+                density === "admin" ? "pl-4 pr-3" : "pl-6 pr-5",
               )}
             >
-              <div className="flex min-w-0 flex-1 flex-col justify-center">
+              <div className="min-w-0 flex-1">
                 {title ? (
-                  <div className="text-2xl font-semibold leading-tight text-text">
-                    {title}
-                  </div>
-                ) : null}
-                {subtitle ? (
-                  <div className="mt-0.5 text-xs text-text-muted">
-                    {subtitle}
+                  <div className="flex items-baseline gap-3">
+                    <h1 className="k-display truncate text-[24px] font-semibold leading-none tracking-tight text-text">
+                      {title}
+                    </h1>
+                    {subtitle ? (
+                      <span className="whitespace-nowrap font-mono text-[10.5px] uppercase tracking-meta text-text-muted">
+                        {subtitle}
+                      </span>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

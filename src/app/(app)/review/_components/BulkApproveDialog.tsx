@@ -83,10 +83,10 @@ export function BulkApproveDialog({
 
   const description = (
     <span>
-      Risk işareti taşıyan{" "}
-      <strong className="text-text">{hint.riskyCount}</strong> tasarım atlanacak;{" "}
-      <strong className="text-text">{hint.safeCount}</strong> temiz tasarım{" "}
-      Approve anyway olarak işaretlenecek.
+      <strong className="text-text">{hint.riskyCount}</strong> item(s) with
+      risk flags will be skipped;{" "}
+      <strong className="text-text">{hint.safeCount}</strong> clean item(s)
+      will be marked as Kept.
     </span>
   );
 
@@ -96,14 +96,14 @@ export function BulkApproveDialog({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`${ids.length} tasarımı onayla`}
+      title={`Keep ${ids.length} item${ids.length === 1 ? "" : "s"}`}
       description={description}
-      confirmLabel="Onayla"
-      cancelLabel="Vazgeç"
+      confirmLabel="Keep"
+      cancelLabel="Cancel"
       tone="neutral"
       busy={mutation.isPending}
       errorMessage={
-        mutation.isError ? "İşlem başarısız oldu. Tekrar deneyin." : null
+        mutation.isError ? "The action failed. Try again." : null
       }
       onConfirm={async () => {
         await mutation.mutateAsync();

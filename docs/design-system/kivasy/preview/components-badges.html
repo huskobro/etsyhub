@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/>
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="../ui_kits/kivasy/v4/tokens.css"/>
+<style>
+  body { margin: 0; padding: 28px; background: var(--k-bg); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .label { font-family: var(--k-font-mono); font-size: 10px; letter-spacing: 0.14em;
+           text-transform: uppercase; color: var(--k-ink-3); width: 92px; }
+</style></head><body>
+  <div class="row"><span class="label">Status</span>
+    <span class="k-badge"><span class="dot"></span>NEUTRAL</span>
+    <span class="k-badge" data-tone="accent"><span class="dot"></span>ACCENT</span>
+    <span class="k-badge" data-tone="success"><span class="dot"></span>SUCCESS</span>
+    <span class="k-badge" data-tone="warning"><span class="dot"></span>WARNING</span>
+    <span class="k-badge" data-tone="danger"><span class="dot"></span>DANGER</span>
+    <span class="k-badge" data-tone="info"><span class="dot"></span>INFO</span>
+    <span class="k-badge" data-tone="purple"><span class="dot"></span>EDIT</span>
+  </div>
+  <div class="row"><span class="label">Stage</span>
+    <span class="k-badge" data-tone="accent">CURATING</span>
+    <span class="k-badge" data-tone="purple">EDITS</span>
+    <span class="k-badge" data-tone="info">MOCKUP READY</span>
+    <span class="k-badge" data-tone="success">SENT</span>
+  </div>
+</body></html>

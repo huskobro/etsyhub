@@ -2,12 +2,32 @@
 
 import type { BookmarkStatus, RiskLevel } from "@prisma/client";
 import { AssetImage } from "@/components/ui/asset-image";
-import { Card, AssetCardMeta } from "@/components/ui/Card";
-import { Badge, type BadgeTone } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { tagColorClass } from "@/features/tags/color-map";
 import { CollectionPicker } from "@/features/collections/components/collection-picker";
 import { TagPicker } from "@/features/tags/components/tag-picker";
+import { cn } from "@/lib/cn";
+
+/**
+ * BookmarkCard — Kivasy v5 B1.Inbox sub-view recipe (R11.14.12).
+ *
+ * Source: docs/design-system/kivasy/ui_kits/kivasy/v5/screens-b1.jsx
+ *   → SubInbox kart bloğu paritesi.
+ *
+ * R11.14.12 — Eski legacy `Card variant="asset"` + `AssetCardMeta` +
+ * `Button` + `Badge` primitive kompozisyonu yerine v5 SubInbox k-card
+ * pattern'a geçirildi (Library + References Pool + Competitor card
+ * paritesiyle birebir):
+ *   - .k-card overflow-hidden group + data-interactive
+ *   - thumbnail wrapper p-2 pb-0 + k-thumb data-aspect="square"
+ *   - top-left always-on k-checkbox (k-orange filled when selected)
+ *   - meta block: title 13px font-medium + status badge tone-mapped +
+ *     source mono caption 10.5px
+ *   - hover bottom-overlay: primary "Promote to Reference" k-btn--primary
+ *     (single primary action — Inbox sub-view canon)
+ *   - footer ghost actions: Open / Archive (low-emphasis)
+ *
+ * Tüm copy EN'e normalize edildi (Status labels, picker label, button copy).
+ */
 
 type BookmarkLite = {
   id: string;
@@ -25,12 +45,12 @@ type BookmarkLite = {
 
 const STATUS_LABEL: Record<BookmarkStatus, string> = {
   INBOX: "Inbox",
-  REFERENCED: "Referans",
-  RISKY: "Riskli",
-  ARCHIVED: "Arşiv",
+  REFERENCED: "Reference",
+  RISKY: "Risky",
+  ARCHIVED: "Archived",
 };
 
-const STATUS_TONE: Record<BookmarkStatus, BadgeTone> = {
+const STATUS_TONE: Record<BookmarkStatus, string> = {
   INBOX: "accent",
   REFERENCED: "success",
   RISKY: "danger",
@@ -58,13 +78,31 @@ export function BookmarkCard({
   onSetTags?: (id: string, tagIds: string[]) => void;
   updating?: boolean;
 }) {
+  const title = bookmark.title ?? bookmark.sourceUrl ?? "Untitled";
+  const createdLabel = new Date(bookmark.createdAt).toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  });
+
   return (
-    <Card variant="asset" interactive selected={selected}>
-      <div className="relative">
-        <AssetImage
-          assetId={bookmark.asset?.id ?? null}
-          alt={bookmark.title ?? bookmark.sourceUrl ?? "Bookmark görseli"}
-        />
+    <article
+      className={cn(
+        "k-card overflow-hidden group flex flex-col",
+        selected && "k-ring-selected",
+      )}
+      data-interactive="true"
+      data-testid="bookmark-card"
+    >
+      <div className="relative p-2 pb-0">
+        <div className="k-thumb" data-aspect="square">
+          <AssetImage
+            assetId={bookmark.asset?.id ?? null}
+            alt={title}
+            frame={false}
+          />
+        </div>
+
         {onToggleSelect ? (
           <button
             type="button"
@@ -73,32 +111,38 @@ export function BookmarkCard({
               onToggleSelect(bookmark.id);
             }}
             aria-pressed={selected}
-            aria-label={selected ? "Seçimi kaldır" : "Seç"}
-            className={
-              selected
-                ? "absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-sm bg-accent text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-                : "absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-sm border border-border-subtle bg-surface/80 text-transparent transition-colors duration-fast ease-out hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-            }
+            aria-label={selected ? "Deselect" : "Select"}
+            className="k-checkbox absolute left-3 top-3 z-10"
+            data-checked={selected || undefined}
           >
-            <CheckIcon />
+            {selected ? (
+              <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  d="M5 12l5 5L20 7"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : null}
           </button>
         ) : null}
       </div>
 
-      <AssetCardMeta>
+      <div className="flex flex-col gap-1.5 p-3.5">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-text">
-            {bookmark.title ?? bookmark.sourceUrl ?? "İsimsiz"}
+          <h3 className="min-w-0 flex-1 truncate text-[13px] font-medium leading-tight text-ink">
+            {title}
           </h3>
-          <Badge tone={STATUS_TONE[bookmark.status]}>
+          <span className="k-badge" data-tone={STATUS_TONE[bookmark.status]}>
             {STATUS_LABEL[bookmark.status]}
-          </Badge>
+          </span>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-text-subtle">
-          <span className="font-mono">{bookmark.sourcePlatform ?? "OTHER"}</span>
-          <span aria-hidden>·</span>
-          <span>{new Date(bookmark.createdAt).toLocaleDateString("tr-TR")}</span>
+        <div className="font-mono text-[10.5px] tracking-wider text-ink-3">
+          {bookmark.sourcePlatform ?? "OTHER"} · {createdLabel}
         </div>
 
         {onSetTags ? (
@@ -112,7 +156,7 @@ export function BookmarkCard({
             {bookmark.tags.map((t) => (
               <span
                 key={t.tag.id}
-                className={`rounded-sm px-2 py-0.5 text-xs ${tagColorClass(t.tag.color)}`}
+                className={`rounded-sm px-2 py-0.5 text-[10.5px] ${tagColorClass(t.tag.color)}`}
               >
                 {t.tag.name}
               </span>
@@ -122,7 +166,9 @@ export function BookmarkCard({
 
         {onSetCollection ? (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-text-muted">Koleksiyon</span>
+            <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+              Collection
+            </span>
             <CollectionPicker
               value={bookmark.collection?.id ?? null}
               onChange={(id) => onSetCollection(bookmark.id, id)}
@@ -131,58 +177,47 @@ export function BookmarkCard({
           </div>
         ) : null}
 
-        <div className="flex items-center justify-between gap-2 pt-1">
-          <span className="truncate text-xs text-text-muted">
-            {bookmark.productType?.displayName ?? "Tip yok"}
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <span className="truncate font-mono text-[10.5px] tracking-wider text-ink-3">
+            {bookmark.productType?.displayName ?? "No type"}
             {onSetCollection
               ? null
-              : ` · ${bookmark.collection?.name ?? "Koleksiyon yok"}`}
+              : ` · ${bookmark.collection?.name ?? "No collection"}`}
           </span>
           <div className="flex gap-1">
             {onOpen ? (
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
+                type="button"
+                data-size="sm"
+                className="k-btn k-btn--ghost"
                 onClick={() => onOpen(bookmark.id)}
               >
-                Aç
-              </Button>
+                Open
+              </button>
             ) : null}
             {onPromote && bookmark.asset && bookmark.status !== "REFERENCED" ? (
-              <Button
-                variant="secondary"
-                size="sm"
+              <button
+                type="button"
+                data-size="sm"
+                className="k-btn k-btn--secondary"
                 onClick={() => onPromote(bookmark.id)}
               >
-                Referansa Taşı
-              </Button>
+                Promote to Reference
+              </button>
             ) : null}
             {onArchive && bookmark.status !== "ARCHIVED" ? (
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
+                type="button"
+                data-size="sm"
+                className="k-btn k-btn--ghost"
                 onClick={() => onArchive(bookmark.id)}
               >
-                Arşivle
-              </Button>
+                Archive
+              </button>
             ) : null}
           </div>
         </div>
-      </AssetCardMeta>
-    </Card>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <path
-        d="M2.5 6.5L5 9L9.5 3.5"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+      </div>
+    </article>
   );
 }

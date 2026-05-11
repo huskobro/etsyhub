@@ -86,7 +86,7 @@ export function DecisionBand({
                 onClick={onReset}
                 className="text-xs text-accent hover:underline"
               >
-                Quick Pack'e dön
+                Quick Pack&apos;e dön
               </button>
             )}
           </div>

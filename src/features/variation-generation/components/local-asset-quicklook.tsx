@@ -144,7 +144,7 @@ export function LocalAssetQuickLook({
     if (busy) return;
     if (
       !window.confirm(
-        `"${current.fileName}" silinsin mi? Disk üzerindeki dosya korunur (sadece veritabanı kaydı silinir).`,
+        `"${current.fileName}" should be deleted? The file on disk is preserved — only the database record is removed.`,
       )
     ) {
       return;
@@ -314,10 +314,10 @@ export function LocalAssetQuickLook({
                 disabled={busy}
                 className="text-danger hover:text-danger"
               >
-                Sil (DB kaydı)
+                Delete (DB record)
               </Button>
               <p className="text-xs text-text-muted">
-                ←/→ tuşları ile gezinin · Esc ile kapatın. Sil yalnız veritabanı
+                ← / → arrows to navigate · Esc to close. Delete removes only the DB record
                 kaydını kaldırır; disk üzerindeki dosya korunur.
               </p>
             </div>

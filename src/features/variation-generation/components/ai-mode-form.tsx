@@ -145,10 +145,10 @@ export function AiModeForm({
           maxLength={BRIEF_MAX}
           rows={3}
           className="rounded-md border border-border bg-bg p-2 text-sm text-text"
-          placeholder="ör. pastel tones, no text, soft watercolor"
+          placeholder="e.g. pastel tones, no text, soft watercolor"
         />
         <span className="text-xs text-text-muted">
-          Sistem promptuna eklenir, yerine geçmez. {brief.length}/{BRIEF_MAX}
+          Appended to the system prompt, doesn&apos;t replace it. {brief.length}/{BRIEF_MAX}
         </span>
       </label>
       {partialNotice ? (
@@ -166,7 +166,7 @@ export function AiModeForm({
           disabled={disabled}
           className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
         >
-          Üret
+          Generate
         </button>
       </div>
 

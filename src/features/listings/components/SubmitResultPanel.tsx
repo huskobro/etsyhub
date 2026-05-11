@@ -176,7 +176,7 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
               />
               <div className="flex-1 space-y-2">
                 <p className="text-sm font-medium text-green-800">
-                  Etsy'ye gönderildi
+                  Etsy&apos;ye gönderildi
                 </p>
                 {listing.etsyShop?.shopName && (
                   <p className="text-xs text-green-700">
@@ -201,7 +201,7 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800"
                   >
-                    Etsy'de Aç
+                    Etsy&apos;de Aç
                     <ExternalLink className="h-3 w-3" aria-hidden />
                   </a>
                   {etsyShopUrl && (
@@ -271,7 +271,7 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
                     >
-                      Etsy'de Orphan'ı Aç
+                      Etsy&apos;de Orphan&apos;ı Aç
                       <ExternalLink className="h-3 w-3" aria-hidden />
                     </a>
                   )}
@@ -339,7 +339,7 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800"
                 >
-                  Etsy'de Aç
+                  Etsy&apos;de Aç
                   <ExternalLink className="h-3 w-3" aria-hidden />
                 </a>
                 {etsyShopUrl && (

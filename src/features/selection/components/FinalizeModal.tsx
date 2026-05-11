@@ -5,7 +5,7 @@
 // Spec Section 2.5 (finalize akışı):
 //   - Gate: selected ≥ 1 — modal'da görünür uyarı + Finalize butonu disabled.
 //   - Breakdown text: X seçili / Y beklemede / Z reddedildi.
-//   - Dürüst handoff: yalnız "selected" varyantlar Phase 8 Mockup Studio
+//   - Dürüst handoff: yalnız "selected" variants in the next phase 8 Mockup Studio
 //     input'u olur. Pending/rejected manifest'e dahil ama Mockup Studio'ya
 //     geçmez.
 //   - Onay sonrası: draft → ready, item status'ları donar (state machine
@@ -130,7 +130,7 @@ export function FinalizeModal({
                 <div className="font-mono text-2xl font-semibold text-success">
                   {selectedCount}
                 </div>
-                <div className="text-xs text-text-muted">Seçili</div>
+                <div className="text-xs text-text-muted">Selected</div>
               </div>
               <div data-testid="finalize-breakdown-pending">
                 <div className="font-mono text-2xl font-semibold text-text-muted">
@@ -150,7 +150,7 @@ export function FinalizeModal({
           {/* Dürüst handoff açıklaması */}
           <div className="mt-4 space-y-2 text-xs text-text-muted">
             <p>
-              <span className="text-text">Yalnız seçili</span> varyantlar Phase
+              <span className="text-text">Only selected</span> variants in the next phase
               8 Mockup Studio input&apos;u olur.
             </p>
             <p>
@@ -160,7 +160,7 @@ export function FinalizeModal({
               olur ama Mockup Studio&apos;ya geçmez.
             </p>
             <p>
-              Set finalize sonrası <span className="text-text">düzenlenemez</span>
+              After finalize, the set is <span className="text-text">read-only</span>
               {" "}
               (yeni varyant ekleme, edit, status değişimi tümü pasif).
             </p>

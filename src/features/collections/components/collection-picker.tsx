@@ -30,7 +30,7 @@ export function CollectionPicker({
       disabled={disabled || query.isLoading}
       className="h-7 rounded-md border border-border bg-surface px-2 text-xs text-text disabled:opacity-50"
     >
-      <option value="">Koleksiyon yok</option>
+      <option value="">No collection</option>
       {query.data?.items.map((c) => (
         <option key={c.id} value={c.id}>
           {c.name}

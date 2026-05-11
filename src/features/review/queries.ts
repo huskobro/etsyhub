@@ -34,12 +34,39 @@ export type ReviewQueueSourceLocal = {
   width: number;
   height: number;
   dpi: number | null;
+  // IA Phase 9 — focus workspace info-rail metadata.
+  mimeType: string;
+  fileSize: number;
+  qualityReasons: unknown;
+  /** IA Phase 11 — persisted Sharp `metadata.hasAlpha` probe. Null on
+   *  legacy rows that haven't been re-scanned yet; UI degrades to the
+   *  format-level hint when null. */
+  hasAlpha: boolean | null;
+  /** IA-35 — resolved productTypeKey from folder mapping (path-based,
+   *  legacy folderName fallback) or convention. Null → folder pending
+   *  mapping (operator must assign in Settings → Review). EvaluationPanel
+   *  uses this for applicability checks; sahte "wall_art" fallback yok. */
+  productTypeKey: string | null;
 };
 export type ReviewQueueSourceDesign = {
   kind: "design";
   productTypeKey: string | null;
   referenceShortId: string | null;
+  /** IA-34 — batch lineage. Card primary scope label batch baskın
+   *  olduğundan UI bu alanı önce kontrol eder; batch yoksa reference
+   *  shortId'ye düşer. `batchId` deep-link için tam id, `batchShortId`
+   *  display için son 6 karakter. */
+  batchId: string | null;
+  batchShortId: string | null;
   createdAt: string;
+  // IA Phase 9 — focus workspace info-rail metadata.
+  mimeType: string;
+  fileSize: number;
+  width: number | null;
+  height: number | null;
+  /** IA Phase 11 — persisted Sharp `metadata.hasAlpha` probe. Same
+   *  semantics as local source. */
+  hasAlpha: boolean | null;
 };
 export type ReviewQueueSource =
   | ReviewQueueSourceLocal
@@ -48,6 +75,12 @@ export type ReviewQueueSource =
 export type ReviewQueueItem = {
   id: string;
   thumbnailUrl: string | null;
+  /** IA-33 — Focus mode için tam çözünürlüklü asset URL'i. AI Designs
+   *  için storage signed URL ile aynı (provider zaten orijinal sunar);
+   *  Local Library için `/api/local-library/asset?hash=...` orijinal
+   *  dosyayı stream eder. Grid kart `thumbnailUrl` kullanmaya devam
+   *  eder (perf); focus stage `fullResolutionUrl` kullanır. */
+  fullResolutionUrl: string | null;
   reviewStatus: ReviewStatusEnum;
   reviewStatusSource: "SYSTEM" | "USER";
   reviewScore: number | null;
@@ -56,6 +89,10 @@ export type ReviewQueueItem = {
   riskFlags: ReviewRiskFlag[];
   reviewedAt: string | null;
   reviewProviderSnapshot: string | null;
+  /** IA-29 — AI advisory karar. Operatör truth'tan ayrı. */
+  reviewSuggestedStatus: ReviewStatusEnum | null;
+  /** IA-29 — Provider raw score (debug/audit). UI ana skor reviewScore. */
+  reviewProviderRawScore: number | null;
   // Phase 7 Task 38 — Quick start CTA için (additive).
   // Yalnız scope === "design" item'larında doludur; local-library asset'leri
   // bu üç alanı null taşır (variation batch / reference / productType yok).
@@ -65,32 +102,201 @@ export type ReviewQueueItem = {
   jobId: string | null;
   // Pass 24 — Source meta (additive, optional for backward compat).
   source?: ReviewQueueSource;
+  // IA Phase 18 — review scoring lifecycle. Backend Job table'dan
+  // türev; UI sahte default göstermez. "not_queued" en son satır
+  // hiç enqueue edilmemiş demek.
+  reviewLifecycle?:
+    | "not_queued"
+    | "queued"
+    | "running"
+    | "failed"
+    | "ready";
+  // IA-39 — why is the asset not queued? Present only when
+  // reviewLifecycle === "not_queued". UI copy differs per reason.
+  reviewNotQueuedReason?:
+    | "pending_mapping"
+    | "ignored"
+    | "auto_enqueue_disabled"
+    | "design_pending_worker"
+    | "legacy"
+    | "unknown";
 };
+
+/**
+ * IA Phase 16 — scope identity contract surfaced from the queue
+ * endpoint. Top-bar reads `cardinality` for `Item N / M`, `breakdown`
+ * for the three-count summary. `kind` differentiates the active
+ * scope so the workspace can label it (queue vs folder) without
+ * recomputing client-side.
+ */
+export type ReviewQueueScope =
+  | {
+      kind: "folder";
+      label: string;
+      total: number;
+      cardinality: number;
+      breakdown: { undecided: number; kept: number; discarded: number };
+    }
+  | {
+      kind: "reference";
+      /** Reference cuid (scope identity); UI label resolves
+       *  to ref-XXXXXX from item.source.referenceShortId. */
+      label: string;
+      total: number;
+      cardinality: number;
+      breakdown: { undecided: number; kept: number; discarded: number };
+    }
+  | {
+      // IA-34 — batch scope ZOOM (design-only). Default deep-link
+      // scope; reference ancak explicit `?scope=reference` ile
+      // baskın olur.
+      kind: "batch";
+      label: string;
+      total: number;
+      cardinality: number;
+      breakdown: { undecided: number; kept: number; discarded: number };
+    }
+  | {
+      kind: "queue";
+      total: number;
+      cardinality: number;
+      breakdown: { undecided: number; kept: number; discarded: number };
+    };
 
 export type ReviewQueueResponse = {
   items: ReviewQueueItem[];
   total: number;
   page: number;
   pageSize: number;
+  /** IA Phase 16 — scope identity (CLAUDE.md Madde M). Older API
+   *  versions in flight may omit it; UI degrades to items.length /
+   *  page-slice counts in that window only. */
+  scope?: ReviewQueueScope;
+  /** IA Phase 27 (CLAUDE.md Madde R) — admin-resolved scoring
+   *  policy. Decision/Outcome derivation client-side uses
+   *  `policy.thresholds`; absent payload (legacy server in flight)
+   *  falls back to builtin defaults with a dev console warn. */
+  policy?: {
+    thresholds: { low: number; high: number };
+  };
 };
+
+/**
+ * Canonical operator decision filter. Mirrors the URL `?decision=` param
+ * and the chip vocabulary. The hook maps this onto the legacy
+ * `?status=ReviewStatus` query the server already understands:
+ *
+ *   undecided → PENDING    (operator hasn't acted yet — NEEDS_REVIEW
+ *                           is intentionally NOT included; that is a
+ *                           pipeline auto-flag, not an operator state)
+ *   kept      → APPROVED
+ *   rejected  → REJECTED
+ *
+ * `status` is still accepted for callers that already hold a
+ * ReviewStatus value (e.g. tests, future surfaces); when both are set
+ * `decision` wins so the canonical name is the source of truth.
+ */
+export type CanonicalDecisionFilter = "undecided" | "kept" | "rejected";
+
+function decisionToStatus(d: CanonicalDecisionFilter): ReviewStatusEnum {
+  switch (d) {
+    case "undecided":
+      return "PENDING";
+    case "kept":
+      return "APPROVED";
+    case "rejected":
+      return "REJECTED";
+  }
+}
 
 type Params = {
   scope: "design" | "local";
+  decision?: CanonicalDecisionFilter;
+  /** Legacy escape hatch — prefer `decision` for new call sites. */
   status?: ReviewStatusEnum;
   page?: number;
+  /** IA Phase 15 — server-side search query. Empty string falls
+   *  through (helper drops the URL param). */
+  q?: string;
+  /** IA Phase 16 — scope identity ZOOM (local-only). When set, the
+   *  queue endpoint narrows total + scopeBreakdown to a single
+   *  `LocalLibraryAsset.folderName`. Ignored for design scope. */
+  folder?: string;
+  /** IA Phase 19 — reference scope ZOOM (design-only). Single
+   *  reference's variations form a scope identity. */
+  reference?: string;
+  /** IA-34 — batch scope ZOOM (design-only). `Job.metadata.batchId`
+   *  üzerinden filtre. Default deep-link scope = batch (reference
+   *  ancak explicit verildiğinde baskın). */
+  batch?: string;
 };
 
+/** Resolve the effective server-side status for cache key + URL. */
+function effectiveStatus(params: Params): ReviewStatusEnum | undefined {
+  if (params.decision) return decisionToStatus(params.decision);
+  return params.status;
+}
+
 export const reviewQueueQueryKey = (params: Params) =>
-  ["review-queue", params.scope, params.status ?? "ALL", params.page ?? 1] as const;
+  [
+    "review-queue",
+    params.scope,
+    effectiveStatus(params) ?? "ALL",
+    params.page ?? 1,
+    params.q?.trim() ? params.q.trim() : "",
+    // IA Phase 16 — folder zoom in cache key. Empty string keeps
+    // legacy "no folder" entries hot.
+    params.folder?.trim() ? params.folder.trim() : "",
+    // IA Phase 19 — reference zoom (design-only) in cache key.
+    params.reference?.trim() ? params.reference.trim() : "",
+    // IA-34 — batch zoom (design-only) in cache key.
+    params.batch?.trim() ? params.batch.trim() : "",
+  ] as const;
 
 export function useReviewQueue(params: Params) {
   return useQuery<ReviewQueueResponse>({
     queryKey: reviewQueueQueryKey(params),
+    // IA Phase 25 — live lifecycle (CLAUDE.md Madde N). Background
+    // refetch lets the operator watch queued/running assets promote
+    // to ready without manual reload. Interval only fires when there
+    // is something in flight; ready/idle scopes back off.
+    refetchInterval: (query) => {
+      const data = query.state.data as ReviewQueueResponse | undefined;
+      if (!data) return 8000; // first load — try again shortly
+      // IA-35 polling cadence düzeltmesi:
+      //   • `queued` / `running` → gerçek in-flight iş. 5s polling.
+      //   • `not_queued` IDLE state'tir (asset henüz hiç enqueue
+      //     olmamış). Listeye düştüğü için polling yapmaya gerek
+      //     YOK — operatör manuel scope-trigger tetiklemeden
+      //     promotion beklenmez. Rerun POST anında caller cache
+      //     invalidate eder; o pencere için `queued` görünür,
+      //     interval orada zaten kısa atar.
+      //   • `error` / `na` / `ready` → settled. Background polling
+      //     durur (false). Tab refocus → manuel refetch düşer
+      //     (refetchOnWindowFocus: true).
+      const unsettledCount = (data.items ?? []).filter(
+        (it) =>
+          it.reviewLifecycle === "queued" ||
+          it.reviewLifecycle === "running",
+      ).length;
+      return unsettledCount > 0 ? 5000 : false;
+    },
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const url = new URL("/api/review/queue", window.location.origin);
       url.searchParams.set("scope", params.scope);
-      if (params.status) url.searchParams.set("status", params.status);
+      const status = effectiveStatus(params);
+      if (status) url.searchParams.set("status", status);
       if (params.page) url.searchParams.set("page", String(params.page));
+      const trimmedQ = params.q?.trim();
+      if (trimmedQ) url.searchParams.set("q", trimmedQ);
+      const trimmedFolder = params.folder?.trim();
+      if (trimmedFolder) url.searchParams.set("folder", trimmedFolder);
+      const trimmedRef = params.reference?.trim();
+      if (trimmedRef) url.searchParams.set("reference", trimmedRef);
+      const trimmedBatch = params.batch?.trim();
+      if (trimmedBatch) url.searchParams.set("batch", trimmedBatch);
 
       const res = await fetch(url.toString());
       if (!res.ok) {
