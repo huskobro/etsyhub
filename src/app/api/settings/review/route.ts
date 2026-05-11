@@ -39,6 +39,7 @@ const ALL_CRITERION_IDS = [
 ] as const;
 import { composeReviewSystemPrompt } from "@/providers/review/criteria";
 import { getReviewOpsCounts } from "@/server/services/review/lifecycle";
+import { watcherRegistry } from "@/server/services/local-library/watcher-registry";
 import { listPendingScopes } from "@/server/services/review/next-scope";
 import { scheduleRepeatJob, cancelRepeatJob } from "@/server/queue";
 import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
@@ -63,10 +64,20 @@ export const GET = withErrorHandling(async (req: Request) => {
     sourceKindRaw === "local-library" ? "local-library" : "design";
 
   const resolved = await getResolvedReviewConfig(user.id);
+  // Watcher runs in the same process (instrumentation.ts), so we can read
+  // its state directly from the chokidar-free registry module.
+  const watcherEntry = watcherRegistry.get(user.id)?.entry;
   const [opsCounts, folderScopes, batchScopes, referenceScopes] =
     await Promise.all([
       getReviewOpsCounts(user.id, {
         localScanIntervalMinutes: resolved.automation.localScanIntervalMinutes,
+        watcherInfo: watcherEntry
+          ? {
+              active: true,
+              triggerCount: watcherEntry.triggerCount,
+              lastTriggerAt: watcherEntry.lastTriggerAt,
+            }
+          : undefined,
       }),
       listPendingScopes({ userId: user.id, kind: "folder" }),
       listPendingScopes({ userId: user.id, kind: "batch" }),

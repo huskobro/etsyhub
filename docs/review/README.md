@@ -121,7 +121,7 @@ işaretlendi.
 | Rerun mutation `refetchQueries` (immediate) — `queued` state anında görünür | ✓ | IA-39 |
 | Worker health banner — `workerRunning: false` → amber banner + remediation | ✓ | IA-39+ |
 | `discoveryMode` worker-aware — worker yoksa her koşulda `manual_only` | ✓ | IA-39+ |
-| Worker dependency explicit documented (deployment prerequisite, not silent) | ✓ | IA-39+ |
+| Background automation self-managed — instrumentation.ts auto-starts workers + watcher | ✓ | IA-39+ |
 | Live update polling: gerçek iş varken 5s, idle'da kapalı | ✓ | IA-35 |
 | Vitest workspace tek `npm test` ile UI + node combined | ✓ | IA-35 |
 | Targeted review test suite clean | ✓ | 79+ targeted pass |
@@ -131,15 +131,10 @@ işaretlendi.
 
 **Non-blocker known limitations** (kapanışı engellemez):
 
-- **Worker process runtime prerequisite** — Event-driven watcher
-  ve periodic scan için `npm run worker` ayrı process olarak
-  çalışıyor olmalıdır. Otomatik başlamaz; iki terminal komutu
-  gerekir (`npm run dev` + `npm run worker`). Bu sessiz failure
-  **değildir**: `workerRunning: false` olduğunda admin panelinde
-  amber banner gösterilir, remediation adımı açıklanır, manual
-  "Scan now" hâlâ çalışır. Deployment prerequisite olarak
-  dokümante edildi; ürün "fully self-managed automation" iddiası
-  yapmaz.
+- **Activity proxy warm-up gap** — `workerRunning` false görünebilir
+  kısa süreliğine (app yeni başlatıldıktan sonra, ilk job
+  tamamlanana kadar — aktif queue'da saniyeler içinde kapanır).
+  Ops hint olarak tasarlandı; hard liveness guarantee değil.
 - Batch'ler arası klavye prev/next scope shortcut'ı eksik —
   picker dropdown workaround.
 - Batch lineage gerçek üretim verisinde **browser-proof**
@@ -170,22 +165,12 @@ işaretlendi.
 
 Done checklist'in "non-blocker" bölümünün detay açıklamaları:
 
-- **Worker process runtime prerequisite** — Chokidar (`fsevents`
-  native binary) Next.js webpack ile bundlelanamaz; watcher yalnızca
-  `scripts/dev-worker.ts` içinde yaşar. Sonuç: event-driven watcher
-  ve BullMQ periodic scan, `npm run worker` process'i çalışmadan
-  aktif olamaz. Bu teknik kısıt olmadan da benzer bir durum ortaya
-  çıkıyordu (worker olmadan BullMQ consumer yok = job işlenmiyor).
-  Fark: artık bu durum **görünür** — `workerRunning` activity proxy
-  ile tespit edilir, admin panelinde amber banner gösterilir. Ürün
-  "fully self-managed" olmadığını açıkça söyler. Deployment guide
-  iki komutu (`npm run dev` + `npm run worker`) gerektirir; bu
-  localhost-first mimari için uygun kabul edildi.
-
-- **`workerRunning` activity proxy gap** — Yeni başlatılmış worker
-  ilk job'unu tamamlayana kadar `workerRunning: false` görünür.
-  Aktif queue'da saniyeler içinde düzelir. Ops hint olarak kullanılır,
-  hard liveness guarantee değildir.
+- **Activity proxy warm-up gap** — `workerRunning: false` app yeni
+  başlatıldıktan sonra kısa süre görünebilir (ilk job tamamlanana
+  kadar). Aktif queue'da saniyeler içinde kapanır. Ops hint; hard
+  liveness guarantee değil. BullMQ workers ve watcher artık
+  `instrumentation.ts` ile app açılışında otomatik başlar — ayrı
+  `npm run worker` komutu gerekmez.
 
 - **Batch'ler arası klavye prev/next scope shortcut'ı eksik** —
   AI Designs batch baskın moddayken `,` / `.` boş düşer

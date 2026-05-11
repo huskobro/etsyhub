@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:fresh": "rm -rf .next && next dev",
     "worker": "tsx watch scripts/dev-worker.ts",
     "worker:prod": "tsx scripts/dev-worker.ts",
     "build": "next build",

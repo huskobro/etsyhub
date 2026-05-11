@@ -196,14 +196,13 @@ export type ReviewOpsCounts = {
   /** Last successful local scan (SCAN_LOCAL_FOLDER row, this user). */
   lastLocalScanAt: string | null;
   /**
-   * True if a REVIEW_DESIGN or SCAN_LOCAL_FOLDER job finished within the
-   * last 5 minutes. This is a recent-activity proxy for worker liveness —
-   * more reliable than BullMQ getWorkersCount() (which can return stale
-   * Redis CLIENT LIST entries). Safe to call from Next.js; no chokidar.
+   * True if background automation has been active recently — a REVIEW_DESIGN
+   * or SCAN_LOCAL_FOLDER job finished within the last 5 minutes.
+   * Activity-based proxy; more reliable than BullMQ getWorkersCount()
+   * (which can return stale Redis CLIENT LIST entries).
    *
-   * Known gap: a freshly started worker with no recent completions shows
-   * false until its first job finishes (~seconds for an active queue).
-   * Acceptable for ops display; not a real-time liveness guarantee.
+   * Gap: false briefly after a fresh app start until the first job completes
+   * (~seconds on an active queue). Ops hint only, not a hard guarantee.
    */
   workerRunning: boolean;
   /**
@@ -228,10 +227,10 @@ export async function getReviewOpsCounts(
     /** Resolved from ReviewSettings.automation.localScanIntervalMinutes */
     localScanIntervalMinutes?: number;
     /**
-     * IA-39+ — watcher state injected by the caller (worker process only).
-     * API routes running in Next.js must NOT import the watcher module
-     * (chokidar native binary incompatible with webpack bundling). When
-     * omitted, watcherActive defaults to false and watcher fields are null.
+     * Watcher state injected by the caller. The chokidar watcher starts via
+     * instrumentation.ts in the same Next.js process. API routes that call
+     * this helper pass watcher state from the in-process watcher registry.
+     * When omitted, watcherActive defaults to false.
      */
     watcherInfo?: {
       active: boolean;

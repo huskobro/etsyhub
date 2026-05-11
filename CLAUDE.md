@@ -1,13 +1,12 @@
 # Kivasy — Ürün ve Proje Kuralları
 
 > **Status:** Implementation **R1 → R11.5 complete** (2026-05-09). MVP
-> omurgası canlı; production build PASSING; %99.4 test pass; settings/
-> providers/notifications stabilize. IA-39+ review automation final close
-> 2026-05-11: scoring/explainability/operator-truth/lifecycle/automation
-> toggles/worker health visibility tamamdır. Worker process (`npm run
-> worker`) event-driven watcher + periodic scan için runtime prerequisite
-> olarak dokümante edildi — sessiz failure değil, banner + remediation
-> görünür. MVP Final Acceptance gate operatör onayını bekliyor.
+> omurgası canlı; production build PASSING; %99.4 test pass. IA-39+
+> review automation final close 2026-05-11: BullMQ workers + chokidar
+> watcher artık Next.js instrumentation hook ile uygulama başlangıcında
+> otomatik başlar — ayrı `npm run worker` komutu gerekmez. Tek komut:
+> `npm run dev` veya `npm run start`. MVP Final Acceptance gate operatör
+> onayını bekliyor.
 >
 > Source of truth ağacı:
 > - **MVP acceptance + readiness** → [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md)
@@ -81,6 +80,37 @@ geçirilmiş olmalı.
 
 > Bu ilke review modülünün IA-36 done checklist'inde de
 > uygulanmıştır (bkz. `docs/review/README.md`).
+
+## Self-Managed Desktop Product — Arka Plan Otomasyon İlkesi
+
+Kivasy masaüstü ürün hedefliyor: kullanıcı terminal komutu çalıştırmak,
+cache temizlemek, worker başlatmak veya teknik süreç yönetimi yapmak
+zorunda kalmayacak.
+
+Bu ilkenin somut uygulamaları:
+
+- **Background automation app tarafından yönetilir.** BullMQ workers ve
+  chokidar watcher `instrumentation.ts` hook'u ile uygulama başlangıcında
+  otomatik başlar. Tek komut: `npm run dev` (geliştirme) veya
+  `npm run start` (production).
+- **Ayrı `npm run worker` gerekmez.** Bu komut geriye dönük uyumluluk için
+  script olarak kalabilir, ama temel kullanıcı akışı için zorunlu değildir.
+- **CSS / runtime instability kullanıcıya yıkılmaz.** Cache bozulması,
+  HMR kaynaklı görsel çökme gibi durumlar için `dev:fresh` script'i
+  (`rm -rf .next && next dev`) mevcuttur; kullanıcı teknik adım atmaz.
+- **Health / liveness kullanıcı dostu dille gösterilir.** "Worker process
+  not running — npm run worker" gibi teknik remediation yerine "Background
+  automation warming up" gibi ürün dili kullanılır.
+- **Operational burden kullanıcıya itilmez.** Admin ops görünürlüğü
+  olabilir, ama bu görünürlük "teknik işi sen çöz" değil "sistem şu an
+  sağlıklı / bekleniyor" anlamı taşır.
+- **Self-healing beklentisi:** Otomasyon çökerse veya yavaş başlarsa sistem
+  bunu detect eder ve ürün düzeyinde bilgi verir. Kullanıcı log veya
+  terminal okumak zorunda kalmaz.
+
+Yeni feature eklerken kontrol: bu özellik kullanıcıdan teknik bir adım
+mı bekliyor? Eğer evet ise ya otomatikleştirilir ya da self-healing
+mekanizması eklenir; "known limitation" diye bırakılmaz.
 
 ## Cross-surface Metric Consistency
 
@@ -1941,22 +1971,19 @@ actionable mesaj gösterir (ne yapması gerektiğini söyler, teknik kod vermez)
 
 **Local discovery — hybrid model (IA-39+ final karar):**
 
-**Garanti / ortam bağımlı ayrımı — bu ayrım kritiktir:**
+**Otomatik başlatma (instrumentation hook):**
 
-- **Garanti (her ortamda):** Manuel "Scan now" — yalnız Next.js web app ayakta
-  olması yeterli. Worker process gerektirmez.
-- **Ortam bağımlı (worker process gerektirir):** Event-driven watcher ve
-  periodic scan, yalnız `npm run worker` çalışırken aktiftir. Worker yoksa
-  her ikisi de devre dışıdır; `discoveryMode = "manual_only"` görünür.
-- **Deployment koşulu:** Bu proje localhost-first, single-machine. Operatör
-  iki ayrı process başlatmak zorundadır: `npm run dev` + `npm run worker`.
-  Worker otomatik başlamaz. Bu belgelenmiş bir deployment koşuludur.
+BullMQ workers ve chokidar watcher, Next.js `instrumentation.ts` hook'u
+aracılığıyla uygulama başlangıcında otomatik başlar. Tek komut yeterlidir:
+`npm run dev` (development) veya `npm run start` (production). Ayrı
+`npm run worker` komutu **gerekmez**; kullanıcıdan teknik process yönetimi
+beklenmez.
 
-| Yol | Koşul | Garanti mi? |
+| Yol | Koşul | Durum |
 |---|---|---|
-| **Event-driven** (chokidar) | `npm run worker` çalışıyor + `localAutoEnqueue=true` | **Ortam bağımlı** |
-| **Periodic** (BullMQ repeat) | `npm run worker` çalışıyor + `localScanIntervalMinutes > 0` | **Ortam bağımlı** |
-| **Manuel** ("Scan now") | Yalnız web app ayakta olması yeterli | **Garanti** |
+| **Event-driven** (chokidar) | App çalışıyor + `localAutoEnqueue=true` | **Otomatik** |
+| **Periodic** (BullMQ repeat) | App çalışıyor + `localScanIntervalMinutes > 0` | **Otomatik** |
+| **Manuel** ("Scan now") | App çalışıyor | **Her zaman kullanılabilir** |
 
 `discoveryMode` hesaplama (Settings → Review → ops alanı):
 
@@ -1967,17 +1994,17 @@ watcherActive && !hasPeriodic → "event_only"
 !watcherActive && !hasPeriodic → "manual_only"
 ```
 
-**Mimari kısıt — chokidar worker-only:**
+**Mimari kısıt — chokidar webpack-safe:**
 
-chokidar (`fsevents` native binary) Next.js webpack tarafından bundlelanamaz.
-Çözüm: watcher yalnızca `scripts/dev-worker.ts` (ayrı Node process) içinde
-yaşar. API route'ları watcher modülünü **import etmez**. `next.config.mjs`:
-`serverExternalPackages: ["chokidar", "fsevents"]` — gerekli ama yeterli
-değil; API route'larının import-free kalması zorunlu.
+chokidar (`fsevents` native binary) Next.js webpack bundle'ına **girmez**;
+`serverExternalPackages: ["chokidar", "fsevents"]` ile exclude edilir ve
+Node.js runtime'da resolve edilir. `instrumentation.ts` ise Next.js'in
+Node.js server process'inde çalışır — webpack bundle'ı değil. Bu nedenle
+`instrumentation.ts`'den chokidar güvenle import edilebilir.
 
-`getReviewOpsCounts` watcher bilgisini `opts.watcherInfo?` ile caller'dan
-alır. Next.js API route'ları bu parametreyi geçmez (default: inactive);
-gelecekte worker process metrics endpoint'i eklenince oradan inject edilebilir.
+API route'ları watcher modülünü hâlâ **import etmez** (bundle güvenliği).
+Watcher state, aynı process içindeki `getWatcherStatusMap()` ile okunur
+ve `getReviewOpsCounts(opts.watcherInfo)` üzerinden inject edilir.
 
 **Worker liveness detection (`workerRunning` field):**
 
@@ -1994,8 +2021,9 @@ state'ine geçip geçmediğini DB'den kontrol eder. Next.js API route'unda
   Hard guarantee değil — ops hint olarak kullanılır.
 
 Admin panel davranışı:
-- `workerRunning: false` → amber banner: "Worker process not running — start
-  with `npm run worker`". Manual Scan now hâlâ çalışır.
+- `workerRunning: false` → amber banner: "Background automation warming up".
+  App yeni başlatıldığında ilk job tamamlanana kadar kısa süre görünebilir.
+  Manual Scan now her zaman çalışır.
 - `workerRunning: true` → banner görünmez; `discoveryMode` field'ı gerçek
   aktif modu gösterir (event+periodic / event_only / periodic_only).
 

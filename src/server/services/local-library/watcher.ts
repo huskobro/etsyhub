@@ -48,17 +48,11 @@ import { enqueue } from "@/server/queue";
 import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
 import { getReviewSettings } from "@/server/services/settings/review.service";
 import { logger } from "@/lib/logger";
+import { type WatcherEntry, watcherRegistry } from "./watcher-registry";
+
+export type { WatcherEntry };
 
 const DEBOUNCE_MS = 1000;
-
-export type WatcherEntry = {
-  userId: string;
-  rootPath: string;
-  startedAt: Date;
-  /** Total scan triggers since watcher started. */
-  triggerCount: number;
-  lastTriggerAt: Date | null;
-};
 
 const watchers = new Map<string, { watcher: chokidar.FSWatcher; entry: WatcherEntry }>();
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -125,6 +119,7 @@ export async function startLocalLibraryWatcher(
   });
 
   watchers.set(userId, { watcher, entry });
+  watcherRegistry.set(userId, { entry });
   logger.info({ userId, rootPath }, "local-library watcher started");
 }
 
@@ -141,6 +136,7 @@ export async function stopLocalLibraryWatcher(userId: string): Promise<void> {
   }
   await existing.watcher.close();
   watchers.delete(userId);
+  watcherRegistry.delete(userId);
   logger.info({ userId }, "local-library watcher stopped");
 }
 
@@ -153,11 +149,12 @@ export async function stopAllLocalLibraryWatchers(): Promise<void> {
 
 /**
  * Returns a snapshot of all active watcher entries for ops visibility.
- * Used by the settings/review GET endpoint to surface watcher state.
+ * Reads from the shared registry (also accessible without chokidar import
+ * via watcher-registry.ts for API routes).
  */
 export function getWatcherStatusMap(): Map<string, WatcherEntry> {
   const out = new Map<string, WatcherEntry>();
-  for (const [uid, { entry }] of watchers) {
+  for (const [uid, { entry }] of watcherRegistry) {
     out.set(uid, { ...entry });
   }
   return out;

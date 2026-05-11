@@ -588,7 +588,7 @@ function ReviewOpsSection({
           testId="ops-failed"
         />
       </div>
-      {/* Worker health banner — visible when worker process is not running */}
+      {/* Automation health banner — shown when background services are not yet active */}
       {!ops.workerRunning && (
         <div
           className="mt-3 flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900"
@@ -596,14 +596,12 @@ function ReviewOpsSection({
         >
           <span className="mt-px shrink-0 text-amber-500">⚠</span>
           <div>
-            <div className="font-medium">Worker process not running</div>
+            <div className="font-medium">Background automation warming up</div>
             <div className="mt-0.5 text-amber-800">
-              AI review scoring, background scans, and file watcher are
-              inactive. Start the worker to enable automation:{" "}
-              <code className="rounded bg-amber-100 px-1 font-mono">
-                npm run worker
-              </code>
-              . Manual &ldquo;Scan now&rdquo; still works without the worker.
+              AI review scoring, local file discovery, and periodic scans start
+              automatically with the app. If this persists after a fresh page
+              load, restart the app. Manual &ldquo;Scan now&rdquo; is always
+              available.
             </div>
           </div>
         </div>
@@ -627,12 +625,12 @@ function ReviewOpsSection({
           data-testid="ops-discovery-mode"
           title={
             ops.discoveryMode === "event+periodic"
-              ? "Worker running: file watcher active + periodic scan scheduled"
+              ? "File watcher active + periodic scan scheduled"
               : ops.discoveryMode === "event_only"
-                ? "Worker running: file watcher active, no periodic scan"
+                ? "File watcher active, no periodic scan configured"
                 : ops.discoveryMode === "periodic_only"
-                  ? "Worker running: periodic scan only, file watcher inactive"
-                  : "Worker not running — only manual Scan now is available"
+                  ? "Periodic scan active, file watcher not configured"
+                  : "Automatic discovery warming up — manual Scan now is always available"
           }
         >
           {ops.discoveryMode}
@@ -647,7 +645,7 @@ function ReviewOpsSection({
                 : ""}
             </span>
           ) : (
-            <span className="text-ink-3">inactive — start worker to enable</span>
+            <span className="text-ink-3">inactive</span>
           )}
         </dd>
         {ops.watcherLastTriggerAt ? (
@@ -2029,13 +2027,10 @@ function AutomationSection({
       </h3>
       <p className="mt-2 text-xs text-ink-3">
         Controls whether the system auto-enqueues review scoring when
-        new assets are produced or discovered. Local auto-discovery
-        (file watcher + periodic scan) requires the worker process to
-        be running (<code className="font-mono">npm run worker</code>).
-        If the worker is not running, the file watcher shows{" "}
-        <span className="font-mono">inactive</span> and only manual
-        "Scan now" is available. Disabling these toggles stops new
-        enqueues; existing queued jobs are unaffected.
+        new assets are produced or discovered. Background automation
+        (file watcher + periodic scan + AI scoring) starts automatically
+        with the app — no manual setup required. Disabling these toggles
+        pauses new enqueues; existing queued jobs are unaffected.
       </p>
       <div className="mt-3 space-y-2.5" data-testid="automation-toggles">
         <label
