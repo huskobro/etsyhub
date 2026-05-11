@@ -230,11 +230,17 @@ export const GET = withErrorHandling(async (req: Request) => {
         take: PAGE_SIZE,
       }),
       db.generatedDesign.count({ where }),
-      // IA-29 — undecided = operatör henüz aksiyon almamış. AI artık
-      // reviewStatus'e yazmıyor, sadece reviewSuggestedStatus'a; bu
-      // yüzden undecided yalnız PENDING'i içerir.
+      // IA-32 (CLAUDE.md Madde V güncellemesi) — undecided artık
+      // `reviewStatusSource != USER` ile sayılır. Bu pre-IA-29 dönemde
+      // worker'ın `reviewStatus`'e yazdığı eski snapshot'ları
+      // (NEEDS_REVIEW, SYSTEM-source APPROVED/REJECTED) da kapsar —
+      // operatör için hepsi aynı semantik: "henüz karar vermedim".
+      // Operator-truth gate olarak `getOperatorDecision` zaten aynı
+      // mantığı UI tarafında uyguluyor; sayım da o axis'i takip eder.
+      // Bu sayede `total = kept + rejected + undecided` invariant'ı
+      // her zaman korunur (ghost count YOK).
       db.generatedDesign.count({
-        where: { ...breakdownWhere, reviewStatus: "PENDING" },
+        where: { ...breakdownWhere, reviewStatusSource: { not: "USER" } },
       }),
       // IA-29 (CLAUDE.md Madde V) — kept/rejected ARTIK operatör damgası:
       // status APPROVED/REJECTED + source = USER. Worker advisory'yi
@@ -449,9 +455,12 @@ export const GET = withErrorHandling(async (req: Request) => {
       take: PAGE_SIZE,
     }),
     db.localLibraryAsset.count({ where: localWhere }),
-    // IA-29 — undecided = PENDING (operatör damgası yok).
+    // IA-32 — undecided = operatör damgası yok (source != USER). Eski
+    // SYSTEM-source NEEDS_REVIEW / APPROVED / REJECTED snapshot'ları
+    // bu sayıma girer; kept/rejected sadece USER source. Toplam
+    // invariant: `total = kept + rejected + undecided` her zaman.
     db.localLibraryAsset.count({
-      where: { ...localBreakdownWhere, reviewStatus: "PENDING" },
+      where: { ...localBreakdownWhere, reviewStatusSource: { not: "USER" } },
     }),
     // IA-29 — kept/rejected operatör damgası.
     db.localLibraryAsset.count({

@@ -228,6 +228,33 @@ export function ReviewWorkspaceShell<TItem>({
 }: ReviewWorkspaceShellProps<TItem>) {
   const router = useRouter();
   const [helpOpen, setHelpOpen] = useState(false);
+  // IA-32 — Shortcuts paneli default kapalı. Right rail'de dikey alan
+  // yiyen 7 satır liste yerine tek satır header + chevron; operatör
+  // istediğinde açar. Modal "All shortcuts" hâlâ `?` shortcut'ı ile
+  // tetiklenir (full reference). Session-scoped localStorage persist —
+  // operatör bir kez açtıysa o sekmede açık kalır (ama default kapalı).
+  const [shortcutsOpen, setShortcutsOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem("kivasy.review.shortcuts.open") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleShortcuts = useCallback(() => {
+    setShortcutsOpen((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(
+          "kivasy.review.shortcuts.open",
+          next ? "1" : "0",
+        );
+      } catch {
+        /* localStorage disabled — silently fall back to session state */
+      }
+      return next;
+    });
+  }, []);
   const item = items[cursor] ?? null;
   // IA Phase 14 — `total` artık scope-total: queue mode'da
   // tüm filtreli scope item sayısı, batch mode'da batch toplam.
@@ -681,19 +708,51 @@ export function ReviewWorkspaceShell<TItem>({
             {renderInfoRail(item, currentDecision)}
           </div>
 
-          <div className="flex-shrink-0 border-t border-white/5 bg-black/20 p-4">
-            <div className="mb-3 font-mono text-xs uppercase tracking-meta text-white/40">
-              Shortcuts
-            </div>
-            <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs">
-              <ShortcutRow keys="K" label="Keep" />
-              <ShortcutRow keys="D" label="Discard" />
-              <ShortcutRow keys="←  →" label="Prev / next item" />
-              <ShortcutRow keys="U" label="Undecided" />
-              <ShortcutRow keys=",  ." label="Prev / next scope" />
-              <ShortcutRow keys="Esc" label="Exit focus" />
-              <ShortcutRow keys="?" label="All shortcuts" />
-            </div>
+          {/* IA-32 — Collapsible Shortcuts panel.
+           *   • Default kapalı; header tek satır (operatör scroll'a düşmesin).
+           *   • Açılınca 7-satır kompakt liste görünür.
+           *   • `?` shortcut'ı modal'ı açar (full reference, ayrı kanal). */}
+          <div
+            className="flex-shrink-0 border-t border-white/5 bg-black/20"
+            data-testid="shortcuts-panel"
+            data-open={shortcutsOpen || undefined}
+          >
+            <button
+              type="button"
+              onClick={toggleShortcuts}
+              aria-expanded={shortcutsOpen}
+              aria-controls="review-shortcuts-content"
+              data-testid="shortcuts-toggle"
+              className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-white/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+            >
+              <span className="font-mono text-xs uppercase tracking-meta text-white/40">
+                Shortcuts
+              </span>
+              <span className="flex items-center gap-1 font-mono text-[10.5px] uppercase tracking-meta text-white/40">
+                {shortcutsOpen ? "Hide" : "Show"}
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 transition-transform",
+                    shortcutsOpen && "rotate-180",
+                  )}
+                  aria-hidden
+                />
+              </span>
+            </button>
+            {shortcutsOpen ? (
+              <div
+                id="review-shortcuts-content"
+                className="grid grid-cols-2 gap-y-2 gap-x-4 px-4 pb-4 text-xs"
+              >
+                <ShortcutRow keys="K" label="Keep" />
+                <ShortcutRow keys="D" label="Discard" />
+                <ShortcutRow keys="←  →" label="Prev / next item" />
+                <ShortcutRow keys="U" label="Undecided" />
+                <ShortcutRow keys=",  ." label="Prev / next scope" />
+                <ShortcutRow keys="Esc" label="Exit focus" />
+                <ShortcutRow keys="?" label="All shortcuts" />
+              </div>
+            ) : null}
           </div>
         </aside>
       </div>

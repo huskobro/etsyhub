@@ -112,8 +112,13 @@ export async function getNextPendingBatchId(args: {
  * with the **oldest pending row** wins — same "operator finishes
  * accumulated work first" reasoning as the MJ resolver above.
  *
- * NEEDS_REVIEW counts as undecided here because it is a pipeline
- * auto-flag, not an operator decision (CLAUDE.md Madde H).
+ * IA-32 — undecided axis = `reviewStatusSource != USER`. This is
+ * the same operator-truth axis the queue endpoint uses for the
+ * top-bar breakdown; folder/reference/batch picker counts and
+ * grid sayıları aynı semantikten beslenir (ghost count YOK).
+ * PENDING + AI-yazılmış SYSTEM-source advisory snapshot'ları
+ * (NEEDS_REVIEW, vb.) tümü "operatör henüz karar vermedi"
+ * demektir (CLAUDE.md Madde V güncellemesi).
  */
 export async function getNextPendingFolderName(args: {
   userId: string;
@@ -135,7 +140,7 @@ export async function getNextPendingFolderName(args: {
       userId,
       deletedAt: null,
       isUserDeleted: false,
-      reviewStatus: "PENDING",
+      reviewStatusSource: { not: "USER" },
       ...rootFilter,
       ...(currentFolderName !== null
         ? { folderName: { not: currentFolderName } }
@@ -171,7 +176,7 @@ export async function getNextPendingFolderName(args: {
       deletedAt: null,
       isUserDeleted: false,
       folderName: winner.folderName,
-      reviewStatus: "PENDING",
+      reviewStatusSource: { not: "USER" },
       ...rootFilter,
     },
     orderBy: { createdAt: "asc" },
@@ -233,7 +238,7 @@ export async function getAdjacentPendingFolders(args: {
         userId,
         deletedAt: null,
         isUserDeleted: false,
-        reviewStatus: "PENDING",
+        reviewStatusSource: { not: "USER" },
         ...rootFilter,
       },
     }),
@@ -276,7 +281,7 @@ export async function getAdjacentPendingFolders(args: {
         deletedAt: null,
         isUserDeleted: false,
         folderName,
-        reviewStatus: "PENDING",
+        reviewStatusSource: { not: "USER" },
         ...rootFilter,
       },
       orderBy: { createdAt: "asc" },
@@ -321,7 +326,7 @@ export async function getAdjacentPendingReferences(args: {
       where: {
         userId,
         deletedAt: null,
-                reviewStatus: "PENDING",
+                reviewStatusSource: { not: "USER" },
       },
     }),
   ]);
@@ -362,7 +367,7 @@ export async function getAdjacentPendingReferences(args: {
         userId,
         deletedAt: null,
         referenceId: refId,
-        reviewStatus: "PENDING",
+        reviewStatusSource: { not: "USER" },
       },
       orderBy: { createdAt: "asc" },
       select: { id: true },
@@ -405,7 +410,7 @@ export async function listPendingScopes(args: {
         userId,
         deletedAt: null,
         isUserDeleted: false,
-        reviewStatus: "PENDING",
+        reviewStatusSource: { not: "USER" },
         ...rootFilter,
       },
       _count: { id: true },
@@ -420,7 +425,7 @@ export async function listPendingScopes(args: {
             deletedAt: null,
             isUserDeleted: false,
             folderName: g.folderName,
-            reviewStatus: "PENDING",
+            reviewStatusSource: { not: "USER" },
             ...rootFilter,
           },
           orderBy: { createdAt: "asc" },
@@ -443,7 +448,7 @@ export async function listPendingScopes(args: {
       where: {
         userId,
         deletedAt: null,
-                reviewStatus: "PENDING",
+                reviewStatusSource: { not: "USER" },
       },
       _count: { id: true },
       orderBy: { referenceId: "asc" },
@@ -460,7 +465,7 @@ export async function listPendingScopes(args: {
               userId,
               deletedAt: null,
               referenceId: refId,
-              reviewStatus: "PENDING",
+              reviewStatusSource: { not: "USER" },
             },
             orderBy: { createdAt: "asc" },
             select: { id: true },
@@ -470,7 +475,7 @@ export async function listPendingScopes(args: {
               userId,
               deletedAt: null,
               referenceId: refId,
-              reviewStatus: "PENDING",
+              reviewStatusSource: { not: "USER" },
             },
           }),
         ]);
@@ -513,7 +518,7 @@ export async function listPendingScopes(args: {
             userId,
             deletedAt: null,
             jobId: { in: info.jobIds },
-            reviewStatus: "PENDING",
+            reviewStatusSource: { not: "USER" },
           },
           orderBy: { createdAt: "asc" },
           select: { id: true },
@@ -523,7 +528,7 @@ export async function listPendingScopes(args: {
             userId,
             deletedAt: null,
             jobId: { in: info.jobIds },
-            reviewStatus: "PENDING",
+            reviewStatusSource: { not: "USER" },
           },
         }),
       ]);
@@ -569,7 +574,7 @@ export async function getTotalReviewPendingCount(
       where: {
         userId,
         deletedAt: null,
-        reviewStatus: "PENDING",
+        reviewStatusSource: { not: "USER" },
       },
     }),
     db.localLibraryAsset.count({
@@ -577,7 +582,7 @@ export async function getTotalReviewPendingCount(
         userId,
         deletedAt: null,
         isUserDeleted: false,
-        reviewStatus: "PENDING",
+        reviewStatusSource: { not: "USER" },
         ...rootFilter,
       },
     }),

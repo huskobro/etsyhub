@@ -1926,6 +1926,60 @@ Yeni server-rendered surface eklendiğinde aynı pattern (router.refresh
 interval + visibility-aware) uygulanır. SSE/WebSocket gelecekte
 eklenebilir; pattern bozulmaz çünkü polling client-side, izole.
 
+### X. Scope count invariant — operator-truth axis ghost-free (IA-32)
+
+Review surface'inde scope sayımları (top-bar breakdown, folder/
+reference/batch picker pending count, total review pending anchor)
+**tek bir axis** kullanır: `reviewStatusSource != USER` →
+"operatör henüz karar vermedi". Bu eski PENDING-only axis'in
+yerini alır.
+
+Domain invariant her zaman:
+
+```
+total = kept + rejected + undecided
+```
+
+- `kept` = `reviewStatus = APPROVED AND reviewStatusSource = USER`
+- `rejected` = `reviewStatus = REJECTED AND reviewStatusSource = USER`
+- `undecided` = `reviewStatusSource != USER` (PENDING + AI-yazılmış
+  SYSTEM-source advisory snapshot'ları, NEEDS_REVIEW, vb. tümü
+  bu bucket'a)
+
+Bu axis'in zorunluluğu: pre-IA-29 dönemde worker `reviewStatus`'e
+yazıyordu — operatör onları "henüz karar vermedim" olarak görmeli,
+ama legacy SYSTEM-source rows axis dışına düştüğünde **ghost count**
+oluşur (total > kept + rejected + undecided). UI'da "kayıp 1 item"
+sorusunu doğurur. Yeni axis bu boşluğu kapatır.
+
+Aynı axis hem queue endpoint hem next-scope picker resolver'larında
+kullanılır (folder picker pending count = grid filtered count =
+top-bar undecided sayısı). Picker'da farklı axis kullanmak ghost
+count'a, yanıltıcı pending sayılarına ve operatörü yanlış scope'a
+yönlendirmeye yol açar.
+
+Yeni count consumer eklenirken aynı axis kullanılır. PENDING-only
+axis kullanılmaz — invariant kırılır.
+
+### Y. Card preview parity — content-type aware object-fit (IA-32)
+
+Grid kart thumbnail render'ı kaynak (`AI Designs` vs `Local Library`)
+farkına değil, **asset content type'ına** göre `object-fit` seçer:
+
+- `source.hasAlpha === true` (clipart, transparent PNG, sticker) →
+  `object-contain`. Kenarlar kesilmez, full asset görünür.
+- Aksi halde (fotografik wall art, JPEG, opak) → `object-cover`.
+  Kart aspect-square'i tam doldursun.
+
+AI Designs ve Local Library aynı kurala uyar. Source-bazlı
+condition kullanmak `kaynak X buradan geldi, gri görünüyor`
+gibi anlamsız asimetri yaratır. Asset metadata canonical:
+`Sharp probe` (`LocalLibraryAsset.hasAlpha`, `Asset.hasAlpha`)
+import zamanında doldurulur; UI bu sinyale yaslanır.
+
+Legacy rows (`hasAlpha = null`) fallback olarak `object-cover`
+alır — eski JPEG fotografik content için doğru karar.
+
 ## Library / Selections / Products — Sınır Invariant'ları
 
 Bu üç ekranı **karıştırmak yasaktır**. Kod, route, copy ve UI seviyesinde

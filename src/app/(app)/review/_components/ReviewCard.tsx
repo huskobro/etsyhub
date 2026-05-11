@@ -217,7 +217,20 @@ export function ReviewCard({ item, thresholds }: Props) {
             // a11y (Ö-4): tasarım önizlemesi içerik niteliğinde — kart başlığı
             // ayrı text yok, ekran okuyucu için informative alt metin gerekli.
             alt="Design preview"
-            className="h-full w-full object-cover"
+            // IA-32 — Object-fit asset content type'a göre:
+            //   • Alpha kanalı varsa (clipart / transparent PNG / sticker) →
+            //     `object-contain`: kenarlar kesilmesin, full asset görünsün.
+            //     Container'ın boş kalan kısmı surface-muted ile dolar
+            //     (checker pattern istenirse ileride eklenebilir).
+            //   • Aksi halde (fotografik wall art, vb.) → `object-cover`:
+            //     kart aspect-square'i tam doldursun.
+            // AI Designs ve Local Library aynı kurala uyar; kaynak farkı
+            // gerekçesi YOK — operatör clipart'ı her iki tarafta da tam
+            // görür, fotografik içerik her iki tarafta da tam dolar.
+            className={cn(
+              "h-full w-full",
+              item.source?.hasAlpha === true ? "object-contain" : "object-cover",
+            )}
             loading="lazy"
           />
         ) : (
