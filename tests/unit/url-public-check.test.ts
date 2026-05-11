@@ -37,14 +37,14 @@ describe("checkUrlPublic (Q5)", () => {
     expect(r.reason).toMatch(/ENOTFOUND/);
   });
 
-  it("uses User-Agent EtsyHub/0.1 + HEAD method", async () => {
+  it("uses User-Agent Kivasy/0.1 + HEAD method", async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, status: 200 });
     await checkUrlPublic("https://example.com/a.jpg");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://example.com/a.jpg",
       expect.objectContaining({
         method: "HEAD",
-        headers: expect.objectContaining({ "User-Agent": "EtsyHub/0.1" }),
+        headers: expect.objectContaining({ "User-Agent": "Kivasy/0.1" }),
       }),
     );
   });

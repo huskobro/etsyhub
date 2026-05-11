@@ -206,7 +206,7 @@ describe("buildZip — README.txt içeriği", () => {
     const entry = archive.getEntry("README.txt");
     expect(entry).toBeTruthy();
     const text = entry!.getData().toString("utf8");
-    expect(text).toContain("EtsyHub");
+    expect(text).toContain("Kivasy");
     expect(text).toContain("Selection Studio");
     expect(text).toContain("Mockup Studio");
     expect(text).toContain("Phase 8");
