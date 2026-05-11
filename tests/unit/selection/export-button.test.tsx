@@ -54,11 +54,11 @@ afterEach(() => {
 // ────────────────────────────────────────────────────────────
 
 describe("ExportButton — State 1 idle (activeExport=null)", () => {
-  it("itemCount>0 → 'İndir (ZIP)' butonu enabled", () => {
+  it("itemCount>0 → 'Download (ZIP)' butonu enabled", () => {
     wrapper(
       <ExportButton setId="set-1" itemCount={3} activeExport={null} />,
     );
-    const btn = screen.getByRole("button", { name: /İndir \(ZIP\)/ });
+    const btn = screen.getByRole("button", { name: /Download \(ZIP\)/ });
     expect(btn).toBeInTheDocument();
     expect(btn).not.toBeDisabled();
   });
@@ -67,7 +67,7 @@ describe("ExportButton — State 1 idle (activeExport=null)", () => {
     wrapper(
       <ExportButton setId="set-1" itemCount={0} activeExport={null} />,
     );
-    const btn = screen.getByRole("button", { name: /İndir \(ZIP\)/ });
+    const btn = screen.getByRole("button", { name: /Download \(ZIP\)/ });
     expect(btn).toBeDisabled();
     expect(btn.getAttribute("title")).toMatch(/en az 1 varyant olmalı/i);
   });
@@ -84,7 +84,7 @@ describe("ExportButton — State 1 idle (activeExport=null)", () => {
     wrapper(
       <ExportButton setId="set-7" itemCount={2} activeExport={null} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /İndir \(ZIP\)/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Download \(ZIP\)/ }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -106,7 +106,7 @@ describe("ExportButton — State 1 idle (activeExport=null)", () => {
     wrapper(
       <ExportButton setId="set-1" itemCount={1} activeExport={null} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /İndir \(ZIP\)/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Download \(ZIP\)/ }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
@@ -128,10 +128,12 @@ describe("ExportButton — State 2 queued/running (preparing)", () => {
     wrapper(
       <ExportButton setId="set-1" itemCount={3} activeExport={activeExport} />,
     );
+    // Button text "Export hazırlanıyor..." still Turkish in component
     const btn = screen.getByRole("button", { name: /export hazırlanıyor/i });
     expect(btn).toBeInTheDocument();
     expect(btn).toBeDisabled();
-    expect(screen.getByLabelText(/yükleniyor/i)).toBeInTheDocument();
+    // Spinner aria-label="Loading"
+    expect(screen.getByLabelText(/^Loading$/i)).toBeInTheDocument();
   });
 
   it("running → 'Export hazırlanıyor...' + spinner + disabled (queued ile aynı UI)", () => {
@@ -144,7 +146,7 @@ describe("ExportButton — State 2 queued/running (preparing)", () => {
     );
     const btn = screen.getByRole("button", { name: /export hazırlanıyor/i });
     expect(btn).toBeDisabled();
-    expect(screen.getByLabelText(/yükleniyor/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Loading$/i)).toBeInTheDocument();
   });
 });
 
@@ -181,7 +183,7 @@ describe("ExportButton — State 3 completed + URL geçerli", () => {
 // ────────────────────────────────────────────────────────────
 
 describe("ExportButton — State 4 completed + URL expired", () => {
-  it("expiresAt geçmiş → 'Yeniden hazırla' buton enabled", () => {
+  it("expiresAt geçmiş → 'Re-prepare' buton enabled", () => {
     const pastIso = new Date(Date.now() - 1000 * 60 * 60).toISOString(); // -1h
     const activeExport: ActiveExportView = {
       jobId: "job-e",
@@ -192,7 +194,7 @@ describe("ExportButton — State 4 completed + URL expired", () => {
     wrapper(
       <ExportButton setId="set-1" itemCount={3} activeExport={activeExport} />,
     );
-    const btn = screen.getByRole("button", { name: /yeniden hazırla/i });
+    const btn = screen.getByRole("button", { name: /Re-prepare/i });
     expect(btn).toBeInTheDocument();
     expect(btn).not.toBeDisabled();
     expect(btn.getAttribute("title")).toMatch(/süresi doldu/i);
@@ -200,7 +202,7 @@ describe("ExportButton — State 4 completed + URL expired", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
-  it("Click 'Yeniden hazırla' → POST /export tetiklenir", async () => {
+  it("Click 'Re-prepare' → POST /export tetiklenir", async () => {
     const pastIso = new Date(Date.now() - 1000 * 60 * 60).toISOString();
     const activeExport: ActiveExportView = {
       jobId: "job-e",
@@ -219,7 +221,7 @@ describe("ExportButton — State 4 completed + URL expired", () => {
     wrapper(
       <ExportButton setId="set-x" itemCount={2} activeExport={activeExport} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /yeniden hazırla/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Re-prepare/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -235,7 +237,7 @@ describe("ExportButton — State 4 completed + URL expired", () => {
 // ────────────────────────────────────────────────────────────
 
 describe("ExportButton — State 5 failed", () => {
-  it("failed → 'Tekrar dene' buton + danger tonu + failedReason tooltip", () => {
+  it("failed → 'Try again' buton + danger tonu + failedReason tooltip", () => {
     const activeExport: ActiveExportView = {
       jobId: "job-f",
       status: "failed",
@@ -244,7 +246,7 @@ describe("ExportButton — State 5 failed", () => {
     wrapper(
       <ExportButton setId="set-1" itemCount={3} activeExport={activeExport} />,
     );
-    const btn = screen.getByRole("button", { name: /tekrar dene/i });
+    const btn = screen.getByRole("button", { name: /Try again/i });
     expect(btn).toBeInTheDocument();
     expect(btn).not.toBeDisabled();
     expect(btn.getAttribute("title")).toBe("Storage upload timed out");
@@ -260,11 +262,11 @@ describe("ExportButton — State 5 failed", () => {
     wrapper(
       <ExportButton setId="set-1" itemCount={3} activeExport={activeExport} />,
     );
-    const btn = screen.getByRole("button", { name: /tekrar dene/i });
+    const btn = screen.getByRole("button", { name: /Try again/i });
     expect(btn.getAttribute("title")).toMatch(/başarısız/i);
   });
 
-  it("Click 'Tekrar dene' → POST /export tetiklenir", async () => {
+  it("Click 'Try again' → POST /export tetiklenir", async () => {
     const activeExport: ActiveExportView = {
       jobId: "job-f",
       status: "failed",
@@ -281,7 +283,7 @@ describe("ExportButton — State 5 failed", () => {
     wrapper(
       <ExportButton setId="set-r" itemCount={1} activeExport={activeExport} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /tekrar dene/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Try again/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);

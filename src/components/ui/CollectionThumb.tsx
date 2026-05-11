@@ -5,7 +5,7 @@ import { AssetImage } from "@/components/ui/asset-image";
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub CollectionThumb — koleksiyon kartı için görsel yüzey.
+ * Kivasy CollectionThumb — koleksiyon kartı için görsel yüzey.
  *
  * Davranış matrisi:
  * - 0 asset → placeholder (folder icon) + `aspect-video` çerçeve.

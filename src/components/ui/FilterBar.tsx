@@ -6,7 +6,7 @@ import {
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub FilterBar — spec A.1.11 · canvas screens.jsx:146-151.
+ * Kivasy FilterBar — spec A.1.11 · canvas screens.jsx:146-151.
  *
  * **Rol:** Chip bazlı filtre grubu. Toolbar'ın içinde veya tek başına (drawer)
  * kullanılabilir. Semantik yüzey: `role="group"` + `aria-label="Filtreler"`.

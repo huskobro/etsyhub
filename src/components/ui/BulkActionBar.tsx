@@ -6,7 +6,7 @@ import {
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub BulkActionBar — spec A.1.11 · canvas screens.jsx:176-197.
+ * Kivasy BulkActionBar — spec A.1.11 · canvas screens.jsx:176-197.
  *
  * **Görünürlük davranışı:**
  * - `selectedCount === 0` → primitive `null` döner (render YOK).

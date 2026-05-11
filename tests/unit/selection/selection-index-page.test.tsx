@@ -70,41 +70,49 @@ function setupQueries(opts: {
 
 beforeEach(() => mockUseSelectionSets.mockReset());
 
+function makeDraftSet(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "set-1",
+    name: "Boho wall art",
+    status: "draft",
+    createdAt: new Date().toISOString(),
+    finalizedAt: null,
+    archivedAt: null,
+    lastExportedAt: null,
+    updatedAt: new Date().toISOString(),
+    thumbnailUrl: null,
+    itemCount: 3,
+    sourceMetadata: null,
+    ...overrides,
+  };
+}
+
 describe("SelectionIndexPage — aktif draft set", () => {
-  it("aktif draft varsa kart render eder: ad + Draft badge + 'Aç' link", () => {
+  it("aktif draft varsa kart render eder: ad + Draft badge + 'Open' link", () => {
     setupQueries({
       draft: {
-        data: [
-          {
-            id: "set-1",
-            name: "Boho wall art",
-            status: "draft",
-            createdAt: new Date().toISOString(),
-            finalizedAt: null,
-            updatedAt: new Date().toISOString(),
-          },
-        ],
+        data: [makeDraftSet()],
       },
       ready: { data: [] },
     });
     wrapper(<SelectionIndexPage />);
     expect(screen.getByText("Boho wall art")).toBeInTheDocument();
-    // Badge text "Draft" tam eşleşme (section başlığı "Aktif draft" lower-case
+    // Badge text "Draft" tam eşleşme (section başlığı "Active draft" lower-case
     // "draft" içerir; çift match'i ayırmak için exact "Draft" arıyoruz).
     expect(screen.getByText("Draft")).toBeInTheDocument();
-    const openLink = screen.getByRole("link", { name: /Aç/i });
+    const openLink = screen.getByRole("link", { name: /^Open$/i });
     expect(openLink.getAttribute("href")).toBe("/selection/sets/set-1");
   });
 
-  it("aktif draft yoksa empty state + 'Yeni set oluştur' butonu", () => {
+  it("aktif draft yoksa empty state + 'Create new set' butonu", () => {
     setupQueries({
       draft: { data: [] },
       ready: { data: [] },
     });
     wrapper(<SelectionIndexPage />);
-    expect(screen.getByText(/aktif draft set/i)).toBeInTheDocument();
+    expect(screen.getByText(/no active draft set yet/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /yeni set oluştur/i }),
+      screen.getByRole("button", { name: /create new set/i }),
     ).toBeInTheDocument();
   });
 
@@ -119,7 +127,7 @@ describe("SelectionIndexPage — aktif draft set", () => {
     expect(statuses.length).toBeGreaterThan(0);
   });
 
-  it("draft error → 'Yüklenemedi' mesajı; raw error metni UI'da görünmez", () => {
+  it("draft error → \"Couldn't load\" mesajı; raw error metni UI'da görünmez", () => {
     setupQueries({
       draft: {
         data: undefined,
@@ -128,7 +136,7 @@ describe("SelectionIndexPage — aktif draft set", () => {
       ready: { data: [] },
     });
     wrapper(<SelectionIndexPage />);
-    expect(screen.getByText(/yüklenemedi/i)).toBeInTheDocument();
+    expect(screen.getByText(/couldn't load/i)).toBeInTheDocument();
     expect(screen.queryByText(/internal db boom xyz/)).toBeNull();
   });
 });
@@ -145,7 +153,12 @@ describe("SelectionIndexPage — son ready set'ler", () => {
             status: "ready",
             createdAt: new Date().toISOString(),
             finalizedAt: new Date().toISOString(),
+            archivedAt: null,
+            lastExportedAt: null,
             updatedAt: new Date().toISOString(),
+            thumbnailUrl: null,
+            itemCount: 2,
+            sourceMetadata: null,
           },
           {
             id: "r2",
@@ -153,7 +166,12 @@ describe("SelectionIndexPage — son ready set'ler", () => {
             status: "ready",
             createdAt: new Date().toISOString(),
             finalizedAt: new Date().toISOString(),
+            archivedAt: null,
+            lastExportedAt: null,
             updatedAt: new Date().toISOString(),
+            thumbnailUrl: null,
+            itemCount: 5,
+            sourceMetadata: null,
           },
           {
             id: "r3",
@@ -161,7 +179,12 @@ describe("SelectionIndexPage — son ready set'ler", () => {
             status: "ready",
             createdAt: new Date().toISOString(),
             finalizedAt: new Date().toISOString(),
+            archivedAt: null,
+            lastExportedAt: null,
             updatedAt: new Date().toISOString(),
+            thumbnailUrl: null,
+            itemCount: 3,
+            sourceMetadata: null,
           },
         ],
       },
@@ -174,14 +197,14 @@ describe("SelectionIndexPage — son ready set'ler", () => {
     expect(rows[2]!.getAttribute("href")).toBe("/selection/sets/r3");
   });
 
-  it("ready listesi boş → muted 'Henüz finalize edilen set yok'", () => {
+  it("ready listesi boş → muted 'No finalized sets yet.'", () => {
     setupQueries({
       draft: { data: [] },
       ready: { data: [] },
     });
     wrapper(<SelectionIndexPage />);
     expect(
-      screen.getByText(/henüz finalize edilen set yok/i),
+      screen.getByText(/no finalized sets yet/i),
     ).toBeInTheDocument();
   });
 
@@ -195,7 +218,12 @@ describe("SelectionIndexPage — son ready set'ler", () => {
           status: "ready",
           createdAt: new Date().toISOString(),
           finalizedAt: new Date().toISOString(),
+          archivedAt: null,
+          lastExportedAt: null,
           updatedAt: new Date().toISOString(),
+          thumbnailUrl: null,
+          itemCount: i,
+          sourceMetadata: null,
         })),
       },
     });

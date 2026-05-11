@@ -424,7 +424,7 @@ describe("ListingDraftView", () => {
     expect(priceInput.value).toBe("29.99");
 
     // Materials input
-    const materialsInput = screen.getByLabelText("Malzemeler");
+    const materialsInput = screen.getByLabelText("Materials");
     expect(materialsInput).toBeTruthy();
 
     // Save button visible

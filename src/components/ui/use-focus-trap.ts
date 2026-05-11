@@ -3,7 +3,7 @@
 import { useEffect, type RefObject } from "react";
 
 /**
- * EtsyHub useFocusTrap — T-40 spec (T-40 fix: initialFocusRef parametresi).
+ * Kivasy useFocusTrap — T-40 spec (T-40 fix: initialFocusRef parametresi).
  *
  * Klavye-only kullanıcı için dialog/drawer içinde focus boundary kurar.
  *

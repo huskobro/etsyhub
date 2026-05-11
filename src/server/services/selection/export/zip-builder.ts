@@ -41,10 +41,10 @@ export type BuildZipInput = {
 
 function buildReadme(manifest: ManifestSchemaV1): string {
   const lines = [
-    "EtsyHub Selection Studio Export",
+    "Kivasy Selection Studio Export",
     "==============================",
     "",
-    "Bu paket EtsyHub Selection Studio'dan dışa aktarılmış bir tasarım setidir.",
+    "Bu paket Kivasy Selection Studio'dan dışa aktarılmış bir tasarım setidir.",
     "",
     "Klasör yapısı:",
     "- images/      — Aktif (varsa düzenlenmiş, yoksa orijinal) görseller",

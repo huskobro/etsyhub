@@ -104,7 +104,7 @@ describe("TrendFeed — states", () => {
     expect(document.querySelector(".animate-pulse")).toBeNull();
   });
 
-  it("empty → StateMessage 'Bu pencerede listing yok' render eder", () => {
+  it("empty → StateMessage 'No listings in this window' render eder", () => {
     setFeedMock({ data: { items: [], nextCursor: null } });
     wrapper(
       <TrendFeed
@@ -114,7 +114,7 @@ describe("TrendFeed — states", () => {
       />,
     );
     expect(
-      screen.getByText(/Bu pencerede listing yok/i),
+      screen.getByText(/No listings in this window/i),
     ).toBeInTheDocument();
   });
 

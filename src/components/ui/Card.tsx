@@ -8,7 +8,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Card — spec A.2.3.
+ * Kivasy Card — spec A.2.3.
  *
  * 3 tip (variant):
  * - **stat**: mono title-case label + büyük numeral + trend badge

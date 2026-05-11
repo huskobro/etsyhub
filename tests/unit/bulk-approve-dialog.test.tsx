@@ -113,11 +113,9 @@ describe("BulkApproveDialog", () => {
       error: null,
     });
     renderDialog({ ids: ["a", "b", "c"] });
-    // Description: "Risk işareti taşıyan 1 ... 2 temiz tasarım..."
-    expect(screen.getByText(/1/)).toBeInTheDocument();
-    expect(screen.getByText(/2/)).toBeInTheDocument();
-    expect(screen.getByText(/risk işareti taşıyan/i)).toBeInTheDocument();
-    expect(screen.getByText(/temiz tasarım/i)).toBeInTheDocument();
+    // Description: "1 item(s) with risk flags will be skipped; 2 clean item(s)..."
+    expect(screen.getByText(/risk flags will be skipped/i)).toBeInTheDocument();
+    expect(screen.getByText(/clean item/i)).toBeInTheDocument();
   });
 
   it("Confirm butonu ⇒ POST /api/review/decisions/bulk action=approve gönderilir", async () => {
@@ -139,7 +137,7 @@ describe("BulkApproveDialog", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderDialog({ ids: ["a"] });
-    fireEvent.click(screen.getByRole("button", { name: /^Onayla$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Keep$/ }));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
@@ -177,7 +175,7 @@ describe("BulkApproveDialog", () => {
     const onSuccess = vi.fn();
 
     renderDialog({ ids: ["a", "b"], onSuccess });
-    fireEvent.click(screen.getByRole("button", { name: /^Onayla$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Keep$/ }));
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalledTimes(1);
     });
@@ -195,7 +193,7 @@ describe("BulkApproveDialog", () => {
     });
     const onClose = vi.fn();
     renderDialog({ ids: ["a"], onClose });
-    fireEvent.click(screen.getByRole("button", { name: /^Vazgeç$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Cancel$/ }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

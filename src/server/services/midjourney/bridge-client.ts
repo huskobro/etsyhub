@@ -1,4 +1,4 @@
-// EtsyHub ↔ MJ Bridge HTTP client.
+// Kivasy ↔ MJ Bridge HTTP client.
 //
 // Bridge ayrı paket (`mj-bridge/`) — cross-package import yok. Tipler
 // bu dosyada manuel kopyalanır; bridge tarafı (`mj-bridge/src/types.ts`)
@@ -160,7 +160,7 @@ export type BridgeDescribeRequest = {
  *   - submitStrategy: api-first (V1; DOM fallback Pass 84+)
  *
  * Çıktı: 4 grid (yeni job_id, parent_id + parent_grid lineage MJ
- * tarafında saklanır). EtsyHub MidjourneyAsset variantKind=VARIATION +
+ * tarafında saklanır). Kivasy MidjourneyAsset variantKind=VARIATION +
  * parentAssetId ile yazar.
  */
 export type BridgeVariationRequest = {
@@ -326,7 +326,7 @@ export class BridgeClient {
   /**
    * Output stream fetch — ingest worker'ı PNG bytes'ı buradan alır.
    *
-   * Caller bunu MinIO'ya upload eder. Bridge dosyayı diskinde tutar; EtsyHub
+   * Caller bunu MinIO'ya upload eder. Bridge dosyayı diskinde tutar; Kivasy
    * upload sonrası bridge'den silmeyi `cancelJob` veya housekeeping
    * kararına bırakır (V1: bridge kendi cleanup yok).
    */

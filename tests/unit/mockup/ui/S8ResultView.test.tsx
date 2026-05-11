@@ -588,7 +588,7 @@ describe("<S8ResultView>", () => {
     fireEvent.click(ctaBtn);
 
     await waitFor(() => {
-      expect(mockRouter.push).toHaveBeenCalledWith(`/listings/draft/${listingId}`);
+      expect(mockRouter.push).toHaveBeenCalledWith(`/products/${listingId}`);
     });
   });
 

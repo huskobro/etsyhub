@@ -120,7 +120,7 @@ afterEach(() => {
 });
 
 describe("handleReviewDesign — scope=local", () => {
-  it("happy path: APPROVED yazılır, snapshot persist", async () => {
+  it("happy path: advisory snapshot persist (IA-29: reviewSuggestedStatus yazılır, reviewStatus PENDING kalır)", async () => {
     const { assetId } = await seedLocalAsset();
     reviewMock.mockResolvedValueOnce({
       score: 92,
@@ -140,12 +140,16 @@ describe("handleReviewDesign — scope=local", () => {
     );
 
     expect(result.skipped).toBe(false);
-    expect(result.status).toBe(ReviewStatus.APPROVED);
+    // IA Phase 23: runTechnicalEvaluation adds tech_min_resolution flag (64px < 1800px, weight=20)
+    // → finalScore = 100 - 20 = 80 (mid-band, NEEDS_REVIEW).
+    expect(result.status).toBe(ReviewStatus.NEEDS_REVIEW);
 
     const updated = await db.localLibraryAsset.findUnique({ where: { id: assetId } });
-    expect(updated?.reviewStatus).toBe(ReviewStatus.APPROVED);
-    expect(updated?.reviewStatusSource).toBe(ReviewStatusSource.SYSTEM);
-    expect(updated?.reviewScore).toBe(92);
+    // IA-29: worker writes to reviewSuggestedStatus (advisory), NOT reviewStatus (operator canonical)
+    expect(updated?.reviewSuggestedStatus).toBe(ReviewStatus.NEEDS_REVIEW);
+    expect(updated?.reviewStatus).toBe(ReviewStatus.PENDING); // operator decision unchanged
+    // reviewScore = breakdown.finalScore (weight-based, not raw LLM score)
+    expect(updated?.reviewScore).toBe(80);
     expect(updated?.reviewSummary).toBe("minimalist wall art");
     expect(updated?.reviewProviderSnapshot).toMatch(/^google-gemini-flash@\d{4}-\d{2}-\d{2}$/);
     // Drift #5 prompt version bump: v1.0 → v1.1 (riskFlags `type` → `kind`).
@@ -234,7 +238,7 @@ describe("handleReviewDesign — scope=local", () => {
     expect(updated?.reviewedAt).toBeNull();
   });
 
-  it("K2 sticky race: Gemini fetch sırasında USER yazarsa SYSTEM override etmez", async () => {
+  it("K2 IA-29 advisory independence: USER mid-call yazsa da advisory snapshot işlenir", async () => {
     const { assetId } = await seedLocalAsset();
 
     reviewMock.mockImplementationOnce(async () => {
@@ -252,7 +256,7 @@ describe("handleReviewDesign — scope=local", () => {
         textDetected: false,
         gibberishDetected: false,
         riskFlags: [],
-        summary: "system would say rejected",
+        summary: "system would say needs review",
       };
     });
 
@@ -265,16 +269,18 @@ describe("handleReviewDesign — scope=local", () => {
       }),
     );
 
-    expect(result.skipped).toBe(true);
-    expect(result.reason).toBe("user_sticky_race");
+    // IA-29: worker writes to reviewSuggestedStatus (advisory), not reviewStatus.
+    // No race guard needed — worker never touches reviewStatus (operator canonical).
+    expect(result.skipped).toBe(false);
 
-    // USER yazısı korundu.
+    // USER yazısı reviewStatus'te korundu (worker dokunmadı).
     const updated = await db.localLibraryAsset.findUnique({ where: { id: assetId } });
     expect(updated?.reviewStatus).toBe(ReviewStatus.APPROVED);
     expect(updated?.reviewStatusSource).toBe(ReviewStatusSource.USER);
-    // SYSTEM yazmadı.
-    expect(updated?.reviewScore).toBeNull();
-    expect(updated?.reviewProviderSnapshot).toBeNull();
+    // Advisory snapshot yazıldı.
+    expect(updated?.reviewSuggestedStatus).toBeDefined();
+    expect(updated?.reviewScore).not.toBeNull();
+    expect(updated?.reviewSummary).toBe("system would say needs review");
   });
 });
 
@@ -373,7 +379,9 @@ describe("handleReviewDesign — scope=local — Phase 6 drift #6 + Aşama 2B ka
     );
 
     expect(result.skipped).toBe(false);
-    expect(result.status).toBe(ReviewStatus.APPROVED);
+    // IA Phase 23: runTechnicalEvaluation adds tech_min_resolution flag (64px < 1800px, weight=20)
+    // → finalScore = 100 - 20 = 80 (mid-band, NEEDS_REVIEW).
+    expect(result.status).toBe(ReviewStatus.NEEDS_REVIEW);
 
     // Provider çağrıldı.
     expect(reviewMock).toHaveBeenCalledTimes(1);

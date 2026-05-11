@@ -21,14 +21,14 @@ beforeEach(() => {
 });
 
 describe("AssetImage", () => {
-  it("assetId null ise 'Görsel yok' gösterir", async () => {
+  it("assetId null ise 'No image' gösterir", async () => {
     wrapper(<AssetImage assetId={null} alt="test" />);
-    expect(await screen.findByText("Görsel yok")).toBeInTheDocument();
+    expect(await screen.findByText("No image")).toBeInTheDocument();
   });
 
-  it("assetId undefined ise 'Görsel yok' gösterir", async () => {
+  it("assetId undefined ise 'No image' gösterir", async () => {
     wrapper(<AssetImage assetId={undefined} alt="test" />);
-    expect(await screen.findByText("Görsel yok")).toBeInTheDocument();
+    expect(await screen.findByText("No image")).toBeInTheDocument();
   });
 
   it("assetId varsa ve fetch başarılıysa <img> render eder, src ve alt doğrudur", async () => {
@@ -47,7 +47,7 @@ describe("AssetImage", () => {
     expect(img).toHaveAttribute("alt", "Ürün görseli");
   });
 
-  it("fetch 404 dönerse hata fallback olarak 'Görsel yok' gösterir", async () => {
+  it("fetch 404 dönerse hata fallback olarak 'Couldn't load image' gösterir", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -60,7 +60,7 @@ describe("AssetImage", () => {
     wrapper(<AssetImage assetId="asset-404" alt="test" />);
 
     expect(
-      await screen.findByLabelText("Görsel yüklenemedi"),
+      await screen.findByLabelText("Couldn't load image"),
     ).toBeInTheDocument();
   });
 

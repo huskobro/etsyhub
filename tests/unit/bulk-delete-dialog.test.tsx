@@ -58,7 +58,7 @@ describe("BulkDeleteDialog", () => {
     expect(confirmBtn).toBeDisabled();
   });
 
-  it("'SİL' yazınca enabled; click ⇒ POST /bulk action=delete scope=local", async () => {
+  it("'DELETE' yazınca enabled; click ⇒ POST /bulk action=delete scope=local", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -72,7 +72,7 @@ describe("BulkDeleteDialog", () => {
 
     renderDialog({ ids: ["a", "b"], onSuccess });
     const input = screen.getByTestId("typing-confirmation-input");
-    fireEvent.change(input, { target: { value: "SİL" } });
+    fireEvent.change(input, { target: { value: "DELETE" } });
 
     const confirmBtn = screen.getByTestId("typing-confirmation-confirm");
     expect(confirmBtn).not.toBeDisabled();
@@ -102,15 +102,15 @@ describe("BulkDeleteDialog", () => {
   it("Vazgeç butonu onClose çağırır", () => {
     const onClose = vi.fn();
     renderDialog({ ids: ["a"], onClose });
-    fireEvent.click(screen.getByRole("button", { name: /^Vazgeç$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Cancel$/ }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("UX bug fix: 'Onaylamak için aşağıya … yazın' cümlesi sadece BIR kez render olur", () => {
+  it("UX bug fix: 'Type ... below to confirm' cümlesi sadece BIR kez render olur", () => {
     renderDialog({ ids: ["a"] });
     // Regex eski (BulkDeleteDialog message prop ile geçen) cümlenin
     // tekrarını tespit eder; tek match olmalı.
-    const matches = screen.getAllByText(/Onaylamak için aşağıya/i);
+    const matches = screen.getAllByText(/below to confirm/i);
     expect(matches).toHaveLength(1);
   });
 });

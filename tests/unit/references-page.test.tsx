@@ -1,7 +1,11 @@
 /**
  * references-page.test.tsx
  *
- * ReferencesPage primitive entegrasyonu — T-16 spec doğrulaması.
+ * ReferencesPage primitive entegrasyonu — v5 ReferencesPool spec doğrulaması.
+ *
+ * Not: R11.14 migrasyonunda ReferencesPage, v5 IA'yı uygulayan
+ * ReferencePoolCard + FilterChip + FloatingBulkBar (k-fab) tabanlı
+ * yeni bir yapıya geçti. Testler bu yeni yapıya göre güncellendi.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ReactElement } from "react";
@@ -11,7 +15,6 @@ import {
   fireEvent,
   act,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReferencesPage } from "@/features/references/components/references-page";
@@ -19,6 +22,14 @@ import { ReferencesPage } from "@/features/references/components/references-page
 const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, replace: vi.fn() }),
+  usePathname: () => "/references",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: any) => (
+    <a href={href} {...rest}>{children}</a>
+  ),
 }));
 
 function wrapper(ui: ReactElement) {
@@ -98,125 +109,89 @@ const sampleRef = (id: string, title: string) => ({
 const productTypes = [{ id: "pt", displayName: "Canvas" }];
 
 describe("ReferencesPage", () => {
-  it("loading → SkeletonCardGrid (role=status)", async () => {
+  it("loading → loading state render olur (SkeletonGrid)", async () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
-    wrapper(<ReferencesPage productTypes={productTypes} />);
-    const skeletons = await screen.findAllByRole("status");
-    expect(skeletons.length).toBeGreaterThan(0);
+    const { container } = wrapper(<ReferencesPage productTypes={productTypes} />);
+    // SkeletonGrid'in k-card'ları animate-pulse içerir (loading indicator)
+    await waitFor(() => {
+      const pulsing = container.querySelectorAll(".animate-pulse");
+      expect(pulsing.length).toBeGreaterThan(0);
+    });
   });
 
-  it("empty → StateMessage + Referans ekle CTA (disabled)", async () => {
+  it("empty → 'No references yet' StateMessage render eder", async () => {
     mockFetch([]);
     wrapper(<ReferencesPage productTypes={productTypes} />);
-    expect(await screen.findByText("Henüz referans yok")).toBeInTheDocument();
+    expect(await screen.findByText("No references yet")).toBeInTheDocument();
   });
 
-  it("default → kart başlıkları görünür, üst özet 'N referans'", async () => {
+  it("default → kart başlıkları görünür", async () => {
     mockFetch([sampleRef("r1", "Boho Print"), sampleRef("r2", "Çiçek")]);
     wrapper(<ReferencesPage productTypes={productTypes} />);
     expect(await screen.findByText("Boho Print")).toBeInTheDocument();
-    expect(screen.getByText(/2 referans/)).toBeInTheDocument();
+    expect(screen.getByText("Çiçek")).toBeInTheDocument();
   });
 
-  it("chip filter: specific cuid → fetch URL'i collectionId=<cuid> içerir", async () => {
-    const fetchMock = mockFetch([sampleRef("r1", "Boho")], {
-      items: [
-        { id: "cksnbp3sf0000abcdzxvmn123", name: "Boho", _count: { references: 1 } },
-      ],
-      uncategorizedReferenceCount: 0,
-      orphanedReferenceCount: 0,
-    });
+  it("arama → fetch URL'i q=<term> içerir", async () => {
+    const fetchMock = mockFetch([]);
     wrapper(<ReferencesPage productTypes={productTypes} />);
-    await screen.findByText("Boho");
-    const chip = await screen.findByRole("button", { name: /Boho · 1/ });
-    act(() => fireEvent.click(chip));
+    // Search input data-testid="references-search"
+    const searchInput = await screen.findByTestId("references-search");
+    act(() => fireEvent.change(searchInput, { target: { value: "boho" } }));
     await waitFor(() => {
       const calls = fetchMock.mock.calls.map((c) => String(c[0]));
-      expect(calls.some((u) => u.includes("collectionId=cksnbp3sf0000abcdzxvmn123"))).toBe(true);
+      expect(calls.some((u) => u.includes("q=boho"))).toBe(true);
     });
   });
 
-  it("chip filter: uncategorized → fetch URL'i collectionId=uncategorized içerir", async () => {
-    const fetchMock = mockFetch([], {
-      items: [],
-      uncategorizedReferenceCount: 4,
-      orphanedReferenceCount: 0,
-    });
-    wrapper(<ReferencesPage productTypes={productTypes} />);
-    const chip = await screen.findByRole("button", { name: /Koleksiyonsuz · 4/ });
-    act(() => fireEvent.click(chip));
-    await waitFor(() => {
-      const calls = fetchMock.mock.calls.map((c) => String(c[0]));
-      expect(calls.some((u) => u.includes("collectionId=uncategorized"))).toBe(true);
-    });
-  });
-
-  it("Tümü · N sayacı = Σ _count.references + uncategorized + orphan", async () => {
-    mockFetch([], {
-      items: [
-        { id: "c1", name: "A", _count: { references: 3 } },
-        { id: "c2", name: "B", _count: { references: 5 } },
-      ],
-      uncategorizedReferenceCount: 4,
-      orphanedReferenceCount: 2,
-    });
-    wrapper(<ReferencesPage productTypes={productTypes} />);
-    expect(await screen.findByRole("button", { name: /Tümü · 14/ })).toBeInTheDocument();
-    expect(screen.queryByText(/Arşivli koleksiyondan/)).not.toBeInTheDocument();
-  });
-
-  it("multi-select → BulkActionBar 'N referans seçildi' + Arşivle", async () => {
+  it("multi-select → BulkBar '{N} selected' + Archive butonu görünür", async () => {
     mockFetch([sampleRef("r1", "A"), sampleRef("r2", "B")]);
     wrapper(<ReferencesPage productTypes={productTypes} />);
     await screen.findByText("A");
-    const selectBtns = screen.getAllByRole("button", { name: "Seç" });
+    const selectBtns = screen.getAllByRole("button", { name: "Select" });
     act(() => {
       fireEvent.click(selectBtns[0]!);
       fireEvent.click(selectBtns[1]!);
     });
-    const region = await screen.findByRole("region");
-    expect(within(region).getByText("2 referans seçildi")).toBeInTheDocument();
-    expect(within(region).getByRole("button", { name: "Arşivle" })).toBeInTheDocument();
+    // FloatingBulkBar (k-fab)
+    const bulkBar = await screen.findByTestId("references-bulk-bar");
+    expect(bulkBar).toBeInTheDocument();
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive" })).toBeInTheDocument();
   });
 
   it("bulk archive → dialog archiveReferencesBulk(2) preset'i gösterir", async () => {
     mockFetch([sampleRef("r1", "A"), sampleRef("r2", "B")]);
     wrapper(<ReferencesPage productTypes={productTypes} />);
     await screen.findByText("A");
-    const selectBtns = screen.getAllByRole("button", { name: "Seç" });
+    const selectBtns = screen.getAllByRole("button", { name: "Select" });
     act(() => {
       fireEvent.click(selectBtns[0]!);
       fireEvent.click(selectBtns[1]!);
     });
-    const region = await screen.findByRole("region");
+    await screen.findByTestId("references-bulk-bar");
     act(() => {
-      fireEvent.click(within(region).getByRole("button", { name: "Arşivle" }));
+      fireEvent.click(screen.getByRole("button", { name: "Archive" }));
     });
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Seçili referansları arşivle")).toBeInTheDocument();
-    expect(within(dialog).getByText(/2 referans arşivlenecek/)).toBeInTheDocument();
+    expect(dialog).toBeInTheDocument();
+    // Confirm preset "Seçili referansları arşivle" hâlâ Türkçe
+    expect(screen.getByText("Seçili referansları arşivle")).toBeInTheDocument();
   });
 
-  it("dismiss → selection temizlenir, BulkActionBar gizlenir", async () => {
+  it("dismiss → selection temizlenir, BulkBar gizlenir", async () => {
     mockFetch([sampleRef("r1", "A")]);
     wrapper(<ReferencesPage productTypes={productTypes} />);
     await screen.findByText("A");
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Seç" }));
+      fireEvent.click(screen.getByRole("button", { name: "Select" }));
     });
-    const region = await screen.findByRole("region");
-    const dismiss = within(region).getByRole("button", { name: /Seçimi temizle/ });
-    act(() => fireEvent.click(dismiss));
+    await screen.findByTestId("references-bulk-bar");
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+    });
     await waitFor(() => {
-      expect(screen.queryByRole("region")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("references-bulk-bar")).not.toBeInTheDocument();
     });
-  });
-
-  it("Yeni koleksiyon → router.push('/collections?intent=create')", async () => {
-    mockFetch([]);
-    wrapper(<ReferencesPage productTypes={productTypes} />);
-    const btn = await screen.findByRole("button", { name: /Yeni koleksiyon/ });
-    act(() => fireEvent.click(btn));
-    expect(pushMock).toHaveBeenCalledWith("/collections?intent=create");
   });
 });

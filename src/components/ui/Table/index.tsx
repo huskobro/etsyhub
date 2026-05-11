@@ -28,7 +28,7 @@ import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Table primitive ailesi — implementation-brief T-12 (line 87, 103).
+ * Kivasy Table primitive ailesi — implementation-brief T-12 (line 87, 103).
  *
  * **Hedef:** Admin tablolarının (Users / Product Types / Feature Flags) ortak
  * yüzeyi. Spec gereği:

@@ -8,7 +8,7 @@ import {
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub NavItem — spec A.1.10 · canvas app-shell.jsx:331.
+ * Kivasy NavItem — spec A.1.10 · canvas app-shell.jsx:331.
  *
  * Sidebar içindeki tek satırlık gezinme öğesi. Active iken sol kenarda 2px
  * accent bar belirir ve satır surface bg + shadow-card kazanır; inactive iken

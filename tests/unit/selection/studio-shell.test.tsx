@@ -173,7 +173,7 @@ describe("StudioShell — draft set", () => {
     expect(screen.getByText("Boho wall art")).toBeInTheDocument();
     expect(screen.getByText("Draft")).toBeInTheDocument();
 
-    const indirBtn = screen.getByRole("button", { name: /İndir/ });
+    const indirBtn = screen.getByRole("button", { name: /Download \(ZIP\)/i });
     const finalizeBtn = screen.getByRole("button", {
       name: /set'i finalize et/i,
     });

@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Textarea — spec A.2.3.
+ * Kivasy Textarea — spec A.2.3.
  * `min-h-textarea` (80px), vertical resize. Focus: accent border (ring YOK).
  * Prefix/suffix desteği yok — satır seviyesi arayüz değil, blok elementi.
  */

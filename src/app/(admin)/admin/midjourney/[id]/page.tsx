@@ -297,7 +297,7 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
           </ul>
         </div>
         <div>
-          <div className="text-xs text-text-muted">EtsyHub Job</div>
+          <div className="text-xs text-text-muted">Kivasy Job</div>
           <div className="text-xs">
             Status:{" "}
             <span className="font-mono">{job.job?.status ?? "—"}</span>
@@ -430,7 +430,7 @@ export default async function AdminMidjourneyJobDetailPage({ params }: Props) {
         ) : (
           <>
             {/* Pass 55 — MJ output → Review handoff. Asset'ler MJ üretti
-                ama EtsyHub Review queue'ya bağlı değiller; promote
+                ama Kivasy Review queue'ya bağlı değiller; promote
                 paneli operatör Reference + ProductType seçip 1 tıkla
                 Review'a gönderir. */}
             <PromoteToReview

@@ -2,7 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Toast — T-38 Stabilization Wave terfisi.
+ * Kivasy Toast — T-38 Stabilization Wave terfisi.
  *
  * Karar dokümanı: docs/design/implementation-notes/cp9-stabilization-wave.md
  * - 3 tone: success / error / info (yalnızca; warning/neutral YASAK).

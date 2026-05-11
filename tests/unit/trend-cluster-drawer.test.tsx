@@ -153,10 +153,10 @@ describe("TrendClusterDrawer — states", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
-  it("Empty members → 'Bu kümede listing yok' mesajı (mevcut, korunur)", () => {
+  it("Empty members → 'No listings in this cluster' mesajı render eder", () => {
     setDetailMock({ data: makeDetail({ members: [] }) });
     wrapper(<TrendClusterDrawer clusterId="c-1" onClose={vi.fn()} />);
-    expect(screen.getByText(/Bu kümede listing yok/i)).toBeInTheDocument();
+    expect(screen.getByText(/No listings in this cluster/i)).toBeInTheDocument();
   });
 });
 

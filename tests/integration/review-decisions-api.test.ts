@@ -373,7 +373,7 @@ describe("PATCH /api/review/decisions — Reset to system + rerun", () => {
       },
     });
 
-    const res = await PATCH(makeRequest("PATCH", { scope: "design", id: designId }));
+    const res = await PATCH(makeRequest("PATCH", { scope: "design", id: designId, rerun: true }));
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.reset).toBe(true);
@@ -423,7 +423,7 @@ describe("PATCH /api/review/decisions — Reset to system + rerun", () => {
     });
 
     const res = await PATCH(
-      makeRequest("PATCH", { scope: "local", id: assetId, productTypeKey: "wall_art" }),
+      makeRequest("PATCH", { scope: "local", id: assetId, productTypeKey: "wall_art", rerun: true }),
     );
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -449,12 +449,12 @@ describe("PATCH /api/review/decisions — Reset to system + rerun", () => {
     );
   });
 
-  it("PATCH local + productTypeKey eksik ⇒ 400 (Karar 3: zorunlu)", async () => {
+  it("PATCH local + productTypeKey eksik + rerun: true ⇒ 400 (Karar 3: zorunlu)", async () => {
     (requireUser as ReturnType<typeof vi.fn>).mockResolvedValue({ id: USER_A });
     const { assetId } = await createLocalAssetFixture(USER_A);
 
     const res = await PATCH(
-      makeRequest("PATCH", { scope: "local", id: assetId }),
+      makeRequest("PATCH", { scope: "local", id: assetId, rerun: true }),
     );
     expect(res.status).toBe(400);
     expect(enqueueMock).not.toHaveBeenCalled();
@@ -497,7 +497,7 @@ describe("PATCH /api/review/decisions — Reset to system + rerun", () => {
     // Enqueue throw simüle et
     enqueueMock.mockRejectedValueOnce(new Error("redis connection refused"));
 
-    const res = await PATCH(makeRequest("PATCH", { scope: "design", id: designId }));
+    const res = await PATCH(makeRequest("PATCH", { scope: "design", id: designId, rerun: true }));
     expect(res.status).toBe(200); // 500 değil — reset commit oldu
     const data = await res.json();
     expect(data.reset).toBe(true);

@@ -51,6 +51,12 @@ beforeEach(async () => {
   (checkUrlPublic as any).mockReset();
   (checkUrlPublic as any).mockResolvedValue({ ok: true, status: 200 });
   (getUserLocalLibrarySettings as any).mockReset();
+  // Default: no root path set — getActiveLocalRootFilter returns empty filter.
+  (getUserLocalLibrarySettings as any).mockResolvedValue({
+    rootFolderPath: null,
+    targetResolution: { width: 4000, height: 4000 },
+    targetDpi: 300,
+  });
 });
 
 async function makeAsset(

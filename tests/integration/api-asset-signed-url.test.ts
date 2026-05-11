@@ -161,13 +161,14 @@ describe("GET /api/assets/[id]/signed-url", () => {
     expect(typeof body.url).toBe("string");
     expect(body.url).toMatch(/^https?:\/\//);
 
-    // expiresAt ISO datetime, yaklaşık 5 dakika sonra
+    // expiresAt ISO datetime, yaklaşık 3600 sn (1 saat) sonra
+    // resolveTtlForUser no-settings fallback → DEFAULT_TTL = 3600
     const expiresMs = new Date(body.expiresAt).getTime();
-    expect(expiresMs).toBeGreaterThan(before + 299_000);
-    expect(expiresMs).toBeLessThan(after + 301_000);
+    expect(expiresMs).toBeGreaterThan(before + 3599_000);
+    expect(expiresMs).toBeLessThan(after + 3601_000);
 
-    // storage provider 300 sn TTL ile çağrıldı mı
-    expect(getStorage().signedUrl).toHaveBeenCalledWith(asset.storageKey, 300);
+    // storage provider 3600 sn TTL ile çağrıldı mı (DEFAULT_TTL)
+    expect(getStorage().signedUrl).toHaveBeenCalledWith(asset.storageKey, 3600);
   });
 
   // 3. Başka user'ın asset'i → 404 (data isolation)
@@ -215,7 +216,7 @@ describe("GET /api/assets/[id]/signed-url", () => {
   });
 
   // 6. Cache-Control header
-  it("başarılı yanıtta Cache-Control: private, max-age=240 header'ı var", async () => {
+  it("başarılı yanıtta Cache-Control: private, max-age=2880 header'ı var (TTL 3600 * 0.8)", async () => {
     currentUser.id = userAId;
     const asset = await createTestAsset(userAId);
     const res = await signedUrlGET(
@@ -223,6 +224,6 @@ describe("GET /api/assets/[id]/signed-url", () => {
       { params: { id: asset.id } },
     );
     expect(res.status).toBe(200);
-    expect(res.headers.get("Cache-Control")).toBe("private, max-age=240");
+    expect(res.headers.get("Cache-Control")).toBe("private, max-age=2880");
   });
 });

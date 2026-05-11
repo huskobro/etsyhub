@@ -2,7 +2,7 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Skeleton — spec A.2.7.
+ * Kivasy Skeleton — spec A.2.7.
  * Kural: surface-3 bg + `ehPulse` keyframe (opacity 1 ↔ 0.55).
  * **Shimmer gradient yok.** Radius `rounded-sm` default.
  *

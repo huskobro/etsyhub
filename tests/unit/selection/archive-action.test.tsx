@@ -196,7 +196,7 @@ describe("ArchiveAction — mutation success", () => {
     expect((init as RequestInit).body).toBe(JSON.stringify({}));
 
     await waitFor(() =>
-      expect(pushMock).toHaveBeenCalledWith("/selection"),
+      expect(pushMock).toHaveBeenCalledWith("/selections"),
     );
   });
 });

@@ -4,9 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:fresh": "rm -rf .next && next dev",
     "worker": "tsx watch scripts/dev-worker.ts",
-    "worker:prod": "tsx scripts/dev-worker.ts",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -18,7 +16,6 @@
     "test:e2e": "playwright test",
     "test:all": "npm run typecheck && npm run lint && npm run check:tokens && npm run test && npm run test:ui && npm run test:e2e",
     "db:migrate": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "tsx scripts/reset-db.ts"
   },

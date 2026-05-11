@@ -95,22 +95,22 @@ describe("CollectionsPage", () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it("empty (arama yok) → 'Henüz koleksiyon yok' + CTA", async () => {
+  it("empty (arama yok) → 'No collections yet' + CTA", async () => {
     mockFetch([]);
     wrapper(<CollectionsPage />);
-    expect(await screen.findByText(/Henüz koleksiyon yok/)).toBeInTheDocument();
+    expect(await screen.findByText(/No collections yet/)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /İlk koleksiyonunu oluştur/ }),
+      screen.getByRole("button", { name: /Create your first collection/ }),
     ).toBeInTheDocument();
   });
 
-  it("empty (arama var) → 'Eşleşen koleksiyon yok'", async () => {
+  it("empty (arama var) → 'No matching collection'", async () => {
     mockFetch([]);
     wrapper(<CollectionsPage />);
-    const input = await screen.findByPlaceholderText(/Koleksiyon ara/);
+    const input = await screen.findByPlaceholderText(/Search collections/);
     act(() => fireEvent.change(input, { target: { value: "xyz" } }));
     await waitFor(() => {
-      expect(screen.getByText(/Eşleşen koleksiyon yok/)).toBeInTheDocument();
+      expect(screen.getByText(/No matching collection/)).toBeInTheDocument();
     });
   });
 
@@ -118,17 +118,17 @@ describe("CollectionsPage", () => {
     mockFetch([sample("c1", "Boho")]);
     wrapper(<CollectionsPage />);
     expect(await screen.findByText("Boho")).toBeInTheDocument();
-    // "Referans" hem Chip'te hem Badge'de geçer — en az biri Badge (<span>) olmalı
-    const referansEls = screen.getAllByText("Referans");
-    expect(referansEls.length).toBeGreaterThan(0); // Badge
+    // "Reference" hem Chip'te hem Badge'de geçer — en az biri Badge (<span>) olmalı
+    const referenceEls = screen.getAllByText("Reference");
+    expect(referenceEls.length).toBeGreaterThan(0); // Badge
     expect(screen.getByTestId("collection-thumb-placeholder")).toBeInTheDocument();
   });
 
-  it("kind chip: Referans → fetch URL'i kind=REFERENCE içerir", async () => {
+  it("kind chip: Reference → fetch URL'i kind=REFERENCE içerir", async () => {
     const fetchMock = mockFetch([sample("c1", "A")]);
     wrapper(<CollectionsPage />);
     await screen.findByText("A");
-    const chip = await screen.findByRole("button", { name: /^Referans$/ });
+    const chip = await screen.findByRole("button", { name: /^Reference$/ });
     act(() => fireEvent.click(chip));
     await waitFor(() => {
       const calls = fetchMock.mock.calls.map((c) => String(c[0]));
@@ -139,7 +139,7 @@ describe("CollectionsPage", () => {
   it("arama → fetch URL'i q=<term>", async () => {
     const fetchMock = mockFetch([]);
     wrapper(<CollectionsPage />);
-    const input = await screen.findByPlaceholderText(/Koleksiyon ara/);
+    const input = await screen.findByPlaceholderText(/Search collections/);
     act(() => fireEvent.change(input, { target: { value: "boho" } }));
     await waitFor(() => {
       const calls = fetchMock.mock.calls.map((c) => String(c[0]));
@@ -147,10 +147,10 @@ describe("CollectionsPage", () => {
     });
   });
 
-  it("Yeni koleksiyon butonu → dialog açılır", async () => {
+  it("New collection butonu → dialog açılır", async () => {
     mockFetch([]);
     wrapper(<CollectionsPage />);
-    const btn = await screen.findByRole("button", { name: /Yeni koleksiyon/ });
+    const btn = await screen.findByRole("button", { name: /New collection/ });
     act(() => fireEvent.click(btn));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
@@ -167,7 +167,7 @@ describe("CollectionsPage", () => {
     mockFetch([sample("c1", "Boho")]);
     wrapper(<CollectionsPage />);
     await screen.findByText("Boho");
-    const archiveBtn = screen.getByRole("button", { name: "Arşivle" });
+    const archiveBtn = screen.getByRole("button", { name: "Archive" });
     act(() => fireEvent.click(archiveBtn));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Koleksiyonu arşivle")).toBeInTheDocument();

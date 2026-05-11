@@ -473,11 +473,11 @@ MJ_BRIDGE_BROWSER_MODE=attach \\
 MJ_BRIDGE_CDP_URL=http://127.0.0.1:9222 \\
 npm run dev
 
-# 5. EtsyHub .env.local:
+# 5. Kivasy .env.local:
 MJ_BRIDGE_URL=http://127.0.0.1:8780
 MJ_BRIDGE_TOKEN=<aynı token>
 
-# 6. EtsyHub'ı restart et.
+# 6. Kivasy'yi restart et.
 
 # Brave alternatifi (Pass 47 yolu):
 # --user-data-dir="$HOME/.mj-bridge-brave-profile"

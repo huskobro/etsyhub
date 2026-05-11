@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/cn";
 
 /**
- * EtsyHub Badge — spec A.2.5 (status badge).
+ * Kivasy Badge — spec A.2.5 (status badge).
  * Kural: 20h · mono · 11px · tracking meta (0.6px) · radius sm.
  * Title-case kilidi: component children metnini olduğu gibi render eder,
  * Tailwind uppercase/capitalize utility EKLENMEZ. `normal-case` açıkça

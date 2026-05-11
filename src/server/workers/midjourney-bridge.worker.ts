@@ -21,7 +21,7 @@ import {
 export type MidjourneyBridgeJobPayload = {
   userId: string;
   midjourneyJobId: string;
-  jobId: string; // EtsyHub Job entity id (bullJobId crosslink)
+  jobId: string; // Kivasy Job entity id (bullJobId crosslink)
   /**
    * Pass 60 — Upscale lineage. createMidjourneyUpscaleJob bunu set eder;
    * generate akışında undefined. `pollAndUpdate` → `ingestOutputs`'a
@@ -49,7 +49,7 @@ export async function handleMidjourneyBridge(
     "midjourney bridge worker start",
   );
 
-  // BullMQ job → EtsyHub Job link.
+  // BullMQ job → Kivasy Job link.
   // Pass 51 — `bullJobId` Job tablosunda unique; BullMQ ID'leri ise
   // queue-scoped ("1", "2"…) dolayısıyla cross-queue collision olur.
   // `${queueName}:${job.id}` ile global unique yapıyoruz.

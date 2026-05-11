@@ -7,7 +7,7 @@
 // Tasarım hedefleri (kullanıcı önceliği: API-first omurga + diğer
 // uygulamalara taşınabilirlik):
 //   - Bridge tarafı dokunmaz (sadece düz string alır; her zaman olduğu gibi)
-//   - EtsyHub MJ service prompt'u submit etmeden ÖNCE expand eder
+//   - Kivasy MJ service prompt'u submit etmeden ÖNCE expand eder
 //   - Provider-bağımsız: yarın Recraft/DALL-E gibi başka motorlara da
 //     aynı template aktarılabilir (sadece flag suffix'i değişir)
 //   - Variables: `{{name}}` syntax (Mustache-uyumlu, JS'de yaygın)
