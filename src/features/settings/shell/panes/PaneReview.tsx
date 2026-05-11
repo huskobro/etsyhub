@@ -1388,6 +1388,20 @@ const PRODUCT_TYPE_OPTIONS = [
   "printable",
 ] as const;
 
+// IA-29 — operator-facing labels for the folder convention reference.
+const PRODUCT_TYPE_LABELS: Record<(typeof PRODUCT_TYPE_OPTIONS)[number], string> = {
+  wall_art: "Wall art",
+  clipart: "Clipart",
+  sticker: "Sticker",
+  transparent_png: "Transparent PNG",
+  bookmark: "Bookmark",
+  printable: "Printable",
+};
+
+function productTypeLabel(pt: string): string {
+  return PRODUCT_TYPE_LABELS[pt as keyof typeof PRODUCT_TYPE_LABELS] ?? pt;
+}
+
 const IGNORE_SENTINEL = "__ignore__";
 
 type LocalLibrarySettingsView = {
@@ -1541,12 +1555,50 @@ function LocalFolderMappingSection() {
       </div>
       <p className="mt-2 text-xs text-ink-3">
         Convention: each folder under your root maps to a product type
-        by name (<code className="font-mono">clipart/</code>,{" "}
-        <code className="font-mono">wall_art/</code>,{" "}
-        <code className="font-mono">bookmark/</code>, …). Folders that
-        don't match a known product type land in the "Pending" list —
-        you decide whether to map them (alias) or ignore them.
+        by name. Folders that don't match a known product type land in
+        the "Pending" list — assign one or ignore them.
       </p>
+
+      {/* IA-29 — Convention reference card. Operator sees the exact
+       *   folder names the scan worker recognizes, so they can
+       *   organize the filesystem accordingly. */}
+      <div
+        className="mt-3 rounded-md border border-line bg-bg p-3"
+        data-testid="folder-convention-reference"
+      >
+        <div className="flex items-baseline justify-between">
+          <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+            Folder name → product type
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+            create these under your root
+          </span>
+        </div>
+        <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-ink-2 sm:grid-cols-3">
+          {PRODUCT_TYPE_OPTIONS.map((pt) => (
+            <li
+              key={pt}
+              className="flex items-baseline gap-2"
+              data-testid="folder-convention-row"
+              data-product-type={pt}
+            >
+              <code className="font-mono text-[11.5px] text-ink">
+                {pt}/
+              </code>
+              <span className="text-ink-3">→ {productTypeLabel(pt)}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-[10.5px] leading-relaxed text-ink-3">
+          Example:{" "}
+          <code className="font-mono">
+            {rootPath ? `${rootPath}/clipart` : "/Users/you/Pictures/clipart"}
+          </code>
+          . Subfolders inside a known product type folder inherit that
+          mapping. Anything else lands in <strong>Pending</strong>{" "}
+          below.
+        </p>
+      </div>
 
       {/* Root path + scan */}
       <div
