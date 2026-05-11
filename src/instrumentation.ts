@@ -11,6 +11,9 @@
 //
 // Guard: only run in the Node.js runtime (not edge runtime, not browser).
 // SKIP_WORKER_BOOT=1 env allows test environments to opt out.
+//
+// Placement note: must live under src/ when the project uses src/ layout.
+// Next.js dev bundler scans path.join(appDir, "..") = src/ for this file.
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
@@ -18,9 +21,9 @@ export async function register() {
   if (process.env.NODE_ENV === "test") return;
 
   // Dynamic imports keep these out of the client/edge bundle entirely.
-  const { startWorkers } = await import("./src/server/workers/bootstrap");
+  const { startWorkers } = await import("./server/workers/bootstrap");
   const { syncWatchersForAllUsers, stopAllLocalLibraryWatchers } = await import(
-    "./src/server/services/local-library/watcher"
+    "./server/services/local-library/watcher"
   );
 
   await startWorkers();
