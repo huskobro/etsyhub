@@ -51,6 +51,7 @@ function makeItem(
   return {
     id,
     thumbnailUrl: null,
+    fullResolutionUrl: null,
     reviewStatus: "NEEDS_REVIEW",
     reviewStatusSource: "SYSTEM",
     reviewScore: 60,

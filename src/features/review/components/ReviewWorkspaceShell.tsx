@@ -446,11 +446,18 @@ export function ReviewWorkspaceShell<TItem>({
 
         <div className="h-6 w-px bg-white/10" aria-hidden />
 
-        {/* Total review pending — workspace anchor */}
+        {/* IA-33 — Workspace anchor (CLAUDE.md Madde H). Bu sayı
+         *   `getTotalReviewPendingCount` çıktısı: MJ + AI + Local
+         *   tüm source/scope'lardaki toplam undecided. AI ve Local
+         *   focus mode'da aynı sayı görünür çünkü gerçekten total.
+         *   Label "ALL PENDING" → operatör bunu current scope sanmaz;
+         *   scope sayıları sağdaki `undecided · kept · discarded`
+         *   bloğunda yaşar. */}
         {typeof totalReviewPending === "number" ? (
           <div
             className="flex shrink-0 items-baseline gap-1.5"
             data-testid="topbar-total-pending"
+            title="Total review pending across all sources (workspace anchor)"
           >
             <span
               className={cn(
@@ -463,18 +470,23 @@ export function ReviewWorkspaceShell<TItem>({
               {totalReviewPending}
             </span>
             <span className="font-mono text-xs uppercase tracking-meta text-white/50">
-              review pending
+              all pending
             </span>
           </div>
         ) : null}
 
         <div className="h-6 w-px bg-white/10" aria-hidden />
 
-        {/* Scope summary three-count breakdown */}
+        {/* IA-33 — Scope summary: current scope breakdown. Bu sayılar
+         *   scope cardinality üzerinden (queue endpoint scope.breakdown
+         *   payload'ı); workspace anchor ile karışmasın diye "this scope"
+         *   prefix etiketi ekledik. Operatör soldaki ALL PENDING ile
+         *   buradaki "this scope" sayılarını bir bakışta ayırt eder. */}
         <div
           className="flex shrink-0 items-center gap-2 font-mono text-xs uppercase tracking-meta"
           data-testid="topbar-scope-summary"
         >
+          <span className="text-white/35">this scope</span>
           <span
             className={cn(
               "tabular-nums",

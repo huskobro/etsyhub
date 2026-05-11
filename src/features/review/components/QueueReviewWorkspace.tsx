@@ -500,11 +500,18 @@ export function QueueReviewWorkspace({
               ? "AI variation"
               : "Local asset"
       }
-      renderStage={(it) =>
-        it.thumbnailUrl ? (
+      renderStage={(it) => {
+        // IA-33 — focus mode için tam çözünürlüklü asset. Local için
+        // `/api/local-library/asset` orijinal dosyayı stream eder (4096×
+        // 4096 JPEG → 760×760 stage'i tam doldurur); AI için aynı
+        // storage signed URL (provider zaten orijinal sunar, ek round-
+        // trip yok). thumbnailUrl fallback'i UI dataset farklı türlü
+        // gelirse defansif zincir.
+        const src = it.fullResolutionUrl ?? it.thumbnailUrl;
+        return src ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src={it.thumbnailUrl}
+            src={src}
             alt={`${it.source?.kind ?? scope} review item`}
             className="pointer-events-none h-full w-full select-none object-contain"
             draggable={false}
@@ -513,8 +520,8 @@ export function QueueReviewWorkspace({
           <div className="flex h-full w-full items-center justify-center text-sm text-white/40">
             No preview
           </div>
-        )
-      }
+        );
+      }}
       renderInfoRail={(it) => (
         <QueueInfoRail
           item={it}

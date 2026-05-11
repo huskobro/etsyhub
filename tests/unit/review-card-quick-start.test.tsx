@@ -34,6 +34,7 @@ import type { ReviewQueueItem } from "@/features/review/queries";
 const baseItem: ReviewQueueItem = {
   id: "design-cuid-1",
   thumbnailUrl: "https://example.com/thumb.png",
+  fullResolutionUrl: "https://example.com/thumb.png",
   reviewStatus: "APPROVED",
   reviewStatusSource: "SYSTEM",
   reviewScore: 92,

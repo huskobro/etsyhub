@@ -42,6 +42,7 @@ function renderCard(item: ReviewQueueItem) {
 const baseItem: ReviewQueueItem = {
   id: "test-id",
   thumbnailUrl: "https://example.com/thumb.png",
+  fullResolutionUrl: "https://example.com/thumb.png",
   reviewStatus: "APPROVED",
   reviewStatusSource: "SYSTEM",
   reviewScore: 95,

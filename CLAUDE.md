@@ -1961,6 +1961,27 @@ yönlendirmeye yol açar.
 Yeni count consumer eklenirken aynı axis kullanılır. PENDING-only
 axis kullanılmaz — invariant kırılır.
 
+### X+. Topbar workspace anchor vs scope copy (IA-33)
+
+Review topbar iki ayrı sayım blokunu **görsel olarak ayırır**:
+
+- **Sol blok** — `141 ALL PENDING`. Bu **workspace anchor**: MJ + AI +
+  Local tüm source/scope'ların `reviewStatusSource != USER` toplam
+  sayısı (`getTotalReviewPendingCount`). AI ve Local focus mode'da
+  aynı sayı görünür çünkü bilinçli olarak global. Copy "ALL PENDING"
+  → operatör bu sayıyı current scope sanmaz. (CLAUDE.md Madde H —
+  workspace-wide anchor.)
+- **Sağ blok** — `THIS SCOPE 12 UNDECIDED · 0 KEPT · 0 DISCARDED`.
+  Bu **current scope breakdown**: queue endpoint
+  `scope.breakdown` payload'ı (folder/reference/batch/queue
+  cardinality üzerinden). "THIS SCOPE" prefix etiketi ile anchor'dan
+  net ayrılır.
+
+Yeni count consumer eklenirken aynı dil kullanılır: workspace-wide
+sayım "ALL …" veya "global …" prefix'i; scope-içi sayım "THIS
+SCOPE …" prefix'i. Tek-kelime label (sadece "REVIEW PENDING")
+operatörü yanıltır — kullanılmaz.
+
 ### Y. Card preview parity — content-type aware object-fit (IA-32)
 
 Grid kart thumbnail render'ı kaynak (`AI Designs` vs `Local Library`)
@@ -1979,6 +2000,38 @@ import zamanında doldurulur; UI bu sinyale yaslanır.
 
 Legacy rows (`hasAlpha = null`) fallback olarak `object-cover`
 alır — eski JPEG fotografik content için doğru karar.
+
+### Y+. Focus stage full-resolution asset (IA-33)
+
+Review focus mode'daki ana preview alanı (`aspect-square w-full
+max-w-[760px]` stage) **thumbnail değil orijinal asset** kullanır.
+Grid kart performans için thumbnail kullanmaya devam eder; focus
+mode "yakından incele" deneyimi olduğu için orijinal/full-resolution
+gerekli.
+
+Queue endpoint her item için iki URL döner:
+
+- `thumbnailUrl` — Local: `/api/local-library/thumbnail` (512×512
+  webp); AI: provider signed URL. Grid kart kullanır.
+- `fullResolutionUrl` — Local: `/api/local-library/asset` (orijinal
+  dosya stream, mime'a göre content-type); AI: provider signed URL
+  (provider zaten orijinali sunar, ek round-trip yok). Focus stage
+  kullanır.
+
+`/api/local-library/asset` sözleşmesi (CLAUDE.md Madde V — local
+data isolation):
+- user ownership zorunlu (cross-user 404)
+- `isUserDeleted = false AND deletedAt = null` (soft-delete sızıntı YOK)
+- `getActiveLocalRootFilter` (root değişince eski path'lerden sızıntı YOK)
+- path traversal koruması: `filePath` DB'den okunur, query'den derive
+  edilmez (schema-zero)
+- content-type asset.mimeType (image/jpeg, image/png, image/webp)
+
+AI Designs storage signed URL zaten orijinal asset'i sunduğu için
+`fullResolutionUrl === thumbnailUrl` (ek endpoint gerekmez). Bu
+sözleşme yeni source'lar için de geçerli: focus stage canonical
+"full-resolution" channel'ı tek alandan okur (`fullResolutionUrl ??
+thumbnailUrl` defansif zinciri).
 
 ## Library / Selections / Products — Sınır Invariant'ları
 

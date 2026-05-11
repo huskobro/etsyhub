@@ -64,6 +64,12 @@ export type ReviewQueueSource =
 export type ReviewQueueItem = {
   id: string;
   thumbnailUrl: string | null;
+  /** IA-33 — Focus mode için tam çözünürlüklü asset URL'i. AI Designs
+   *  için storage signed URL ile aynı (provider zaten orijinal sunar);
+   *  Local Library için `/api/local-library/asset?hash=...` orijinal
+   *  dosyayı stream eder. Grid kart `thumbnailUrl` kullanmaya devam
+   *  eder (perf); focus stage `fullResolutionUrl` kullanır. */
+  fullResolutionUrl: string | null;
   reviewStatus: ReviewStatusEnum;
   reviewStatusSource: "SYSTEM" | "USER";
   reviewScore: number | null;

@@ -291,6 +291,11 @@ export const GET = withErrorHandling(async (req: Request) => {
         return {
           id: it.id,
           thumbnailUrl,
+          // IA-33 — AI Designs için storage signed URL zaten orijinal
+          // provider asset'idir (thumbnail crop yok); aynı URL focus
+          // mode'da da kullanılır. UI tek alan üzerinden okur, source
+          // bazlı conditional yapmaz.
+          fullResolutionUrl: thumbnailUrl,
           reviewStatus: it.reviewStatus,
           reviewStatusSource: it.reviewStatusSource,
           // IA-31 — lazy recompute (CLAUDE.md Madde S). Eski snapshot'lar
@@ -492,6 +497,11 @@ export const GET = withErrorHandling(async (req: Request) => {
     thumbnailUrl: it.thumbnailPath
       ? `/api/local-library/thumbnail?hash=${encodeURIComponent(it.hash)}`
       : null,
+    // IA-33 — Full-resolution URL focus mode için. Grid kart `thumbnailUrl`
+    // kullanmaya devam eder (perf); focus mode `fullResolutionUrl` ile
+    // orijinal asset'i 760×760 stage'e ölçeklendirir. AI Designs ile
+    // preview parity'i bu sayede tam sağlanır.
+    fullResolutionUrl: `/api/local-library/asset?hash=${encodeURIComponent(it.hash)}`,
     reviewStatus: it.reviewStatus,
     reviewStatusSource: it.reviewStatusSource,
     // IA-31 — lazy recompute (CLAUDE.md Madde S). Local branch için de
