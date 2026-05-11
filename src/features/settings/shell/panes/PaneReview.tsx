@@ -1534,13 +1534,19 @@ function LocalFolderMappingSection() {
     },
   });
 
+  // IA-29 — query key root-aware. Root değişince yeni queryKey ile
+  // taze fetch tetiklenir; eski cache stale kalmaz.
+  const activeRootForKey = settingsQuery.data?.settings.rootFolderPath ?? "";
   const mappingQuery = useQuery<FolderMappingResponse>({
-    queryKey: ["local-library", "folder-mapping"],
+    queryKey: ["local-library", "folder-mapping", activeRootForKey],
     queryFn: async () => {
       const r = await fetch("/api/local-library/folder-mapping");
       if (!r.ok) throw new Error("Could not load folder mapping");
       return r.json();
     },
+    // Hold off until settings has loaded so we don't fire with an
+    // empty root and then re-fetch.
+    enabled: settingsQuery.data !== undefined,
   });
 
   const settingsMutation = useMutation({
@@ -1558,6 +1564,8 @@ function LocalFolderMappingSection() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["settings", "local-library"] });
+      // IA-29 — root değiştiğinde mapping listesi de yenilenmeli.
+      qc.invalidateQueries({ queryKey: ["local-library", "folder-mapping"] });
     },
   });
 
