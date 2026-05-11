@@ -20,12 +20,17 @@ variation'lar veya operatörün diskten taradığı local asset'ler)
   inceler, bir puan ve risk işaretleri üretir. Bu **tavsiyedir**;
   herhangi bir akışı kendiliğinden ilerletmez.
 - **Operator decision** — Senin Keep / Discard butonuna bastığın
-  an verilen karardır. Library, Selection, Mockup, Listing
-  zincirinin gerçekten beslendiği imzadır. Sadece sen
-  damgalayabilirsin.
+  an verilen karardır. Sistemin canonical "review signal"i bu —
+  yani bir görselin review aşamasını tamamladığını söyleyen tek
+  resmi sinyal. Downstream ekranlar (Library, Selection, Mockup,
+  Listing) operatörün ayrıca yaptığı aksiyonlarla (selection
+  set'e ekleme, mockup apply tetikleme vb.) beslenir; review
+  decision'ı orada **etiket / referans** olarak görünür ama
+  zincirin tamamını otomatik olarak tetiklemez.
 
-> Kural: AI ne derse desin, bir görsel "kept" sayılmaz — operatör
-> Keep'e basana kadar bir kenarda durur.
+> Kural: AI ne derse desin, bir görsel review tarafında "kept"
+> sayılmaz — operatör Keep'e basana kadar undecided olarak
+> bekler.
 
 ---
 
@@ -115,84 +120,74 @@ Her kart aspect-square thumbnail + üstte / altta meta:
 - **"Studio" CTA** (sadece AI variation) — tek tıkla seçili
   item'dan SelectionSet açar (Quick Start).
 
-### Score chip — beş kademe
+### Score chip
 
-AI score (deterministic system skoru — provider raw değil) admin
-threshold'larına göre renklenir (default `low=60, high=90`):
+AI'nın görsele verdiği 0-100 arası puan. Renk genelde şu mantıkla:
 
-| Kademe | Aralık (default 60/90) | Tone |
-|---|---|---|
-| critical | `< 30` | bg-rose-600 |
-| poor | `30 ≤ score < 60` | bg-orange-500 |
-| warning | `60 ≤ score < 75` (band içi, midpoint altı) | bg-amber-500 |
-| caution | `75 ≤ score < 90` (band içi, midpoint üstü) | bg-yellow-300 |
-| success | `≥ 90` | bg-emerald-500 |
-| neutral | score yok | bg-text |
+- **Yeşil** — admin'in belirlediği "iyi" eşiğin üstünde
+- **Sarı tonları** — eşik bandında
+- **Turuncu / kırmızı** — eşiğin altında
+- **Hiç chip yok** — AI henüz puan üretmedi
 
-Risk flag score rengini **ezmez** — score 100 olsa bile blocker
-varsa amber/red risk badge ayrıca görünür.
+Eşiklerin tam aralıkları Settings → Review tarafında ayarlanabilir
+(default 60/90). Risk uyarısı varsa puan ne olursa olsun ayrı bir
+küçük badge ile görünür — yüksek puanı sessizce ezmez.
 
 ---
 
-## 5. Lifecycle state'leri
+## 5. AI değerlendirmesi ne zaman gelir
 
-Her item'ın bir scoring lifecycle'i var. Kart sağ üstündeki
-chip / icon bunu gösterir:
+Kart sağ üstündeki chip / icon AI scoring'in nerede olduğunu söyler:
 
-| State | Anlamı | UI sinyali |
-|---|---|---|
-| `not_queued` | Asset henüz hiç scoring'e gönderilmedi. Manuel veya scan auto-trigger gerekir. | "Not queued yet" minus icon |
-| `queued` | REVIEW_DESIGN job'u BullMQ kuyruğunda; worker henüz almadı. | Clock icon |
-| `running` | Worker provider çağrısı yapıyor. | Hourglass icon |
-| `ready` | Scoring tamamlandı; score + checks + summary kaydedildi. | Score chip (sayı) |
-| `failed` | Provider veya parse hatası. | Red alert icon |
-| `na` | Asset için scoring uygulanabilir değil (gelecek kullanım). | Minus icon |
+- **Saat / kum saati icon** — değerlendirme yolda, biraz bekle.
+  Yaklaşık 5-30 saniye (provider hızına göre).
+- **Sayı (puan)** — değerlendirme hazır.
+- **Kırmızı uyarı icon** — değerlendirme başarısız oldu. Sağ
+  panelden "Rerun review" ile yeniden dene.
+- **Minus icon ("Not queued yet")** — bu görsel henüz scoring'e
+  hiç gönderilmedi. Local source'ta klasör mapping'i atanmamış
+  olabilir (Settings → Review'a bak). AI Designs için variation
+  worker'ı henüz tetiklememiş olabilir.
 
-> **Not**: `pending`, `scoring`, `error` eski isimler. Backend
-> bunlarla yazabilir; UI bunları `not_queued` / `running` /
-> `failed`'a alias'lar.
+> Beklemeyi seviyorsan: aktif scoring varken ekran her ~5 saniyede
+> bir kendini günceller. Hiçbir şey yoksa polling durur ve sekme
+> sessiz kalır.
 
 ---
 
 ## 6. Keep / Undecided / Discard ne yapar
 
-- **Keep (`K`)** — Item'ı operatör-kept yapar
-  (`reviewStatus = APPROVED`, `reviewStatusSource = USER`). Library
-  / Selection downstream akışı buradan akar. Otomatik next item.
-- **Discard (`D`)** — Reject (`reviewStatus = REJECTED`,
-  `reviewStatusSource = USER`). Bu item downstream'e geçmez.
-  Otomatik next item.
-- **Undecided (`U`)** — Operatör damgasını kaldırır
-  (`reviewStatus = PENDING`, `reviewStatusSource = SYSTEM`). AI
-  evaluation snapshot'ı (score, checks, summary, reviewedAt)
-  **silinmez** — referans olarak kalır. Auto-advance yok.
+- **Keep (`K`)** — Bu görseli operatör onayı altına alır.
+  Üzerinde kept etiketi kalır; review tarafında "iş bitti" sayılır.
+  Otomatik bir sonraki item'a geçer.
+- **Discard (`D`)** — Görseli operatör reddi olarak işaretler.
+  Otomatik bir sonraki item'a geçer.
+- **Undecided (`U`)** — Operatör damganı geri alır. AI'ın yaptığı
+  değerlendirme (puan, checks, özet) **silinmez** — referans olarak
+  kalır. Otomatik geçiş yapmaz, aynı item'da kalırsın.
 
-> Önemli: Undecided'a almak **re-score tetiklemez**. Mevcut AI
-> evaluation aynen durur. Re-score istiyorsan "Rerun review" kullan
-> (aşağıya bak).
+> Undecided'a almak yeni bir AI scoring tetiklemez. Yeniden
+> puanlatmak istersen sağ panelden "Rerun review" kullan.
 
 ---
 
 ## 7. Rerun review ne yapar
 
-Sağ panelin alt kısmında **Rerun review** collapsible'ı vardır.
-Açıp tıklarsan:
+Sağ panelin alt kısmında **Rerun review** açılır bloku vardır.
+Tıkladığında:
 
-1. Mevcut snapshot **silinir** (`reviewedAt` → null,
-   `reviewProviderSnapshot` / `reviewScore` / `reviewRiskFlags` →
-   temizlenir).
-2. Status PENDING'e, source SYSTEM'e döner (operatör damgası
-   silinir).
-3. Yeni REVIEW_DESIGN job'u BullMQ'ya enqueue olur.
-4. UI lifecycle'ı kısa pencerede `queued → running → ready`
-   olarak izlersin.
+1. Mevcut AI değerlendirmesi (puan, özet, risk flag'ler) silinir.
+2. Operatör damgan da kalkmış olur — item undecided'a döner.
+3. Yeni bir AI scoring tetiklenir. Kısa süre içinde önce "queued",
+   sonra "running", sonra puan görünür.
 
-Maliyet: **bir provider çağrısı (Gemini vs.)**. Confirm prompt'u
-sebebiyle yanlışlıkla tetiklenmez.
+> Rerun bir provider çağrısıdır — yani **küçük bir maliyet**.
+> Yanlışlıkla tetiklenmesin diye onay isteyen bir prompt var.
 
-> Local item için: rerun yapılacaksa o asset'in folder'ının
-> productType mapping'i atanmış olmalı. Atanmamışsa endpoint 400
-> döner ve sana "Map folder in Settings → Review" mesajı çıkar.
+**Local item özel durumu**: rerun çalışması için o görselin
+bulunduğu klasöre productType atanmış olmalı (Settings → Review →
+Local library). Atanmamışsa rerun başlamadan bir hata mesajı
+çıkar.
 
 ---
 
@@ -216,86 +211,86 @@ localStorage'a yazılır; default kapalı.
 
 ## 9. Local source vs AI source
 
-| Konu | AI Designs | Local Library |
-|---|---|---|
-| Kaynak | Variation worker'ın ürettiği `GeneratedDesign` row'ları | Disk üzerinden scan'lenmiş `LocalLibraryAsset` row'ları |
-| Scope identity | Batch (dominant) → reference → queue | Folder (`folderName`, root-filtered) → queue |
-| Auto-review | Variation worker üretim sonrası otomatik enqueue eder | Scan worker yeni asset gördüğünde, **folder mapping resolved ise** enqueue eder |
-| Manuel scope-trigger | Reference / batch CTA'sı | Folder "Enqueue review for this scope" CTA'sı |
-| Focus stage | Provider signed URL (orijinal) | `/api/local-library/asset?hash=…` (orijinal dosya stream) |
-| Grid thumbnail | Provider signed URL | `/api/local-library/thumbnail?hash=…` (512×512 webp) |
-| productType bağlamı | Variation row'unun ürettiği `productTypeKey` | Folder mapping (path-based, legacy folderName fallback, convention) |
+İki tarafın da review ekranı aynıdır, ama altyapı şu farklarla
+gelir:
+
+- **AI Designs** — Variation üreten worker yeni görsel ekleyince
+  AI scoring otomatik tetiklenir.
+- **Local Library** — Diskten taradığın klasörlerden gelir.
+  Auto-scoring sadece klasörün productType'ı atanmışsa çalışır
+  (Settings → Review → Local library). Atanmamışsa görsel listede
+  görünür ama puan üretilmez — operatör mapping'i atayınca veya
+  "Enqueue review for this scope" tetiklenince başlar.
+
+Focus mode'daki ana görselin boyutu her iki tarafta da aynıdır;
+local için orijinal dosyayı yükler, AI için provider'ın sunduğu
+orijinal URL'i. Grid kartlardaki küçük thumbnail performans için
+ayrı bir kaynaktan gelir.
 
 ---
 
-## 10. Batch / reference / folder / source — scope mantığı
+## 10. Scope mantığı — ne ile filtrelenir?
 
-Operatör review yaparken çoğu zaman **bir reference'ı temizlemiyor,
-bir üretim batch'ini temizliyor**. Aynı reference farklı batch'lerde
-farklı variation setleri üretebilir; biri bittiğinde diğerini
-karıştırmak istemezsin.
+Aynı reference'tan farklı zamanlarda farklı **üretim batch'leri**
+çıkabilir. Operatör çoğu zaman "şu batch'i temizliyorum" mantığıyla
+çalışır — bu yüzden review batch'i ön plana alır.
 
-Bu nedenle scope çözüm sırası:
-
-```
-AI Designs:   batch > folder (yok) > reference > source all
-Local:        folder > source all
-```
+**AI Designs için öncelik**: `batch > reference`.
+**Local için**: folder doğal scope.
 
 Pratikte:
+- Bir AI görseli aç (kart tıkla veya deep-link). Eğer o görselin
+  bir batch geçmişi varsa topbar **batch**'i ve scope dropdown'u
+  batch'leri gösterir. Yoksa reference'a düşer.
+- Local için topbar her zaman folder'ı gösterir.
+- Source-all görünümü (hiç scope seçmeden) default toolbar
+  modudur.
 
-- Bir AI item deep-link açtığında (`?item=<id>`), item'ın
-  `Job.metadata.batchId`'sini sistem bakar:
-  - varsa **default scope = batch**; topbar `BATCH · <id>`,
-    picker batch dropdown.
-  - yoksa fallback **reference**; topbar `REFERENCE · ref-…`.
-  - `?scope=reference` query param verirsen batch dominance'ı
-    geçersiz kılarsın (operatör reference'a düşmek isteyebilir).
-- Local item için: scope her zaman folder
-  (`LocalLibraryAsset.folderName` + active root filter).
-- Source all (folder/reference/batch verilmemiş queue mode'u)
-  default toolbar görünümüdür.
+Grid kartlardaki küçük "batch-XXXXXX" / "ref-XXXXXX" etiketi de
+aynı önceliği yansıtır: batch varsa batch, yoksa reference.
 
-Grid kartta source label da aynı önceliği yansıtır:
-
-- **Design source**: `batch-XXXXXX` (varsa) > `ref-XXXXXX` > em-dash.
-- **Local source**: folder adı + dosya adı (folder zaten doğal
-  scope; başka birincil kimlik yok).
+> Reference scope'a inmek istersen URL'e `?scope=reference` ekle —
+> batch baskınlığını geçersiz kılar.
 
 ---
 
 ## 11. Sık karşılaşacağın yan davranışlar
 
-- **Live update** — Keep / Discard sonrası grid sayıları refresh
-  atmadan yansır (React Query cache invalidation). Background
-  polling yalnız listede `queued` / `running` item varsa 5s
-  cadence ile çalışır; idle scope'larda polling yok.
-- **AI advisory banner** — focus mode info-rail'de "AI suggestion:
-  LOOKS GOOD" veya "REVIEW RECOMMENDED" kısa metni görünür. Bu
-  **tavsiyedir** — operatör Keep / Discard kararıyla geçersiz
-  kılabilir.
-- **Stored decision vs current policy** — Threshold'lar admin'de
-  değişirse persisted karar değişmez. "Current policy preview"
-  ayrı bir collapsible blok olarak görünür (yalnız stored ≠
-  preview olduğunda).
+- **Live update** — Keep / Discard sonrası ekran kendiliğinden
+  güncellenir, sayfayı yenilemen gerekmez. AI scoring çalışırken
+  ~5 saniyede bir kontrol eder; her şey hazırsa sessiz durur.
+- **AI advisory banner** — focus mode'da info-rail'de "AI
+  suggestion: LOOKS GOOD" veya "REVIEW RECOMMENDED" gibi kısa
+  bir not görünür. Bu sadece tavsiyedir — Keep / Discard kararı
+  hâlâ senin.
+- **Threshold değişirse eski item'lar** — Admin Settings →
+  Review'da puanlama eşiklerini değiştirirse, mevcut item'ların
+  zaten verilmiş kararları değişmez. UI sağ panelde "Current
+  policy preview" diye ek bir bilgi gösterir (yalnız mevcut
+  karar yeni eşiklerle farklılaşıyorsa).
 
 ---
 
-## 12. Açık / yarım kalmış noktalar (dürüst)
+## 12. Bilinen sınırlar (Known limitations)
 
-- **Batch lineage gerçek üretim verisinde test edilmedi**. Mevcut
-  development DB'sinde `Job.metadata.batchId` taşıyan variation
-  job yok; kart `ref-XXXXXX` fallback'i gösteriyor. Kod path'i 5
-  unit testle kanıtlı, production'da yeni variation üretildiğinde
-  batch dominance otomatik aktif olur.
-- **Batch scope için adjacent scope navigation** (prev/next
-  batch) eksik. Scope picker dropdown çalışıyor, `,` / `.` shortcut'ı
-  reference için var ama batch dominant moddayken scopeNav null
-  düşüyor. Folder picker UX'i yeterli ama batch için ek work
-  gerek.
-- **Operator override notu UI'da info-rail'de tek yerde**
-  yaşıyor (Decision bloğu). Bazı eski UI noktalarında ayrı
-  vurgular kalmış olabilir.
+Bunlar mevcut durumda çalışmıyor / eksik olan ufak yerler.
+Operatör için göze çarpacak ölçüde önemli olabilir:
+
+- **Batch'ler arası `,` / `.` shortcut'ı çalışmıyor** — AI
+  Designs'ta batch baskın moddayken klavye prev/next scope
+  kısayolu boş düşer. Çözüm: scope picker dropdown'unu kullan
+  (üst sağ).
+- **Batch lineage gerçek üretim verisi üzerinde browser-test
+  edilmedi** — Mevcut development verisinde batch geçmişi taşıyan
+  variation job bulunmuyor; kart şu anda hep `ref-XXXXXX`
+  fallback'ini gösteriyor. Kod tarafında batch baskınlığı
+  testlerle kilitli; production'da yeni variation üretildiğinde
+  otomatik devreye girer.
+- **`na` (not applicable) lifecycle** — Henüz hiç asset için
+  üretilmiyor. UI render edebilir ama göreceğin senaryo yok.
+- **Operator override notu birden fazla yerde tekrar edebilir**
+  — UI'da çoğunlukla tek info-rail bloğunda yaşıyor; bazı eski
+  noktalarda ufak tekrarlar kalmış olabilir.
 
 ---
 

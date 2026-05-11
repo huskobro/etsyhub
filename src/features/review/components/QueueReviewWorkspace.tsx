@@ -468,11 +468,19 @@ export function QueueReviewWorkspace({
       exitLabel="Review"
       scopeLabel={
         scope === "design"
-          ? data?.scope?.kind === "reference"
-            ? `Reference · ref-${data.scope.label.slice(-6)}`
-            : item.source?.kind === "design" && item.source.referenceShortId
-              ? `Reference · ref-${item.source.referenceShortId}`
-              : "AI Designs"
+          ? // IA-34 — scope priority: batch > reference > queue.
+            // Topbar label must reflect the same priority the
+            // query/picker uses; otherwise the operator sees a
+            // "Reference …" header while the picker swaps batches.
+            data?.scope?.kind === "batch"
+            ? `Batch · batch-${data.scope.label.slice(-6)}`
+            : data?.scope?.kind === "reference"
+              ? `Reference · ref-${data.scope.label.slice(-6)}`
+              : item.source?.kind === "design" && item.source.batchShortId
+                ? `Batch · batch-${item.source.batchShortId}`
+                : item.source?.kind === "design" && item.source.referenceShortId
+                  ? `Reference · ref-${item.source.referenceShortId}`
+                  : "AI Designs"
           : data?.scope?.kind === "folder"
             ? `Folder · ${data.scope.label}`
             : item.source?.kind === "local-library"

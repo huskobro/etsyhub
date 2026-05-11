@@ -138,6 +138,16 @@ export type ReviewQueueScope =
       breakdown: { undecided: number; kept: number; discarded: number };
     }
   | {
+      // IA-34 — batch scope ZOOM (design-only). Default deep-link
+      // scope; reference ancak explicit `?scope=reference` ile
+      // baskın olur.
+      kind: "batch";
+      label: string;
+      total: number;
+      cardinality: number;
+      breakdown: { undecided: number; kept: number; discarded: number };
+    }
+  | {
       kind: "queue";
       total: number;
       cardinality: number;

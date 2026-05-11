@@ -33,18 +33,45 @@ Bu dokümanlar yazıldığında review modülü şu durumdaydı:
   değil).
 - Vitest workspace pattern (IA-35).
 
-Targeted test suite: **96/96 pass**. Production build: PASS.
+## Test durumu — dürüst özet
 
-## Açık / yarım kalmış noktalar (özet)
+| Kapsam | Durum | Anlamı |
+|---|---|---|
+| **Review modülü targeted suites** | **96 / 96 pass** | IA-30..IA-35 boyunca eklenen helper + UI + endpoint testleri tamamı geçer. Review davranışı için güven yüksek. |
+| **Workspace-wide combined run** (`npx vitest run`) | **~2641 pass / ~141 fail** | Repo bütünü **tamamen green değil**. Fail'lerin tamamı review modülü dışındaki pre-existing borçlar (Phase 3/4 sayfaları: bookmarks, competitors, references, collections, trend-*; bulk-* eski semantik; mockup UI eski expectation'lar). |
+| **Production build** (`npm run build`) | **PASS** | Type ve build tarafı temiz. |
 
-- Batch scope adjacent navigation (prev/next batch shortcut) eksik.
-- `Job.metadata.batchId` schema-zero pattern; `WorkflowRun` table
-  ileride canonical lineage olarak gelecek.
-- `na` lifecycle UI'da render edilebilir ama backend henüz üretmiyor.
-- Pre-existing test borçları (~141 fail) review modülü dışı (Phase
-  3/4 sayfaları + bulk-* eski semantiği). IA-30+ regression değil.
+> Bu sayılar IA-35 turunda vitest workspace pattern'ine geçildiği
+> için ilk kez **görünür** hale geldi. Önceki turlar default
+> `npm test` ile yalnız `.test.ts` koşuyordu; `.test.tsx` UI
+> fail'leri zaten vardı ama gizliydi. IA-30+ yeni regression
+> getirmedi.
 
-Detaylar her dokümanın "Açık / yarım kalmış noktalar" bölümünde.
+## Known limitations / açık kenarlar
+
+Mevcut durumda review modülü "kapatma" turuna hazır ama tamamen
+sıfır açık değil. Operatöre veya teknik ekibe görünebilecek
+ufak kenarlar:
+
+- **Batch'ler arası klavye prev/next scope shortcut'ı eksik** —
+  AI Designs batch baskın moddayken `,` / `.` boş düşer; scope
+  picker dropdown kullanılır.
+- **Batch lineage gerçek üretim verisinde browser-test edilmedi**
+  — Dev DB'sinde `Job.metadata.batchId` taşıyan variation job yok;
+  grid kart şu an `ref-XXXXXX` fallback'ini gösteriyor. Kod
+  path'i unit testlerle kilitli, production'a düşünce otomatik
+  aktif olur.
+- **`na` (not applicable) lifecycle** — UI render edebilir ama
+  backend henüz üretmiyor; gelecek kullanım.
+- **`Job.metadata.batchId` schema-zero pattern** — `WorkflowRun`
+  tablosu canonical lineage identity olarak gelecek faza alındı
+  (CLAUDE.md Madde G).
+- **Repo-wide test borcu** — 141 fail review modülü kapsamı
+  dışında ama tamamen yeşil olmayan bir CI durumu yaratır;
+  review-only güven yüksek, ayrı temizlik turu işidir.
+
+Detaylar her dokümanın "Known limitations" / "Açık / yarım
+kalmış noktalar" bölümünde.
 
 ## İlgili dokümanlar
 

@@ -13,8 +13,10 @@ listelenir.
 ## 1. Veri modeli — operator truth vs AI suggestion
 
 Review iki bağımsız sinyal katmanı taşır. Schema açısından her ikisi
-de aynı `GeneratedDesign` veya `LocalLibraryAsset` row'unda yaşar ama
-**asla karışmaz**:
+de aynı `GeneratedDesign` veya `LocalLibraryAsset` row'unda yaşar.
+İki katman birbirinden bağımsız alanlarda durur ve mevcut kod
+tarafında bunları yazan path'ler birbirine dokunmayacak şekilde
+tasarlanmıştır:
 
 ### Operator truth (canonical)
 
@@ -47,11 +49,19 @@ undecided = reviewStatusSource != USER (PENDING + legacy SYSTEM-source APPROVED/
 | `reviewRiskFlags` | Json? | `Array<{ kind, severity, reason, confidence }>`. |
 | `reviewProviderSnapshot` | String? | Provider id + prompt versiyonu. |
 
-**Önemli kural** (CLAUDE.md Madde V):
-- Worker hiçbir koşulda `reviewStatus`'e yazmaz.
-- Worker hiçbir koşulda `reviewStatusSource = USER` yazmaz.
-- Operator decision endpoint'i (`POST /api/review/decisions`)
-  hiçbir koşulda `reviewSuggestedStatus`'e yazmaz.
+**Mevcut kontrat** (CLAUDE.md Madde V, kod tarafında karşılığı
+`src/server/workers/review-design.worker.ts` ve
+`src/app/api/review/decisions/route.ts`):
+- Review worker `reviewStatus` ve `reviewStatusSource` alanlarına
+  yazmaz; yalnız AI advisory alanlarına (`reviewSuggestedStatus`,
+  `reviewScore`, `reviewSummary`, `reviewRiskFlags`,
+  `reviewProviderSnapshot`, `reviewProviderRawScore`) dokunur.
+- Operator decision endpoint'i yalnız `reviewStatus +
+  reviewStatusSource + reviewedAt` üçlüsünü güncelleyecek şekilde
+  yazılmıştır; AI advisory alanlarına dokunmaz.
+- Bu ayrım runtime'da enforced bir constraint değildir (DB
+  trigger / check constraint yok); ürün anayasası seviyesinde
+  korunur ve PR review'da gözetilir.
 
 ---
 
