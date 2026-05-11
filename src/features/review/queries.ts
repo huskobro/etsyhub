@@ -111,6 +111,15 @@ export type ReviewQueueItem = {
     | "running"
     | "failed"
     | "ready";
+  // IA-39 — why is the asset not queued? Present only when
+  // reviewLifecycle === "not_queued". UI copy differs per reason.
+  reviewNotQueuedReason?:
+    | "pending_mapping"
+    | "ignored"
+    | "auto_enqueue_disabled"
+    | "design_pending_worker"
+    | "legacy"
+    | "unknown";
 };
 
 /**

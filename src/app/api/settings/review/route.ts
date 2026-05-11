@@ -40,6 +40,9 @@ const ALL_CRITERION_IDS = [
 import { composeReviewSystemPrompt } from "@/providers/review/criteria";
 import { getReviewOpsCounts } from "@/server/services/review/lifecycle";
 import { listPendingScopes } from "@/server/services/review/next-scope";
+import { scheduleRepeatJob, cancelRepeatJob } from "@/server/queue";
+import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
+import { logger } from "@/lib/logger";
 
 const PutSchema = ReviewSettingsSchema.partial();
 
@@ -101,6 +104,58 @@ export const GET = withErrorHandling(async (req: Request) => {
   });
 });
 
+/** Stable repeat job ID for a user's local scan schedule. */
+function localScanRepeatJobId(userId: string) {
+  return `local-scan-periodic-${userId}`;
+}
+
+/**
+ * IA-39 — sync local scan periodic schedule when automation settings change.
+ * interval=0 → cancel any existing repeat. interval>0 → upsert BullMQ repeat.
+ * Best-effort; failure is logged but does NOT roll back the settings save.
+ */
+async function syncLocalScanSchedule(userId: string, intervalMinutes: number) {
+  const jobId = localScanRepeatJobId(userId);
+  try {
+    if (intervalMinutes <= 0) {
+      await cancelRepeatJob("SCAN_LOCAL_FOLDER", jobId);
+      logger.info({ userId, jobId }, "local scan periodic schedule removed");
+      return;
+    }
+    // BullMQ cron expression: every N minutes.
+    const pattern = `*/${intervalMinutes} * * * *`;
+    const localSettings = await getUserLocalLibrarySettings(userId);
+    const rootFolderPath = localSettings.rootFolderPath;
+    if (!rootFolderPath) {
+      logger.info(
+        { userId, intervalMinutes },
+        "local scan periodic schedule skipped: no root folder set",
+      );
+      return;
+    }
+    const result = await scheduleRepeatJob(
+      "SCAN_LOCAL_FOLDER",
+      {
+        jobId: `${jobId}-run`,
+        userId,
+        rootFolderPath,
+        targetResolution: localSettings.targetResolution,
+        targetDpi: localSettings.targetDpi,
+      },
+      { jobId, pattern },
+    );
+    logger.info(
+      { userId, pattern, alreadyScheduled: result.alreadyScheduled },
+      "local scan periodic schedule synced",
+    );
+  } catch (err) {
+    logger.error(
+      { userId, intervalMinutes, err: err instanceof Error ? err.message : String(err) },
+      "local scan periodic schedule sync failed (non-fatal)",
+    );
+  }
+}
+
 export const PUT = withErrorHandling(async (req: Request) => {
   const user = await requireUser();
   const json = await req.json().catch(() => null);
@@ -112,6 +167,10 @@ export const PUT = withErrorHandling(async (req: Request) => {
     );
   }
   const settings = await updateReviewSettings(user.id, parsed.data);
+  // IA-39 — sync periodic local scan schedule if automation was changed.
+  if (parsed.data.automation?.localScanIntervalMinutes !== undefined) {
+    await syncLocalScanSchedule(user.id, settings.automation.localScanIntervalMinutes);
+  }
   return NextResponse.json({ settings });
 });
 

@@ -262,7 +262,9 @@ describe("GET /api/review/queue", () => {
     await createDesign(userAId, productTypeId, {
       reviewStatus: ReviewStatus.APPROVED,
       score: 92,
-      riskFlags: [{ code: "x" }],
+      // IA-31: recomputeStoredScore uses `kind` field; use a real criterion id.
+      // watermark_detected weight=30, so recomputed score = 100 - 30 = 70.
+      riskFlags: [{ kind: "watermark_detected" }],
     });
     await createDesign(userAId, productTypeId, {
       reviewStatus: ReviewStatus.NEEDS_REVIEW,
@@ -291,6 +293,7 @@ describe("GET /api/review/queue", () => {
     // Risk flag count deserializasyonu
     const approved = body.items.find((i) => i.reviewStatus === "APPROVED");
     expect(approved?.riskFlagCount).toBe(1);
+    // reviewProviderSnapshot absent → stored score returned as-is (no recompute)
     expect(approved?.reviewScore).toBe(92);
     expect(signedUrlMock).toHaveBeenCalled();
   });

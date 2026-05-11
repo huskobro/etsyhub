@@ -46,6 +46,7 @@ import { ensureThumbnail } from "@/features/variation-generation/services/thumbn
 import { computeQualityScore } from "@/features/variation-generation/services/quality-score.service";
 import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
 import { enqueueReviewDesign } from "@/server/services/review/enqueue";
+import { getResolvedReviewConfig } from "@/server/services/settings/review.service";
 import { resolveLocalFolder } from "@/features/settings/local-library/folder-mapping";
 import { logger } from "@/lib/logger";
 
@@ -193,6 +194,27 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
     // parent folder adına bakar; bilinen productType ise auto-enqueue.
     // Bilinmeyen klasör (örn. `ekmek/`) → pending, operatör UI'da
     // ya bilinen bir klasöre taşır ya alias yazar ya ignore eder.
+    // IA-39 (CLAUDE.md Madde U) — localAutoEnqueue toggle.
+    // Admin panel'inde Settings → Review → Automation altında görünür.
+    // Disabled ise scan başarılı tamamlanır ama hiçbir asset enqueue edilmez.
+    const reviewConfig = await getResolvedReviewConfig(userId);
+    if (!reviewConfig.automation.localAutoEnqueue) {
+      logger.info(
+        { userId, jobId },
+        "local scan auto-enqueue skipped: localAutoEnqueue disabled in Settings → Review",
+      );
+      await db.job.update({
+        where: { id: jobId },
+        data: {
+          status: "SUCCESS",
+          progress: 100,
+          finishedAt: new Date(),
+          metadata: skippedFiles.length > 0 ? { skippedFiles } : {},
+        },
+      });
+      return;
+    }
+
     const settings = await getUserLocalLibrarySettings(userId);
     const folderMap = settings.folderProductTypeMap ?? {};
     const pendingAssets = await db.localLibraryAsset.findMany({

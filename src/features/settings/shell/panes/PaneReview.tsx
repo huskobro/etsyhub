@@ -71,11 +71,18 @@ type Criterion = {
   version: string;
 };
 
+type AutomationSettings = {
+  aiAutoEnqueue: boolean;
+  localAutoEnqueue: boolean;
+  localScanIntervalMinutes: number;
+};
+
 type ReviewConfigResponse = {
   settings: {
     coreMasterPrompt: string | null;
     criterionOverrides: Record<string, Partial<Criterion> | undefined>;
     thresholds: { low: number; high: number };
+    automation: AutomationSettings;
   };
   criteria: Criterion[];
   builtinCore: string;
@@ -141,6 +148,7 @@ export function PaneReview() {
       coreMasterPrompt?: string | null;
       criterionOverrides?: Record<string, Partial<Criterion>>;
       thresholds?: { low: number; high: number };
+      automation?: Partial<AutomationSettings>;
     }
   >({
     mutationFn: async (patch) => {
@@ -208,6 +216,14 @@ export function PaneReview() {
 
       {/* 0) Operations — live pipeline state + manual trigger */}
       <ReviewOpsSection ops={data.ops} pickers={data.pickers} />
+
+      {/* IA-39 (CLAUDE.md Madde U) — Automation toggles. Must be visible
+       *   and controllable. Workers check these flags before auto-enqueue.
+       *   No hidden background behavior. */}
+      <AutomationSection
+        value={data.settings.automation}
+        onSave={(next) => updateMutation.mutateAsync({ automation: next })}
+      />
 
       {/* IA-29 + IA-35 (CLAUDE.md Madde V/U) — local auto-review on
        *   scan automation. Operatör folder başına productTypeKey
@@ -1913,6 +1929,134 @@ function FolderMappingRow({
         <option value={IGNORE_SENTINEL}>Ignore folder</option>
       </select>
     </li>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// IA-39 — AutomationSection (CLAUDE.md Madde U)
+// Toggles for auto-enqueue on AI variation success + local scan.
+// Workers read these flags before calling enqueueReviewDesign.
+// ────────────────────────────────────────────────────────────────────────
+
+function AutomationSection({
+  value,
+  onSave,
+}: {
+  value: AutomationSettings;
+  onSave: (next: Partial<AutomationSettings>) => Promise<unknown>;
+}) {
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const toggle = async (field: keyof AutomationSettings, next: boolean | number) => {
+    setSaving(field);
+    setSaveError(null);
+    try {
+      await onSave({ [field]: next });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <section className="mt-8" data-testid="review-pane-automation">
+      <h3 className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+        Automation
+      </h3>
+      <p className="mt-2 text-xs text-ink-3">
+        Controls whether the system auto-enqueues review scoring when
+        new assets are produced or discovered. Disabling stops new
+        enqueues; existing queued jobs are unaffected.
+      </p>
+      <div className="mt-3 space-y-2.5" data-testid="automation-toggles">
+        <label
+          className="flex items-center justify-between gap-3 rounded-md border border-line bg-paper px-3 py-2.5"
+          data-testid="automation-ai-auto-enqueue"
+        >
+          <div>
+            <div className="text-sm font-medium text-ink">
+              Auto-review on AI variation success
+            </div>
+            <div className="mt-0.5 text-[11px] text-ink-3">
+              When a variation job succeeds, its design is automatically
+              queued for AI scoring. Disable to score manually via scope
+              trigger.
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            checked={value.aiAutoEnqueue}
+            disabled={saving === "aiAutoEnqueue"}
+            onChange={(e) => void toggle("aiAutoEnqueue", e.target.checked)}
+            className="h-4 w-4 accent-k-orange"
+            data-testid="automation-ai-checkbox"
+          />
+        </label>
+
+        <label
+          className="flex items-center justify-between gap-3 rounded-md border border-line bg-paper px-3 py-2.5"
+          data-testid="automation-local-auto-enqueue"
+        >
+          <div>
+            <div className="text-sm font-medium text-ink">
+              Auto-review on local folder scan
+            </div>
+            <div className="mt-0.5 text-[11px] text-ink-3">
+              When a local scan discovers new never-scored assets in
+              mapped folders, they are automatically queued for AI scoring.
+              Disable to score locally found assets manually.
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            checked={value.localAutoEnqueue}
+            disabled={saving === "localAutoEnqueue"}
+            onChange={(e) => void toggle("localAutoEnqueue", e.target.checked)}
+            className="h-4 w-4 accent-k-orange"
+            data-testid="automation-local-checkbox"
+          />
+        </label>
+
+        <div
+          className="flex items-center justify-between gap-3 rounded-md border border-line bg-paper px-3 py-2.5"
+          data-testid="automation-local-scan-interval"
+        >
+          <div>
+            <div className="text-sm font-medium text-ink">
+              Periodic local scan interval
+            </div>
+            <div className="mt-0.5 text-[11px] text-ink-3">
+              Minutes between automatic local folder scans. Set to 0 to
+              disable periodic scanning (manual-only). Max 1440 (24h).
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={1440}
+              step={1}
+              value={value.localScanIntervalMinutes}
+              disabled={saving === "localScanIntervalMinutes"}
+              onChange={(e) => {
+                const v = Math.max(0, Math.min(1440, Math.round(Number(e.target.value))));
+                void toggle("localScanIntervalMinutes", v);
+              }}
+              className="w-20 rounded-md border border-line bg-bg px-2 py-1.5 font-mono text-sm text-ink focus:border-k-orange focus:outline-none disabled:opacity-50"
+              data-testid="automation-scan-interval-input"
+            />
+            <span className="text-xs text-ink-3">min</span>
+          </div>
+        </div>
+      </div>
+      {saveError ? (
+        <p className="mt-2 text-xs text-rose-600" data-testid="automation-save-error">
+          {saveError}
+        </p>
+      ) : null}
+    </section>
   );
 }
 

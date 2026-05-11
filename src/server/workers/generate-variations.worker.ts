@@ -25,6 +25,7 @@ import { JobStatus, JobType, ProviderKind, VariationState } from "@prisma/client
 import { db } from "@/server/db";
 import { logger } from "@/lib/logger";
 import { enqueueReviewDesign } from "@/server/services/review/enqueue";
+import { getResolvedReviewConfig } from "@/server/services/settings/review.service";
 import { getImageProvider } from "@/providers/image/registry";
 import type { ImageGenerateInput } from "@/providers/image/types";
 import { notifyUser } from "@/server/services/settings/notifications-inbox.service";
@@ -151,18 +152,30 @@ export async function handleGenerateVariations(
 
       // Phase 6 Task 9 — auto-enqueue REVIEW_DESIGN.
       //
+      // IA-39 (CLAUDE.md Madde U): automation.aiAutoEnqueue flag'i
+      // admin panel'inde toggle edilebilir. Disabled ise enqueue yapılmaz;
+      // design not_queued / auto_enqueue_disabled olarak kalır.
+      //
       // Cross-job rollback YASAK (kullanıcı kararı): variation generation
       // SUCCESS olarak commit'lendi; review enqueue hatası variation'ı geri
       // almaz. Hata olursa design.reviewStatus PENDING/SYSTEM (default)
       // olarak kalır. Carry-forward: review-enqueue-recovery /
       // missing-review-job-backfill (Task 19+).
       try {
-        // IA-29 — central helper writes db.job row + BullMQ enqueue
-        // atomically so lifecycle UI gets truthy queued/running/ready.
-        await enqueueReviewDesign({
-          userId: job.data.userId,
-          payload: { scope: "design", generatedDesignId: designId },
-        });
+        const reviewConfig = await getResolvedReviewConfig(job.data.userId);
+        if (!reviewConfig.automation.aiAutoEnqueue) {
+          logger.info(
+            { designId, userId: job.data.userId },
+            "review auto-enqueue skipped: aiAutoEnqueue disabled in Settings → Review",
+          );
+        } else {
+          // IA-29 — central helper writes db.job row + BullMQ enqueue
+          // atomically so lifecycle UI gets truthy queued/running/ready.
+          await enqueueReviewDesign({
+            userId: job.data.userId,
+            payload: { scope: "design", generatedDesignId: designId },
+          });
+        }
       } catch (enqueueErr) {
         logger.error(
           {

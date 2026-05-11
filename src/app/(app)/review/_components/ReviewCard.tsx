@@ -35,7 +35,7 @@ import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
 import { buildReviewUrl } from "@/features/review/lib/search-params";
 import { useReviewSelection } from "@/features/review/stores/selection-store";
-import { buildEvaluation } from "@/features/review/lib/evaluation";
+import { buildEvaluation, type NotQueuedReason } from "@/features/review/lib/evaluation";
 import {
   getOperatorDecision,
   operatorDecisionLabel,
@@ -46,6 +46,24 @@ import {
   type AiScoreTone,
   type RiskTone,
 } from "@/features/review/lib/operator-decision";
+
+/** IA-39 — compact tooltip title for card icon. */
+function notQueuedCardTitle(reason?: NotQueuedReason): string {
+  switch (reason) {
+    case "pending_mapping":
+      return "Not queued — folder has no product type mapping. Open Settings → Review to assign one.";
+    case "ignored":
+      return "Not queued — folder is ignored. Open Settings → Review to change.";
+    case "auto_enqueue_disabled":
+      return "Not queued — auto-scoring is disabled. Open Settings → Review → Automation.";
+    case "design_pending_worker":
+      return "Variation generation in progress — review will start automatically.";
+    case "legacy":
+      return "Not scored yet (legacy asset). Open focus mode to enqueue.";
+    default:
+      return "Not queued yet — open focus mode to manually enqueue.";
+  }
+}
 
 type Props = {
   item: ReviewQueueItem;
@@ -244,7 +262,7 @@ export function ReviewCard({ item, thresholds }: Props) {
          *   Score chip'inin okunabilirliği iyileştirildi: kalın font,
          *   yüksek-kontrast bg/text + ince halka. */}
         {(() => {
-          const evalLifecycle = buildEvaluation({
+          const evalResult = buildEvaluation({
             reviewedAt: item.reviewedAt,
             reviewScore: item.reviewScore,
             reviewSummary: item.reviewSummary,
@@ -252,7 +270,9 @@ export function ReviewCard({ item, thresholds }: Props) {
             riskFlags: item.riskFlags,
             operatorOverride: false,
             backendLifecycle: item.reviewLifecycle,
-          }).lifecycle;
+            notQueuedReason: item.reviewNotQueuedReason,
+          });
+          const evalLifecycle = evalResult.lifecycle;
 
           if (evalLifecycle === "ready" && item.reviewScore !== null) {
             // IA-31 — AI score chip tone, threshold-aware ve 5 kademe.
@@ -315,15 +335,13 @@ export function ReviewCard({ item, thresholds }: Props) {
             },
             pending: {
               icon: MinusCircle,
-              title:
-                "Not queued yet — auto-enqueue runs on fresh source items (variation create / local scan). Open focus mode to manually trigger.",
+              title: notQueuedCardTitle(evalResult.notQueuedReason),
               tone: "text-text-muted",
               bg: "bg-bg/85 ring-text/20",
             },
             not_queued: {
               icon: MinusCircle,
-              title:
-                "Not queued yet — auto-enqueue runs on fresh source items (variation create / local scan). Open focus mode to manually trigger.",
+              title: notQueuedCardTitle(evalResult.notQueuedReason),
               tone: "text-text-muted",
               bg: "bg-bg/85 ring-text/20",
             },

@@ -102,6 +102,20 @@ const ThresholdsSchema = z
     path: ["low"],
   });
 
+// IA-39 — automation toggles. CLAUDE.md Madde U: automation must be
+// visible and controllable from admin panel. Both default to true
+// (existing behaviour preserved on upgrade — no silent config change).
+const AutomationSchema = z.object({
+  /** Auto-enqueue review when new AI variation job succeeds. */
+  aiAutoEnqueue: z.boolean().default(true),
+  /** Auto-enqueue review during local folder scan for new assets. */
+  localAutoEnqueue: z.boolean().default(true),
+  /** Periodic local scan interval in minutes (0 = disabled). */
+  localScanIntervalMinutes: z.number().int().min(0).max(1440).default(0),
+});
+
+export type AutomationSettings = z.infer<typeof AutomationSchema>;
+
 const ReviewSettingsSchema = z.object({
   coreMasterPrompt: z.string().max(8000).nullable().default(null),
   criterionOverrides: z
@@ -111,6 +125,12 @@ const ReviewSettingsSchema = z.object({
     )
     .default({}),
   thresholds: ThresholdsSchema.default(DEFAULT_REVIEW_THRESHOLDS),
+  // IA-39 — automation policy
+  automation: AutomationSchema.default({
+    aiAutoEnqueue: true,
+    localAutoEnqueue: true,
+    localScanIntervalMinutes: 0,
+  }),
 });
 
 export type ReviewSettings = z.infer<typeof ReviewSettingsSchema>;
@@ -119,6 +139,11 @@ const DEFAULTS: ReviewSettings = {
   coreMasterPrompt: null,
   criterionOverrides: {},
   thresholds: DEFAULT_REVIEW_THRESHOLDS,
+  automation: {
+    aiAutoEnqueue: true,
+    localAutoEnqueue: true,
+    localScanIntervalMinutes: 0,
+  },
 };
 
 export async function getReviewSettings(userId: string): Promise<ReviewSettings> {
@@ -189,6 +214,9 @@ export async function getResolvedReviewConfig(userId: string): Promise<{
    *  it to the client. Defaults fall back to builtin pair when no
    *  override is set. */
   thresholds: ReviewThresholds;
+  /** IA-39 — resolved automation policy. Workers read this before
+   *  auto-enqueue to respect admin toggles. */
+  automation: AutomationSettings;
 }> {
   const settings = await getReviewSettings(userId);
   const criteria = resolveCriteria(settings);
@@ -199,6 +227,7 @@ export async function getResolvedReviewConfig(userId: string): Promise<{
     coreMasterPrompt,
     builtinCore: BUILTIN_CORE_MASTER_PROMPT,
     thresholds: settings.thresholds,
+    automation: settings.automation,
   };
 }
 

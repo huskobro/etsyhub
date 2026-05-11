@@ -19,11 +19,30 @@ import { Check as CheckIcon, AlertTriangle, Hourglass, MinusCircle, Zap } from "
 import { SectionTitle } from "@/features/review/components/ReviewWorkspaceShell";
 import {
   type Evaluation,
+  type NotQueuedReason,
   lifecycleCaption,
 } from "@/features/review/lib/evaluation";
 import { cn } from "@/lib/cn";
 
 /* eslint-disable no-restricted-syntax */
+
+/** IA-39 — reason-specific copy for not_queued lifecycle. */
+function notQueuedCopy(reason?: NotQueuedReason): string {
+  switch (reason) {
+    case "pending_mapping":
+      return "This folder has no product type mapping — auto-enqueue is paused. Go to Settings → Review → Local library and assign a product type to this folder, then click \"Enqueue review for this scope\".";
+    case "ignored":
+      return "This folder is marked as ignored — scoring is intentionally skipped. To re-enable, go to Settings → Review → Local library and change the mapping.";
+    case "auto_enqueue_disabled":
+      return "Automatic review scoring is disabled in Settings → Review → Automation. Toggle it on to re-enable auto-enqueue, or use \"Enqueue review for this scope\" to score manually.";
+    case "design_pending_worker":
+      return "Variation generation is still in progress — review scoring will start automatically once the worker finishes.";
+    case "legacy":
+      return "This asset was created before auto-enqueue was introduced. Click \"Enqueue review for this scope\" to score it now.";
+    default:
+      return "AI has not evaluated this asset yet — auto-enqueue runs when the source pipeline produces a fresh asset (AI variation create or local scan). Click \"Enqueue review for this scope\" to score existing files.";
+  }
+}
 // Hex sabitler shell whitelisting'inde tanımlı; bu modül de sağ
 // panelin v4 dark surface zincirinde olduğu için tone class'ları için
 // rgba/white-opacity Tailwind alias'larından beslenir. Eslint kuralı
@@ -504,7 +523,7 @@ export function EvaluationPanel({
             data-testid="evaluation-empty-copy"
           >
             {lifecycle === "not_queued" || lifecycle === "pending"
-              ? "AI has not evaluated this asset yet — auto-enqueue runs when the source pipeline produces a fresh asset (AI variation create or local scan). If you added a folder mapping after the last scan, click \"Enqueue review for this scope\" to score the existing files."
+              ? notQueuedCopy(evaluation.notQueuedReason)
               : lifecycle === "queued"
                 ? "Queued for review — the worker will pick this up shortly."
                 : lifecycle === "running" || lifecycle === "scoring"

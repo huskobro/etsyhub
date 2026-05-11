@@ -88,8 +88,19 @@ export type EvaluationCheck = {
   weight?: number;
 };
 
+export type NotQueuedReason =
+  | "pending_mapping"
+  | "ignored"
+  | "auto_enqueue_disabled"
+  | "design_pending_worker"
+  | "legacy"
+  | "unknown";
+
 export type Evaluation = {
   lifecycle: EvaluationLifecycle;
+  /** IA-39 — present when lifecycle === "not_queued". Drives targeted
+   *  UI copy so the operator knows what action to take. */
+  notQueuedReason?: NotQueuedReason;
   /** lifecycle === "ready" iken 0–100 sayı; aksi halde null. */
   score: number | null;
   /** Provider'ın özet cümlesi — TR. lifecycle === "ready" iken dolar. */
@@ -297,6 +308,10 @@ export function buildEvaluation(input: {
    *  reviewedAt/snapshot fields. Server returns this from queue
    *  endpoint per asset. */
   backendLifecycle?: EvaluationLifecycle;
+  /** IA-39 — why is the asset not_queued? Present when
+   *  backendLifecycle === "not_queued". Passed through to Evaluation
+   *  so UI can show targeted copy (pending_mapping, ignored, etc.). */
+  notQueuedReason?: NotQueuedReason;
   /** IA Phase 27 (CLAUDE.md Madde R) — admin-resolved decision
    *  thresholds. Caller pulls these from the queue endpoint
    *  `policy.thresholds`; absent triggers a dev console warn and
@@ -504,6 +519,9 @@ export function buildEvaluation(input: {
 
   return {
     lifecycle,
+    ...(lifecycle === "not_queued" && input.notQueuedReason !== undefined
+      ? { notQueuedReason: input.notQueuedReason }
+      : {}),
     score: lifecycle === "ready" ? reviewScore : null,
     summary: lifecycle === "ready" ? reviewSummary : null,
     provider: reviewProviderSnapshot,

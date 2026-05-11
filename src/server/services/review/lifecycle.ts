@@ -1,4 +1,6 @@
 // IA Phase 18 — review scoring lifecycle resolver.
+// IA-39 — not_queued reason codes: operatöre neden asset henüz
+//   scoring'e alınmadığı açıklanır.
 //
 // CLAUDE.md Madde N — sistem skoru lifecycle taşır. Bu modül
 // her asset için **dürüst** lifecycle değerini Job tablosundan
@@ -7,6 +9,14 @@
 //
 // Backend ayrımı:
 //   • not_queued — Job tablosunda asset id'si için REVIEW_DESIGN row yok.
+//     Reason alt-kodu (NotQueuedReason):
+//       - pending_mapping: local asset için folder mapping atanmamış.
+//       - ignored: folder __ignore__ işaretli.
+//       - auto_enqueue_disabled: ayarlardan auto-enqueue devre dışı.
+//       - legacy: IA-29 öncesi oluşturulmuş, henüz hiç job tetiklenmedi.
+//       - design_pending_worker: AI design için variation worker henüz
+//         tamamlanmamış (design QUEUED/RUNNING state).
+//       - unknown: diğer durumlar.
 //   • queued    — en son REVIEW_DESIGN row durumu QUEUED.
 //   • running   — en son REVIEW_DESIGN row durumu RUNNING (provider
 //                 yanıtı bekleniyor).
@@ -21,14 +31,14 @@
 //      sinyal; provider gerçekten cevap verdi ve persist'ledi)
 //   2. Job tablosunda en son REVIEW_DESIGN row state'ine göre
 //      mapping (QUEUED|RUNNING|FAILED).
-//   3. Job tablosunda satır yok ⇒ not_queued.
+//   3. Job tablosunda satır yok ⇒ not_queued (+ reason).
 //
 // Query verimi: tek round-trip. Caller `assetIds` listesini geçer,
 // helper Job tablosundan tek `findMany` ile en son row'ları çeker
 // (per-asset metadata path). Her asset için en son createdAt'lı
 // row'u alır.
 
-import { JobStatus, JobType } from "@prisma/client";
+import { JobStatus, JobType, VariationState } from "@prisma/client";
 import { db } from "@/server/db";
 
 export type ReviewLifecycleState =
@@ -39,25 +49,56 @@ export type ReviewLifecycleState =
   | "ready";
 
 /**
+ * IA-39 — why is the asset not queued? UI copy differs per reason
+ * so the operator can take targeted action.
+ */
+export type NotQueuedReason =
+  | "pending_mapping"         // local: folder has no productType mapping
+  | "ignored"                 // local: folder is __ignore__
+  | "auto_enqueue_disabled"   // settings: local or AI auto-enqueue turned off
+  | "design_pending_worker"   // AI design: variation job not finished yet
+  | "legacy"                  // pre-IA-29 row, never had a review job
+  | "unknown";
+
+/** Full lifecycle result including optional not_queued reason. */
+export type ReviewLifecycleResult =
+  | { state: Exclude<ReviewLifecycleState, "not_queued"> }
+  | { state: "not_queued"; reason: NotQueuedReason };
+
+/**
+ * IA-39 — extended lifecycle map with not_queued reason codes.
+ *
  * Tüm asset'ler için lifecycle'ı resolve eder. `readyIds` set'i
  * ready kabul edilenleri içerir (caller'ın asset row'u üzerinden
  * türev: reviewedAt && reviewProviderSnapshot). Geri kalanlar
  * için Job tablosu metadata path'i ile en son REVIEW_DESIGN
  * row'unu okur.
+ *
+ * `notQueuedReasons` map: asset id → reason. Caller'ın not_queued
+ * için operatöre ayrıntılı mesaj vermesini sağlar.
  */
 export async function resolveReviewLifecycle(args: {
   userId: string;
   scope: "design" | "local";
   assetIds: ReadonlyArray<string>;
   readyIds: ReadonlySet<string>;
-}): Promise<Map<string, ReviewLifecycleState>> {
-  const { userId, scope, assetIds, readyIds } = args;
-  const out = new Map<string, ReviewLifecycleState>();
+  /** IA-39 — per-asset reason hints for not_queued classification.
+   *  local: { [assetId]: "pending_mapping" | "ignored" | "unknown" }
+   *  design: { [assetId]: "design_pending_worker" | "unknown" }
+   *  Absent entry → "legacy" (pre-IA-29, never had a job). */
+  notQueuedHints?: ReadonlyMap<string, NotQueuedReason>;
+  /** IA-39 — if auto-enqueue is globally disabled, all not_queued
+   *  items get "auto_enqueue_disabled" reason unless a more specific
+   *  hint overrides it. */
+  autoEnqueueDisabled?: boolean;
+}): Promise<Map<string, ReviewLifecycleResult>> {
+  const { userId, scope, assetIds, readyIds, notQueuedHints, autoEnqueueDisabled } = args;
+  const out = new Map<string, ReviewLifecycleResult>();
   if (assetIds.length === 0) return out;
 
   // Step 1: ready'leri işaretle
   for (const id of assetIds) {
-    if (readyIds.has(id)) out.set(id, "ready");
+    if (readyIds.has(id)) out.set(id, { state: "ready" });
   }
   const remaining = assetIds.filter((id) => !readyIds.has(id));
   if (remaining.length === 0) return out;
@@ -101,17 +142,27 @@ export async function resolveReviewLifecycle(args: {
     if (seen.has(assetIdRaw)) continue;
     if (out.has(assetIdRaw)) continue; // ready already set
     seen.add(assetIdRaw);
-    out.set(assetIdRaw, mapJobStatus(j.status));
+    out.set(assetIdRaw, { state: mapJobStatus(j.status) });
   }
 
-  // Step 3: kalanlar (Job satırı bile yok) ⇒ not_queued
+  // Step 3: kalanlar (Job satırı bile yok) ⇒ not_queued + reason
   for (const id of remaining) {
-    if (!out.has(id)) out.set(id, "not_queued");
+    if (!out.has(id)) {
+      // Reason resolution order:
+      // 1. Specific hint from caller (e.g. pending_mapping, ignored, design_pending_worker)
+      // 2. Global auto-enqueue disabled
+      // 3. "legacy" (no hint = pre-IA-29 row that never triggered a job)
+      const hintReason = notQueuedHints?.get(id);
+      const reason: NotQueuedReason =
+        hintReason ??
+        (autoEnqueueDisabled ? "auto_enqueue_disabled" : "legacy");
+      out.set(id, { state: "not_queued", reason });
+    }
   }
   return out;
 }
 
-function mapJobStatus(status: JobStatus): ReviewLifecycleState {
+function mapJobStatus(status: JobStatus): Exclude<ReviewLifecycleState, "not_queued"> {
   switch (status) {
     case JobStatus.QUEUED:
       return "queued";

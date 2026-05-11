@@ -33,12 +33,12 @@ import { requireUser } from "@/server/session";
 import { db } from "@/server/db";
 import { getStorage } from "@/providers/storage";
 import { logger } from "@/lib/logger";
-import { resolveReviewLifecycle } from "@/server/services/review/lifecycle";
+import { resolveReviewLifecycle, type NotQueuedReason } from "@/server/services/review/lifecycle";
 import { getResolvedReviewConfig } from "@/server/services/settings/review.service";
 import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
 import { computeScoringBreakdown } from "@/server/services/review/decision";
 import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
-import { resolveLocalProductTypeKey } from "@/features/settings/local-library/folder-mapping";
+import { resolveLocalProductTypeKey, resolveLocalFolder } from "@/features/settings/local-library/folder-mapping";
 
 /**
  * IA-31 (CLAUDE.md Madde S — stored decision vs current policy preview) —
@@ -61,8 +61,14 @@ function recomputeStoredScore(
   riskFlags: unknown,
   criteria: Parameters<typeof computeScoringBreakdown>[0]["criteria"],
   composeContext?: Parameters<typeof computeScoringBreakdown>[0]["composeContext"],
+  /** When false, snapshot is absent — skip recompute and return stored value as-is. */
+  hasSnapshot = true,
 ): number | null {
   if (storedScore === null) return null;
+  // Snapshot eksik (reviewedAt veya reviewProviderSnapshot null) →
+  // recompute değil; stored score doğrudan döner. Lifecycle "not_queued"
+  // veya "queued" chips olacak, skor hiç render edilmez.
+  if (!hasSnapshot) return storedScore;
   // Risk flag kinds'i normalize et (Json → string[]). Duplicate'lar
   // computeScoringBreakdown içinde Set ile unique'leştirilir.
   const kinds: string[] = Array.isArray(riskFlags)
@@ -187,7 +193,7 @@ export const GET = withErrorHandling(async (req: Request) => {
   // bugünkü criteria + risk kinds matematiğiyle yeniden hesaplanır
   // (`recomputeStoredScore`). Persist yok — yalnız response'a yansır
   // (CLAUDE.md Madde S — stored decision vs current policy preview).
-  const { thresholds, criteria } = await getResolvedReviewConfig(user.id);
+  const { thresholds, criteria, automation } = await getResolvedReviewConfig(user.id);
 
   if (scope === "design") {
     const where = {
@@ -326,11 +332,42 @@ export const GET = withErrorHandling(async (req: Request) => {
         }
       }
     }
+    // IA-39 — not_queued reason hints for design items.
+    // Designs whose GeneratedDesign.state is QUEUED/RUNNING haven't had
+    // a variation worker finish yet — review can't start. Distinguish
+    // from "legacy" (design READY/FAIL but no review job ever fired).
+    const designStateMap = new Map<string, string>();
+    for (const it of items) {
+      // We need the variation state to classify not_queued reason.
+      // Fetched from DB only for non-ready items (avoiding N+1 for ready items).
+    }
+    // Bulk-fetch variation state for non-ready designs
+    const nonReadyDesignIds = items
+      .filter((it) => !readyIds.has(it.id))
+      .map((it) => it.id);
+    if (nonReadyDesignIds.length > 0) {
+      const states = await db.generatedDesign.findMany({
+        where: { id: { in: nonReadyDesignIds } },
+        select: { id: true, state: true },
+      });
+      for (const s of states) {
+        if (s.state !== null) designStateMap.set(s.id, s.state);
+      }
+    }
+    const designNotQueuedHints = new Map<string, NotQueuedReason>();
+    for (const [id, state] of designStateMap) {
+      if (state === "QUEUED" || state === "RUNNING") {
+        designNotQueuedHints.set(id, "design_pending_worker");
+      }
+      // READY/FAIL/etc → "legacy" (no hint needed; resolver defaults to "legacy")
+    }
     const lifecycleMap = await resolveReviewLifecycle({
       userId: user.id,
       scope: "design",
       assetIds: items.map((it) => it.id),
       readyIds,
+      notQueuedHints: designNotQueuedHints,
+      autoEnqueueDisabled: !automation.aiAutoEnqueue,
     });
 
     const storage = getStorage();
@@ -366,6 +403,7 @@ export const GET = withErrorHandling(async (req: Request) => {
           // composeContext geçilir; N/A kriterler score'a düşmez —
           // detail panel "Not applicable" diye gösterdiği kriterlerle
           // weight subtractions birebir eşitlenir.
+          // Snapshot absent → stored score returned as-is (no recompute).
           reviewScore: recomputeStoredScore(
             it.reviewScore,
             it.reviewRiskFlags,
@@ -377,6 +415,7 @@ export const GET = withErrorHandling(async (req: Request) => {
               sourceKind: "design",
               transformsApplied: [],
             },
+            !!(it.reviewedAt && it.reviewProviderSnapshot !== null),
           ),
           reviewSummary: it.reviewSummary,
           riskFlagCount: riskFlagCount(it.reviewRiskFlags),
@@ -391,7 +430,14 @@ export const GET = withErrorHandling(async (req: Request) => {
           productTypeId: it.productTypeId,
           jobId: it.jobId,
           // IA Phase 18 — review scoring lifecycle (CLAUDE.md Madde N).
-          reviewLifecycle: lifecycleMap.get(it.id) ?? "not_queued",
+          // IA-39 — not_queued includes reason code for targeted UI copy.
+          ...(() => {
+            const lc = lifecycleMap.get(it.id) ?? { state: "not_queued" as const, reason: "legacy" as const };
+            return {
+              reviewLifecycle: lc.state,
+              reviewNotQueuedReason: lc.state === "not_queued" ? lc.reason : undefined,
+            };
+          })(),
           // Pass 24 — source clarity (additive). ProductType.key + reference
           // cuid kısa id; UI ReviewCard "Wall Art · ref-3oa1m" formatında
           // gösterir. Reference detail'e deep-link için referenceId zaten
@@ -569,19 +615,6 @@ export const GET = withErrorHandling(async (req: Request) => {
     }),
   ]);
 
-  // IA Phase 18 — lifecycle resolve (local branch).
-  const localReadyIds = new Set(
-    items
-      .filter((it) => it.reviewedAt && it.reviewProviderSnapshot)
-      .map((it) => it.id),
-  );
-  const localLifecycleMap = await resolveReviewLifecycle({
-    userId: user.id,
-    scope: "local",
-    assetIds: items.map((it) => it.id),
-    readyIds: localReadyIds,
-  });
-
   // IA-35 — local productTypeKey resolve (path-based mapping +
   // convention). Asset metadata'sındaki folder identity üzerinden
   // çözülür; UI EvaluationPanel artık "wall_art" fallback'ine
@@ -589,6 +622,40 @@ export const GET = withErrorHandling(async (req: Request) => {
   // hesaplar.
   const localSettings = await getUserLocalLibrarySettings(user.id);
   const localFolderMap = localSettings.folderProductTypeMap ?? {};
+
+  // IA Phase 18 — lifecycle resolve (local branch).
+  const localReadyIds = new Set(
+    items
+      .filter((it) => it.reviewedAt && it.reviewProviderSnapshot)
+      .map((it) => it.id),
+  );
+  // IA-39 — per-asset not_queued reason hints for local items.
+  // Resolve folder mapping for each non-ready item so the lifecycle
+  // resolver can report "pending_mapping" or "ignored" instead of
+  // the generic "legacy" fallback.
+  const localNotQueuedHints = new Map<string, NotQueuedReason>();
+  for (const it of items) {
+    if (localReadyIds.has(it.id)) continue;
+    const r = resolveLocalFolder({
+      folderName: it.folderName,
+      folderPath: it.folderPath,
+      folderMap: localFolderMap,
+    });
+    if (r.kind === "pending") {
+      localNotQueuedHints.set(it.id, "pending_mapping");
+    } else if (r.kind === "ignored") {
+      localNotQueuedHints.set(it.id, "ignored");
+    }
+    // "mapped" → no hint; resolver falls through to Job table check → "legacy" if no job
+  }
+  const localLifecycleMap = await resolveReviewLifecycle({
+    userId: user.id,
+    scope: "local",
+    assetIds: items.map((it) => it.id),
+    readyIds: localReadyIds,
+    notQueuedHints: localNotQueuedHints,
+    autoEnqueueDisabled: !automation.localAutoEnqueue,
+  });
 
   const itemsWithThumbs = items.map((it) => ({
     id: it.id,
@@ -628,6 +695,7 @@ export const GET = withErrorHandling(async (req: Request) => {
               transformsApplied: [],
             }
           : undefined,
+        !!(it.reviewedAt && it.reviewProviderSnapshot !== null),
       );
     })(),
     reviewSummary: it.reviewSummary,
@@ -644,8 +712,15 @@ export const GET = withErrorHandling(async (req: Request) => {
     referenceId: null,
     productTypeId: null,
     jobId: null,
-    // IA Phase 18 — review scoring lifecycle.
-    reviewLifecycle: localLifecycleMap.get(it.id) ?? "not_queued",
+    // IA Phase 18 — review scoring lifecycle (CLAUDE.md Madde N).
+    // IA-39 — not_queued includes reason code for targeted UI copy.
+    ...(() => {
+      const lc = localLifecycleMap.get(it.id) ?? { state: "not_queued" as const, reason: "legacy" as const };
+      return {
+        reviewLifecycle: lc.state,
+        reviewNotQueuedReason: lc.state === "not_queued" ? lc.reason : undefined,
+      };
+    })(),
     // Pass 24 — source clarity (additive)
     source: {
       kind: "local-library" as const,

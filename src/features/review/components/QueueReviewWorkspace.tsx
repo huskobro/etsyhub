@@ -388,7 +388,12 @@ export function QueueReviewWorkspace({
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["review-queue"] });
+      // IA-39 — rerun clears snapshot and enqueues a new job. Use
+      // refetchQueries (not just invalidateQueries) so the UI
+      // immediately picks up the new `queued` lifecycle state and the
+      // 5s polling interval kicks in without waiting for the next
+      // background stale check.
+      void queryClient.refetchQueries({ queryKey: ["review-queue"] });
     },
   });
 
@@ -704,6 +709,8 @@ function QueueInfoRail({
           }
         : undefined,
     backendLifecycle: item.reviewLifecycle,
+    // IA-39 — pass reason so EvaluationPanel can show targeted copy.
+    notQueuedReason: item.reviewNotQueuedReason,
     thresholds,
     // IA Phase 28 — stored decision = persisted reviewStatus (operator).
     storedReviewStatus: item.reviewStatus,
