@@ -652,13 +652,21 @@ function QueueInfoRail({
   // productType backend'den item.source.productTypeKey ile gelir.
   // Local item'larda backend mapping'den resolve ediyor (server'da),
   // UI render için criteria evaluator'ün bir productType'a ihtiyacı
-  // var; backend zaten gerçek productType'la skoru üretti, bu sadece
-  // **görüntüleme** için checklist applicability hesabı. Operatöre
-  // gösterdiğimiz score backend'in deterministic system score'u.
-  const productType =
+  // IA-35 — productType context her iki source'tan da gerçek
+  // resolved key'i alır:
+  //   • design → item.source.productTypeKey (always set by generator)
+  //   • local  → item.source.productTypeKey (queue endpoint folder
+  //     mapping ile resolve eder; null → operatör henüz mapping
+  //     atamadı, applicability rules "no productType" davranışına
+  //     düşer ve sahte fallback uygulanmaz)
+  // Operatöre gösterilen score backend'in deterministic system
+  // score'u; checklist applicability bu gerçek bağlama göre hesaplanır.
+  const productType: string | null =
     item.source?.kind === "design"
-      ? item.source.productTypeKey ?? "wall_art"
-      : "wall_art";
+      ? item.source.productTypeKey ?? null
+      : item.source?.kind === "local-library"
+        ? item.source.productTypeKey
+        : null;
   const format = item.source?.mimeType
     ? item.source.mimeType.replace("image/", "").toLowerCase()
     : "png";
@@ -673,13 +681,20 @@ function QueueInfoRail({
     reviewProviderSnapshot: item.reviewProviderSnapshot,
     riskFlags: item.riskFlags,
     operatorOverride: item.reviewStatusSource === "USER",
-    composeContext: {
-      productType,
-      format,
-      hasAlpha,
-      sourceKind,
-      transformsApplied: [],
-    },
+    // IA-35 — composeContext yalnız productType resolved'sa kurulur.
+    // Null ise (local folder pending mapping) compose hiç çalışmaz;
+    // EvaluationPanel snapshot'a düşer ve operatöre "Map folder"
+    // mesajı gösterilebilir. Sahte "wall_art" YOK.
+    composeContext:
+      productType !== null
+        ? {
+            productType,
+            format,
+            hasAlpha,
+            sourceKind,
+            transformsApplied: [],
+          }
+        : undefined,
     backendLifecycle: item.reviewLifecycle,
     thresholds,
     // IA Phase 28 — stored decision = persisted reviewStatus (operator).

@@ -59,7 +59,13 @@ export const GET = withErrorHandling(async () => {
     : [];
 
   const folders = grouped.map((g) => {
-    const r = resolveLocalFolder({ folderName: g.folderName, folderMap });
+    // IA-35 — canonical mapping identity = folderPath. Legacy
+    // folderName-keyed entries okumaya devam edilir (resolver fallback).
+    const r = resolveLocalFolder({
+      folderName: g.folderName,
+      folderPath: g.folderPath,
+      folderMap,
+    });
     if (r.kind === "mapped") {
       return {
         folderName: g.folderName,

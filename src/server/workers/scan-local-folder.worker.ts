@@ -14,17 +14,23 @@
 //   - Retry policy / exponential backoff (şu an bullmq default)
 //   - Watch folder / fs events
 //
-// IA Phase 26 — local auto-review enqueue:
+// IA-29/IA-35 — local auto-review enqueue:
 //   Local scan freshly discovered, never-scored asset için
-//   otomatik REVIEW_DESIGN enqueue YAPAR — yalnız operator
-//   `localLibrary.defaultProductTypeKey` settings'te explicit bir
-//   değer seçtiyse. Bu Phase 6 Karar 3 "sessiz default YASAK"
-//   kuralını ihlal etmez (productType operator-chosen).
+//   otomatik REVIEW_DESIGN enqueue YAPAR — yalnız asset'in folder
+//   mapping'i resolved ise (path-based mapping > legacy folderName
+//   fallback > convention). Mapping yoksa o asset için scan
+//   auto-enqueue çalışmaz; operator review'i Settings → Review →
+//   Local library altında folder'a productType atayarak veya
+//   scope-trigger endpoint'i ile tetikler.
 //
-//   defaultProductTypeKey null ise scan auto-enqueue çalışmaz;
-//   operator review'i scope-trigger endpoint'i veya focus mode
-//   Enqueue CTA üzerinden tetikler. Already-scored guard
-//   (worker tarafında) çift-billing'i her durumda engeller.
+//   Eski tek-global `defaultProductTypeKey` modeli IA-29'da
+//   kaldırıldı (27+ klasörlü kütüphanelerde adaletsiz). Phase 6
+//   Karar 3 "sessiz default YASAK" kuralı korunur — productType
+//   operator-chosen veya convention'a göre mapping'lenir; sahte
+//   global fallback yoktur.
+//
+//   Already-scored guard (worker tarafında) çift-billing'i her
+//   durumda engeller.
 
 import type { Job } from "bullmq";
 import { JobType } from "@prisma/client";
@@ -196,7 +202,8 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
         isUserDeleted: false,
         reviewProviderSnapshot: null, // never-scored
       },
-      select: { id: true, folderName: true },
+      // IA-35 — folderPath path-based mapping resolve için gerekli.
+      select: { id: true, folderName: true, folderPath: true },
       take: 500,
     });
     let autoEnqueued = 0;
@@ -205,6 +212,7 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
     for (const a of pendingAssets) {
       const r = resolveLocalFolder({
         folderName: a.folderName,
+        folderPath: a.folderPath,
         folderMap,
       });
       if (r.kind === "pending") { skippedNoMapping += 1; continue; }

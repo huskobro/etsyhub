@@ -42,6 +42,11 @@ export type ReviewQueueSourceLocal = {
    *  legacy rows that haven't been re-scanned yet; UI degrades to the
    *  format-level hint when null. */
   hasAlpha: boolean | null;
+  /** IA-35 — resolved productTypeKey from folder mapping (path-based,
+   *  legacy folderName fallback) or convention. Null → folder pending
+   *  mapping (operator must assign in Settings → Review). EvaluationPanel
+   *  uses this for applicability checks; sahte "wall_art" fallback yok. */
+  productTypeKey: string | null;
 };
 export type ReviewQueueSourceDesign = {
   kind: "design";
@@ -239,17 +244,21 @@ export function useReviewQueue(params: Params) {
     refetchInterval: (query) => {
       const data = query.state.data as ReviewQueueResponse | undefined;
       if (!data) return 8000; // first load — try again shortly
-      // IA Phase 28 (CLAUDE.md Madde T) — proof-before-done.
-      // not_queued bir item rerun edildikten sonra aslında "kuyruğa
-      // alınma yolunda" anlamına geliyor (snapshot wipe + enqueue
-      // arasındaki pencere). Polling'i bu durumda da kısa tut
-      // ki worker geçişi UI'da görülebilsin. liveCount eşleşen tüm
-      // 'unsettled' lifecycle'ları sayar.
+      // IA-35 polling cadence düzeltmesi:
+      //   • `queued` / `running` → gerçek in-flight iş. 5s polling.
+      //   • `not_queued` IDLE state'tir (asset henüz hiç enqueue
+      //     olmamış). Listeye düştüğü için polling yapmaya gerek
+      //     YOK — operatör manuel scope-trigger tetiklemeden
+      //     promotion beklenmez. Rerun POST anında caller cache
+      //     invalidate eder; o pencere için `queued` görünür,
+      //     interval orada zaten kısa atar.
+      //   • `error` / `na` / `ready` → settled. Background polling
+      //     durur (false). Tab refocus → manuel refetch düşer
+      //     (refetchOnWindowFocus: true).
       const unsettledCount = (data.items ?? []).filter(
         (it) =>
           it.reviewLifecycle === "queued" ||
-          it.reviewLifecycle === "running" ||
-          it.reviewLifecycle === "not_queued",
+          it.reviewLifecycle === "running",
       ).length;
       return unsettledCount > 0 ? 5000 : false;
     },

@@ -81,7 +81,9 @@ export const POST = withErrorHandling(async (req: Request) => {
         reviewStatus: "PENDING",
         reviewProviderSnapshot: null,
       },
-      select: { id: true },
+      // IA-35 — folderPath select edilir; path-based mapping resolve
+      // için gerekli.
+      select: { id: true, folderPath: true },
       take: MAX_PER_TRIGGER,
     });
     if (candidates.length === 0) {
@@ -95,13 +97,18 @@ export const POST = withErrorHandling(async (req: Request) => {
         enqueueErrors: 0,
       });
     }
-    // IA-30 — productTypeKey resolve: body override → folderProductTypeMap
-    // → convention. Mapping yoksa rerun yapamayız.
+    // IA-30 + IA-35 — productTypeKey resolve: body override →
+    // folderProductTypeMap (path-based, legacy folderName fallback) →
+    // convention. Mapping yoksa rerun yapamayız.
     let productTypeKey: string | null = parsed.data.productTypeKey ?? null;
     if (!productTypeKey) {
       const settings = await getUserLocalLibrarySettings(user.id);
+      // Aynı folder altındaki tüm candidate'lar aynı folderPath'i
+      // taşır — ilkini sample olarak kullan.
+      const samplePath = candidates[0]?.folderPath;
       const r = resolveLocalFolder({
         folderName: parsed.data.folderName,
+        folderPath: samplePath,
         folderMap: settings.folderProductTypeMap ?? {},
       });
       if (r.kind === "mapped") productTypeKey = r.productTypeKey;

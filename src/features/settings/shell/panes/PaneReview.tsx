@@ -209,11 +209,12 @@ export function PaneReview() {
       {/* 0) Operations — live pipeline state + manual trigger */}
       <ReviewOpsSection ops={data.ops} pickers={data.pickers} />
 
-      {/* IA Phase 28 (CLAUDE.md Madde U) — local auto-review on
-       *   scan automation. Operatör defaultProductTypeKey'i burada
-       *   set eder; null kalırsa scan auto-enqueue yapmaz, manuel
-       *   trigger gerekir. Görünür + ayarlanabilir + ops dashboard'a
-       *   yansır. */}
+      {/* IA-29 + IA-35 (CLAUDE.md Madde V/U) — local auto-review on
+       *   scan automation. Operatör folder başına productTypeKey
+       *   atar (path-based mapping). Mapping yoksa convention
+       *   devreye girer; o da yoksa scan auto-enqueue yapmaz ve
+       *   operatör manuel scope-trigger ile review tetikler.
+       *   Görünür + ayarlanabilir + ops dashboard'a yansır. */}
       <LocalFolderMappingSection />
 
 
@@ -1760,7 +1761,8 @@ function LocalFolderMappingSection() {
                 disabled={mappingMutation.isPending}
                 onChange={(next) =>
                   mappingMutation.mutate({
-                    folderKey: f.folderName,
+                    // IA-35 — mapping key canonical folderPath (folderName collision yok).
+                    folderKey: f.folderPath,
                     productTypeKey: next,
                   })
                 }
@@ -1784,7 +1786,8 @@ function LocalFolderMappingSection() {
                 disabled={mappingMutation.isPending}
                 onChange={(next) =>
                   mappingMutation.mutate({
-                    folderKey: f.folderName,
+                    // IA-35 — mapping key canonical folderPath (folderName collision yok).
+                    folderKey: f.folderPath,
                     productTypeKey: next,
                   })
                 }
@@ -1808,7 +1811,8 @@ function LocalFolderMappingSection() {
                 disabled={mappingMutation.isPending}
                 onChange={(next) =>
                   mappingMutation.mutate({
-                    folderKey: f.folderName,
+                    // IA-35 — mapping key canonical folderPath (folderName collision yok).
+                    folderKey: f.folderPath,
                     productTypeKey: next,
                   })
                 }

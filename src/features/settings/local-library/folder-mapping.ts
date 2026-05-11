@@ -1,10 +1,15 @@
-// IA-29 (CLAUDE.md Madde V) — Folder/path bazlı productType mapping.
+// IA-29 + IA-35 (CLAUDE.md Madde V) — Folder/path bazlı productType
+// mapping.
 //
-// Tek global `defaultProductTypeKey` 27+ klasörlü gerçek kütüphanelerde
-// adaletsiz. Her klasör farklı tema olabilir (clipart / wall_art /
-// printable). Operator klasör başına productType atar; mapping yoksa
-// global default fallback; o da yoksa o asset için auto-enqueue
-// yapılmaz (operator manual scope-trigger çekebilir).
+// Operator klasör başına productType atar; mapping yoksa convention
+// devreye girer (folder adı bilinen bir productType ise); o da yoksa
+// asset "pending" durumda kalır ve auto-enqueue yapılmaz (operator
+// manual scope-trigger çekebilir veya Settings'te folder'a productType
+// atayabilir).
+//
+// IA-35 — anahtar canonical `folderPath`. Aynı isimli farklı path'teki
+// klasörler birbirini etkilemez. Legacy `folderName`-keyed mapping'ler
+// fallback olarak okunmaya devam eder.
 //
 // Pure / deterministic. Side effect yok.
 
@@ -40,6 +45,18 @@ export const KNOWN_PRODUCT_TYPES = [
   "printable",
 ] as const;
 
+/**
+ * IA-35 — mapping key path-based, display name ayrı.
+ *
+ * Eski kontrat: `Record<folderName, productTypeKey>`. Aynı isimli ama
+ * farklı path'teki klasörler (ör. iki ayrı root'ta `clipart/`)
+ * birbirini eziyordu. Yeni kontrat: anahtar **canonical folder path**
+ * (LocalLibraryAsset.folderPath); display için folderName ayrı yaşar.
+ *
+ * Geriye uyumluluk: legacy `folderName`-keyed map'leri okumaya devam
+ * ederiz (read-only fallback). Yeni yazılan tüm mapping'ler path
+ * üzerinden kaydedilir.
+ */
 export type FolderProductTypeMap = Record<string, string>;
 
 export type FolderResolution =
@@ -48,22 +65,40 @@ export type FolderResolution =
   | { kind: "pending"; folderName: string };
 
 /**
- * Klasör adına göre productType çöz. Sıra:
- *   1. operator alias / ignore (folderProductTypeMap)
+ * Klasör adına/path'ine göre productType çöz. Sıra:
+ *   1. operator alias / ignore — önce `folderPath` (canonical identity),
+ *      yoksa legacy `folderName` fallback (eski mapping'ler)
  *   2. convention: klasör adı bilinen bir productType ise
  *   3. pending (operatöre sorulacak)
+ *
+ * `folderPath` opsiyonel — eski caller'lar yalnız folderName geçirebilir
+ * (worker auto-enqueue path'ı henüz path bilgisini taşımıyorsa);
+ * yeni caller'lar her zaman ikisini birlikte geçirir.
  */
 export function resolveLocalFolder(args: {
   folderName: string;
+  folderPath?: string;
   folderMap: FolderProductTypeMap;
 }): FolderResolution {
-  const { folderName, folderMap } = args;
+  const { folderName, folderPath, folderMap } = args;
   if (!folderName) return { kind: "pending", folderName };
 
-  const explicit = folderMap[folderName];
-  if (explicit === IGNORE_FOLDER_SENTINEL) return { kind: "ignored" };
-  if (explicit) {
-    return { kind: "mapped", productTypeKey: explicit, reason: "alias" };
+  // IA-35 — canonical path lookup (yeni mapping yazılım hedefi).
+  if (folderPath) {
+    const byPath = folderMap[folderPath];
+    if (byPath === IGNORE_FOLDER_SENTINEL) return { kind: "ignored" };
+    if (byPath) {
+      return { kind: "mapped", productTypeKey: byPath, reason: "alias" };
+    }
+  }
+
+  // Legacy fallback: eski folderName-keyed mapping'ler. Yeni mapping
+  // yazıldığında bu satırlar overshadow olur; ama mevcut user
+  // settings'leri kırmamak için okumaya devam.
+  const byName = folderMap[folderName];
+  if (byName === IGNORE_FOLDER_SENTINEL) return { kind: "ignored" };
+  if (byName) {
+    return { kind: "mapped", productTypeKey: byName, reason: "alias" };
   }
 
   const normalized = folderName.toLowerCase().trim();
@@ -82,6 +117,7 @@ export function resolveLocalFolder(args: {
  */
 export function resolveLocalProductTypeKey(args: {
   folderName: string;
+  folderPath?: string;
   folderMap: FolderProductTypeMap;
 }): string | null {
   const r = resolveLocalFolder(args);

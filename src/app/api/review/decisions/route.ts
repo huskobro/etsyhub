@@ -278,7 +278,7 @@ export const PATCH = withErrorHandling(async (req: Request) => {
       deletedAt: null,
       isUserDeleted: false,
     },
-    select: { id: true, folderName: true },
+    select: { id: true, folderName: true, folderPath: true },
   });
   if (!asset) {
     throw new NotFoundError();
@@ -287,8 +287,11 @@ export const PATCH = withErrorHandling(async (req: Request) => {
   if (!resolvedProductTypeKey) {
     const settings = await getUserLocalLibrarySettings(user.id);
     const folderMap = settings.folderProductTypeMap ?? {};
+    // IA-35 — path-based mapping resolution. Aynı isimli farklı
+    // path'teki klasörler birbirini etkilemez.
     const r = resolveLocalFolder({
       folderName: asset.folderName,
+      folderPath: asset.folderPath,
       folderMap,
     });
     if (r.kind === "mapped") resolvedProductTypeKey = r.productTypeKey;

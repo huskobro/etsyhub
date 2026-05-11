@@ -1763,10 +1763,10 @@ Automation kodu (worker auto-enqueue, scan job, retry, polling)
 yalnız backend'de yaşıyorsa ve operatör görmüyor / değiştiremiyor
 ise **eksik** kabul edilir:
 
-- Auto-enqueue / scheduling parametreleri (örn. local scan
-  `defaultProductTypeKey`) admin/settings yüzeyinde **görünür ve
-  ayarlanabilir** olmalıdır. Sessiz default veya yalnız schema
-  field'ı yeterli değildir.
+- Auto-enqueue / scheduling parametreleri (örn. local scan folder
+  → productType mapping, IA-35'te path-based) admin/settings
+  yüzeyinde **görünür ve ayarlanabilir** olmalıdır. Sessiz default
+  veya yalnız schema field'ı yeterli değildir.
 - Scheduled / triggered automation davranışı operatöre
   **görünür** olmalı: ops dashboard sayaçları (queued, running,
   failed), last enqueue/last scan zaman damgaları, otomatik

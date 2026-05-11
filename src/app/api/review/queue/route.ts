@@ -37,6 +37,8 @@ import { resolveReviewLifecycle } from "@/server/services/review/lifecycle";
 import { getResolvedReviewConfig } from "@/server/services/settings/review.service";
 import { getActiveLocalRootFilter } from "@/server/services/local-library/active-root";
 import { computeScoringBreakdown } from "@/server/services/review/decision";
+import { getUserLocalLibrarySettings } from "@/features/settings/local-library/service";
+import { resolveLocalProductTypeKey } from "@/features/settings/local-library/folder-mapping";
 
 /**
  * IA-31 (CLAUDE.md Madde S — stored decision vs current policy preview) —
@@ -566,6 +568,14 @@ export const GET = withErrorHandling(async (req: Request) => {
     readyIds: localReadyIds,
   });
 
+  // IA-35 — local productTypeKey resolve (path-based mapping +
+  // convention). Asset metadata'sındaki folder identity üzerinden
+  // çözülür; UI EvaluationPanel artık "wall_art" fallback'ine
+  // güvenmez — gerçek productType ile checklist applicability
+  // hesaplar.
+  const localSettings = await getUserLocalLibrarySettings(user.id);
+  const localFolderMap = localSettings.folderProductTypeMap ?? {};
+
   const itemsWithThumbs = items.map((it) => ({
     id: it.id,
     // Local library: signed URL üretmiyoruz; thumbnailPath varsa proxy
@@ -616,6 +626,17 @@ export const GET = withErrorHandling(async (req: Request) => {
       qualityReasons: it.qualityReasons,
       // IA Phase 11 — persisted Sharp alpha probe.
       hasAlpha: it.hasAlpha,
+      // IA-35 — resolved productTypeKey (path-based mapping > legacy
+      // folderName mapping > convention). Null → folder pending mapping
+      // (operatöre Settings → Review'da atama söylenir); UI
+      // EvaluationPanel context'i null geçtiğinde checklist'i
+      // applicability rules ile değil "no productType" davranışıyla
+      // resolve eder. Sahte "wall_art" fallback YOK.
+      productTypeKey: resolveLocalProductTypeKey({
+        folderName: it.folderName,
+        folderPath: it.folderPath,
+        folderMap: localFolderMap,
+      }),
     },
   }));
 
