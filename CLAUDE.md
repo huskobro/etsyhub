@@ -8,6 +8,8 @@
 > `npm run dev` veya `npm run start`. MVP Final Acceptance gate operatör
 > onayını bekliyor.
 >
+> **Review modülü 2026-05-11 itibarıyla KAPANMIŞTIR.** Bkz. Madde Z.
+>
 > Source of truth ağacı:
 > - **MVP acceptance + readiness** → [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md)
 > - **Production shakedown (release günü)** →
@@ -2457,6 +2459,84 @@ Bunlar **opsiyonel değil**:
   e=edit, ? help
 - Fan-in / fan-out: Reference × N → Variations × M; Library × M →
   Selections × K; Selection × 1 → Mockup template × T → Products × T
+
+## Z. Review Modülü — Freeze (2026-05-11)
+
+**Review modülü 2026-05-11 itibarıyla tamamlanmış ve kilitli kabul edilir.**
+Bu madde, review sözleşmesini korumak için koyulan en yüksek öncelikli
+kuraldır. Açıkça talep edilmedikçe aşağıdakilere hiçbir şekilde dokunulmaz:
+
+### Kilitli sözleşmeler
+
+- **Operator truth vs. AI advisory ayrımı** — `reviewStatus` operatör
+  damgasıdır; `reviewSuggestedStatus` AI önerisidır. Worker yalnızca
+  `reviewSuggestedStatus` yazar, `reviewStatus`'e asla dokunmaz. Bu
+  ayrım mimari sözleşmedir, refactor veya "temizlik" adıyla
+  değiştirilemez.
+
+- **Score modeli** — `finalScore = clamp(0, 100, 100 − Σ weight(failed))`.
+  Blocker'ın skoru otomatik sıfırlaması yoktur; admin panelinde
+  `weight=100` set edilerek sağlanır. Bu davranış değiştirilemez;
+  "hidden auto-zero" pattern'i geri eklenemez.
+
+- **Advisory/operator downstream gate** — `reviewStatus=APPROVED AND
+  reviewStatusSource=USER` olmadan hiçbir downstream pipeline
+  (Library → Selection → Product → Etsy) bir design'ı "kept"
+  saymaz. AI advisory skoru ve `reviewSuggestedStatus` gate'i
+  geçiremez.
+
+- **Review UI semantics** — Scope count invariant (`total = kept +
+  rejected + undecided`), topbar bilgi hiyerarşisi, batch > reference
+  scope priority, klavye sözleşmesi (`K/D/U/←/→/,/.`), progress bar
+  hesabı, lifecycle durum gösterimi (not_queued/queued/running/ready/
+  failed) — bunların tümü kilitlidir.
+
+- **Automation contract** — `aiAutoEnqueue`, `localAutoEnqueue`,
+  `localScanIntervalMinutes` toggle'ları ve `not_queued` reason
+  taxonomy (6-kod: `pending_mapping`, `ignored`,
+  `auto_enqueue_disabled`, `discovery_not_run`,
+  `design_pending_worker`, `legacy`, `unknown`) kilitlidir.
+
+- **Worker auto-start** — `src/instrumentation.ts` Next.js
+  instrumentation hook ile BullMQ workers + chokidar watcher
+  uygulama başlangıcında otomatik başlar. Ayrı `npm run worker`
+  komutu gerekmez. Bu davranış korunur.
+
+- **Review ops visibility** — `workerRunning` activity-based liveness
+  proxy, amber banner, `discoveryMode` hesabı kilitlidir.
+
+### Değişiklik kuralı
+
+Bir sonraki iş review modülünü etkileyecekse **üç koşuldan biri**
+zorunludur:
+
+1. **Açık kullanıcı talebi** — "Review'a şunu ekle / değiştir" gibi
+   net yönlendirme.
+2. **Bug fix** — Review modülünde keşfedilen regression; scope sadece
+   o bug'ı kapsar, etraf temizlenmez.
+3. **Zorunlu altyapı** — Örneğin Prisma migration, başka bir modülün
+   zorunlu kıldığı schema değişikliği. Bu durumda review alanlarına
+   dokunmak **minimuma indirilir** ve açıkça belirtilir.
+
+Bu üç koşul dışında review tarafına tek satır dokunulmaz.
+
+### Bundan sonra odak
+
+Yeni implementasyon şu hatta odaklanır:
+
+```
+Reference  →  Batch  →  Library  →  Selection  →  Product  →  Etsy Draft
+```
+
+Öncelikli çalışma alanları:
+- **References** — reference veri modeli netleştirmesi, production
+  brief bağlantısı, variation run ilişkisi
+- **Production/Product hattı** — product canonical surface, mockup
+  studio tam akış, listing builder
+- **Selection** — selection set UI, edit studio tamamlama
+- **Etsy Draft** — listing push altyapısı
+
+---
 
 ## Marka Kullanımı
 
