@@ -78,6 +78,21 @@ export async function handleScanLocalFolder(job: Job<ScanLocalFolderPayload>): P
   });
 
   try {
+    // IA-29 — root path değiştiğinde eski path altındaki asset'leri
+    // soft-delete et. Aksi halde folder-mapping endpoint eski
+    // klasörleri pending olarak gösterir (UI'da yabancı path'ler).
+    // Asset row'ları korunur (deletedAt set) ki re-scan ile geri
+    // getirilebilsin; ama aktif görünümde gözükmezler.
+    await db.localLibraryAsset.updateMany({
+      where: {
+        userId,
+        deletedAt: null,
+        isUserDeleted: false,
+        folderPath: { not: { startsWith: rootFolderPath } },
+      },
+      data: { deletedAt: new Date() },
+    });
+
     const folders = await discoverFolders(rootFolderPath);
 
     // Önce tüm aday dosyaları topla — total processed/total hesabı için baştan netleşir.

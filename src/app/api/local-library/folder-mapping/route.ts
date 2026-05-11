@@ -37,12 +37,26 @@ export const GET = withErrorHandling(async () => {
   const user = await requireUser();
   const settings = await getUserLocalLibrarySettings(user.id);
   const folderMap = settings.folderProductTypeMap ?? {};
+  const rootFolderPath = settings.rootFolderPath;
 
-  const grouped = await db.localLibraryAsset.groupBy({
-    by: ["folderName", "folderPath"],
-    where: { userId: user.id, deletedAt: null, isUserDeleted: false },
-    _count: { id: true },
-  });
+  // IA-29 — folder list MUST be scoped to the active root.
+  // LocalLibraryAsset rows from previous scans (different root) stay
+  // in DB (no auto-cleanup) but should NOT pollute the operator's
+  // current view. Filter by folderPath startsWith(rootFolderPath).
+  // Empty root → return empty list (operator sees the "save root"
+  // prompt instead of stale data).
+  const grouped = rootFolderPath
+    ? await db.localLibraryAsset.groupBy({
+        by: ["folderName", "folderPath"],
+        where: {
+          userId: user.id,
+          deletedAt: null,
+          isUserDeleted: false,
+          folderPath: { startsWith: rootFolderPath },
+        },
+        _count: { id: true },
+      })
+    : [];
 
   const folders = grouped.map((g) => {
     const r = resolveLocalFolder({ folderName: g.folderName, folderMap });

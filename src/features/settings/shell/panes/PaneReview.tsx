@@ -1402,6 +1402,96 @@ function productTypeLabel(pt: string): string {
   return PRODUCT_TYPE_LABELS[pt as keyof typeof PRODUCT_TYPE_LABELS] ?? pt;
 }
 
+// IA-29 — compact convention card + mkdir helper.
+function ConventionReference({
+  rootFolderPath,
+  onCreated,
+}: {
+  rootFolderPath: string | null;
+  onCreated: () => void;
+}) {
+  const mutation = useMutation<
+    {
+      rootFolderPath: string;
+      created: string[];
+      existed: string[];
+      failed: Array<{ folder: string; error: string }>;
+    },
+    Error,
+    void
+  >({
+    mutationFn: async () => {
+      const r = await fetch("/api/local-library/create-product-folders", {
+        method: "POST",
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body?.error ?? `HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+    onSuccess: () => onCreated(),
+  });
+
+  return (
+    <div
+      className="mt-3 rounded-md border border-line bg-bg px-3 py-2"
+      data-testid="folder-convention-reference"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+          Folder convention
+        </span>
+        <div className="flex flex-wrap gap-1.5">
+          {PRODUCT_TYPE_OPTIONS.map((pt) => (
+            <code
+              key={pt}
+              className="rounded-sm bg-ink/5 px-1.5 py-0.5 font-mono text-[11px] text-ink"
+              title={productTypeLabel(pt)}
+              data-testid="folder-convention-chip"
+              data-product-type={pt}
+            >
+              {pt}/
+            </code>
+          ))}
+        </div>
+        <button
+          type="button"
+          disabled={!rootFolderPath || mutation.isPending}
+          onClick={() => mutation.mutate()}
+          className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-md border border-k-orange bg-k-orange/10 px-2.5 text-[11px] font-medium text-ink hover:bg-k-orange/20 disabled:cursor-not-allowed disabled:opacity-40"
+          data-testid="create-product-folders-btn"
+        >
+          {mutation.isPending
+            ? "Creating…"
+            : mutation.isSuccess
+              ? "Created ✓"
+              : "Create folders"}
+        </button>
+      </div>
+      {mutation.isSuccess ? (
+        <p className="mt-1.5 text-[10.5px] text-ink-3" data-testid="create-folders-result">
+          {mutation.data.created.length} created
+          {mutation.data.existed.length > 0
+            ? ` · ${mutation.data.existed.length} already existed`
+            : ""}
+          {mutation.data.failed.length > 0
+            ? ` · ${mutation.data.failed.length} failed`
+            : ""}
+        </p>
+      ) : mutation.isError ? (
+        <p className="mt-1.5 text-[10.5px] text-rose-600">
+          {mutation.error.message}
+        </p>
+      ) : !rootFolderPath ? (
+        <p className="mt-1.5 text-[10.5px] text-ink-3">
+          Save a root path first to enable "Create folders".
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 const IGNORE_SENTINEL = "__ignore__";
 
 type LocalLibrarySettingsView = {
@@ -1559,46 +1649,17 @@ function LocalFolderMappingSection() {
         the "Pending" list — assign one or ignore them.
       </p>
 
-      {/* IA-29 — Convention reference card. Operator sees the exact
-       *   folder names the scan worker recognizes, so they can
-       *   organize the filesystem accordingly. */}
-      <div
-        className="mt-3 rounded-md border border-line bg-bg p-3"
-        data-testid="folder-convention-reference"
-      >
-        <div className="flex items-baseline justify-between">
-          <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
-            Folder name → product type
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
-            create these under your root
-          </span>
-        </div>
-        <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-ink-2 sm:grid-cols-3">
-          {PRODUCT_TYPE_OPTIONS.map((pt) => (
-            <li
-              key={pt}
-              className="flex items-baseline gap-2"
-              data-testid="folder-convention-row"
-              data-product-type={pt}
-            >
-              <code className="font-mono text-[11.5px] text-ink">
-                {pt}/
-              </code>
-              <span className="text-ink-3">→ {productTypeLabel(pt)}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2 text-[10.5px] leading-relaxed text-ink-3">
-          Example:{" "}
-          <code className="font-mono">
-            {rootPath ? `${rootPath}/clipart` : "/Users/you/Pictures/clipart"}
-          </code>
-          . Subfolders inside a known product type folder inherit that
-          mapping. Anything else lands in <strong>Pending</strong>{" "}
-          below.
-        </p>
-      </div>
+      {/* IA-29 — compact convention reference + create-folders helper.
+       *   Single row: inline chips for each productType + an action
+       *   button that mkdir's all six under the saved root. */}
+      <ConventionReference
+        rootFolderPath={rootPath}
+        onCreated={() => {
+          qc.invalidateQueries({
+            queryKey: ["local-library", "folder-mapping"],
+          });
+        }}
+      />
 
       {/* Root path + scan */}
       <div
