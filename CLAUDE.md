@@ -2594,6 +2594,86 @@ bu değerleri sadece render eder — re-derivasyon yapmaz.
 - Schema migration yapılmaz.
 - Yeni büyük abstraction açılmaz.
 
+### Batch-first Phase 2 (2026-05-12 — handoff & lineage canonical)
+
+Phase 1'in üzerine, Reference → Batch el geçişi ve Batches index lineer
+akışa uygun hale getirildi. Schema-zero korunur — yeni tablo veya migration
+yok; `Job.metadata.referenceId` (ai-generation.service:179'da zaten yazılıyor)
+yeni UI/filter sözleşmelerinin canonical kaynağı oldu.
+
+#### Reference → Batch handoff canonical
+
+Audit'te tespit edildi: variation submit sonrası kullanıcı `/references/
+[id]/variations` sayfasında bağlamsız kalıyordu — batchId yüzeye çıkmıyor,
+"şimdi hangi batch'e bakıyorum?" sorusunun cevabı yoktu. Phase 2 çözümü:
+
+1. `createVariationJobs` artık `batchId`'yi response payload'a çıkarır
+   (`CreateVariationJobsOutput.batchId`). Canonical kaynak hâlâ
+   `Job.metadata.batchId` — bu alan yalnız response surface'i.
+2. `useCreateVariations` hook tipinde `batchId` field'ı eklendi.
+3. `AiModeForm` submit başarılı olduğunda success banner gösterir:
+   "Batch started · N/M queued" + "View Batch" CTA → `/batches/{batchId}`.
+   Kullanıcı reference sayfasında kalır (grid update etmeye devam eder)
+   ama bağlamı batch'e taşıma seçeneği açık görünür.
+
+#### Batches index lineer akışa uygun hale geldi
+
+`/batches` index'i şu yeni sözleşmeleri taşır:
+
+1. **Reference lineage chip** her satırda — `Job.metadata.referenceId`
+   geldiği batch'lerde "↗ REF XXXXXXXX" chip; href `/batches?referenceId=
+   {id}`. Filter aktifken (zaten o reference'a scope edilmişken) chip'ler
+   render edilmez (gürültü değil sinyal).
+2. **Review breakdown caption** her satırda — `reviewCounts.undecided`
+   varsa orange "N undecided", yoksa kept varsa green "N kept". Operatör
+   detail'e girmeden gating signal'i grid'ten okur (CLAUDE.md Madde H).
+3. **Reference filter chip toolbar'da** — `?referenceId=` aktifken
+   "REF CMORQZNY · ✕" chip; clear için `/batches`'a düşer. Reference
+   bulunamadıysa "not found" suffix ile dürüstçe gösterilir
+   (silent ID display yok).
+
+#### `referenceId` filter — schema-zero & güvenli
+
+`listRecentBatches(userId, limit, { referenceId })` üçüncü parametre
+opsiyonel:
+- Prisma JSON path query: `metadata.path = ["referenceId"], equals: X`.
+- Server tarafı `/batches/page.tsx` `searchParams.referenceId`'yi okuyup
+  service'e geçirir; reference adı (`Reference.notes`) user-scoped +
+  `deletedAt:null` ile resolve edilir (silent leak protection).
+- Cross-user erişim engellidir — başkasının reference ID'siyle gelen
+  istek "not found" chip'ine düşer; filtreli liste boş döner.
+- `MidjourneyJob.referenceId` (DB column) **set edilmiyor** — lineage
+  hâlâ `Job.metadata.referenceId` JSON field'ından geliyor. Schema
+  migration gerekmiyor; Prisma JSON path filter yeterli.
+
+#### Reference page — link tekrar aktif (gerçekten çalışıyor)
+
+Phase 1'de kırık olduğu için plain text'e dönüştürülmüş
+`ReferenceBatchSummary` linki Phase 2'de tekrar `<Link>` oldu:
+- `href={`/batches?referenceId=${id}`}` — server-side filter aktif
+- "N designs · view batches" copy
+- info color + underline-offset, Kivasy DS uyumlu
+
+#### Batch detail — reference back-link
+
+`BatchDetailClient` artık opsiyonel `sourceReference` prop alır.
+Server tarafı `getBatchSummary().referenceId`'yi Reference.notes ile
+resolve eder (user-scoped + deletedAt:null). Header'da "↩ FROM REF
+CMORQZNY" link; `/batches?referenceId=` filter scope'una geri döner.
+Soft-deleted reference için back-link render edilmez (sessiz).
+
+#### Değişmeyenler (Phase 2)
+
+- **Review freeze (Madde Z) korunur.** Phase 2 review modülüne dokunmaz.
+- **Schema migration yok.** `Job.metadata.referenceId` + Prisma JSON path
+  filter ile çalışır.
+- **Selection / Product semantics değişmez.** Lineage sadece Reference →
+  Batch yönüne uygulandı.
+- **`WorkflowRun` tablosu eklenmez** (IA Phase 11 kapsamı).
+- **Kivasy DS dışına çıkılmadı.** Yeni recipe, token veya component
+  family icat edilmedi; mevcut `.k-card`, `text-info`, mono caption
+  pattern'leri kullanıldı.
+
 ### Epic-agnesi branch notu
 
 `claude/epic-agnesi-7a424b` branch'inde Batch-first Phase 1'in ilk

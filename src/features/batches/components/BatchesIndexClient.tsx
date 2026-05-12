@@ -48,6 +48,17 @@ const STATUS_LABELS: Record<string, string> = {
 interface BatchesIndexClientProps {
   batches: RecentBatchSummary[];
   initialDensity?: Density;
+  /**
+   * Batch-first Phase 2 — opsiyonel reference scope.
+   * Server tarafından `?referenceId=...` query param'ından resolve edilir.
+   * Verilirse list zaten filtrelidir; UI yalnız chip render eder (clear
+   * etmek için `/batches` linkine düşer).
+   */
+  referenceFilter?: {
+    id: string;
+    label: string | null;
+    found: boolean;
+  } | null;
 }
 
 function relativeTime(date: Date): string {
@@ -64,6 +75,7 @@ function relativeTime(date: Date): string {
 export function BatchesIndexClient({
   batches,
   initialDensity = "comfortable",
+  referenceFilter = null,
 }: BatchesIndexClientProps) {
   const router = useRouter();
   const params = useSearchParams();
@@ -233,6 +245,26 @@ export function BatchesIndexClient({
         >
           {STATUS_LABELS[currentStatus] ?? "Status"}
         </FilterChip>
+        {/* Batch-first Phase 2 — reference scope filter chip. Server-side
+         * filter; clear etmek için root /batches'a düşer. */}
+        {referenceFilter ? (
+          <Link
+            href="/batches"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-info bg-info-soft px-2.5 text-xs font-medium text-info hover:bg-info-soft/70"
+            data-testid="batches-reference-filter-chip"
+            title="Clear reference filter"
+          >
+            <span className="font-mono uppercase tracking-meta text-[10.5px]">
+              REF{" "}
+              {referenceFilter.found
+                ? referenceFilter.label
+                  ? referenceFilter.label.slice(0, 24)
+                  : referenceFilter.id.slice(0, 8).toUpperCase()
+                : `${referenceFilter.id.slice(0, 8).toUpperCase()} · not found`}
+            </span>
+            <X className="h-3 w-3" aria-hidden />
+          </Link>
+        ) : null}
         <div className="ml-auto flex items-center gap-3">
           <span className="font-mono text-xs uppercase tracking-meta text-ink-3">
             {totalLabel}
@@ -353,6 +385,21 @@ export function BatchesIndexClient({
                         ) : (
                           <span className="text-xs text-ink-3">—</span>
                         )}
+                        {/* Batch-first Phase 2 — reference lineage chip.
+                         * Job.metadata.referenceId üzerinden batch'i üreten
+                         * reference scope'una bağlantı. Filter aktifken
+                         * render edilmez (zaten chip toolbar'da görünüyor). */}
+                        {b.referenceId && !referenceFilter ? (
+                          <Link
+                            href={`/batches?referenceId=${b.referenceId}`}
+                            className="mt-0.5 inline-block font-mono text-[10.5px] uppercase tracking-meta text-info underline-offset-2 hover:underline"
+                            data-testid="batches-row-reference-lineage"
+                            title={`Filter batches from this reference (${b.referenceId})`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            ↗ REF {b.referenceId.slice(0, 8).toUpperCase()}
+                          </Link>
+                        ) : null}
                       </BatchTD>
                       <BatchTD className={density === "dense" ? "py-2" : "py-3"}>
                         <div className="flex items-center gap-2">
@@ -379,6 +426,27 @@ export function BatchesIndexClient({
                         <Badge tone={tone} dot>
                           {BATCH_STATUS_LABEL[b.aggregateStatus]}
                         </Badge>
+                        {/* Batch-first Phase 2 — review breakdown caption.
+                         * Operator gating signal Batches grid'inden okunsun;
+                         * detail'e girmeden "kaç undecided?" sorusu çözülür. */}
+                        {b.reviewCounts.total > 0 ? (
+                          <div
+                            className="mt-1 font-mono text-[10.5px] uppercase tracking-meta text-ink-3"
+                            data-testid="batches-row-review-counts"
+                          >
+                            {b.reviewCounts.undecided > 0 ? (
+                              <span className="text-k-orange-ink">
+                                {b.reviewCounts.undecided} undecided
+                              </span>
+                            ) : b.reviewCounts.kept > 0 ? (
+                              <span className="text-success">
+                                {b.reviewCounts.kept} kept
+                              </span>
+                            ) : (
+                              <span>0 kept</span>
+                            )}
+                          </div>
+                        ) : null}
                       </BatchTD>
                       <BatchTD className={density === "dense" ? "py-2" : "py-3"}>
                         <span className="font-mono text-xs tabular-nums text-ink-3">

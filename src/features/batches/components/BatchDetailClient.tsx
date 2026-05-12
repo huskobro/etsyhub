@@ -46,9 +46,21 @@ export interface ExistingSelectionSet {
   name: string;
 }
 
+/**
+ * Batch-first Phase 2 — source reference back-link target.
+ * Server tarafından user ownership + deletedAt=null kontrolü ile resolve
+ * edilir. null → reference yok, silinmiş, veya batch reference-less
+ * (retry, legacy); UI back-link render etmez.
+ */
+export interface SourceReference {
+  id: string;
+  label: string | null;
+}
+
 interface BatchDetailClientProps {
   summary: BatchSummary;
   existingSelectionSet: ExistingSelectionSet | null;
+  sourceReference?: SourceReference | null;
 }
 
 type TabId = "overview" | "items" | "logs" | "costs";
@@ -84,6 +96,7 @@ function deriveBatchStage(
 export function BatchDetailClient({
   summary,
   existingSelectionSet,
+  sourceReference = null,
 }: BatchDetailClientProps) {
   const [tab, setTab] = useState<TabId>("overview");
 
@@ -148,6 +161,24 @@ export function BatchDetailClient({
                 </>
               ) : null}
             </span>
+            {/* Batch-first Phase 2 — source reference back-link.
+             * Kullanıcı batch detail'den reference scope'una geri dönebilsin
+             * (lineer akış geri yönü). sourceReference null ise (legacy
+             * batch, retry, soft-deleted reference) render edilmez. */}
+            {sourceReference ? (
+              <Link
+                href={`/batches?referenceId=${sourceReference.id}`}
+                className="whitespace-nowrap font-mono text-[10.5px] uppercase tracking-meta text-info underline-offset-2 hover:underline"
+                title={
+                  sourceReference.label
+                    ? `From reference: ${sourceReference.label}`
+                    : `From reference ${sourceReference.id}`
+                }
+                data-testid="batch-detail-source-reference"
+              >
+                ↩ FROM REF {sourceReference.id.slice(0, 8).toUpperCase()}
+              </Link>
+            ) : null}
           </div>
         </div>
         {/* Batch-first Phase 1 — stage-aware CTA (CLAUDE.md Madde AA). */}

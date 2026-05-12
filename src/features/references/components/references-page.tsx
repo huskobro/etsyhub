@@ -730,7 +730,7 @@ function ReferencePoolCard({
           </span>
         </div>
         {/* Batch-first Phase 1 — production history summary. */}
-        <ReferenceBatchSummary count={reference._count} />
+        <ReferenceBatchSummary count={reference._count} referenceId={reference.id} />
       </div>
     </div>
   );
@@ -796,16 +796,20 @@ function SkeletonGrid({ density }: { density: Density }) {
 
 // ─── ReferenceBatchSummary ───────────────────────────────────────────────
 /**
- * Batch-first Phase 1 — compact production history indicator on reference cards.
+ * Batch-first Phase 2 — compact production history indicator on reference cards.
  *
- * Shows total design count (generatedDesigns + MJ outputs). Renders nothing
- * when count is zero or data is absent — no noise on references without
- * batch history.
+ * Shows total design count (generatedDesigns + MJ outputs) with a clickable
+ * link to /batches?referenceId={id} — the server-side referenceId filter
+ * (Job.metadata.referenceId path query) is now wired (Phase 2 C). Renders
+ * nothing when count is zero or data is absent — no noise on references
+ * without batch history.
  */
 function ReferenceBatchSummary({
   count,
+  referenceId,
 }: {
   count?: { generatedDesigns: number; midjourneyJobs: number } | null;
+  referenceId: string;
 }) {
   if (!count) return null;
   const total = count.generatedDesigns + count.midjourneyJobs;
@@ -813,12 +817,15 @@ function ReferenceBatchSummary({
 
   return (
     <div className="mt-1.5">
-      <span
-        className="font-mono text-[10.5px] uppercase tracking-wider text-ink-3"
+      <Link
+        href={`/batches?referenceId=${referenceId}`}
+        className="font-mono text-[10.5px] uppercase tracking-wider text-info underline-offset-2 hover:underline"
         data-testid="reference-batch-summary"
+        onClick={(e) => e.stopPropagation()}
+        title="View batches produced from this reference"
       >
-        {total} design{total !== 1 ? "s" : ""} produced
-      </span>
+        {total} design{total !== 1 ? "s" : ""} · view batches
+      </Link>
     </div>
   );
 }

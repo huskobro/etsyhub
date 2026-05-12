@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { useCreateVariations } from "../mutations/use-create-variations";
 import { CostConfirmDialog } from "./cost-confirm-dialog";
 
@@ -54,6 +56,14 @@ export function AiModeForm({
   const [count, setCount] = useState(COUNT_DEFAULT);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [partialNotice, setPartialNotice] = useState<string | null>(null);
+  // Batch-first Phase 2 — submit sonrası batch handoff state.
+  // Variation submit başarılı olduğunda batchId yüzeye çıkar; UI "View Batch"
+  // CTA'sı render eder. Kullanıcı bağlamı reference'tan batch'e taşınır.
+  const [lastBatch, setLastBatch] = useState<{
+    batchId: string;
+    requestedCount: number;
+    successCount: number;
+  } | null>(null);
   const create = useCreateVariations();
 
   async function onConfirm() {
@@ -71,6 +81,13 @@ export function AiModeForm({
       setPartialNotice(
         `${out.failedDesignIds.length}/${count} kuyruk başarısız oldu (${out.designIds.length} başarılı). Failed design'ları FAIL listesinden tekrar deneyebilirsin.`,
       );
+    }
+    if (out.batchId && out.designIds.length > 0) {
+      setLastBatch({
+        batchId: out.batchId,
+        requestedCount: count,
+        successCount: out.designIds.length,
+      });
     }
   }
 
@@ -157,6 +174,35 @@ export function AiModeForm({
           className="mt-3 rounded-md border border-warning bg-warning-soft px-3 py-2 text-sm text-text"
         >
           {partialNotice}
+        </div>
+      ) : null}
+      {/* Batch-first Phase 2 — submit sonrası batch handoff banner.
+       * Kullanıcı "üretim başlattım, şimdi hangi batch'e bakıyorum?"
+       * sorusunda kaybolmasın diye batchId görünür ve clickable hale gelir.
+       * Variations grid aşağıda canlı güncellenmeye devam eder; bu CTA
+       * kullanıcıya batch detail'e geçme opsiyonu sunar. */}
+      {lastBatch ? (
+        <div
+          role="status"
+          className="mt-3 flex items-center justify-between gap-3 rounded-md border border-success bg-success-soft px-3 py-2"
+          data-testid="ai-mode-batch-handoff"
+        >
+          <div className="flex-1">
+            <div className="text-[13px] font-medium text-ink">
+              Batch started · {lastBatch.successCount}/{lastBatch.requestedCount} queued
+            </div>
+            <div className="mt-0.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+              BATCH {lastBatch.batchId.slice(0, 12).toUpperCase()}
+            </div>
+          </div>
+          <Link
+            href={`/batches/${lastBatch.batchId}`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-success bg-paper px-3 text-xs font-medium text-success hover:bg-success-soft"
+            data-testid="ai-mode-view-batch"
+          >
+            View Batch
+            <ArrowRight className="h-3 w-3" aria-hidden />
+          </Link>
         </div>
       ) : null}
       <div className="mt-4 flex justify-end">

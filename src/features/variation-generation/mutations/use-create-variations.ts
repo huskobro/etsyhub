@@ -27,6 +27,12 @@ export function useCreateVariations() {
       return r.json() as Promise<{
         designIds: string[];
         failedDesignIds: string[];
+        /**
+         * Batch-first Phase 2 — submit sonrası batch handoff için.
+         * UI bu kimliği "View Batch" CTA'sının href'inde kullanır;
+         * kullanıcı bağlamı reference'tan batch'e taşır.
+         */
+        batchId: string;
       }>;
     },
     onSuccess: (_, vars) =>

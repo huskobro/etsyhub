@@ -61,6 +61,13 @@ export type CreateVariationJobsOutput = {
   designIds: string[];
   /** Enqueue fail edip FAIL'a düşürülen design id'ler. */
   failedDesignIds: string[];
+  /**
+   * Batch-first Phase 2 — bu çağrıdan oluşan batchId.
+   * UI variation submit sonrası "View Batch" handoff CTA'sında kullanır.
+   * batchId canonical olarak Job.metadata içinde durmaya devam eder
+   * (schema-zero); bu alan yalnız response payload'da yüzeye çıkar.
+   */
+  batchId: string;
 };
 
 export async function createVariationJobs(
@@ -220,7 +227,11 @@ export async function createVariationJobs(
     }),
   );
 
-  return { designIds, failedDesignIds };
+  // Batch-first Phase 2 — `batchId` API response'a çıkar. Variation submit
+  // sonrası UI "View Batch" handoff CTA'sı için gerekli; kullanıcı bağlamı
+  // batch'e taşır. batchId hâlâ Job.metadata içinde canonical kalır (schema-
+  // zero); response sadece o kimliği yüzeye çıkarır.
+  return { designIds, failedDesignIds, batchId };
 }
 
 /**

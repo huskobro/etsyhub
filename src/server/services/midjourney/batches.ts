@@ -55,6 +55,13 @@ export type BatchSummary = {
   /** Template metni (Job.metadata.batchPromptTemplate). */
   promptTemplate: string | null;
   /**
+   * Batch-first Phase 2 — reference lineage (Job.metadata.referenceId).
+   * Aynı batch'in tüm job'larında aynı; ilk geçerli değer yakalanır.
+   * Variation creation single-reference olduğu için tek değer yeterli;
+   * retry batch'lerinde null kalabilir (retry metadata.referenceId taşımaz).
+   */
+  referenceId: string | null;
+  /**
    * Pass 86 — Retry lineage (varsa).
    * Bu batch bir önceki batch'in retry'ı ise:
    *   - retryOfBatchId: kaynak batchId
@@ -188,6 +195,9 @@ export async function getBatchSummary(
   let templateId: string | null = null;
   let promptTemplate: string | null = null;
   let retryOfBatchId: string | null = null;
+  // Batch-first Phase 2 — reference lineage. Aynı batch'in tüm job'larında
+  // aynı; ilk geçerli değer yakalanır.
+  let referenceId: string | null = null;
   const rows: BatchJobRow[] = [];
 
   for (const j of jobs) {
@@ -205,6 +215,10 @@ export async function getBatchSummary(
     // Pass 86 — Retry lineage (Job.metadata.retryOfBatchId)
     if (typeof md["retryOfBatchId"] === "string" && !retryOfBatchId) {
       retryOfBatchId = md["retryOfBatchId"] as string;
+    }
+    // Batch-first Phase 2 — reference lineage (Job.metadata.referenceId).
+    if (typeof md["referenceId"] === "string" && !referenceId) {
+      referenceId = md["referenceId"] as string;
     }
     const state = j.midjourneyJob?.state ?? null;
     counts[bucketState(state)] += 1;
@@ -246,6 +260,7 @@ export async function getBatchSummary(
     batchTotal,
     templateId,
     promptTemplate,
+    referenceId,
     retryOfBatchId,
     counts,
     reviewCounts,
@@ -263,31 +278,76 @@ export type RecentBatchSummary = {
   /** R11.14 — Representative MidjourneyAsset.assetId (visual context için
    *  Batches index'te thumbnail). Yoksa null (henüz tamamlanmış asset yok). */
   representativeAssetId: string | null;
+  /**
+   * Batch-first Phase 2 — reference lineage. Job.metadata.referenceId
+   * üzerinden batch'i üreten kaynak reference. Aynı batch'in tüm job'larında
+   * aynı (variation creation single-reference, ai-generation.service:179).
+   * null → metadata yazılmamış (legacy) veya retry batch (reference taşımaz).
+   */
+  referenceId: string | null;
+  /**
+   * Batch-first Phase 2 — review decision breakdown for Batches index.
+   * BatchSummary.reviewCounts ile aynı şekil; "şu batch için ne kadar
+   * iş kaldı?" sorusunu Batches grid'inden cevap vermek için.
+   * total = kept + rejected + undecided. Henüz asset yoksa hepsi 0.
+   */
+  reviewCounts: BatchSummary["reviewCounts"];
 };
 
 /**
  * Son batch'leri özet listesi (max N). Aggregation Job.metadata'dan.
  * User-scoped.
+ *
+ * Batch-first Phase 2 — opsiyonel `referenceId` filter:
+ *   - Job.metadata.referenceId üzerinden Prisma JSON path query.
+ *   - ai-generation.service:179'da yazılan field; schema-zero.
+ *   - null/undefined → tüm batch'ler (default behavior korunur).
  */
 export async function listRecentBatches(
   userId: string,
   limit = 30,
+  options?: { referenceId?: string },
 ): Promise<RecentBatchSummary[]> {
   // Tüm MJ_BRIDGE jobları al (batchId metadata'sı olanlar)
   // Pass 84 V1: Prisma JSON path "isSet" filter desteklemiyor; tüm jobs
   // alınıp client-side group yapılır. Bu kullanıcı bazlı küçük cardinality
   // (admin başına bir-kaç bin job). Pass 85+ büyük scale için indexed
   // batchId field'ı ayrı tabloya çıkarılabilir.
+  //
+  // Batch-first Phase 2 — opsiyonel referenceId filter:
+  //   Job.metadata.referenceId üzerinden Prisma JSON path equals query.
+  //   ai-generation.service:179'da yazıldığı için tüm yeni AI variation
+  //   batch'lerinde mevcut; legacy/retry batch'lerinde null kalır.
+  const referenceIdFilter = options?.referenceId;
   const jobs = await db.job.findMany({
     where: {
       type: JobType.MIDJOURNEY_BRIDGE,
       userId,
+      ...(referenceIdFilter
+        ? {
+            metadata: {
+              path: ["referenceId"],
+              equals: referenceIdFilter,
+            },
+          }
+        : {}),
     },
     select: {
       id: true,
       metadata: true,
       createdAt: true,
-      midjourneyJob: { select: { state: true } },
+      midjourneyJob: {
+        select: {
+          state: true,
+          generatedAssets: {
+            // Batch-first Phase 2 — review decision aggregation for
+            // Batches index reviewCounts (operator gating signal).
+            // Same shape as getBatchSummary; asset list per MJ job
+            // is small (4-8) so additive load is bounded.
+            select: { reviewDecision: true },
+          },
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
     take: 2000, // limit DB load (Pass 85+ index'lenebilir)
@@ -302,7 +362,9 @@ export async function listRecentBatches(
       batchTotal: number;
       templateId: string | null;
       promptTemplate: string | null;
+      referenceId: string | null;
       counts: BatchSummary["counts"];
+      reviewCounts: BatchSummary["reviewCounts"];
     }
   >();
 
@@ -325,6 +387,10 @@ export async function listRecentBatches(
           typeof md["batchPromptTemplate"] === "string"
             ? (md["batchPromptTemplate"] as string)
             : null,
+        referenceId:
+          typeof md["referenceId"] === "string"
+            ? (md["referenceId"] as string)
+            : null,
         counts: {
           total: 0,
           queued: 0,
@@ -335,14 +401,32 @@ export async function listRecentBatches(
           awaiting: 0,
           other: 0,
         },
+        reviewCounts: {
+          total: 0,
+          kept: 0,
+          rejected: 0,
+          undecided: 0,
+        },
       };
       byBatch.set(batchId, entry);
     }
     // En eski createdAt batch oluşturma anı
     if (j.createdAt < entry.createdAt) entry.createdAt = j.createdAt;
+    // Batch-first Phase 2 — referenceId fallback (ilk job henüz yazmamış
+    // olabilir; sonraki job'da var ise yakala).
+    if (!entry.referenceId && typeof md["referenceId"] === "string") {
+      entry.referenceId = md["referenceId"] as string;
+    }
     entry.counts.total += 1;
     const state = j.midjourneyJob?.state ?? null;
     entry.counts[bucketState(state)] += 1;
+    // Batch-first Phase 2 — aggregate review decisions for all assets.
+    for (const a of j.midjourneyJob?.generatedAssets ?? []) {
+      entry.reviewCounts.total += 1;
+      if (a.reviewDecision === "KEPT") entry.reviewCounts.kept += 1;
+      else if (a.reviewDecision === "REJECTED") entry.reviewCounts.rejected += 1;
+      else entry.reviewCounts.undecided += 1;
+    }
   }
 
   const summaries = Array.from(byBatch.values())
@@ -390,6 +474,8 @@ export async function listRecentBatches(
       : null,
     counts: b.counts,
     representativeAssetId: representatives.get(b.batchId) ?? null,
+    referenceId: b.referenceId,
+    reviewCounts: b.reviewCounts,
   }));
 }
 
