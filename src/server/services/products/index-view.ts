@@ -33,6 +33,15 @@ export type ProductIndexRow = {
   thumbsComposite: string[];
   filesCount: number;
   health: number | null;
+  /**
+   * Phase 16 — B4 canonical product type column. Resolved from
+   * Listing.productTypeId → ProductType.displayName. Operatöre dijital
+   * indirilebilir ürün hattındaki kategori bağlamı (Wall art / Clipart /
+   * Bookmark / Sticker / Printable). Null = type atanmamış (legacy
+   * draft veya manual create).
+   */
+  productTypeKey: string | null;
+  productTypeLabel: string | null;
 };
 
 export async function listProductsForIndex(input: {
@@ -70,6 +79,10 @@ export async function listProductsForIndex(input: {
       ...(listingIdFilter ? { id: { in: listingIdFilter } } : {}),
     },
     orderBy: { updatedAt: "desc" },
+    include: {
+      // Phase 16 — B4 Type column: ProductType.displayName + key.
+      productType: { select: { key: true, displayName: true } },
+    },
   });
   if (listings.length === 0) return [];
 
@@ -175,6 +188,8 @@ export async function listProductsForIndex(input: {
       thumbsComposite: thumbs,
       filesCount,
       health,
+      productTypeKey: l.productType?.key ?? null,
+      productTypeLabel: l.productType?.displayName ?? null,
     };
   });
 }

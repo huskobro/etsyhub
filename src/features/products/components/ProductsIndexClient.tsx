@@ -60,6 +60,9 @@ interface ProductRow {
   filesCount: number;
   /** Listing health 0..100. */
   health: number | null;
+  /** Phase 16 — B4 Type column. */
+  productTypeKey: string | null;
+  productTypeLabel: string | null;
 }
 
 const ALL_STAGES: ReadonlyArray<ProductStage | "all"> = [
@@ -106,6 +109,7 @@ export function ProductsIndexClient({
   const [density, setDensity] = useState<Density>("comfortable");
   const stageFilter =
     (params.get("stage") as ProductStage | "all" | null) ?? "all";
+  const typeFilter = params.get("type") ?? "all";
 
   const enriched = rows.map((r) => ({
     ...r,
@@ -117,17 +121,37 @@ export function ProductsIndexClient({
     }),
   }));
 
+  // Phase 16 — Type filter cycle pool. Yalnız mevcut row'ların productTypeKey'lerini
+  // pool'a koy; veride hiç Bookmark yoksa filtre seçeneği de görünmez.
+  const typeKeysInUse = Array.from(
+    new Set(
+      enriched
+        .map((r) => r.productTypeKey)
+        .filter((k): k is string => k !== null),
+    ),
+  ).sort();
+  const typeLabelByKey = new Map<string, string>();
+  for (const r of enriched) {
+    if (r.productTypeKey && r.productTypeLabel) {
+      typeLabelByKey.set(r.productTypeKey, r.productTypeLabel);
+    }
+  }
+  const TYPE_FILTER_POOL: ReadonlyArray<string> = ["all", ...typeKeysInUse];
+
   const filtered = enriched.filter((r) => {
     if (stageFilter !== "all" && r.stage !== stageFilter) return false;
+    if (typeFilter !== "all" && r.productTypeKey !== typeFilter) return false;
     if (keyword.trim().length > 0) {
       const q = keyword.trim().toLowerCase();
       const hay = (r.title ?? "").toLowerCase();
       const idHay = r.id.toLowerCase();
       const draftHay = (r.etsyListingId ?? "").toLowerCase();
+      const typeHay = (r.productTypeLabel ?? "").toLowerCase();
       if (
         !hay.includes(q) &&
         !idHay.includes(q) &&
-        !draftHay.includes(q)
+        !draftHay.includes(q) &&
+        !typeHay.includes(q)
       ) {
         return false;
       }
@@ -145,6 +169,17 @@ export function ProductsIndexClient({
     router.push(qs ? `/products?${qs}` : "/products");
   }
 
+  function cycleType() {
+    if (TYPE_FILTER_POOL.length <= 1) return; // hiç type yoksa filtre boş kalır
+    const idx = TYPE_FILTER_POOL.indexOf(typeFilter);
+    const next = TYPE_FILTER_POOL[(idx + 1) % TYPE_FILTER_POOL.length] ?? "all";
+    const sp = new URLSearchParams(params.toString());
+    if (next === "all") sp.delete("type");
+    else sp.set("type", next);
+    const qs = sp.toString();
+    router.push(qs ? `/products?${qs}` : "/products");
+  }
+
   function applyKeyword(e: React.FormEvent) {
     e.preventDefault();
     const sp = new URLSearchParams(params.toString());
@@ -155,11 +190,19 @@ export function ProductsIndexClient({
     router.push(qs ? `/products?${qs}` : "/products");
   }
 
-  const sentCount = enriched.filter((r) => r.stage === "Sent").length;
+  // Phase 16 — B4 canonical subtitle: "{N} PRODUCTS · {M} SENT THIS WEEK".
+  // "This week" = updatedAt within last 7 days AND stage=Sent. Operatör
+  // toplam Etsy gönderim yerine **bu haftaki ritmi** görür (B4 spec).
+  const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const sentThisWeekCount = enriched.filter(
+    (r) =>
+      r.stage === "Sent" && new Date(r.updatedAt).getTime() >= weekAgoMs,
+  ).length;
 
+  const productsWord = rows.length === 1 ? "PRODUCT" : "PRODUCTS";
   const subtitleText = fromSelectionId
-    ? `${rows.length} PRODUCTS · ${sentCount} SENT TO ETSY · FILTERED BY SELECTION ${fromSelectionId.slice(0, 8)}`
-    : `${rows.length} PRODUCTS · ${sentCount} SENT TO ETSY`;
+    ? `${rows.length} ${productsWord} · ${sentThisWeekCount} SENT THIS WEEK · FILTERED BY SELECTION ${fromSelectionId.slice(0, 8)}`
+    : `${rows.length} ${productsWord} · ${sentThisWeekCount} SENT THIS WEEK`;
 
   return (
     <div className="-m-6 flex h-screen flex-col" data-testid="products-page">
@@ -195,14 +238,25 @@ export function ProductsIndexClient({
             type="search"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="Search products by title, id, draft id…"
+            placeholder="Search products by name, type, draft id…"
             className="h-8 w-full rounded-md border border-line bg-paper pl-9 pr-3 text-sm text-ink placeholder:text-ink-3 focus:border-k-orange focus:outline-none focus:ring-2 focus:ring-k-orange-soft"
             data-testid="products-search-input"
           />
         </form>
-        <FilterChip active={stageFilter !== "all"} caret onClick={cycleStage}>
-          {stageFilter === "all" ? "Status" : stageFilter}
-        </FilterChip>
+        <span data-testid="products-filter-stage">
+          <FilterChip active={stageFilter !== "all"} caret onClick={cycleStage}>
+            {stageFilter === "all" ? "Status" : stageFilter}
+          </FilterChip>
+        </span>
+        {typeKeysInUse.length > 0 ? (
+          <span data-testid="products-filter-type">
+            <FilterChip active={typeFilter !== "all"} caret onClick={cycleType}>
+              {typeFilter === "all"
+                ? "Type"
+                : (typeLabelByKey.get(typeFilter) ?? typeFilter)}
+            </FilterChip>
+          </span>
+        ) : null}
         <div className="ml-auto flex items-center gap-3">
           <span className="font-mono text-xs uppercase tracking-meta text-ink-3">
             {filtered.length} of {rows.length}
@@ -240,6 +294,7 @@ export function ProductsIndexClient({
                 <tr>
                   <ProductTH className="w-20" />
                   <ProductTH>Product</ProductTH>
+                  <ProductTH className="w-28">Type</ProductTH>
                   <ProductTH className="w-20">Files</ProductTH>
                   <ProductTH className="w-32">Listing health</ProductTH>
                   <ProductTH className="w-44">Status</ProductTH>
@@ -290,6 +345,15 @@ export function ProductsIndexClient({
                       <div className="mt-0.5 font-mono text-xs text-ink-3">
                         prod_{r.id.slice(0, 12)}
                       </div>
+                    </ProductTD>
+                    <ProductTD className={density === "dense" ? "py-2" : "py-3"}>
+                      {r.productTypeLabel ? (
+                        <Badge tone="neutral" data-testid="products-row-type">
+                          {r.productTypeLabel}
+                        </Badge>
+                      ) : (
+                        <span className="font-mono text-xs text-ink-3">—</span>
+                      )}
                     </ProductTD>
                     <ProductTD className={density === "dense" ? "py-2" : "py-3"}>
                       <span className="font-mono text-[12.5px] tabular-nums tracking-wider text-ink">

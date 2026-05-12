@@ -4175,6 +4175,152 @@ Quality gates:
 
 ---
 
+## FF. Products Index — B4 Canonical Hizası (Phase 16 — 2026-05-12)
+
+Phase 16, `/products` index yüzeyini Kivasy DS v5 B4 canonical
+çizgisine hizalayan **küçük ama kritik düzeltmeler** turuydu. Yeni
+ürün modeli, yeni feature alanı veya schema migration AÇILMADI;
+mevcut Listing model'i üzerine B4 spec'in eksik bilgi mimarisi
+parçaları eklendi.
+
+### `/products` rolü ürün omurgasında
+
+```
+Reference → Batch → Review → Selection → Product
+                                            │
+                                            ▼
+                                       /products
+                                       (B4 index)
+                                            │
+                                            ▼
+                                       /products/[id]
+                                       (A5 detail)
+```
+
+- **Surface tipi**: tarayıcı liste yüzeyi (dense/comfortable density,
+  search, filter chips, sortable header pattern).
+- **Operatör sorusu**: "Hangi product hangi stage'de? Ne hazır, ne
+  eksik, ne gönderilmiş?"
+- **Detail entry**: row click → `/products/[id]`; title link explicit;
+  hover chevron.
+- **External link entry**: Etsy chip → Etsy admin listing editor.
+- **Cross-link entry**: `?fromSelection=setId` query param subtitle
+  filter banner.
+
+### Audit bulguları (pre-Phase 16)
+
+`/products` aslında **fairly mature** idi:
+- ProductIndexRow type + signed thumb URL pipeline + health scoring
+  zaten kurulu.
+- 7 column table (thumb / product / files / health / status / updated /
+  chevron).
+- Search + Status chip cycle + density toggle + "of N" row counter.
+- Empty/loading/error states.
+- EN parity (Phase 15 carry).
+
+**Eksik olan B4 canonical alignment'lar:**
+1. **Type column yok** — Listing.productTypeId mevcut ama UI'da hiç
+   görünmüyor; operatör ürün tipini ancak title'dan tahmin ediyor.
+2. **Type filter chip yok** — B4 Status/Type/Date chip üçlüsünden
+   sadece Status var.
+3. **Subtitle phrasing drift** — B4: "{N} PRODUCTS · {M} SENT THIS
+   WEEK" (kadans sinyali); current: "{N} PRODUCTS · {M} SENT TO ETSY"
+   (kümülatif, daha az aksiyon yönlendirici).
+4. **Search scope drift** — B4 "name, type, draft id"; current "title,
+   id, draft id" (type aranamıyor).
+5. **Pluralization yoktu** — "1 PRODUCTS" durumu.
+
+### Phase 16 düzeltmeleri
+
+**Server (index-view.ts)**:
+- `ProductIndexRow` type'a `productTypeKey` + `productTypeLabel`
+  alanları eklendi (Listing → ProductType.displayName join).
+- `findMany` query `productType` ilişkisini include eder
+  (`{ key, displayName }` select).
+- Yeni model/migration yok; mevcut Listing.productTypeId field'ı
+  zaten vardı, sadece UI'a kadar yüzeye çıkarıldı.
+
+**Client (ProductsIndexClient.tsx)**:
+- **Type column** (w-28, neutral badge with `productType.displayName`)
+  Title ile Files arasına eklendi. Null type → "—" muted dash.
+- **Type filter chip** (Status chip'in sağında) — caret cycle pattern.
+  Pool data'dan dinamik (`typeKeysInUse = unique productTypeKeys`).
+  Hiç type yoksa chip render edilmez (boş chip operatörü yanıltmaz).
+- **`?type=<key>` URL param** ile filter persist; same pattern as
+  `?stage=...`.
+- **Subtitle**: "{N} PRODUCTS · {M} SENT THIS WEEK" — week = last 7
+  days (now - 7×24×60×60×1000 ms) AND stage=Sent. Pluralize
+  `PRODUCT`/`PRODUCTS`.
+- **Search placeholder** B4 spec'e hizalandı:
+  "Search products by name, type, draft id…"
+- **Search predicate** type label'ı haystack'e ekledi (operatör
+  productType adı yazarak filtreleyebilir).
+
+**Test surfaces**: `data-testid="products-filter-stage"`,
+`data-testid="products-filter-type"`, `data-testid="products-row-type"`
+geleceği için stable selectors.
+
+### Operatör için ne değişti
+
+Önce:
+- "Hangi ürün hangi tip?" → Title okumadan bilinmiyordu (e.g.,
+  "Modern Abstract Wall Art Print Set Boho" ≠ certain product type).
+- Bütün ürün tipleri arasında filtreleme yok → büyük catalog'lar
+  zorlaşıyor.
+- Subtitle "{N} SENT TO ETSY" → ne kadar aktif gönderim ritmi var
+  bilinmiyor.
+
+Sonra:
+- Her satırda Type badge — operatör Sticker/Printable/Wall Art/etc.
+  ürün ailesini görsel olarak tarar.
+- Type chip — tek ailenin işlerine odaklan ("yalnız Sticker'larım").
+- "SENT THIS WEEK" — operasyonel kadans sinyali; haftalık ritim
+  görünür.
+- "1 PRODUCT" vs "3 PRODUCTS" — count semantics dürüstçe pluralize.
+
+### B4 canonical hizası — completed vs deferred
+
+**Tamamlandı (Phase 16)**:
+- Type column (w-28 neutral badge) ✓
+- Type filter chip (caret cycle) ✓
+- Subtitle "SENT THIS WEEK" + pluralize ✓
+- Search placeholder + scope ✓
+- Row counter "{N} of M" (zaten vardı) ✓
+- 8-column table layout (thumb/product/type/files/health/status/
+  updated/chevron) ✓
+- Stage badge dot ✓
+- Etsy chip (warm bg + deep-link) ✓
+- Health bar + threshold colors ✓
+- Retry button (Failed stage) ✓
+- Hover chevron ✓
+- Density toggle ✓
+- 4-up thumb composite ✓
+
+**Bilinçli deferred (B4 spec'te var, bu turda yapılmadı)**:
+- **Date filter chip** — B4'ün üçüncü chip'i (Status/Type/**Date**).
+  Date filter pool için bir URL state + relative time predicate
+  gerekli. Bu turda scope dışı; operatör updated time'ı görsel olarak
+  tarayarak halletmiyor değil (4 rows için).
+- **"Saved views" secondary button** — B4 header'da Status/Type/Date
+  kombinasyonlarını kaydetmek için secondary CTA. Bu storage layer
+  açılmasını gerektirir; küçük cleanup değil.
+- **Failure message line below status badge** — B4 spec'te Failed
+  state için badge altında "Etsy API timeout · 3 retries" tarzı kısa
+  açıklama. Current sadece Retry button gösteriyor. Listing.
+  failedReason field'ı mevcut; sonraki tur bunu badge altına
+  taşıyabilir.
+
+### EN parity (Phase 15 carry)
+
+- `/products` DOM scan: **0 TR strings** (operatör-görünür UI).
+- "just now / Nm ago / Nh ago / Nd ago" relative time formatter EN.
+- Subtitle, search placeholder, header CTA tooltip, empty state copy,
+  filter chip labels, badge tone labels (Draft / Mockup ready / Sent /
+  Failed / Etsy-bound) tümü EN.
+- Phase 15 sözleşmesi korundu.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
