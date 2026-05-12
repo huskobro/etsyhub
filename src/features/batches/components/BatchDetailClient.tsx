@@ -28,7 +28,10 @@ import {
   batchStatusTone,
 } from "@/features/batches/state-helpers";
 import { useCreateSelectionFromBatch } from "@/features/batches/mutations/use-create-selection-from-batch";
-import type { BatchSummary } from "@/server/services/midjourney/batches";
+import type {
+  BatchSummary,
+  BatchPipeline,
+} from "@/server/services/midjourney/batches";
 
 /**
  * BatchDetailClient — Kivasy A3 Batch detail.
@@ -325,14 +328,7 @@ export function BatchDetailClient({
         {tab === "overview" ? <OverviewTab summary={summary} /> : null}
         {tab === "items" ? <ItemsTab summary={summary} /> : null}
         {tab === "parameters" ? <ParametersTab summary={summary} /> : null}
-        {tab === "logs" ? (
-          // Phase 9 — operator-friendly placeholder dili. Teknik jargon
-          // ("unified job-stream feed") yerine doğrudan ne göstereceği.
-          <EmptyTabPlaceholder
-            title="Logs"
-            blurb="Job-by-job progress log + bridge errors. Coming soon — batch streaming infrastructure in progress."
-          />
-        ) : null}
+        {tab === "logs" ? <LogsTab summary={summary} /> : null}
         {tab === "costs" ? (
           <EmptyTabPlaceholder
             title="Costs"
@@ -1062,6 +1058,254 @@ function ItemTD({
   className?: string;
 }) {
   return <td className={cn("px-3 py-3 align-top", className)}>{children}</td>;
+}
+
+/**
+ * Batch-first Phase 11 — Logs tab.
+ *
+ * Operatöre "bu batch'te ne oldu?" sorusunun **chronological** cevabını
+ * verir. Yeni schema field veya event tablosu DEĞİL — mevcut Job +
+ * MidjourneyJob timestamp'lerinden lifecycle event'leri derler:
+ *
+ *   - Job-level (her iki pipeline):
+ *     - queued (createdAt)
+ *     - started (startedAt, varsa)
+ *     - finished (finishedAt + jobStatus + jobError)
+ *   - MidjourneyJob-level (sadece MJ pipeline):
+ *     - submitted (mjSubmittedAt — bridge'e gönderildi)
+ *     - rendered (mjRenderedAt — MJ render tamamlandı)
+ *     - completed (mjCompletedAt — asset import edildi)
+ *     - failed (mjFailedAt + failedReason + blockReason)
+ *
+ * UI: job satırları — her job için kompakt timeline strip. Mono
+ * timestamp + status badge + (varsa) error caption. Operatör bir
+ * bakışta state akışını görür; debug dump değil, ürün yüzeyi.
+ */
+function LogsTab({ summary }: { summary: BatchSummary }) {
+  if (summary.jobs.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-line bg-paper px-6 py-10 text-center text-sm text-ink-3">
+        Bu batch&apos;te henüz job kaydı yok.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3" data-testid="batch-logs">
+      <div className="font-mono text-xs uppercase tracking-meta text-ink-3">
+        Job lifecycle · {summary.jobs.length} item
+      </div>
+      <div className="space-y-2">
+        {summary.jobs.map((j) => (
+          <LogJobRow
+            key={j.jobId}
+            job={j}
+            pipeline={summary.pipeline}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type LifecycleEvent = {
+  kind:
+    | "queued"
+    | "started"
+    | "submitted"
+    | "rendered"
+    | "completed"
+    | "succeeded"
+    | "failed"
+    | "cancelled"
+    | "blocked";
+  at: Date;
+  detail?: string;
+};
+
+function buildLifecycleEvents(
+  job: BatchSummary["jobs"][number],
+  pipeline: BatchPipeline,
+): LifecycleEvent[] {
+  const events: LifecycleEvent[] = [];
+  // Queued — her zaman var (Job.createdAt).
+  events.push({ kind: "queued", at: job.createdAt });
+  // Started — Job.startedAt varsa (RUNNING'e geçildi).
+  if (job.startedAt) {
+    events.push({ kind: "started", at: job.startedAt });
+  }
+  // MJ-only intermediate lifecycle (bridge ↔ MJ web events).
+  if (pipeline === "midjourney") {
+    if (job.mjSubmittedAt) {
+      events.push({ kind: "submitted", at: job.mjSubmittedAt });
+    }
+    if (job.mjRenderedAt) {
+      events.push({ kind: "rendered", at: job.mjRenderedAt });
+    }
+    if (job.mjCompletedAt) {
+      events.push({ kind: "completed", at: job.mjCompletedAt });
+    }
+    if (job.mjFailedAt) {
+      events.push({
+        kind: "failed",
+        at: job.mjFailedAt,
+        detail: job.failedReason ?? job.blockReason ?? undefined,
+      });
+    }
+  }
+  // Job-level terminal — finishedAt + jobStatus eşleştir.
+  if (job.finishedAt) {
+    if (job.jobStatus === "SUCCESS") {
+      events.push({ kind: "succeeded", at: job.finishedAt });
+    } else if (job.jobStatus === "FAILED") {
+      events.push({
+        kind: "failed",
+        at: job.finishedAt,
+        detail: job.jobError ?? undefined,
+      });
+    } else if (job.jobStatus === "CANCELLED") {
+      events.push({ kind: "cancelled", at: job.finishedAt });
+    }
+  }
+  // Block reason var ama mjFailedAt yoksa (ör. challenge-required hala
+  // pending state'inde) — info olarak göster (state.updatedAt'i kullan).
+  if (job.blockReason && !job.mjFailedAt && job.updatedAt) {
+    events.push({
+      kind: "blocked",
+      at: job.updatedAt,
+      detail: job.blockReason,
+    });
+  }
+  // Kronolojik sırala.
+  events.sort((a, b) => a.at.getTime() - b.at.getTime());
+  return events;
+}
+
+function LogJobRow({
+  job,
+  pipeline,
+}: {
+  job: BatchSummary["jobs"][number];
+  pipeline: BatchPipeline;
+}) {
+  const events = buildLifecycleEvents(job, pipeline);
+  const hasError = job.jobStatus === "FAILED" || job.blockReason !== null;
+  return (
+    <div
+      className={cn(
+        "rounded-md border border-line bg-paper p-3",
+        hasError && "border-danger/40",
+      )}
+      data-testid="batch-logs-job"
+      data-job-id={job.jobId}
+      data-status={job.jobStatus ?? "unknown"}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+            #{job.batchIndex}
+          </span>
+          <Badge tone={jobStatusTone(job.jobStatus)} dot>
+            {jobStatusLabel(job.jobStatus)}
+          </Badge>
+          {job.retryCount > 0 ? (
+            <span
+              className="inline-flex items-center gap-1 rounded border border-warning bg-warning-soft px-1.5 py-0.5 font-mono text-[10.5px] text-warning"
+              title={`Retried ${job.retryCount}x`}
+            >
+              <RotateCw className="h-2.5 w-2.5" aria-hidden />
+              {job.retryCount}
+            </span>
+          ) : null}
+        </div>
+        <code className="font-mono text-[10.5px] tabular-nums text-ink-3">
+          job_{job.jobId.slice(0, 8)}
+        </code>
+      </div>
+      {events.length > 0 ? (
+        <ul
+          className="mt-2 space-y-1 border-l border-line-soft pl-3"
+          data-testid="batch-logs-events"
+        >
+          {events.map((e, i) => (
+            <li
+              key={`${e.kind}-${i}`}
+              className="flex items-start gap-2 font-mono text-[11px]"
+              data-event-kind={e.kind}
+            >
+              <span
+                className={cn(
+                  "min-w-[5.5rem] uppercase tracking-meta",
+                  eventKindClass(e.kind),
+                )}
+              >
+                {e.kind}
+              </span>
+              <span className="tabular-nums text-ink-3">
+                {formatEventTime(e.at)}
+              </span>
+              {e.detail ? (
+                <span
+                  className="ml-1 flex-1 truncate text-ink-2"
+                  title={e.detail}
+                >
+                  · {e.detail}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {job.jobError && job.jobStatus === "FAILED" ? (
+        <div
+          className="mt-2 rounded border border-danger/30 bg-danger-soft/40 px-2 py-1 font-mono text-[11px] text-danger"
+          data-testid="batch-logs-error"
+        >
+          {job.jobError}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function jobStatusLabel(status: string | null): string {
+  if (!status) return "—";
+  return status.charAt(0) + status.slice(1).toLowerCase();
+}
+
+function jobStatusTone(
+  status: string | null,
+): "success" | "danger" | "warning" | "neutral" | undefined {
+  if (!status) return "neutral";
+  if (status === "SUCCESS") return "success";
+  if (status === "FAILED") return "danger";
+  if (status === "RUNNING") return "warning";
+  if (status === "CANCELLED") return "neutral";
+  return "neutral";
+}
+
+function eventKindClass(kind: LifecycleEvent["kind"]): string {
+  switch (kind) {
+    case "succeeded":
+    case "completed":
+    case "rendered":
+      return "text-success";
+    case "failed":
+    case "blocked":
+      return "text-danger";
+    case "cancelled":
+      return "text-ink-3";
+    case "started":
+    case "submitted":
+      return "text-warning";
+    case "queued":
+    default:
+      return "text-ink-3";
+  }
+}
+
+function formatEventTime(d: Date): string {
+  // YYYY-MM-DD HH:MM:SS (UTC). Mono caption tabular-nums.
+  return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
 function EmptyTabPlaceholder({

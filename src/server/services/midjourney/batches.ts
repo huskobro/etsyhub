@@ -48,6 +48,33 @@ export type BatchJobRow = {
   failedReason: string | null;
   createdAt: Date;
   finishedAt: Date | null;
+  /**
+   * Batch-first Phase 11 — Logs tab lifecycle event'leri için ek
+   * timestamps. Yeni schema field DEĞİL; mevcut Job + MidjourneyJob
+   * sütunlarını yüzeye çıkarır:
+   *
+   *   - Job pipeline (her iki tip):
+   *     - createdAt (queued at)
+   *     - startedAt (running started)
+   *     - finishedAt (succeeded/failed/cancelled)
+   *     - updatedAt (latest mutation)
+   *     - jobStatus (QUEUED/RUNNING/SUCCESS/FAILED/CANCELLED)
+   *     - jobError (string, varsa)
+   *     - retryCount
+   *   - MidjourneyJob (sadece MJ pipeline):
+   *     - submittedAt, renderedAt, completedAt, failedAt
+   *
+   * UI Logs tab bu alanlardan chronological event timeline derler.
+   */
+  jobStatus: string | null;
+  jobError: string | null;
+  retryCount: number;
+  startedAt: Date | null;
+  updatedAt: Date | null;
+  mjSubmittedAt: Date | null;
+  mjRenderedAt: Date | null;
+  mjCompletedAt: Date | null;
+  mjFailedAt: Date | null;
 };
 
 /**
@@ -207,8 +234,13 @@ export async function getBatchSummary(
     select: {
       id: true,
       metadata: true,
-      createdAt: true,
+      status: true,
+      error: true,
+      retryCount: true,
+      startedAt: true,
       finishedAt: true,
+      createdAt: true,
+      updatedAt: true,
       midjourneyJob: {
         select: {
           id: true,
@@ -217,6 +249,10 @@ export async function getBatchSummary(
           mjJobId: true,
           blockReason: true,
           failedReason: true,
+          submittedAt: true,
+          renderedAt: true,
+          completedAt: true,
+          failedAt: true,
           generatedAssets: {
             // IA Phase 11 — review decision needed for BatchSummary
             // reviewCounts (operator visibility before entering the
@@ -327,6 +363,16 @@ export async function getBatchSummary(
       failedReason: j.midjourneyJob?.failedReason ?? null,
       createdAt: j.createdAt,
       finishedAt: j.finishedAt,
+      // Phase 11 — Logs tab lifecycle event source.
+      jobStatus: j.status,
+      jobError: j.error,
+      retryCount: j.retryCount ?? 0,
+      startedAt: j.startedAt,
+      updatedAt: j.updatedAt,
+      mjSubmittedAt: j.midjourneyJob?.submittedAt ?? null,
+      mjRenderedAt: j.midjourneyJob?.renderedAt ?? null,
+      mjCompletedAt: j.midjourneyJob?.completedAt ?? null,
+      mjFailedAt: j.midjourneyJob?.failedAt ?? null,
     });
   }
 
@@ -395,6 +441,10 @@ async function getAiVariationBatchSummary(
       createdAt: true,
       finishedAt: true,
       error: true,
+      // Phase 11 — Logs tab lifecycle event source (AI pipeline)
+      startedAt: true,
+      updatedAt: true,
+      retryCount: true,
     },
     orderBy: { createdAt: "asc" },
   });
@@ -549,6 +599,17 @@ async function getAiVariationBatchSummary(
       failedReason: j.error ?? null,
       createdAt: j.createdAt,
       finishedAt: j.finishedAt,
+      // Phase 11 — Logs tab lifecycle event source (AI pipeline).
+      // MJ-specific timestamps null (AI'da bridge yok).
+      jobStatus: j.status,
+      jobError: j.error,
+      retryCount: j.retryCount ?? 0,
+      startedAt: j.startedAt,
+      updatedAt: j.updatedAt,
+      mjSubmittedAt: null,
+      mjRenderedAt: null,
+      mjCompletedAt: null,
+      mjFailedAt: null,
     });
   }
 

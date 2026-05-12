@@ -3507,6 +3507,152 @@ worktree'sinde commit edildi.
 - **Kivasy DS dışına çıkılmadı.** Sadece UI metni İngilizce
   standardına çekildi.
 
+### Batch-first Phase 11 (2026-05-12 — Logs tab lifecycle timeline)
+
+Phase 11 yalnız **Logs tab**'ını gerçek surface'e dönüştürdü. Yeni
+feature veya schema field yok; mevcut `Job` + `MidjourneyJob`
+timestamp'lerinden chronological event timeline derliyor.
+
+#### Veri kaynakları (schema-zero)
+
+Phase 11 **hiç yeni schema field eklemedi**. UI Logs tab şu mevcut
+DB alanlarından besleniyor:
+
+**Job (her iki pipeline):**
+- `status` (QUEUED / RUNNING / SUCCESS / FAILED / CANCELLED)
+- `error` (string)
+- `retryCount`
+- `createdAt` → "queued" event
+- `startedAt` → "started" event
+- `finishedAt` → "succeeded" / "failed" / "cancelled" event
+- `updatedAt` → blocked state fallback timestamp
+
+**MidjourneyJob (sadece MJ pipeline):**
+- `submittedAt` → "submitted" event (bridge'e gönderildi)
+- `renderedAt` → "rendered" event (MJ render tamamlandı)
+- `completedAt` → "completed" event (asset import edildi)
+- `failedAt` → "failed" event + `failedReason` / `blockReason`
+  detail
+
+**BatchJobRow** Phase 11'de bu alanlarla zenginleştirildi
+(`jobStatus`, `jobError`, `retryCount`, `startedAt`, `updatedAt`,
+`mjSubmittedAt`, `mjRenderedAt`, `mjCompletedAt`, `mjFailedAt`).
+
+#### Lifecycle event derivation
+
+UI-side `buildLifecycleEvents(job, pipeline)` her job için kronolojik
+event listesi derler:
+
+```
+queued (Job.createdAt)
+  ↓
+started (Job.startedAt, varsa)
+  ↓
+[MJ pipeline only]
+submitted (mjSubmittedAt)
+  ↓
+rendered (mjRenderedAt)
+  ↓
+completed (mjCompletedAt)
+  ↓
+[MJ failed yolu]
+failed (mjFailedAt + failedReason)
+  ↓
+[Job terminal — finishedAt + jobStatus]
+succeeded / failed (Job.error) / cancelled
+  ↓
+[fail-safe — block reason var ama mjFailedAt yok]
+blocked (Job.updatedAt + blockReason)
+```
+
+Events `at` timestamp'iyle ascending sıralanır.
+
+#### UI: `LogsTab` component
+
+`BatchDetailClient.tsx` içinde `LogsTab` + `LogJobRow` + helper
+functions (`buildLifecycleEvents`, `jobStatusTone`, `jobStatusLabel`,
+`eventKindClass`, `formatEventTime`).
+
+Layout: Her job için **kompakt card** — header (job index +
+status badge + retry chip + truncated jobId) + lifecycle timeline
+(border-l-line-soft list, her event kind'a göre renkli mono caption +
+ISO timestamp + opsiyonel detail). Job failed ise error mesajı ayrı
+`bg-danger-soft` block'unda gösterilir (timeline'a karışmaz).
+
+Görsel hiyerarşi:
+- **Job-card border**: failed/blocked olunca `border-danger/40`
+- **Status badge**: `success` / `danger` / `warning` / `neutral`
+  tone'lu (Phase 7 jobStatusTone helper)
+- **Event kind**: kendine özel renk (success/danger/warning/neutral) +
+  mono caption + min-width 5.5rem (kolon hizası)
+- **Retry chip**: `retryCount > 0` ise warning chip + counter
+- **Timestamp**: ISO format (`YYYY-MM-DD HH:MM:SS`), `tabular-nums`
+  hizalama
+
+`data-testid` attribute'lar (test/automation için):
+- `batch-logs` (tab container)
+- `batch-logs-job` (her job card, `data-job-id` + `data-status`)
+- `batch-logs-events` (timeline list)
+- `batch-logs-error` (job error block, varsa)
+- `data-event-kind` (her event li'de event türü)
+
+#### Kapsam dışı (bilinçli olarak)
+
+Phase 11'de yapılmadı:
+- **Job timeline streaming**: Realtime updates (SSE/polling) — şu an
+  static server-render. Polling Phase 12+ scope.
+- **Event store table**: `JobEvent` veya benzeri ayrı tablo yok —
+  schema-zero korunur.
+- **Cost per event**: Costs tab hala placeholder; Phase 12+ scope.
+- **Worker bridge errors detail**: `MidjourneyJob.failedReason` /
+  `blockReason` truncated görünür; full stack trace yok (audit
+  log'da kalır).
+
+#### Kivasy DS hizası
+
+- `Badge` + `border-line` + `bg-paper` + `bg-danger-soft` + mono
+  caption pattern korundu (canonical A3/A4 style).
+- Empty state dashed border + center text (mevcut `EmptyTabPlaceholder`
+  recipe).
+- Timeline border-l-line-soft (yeni recipe değil; mevcut `border-line-soft`
+  + padding).
+
+#### Doğrulanan kanıtlar
+
+**Single-branch live server (audit-references CWD):**
+- `lsof -p $PID -a -d cwd` → audit-references ✓
+- `./node_modules/.bin/tsc --noEmit` → 0 errors
+- `./node_modules/.bin/vitest run` → 90/90 PASS
+- `./node_modules/.bin/next build` → ✓ Compiled successfully
+- **Build bundle string verification** (browser eval kısıtı nedeniyle):
+  - `batch-logs-job` data-testid build chunk'ta: 1
+  - `batch-logs-events` data-testid build chunk'ta: 1
+  - "Job lifecycle" caption build chunk'ta: 1
+  - Eski Phase 10 placeholder ("Coming soon — batch streaming")
+    bundle'da: **0** (kaldırıldı)
+- HTTP `/batches/[id]` → 200 + Phase 7+9 attribute'ları HTML'de görünür
+
+**Preview tool kısıtı:** Tab click sonrası DOM kanıtı için browser
+tab click gerekli. Phase 10'da kabul edilen kısıt aynı; external
+Bash-managed server üzerinden eval/screenshot yapılamıyor. Kullanıcı
+browser ile manuel tab click yaparak gerçek DOM kanıtı alabilir.
+
+#### Değişmeyenler (Phase 11)
+
+- **Review freeze (Madde Z) korunur.** Phase 11 review modülüne
+  dokunmaz.
+- **Schema migration yok.** Yalnız mevcut Job + MidjourneyJob
+  field'larından projection eklendi (BatchJobRow extension).
+- **Yeni surface açılmadı.** Logs tab mevcut tab pattern'i
+  doldurdu; yeni page/modal yok.
+- **Yeni büyük abstraction yok.** Lifecycle event derivation
+  UI-side static function (`buildLifecycleEvents`); event store /
+  schema değil.
+- **WorkflowRun eklenmez** (IA Phase 11 kapsamı — bizim Phase 11
+  bundan ayrı, naming çakışması yok).
+- **Kivasy DS dışına çıkılmadı.** Badge + bg-paper + mono caption +
+  border-l-line-soft recipe'leri korundu.
+
 ### Epic-agnesi branch notu
 
 `claude/epic-agnesi-7a424b` branch'inde Batch-first Phase 1'in ilk
