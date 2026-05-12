@@ -5,6 +5,11 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useCreateVariations } from "../mutations/use-create-variations";
 import { CostConfirmDialog } from "./cost-confirm-dialog";
+import {
+  PROVIDER_CAPABILITIES,
+  getProviderCapability,
+  resolveDefaultAspectRatio,
+} from "../provider-capabilities";
 
 // Q6 capability görünür: z-image (text-to-image) "Yakında" disabled — sessiz
 // fallback YOK; provider yok ise UI açıkça reddeder.
@@ -14,43 +19,19 @@ import { CostConfirmDialog } from "./cost-confirm-dialog";
 // defaultImageProvider field eklenmişti ama UI'da consume edilmiyordu;
 // burada `initialProviderId` prop'u settings'ten gelir.
 //
+// Batch-first Phase 9 — provider capabilities registry tüketimi.
+// Hardcoded MODELS array kaldırıldı; PROVIDER_CAPABILITIES tek doğruluk
+// kaynağı. Aspect ratio + quality dropdown'ları provider'a göre dinamik.
+//
 // Midjourney pipeline'ı bu form'dan tetiklenmez (MJ bridge ayrı admin
 // flow'u kullanır — `/api/admin/midjourney/variation`); seçili olsa
 // bile "available: false" + helper text operatöre gerçek durumu söyler.
-const MODELS: Array<{
-  id: string;
-  label: string;
-  available: boolean;
-  helperText?: string;
-}> = [
-  {
-    id: "midjourney",
-    label: "Midjourney",
-    available: false,
-    helperText:
-      "Midjourney runs through the operator browser bridge (separate admin flow). Select a Kie provider here to launch from this form.",
-  },
-  {
-    id: "kie-gpt-image-1.5",
-    label: "Kie · GPT Image 1.5 (image-to-image)",
-    available: true,
-  },
-  {
-    id: "kie-z-image",
-    label: "Kie · Z-Image (text-to-image) — coming soon",
-    available: false,
-  },
-];
 
-function findModel(id: string) {
-  return MODELS.find((m) => m.id === id) ?? null;
-}
-
+// CreateVariationsBody schema'sı "1:1" | "2:3" | "3:2" kabul ediyor;
+// Z-Image (4:3, 16:9, ...) form'dan tetiklenmediği için (available:
+// false) bu kısıt korunur. AspectRatio type'ı API contract'la senkron.
 type AspectRatio = "1:1" | "2:3" | "3:2";
 type Quality = "medium" | "high";
-
-const ASPECT_OPTIONS: AspectRatio[] = ["1:1", "2:3", "3:2"];
-const QUALITY_OPTIONS: Quality[] = ["medium", "high"];
 
 // R17.4 — count default 3, range 1..6.
 const COUNT_MIN = 1;
@@ -84,19 +65,53 @@ export function AiModeForm({
    */
   initialProviderId?: string;
 }) {
-  // Default resolve: settings'ten gelen id MODELS'da var ve available
-  // ise onu kullan; aksi halde ilk available provider'a düş.
+  // Phase 9 — Default resolve: settings'ten gelen id PROVIDER_CAPABILITIES'te
+  // varsa onu kullan; aksi halde ilk available provider'a düş.
   const defaultId = (() => {
     const fromSettings = initialProviderId
-      ? findModel(initialProviderId)
+      ? getProviderCapability(initialProviderId)
       : null;
     if (fromSettings) return initialProviderId!;
-    const firstAvail = MODELS.find((m) => m.available);
+    const firstAvail = PROVIDER_CAPABILITIES.find((p) => p.available);
     return firstAvail?.id ?? "kie-gpt-image-1.5";
   })();
   const [providerId, setProviderId] = useState(defaultId);
-  const [aspectRatio, setAspect] = useState<AspectRatio>("2:3");
-  const [quality, setQuality] = useState<Quality>("medium");
+  // Phase 9 — Aspect ratio + quality state'leri provider'a göre ilkleştirilir
+  // ve provider değişikliğinde validate edilir.
+  const initialCap = getProviderCapability(defaultId);
+  const [aspectRatio, setAspect] = useState<AspectRatio>(
+    (initialCap?.supportedAspectRatios.find(
+      (r): r is AspectRatio => r === "1:1" || r === "2:3" || r === "3:2",
+    ) ??
+      "2:3") as AspectRatio,
+  );
+  const [quality, setQuality] = useState<Quality>(
+    (initialCap?.supportedQualities[0] ?? "medium") as Quality,
+  );
+
+  // Phase 9 — Provider değişikliğinde aspect/quality state'lerini validate
+  // et: yeni provider eski değeri desteklemiyorsa fallback uygula.
+  function handleProviderChange(nextId: string) {
+    setProviderId(nextId);
+    const nextCap = getProviderCapability(nextId);
+    if (!nextCap) return;
+    // Aspect ratio fallback
+    const nextAspect = resolveDefaultAspectRatio(nextId, aspectRatio);
+    if (nextAspect !== aspectRatio) {
+      // Yeni provider tarafından desteklenen ilk "1:1"|"2:3"|"3:2"
+      const valid = nextCap.supportedAspectRatios.find(
+        (r): r is AspectRatio => r === "1:1" || r === "2:3" || r === "3:2",
+      );
+      setAspect((valid ?? "2:3") as AspectRatio);
+    }
+    // Quality fallback — provider quality desteklemiyorsa eski state korunur
+    // (API'ye gönderilirken filtrelenir; UI dropdown'u disabled gösterir).
+    if (nextCap.supportedQualities.length > 0) {
+      if (!nextCap.supportedQualities.includes(quality)) {
+        setQuality(nextCap.supportedQualities[0] as Quality);
+      }
+    }
+  }
   const [brief, setBrief] = useState("");
   const [count, setCount] = useState(COUNT_DEFAULT);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -113,11 +128,15 @@ export function AiModeForm({
 
   async function onConfirm() {
     setPartialNotice(null);
+    // Phase 9 — provider quality desteklemiyorsa payload'a koyma.
+    // CreateVariationsBody.quality optional; server-side type-safe.
+    const cap = getProviderCapability(providerId);
+    const supportsQuality = (cap?.supportedQualities.length ?? 0) > 0;
     const out = await create.mutateAsync({
       referenceId,
       providerId,
       aspectRatio,
-      quality,
+      ...(supportsQuality ? { quality } : {}),
       brief: brief.trim() || undefined,
       count,
     });
@@ -149,29 +168,43 @@ export function AiModeForm({
           Provider
           <select
             value={providerId}
-            onChange={(e) => setProviderId(e.target.value)}
+            onChange={(e) => handleProviderChange(e.target.value)}
             className="h-control-md rounded-md border border-border bg-bg px-3 text-sm text-text"
             data-testid="ai-mode-provider-select"
           >
-            {MODELS.map((m) => (
-              <option key={m.id} value={m.id} disabled={!m.available}>
-                {m.label}
-              </option>
-            ))}
+            {PROVIDER_CAPABILITIES.map((p) => {
+              const capabilityHint =
+                p.capabilities.length === 1
+                  ? p.capabilities[0] === "image-to-image"
+                    ? " (image-to-image)"
+                    : " (text-to-image)"
+                  : "";
+              const suffix = p.available
+                ? capabilityHint
+                : p.id === "kie-z-image"
+                  ? " (text-to-image) — coming soon"
+                  : "";
+              return (
+                <option key={p.id} value={p.id} disabled={!p.available}>
+                  {p.label}
+                  {suffix}
+                </option>
+              );
+            })}
           </select>
-          {/* Phase 8 — provider-aware helper text. Seçili provider
+          {/* Phase 8/9 — provider-aware helper text. Seçili provider
            * available değilse operatöre nedenini söyler (Midjourney
            * separate flow, Z-Image coming soon). */}
           {(() => {
-            const m = findModel(providerId);
-            if (!m) return null;
-            if (m.available) return null;
+            const cap = getProviderCapability(providerId);
+            if (!cap) return null;
+            if (cap.available) return null;
             return (
               <span
                 className="text-xs text-text-muted"
                 data-testid="ai-mode-provider-helper"
               >
-                {m.helperText ??
+                {cap.helperText ??
                   "This provider is not yet available — pick an available provider above."}
               </span>
             );
@@ -183,27 +216,66 @@ export function AiModeForm({
             value={aspectRatio}
             onChange={(e) => setAspect(parseAspectRatio(e.target.value))}
             className="h-control-md rounded-md border border-border bg-bg px-3 text-sm text-text"
+            data-testid="ai-mode-aspect-select"
           >
-            {ASPECT_OPTIONS.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
+            {/* Phase 9 — provider-aware aspect ratio options.
+             * `CreateVariationsBody.aspectRatio` schema sözleşmesi
+             * "1:1" | "2:3" | "3:2" — Z-Image kümesi (4:3, 16:9, ...)
+             * şu an form'dan tetiklenmediği için (available: false)
+             * sözleşme korunur. Provider değişikliğinde
+             * `handleProviderChange` state'i validate eder. */}
+            {(() => {
+              const cap = getProviderCapability(providerId);
+              const allowed = (cap?.supportedAspectRatios ?? []).filter(
+                (r): r is AspectRatio =>
+                  r === "1:1" || r === "2:3" || r === "3:2",
+              );
+              const opts = allowed.length > 0 ? allowed : (["2:3"] as AspectRatio[]);
+              return opts.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ));
+            })()}
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm text-text">
           Kalite
-          <select
-            value={quality}
-            onChange={(e) => setQuality(parseQuality(e.target.value))}
-            className="h-control-md rounded-md border border-border bg-bg px-3 text-sm text-text"
-          >
-            {QUALITY_OPTIONS.map((q) => (
-              <option key={q} value={q}>
-                {q}
-              </option>
-            ))}
-          </select>
+          {/* Phase 9 — provider-aware quality. Provider quality
+           * desteklemiyorsa dropdown disabled + helper text. */}
+          {(() => {
+            const cap = getProviderCapability(providerId);
+            const hasQuality = (cap?.supportedQualities.length ?? 0) > 0;
+            return (
+              <>
+                <select
+                  value={quality}
+                  onChange={(e) => setQuality(parseQuality(e.target.value))}
+                  disabled={!hasQuality}
+                  className="h-control-md rounded-md border border-border bg-bg px-3 text-sm text-text disabled:opacity-60"
+                  data-testid="ai-mode-quality-select"
+                >
+                  {hasQuality
+                    ? cap!.supportedQualities.map((q) => (
+                        <option key={q} value={q}>
+                          {q}
+                        </option>
+                      ))
+                    : (
+                        <option value="medium">— not supported</option>
+                      )}
+                </select>
+                {!hasQuality ? (
+                  <span
+                    className="text-xs text-text-muted"
+                    data-testid="ai-mode-quality-helper"
+                  >
+                    Quality parameter is not supported by this provider.
+                  </span>
+                ) : null}
+              </>
+            );
+          })()}
         </label>
         <label className="flex flex-col gap-1 text-sm text-text">
           Görsel sayısı: <span className="font-medium">{count}</span>

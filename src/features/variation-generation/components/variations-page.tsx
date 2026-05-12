@@ -47,12 +47,23 @@ export function VariationsPage({
       }
       subtitle={
         <span>
-          Generate new variants from this reference. Local: pick from your library · AI: ask the provider for new variants. New visuals land in{" "}
+          {/* Phase 9 — batch language. Operatör submit sonrası nereye
+           * baktığını bilsin: Batches list (run progress) ve Review
+           * (decision gate). */}
+          Generate a new batch from this reference. Local: pick from your
+          library · AI: ask the provider. Track progress in{" "}
+          <a
+            href="/batches"
+            className="text-accent underline hover:text-accent-hover"
+          >
+            Batches
+          </a>
+          ; decide kept items in{" "}
           <a
             href="/review"
             className="text-accent underline hover:text-accent-hover"
           >
-            the Decision workspace (Review)
+            Review
           </a>
           .
         </span>

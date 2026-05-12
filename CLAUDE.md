@@ -3290,6 +3290,133 @@ runtime mapping UI'a) açmak gerekiyor; Phase 9+ scope.
 - **Kivasy DS dışına çıkılmadı.** Var olan `<select>` recipe + mono
   caption pattern.
 
+### Batch-first Phase 9 (2026-05-12 — Polish: provider-aware form + A3 summary reference tile)
+
+Phase 9 fit-and-finish turu. Audit ortaya çıkardı:
+
+**Phase 7+8 sonrası GERÇEKTEN tamam:**
+- Server-side BatchSummary + provider snapshot
+- Items thumbnail grid (UserAssetThumb)
+- Parameters tab gerçek snapshot
+- Provider chip "Provider: <name>"
+- Settings `defaultImageProvider` + UI consumer wiring
+- AI mode form initial provider state settings'ten
+
+**Phase 9'da kalan boşluklar dürüstçe ayırıldı ve düzeltildi:**
+
+#### Provider capability registry (UI-side)
+
+`src/features/variation-generation/provider-capabilities.ts` — yeni
+UI-side registry; **yeni büyük abstraction DEĞİL**, mevcut hardcoded
+`MODELS` array'i zenginleştiren minimal static metadata.
+
+```typescript
+PROVIDER_CAPABILITIES: ReadonlyArray<ProviderCapability> = [
+  { id: "midjourney", available: false, supportedAspectRatios: [...], ... },
+  { id: "kie-gpt-image-1.5", available: true, supportedAspectRatios: [...], supportedQualities: [...] },
+  { id: "kie-z-image", available: false, supportedAspectRatios: [...], supportedQualities: [] },
+];
+```
+
+- `getProviderCapability(id)` — id'den capability metadata
+- `isAspectRatioSupported(id, ratio)` — provider validation
+- `resolveDefaultAspectRatio(id, current)` — provider değişikliğinde
+  invalid ise destekli ilk değere düşür
+
+Server-side `ImageProvider` interface'i değişmedi — bu UI-side
+metadata; client-bundle'a girer.
+
+#### Provider-aware form fields
+
+`ai-mode-form.tsx`:
+- Hardcoded `MODELS` array kaldırıldı → `PROVIDER_CAPABILITIES` tek
+  doğruluk kaynağı
+- Hardcoded `ASPECT_OPTIONS` / `QUALITY_OPTIONS` array'leri kaldırıldı
+  → provider'a göre dinamik render
+- **Provider değişikliği handler** (`handleProviderChange`): aspect
+  ratio invalid ise fallback; quality desteklenmiyorsa eski state
+  korunur ama payload'a koyulmaz
+- **Quality dropdown disabled** + helper text "Quality parameter is not
+  supported by this provider" — Kie · Z-Image için (`supportedQualities: []`)
+- **Aspect ratio options filtered** — `CreateVariationsBody.aspectRatio`
+  schema sözleşmesi "1:1" | "2:3" | "3:2" korunur; Z-Image kümesi
+  (4:3, 16:9, ...) şu an form'dan tetiklenmediği için (available: false)
+  contract bozulmaz
+- **Submit payload filtering**: provider quality desteklemiyorsa
+  `quality` field payload'a koyulmaz (server-side null-safe)
+
+#### A3 canonical summary strip — Reference tile
+
+`BatchDetailClient.tsx` summary strip:
+- Eski: `Source` tile (text-only: "template X" / "inline prompt" / "—")
+- Yeni: **`Reference` tile** (canonical v4 A3'te de Reference + thumbnail):
+  - `UserAssetThumb` (server-side `sourceReference.assetId` projection)
+  - Reference label (notes veya fallback `ref_XXXXXXXX`)
+  - Clickable link → `/batches?referenceId=...` (Phase 2 back-link
+    paritesi)
+- **Fallback**: `sourceReference` null ise (legacy batch, retry batch,
+  reference soft-deleted) eski `Source` tile gösterilir; kullanıcı
+  bilgi kaybetmez
+- `data-testid="batch-summary-reference-tile"` test için
+
+Server tarafı: `/batches/[batchId]/page.tsx` artık `Reference.assetId`
+projection'a dahil eder.
+
+#### Diğer DS drift kapatmaları
+
+1. **Batches index "0 kept" → "—"**: empty state neutral (sıfır
+   sayı vs henüz karar yok ayrımı operatöre yanıltıcıydı)
+2. **VariationsPage subtitle batch dili**: "Generate new variants
+   from this reference" → "Generate a new batch from this reference.
+   Track progress in Batches; decide kept items in Review."
+3. **Logs/Costs placeholder copy** operator-friendly:
+   - Eski: "Wires up after the unified job-stream feed lands."
+     (teknik jargon)
+   - Yeni: "Coming soon — batch streaming infrastructure in progress."
+     (operatör-dostu)
+
+#### Provider-aware form alanları — deferred Phase 10+
+
+- Count slider provider-specific limits (Midjourney 4-grid)
+- Z-Image text-to-image flow (referenceImage zorunlu DEĞİL) UI'a
+  yansıtmak
+- Aspect ratio kümesi `CreateVariationsBody` schema extension
+  (Z-Image için 4:3, 16:9, ...)
+- ETA + Operator tile'ları A3 summary strip (yeni DB field + Job
+  duration aggregation)
+
+Bunlar **yeni büyük abstraction** veya **schema migration**
+gerektirir; Phase 9 fit-and-finish scope dışı.
+
+#### Doğrulanan kanıtlar
+
+- `npx tsc --noEmit`: 0 errors
+- `vitest`: 90/90 PASS (Phase 1-9 invariants korundu)
+- `npm run build`: ✓ Compiled successfully
+- Browser DOM eval + 1280px screenshot:
+  - `/references/[id]/variations` AI tab: provider dropdown
+    (Midjourney/Kie GPT/Kie Z-Image), aspect ratio dropdown
+    Kie GPT için ["1:1","2:3","3:2"], quality dropdown
+    ["medium","high"] enabled
+  - VariationsPage subtitle: "GENERATE A NEW BATCH FROM THIS
+    REFERENCE..." canlı
+  - `/batches/[id]` summary strip: Reference tile gerçek MinIO
+    thumbnail + reference id link, eski Source tile fallback olarak
+    çalışıyor
+
+#### Değişmeyenler (Phase 9)
+
+- **Review freeze (Madde Z) korunur.** Phase 9 review modülüne
+  dokunmaz.
+- **Schema migration yok.** Yalnız `Reference.assetId` projection
+  eklendi (mevcut field).
+- **Yeni surface açılmadı.** Var olan summary strip + form alanları.
+- **Yeni büyük abstraction yok.** `provider-capabilities.ts` static
+  literal registry; UI-side metadata.
+- **WorkflowRun eklenmez** (IA Phase 11 kapsamı).
+- **Kivasy DS dışına çıkılmadı.** SummaryTile recipe + mono caption +
+  k-thumb pattern korundu; A3 canonical hizası güçlendirildi.
+
 ### Epic-agnesi branch notu
 
 `claude/epic-agnesi-7a424b` branch'inde Batch-first Phase 1'in ilk

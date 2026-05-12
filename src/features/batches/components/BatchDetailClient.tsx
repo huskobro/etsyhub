@@ -56,10 +56,14 @@ export interface ExistingSelectionSet {
  * Server tarafından user ownership + deletedAt=null kontrolü ile resolve
  * edilir. null → reference yok, silinmiş, veya batch reference-less
  * (retry, legacy); UI back-link render etmez.
+ *
+ * Phase 9 fit-and-finish — `assetId` eklendi (A3 canonical summary strip
+ * Reference tile'ında thumbnail render için).
  */
 export interface SourceReference {
   id: string;
   label: string | null;
+  assetId: string | null;
 }
 
 interface BatchDetailClientProps {
@@ -224,18 +228,58 @@ export function BatchDetailClient({
         />
       </header>
 
-      {/* Summary strip — A3 Pattern */}
+      {/* Summary strip — A3 Pattern.
+       * Phase 9 fit-and-finish — "Source" tile yerine "Reference" tile
+       * (canonical v4 A3'te de Reference + thumbnail). Reference yoksa
+       * "Source" fallback (template/inline prompt) gösterilir; eski
+       * surfaceı kaybetmiyoruz. */}
       <div className="grid grid-cols-2 gap-4 border-b border-line bg-bg px-6 py-4 md:grid-cols-5">
-        <SummaryTile
-          label="Source"
-          value={
-            summary.templateId
-              ? `template ${summary.templateId.slice(0, 8)}`
-              : summary.promptTemplate
-                ? "inline prompt"
-                : "—"
-          }
-        />
+        {sourceReference ? (
+          <div data-testid="batch-summary-reference-tile">
+            <div className="font-mono text-xs uppercase tracking-meta text-ink-3">
+              Reference
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              {sourceReference.assetId ? (
+                <Link
+                  href={`/batches?referenceId=${sourceReference.id}`}
+                  className="block h-9 w-9 flex-shrink-0 overflow-hidden rounded border border-line"
+                  title={
+                    sourceReference.label
+                      ? `From reference: ${sourceReference.label}`
+                      : `From reference ${sourceReference.id}`
+                  }
+                >
+                  <UserAssetThumb
+                    assetId={sourceReference.assetId}
+                    alt={sourceReference.label ?? "Reference"}
+                    square
+                    className="!aspect-square"
+                  />
+                </Link>
+              ) : (
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded border border-line bg-k-bg-2 text-ink-3">
+                  <Layers className="h-3.5 w-3.5" aria-hidden />
+                </div>
+              )}
+              <span className="truncate text-sm font-medium text-ink">
+                {sourceReference.label ??
+                  `ref_${sourceReference.id.slice(0, 8)}`}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <SummaryTile
+            label="Source"
+            value={
+              summary.templateId
+                ? `template ${summary.templateId.slice(0, 8)}`
+                : summary.promptTemplate
+                  ? "inline prompt"
+                  : "—"
+            }
+          />
+        )}
         <SummaryTile
           label="Type"
           value={`Variation · ${summary.batchTotal} requested`}
@@ -282,15 +326,17 @@ export function BatchDetailClient({
         {tab === "items" ? <ItemsTab summary={summary} /> : null}
         {tab === "parameters" ? <ParametersTab summary={summary} /> : null}
         {tab === "logs" ? (
+          // Phase 9 — operator-friendly placeholder dili. Teknik jargon
+          // ("unified job-stream feed") yerine doğrudan ne göstereceği.
           <EmptyTabPlaceholder
             title="Logs"
-            blurb="Per-job state transitions + bridge errors. Wires up after the unified job-stream feed lands."
+            blurb="Job-by-job progress log + bridge errors. Coming soon — batch streaming infrastructure in progress."
           />
         ) : null}
         {tab === "costs" ? (
           <EmptyTabPlaceholder
             title="Costs"
-            blurb="Per-job and per-batch cost breakdown. Pulls from CostUsage; UI lands with the AI Providers pane."
+            blurb="Cost breakdown per item + batch total. Coming soon — provider usage aggregation lands with the AI Providers pane."
           />
         ) : null}
       </div>

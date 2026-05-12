@@ -45,7 +45,14 @@ export default async function BatchDetailPage({
   // deletedAt=null kontrolü ile resolve edilir. Hata path'i sessiz:
   // reference silinmiş veya yetkisiz ise back-link render edilmez —
   // batch sayfası kullanıcıya kapanmaz.
-  let sourceReference: { id: string; label: string | null } | null = null;
+  //
+  // Phase 9 fit-and-finish — `assetId` projection eklendi. A3 canonical
+  // summary strip "Reference" tile'ında thumbnail render etmek için.
+  let sourceReference: {
+    id: string;
+    label: string | null;
+    assetId: string | null;
+  } | null = null;
   if (summary.referenceId) {
     const ref = await db.reference.findFirst({
       where: {
@@ -53,10 +60,14 @@ export default async function BatchDetailPage({
         userId: session.user.id,
         deletedAt: null,
       },
-      select: { id: true, notes: true },
+      select: { id: true, notes: true, assetId: true },
     });
     if (ref) {
-      sourceReference = { id: ref.id, label: ref.notes };
+      sourceReference = {
+        id: ref.id,
+        label: ref.notes,
+        assetId: ref.assetId,
+      };
     }
   }
 

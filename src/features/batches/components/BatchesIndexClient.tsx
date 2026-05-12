@@ -443,7 +443,11 @@ export function BatchesIndexClient({
                                 {b.reviewCounts.kept} kept
                               </span>
                             ) : (
-                              <span>0 kept</span>
+                              // Phase 9 — empty state neutral "—" (sayı
+                              // değil). "0 kept" operatöre yanıltıcı
+                              // hissettiriyordu (sıfır sonuç vs henüz
+                              // karar yok).
+                              <span className="text-ink-3">—</span>
                             )}
                           </div>
                         ) : null}
