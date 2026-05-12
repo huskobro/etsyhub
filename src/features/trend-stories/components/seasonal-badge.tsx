@@ -11,18 +11,18 @@
 type SeasonalMeta = { label: string; emoji: string };
 
 const SEASONAL_MAP: Record<string, SeasonalMeta> = {
-  christmas: { label: "Noel", emoji: "🎄" },
-  valentines: { label: "Sevgililer Günü", emoji: "💘" },
-  halloween: { label: "Cadılar Bayramı", emoji: "🎃" },
-  easter: { label: "Paskalya", emoji: "🐣" },
-  mothers_day: { label: "Anneler Günü", emoji: "💐" },
-  fathers_day: { label: "Babalar Günü", emoji: "👔" },
-  thanksgiving: { label: "Şükran Günü", emoji: "🦃" },
-  new_year: { label: "Yeni Yıl", emoji: "🎊" },
-  graduation: { label: "Mezuniyet", emoji: "🎓" },
-  wedding: { label: "Düğün", emoji: "💒" },
-  birthday: { label: "Doğum Günü", emoji: "🎂" },
-  nursery: { label: "Bebek Odası", emoji: "🍼" },
+  christmas: { label: "Christmas", emoji: "🎄" },
+  valentines: { label: "Valentine's Day", emoji: "💘" },
+  halloween: { label: "Halloween", emoji: "🎃" },
+  easter: { label: "Easter", emoji: "🐣" },
+  mothers_day: { label: "Mother's Day", emoji: "💐" },
+  fathers_day: { label: "Father's Day", emoji: "👔" },
+  thanksgiving: { label: "Thanksgiving", emoji: "🦃" },
+  new_year: { label: "New Year", emoji: "🎊" },
+  graduation: { label: "Graduation", emoji: "🎓" },
+  wedding: { label: "Wedding", emoji: "💒" },
+  birthday: { label: "Birthday", emoji: "🎂" },
+  nursery: { label: "Nursery", emoji: "🍼" },
 };
 
 function prettifyKey(key: string): string {
@@ -30,7 +30,7 @@ function prettifyKey(key: string): string {
     .split(/[_\s-]+/)
     .map((part) =>
       part.length > 0
-        ? part.charAt(0).toLocaleUpperCase("tr-TR") + part.slice(1)
+        ? part.charAt(0).toLocaleUpperCase("en-US") + part.slice(1)
         : part,
     )
     .join(" ");

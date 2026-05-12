@@ -179,8 +179,8 @@ describe("BookmarksPage", () => {
 
     // BulkActionBar region görünür olmalı
     const region = await screen.findByRole("region");
-    expect(within(region).getByText("1 bookmark seçildi")).toBeInTheDocument();
-    expect(within(region).getByRole("button", { name: "Arşivle" })).toBeInTheDocument();
+    expect(within(region).getByText("1 bookmark(s) selected")).toBeInTheDocument();
+    expect(within(region).getByRole("button", { name: "Archive" })).toBeInTheDocument();
   });
 
   it("bulk arşivle → archiveBookmarksBulk preset'i dialog'a düşer", async () => {
@@ -204,11 +204,11 @@ describe("BookmarksPage", () => {
     });
 
     const region = await screen.findByRole("region");
-    expect(within(region).getByText("2 bookmark seçildi")).toBeInTheDocument();
+    expect(within(region).getByText("2 bookmark(s) selected")).toBeInTheDocument();
 
     // Bulk "Arşivle"ye bas
     act(() => {
-      fireEvent.click(within(region).getByRole("button", { name: "Arşivle" }));
+      fireEvent.click(within(region).getByRole("button", { name: "Archive" }));
     });
 
     // Confirm dialog açılmalı — archiveBookmarksBulk(2) preset'i
@@ -236,10 +236,10 @@ describe("BookmarksPage", () => {
     });
 
     const region = await screen.findByRole("region");
-    expect(within(region).getByText("1 bookmark seçildi")).toBeInTheDocument();
+    expect(within(region).getByText("1 bookmark(s) selected")).toBeInTheDocument();
 
     // Dismiss (X) → seçim sıfırlanır
-    const dismiss = within(region).getByRole("button", { name: /Seçimi temizle/ });
+    const dismiss = within(region).getByRole("button", { name: /Clear selection/ });
     act(() => {
       fireEvent.click(dismiss);
     });
@@ -262,7 +262,7 @@ describe("BookmarksPage", () => {
  */
 describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
   /**
-   * "Referansa taşı" akışını tetikleyen yardımcı: bir bookmark üret, kart
+   * "Move to reference" akışını tetikleyen yardımcı: bir bookmark üret, kart
    * üzerindeki "Taşı" butonuna basıp dialog'u aç.
    */
   async function openPromoteDialog() {
@@ -286,7 +286,7 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
     });
 
     return await screen.findByRole("dialog", {
-      name: /Referansa taşı/i,
+      name: /Move to reference/i,
     });
   }
 
@@ -295,10 +295,10 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(dialog).toHaveAttribute("aria-labelledby", "promote-dialog-title");
     const titleId = dialog.getAttribute("aria-labelledby")!;
-    // labelledby hedefi gerçekten dialog içinde var ve "Referansa taşı" başlığı
+    // labelledby hedefi gerçekten dialog içinde var ve "Move to reference" başlığı
     const labelEl = document.getElementById(titleId);
     expect(labelEl).not.toBeNull();
-    expect(labelEl).toHaveTextContent(/Referansa taşı/i);
+    expect(labelEl).toHaveTextContent(/Move to reference/i);
   });
 
   it("ProductType select dialog içinde render edilir", async () => {
@@ -317,7 +317,7 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
     });
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: /Referansa taşı/i }),
+        screen.queryByRole("dialog", { name: /Move to reference/i }),
       ).not.toBeInTheDocument();
     });
   });
@@ -330,45 +330,45 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
     });
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: /Referansa taşı/i }),
+        screen.queryByRole("dialog", { name: /Move to reference/i }),
       ).not.toBeInTheDocument();
     });
   });
 
   it("dialog içi (başlık) tıklaması dialog'u kapatmaz", async () => {
     const dialog = await openPromoteDialog();
-    const heading = within(dialog).getByText("Referansa taşı");
+    const heading = within(dialog).getByRole("heading", { name: "Move to reference" });
     act(() => {
       fireEvent.click(heading);
     });
     // Dialog hâlâ açık olmalı
     expect(
-      screen.getByRole("dialog", { name: /Referansa taşı/i }),
+      screen.getByRole("dialog", { name: /Move to reference/i }),
     ).toBeInTheDocument();
   });
 
   it("Vazgeç butonu → dialog kapanır", async () => {
     const dialog = await openPromoteDialog();
-    const cancelBtn = within(dialog).getByRole("button", { name: /^Vazgeç$/i });
+    const cancelBtn = within(dialog).getByRole("button", { name: /^Cancel$/i });
     act(() => {
       fireEvent.click(cancelBtn);
     });
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: /Referansa taşı/i }),
+        screen.queryByRole("dialog", { name: /Move to reference/i }),
       ).not.toBeInTheDocument();
     });
   });
 
   it("Kapat (header) butonu → dialog kapanır", async () => {
     const dialog = await openPromoteDialog();
-    const closeBtn = within(dialog).getByRole("button", { name: /^Kapat$/i });
+    const closeBtn = within(dialog).getByRole("button", { name: /^Close$/i });
     act(() => {
       fireEvent.click(closeBtn);
     });
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: /Referansa taşı/i }),
+        screen.queryByRole("dialog", { name: /Move to reference/i }),
       ).not.toBeInTheDocument();
     });
   });
@@ -421,10 +421,10 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
     });
 
     const dialog = await screen.findByRole("dialog", {
-      name: /Referansa taşı/i,
+      name: /Move to reference/i,
     });
     const submitBtn = within(dialog).getByRole("button", {
-      name: /Referansa Taşı/i,
+      name: /Move to reference/i,
     });
     act(() => {
       fireEvent.click(submitBtn);
@@ -441,7 +441,7 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
     // Mutation onSuccess setPromoteId(null) çağırır → dialog unmount olur.
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: /Referansa taşı/i }),
+        screen.queryByRole("dialog", { name: /Move to reference/i }),
       ).not.toBeInTheDocument();
     });
   });
@@ -506,17 +506,17 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
     });
 
     const dialog = await screen.findByRole("dialog", {
-      name: /Referansa taşı/i,
+      name: /Move to reference/i,
     });
     const submitBtn = within(dialog).getByRole("button", {
-      name: /Referansa Taşı/i,
+      name: /Move to reference/i,
     });
     act(() => {
       fireEvent.click(submitBtn);
     });
 
     // Mutation in-flight'a girdi → submit butonu "Taşınıyor…" oldu.
-    await within(dialog).findByRole("button", { name: /Taşınıyor…/i });
+    await within(dialog).findByRole("button", { name: /Moving…/i });
 
     return dialog;
   }
@@ -531,7 +531,7 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
     // isPending guard (bookmarks-page.tsx:382-385) Escape'i swallow eder.
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole("dialog", { name: /Referansa taşı/i }),
+      screen.getByRole("dialog", { name: /Move to reference/i }),
     ).toBeInTheDocument();
   });
 
@@ -546,7 +546,7 @@ describe("BookmarksPage — T-39 PromoteDialog a11y disclosure", () => {
     // isPending guard (bookmarks-page.tsx:396-400) overlay click'i swallow eder.
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole("dialog", { name: /Referansa taşı/i }),
+      screen.getByRole("dialog", { name: /Move to reference/i }),
     ).toBeInTheDocument();
   });
 });

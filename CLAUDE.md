@@ -4471,6 +4471,168 @@ sunuyor.
 
 ---
 
+## HH. Browse/List Surfaces — Visible Parity + IA Cleanup (Phase 18 — 2026-05-12)
+
+Phase 15 i18n cleanup'ı Selection + Product hattını kapsamıştı; Phase
+18 bu hattın **dışında kalan** browse/list yüzeylerinde aynı parity'yi
+sağladı. Yeni i18n framework AÇILMADI; mevcut hardcoded string'ler
+tek tek EN'e geçirildi + bir IA wording düzeltmesi yapıldı.
+
+### Surface audit özeti (pre-Phase 18)
+
+| Surface | Operatör readiness | Görünür TR |
+|---|---|---|
+| `/references` (Pool) | 75% — fairly mature, B1 spec'e büyük ölçüde uygun | reference-card.tsx 5 string |
+| `/bookmarks` (Inbox) | 70% — status/action label mismatch | bookmarks-page + 2 dialog |
+| `/competitors` (Shops) | 60% — detail pattern undefined | 4 component visible TR |
+| `/trend-stories` (Stories) | feature-gated; partial | 6 component visible TR |
+| `/library` | 85% canonical (Phase 17 patterns); ✓ | 0 (✓) |
+
+### Surface-by-surface değişiklikler
+
+**`/references` — reference-card.tsx**:
+- "Referans" → "Reference" (fallback title)
+- "Görsel yok" → "No image"
+- aria-label "Seç" → "Select"
+- "Koleksiyon yok" → "No collection"
+- **IA wording fix**: "Üret" → **"Open workshop"** + title attribute EN.
+  Phase 5 conceptual shift'i ("Create Variations" = refinement, primary
+  batch creation Batches index'inde) artık card-level entry'de net.
+  Title tooltip: "Open the production workshop (pick from your local
+  library or generate new AI variations)".
+- "Arşivle" → "Archive"
+- `toLocaleDateString("tr-TR")` → `toLocaleDateString("en-US")`
+
+**`/bookmarks` — bookmarks-page.tsx + dialogs**:
+- 4 error toast EN: Failed to load list / Archive failed / Update
+  failed / Move to reference failed
+- "N bookmark seçildi" → "N bookmark(s) selected"
+- "Arşivle" → "Archive"
+- "Referansa taşı" → "Move to reference" (button + dialog title)
+- PromoteDialog: "Kapat" → "Close", "Vazgeç" → "Cancel",
+  "Taşınıyor…" → "Moving…"
+- upload-image-dialog: "Görsel yükle" → "Upload image",
+  "Başlık (opsiyonel)" → "Title (optional)",
+  "Yükle ve Bookmark Yap" → "Upload & bookmark",
+  4 error message EN
+- import-url-dialog: "Oluşturuluyor…" → "Creating…",
+  "Başlatılıyor…" → "Starting…",
+  "Devam ediyor…" → "In progress…",
+  "Başlat" → "Start",
+  "Asset hazır" → "Asset ready",
+  4 error message EN
+
+**`/competitors`**:
+- competitor-detail-page: "Rakip yükleniyor…" → "Loading competitor…",
+  "Rakip yüklenemedi" → "Failed to load competitor",
+  "Rakip bulunamadı" → "Competitor not found",
+  "Mağazayı aç" → "Open shop",
+  toast messages EN (4 string)
+- add-competitor-dialog: "Rakip Mağaza Ekle" → "Add competitor shop",
+  "Mağaza adı veya URL" → "Shop name or URL",
+  daily auto-scan label EN, "Kapat"/"Vazgeç"/"Rakibi Ekle" → "Close"/
+  "Cancel"/"Add competitor", "Ekleniyor…" → "Adding…"
+- promote-to-reference-dialog: title + button "Referansa Taşı" →
+  "Move to reference", "Ürün tipi" → "Product type",
+  "Henüz tanımlı ürün tipi yok" → "No product types defined yet",
+  "Kapat"/"Vazgeç" → "Close"/"Cancel"
+- listing-rank-card: "Görsel yok" → "No image",
+  "N favori" → "N favorite(s)" (pluralize-aware),
+  "Kaynağı Aç" → "Open source",
+  "Referans'a Taşı" → "Move to reference"
+
+**`/trend-stories`**:
+- seasonal-badge: 11 seasonal label translation (Noel/Sevgililer Günü/
+  Cadılar Bayramı/Paskalya/Anneler Günü/Babalar Günü/Şükran Günü/Yeni
+  Yıl/Mezuniyet/Düğün/Doğum Günü/Bebek Odası → Christmas/Valentine's
+  Day/Halloween/Easter/Mother's Day/Father's Day/Thanksgiving/New Year/
+  Graduation/Wedding/Birthday/Nursery) + `toLocaleUpperCase("tr-TR")`
+  → `"en-US"`
+- trend-cluster-drawer: "Trend kümesi detayı" → "Trend cluster details",
+  "Trend Kümesi" → "Trend cluster", "Küme yükleniyor…" / "Küme
+  yüklenemedi" → "Loading cluster…" / "Failed to load cluster",
+  "Daha fazla yükle" → "Load more", StatCard labels EN (Shops/Items/
+  Total reviews)
+- trend-feed: toast EN, "Yükleniyor…"/"Feed yüklenemedi" → EN,
+  "Daha fazla yükle" → "Load more"
+- trend-membership-badge: title "Trend kümesini aç" → "Open trend
+  cluster"
+- feed-listing-card: "Görsel yok"/"Kaynağı Aç" → EN,
+  "N yorum" → "N reviews"
+
+**Shared primitive — BulkActionBar.tsx**:
+- aria-label "Seçimi temizle" → "Clear selection".
+  Bu primitive tüm bulk-action UI'ları kullanır (selection,
+  bookmarks, vb.); değişiklik tek noktada yapıldı, downstream
+  yüzeyler otomatik faydalanır.
+
+### IA wording — Phase 5 conceptual shift uyumu
+
+Phase 5'te ürün omurgası şu şekilde net'leşti: **"Create Variations"
+secondary refinement, primary batch creation Batches index'inde
+"+ New Batch" ile yapılır**. Ama reference card'ında label "Üret"
+("Produce") ambiguous'tu: operatör bunun primary batch start'ı mı
+yoksa refinement mı olduğunu anlamıyordu.
+
+Phase 18 fix: **"Open workshop"** — production workspace'i açar
+sözleşmesini net'leştirir. Title tooltip iki olası akışı listeler:
+1) pick from local library (refinement),
+2) generate new AI variations (refinement).
+
+Bu degrade etme değil; operatör artık bu CTA'nın bir refinement
+entry olduğunu, primary batch creation'ın ayrı bir surface'te
+(Batches index "+ New Batch") olduğunu anlar.
+
+### Test fixture'ları (TR → EN)
+
+3 test dosyası TR string assertion'ları güncellendi:
+- `tests/unit/bookmarks-page.test.tsx` (~12 sed replacement +
+  getByRole heading disambiguation)
+- `tests/unit/trend-stories-page.test.tsx` (toast text regex)
+- `tests/unit/selection/selection-bulk-bar.test.tsx` (BulkActionBar
+  aria-label assertion update)
+
+### Visible EN parity — DOM scan kanıtları
+
+Browser verification, viewport 1440×900:
+
+| Surface | DOM scan TR lines | Screenshot |
+|---|---|---|
+| `/references` | 0 | ✓ Header + tabs + filter chips + cards all EN |
+| `/bookmarks` | 0 | ✓ "INBOX · 4 BOOKMARKS" + chips + cards + Archive action |
+| `/competitors` | 0 | ✓ "SHOPS · 1 COMPETITOR STORE" + filters + Scan/Detail buttons |
+| `/trend-stories` | 0 | ✓ (feature-gated; minimal render) |
+
+### Bilinçli scope dışı
+
+Bu tur **browse/list surfaces** ile sınırlandı (user talimatı:
+"yalnız browse/list/discovery surfaces; batch/product tarafına
+geri dönme"). Aşağıdaki yüzeyler hâlâ TR sızıntı olabilir
+(audit edilmedi):
+
+- **Admin surfaces** (Settings, Templates, Prompt management, Negative
+  Library, Cost Usage, Audit Logs, Midjourney admin) — operator-facing
+  değil; tek dil disiplini için ayrı tur gerekir
+- **Job lifecycle / SSE notifications** (sidebar Active Tasks panel
+  gibi cross-surface widget'lar)
+- **Modal recipe selection / Settings → AI Mode** (orchestration
+  internal)
+- **Bookmark/Reference detail pages** (eğer ayrı detail render'ı varsa
+  — Phase 18 list-surface kapsamına alındı, detail pages bir sonraki
+  i18n turunda)
+
+### Neden i18n framework açılmadı
+
+User talimatı: "yeni i18n framework kurma; yalnız görünür yüzeyleri
+temizle". Bu turun amacı **parity + IA cleanup**, framework değil.
+Mevcut hardcoded EN string'ler ileride bir i18n katmanı eklenirse
+zaten **EN baseline** olarak hazır — key extraction tek seferlik bir
+işlem olur. Şu an parity sözleşmesi: tüm görünür operator-facing
+strings EN'dir; TR yalnız code comments + JSDoc + operator-girdi-veri
+alanlarında kalır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

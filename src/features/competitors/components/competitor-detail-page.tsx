@@ -145,7 +145,7 @@ export function CompetitorDetailPage({
       { type: "MANUAL_REFRESH" },
       {
         onSuccess: () =>
-          setToast({ kind: "success", message: "Yeni tarama kuyruğa alındı." }),
+          setToast({ kind: "success", message: "New scan queued." }),
         onError: (err) => setToast({ kind: "error", message: err.message }),
       },
     );
@@ -163,7 +163,7 @@ export function CompetitorDetailPage({
         onSuccess: () =>
           setToast({
             kind: "success",
-            message: "Bookmark eklendi ve Bookmark Inbox'a düştü.",
+            message: "Bookmark added to Bookmark Inbox.",
           }),
         onError: (err) => setToast({ kind: "error", message: err.message }),
         onSettled: () => setBookmarkingId(null),
@@ -189,7 +189,7 @@ export function CompetitorDetailPage({
             setPromoteListing(null);
             setToast({
               kind: "success",
-              message: "Referans oluşturuldu.",
+              message: "Reference created.",
             });
           },
           onError: (err) =>
@@ -222,7 +222,7 @@ export function CompetitorDetailPage({
                 setPromoteListing(null);
                 setToast({
                   kind: "success",
-                  message: "Referans oluşturuldu.",
+                  message: "Reference created.",
                 });
               },
               onError: (err) =>
@@ -244,19 +244,19 @@ export function CompetitorDetailPage({
 
   // Detail loading/error/empty erken çıkışları — header'sız sade mesaj kalır.
   if (detail.isLoading) {
-    return <StateMessage tone="neutral" title="Rakip yükleniyor…" />;
+    return <StateMessage tone="neutral" title="Loading competitor…" />;
   }
   if (detail.isError) {
     return (
       <StateMessage
         tone="error"
-        title="Rakip yüklenemedi"
+        title="Failed to load competitor"
         body={(detail.error as Error).message}
       />
     );
   }
   if (!competitor) {
-    return <StateMessage tone="neutral" title="Rakip bulunamadı" />;
+    return <StateMessage tone="neutral" title="Competitor not found" />;
   }
 
   const items = listings.data?.items ?? [];
@@ -275,7 +275,7 @@ export function CompetitorDetailPage({
             rel="noreferrer noopener"
             className="underline hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Mağazayı aç
+            Open shop
           </a>
         </>
       ) : null}

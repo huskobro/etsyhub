@@ -88,14 +88,14 @@ export function AddCompetitorDialog({
             id="add-competitor-title"
             className="text-lg font-semibold text-text"
           >
-            Rakip Mağaza Ekle
+            Add competitor shop
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-sm text-text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Kapat
+            Close
           </button>
         </div>
 
@@ -104,7 +104,7 @@ export function AddCompetitorDialog({
             htmlFor="shopIdentifier"
             className="flex flex-col gap-1 text-sm text-text"
           >
-            Mağaza adı veya URL
+            Shop name or URL
             <input
               ref={initialInputRef}
               id="shopIdentifier"
@@ -112,7 +112,7 @@ export function AddCompetitorDialog({
               required
               minLength={2}
               maxLength={200}
-              placeholder="PrintableBohoArt veya https://etsy.com/shop/…"
+              placeholder="PrintableBohoArt or https://etsy.com/shop/…"
               value={shopIdentifier}
               onChange={(e) => setShopIdentifier(e.target.value)}
               disabled={createMutation.isPending}
@@ -145,7 +145,7 @@ export function AddCompetitorDialog({
               disabled={createMutation.isPending}
               className="h-4 w-4 rounded-sm border border-border bg-bg accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             />
-            Otomatik günlük tarama aç (yeni listingler otomatik yakalanır)
+            Enable daily auto-scan (new listings are captured automatically)
           </label>
         </div>
 
@@ -162,14 +162,14 @@ export function AddCompetitorDialog({
             disabled={createMutation.isPending}
             className="rounded-md border border-border px-3 py-2 text-sm text-text hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
           >
-            Vazgeç
+            Cancel
           </button>
           <button
             type="submit"
             disabled={!canSubmit}
             className="rounded-md bg-accent px-3 py-2 text-sm text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
           >
-            {createMutation.isPending ? "Ekleniyor…" : "Rakibi Ekle"}
+            {createMutation.isPending ? "Adding…" : "Add competitor"}
           </button>
         </div>
       </form>

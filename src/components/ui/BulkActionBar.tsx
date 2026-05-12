@@ -96,7 +96,7 @@ export const BulkActionBar = forwardRef<HTMLDivElement, BulkActionBarProps>(
           <button
             type="button"
             onClick={onDismiss}
-            aria-label="Seçimi temizle"
+            aria-label="Clear selection"
             className={cn(
               "flex h-6 w-6 items-center justify-center rounded-sm",
               "text-accent-text hover:bg-accent/10",

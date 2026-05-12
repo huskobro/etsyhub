@@ -75,7 +75,7 @@ export function BookmarksPage({
       const res = await fetch(`/api/bookmarks?${params.toString()}`, {
         cache: "no-store",
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Liste alınamadı");
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed to load list");
       return res.json();
     },
   });
@@ -83,7 +83,7 @@ export function BookmarksPage({
   const archiveMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/bookmarks/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Arşivleme başarısız");
+      if (!res.ok) throw new Error((await res.json()).error ?? "Archive failed");
       return res.json();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["bookmarks"] }),
@@ -100,7 +100,7 @@ export function BookmarksPage({
         body: JSON.stringify(args.input),
       });
       if (!res.ok)
-        throw new Error((await res.json()).error ?? "Güncelleme başarısız");
+        throw new Error((await res.json()).error ?? "Update failed");
       return res.json();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["bookmarks"] }),
@@ -113,7 +113,7 @@ export function BookmarksPage({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(args),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Referansa taşıma başarısız");
+      if (!res.ok) throw new Error((await res.json()).error ?? "Move to reference failed");
       return res.json();
     },
     onSuccess: () => {
@@ -207,7 +207,7 @@ export function BookmarksPage({
       <BulkActionBar
         selectedCount={selectedCount}
         label={
-          selectedCount > 0 ? `${selectedCount} bookmark seçildi` : undefined
+          selectedCount > 0 ? `${selectedCount} bookmark(s) selected` : undefined
         }
         actions={
           <>
@@ -223,7 +223,7 @@ export function BookmarksPage({
               onClick={bulkArchive}
               disabled={archiveMutation.isPending}
             >
-              Arşivle
+              Archive
             </Button>
           </>
         }
@@ -407,7 +407,7 @@ function PromoteDialog({
             id="promote-dialog-title"
             className="text-lg font-semibold text-text"
           >
-            Referansa taşı
+            Move to reference
           </h2>
           <button
             type="button"
@@ -415,11 +415,11 @@ function PromoteDialog({
             disabled={isPending}
             className="text-sm text-text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
           >
-            Kapat
+            Close
           </button>
         </div>
         <p className="mb-3 text-xs text-text-muted">
-          Bookmark {bookmarkId.slice(0, 10)}… için ürün tipi seç:
+          Pick a product type for bookmark {bookmarkId.slice(0, 10)}…:
         </p>
         <select
           ref={initialFocusRef}
@@ -444,7 +444,7 @@ function PromoteDialog({
             disabled={isPending}
             className="rounded-md border border-border px-3 py-2 text-sm text-text hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
           >
-            Vazgeç
+            Cancel
           </button>
           <Button
             variant="primary"
@@ -453,7 +453,7 @@ function PromoteDialog({
             onClick={() => onSubmit(productTypeId)}
             className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            {isPending ? "Taşınıyor…" : "Referansa Taşı"}
+            {isPending ? "Moving…" : "Move to reference"}
           </Button>
         </div>
       </div>

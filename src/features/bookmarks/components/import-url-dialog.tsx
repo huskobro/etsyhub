@@ -20,7 +20,7 @@ export function ImportUrlDialog({
     queryFn: async () => {
       if (!jobId) return null;
       const res = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("Job alınamadı");
+      if (!res.ok) throw new Error("Failed to fetch job");
       return res.json() as Promise<{
         job: {
           id: string;
@@ -50,11 +50,11 @@ export function ImportUrlDialog({
         }),
       });
       if (!res.ok)
-        throw new Error((await res.json()).error ?? "Bookmark oluşturulamadı");
+        throw new Error((await res.json()).error ?? "Failed to create bookmark");
       return res.json();
     },
     onSuccess: () => {
-      setMessage("Bookmark oluşturuldu.");
+      setMessage("Bookmark created.");
       onCreated?.();
       setTimeout(() => onClose(), 800);
     },
@@ -70,7 +70,7 @@ export function ImportUrlDialog({
         body: JSON.stringify({ sourceUrl: url }),
       });
       if (!res.ok) {
-        throw new Error((await res.json()).error ?? "Job başlatılamadı");
+        throw new Error((await res.json()).error ?? "Failed to start job");
       }
       const data = (await res.json()) as { jobId: string };
       setJobId(data.jobId);
@@ -118,7 +118,7 @@ export function ImportUrlDialog({
             ) : null}
             {success ? (
               <span className="text-success">
-                Asset hazır: {job.metadata?.assetId?.slice(0, 10) ?? "-"}…
+                Asset ready: {job.metadata?.assetId?.slice(0, 10) ?? "-"}…
               </span>
             ) : null}
           </div>
@@ -135,7 +135,7 @@ export function ImportUrlDialog({
               className="rounded-md bg-accent px-3 py-2 text-sm text-accent-foreground disabled:opacity-50"
             >
               {createMutation.isPending
-                ? "Oluşturuluyor…"
+                ? "Creating…"
                 : "Bookmark olarak kaydet"}
             </button>
           ) : (
@@ -145,7 +145,7 @@ export function ImportUrlDialog({
               onClick={onStart}
               className="rounded-md bg-accent px-3 py-2 text-sm text-accent-foreground disabled:opacity-50"
             >
-              {busy ? "Başlatılıyor…" : jobId ? "Devam ediyor…" : "Başlat"}
+              {busy ? "Starting…" : jobId ? "In progress…" : "Start"}
             </button>
           )}
         </div>

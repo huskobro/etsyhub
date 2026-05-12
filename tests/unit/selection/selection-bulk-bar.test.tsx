@@ -304,7 +304,7 @@ describe("SelectionBulkBar — dismiss", () => {
     });
     wrapper(<SelectionBulkBar setId="set-1" isReadOnly={false} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /seçimi temizle/i }));
+    fireEvent.click(screen.getByRole("button", { name: /clear selection/i }));
 
     expect(useStudioStore.getState().multiSelectIds.size).toBe(0);
   });

@@ -202,7 +202,7 @@ describe("TrendStoriesPage — Toast aria-live ton ayrımı", () => {
     const toasts = screen.getAllByRole("status");
     // PageShell + StateMessage olmadığı için: success toast role=status
     const successToast = toasts.find((t) =>
-      /Bookmark eklendi/.test(t.textContent ?? ""),
+      /Bookmark added/.test(t.textContent ?? ""),
     );
     expect(successToast).toBeDefined();
     expect(successToast).toHaveAttribute("aria-live", "polite");

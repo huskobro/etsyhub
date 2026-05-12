@@ -17,7 +17,7 @@ export function UploadImageDialog({
 
   const submit = useMutation({
     mutationFn: async () => {
-      if (!file) throw new Error("Dosya seçilmedi");
+      if (!file) throw new Error("No file selected");
       const fd = new FormData();
       fd.set("file", file);
       const uploadRes = await fetch("/api/assets/upload", {
@@ -25,7 +25,7 @@ export function UploadImageDialog({
         body: fd,
       });
       if (!uploadRes.ok) {
-        throw new Error((await uploadRes.json()).error ?? "Yükleme başarısız");
+        throw new Error((await uploadRes.json()).error ?? "Upload failed");
       }
       const { id: assetId } = (await uploadRes.json()) as { id: string };
       const bmRes = await fetch("/api/bookmarks", {
@@ -39,13 +39,13 @@ export function UploadImageDialog({
       });
       if (!bmRes.ok) {
         throw new Error(
-          (await bmRes.json()).error ?? "Bookmark oluşturulamadı",
+          (await bmRes.json()).error ?? "Failed to create bookmark",
         );
       }
       return bmRes.json();
     },
     onSuccess: () => {
-      setMessage("Bookmark oluşturuldu.");
+      setMessage("Bookmark created.");
       onCreated?.();
       setTimeout(() => onClose(), 800);
     },
@@ -56,7 +56,7 @@ export function UploadImageDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 p-4">
       <div className="w-full max-w-md rounded-md border border-border bg-surface p-5 shadow-popover">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Görsel yükle</h2>
+          <h2 className="text-lg font-semibold">Upload image</h2>
           <button
             type="button"
             onClick={onClose}
@@ -78,7 +78,7 @@ export function UploadImageDialog({
           />
           <input
             type="text"
-            placeholder="Başlık (opsiyonel)"
+            placeholder="Title (optional)"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-text"
@@ -96,7 +96,7 @@ export function UploadImageDialog({
             onClick={() => submit.mutate()}
             className="rounded-md bg-accent px-3 py-2 text-sm text-accent-foreground disabled:opacity-50"
           >
-            {submit.isPending ? "Yükleniyor…" : "Yükle ve Bookmark Yap"}
+            {submit.isPending ? "Uploading…" : "Upload & bookmark"}
           </button>
         </div>
       </div>

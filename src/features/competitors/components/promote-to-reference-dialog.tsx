@@ -71,20 +71,20 @@ export function PromoteToReferenceDialog({
             id="promote-listing-title"
             className="text-lg font-semibold text-text"
           >
-            Referans&apos;a Taşı
+            Move to reference
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-sm text-text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Kapat
+            Close
           </button>
         </div>
 
         <p className="mb-3 text-xs text-text-muted">
-          &quot;{listing.title}&quot; bookmark olarak alınacak ve seçtiğin ürün
-          tipi ile Referans Havuzu&apos;na taşınacak.
+          &quot;{listing.title}&quot; bookmark olarak alınacak ve seçtiğin ürünquot;{listing.title}&quot;{listing.title}&quot; bookmark olarak alınacak ve seçtiğin ürünquot; will be saved as a bookmark and moved to
+          the Reference pool with the selected product type.
         </p>
 
         {hasProductTypes ? (
@@ -137,7 +137,7 @@ export function PromoteToReferenceDialog({
             onClick={() => onSubmit(productTypeId)}
             className="rounded-md bg-accent px-3 py-2 text-sm text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
           >
-            {isPending ? "Taşınıyor…" : "Referansa Taşı"}
+            {isPending ? "Moving…" : "Move to reference"}
           </button>
         </div>
       </div>

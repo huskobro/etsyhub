@@ -66,7 +66,7 @@ export function ListingRankCard({
         />
       ) : (
         <div className="flex aspect-square w-full items-center justify-center rounded-md bg-surface-muted text-xs text-text-muted">
-          Görsel yok
+          No image
         </div>
       )}
 
@@ -80,7 +80,7 @@ export function ListingRankCard({
       <div className="flex items-center justify-between text-xs text-text-muted">
         <span>{priceLabel}</span>
         {listing.favoritesCount != null ? (
-          <span>{listing.favoritesCount} favori</span>
+          <span>{listing.favoritesCount} favorite{listing.favoritesCount === 1 ? "" : "s"}</span>
         ) : null}
       </div>
 
@@ -91,7 +91,7 @@ export function ListingRankCard({
           rel="noreferrer noopener"
           className="inline-flex h-control-sm items-center rounded-md border border-border px-2.5 text-sm text-text hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
-          Kaynağı Aç
+          Open source
         </a>
         <Button
           variant="ghost"
@@ -99,7 +99,7 @@ export function ListingRankCard({
           onClick={() => onPromote(listing)}
           disabled={bookmarking}
         >
-          Referans&apos;a Taşı
+          Move to reference
         </Button>
         <Button
           variant="primary"

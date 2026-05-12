@@ -31,8 +31,8 @@ export function ReferenceCard({
   onArchive?: (id: string) => void;
 }) {
   const title =
-    reference.bookmark?.title ?? reference.bookmark?.sourceUrl ?? "Referans";
-  const createdLabel = new Date(reference.createdAt).toLocaleDateString("tr-TR");
+    reference.bookmark?.title ?? reference.bookmark?.sourceUrl ?? "Reference";
+  const createdLabel = new Date(reference.createdAt).toLocaleDateString("en-US");
   const source = (() => {
     if (!reference.bookmark?.sourceUrl) return "—";
     try {
@@ -49,13 +49,13 @@ export function ReferenceCard({
           <AssetImage assetId={reference.asset.id} alt={title} />
         ) : (
           <div className="flex aspect-square items-center justify-center bg-surface-muted text-xs text-text-subtle">
-            Görsel yok
+            No image
           </div>
         )}
         {onToggleSelect ? (
           <button
             type="button"
-            aria-label="Seç"
+            aria-label="Select"
             aria-pressed={selected}
             onClick={(e) => {
               e.stopPropagation();
@@ -86,16 +86,17 @@ export function ReferenceCard({
         </div>
         <div className="flex items-center justify-between pt-1">
           <span className="truncate text-xs text-text-subtle">
-            {reference.collection?.name ?? "Koleksiyon yok"}
+            {reference.collection?.name ?? "No collection"}
           </span>
           <div className="flex items-center gap-1">
-            {/* Pass 25 — CTA naming polish: "Benzerini yap" → "Üret"
-                kullanıcı bu butonun production workspace'i (Üretim
-                Atölyesi) açtığını net anlasın. Title attribute uzun
-                açıklama. */}
+            {/* Pass 25 / Phase 18 — CTA naming polish.
+                "Open workshop" cards-level entry'i; production workspace
+                (Reference → Variations) açar. Phase 5 conceptual shift:
+                "Create variations" refinement; primary batch creation
+                Batches index'inde "+ New Batch" ile yapılır. */}
             <Link
               href={`/references/${reference.id}/variations`}
-              title="Üretim atölyesini aç (lokal kütüphaneden seç veya AI ile yeni varyant üret)"
+              title="Open the production workshop (pick from your local library or generate new AI variations)"
               className={cn(
                 "inline-flex h-control-sm items-center justify-center gap-1.5",
                 "rounded-md border border-border bg-surface px-2.5 text-sm font-medium text-text",
@@ -103,7 +104,7 @@ export function ReferenceCard({
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
               )}
             >
-              Üret
+              Open workshop
             </Link>
             {onArchive ? (
               <Button
@@ -111,7 +112,7 @@ export function ReferenceCard({
                 size="sm"
                 onClick={() => onArchive(reference.id)}
               >
-                Arşivle
+                Archive
               </Button>
             ) : null}
           </div>

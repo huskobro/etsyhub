@@ -45,7 +45,7 @@ export function TrendFeed({ windowDays, onOpenCluster, onToast }: Props) {
         onSuccess: () =>
           onToast({
             kind: "success",
-            message: "Bookmark eklendi ve Bookmark Inbox'a düştü.",
+            message: "Bookmark added to Bookmark Inbox.",
           }),
         onError: (err) => onToast({ kind: "error", message: err.message }),
         onSettled: () => setBookmarkingId(null),
@@ -101,14 +101,14 @@ function FeedPage({
   const query = useFeed(windowDays, cursor);
 
   if (query.isLoading) {
-    return <StateMessage tone="neutral" title="Yükleniyor…" />;
+    return <StateMessage tone="neutral" title="Loading…" />;
   }
 
   if (query.isError) {
     return (
       <StateMessage
         tone="error"
-        title="Feed yüklenemedi"
+        title="Failed to load feed"
         body={(query.error as Error).message}
       />
     );
@@ -163,7 +163,7 @@ function FeedPage({
             size="sm"
             onClick={() => onLoadMore(nextCursor)}
           >
-            Daha fazla yükle
+            Load more
           </Button>
         </div>
       ) : null}

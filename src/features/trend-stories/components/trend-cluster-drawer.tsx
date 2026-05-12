@@ -26,7 +26,7 @@ type Props = {
  * T-37 spec — docs/design/implementation-notes/trend-stories-screens.md
  *
  * KORUNUR (dokunulmaz):
- * - role="dialog" + aria-modal + aria-label="Trend kümesi detayı"
+ * - role="dialog" + aria-modal + aria-label="Trend cluster details"
  * - DrawerContent + DrawerPages + DrawerPage cursor sayfalama yapısı
  * - ClusterHeader yapısı (label + SeasonalBadge + 3 stat grid)
  * - StatCard inline yapı (3 kolon grid; primitive granularity uymaz)
@@ -81,7 +81,7 @@ export function TrendClusterDrawer({ clusterId, onClose }: Props) {
       className="fixed inset-0 z-50 flex items-stretch justify-center bg-bg/80 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Trend kümesi detayı"
+      aria-label="Trend cluster details"
       onClick={handleOverlayClick}
     >
       <div className="my-auto flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-md border border-border bg-surface shadow-popover">
@@ -113,7 +113,7 @@ function DrawerContent({
   return (
     <>
       <div className="flex items-start justify-between gap-3 border-b border-border p-5">
-        <h2 className="text-lg font-semibold text-text">Trend Kümesi</h2>
+        <h2 className="text-lg font-semibold text-text">Trend cluster</h2>
         <Button ref={closeButtonRef} variant="ghost" size="sm" onClick={onClose}>
           Kapat
         </Button>
@@ -168,13 +168,13 @@ function DrawerPage({
   const query = useClusterDetail(clusterId, cursor);
 
   if (query.isLoading) {
-    return <StateMessage tone="neutral" title="Küme yükleniyor…" />;
+    return <StateMessage tone="neutral" title="Loading cluster…" />;
   }
   if (query.isError) {
     return (
       <StateMessage
         tone="error"
-        title="Küme yüklenemedi"
+        title="Failed to load cluster"
         body={(query.error as Error).message}
       />
     );
@@ -204,7 +204,7 @@ function DrawerPage({
             size="sm"
             onClick={() => onLoadMore(nextCursor)}
           >
-            Daha fazla yükle
+            Load more
           </Button>
         </div>
       ) : null}
@@ -234,9 +234,9 @@ function ClusterHeader({
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Mağaza" value={cluster.storeCount} />
-        <StatCard label="Ürün" value={cluster.memberCount} />
-        <StatCard label="Toplam yorum" value={cluster.totalReviewCount} />
+        <StatCard label="Shops" value={cluster.storeCount} />
+        <StatCard label="Items" value={cluster.memberCount} />
+        <StatCard label="Total reviews" value={cluster.totalReviewCount} />
       </div>
     </header>
   );

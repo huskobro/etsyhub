@@ -45,7 +45,7 @@ export function FeedListingCard({
         />
       ) : (
         <div className="flex aspect-square w-full items-center justify-center rounded-md bg-surface-muted text-xs text-text-muted">
-          Görsel yok
+          No image
         </div>
       )}
 
@@ -57,7 +57,7 @@ export function FeedListingCard({
       </h3>
 
       <p className="truncate text-xs text-text-muted">
-        {listing.competitorStoreName} · {listing.reviewCount} yorum · {dateLabel}
+        {listing.competitorStoreName} · {listing.reviewCount} reviews · {dateLabel}
       </p>
 
       {listing.trendMembershipHint ? (
@@ -77,7 +77,7 @@ export function FeedListingCard({
           rel="noreferrer noopener"
           className="rounded-md border border-border px-2 py-1 text-xs text-text hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          Kaynağı Aç
+          Open source
         </a>
         <Button
           variant="primary"
