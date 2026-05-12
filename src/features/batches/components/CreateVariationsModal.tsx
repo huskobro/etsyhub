@@ -178,6 +178,18 @@ export function CreateVariationsModal({
         }
       >
         <div className="space-y-6">
+          {/* Batch-first Phase 6 — refinement context. Bu modal MJ V1-V4
+           * tarzı bir görselden yeni minor varyasyonlar üretir; ana batch
+           * creation aksiyonu DEĞİL (Reference → Batch ana omurgası
+           * "Start Batch" CTA'sından başlar). Subtitle operatöre bunu
+           * hatırlatır. */}
+          <p
+            className="-mt-1 text-xs text-ink-3"
+            data-testid="a6-modal-refinement-hint"
+          >
+            Re-vary the selected image with subtle or stronger changes —
+            refinement action, separate from the main Start Batch flow.
+          </p>
           {/* Mode — subtle vs strong (matches the legacy variation service body) */}
           <Section label="Variation strength">
             <div className="flex">

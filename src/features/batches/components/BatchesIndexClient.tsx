@@ -291,7 +291,7 @@ export function BatchesIndexClient({
             </h3>
             <p className="mt-1 text-sm text-text-muted">
               {batches.length === 0
-                ? "Kick off your first variation batch — Start Batch above."
+                ? "Start your first production batch — use Start Batch above to pick a reference."
                 : "Clear filters or search by batch id / template."}
             </p>
           </div>

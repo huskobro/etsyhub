@@ -2907,6 +2907,148 @@ ailelerine göre konumlandırıldı:
   recipe'leri (`k-btn--secondary`, `k-fab__btn`, mono caption)
   kullanır.
 
+### Batch-first Phase 6 (2026-05-12 — Production vs refinement axis + canonical tabs)
+
+Phase 5'in kavramsal düzeltmesi (Batch vs Create Variations) daha ince
+bir ayrımı netleştirdi: Tek "Create Variations" kavramı içinde **iki
+farklı aksiyon ailesi** birlikte yaşıyordu.
+
+#### Production vs Refinement axis
+
+**Ana üretim akışları (production / batch creation):**
+- MJ bridge `imagine`, `generate`, `sref`, `oref`, `cref`
+  (`MidjourneyJobKind.GENERATE`) — `/imagine` prompt ile tek
+  primary üretim aksiyonu
+- AI variation pipeline `createVariationJobs` — provider doğrudan
+  N variation üretir
+- Bunlar **batch creation tetikleyicileri**; ana omurganın başlangıcı
+
+**Yardımcı refinement akışları:**
+- MJ `variation subtle` / `variation strong`
+  (`MidjourneyJobKind.VARIATION` + V1-V4) — mevcut bir
+  MidjourneyAsset üzerinden minor re-generation
+- MJ `upscale` (U1-U4) — mevcut bir asset'in çözünürlük artışı
+- Bunlar **re-do / refinement / retry aksiyonları**; ana
+  batch creation aksiyonu DEĞİL
+
+**v4 A6 "Create Variations" modal** (mevcut `CreateVariationsModal.tsx`)
+aslında **subtle/strong refinement modal'ıdır** — POST
+`/api/admin/midjourney/variation` çağırır, MidjourneyAsset üzerinden
+V1-V4 style minor re-generation tetikler. Phase 6'da modal'a açık
+refinement context caption eklendi: operatör bu modal'ı `Start Batch`
+ile karıştırmaz.
+
+#### Canonical Start Batch entry point
+
+Tek kullanıcı-facing ana üretim giriş aksiyonu:
+
+```
+Batches index topbar
+  → "Start Batch" primary CTA (k-btn--primary, Plus icon)
+  → /library?intent=start-batch
+  → Library reference picker mode (Phase 6 banner)
+  → asset card → detail panel
+  → "Variations" secondary CTA → A6 modal opens
+  → A6 modal: refinement subtitle + subtle/strong selector
+  → POST /api/admin/midjourney/variation → batch creation
+```
+
+Phase 6 Library intent banner copy "Start Batch · pick a reference
+asset" — eski "Create Variations" copy'si kafa karıştırıyordu.
+
+#### Library vs References rol ayrımı
+
+- **`/library` (v4 A1 LIBRARY)** = **ana operasyonel giriş yüzeyi**.
+  Asset gallery; "Start Batch" intent banner ile reference picker
+  mode'a girilir; primary üretim akışının ana sahnesi.
+- **`/references` (v5 B1 REFERENCES)** = **bağlamsal source pool
+  yüzeyi**. Pool / Stories / Inbox / Shops / Collections sub-view'lar.
+  Reference card hover CTA Phase 5'te `k-btn--secondary` (refinement
+  context). Reference page batch creation ana entry'si DEĞİL —
+  ana entry Library üzerinden Start Batch'tir.
+- Bu ikisi birbirini tekrar etmez: Library "production focus",
+  References "source curation focus".
+
+#### Batch detail canonical tab order (v4 A3)
+
+Phase 4'e kadar tab order: `Overview / Items / Logs / Costs` (4 tab).
+Canonical v4 A3 spec: `Items / Parameters / Logs / Costs`. Phase 6
+hizalama:
+
+- **Order:** `Overview → Items → Parameters → Logs → Costs`
+- **Default:** Overview (Phase 1+'de eklendi, kullanıcı bağlamı için
+  korunur; canonical'da yok ama scope drift'i kabul edilir).
+- **Parameters tab** (placeholder, Phase 6'da eklendi): resolved
+  prompt, reference parameters (sref / oref / cref), aspect ratio,
+  similarity, quality — read-only snapshot. Wires up sonraki phase'de.
+
+#### Pipeline language karar (MANUAL / AUTO)
+
+Phase 5'te `MJ` / `AI` altyapı jargonu → `MANUAL` / `AUTO` ürün
+diline çevrildi. Phase 6 audit'inde alternative naming'ler
+(`Browser/API`, `Studio/Auto`, `MJ/AI`) değerlendirildi; `MANUAL/AUTO`
+korundu üç sebepten:
+
+1. Operatör altyapı bilgisi (`MJ`, `kie.ai`, vb.) almaz
+2. Üretim **biçimi**ne odaklanır: "operator manuel müdahale" vs
+   "sistem otomatik"
+3. Chip küçük bir audit/debug sinyali; ana akış değil
+
+Tooltip Phase 6'da güçlendirildi:
+- `AUTO` → "Auto — generated directly by AI variation provider"
+- `MANUAL` → "Manual — operator-driven Midjourney browser flow"
+
+#### Kivasy DS canonical alignment matrix (Phase 6 update)
+
+Phase 5 matrix'ine ek tablo: hangi parçalar **drift**, hangileri
+**aligned**:
+
+| Surface | Canonical | Phase 6 durum |
+|---|---|---|
+| Batches index topbar | v4 A2 (Start Batch primary) | ✓ Aligned |
+| Batches index toolbar | v4 A2 (search + status chips) | ✓ Aligned |
+| Batches index empty state | v4 A2 | ✓ Phase 6 copy fix |
+| Batch detail header | v4 A3 (title + status + actions) | ✓ Aligned + Phase 2-4 |
+| Batch detail summary strip | v4 A3 (Reference/Type/Progress/Success/Items) | ✓ Aligned |
+| Batch detail tabs | v4 A3 (Items/Parameters/Logs/Costs) | ✓ Phase 6 Parameters tab eklendi |
+| Library intent banner | v4 A1 reference picker | ✓ Phase 6 copy fix |
+| Library detail panel CTA | v4 A1 (Add to Selection primary, Variations secondary) | ✓ Aligned |
+| References card hover CTA | v5 B1 + Phase 5 demotion | ✓ Aligned (refinement bağlamı) |
+| A6 Create Variations modal | v4 A6 (refinement trigger) | ✓ Phase 6 subtitle eklendi |
+
+**Drift kalan parçalar** (Phase 6 dışı, sonraya):
+- A6 modal reference parameters (sref / oref / cref) — design spec'te
+  var, modal'da deferred
+- Library bulk bar "Variations" action — rollout-3 deferred
+- Batch detail Parameters tab — placeholder (gerçek prompt snapshot
+  unified job-stream feed gerektirir)
+
+#### Review gate kontrolü (yeniden onaylandı)
+
+`deriveBatchStage()` mantığı Phase 6 audit'inde teyit edildi:
+
+- `undecided > 0` → `review-pending` (ana CTA "Open Review")
+- `undecided = 0` AND `kept > 0` AND `set yok` → `kept-no-selection`
+  (ana CTA "Create Selection")
+- `undecided = 0` AND `kept = 0` → `no-kept` (ana CTA "New Batch")
+- `undecided = 0` AND `kept > 0` AND `set var` → `selection-ready`
+  (ana CTA "Continue in Selection")
+
+Operatör review tamamlamadan selection creation tetikleyemez.
+CLAUDE.md Madde H decision gate prensibinin batch detail
+uygulaması **sağlam**; Phase 6 review gate'e dokunmadı.
+
+#### Değişmeyenler (Phase 6)
+
+- **Review freeze (Madde Z) korunur.** Phase 6 yalnız UI dili,
+  CTA emphasis ve tab order düzenledi.
+- **Schema migration yok.** Hiç DB değişikliği yok.
+- **Yeni surface açılmadı.** Parameters tab placeholder eklendi
+  (mevcut tab pattern'i).
+- **WorkflowRun eklenmez** (IA Phase 11 kapsamı).
+- **Kivasy DS dışına çıkılmadı.** Phase 6 tüm değişiklikler v4
+  A2/A3 + v5 B1 canonical screen'lerle hizada.
+
 ### Epic-agnesi branch notu
 
 `claude/epic-agnesi-7a424b` branch'inde Batch-first Phase 1'in ilk

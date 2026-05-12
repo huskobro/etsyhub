@@ -114,13 +114,18 @@ export function LibraryClient({
             aria-hidden
           />
           <div className="flex-1">
+            {/* Batch-first Phase 6 — Start Batch entry banner copy.
+             * "Create Variations" referansı kavramsal olarak ikincil
+             * (refinement) aksiyondu (Phase 5). Burada operatöre ana
+             * üretim akışı (Start Batch → Library reference picker →
+             * generation) hatırlatılır. */}
             <div className="text-sm font-medium text-ink">
-              Pick an asset, then use{" "}
-              <span className="text-k-orange-ink">Create Variations</span>
+              Start Batch · pick a reference asset
             </div>
             <p className="mt-0.5 text-xs text-ink-2">
-              Variation batches start from a Library asset. Click an asset
-              card → detail panel opens → use the Create Variations CTA.
+              Batches start from a Library reference. Click an asset card,
+              open the detail panel, then trigger the generation modal
+              (subtle / strong) to launch the batch.
             </p>
           </div>
           <button
