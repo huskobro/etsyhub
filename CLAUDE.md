@@ -6501,6 +6501,160 @@ References family UI işi olarak Phase 31 **kapatma noktası**.
 
 ---
 
+## Phase 32 — Final integration audit (audit-only)
+
+Phase 31 sonrası "References family bitti mi" sorusunu cevaplamak için
+audit-only tur. Browser + DOM scan üzerinden 5 sub-view'da Add
+Reference CTA parity'si test edildi:
+
+| Sub-view | Topbar CTA |
+|---|---|
+| `/references` (Pool) | ✓ Phase 26'da bağlandı |
+| `/bookmarks` (Inbox) | ✓ Phase 26'da bağlandı |
+| `/trend-stories` (Stories) | 🛑 YOK |
+| `/competitors` (Shops) | 🛑 YOK |
+| `/collections` (Collections) | 🛑 YOK |
+
+DS B5 niyeti (`screens-b1.jsx:24-34`) açıkça: 5 sub-view'da hepsinin
+primary CTA'sı **`Add Reference`**. Phase 32 audit'inde **3 sub-view
+gap** tespit edildi — merge-ready değil.
+
+Phase 32 ek bulgular:
+- URL queue full lifecycle çalışıyor (paste → pre-fetch → save → Inbox)
+- Upload API endpoint çalışıyor
+- From Bookmark bulk promote çalışıyor (partial failure tolerant —
+  asset-less bookmark'lar reject, error caption "1 of N failed")
+- Dead/bridge surface'ler tamamen temizlenmiş
+- Folder intake, Etsy listing scraper (frontend), CSV intake **yok**
+  (kategorize edildi, Phase 33 sonrası adaylar)
+
+Bu turda kod değişikliği **yapılmadı** (audit-only); CLAUDE.md'ye yalnız
+verdict eklenir.
+
+---
+
+## Phase 33 — Sub-view CTA parity (Stories/Shops/Collections)
+
+Phase 32 audit'inde tespit edilen merge blocker: 3 sub-view'da
+canonical Add Reference CTA eksikti. DS B5 niyeti hepsinde aynı
+CTA istiyor (`screens-b1.jsx:24-34`).
+
+### Düzeltmeler
+
+`/trend-stories/page.tsx`, `/competitors/page.tsx`, `/collections/page.tsx`
+3 sayfasına Pool/Inbox canonical pattern uygulandı:
+
+1. Server query trio ekle: `db.productType.findMany({ isSystem: true,
+   key: { in: canonical_5 } })` + `getReferencesSubViewCounts` +
+   `db.collection.findMany`
+2. `ReferencesTopbar` `actions` prop'a `<Link href="{path}?add=ref"
+   className="k-btn k-btn--primary">+ Add Reference</Link>` ekle
+3. Sayfa sonuna `<ReferencesAddReferenceMount productTypes={...}
+   collections={...} />` mount et
+
+Pattern Pool sayfasından birebir kopyalandı; yeni abstraction
+açılmadı (DRY shared helper kararı Phase 34+ adayı). 3 sayfa tek tip
+mimari + cross-page intake davranışı tutarlı.
+
+DS mock'unda Shops + Collections sub-view'larında **iki CTA** var
+(`screens-b1.jsx:27-34`):
+- Shops: secondary "+ Add Shop URL" + primary "Add Reference"
+- Collections: secondary "+ Collection" + primary "Add Reference"
+
+Phase 33 yalnız canonical primary CTA'yı ekler. Secondary CTA'lar
+ayrı yapılarda mevcut (Shops için `CompetitorListPage` onboarding
+flow, Collections için `CollectionsPage` "+ New collection" buton)
+— canonical akışı bozmuyor, ayrı küçük UX polish turu olarak
+ileride birleştirilebilir.
+
+### Smoke verification (browser kanıtı)
+
+```
+/references?add=ref → modal ✓ (Phase 26 baseline)
+/bookmarks?add=ref → modal ✓ (Phase 26 baseline)
+/trend-stories?add=ref → modal ✓ (Phase 33 yeni)
+/competitors?add=ref → modal ✓ (Phase 33 yeni)
+/collections?add=ref → modal ✓ (Phase 33 yeni)
+
+Her sub-view'da:
+  CTA text: "Add Reference" ✓
+  CTA href: "{path}?add=ref" ✓
+  Modal title: "Add Reference" ✓
+  3 sibling tab (URL/Upload/From Bookmark) ✓
+```
+
+Screenshot kanıt: `/collections?add=ref` open state — topbar `+ Add
+Reference`, modal IMAGE URL tab aktif, Phase 28 canonical 5 chip
+(Bookmark active = last-used persistence), Phase 28 disclosure, Phase
+30 pre-fetch URL row.
+
+### Asset-less bookmark promote gap (Phase 32 not'u)
+
+Phase 32 audit'inde gözlendi: From Bookmark tab'ında asset'i olmayan
+bookmark seçilirse `/api/references/promote` 4xx döner; modal "1 of N
+promotions failed" gösterir ama **hangi row** başarısız belli değil.
+
+**Phase 33 kararı**: blocker değil, küçük UX polish (Phase 34+ adayı).
+Operatör mevcut akışta partial failure'ı görür, "Clear" + tek
+bookmark seç pattern'ı ile workaround alır. Per-row failure
+indicator + skip-on-save caption ileride eklenir.
+
+### Yeni feature kategorizasyonu (Phase 33 sonrası)
+
+| Feature | Kategori | Effort |
+|---|---|---|
+| Folder intake (4. tab "From Local Folder") | Orta — UI tab + cross-feature integration | Schema değişikliği yok |
+| Etsy/Creative Fabrica listing URL → tüm görselleri picker | Backend (Pinterest/CF parser) + UI sub-mode | Orta-büyük |
+| CSV/Excel intake | Bağımsız feature, ayrı `/references/import` page | Büyük |
+| Per-row failure + skip-on-save caption | Küçük UX polish | Küçük |
+| Queue mode row-per-link kararı | **Korunur** | DS B5'i aşan ürün ihtiyacı; multi-line paste split kullanıcıyı rahatlatıyor |
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{bookmarks-page, bookmarks-confirm-flow,
+  bookmark-service, dashboard-page, references-page, collections-page}:
+  **canonical paket 59/59 PASS** (Phase 31 50 + collections-page 9)
+- Pre-existing failures (regresyon değil, baseline'da da fail):
+  trend-feed 3 fail (TR "Kaynağı Aç" test'i, Phase 18 EN parity
+  öncesi yazılmış) + competitor-detail 7 fail (TR "Referans'a Taşı"
+  test'i). Phase 33 değişikliği bu failures'ı **etkilemedi** (stash
+  baseline ile doğrulandı). Bu tests'in EN parity migration'ı ayrı
+  tur.
+- Browser: 5/5 sub-view canonical modal parity ✓
+
+### Merge verdict
+
+**References family artık merge-ready.**
+
+DS B5 niyeti tam karşılandı:
+- Tek canonical `AddReferenceDialog` modalı
+- 5 sub-view hepsinden aynı CTA aynı modal
+- URL/Upload/From Bookmark üç tab tam çalışıyor
+- Pre-fetch preview + server-side title fallback + multi-URL queue
+- Inbox B1 canonical scan
+- Hiçbir dead/bridge paralel yüzey kalmadı
+- Backfill tamamlanmış (legacy raw URL title'lar temiz)
+- 50/50 canonical paket tests PASS (pre-existing TR/EN drift fails
+  Phase 33 ile ilgili değil)
+
+### Bundan sonra kalan tek doğru iş
+
+References family UI işi olarak Phase 33 **kapatma noktası**. Sonraki
+gerçek iş:
+
+1. **Main merge + final smoke verification** (ayrı tur)
+2. Pre-existing TR/EN drift test cleanup (trend-feed +
+   competitor-detail) — ayrı küçük test polish turu
+3. Backend turu: `SourcePlatform.CREATIVE_FABRICA` enum + direct
+   `POST /api/references` endpoint + server-side `import-url`
+   source resolver
+4. Yeni feature turları (folder intake / listing scraper UI / CSV
+   intake / per-row failure UX) — yukarıdaki kategorizasyona göre
+   ayrı
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
