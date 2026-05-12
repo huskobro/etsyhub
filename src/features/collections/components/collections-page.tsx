@@ -13,13 +13,10 @@ import { CollectionCreateDialog } from "./collection-create-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { confirmPresets } from "@/components/ui/confirm-presets";
-import { Toolbar } from "@/components/ui/Toolbar";
-import { FilterBar } from "@/components/ui/FilterBar";
-import { Chip } from "@/components/ui/Chip";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { SkeletonCardGrid } from "@/components/ui/Skeleton";
+import { cn } from "@/lib/cn";
 
 type CollectionKind = "BOOKMARK" | "REFERENCE" | "MIXED";
 type KindFilter = "ALL" | "BOOKMARK" | "REFERENCE";
@@ -134,37 +131,49 @@ export function CollectionsPage() {
         </button>
       </div>
 
-      <Toolbar
-        leading={
-          <div className="w-60">
-            <Input
-              type="search"
-              placeholder="Search collections"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              prefix={<Search className="h-4 w-4" aria-hidden />}
-            />
-          </div>
-        }
-      >
-        <FilterBar>
-          <Chip active={kind === "ALL"} onToggle={() => setKind("ALL")}>
+      {/* Phase 20 — B1 family parity toolbar (k-input + k-chip). */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-bg px-6 py-3">
+        <div className="relative max-w-[420px] flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3"
+            aria-hidden
+          />
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search collections"
+            className="k-input !pl-9"
+            data-testid="collections-search"
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setKind("ALL")}
+            aria-pressed={kind === "ALL"}
+            className={cn("k-chip", kind === "ALL" && "k-chip--active")}
+          >
             All
-          </Chip>
-          <Chip
-            active={kind === "BOOKMARK"}
-            onToggle={() => setKind("BOOKMARK")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setKind("BOOKMARK")}
+            aria-pressed={kind === "BOOKMARK"}
+            className={cn("k-chip", kind === "BOOKMARK" && "k-chip--active")}
           >
             Bookmark
-          </Chip>
-          <Chip
-            active={kind === "REFERENCE"}
-            onToggle={() => setKind("REFERENCE")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setKind("REFERENCE")}
+            aria-pressed={kind === "REFERENCE"}
+            className={cn("k-chip", kind === "REFERENCE" && "k-chip--active")}
           >
             Reference
-          </Chip>
-        </FilterBar>
-      </Toolbar>
+          </button>
+        </div>
+      </div>
 
       {query.isLoading ? (
         <SkeletonCardGrid count={6} />

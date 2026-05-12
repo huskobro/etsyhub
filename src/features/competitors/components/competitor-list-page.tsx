@@ -5,14 +5,12 @@ import { useCompetitorsList } from "../queries/use-competitors";
 import { useTriggerScanStandalone } from "../mutations/use-trigger-scan-standalone";
 import { CompetitorCard } from "./competitor-card";
 import { AddCompetitorDialog } from "./add-competitor-dialog";
+import { Search } from "lucide-react";
 import { PageShell } from "@/components/ui/PageShell";
-import { Toolbar } from "@/components/ui/Toolbar";
-import { FilterBar } from "@/components/ui/FilterBar";
-import { Chip } from "@/components/ui/Chip";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { Toast } from "@/components/ui/Toast";
+import { cn } from "@/lib/cn";
 
 /**
  * CompetitorListPage — T-33 primitive migrasyonu.
@@ -70,32 +68,38 @@ export function CompetitorListPage() {
     return rawItems.filter((c) => c.autoScanEnabled === false);
   }, [list.data?.items, autoFilter]);
 
+  // Phase 20 — B1 family parity toolbar (k-input + k-chip).
   const toolbar = (
-    <Toolbar
-      leading={
-        <div className="w-60">
-          <Input
-            type="search"
-            placeholder="Search by shop name…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            aria-label="Search competitors"
-          />
-        </div>
-      }
-    >
-      <FilterBar>
+    <div className="flex flex-wrap items-center gap-2 border-b border-line bg-bg px-6 py-3">
+      <div className="relative max-w-[420px] flex-1">
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3"
+          aria-hidden
+        />
+        <input
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by shop name…"
+          aria-label="Search competitors"
+          className="k-input !pl-9"
+          data-testid="competitors-search"
+        />
+      </div>
+      <div className="flex items-center gap-1.5">
         {AUTO_FILTERS.map((f) => (
-          <Chip
+          <button
             key={f.value}
-            active={autoFilter === f.value}
-            onToggle={() => setAutoFilter(f.value)}
+            type="button"
+            onClick={() => setAutoFilter(f.value)}
+            aria-pressed={autoFilter === f.value}
+            className={cn("k-chip", autoFilter === f.value && "k-chip--active")}
           >
             {f.label}
-          </Chip>
+          </button>
         ))}
-      </FilterBar>
-    </Toolbar>
+      </div>
+    </div>
   );
 
   return (

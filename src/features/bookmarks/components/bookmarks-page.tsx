@@ -14,14 +14,11 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { confirmPresets } from "@/components/ui/confirm-presets";
 import { useFocusTrap } from "@/components/ui/use-focus-trap";
-import { Toolbar } from "@/components/ui/Toolbar";
-import { FilterBar } from "@/components/ui/FilterBar";
 import { BulkActionBar } from "@/components/ui/BulkActionBar";
-import { Chip } from "@/components/ui/Chip";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { SkeletonCardGrid } from "@/components/ui/Skeleton";
+import { cn } from "@/lib/cn";
 
 type BookmarkLite = {
   id: string;
@@ -178,31 +175,42 @@ export function BookmarksPage({
         </button>
       </div>
 
-      <Toolbar
-        leading={
-          <div className="w-60">
-            <Input
-              type="search"
-              placeholder="Search by title, source or note"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              prefix={<Search className="h-4 w-4" aria-hidden />}
-            />
-          </div>
-        }
-      >
-        <FilterBar>
+      {/* Phase 20 — B1 family parity toolbar.
+       *   v5 SubInbox: k-input (left, prefix search icon) + inline segmented
+       *   k-chip filter group. Pre-Phase 20 legacy Toolbar/FilterBar/Input/
+       *   Chip primitive karışımı kullanıyordu — Pool/Products ile aile
+       *   hissini bozuyordu. Aynı görsel sözleşme (h-9, font-mono uppercase
+       *   chip text) artık References Pool ve /products toolbar ile birebir. */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-bg px-6 py-3">
+        <div className="relative max-w-[420px] flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3"
+            aria-hidden
+          />
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search bookmarks by title, source or note…"
+            className="k-input !pl-9"
+            data-testid="bookmarks-search"
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
           {STATUS_FILTERS.map((f) => (
-            <Chip
+            <button
               key={f.value}
-              active={status === f.value}
-              onToggle={() => setStatus(f.value)}
+              type="button"
+              onClick={() => setStatus(f.value)}
+              aria-pressed={status === f.value}
+              className={cn("k-chip", status === f.value && "k-chip--active")}
+              data-testid={`bookmarks-filter-${f.value.toLowerCase()}`}
             >
               {f.label}
-            </Chip>
+            </button>
           ))}
-        </FilterBar>
-      </Toolbar>
+        </div>
+      </div>
 
       <BulkActionBar
         selectedCount={selectedCount}
@@ -212,10 +220,10 @@ export function BookmarksPage({
         actions={
           <>
             <Button variant="ghost" size="sm" disabled>
-              Referansa ekle
+              Promote to Reference
             </Button>
             <Button variant="ghost" size="sm" disabled>
-              Koleksiyona
+              Add to collection
             </Button>
             <Button
               variant="ghost"

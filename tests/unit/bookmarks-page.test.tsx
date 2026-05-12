@@ -127,7 +127,7 @@ describe("BookmarksPage", () => {
     wrapper(<BookmarksPage productTypes={productTypes} />);
 
     // Toolbar + FilterBar zaten render olmuş olmalı
-    expect(screen.getByPlaceholderText(/Search by title, source or note/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Search bookmarks by title, source or note/)).toBeInTheDocument();
 
     // SkeletonCardGrid role="status" ile tarafsız canlı bölge açar
     const skeletons = await screen.findAllByRole("status");

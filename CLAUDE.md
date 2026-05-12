@@ -4758,6 +4758,143 @@ Trend-stories'in feed pattern'ini k-stabs'a hizalamak product-purpose
 
 ---
 
+## JJ. References Family — Honest Parity Correction (Phase 20 — 2026-05-12)
+
+**Phase 19 audit yanılgısını düzeltti.** Phase 19 "References family
+zaten neredeyse tamamen canonical" sonucuna varmıştı — bu **dürüst
+ölçüm değildi**: audit kart classlist'lerine bakıp toolbar/filter
+primitive farkını görmemişti. Phase 20 gerçek render edilen DOM'u
+karşılaştırdı ve **toolbar katmanında belirgin drift** buldu.
+
+### Phase 19'da kaçırılan gerçek drift (DOM kanıtlı)
+
+**`/references` (Pool) vs `/bookmarks` (Inbox) gerçek primitive
+karşılaştırması** (Phase 20 öncesi):
+
+| Aspect | `/references` (canonical) | `/bookmarks` (drift) |
+|---|---|---|
+| Search input class | `k-input !pl-9` | `flex-1 min-w-0 bg-transparent border-0 outline-none p-0 font-sans` (legacy `Input` primitive) |
+| Filter chip class | `k-chip` × 4 (caret) | legacy `Chip` primitive × 5 (`inline-flex h-control-sm rounded-md`) |
+| Toolbar wrapper | inline `flex border-b border-line bg-bg px-6 py-3` | legacy `<Toolbar leading={...}>` wrapper |
+| Density toggle | Comfortable/Dense | yok |
+| aria-pressed on chips | (popover, n/a) | yok (legacy Chip primitive sağlamıyordu) |
+
+Aynı drift `/collections` ve `/competitors`'ta da vardı —
+`Toolbar + FilterBar + Chip + Input` legacy primitive zinciri,
+`k-input + k-chip` recipe class'larından farklı görsel sözleşme
+üretiyordu. Card recipe (`k-card`) zaten canonicaldi, ama **toolbar
+katmanı 4 surface'tan 1'inde (Pool) güncellenmişti; geri 3'ü eski
+desende kalmıştı**. Kullanıcının "Inbox farklı hissediyor"
+gözleminin somut kaynağı buydu.
+
+### Phase 20 düzeltmeleri
+
+**Toolbar primitive parity** — `/bookmarks`, `/collections`,
+`/competitors` her üçü de inline `k-input + k-chip` pattern'ine
+taşındı. Pool ile birebir görsel sözleşme:
+
+```jsx
+<div className="flex flex-wrap items-center gap-2 border-b border-line bg-bg px-6 py-3">
+  <div className="relative max-w-[420px] flex-1">
+    <Search className="pointer-events-none absolute left-3 …" />
+    <input className="k-input !pl-9" type="search" … />
+  </div>
+  <div className="flex items-center gap-1.5">
+    {filters.map(f => (
+      <button
+        type="button"
+        onClick={() => setFilter(f.value)}
+        aria-pressed={active === f.value}
+        className={cn("k-chip", active === f.value && "k-chip--active")}
+      >
+        {f.label}
+      </button>
+    ))}
+  </div>
+</div>
+```
+
+- **`aria-pressed`** her chip'te (legacy `Chip` primitive bunu
+  veriyordu; k-chip'e manuel ekledim).
+- **Active state**: `k-chip--active` recipe class'ı + `aria-pressed`
+  ikilisi — orange-soft bg + ink-orange text.
+- Legacy `Toolbar / FilterBar / Chip / Input` import'ları silindi
+  (4 import × 3 dosya = 12 import azaldı).
+
+**Hidden TR strings (Phase 18 audit'inin kaçırdığı 2 string)**:
+- `bookmarks-page.tsx:215` "Referansa ekle" → "Promote to Reference"
+- `bookmarks-page.tsx:218` "Koleksiyona" → "Add to collection"
+
+Bu TR string'leri Phase 18 audit'i kaçırmıştı çünkü `[ığşçöüİĞŞÇÖÜ]`
+regex'i bu kelimelerde özel-karakter bulamadı (`Referansa` /
+`Koleksiyona` plain ASCII Türkçe). Bulk action bar'da disabled
+button'lar — operator-görünür ama Phase 18 grep'ten geçemedi.
+
+### Inbox ürün rolü (netleştirme)
+
+**Inbox = ham bookmark intake / source triage tampon alanı**:
+1. Operator URL bookmark veya görsel yükledikten sonra item
+   `INBOX` status'ünde buraya düşer
+2. Operator burada review yapar: tag ekle / collection ata /
+   product type belirle / risky işaretle / archive et
+3. **Promote to Reference** (k-btn--secondary) ile bookmark
+   `REFERENCED` status'üne taşınır → Reference pool'da görünür
+4. Reference pool'da Open workshop CTA → variation generation
+   pipeline
+
+**Inbox'un Pool'dan farkı**: yüzey **görevi** farklı — kart
+intake-yoğun (tag picker + collection picker + product type picker
++ 3 action button), Pool kartı daha sade (Open workshop + Archive).
+**Yapısal toolbar drift'i** (Phase 20'de düzeltildi) ise yanlış
+implement edilmişti; ürün gereksinimi değildi.
+
+### Honest classification (Phase 20 sonrası, DOM-kanıtlı)
+
+| Surface | Search input | Filter chips | aria-pressed | Cards | **Verdict** |
+|---|---|---|---|---|---|
+| `/references` (Pool) | k-input | k-chip × 4 (caret) | n/a (popover) | k-card | **Canonical** |
+| `/bookmarks` (Inbox) | k-input | k-chip × 5 (segmented) | yes | k-card | **Canonical** ✓ |
+| `/collections` | k-input | k-chip × 3 (segmented) | yes | k-card | **Canonical** ✓ |
+| `/competitors` (Shops) | k-input | k-chip × 3 (segmented) | yes | k-card | **Canonical** ✓ |
+| `/trend-stories` | - | WindowTabs | - | feed | **Bespoke** (product-purpose: feed not grid) |
+
+4/5 surface artık birebir aile sözleşmesinde. Trend-stories bespoke
+kalmaya devam — bu yapısal fark **feed content type tabanlı**,
+yapısal drift değil.
+
+### Bilinçli scope dışı
+
+- **FilterChip popover vs segmented** — Pool 4 popover chip, diğer
+  3 surface segmented chip. Filter pool size'a göre doğru karar
+  (popover dynamic options için, segmented fixed list için). Aynı
+  k-chip recipe class'ı her ikisinde de.
+- **Density toggle** — Pool'da var, diğer 3'te yok. Grid density
+  ihtiyacı her surface için aynı değil; Inbox 2-col gerçekten yeterli.
+- **Trend-stories shop-cluster rail** — Phase 19'da deferred edildi;
+  feed pattern'ini grid'e zorlamak product purpose'la çelişir.
+- **B1 mimari fark** (1 stateful container vs 5 routes) — Phase 19'da
+  açıklandı; URL deep-link için route-based pattern bilinçli.
+
+### Doğrulama kanıtları (DOM scan, viewport 1440×900)
+
+```
+/references  : k-input=1, k-chip=4 (Source/Type/Collection/Date added)
+/bookmarks   : k-input=1, k-chip=5 (All/Inbox/Reference/Risky/Archive) + aria-pressed
+/competitors : k-input=1, k-chip=3 (All/Auto-scan/Manual) + aria-pressed
+/collections : k-input=1, k-chip=3 (All/Bookmark/Reference) + aria-pressed
+```
+
+5/5 surface: **0 TR strings**.
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest: tests/unit/{bookmarks-page,competitors-list-page,...}
+  all PASS (test fixture bookmarks placeholder regex EN'e güncellendi)
+- next build: ✓ Compiled successfully
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
