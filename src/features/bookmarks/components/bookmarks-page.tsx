@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   useMutation,
   useQuery,
@@ -10,7 +9,6 @@ import {
 import type { BookmarkStatus, RiskLevel } from "@prisma/client";
 import { Bookmark as BookmarkIcon, Search, Plus } from "lucide-react";
 import { BookmarkRow } from "./bookmark-row";
-import { ImportUrlDialog } from "./import-url-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { confirmPresets } from "@/components/ui/confirm-presets";
@@ -56,40 +54,20 @@ export function BookmarksPage({
   productTypes: ProductTypeOption[];
 }) {
   const qc = useQueryClient();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { confirm, close, run, state } = useConfirm();
   const [status, setStatus] = useState<BookmarkStatus | "ALL">("INBOX");
   const [q, setQ] = useState("");
-  const [importOpenLocal, setImportOpenLocal] = useState(false);
   const [promoteId, setPromoteId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  /* Phase 22 — Pool-canonical action slot pattern (page.tsx tarafı).
-   * Topbar CTA stateless Link → /bookmarks?add=url query'si bırakır.
-   *
-   * Modal "open" durumu URL-derived: `?add=url` görünür olduğu
-   * sürece modal açık sayılır. Bu pattern Next.js App Router'da
-   * en stabil çözüm — `setState + router.replace` çakışması
-   * (re-render sırasında state'in yutulması) burada olmuyor çünkü
-   * URL'in kendisi truth. Modal close → `router.replace(pathname)`
-   * ile param'ı çıkarıyoruz; aynı zamanda manuel "+ New" buton
-   * (`setImportOpenLocal(true)`) için local state var (örn. empty
-   * state CTA, future entries). İki kaynak `OR`'lanır. */
-  const importOpen =
-    importOpenLocal || searchParams?.get("add") === "url";
-
-  const closeImport = () => {
-    setImportOpenLocal(false);
-    if (searchParams?.get("add") === "url") {
-      const next = new URLSearchParams(searchParams);
-      next.delete("add");
-      const queryString = next.toString();
-      router.replace(queryString ? `${pathname}?${queryString}` : pathname);
-    }
-    qc.invalidateQueries({ queryKey: ["bookmarks"] });
-  };
+  /* Phase 31 — `?add=url` bridge listener kaldırıldı. Phase 22'de
+   * ImportUrlDialog için query trigger pattern eklenmişti; Phase 26'da
+   * canonical intake `?add=ref` → AddReferenceDialog devreye girdi.
+   * `?add=url` legacy deep-link tolerance için Phase 26-30'da bridge
+   * olarak duruyordu, hiçbir kanal artık üretmiyordu. Bu turda dead
+   * branch kaldırıldı; eski deep-link gelirse modal açılmaz (URL
+   * silent fallback — operatör "Add Reference" topbar CTA'sıyla
+   * canonical akıştan girer). */
 
   const query = useQuery<ListResponse>({
     queryKey: ["bookmarks", status, q],
@@ -196,8 +174,10 @@ export function BookmarksPage({
        * Pre-Phase 22 "Add from URL" inline `<div justify-end>` satırı
        * burada yaşıyordu; wrapper `gap-6` ile toolbar'a 70px boş satır
        * üretiyordu. CTA artık references shell topbar action slot'unda
-       * (bkz. app/(app)/bookmarks/page.tsx) — Link href="?add=url"
-       * yukarıdaki `importOpen` URL-derived state'ini açar. */}
+       * (bkz. app/(app)/bookmarks/page.tsx) — Phase 26'dan itibaren
+       * Link href="?add=ref" canonical AddReferenceDialog'u açar
+       * (Phase 31'de eski `?add=url` ImportUrlDialog bridge'i tamamen
+       * kaldırıldı). */}
 
       {/* Phase 20 — B1 family parity toolbar.
        *   v5 SubInbox: k-input (left, prefix search icon) + inline segmented
@@ -277,13 +257,17 @@ export function BookmarksPage({
           title="No bookmarks yet"
           body="Paste any URL from Etsy, Pinterest, Creative Fabrica or any direct image link to start collecting ideas. You can promote bookmarks to references later."
           action={
-            <Button
-              variant="primary"
-              icon={<Plus className="h-4 w-4" aria-hidden />}
-              onClick={() => setImportOpenLocal(true)}
+            /* Phase 31 — empty state CTA artık canonical Add Reference
+             * modalı tetikler (`?add=ref`). Eski `setImportOpenLocal(true)`
+             * + ImportUrlDialog bridge'i Phase 31'de kaldırıldı. */
+            <a
+              href="/bookmarks?add=ref"
+              data-size="md"
+              className="k-btn k-btn--primary"
             >
+              <Plus className="h-4 w-4" aria-hidden />
               Add your first bookmark
-            </Button>
+            </a>
           }
         />
       ) : (
@@ -348,8 +332,6 @@ export function BookmarksPage({
           </table>
         </div>
       )}
-
-      {importOpen ? <ImportUrlDialog onClose={closeImport} /> : null}
 
       {state.preset ? (
         <ConfirmDialog

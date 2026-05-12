@@ -151,8 +151,10 @@ describe("BookmarksPage", () => {
 
     expect(await screen.findByText("No bookmarks yet")).toBeInTheDocument();
     // CTA — "Add your first bookmark"
+    // Phase 31: stateless `<a href="?add=ref">` (canonical
+    // AddReferenceDialog trigger), önceki `<button>` kaldırıldı.
     expect(
-      screen.getByRole("button", { name: /Add your first bookmark/ }),
+      screen.getByRole("link", { name: /Add your first bookmark/ }),
     ).toBeInTheDocument();
   });
 

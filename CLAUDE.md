@@ -6352,6 +6352,155 @@ Server-side `import-url` worker title metadata extraction ayrı bir
 
 ---
 
+## Phase 31 — Legacy cleanup + dead/bridge surface temizliği
+
+Phase 30 intake confidence + Inbox row sadeleşmesi'ni tamamlamıştı.
+Phase 31 honest audit iki açık kategoriye odaklandı:
+
+1. **Geçmişten gelen kirli bookmark title'ları** (legacy data)
+2. **Artık canonical olmayan paralel intake surface'ler** (bridge/dead)
+
+### Legacy title audit
+
+`scripts/audit-bookmark-titles.ts` ile DB tarandı:
+
+```
+Total active bookmarks: 488
+  title NULL: 2
+  title '': 0
+  title 'Untitled': 0
+  title starts http(s)://: 0
+  title OK: 486
+```
+
+Phase 30 server-side fallback çalıştığı için yeni intake'lerde raw URL
+title yok. Yalnız 2 legacy null title kaldı:
+- 1 UPLOAD bookmark (sourceUrl yok — title üretilemez)
+- 1 ETSY bookmark (sourceUrl raw `https://i.etsystatic.com/...`)
+
+Test seed çoğunluk OK çıktı (operatör explicit title yazmış: "[QA]
+Nursery animal clipart" gibi). Production'da daha geniş legacy
+backfill ihtiyacı olabileceği için **script template** kaldı.
+
+### Backfill (`scripts/backfill-bookmark-titles.ts`)
+
+One-shot script (`--dry-run` flag desteği):
+- Hedef: `deletedAt IS NULL` aktif bookmark'lar
+- Kirli koşullar: `title IS NULL`, `title = ""`, `title = "Untitled"`,
+  `title LIKE 'http(s)://%'`
+- Resolve order: `sourceUrl` → eğer yoksa raw title string (URL ise)
+- Update: `deriveTitleFromUrl(urlForDerivation)` (shared lib)
+- Skip: hiç URL bulunamayan bookmark'lar (asset-only upload, manuel
+  edit operatörün işi)
+
+Apply çıktısı:
+```
+Found 2 candidate bookmark(s).
+  SKIP cmorqz4mp0 (no URL, src=UPLOAD)
+  UPDATE cmp30gt8j0: null → "Etsy image"
+
+Result: updated=1 skipped=1
+```
+
+Inbox screenshot kanıtı: önceki `https://i.etsystatic.com/.../il_1588xN.
+7088947200_8ahm.jpg` raw title satırı artık **"Etsy image"** olarak
+görünüyor.
+
+### Dead/bridge surface cleanup
+
+| Surface | Phase 30 status | Phase 31 karar |
+|---|---|---|
+| `bookmarks-page.tsx` `?add=url` URL-derived listener | BRIDGE | **Kaldırıldı** — Phase 26'dan canonical `?add=ref`; hiçbir kanal `?add=url` üretmiyor; legacy deep-link silent fallback (operatör topbar CTA'sından canonical girer) |
+| `ImportUrlDialog` | BRIDGE | **Silindi** — 2 dead caller temizlendi |
+| `DashboardQuickActions` | DEAD | **Silindi** — hiçbir page render etmiyor; test fixture'lar file-string inspect ile sınırlı |
+| `UploadImageDialog` | DEAD | **Silindi** — yalnız DQA'dan import; canonical Upload tab `AddReferenceDialog`'da Phase 26'dan beri var |
+| `bookmarks-page.tsx` empty state CTA | LIVE | **Rebind**: `<button onClick={setImportOpenLocal(true)}>` → `<a href="/bookmarks?add=ref" className="k-btn k-btn--primary">` (canonical trigger) |
+
+Empty state CTA rebind için test fixture (`tests/unit/bookmarks-page.
+test.tsx`) `getByRole("button")` → `getByRole("link")` güncellendi.
+
+### Canonical Add Reference akışı korunması
+
+Phase 31'de aşağıdakiler **regresyonsuz** korundu:
+- `/references?add=ref` → AddReferenceDialog (Pool topbar)
+- `/bookmarks?add=ref` → AddReferenceDialog (Inbox topbar)
+- Multi-URL queue + paste split (Phase 29)
+- Pre-fetch `<img>` preview (Phase 30)
+- Server-side title fallback chain (Phase 30)
+- Product type canonical 5 chip + last-used persistence (Phase 28)
+- From Bookmark Select all/Clear (Phase 30)
+- Inbox row sub-line `productType` only (Phase 30)
+- Hover preview popover tag/collection meta (Phase 29)
+- `?add=url` legacy URL silent fallback (no modal, no error)
+
+### Worker title enrichment
+
+Bu turda **yapılmadı** (bilinçli):
+- `import-url` worker hâlâ asset metadata title yazmıyor
+- Phase 30 fallback chain URL slug'a yaslı (Etsy/Pinterest/Creative
+  Fabrica/direct image hepsi anlamlı title üretiyor)
+- Server-side HTML scraping (listing `<title>`, OG meta) daha zengin
+  title verir ama ayrı **backend turu** scope'u
+
+### Doğrulama kanıtları
+
+```
+Backfill: 1 updated, 1 skipped (defansif — asset-only upload korundu)
+
+Browser:
+  /references?add=ref → canonical modal açılır ✓
+  /bookmarks?add=url → modal AÇILMAZ (silent dead bridge) ✓
+                       (sayfa hâlâ erişilebilir, bookmark rows render
+                        edilir, topbar "Add Reference" CTA çalışır)
+  Inbox row "Etsy image" (backfill çıktısı, eski raw URL yerine) ✓
+  Inbox row "Dragonfly Watercolor Clipart Bundle" (Phase 30 server
+    fallback'in canlı kanıtı) ✓
+
+Files removed:
+  - src/features/bookmarks/components/import-url-dialog.tsx
+  - src/features/bookmarks/components/upload-image-dialog.tsx
+  - src/features/dashboard/components/dashboard-quick-actions.tsx
+```
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{bookmarks-page, bookmarks-confirm-flow,
+  bookmark-service, dashboard-page, references-page}: **50/50 PASS**
+- Browser: canonical akış intakt, dead bridge silent fallback,
+  backfill Inbox'ta görünür
+
+### Bilinçli scope dışı (Phase 32+ candidate)
+
+- **Worker title enrichment** — `import-url` worker'a HTML scraping
+- **Schema migration** (`CREATIVE_FABRICA` enum, direct `POST
+  /api/references` endpoint, server source resolver)
+- **Cross-tab bulk combining** — URL + Upload + Bookmark tek seferde
+- **Pre-fetch preview CORS hardening** — bazı host'larda canvas
+  extraction blocked (use case gerek değil)
+- **Reference detail/edit surface** — operatör tag/collection edit
+  için ileride detail drawer
+
+### Bundan sonra Add Reference family'de kalan tek doğru iş
+
+Phase 31 ile Add Reference family **canonical olarak temizlenmiş**
+durumda:
+- Tek canonical intake door (`AddReferenceDialog`)
+- 3 sibling tab DS B5 birebir
+- Pre-fetch + multi-URL queue + server title fallback
+- Inbox row B1 canonical scan
+- Hiçbir dead/bridge paralel yüzey yok
+
+Sıradaki gerçek iş References family **dışı**:
+1. **Schema migration turu** (backend): `CREATIVE_FABRICA` enum +
+   direct Reference endpoint + server-side `import-url` source
+   resolver
+2. **Reference detail/edit surface** (Pool detail view)
+
+References family UI işi olarak Phase 31 **kapatma noktası**.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
