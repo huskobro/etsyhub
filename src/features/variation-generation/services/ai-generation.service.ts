@@ -172,7 +172,8 @@ export async function createVariationJobs(
     // koyuyoruz; her design için 1 job. for-of ile pair tutmak indexing
     // tipini undefined'lamadan korur.
     const pairs: Array<{ design: typeof designs[number]; job: Awaited<ReturnType<typeof tx.job.create>> }> = [];
-    for (const d of designs) {
+    for (let batchIndex = 0; batchIndex < designs.length; batchIndex++) {
+      const d = designs[batchIndex]!;
       const job = await tx.job.create({
         data: {
           type: JobType.GENERATE_VARIATIONS,
@@ -181,10 +182,16 @@ export async function createVariationJobs(
           progress: 0,
           // IA-37 — batchId share'lenir; review scope priority
           // (batch > reference) bu alandan beslenir.
+          // Batch-first Phase 4 — `batchTotal` + `batchIndex` MJ pipeline
+          // ile aynı schema-zero pattern'i takip eder. Unified
+          // getBatchSummary AI batch'leri için "X / Y done" caption'ını
+          // bu alanlardan okur.
           metadata: {
             designId: d.id,
             referenceId: input.reference.id,
             batchId,
+            batchIndex,
+            batchTotal: designs.length,
           },
         },
       });

@@ -142,6 +142,21 @@ export function BatchDetailClient({
             <Badge tone={statusTone} dot>
               {statusLabel}
             </Badge>
+            {/* Batch-first Phase 4 — pipeline identity chip. Operatöre
+             * altyapı sinyali (audit log lookup için faydalı), ama UI
+             * dilinde teknik jargon değil: "AI" vs "MJ" prefix. */}
+            <span
+              className="inline-flex items-center rounded-sm border border-line bg-paper px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-3"
+              data-testid="batch-detail-pipeline-chip"
+              data-pipeline={summary.pipeline}
+              title={
+                summary.pipeline === "ai-variation"
+                  ? "AI variation pipeline (GENERATE_VARIATIONS)"
+                  : "Midjourney bridge pipeline"
+              }
+            >
+              {summary.pipeline === "ai-variation" ? "AI" : "MJ"}
+            </span>
             {summary.retryOfBatchId ? (
               <Link
                 href={`/batches/${summary.retryOfBatchId}`}

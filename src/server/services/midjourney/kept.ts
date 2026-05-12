@@ -583,6 +583,40 @@ function formatTrShortDate(d: Date): string {
   return `${d.getDate()} ${TR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+/**
+ * Batch-first Phase 4 — unified pipeline dispatcher.
+ *
+ * Operatör-facing tek server action: batchId verildiğinde pipeline'ı
+ * otomatik detect eder (Job.type filter), uygun pipeline-spesifik
+ * orchestrator'a delegate eder.
+ *
+ *   - MIDJOURNEY_BRIDGE → createSelectionFromMjBatch (Phase 3)
+ *   - GENERATE_VARIATIONS → createSelectionFromAiBatch (Phase 4)
+ *
+ * UI tarafı `summary.pipeline` field'ına bakmadan direkt aynı endpoint'i
+ * çağırabilir; dispatcher altyapı farkını içeride çözer.
+ */
+export async function createSelectionFromBatch(
+  input: CreateSelectionFromMjBatchInput,
+): Promise<HandoffResult> {
+  const { userId, batchId } = input;
+
+  // Pipeline detection: önce GENERATE_VARIATIONS dene (yeni job'lar bu
+  // pipeline'da üretiliyor); yoksa MJ_BRIDGE'e düş.
+  const aiJob = await db.job.findFirst({
+    where: {
+      type: JobType.GENERATE_VARIATIONS,
+      userId,
+      metadata: { path: ["batchId"], equals: batchId },
+    },
+    select: { id: true },
+  });
+  if (aiJob) {
+    return createSelectionFromAiBatch({ userId, batchId });
+  }
+  return createSelectionFromMjBatch({ userId, batchId });
+}
+
 export async function createSelectionFromMjBatch(
   input: CreateSelectionFromMjBatchInput,
 ): Promise<HandoffResult> {
@@ -696,4 +730,154 @@ export async function createSelectionFromMjBatch(
     productTypeId,
     selectionSetName: autoName,
   });
+}
+
+// ────────────────────────────────────────────────────────────
+// Batch-first Phase 4 — createSelectionFromAiBatch
+//
+// AI variation pipeline (GENERATE_VARIATIONS) batch'inin tüm KEPT
+// design'larını (reviewStatus = APPROVED + reviewStatusSource = USER —
+// CLAUDE.md Madde V'' downstream gate) yeni bir SelectionSet'e taşır.
+//
+// MJ counterpart `createSelectionFromMjBatch` ile aynı UX sözleşmesi:
+//   - Tek-tık Create Selection action
+//   - Auto-name (reference.notes veya productType.displayName + tarih)
+//   - sourceMetadata: { kind: "variation-batch", batchId, referenceId,
+//     productTypeId, batchCreatedAt, originalCount } — Phase 1 lineage
+//     `SelectionSet.sourceMetadata` formatıyla uyumlu (variation-batch
+//     path); Selection detail header'da `↗ BATCH XXXXXXXX` görünür.
+//   - items.status = "pending" (operator review zaten gate'i)
+//
+// MidjourneyAsset.promote chain'i kullanılmaz — AI batch'leri zaten
+// GeneratedDesign üretmiş, ekstra promote step gerekmez.
+// ────────────────────────────────────────────────────────────
+
+export async function createSelectionFromAiBatch(
+  input: CreateSelectionFromMjBatchInput,
+): Promise<HandoffResult> {
+  const { userId, batchId } = input;
+
+  // 1) Batch'in GENERATE_VARIATIONS job'larını ve KEPT design'larını topla.
+  const jobs = await db.job.findMany({
+    where: {
+      type: JobType.GENERATE_VARIATIONS,
+      userId,
+      metadata: { path: ["batchId"], equals: batchId },
+    },
+    select: { id: true, createdAt: true, metadata: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (jobs.length === 0) {
+    throw new MjBatchSelectionError(
+      "Batch bulunamadı veya size ait değil",
+      "BATCH_NOT_FOUND",
+    );
+  }
+
+  // 2) Bu batch'in tüm GeneratedDesign'larını çek; KEPT-only filter
+  // (CLAUDE.md Madde V — operator-only kept zinciri).
+  const designs = await db.generatedDesign.findMany({
+    where: {
+      jobId: { in: jobs.map((j) => j.id) },
+      userId,
+      reviewStatus: "APPROVED",
+      reviewStatusSource: "USER",
+    },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      assetId: true,
+      referenceId: true,
+      productTypeId: true,
+    },
+  });
+  if (designs.length === 0) {
+    throw new MjBatchSelectionError(
+      "Bu batch'te kept asset yok — önce review'da karar verin",
+      "NO_KEPT_ASSETS",
+    );
+  }
+
+  // 3) referenceId + productTypeId resolve — variation creation single-
+  // reference; ilk design'dan al.
+  const first = designs[0]!;
+  const referenceId = first.referenceId;
+  const productTypeId = first.productTypeId;
+  if (!referenceId) {
+    throw new MjBatchSelectionError(
+      "Reference resolve edilemedi",
+      "REFERENCE_NOT_RESOLVED",
+    );
+  }
+  if (!productTypeId) {
+    throw new MjBatchSelectionError(
+      "ProductType resolve edilemedi",
+      "PRODUCT_TYPE_NOT_RESOLVED",
+    );
+  }
+
+  // 4) Auto-name: aynı pattern (Phase 3 MJ counterpart ile tutarlı).
+  const [reference, productType] = await Promise.all([
+    db.reference.findFirst({
+      where: { id: referenceId, userId, deletedAt: null },
+      select: { notes: true },
+    }),
+    db.productType.findUnique({
+      where: { id: productTypeId },
+      select: { displayName: true },
+    }),
+  ]);
+  const trimmedNotes = reference?.notes?.trim() ?? "";
+  const namePrefix =
+    trimmedNotes.length > 0
+      ? trimmedNotes
+      : productType?.displayName ?? "Selection";
+  const autoName = `${namePrefix} — ${formatTrShortDate(new Date())}`;
+
+  // 5) Atomic transaction — set + items + sourceMetadata. AI pipeline'da
+  // promote step yok; GeneratedDesign zaten persisted.
+  const created = await db.$transaction(async (tx) => {
+    const set = await tx.selectionSet.create({
+      data: {
+        userId,
+        name: autoName,
+        status: "draft",
+        // Phase 1 lineage format (variation-batch path) ile uyumlu;
+        // SelectionBatchLineage component bu blob'u okuyup `↗ BATCH
+        // XXXXXXXX` link gösterir.
+        sourceMetadata: {
+          kind: "variation-batch",
+          referenceId,
+          batchId,
+          productTypeId,
+          batchCreatedAt: jobs[0]!.createdAt.toISOString(),
+          originalCount: designs.length,
+        },
+      },
+    });
+
+    for (let idx = 0; idx < designs.length; idx++) {
+      const design = designs[idx]!;
+      await tx.selectionItem.create({
+        data: {
+          selectionSetId: set.id,
+          generatedDesignId: design.id,
+          sourceAssetId: design.assetId,
+          status: "pending",
+          position: idx,
+        },
+      });
+    }
+
+    return { setId: set.id, setName: set.name };
+  });
+
+  return {
+    selectionSetId: created.setId,
+    selectionSetName: created.setName,
+    promotedCreated: 0, // AI batch'lerde promote step yok
+    promotedAlready: designs.length,
+    itemsAdded: designs.length,
+    itemsAlreadyInSet: 0,
+  };
 }

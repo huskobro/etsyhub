@@ -23,7 +23,7 @@ import { requireUser } from "@/server/session";
 import { withErrorHandling } from "@/lib/http";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import {
-  createSelectionFromMjBatch,
+  createSelectionFromBatch,
   MjBatchSelectionError,
 } from "@/server/services/midjourney/kept";
 
@@ -41,7 +41,9 @@ export const POST = withErrorHandling(
     }
 
     try {
-      const result = await createSelectionFromMjBatch({
+      // Batch-first Phase 4 — unified dispatcher; pipeline detection
+      // (MJ_BRIDGE vs GENERATE_VARIATIONS) içeride.
+      const result = await createSelectionFromBatch({
         userId: user.id,
         batchId,
       });

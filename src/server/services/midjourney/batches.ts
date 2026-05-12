@@ -44,8 +44,25 @@ export type BatchJobRow = {
   finishedAt: Date | null;
 };
 
+/**
+ * Batch-first Phase 4 — pipeline identity.
+ *
+ * Operatör-facing tek surface (/batches/[id]) iki ayrı altyapı job'unu
+ * kapsar:
+ *   - "midjourney"  → Job.type = MIDJOURNEY_BRIDGE; outputs MidjourneyAsset.
+ *   - "ai-variation" → Job.type = GENERATE_VARIATIONS; outputs GeneratedDesign.
+ *
+ * Pipeline kimliği UI'a sızdırılır ama operatörü altyapı bilgisine
+ * zorlamaz — yalnız stage CTA + handoff path resolver tarafından
+ * kullanılır (selection handoff farklı service çağırır; review queue
+ * scope filtresi aynı `batchId`'yi her iki pipeline için okur).
+ */
+export type BatchPipeline = "midjourney" | "ai-variation";
+
 export type BatchSummary = {
   batchId: string;
+  /** Batch-first Phase 4 — hangi pipeline (UI handoff kararı için). */
+  pipeline: BatchPipeline;
   /** İlk job'un createdAt'i (batch oluşturulma zamanı). */
   createdAt: Date;
   /** Job'ların batchTotal field'ı (tüm batch için aynı). */
@@ -61,6 +78,14 @@ export type BatchSummary = {
    * retry batch'lerinde null kalabilir (retry metadata.referenceId taşımaz).
    */
   referenceId: string | null;
+  /**
+   * Batch-first Phase 4 — AI variation batch'leri için productTypeId
+   * resolve edilebilir (GeneratedDesign.productTypeId üzerinden).
+   * `quickStartFromBatch` çağrısı için gerekli (Selection handoff
+   * pipeline-aware). MJ batch'lerinde null kalabilir; createSelection
+   * server kendi resolve yapar.
+   */
+  productTypeId: string | null;
   /**
    * Pass 86 — Retry lineage (varsa).
    * Bu batch bir önceki batch'in retry'ı ise:
@@ -128,12 +153,26 @@ function bucketState(state: string | null): keyof BatchSummary["counts"] {
 /**
  * Tek bir batch'in özeti (jobs listesi + state breakdown).
  * User-scoped — userId verilirse sadece o user'ın batch'i resolve edilir.
+ *
+ * Batch-first Phase 4 — unified pipeline resolver:
+ *   İki ayrı Job.type aynı `Job.metadata.batchId` cuid'sini paylaşır:
+ *     - MIDJOURNEY_BRIDGE → MidjourneyJob + MidjourneyAsset zinciri
+ *     - GENERATE_VARIATIONS → GeneratedDesign zinciri (1 Job = 1 design)
+ *   Resolver önce GENERATE_VARIATIONS arar (AI pipeline güncel); yoksa
+ *   MJ_BRIDGE fallback yapar (legacy + manuel batch'ler). Pipeline farkı
+ *   `summary.pipeline` field'ında yüzeye çıkar; UI handoff kararı buna
+ *   göre alır (Selection creation farklı service çağırır).
  */
 export async function getBatchSummary(
   batchId: string,
   userId?: string,
 ): Promise<BatchSummary | null> {
-  // Job.metadata.batchId üzerinden query (Prisma JSON path filter)
+  // 1) Önce AI variation pipeline'ında ara — yeni job'lar bu pipeline'da
+  // üretiliyor; latency bu yola optimize.
+  const aiSummary = await getAiVariationBatchSummary(batchId, userId);
+  if (aiSummary) return aiSummary;
+
+  // 2) Fallback: MIDJOURNEY_BRIDGE pipeline (legacy + manuel).
   const jobs = await db.job.findMany({
     where: {
       type: JobType.MIDJOURNEY_BRIDGE,
@@ -256,12 +295,181 @@ export async function getBatchSummary(
 
   return {
     batchId,
+    pipeline: "midjourney",
     createdAt: jobs[0]!.createdAt,
     batchTotal,
     templateId,
     promptTemplate,
     referenceId,
+    // MJ pipeline'da productTypeId Job.metadata içinde değil; MidjourneyJob
+    // row'unda persist. Phase 3 createSelectionFromMjBatch zaten kendi
+    // resolve yapıyor. Burada null bırakıyoruz — UI handoff'u summary.pipeline
+    // üzerinden farklı service'e yönlendirir.
+    productTypeId: null,
     retryOfBatchId,
+    counts,
+    reviewCounts,
+    jobs: rows,
+  };
+}
+
+// ────────────────────────────────────────────────────────────
+// Batch-first Phase 4 — AI variation pipeline resolver.
+//
+// GENERATE_VARIATIONS job'larından `BatchSummary` derler. Output asset model
+// `GeneratedDesign`; review decision `GeneratedDesign.reviewStatus` +
+// `reviewStatusSource` (CLAUDE.md Madde V — operator-only kept zinciri).
+//
+// MidjourneyJob.generatedAssets relation'ı AI batch'lerde N/A — onun yerine
+// her job için ilişkili `GeneratedDesign.state` ile counts.* dolar.
+// reviewCounts.kept = APPROVED + USER source (Madde V).
+// ────────────────────────────────────────────────────────────
+
+async function getAiVariationBatchSummary(
+  batchId: string,
+  userId?: string,
+): Promise<BatchSummary | null> {
+  const jobs = await db.job.findMany({
+    where: {
+      type: JobType.GENERATE_VARIATIONS,
+      ...(userId ? { userId } : {}),
+      metadata: {
+        path: MJ_BATCH_METADATA_PATH,
+        equals: batchId,
+      },
+    },
+    select: {
+      id: true,
+      status: true,
+      metadata: true,
+      createdAt: true,
+      finishedAt: true,
+      error: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  if (jobs.length === 0) return null;
+
+  // Each job has one related GeneratedDesign — bulk fetch by jobId.
+  const designs = await db.generatedDesign.findMany({
+    where: {
+      jobId: { in: jobs.map((j) => j.id) },
+      ...(userId ? { userId } : {}),
+    },
+    select: {
+      id: true,
+      jobId: true,
+      state: true,
+      productTypeId: true,
+      referenceId: true,
+      reviewStatus: true,
+      reviewStatusSource: true,
+    },
+  });
+  const designByJobId = new Map<string, (typeof designs)[number]>();
+  for (const d of designs) {
+    if (d.jobId) designByJobId.set(d.jobId, d);
+  }
+
+  const counts: BatchSummary["counts"] = {
+    total: 0,
+    queued: 0,
+    running: 0,
+    completed: 0,
+    failed: 0,
+    cancelled: 0,
+    awaiting: 0,
+    other: 0,
+  };
+  const reviewCounts: BatchSummary["reviewCounts"] = {
+    total: 0,
+    kept: 0,
+    rejected: 0,
+    undecided: 0,
+  };
+
+  let batchTotal = 0;
+  let referenceId: string | null = null;
+  let productTypeId: string | null = null;
+  const rows: BatchJobRow[] = [];
+
+  for (const j of jobs) {
+    counts.total += 1;
+    const md = (j.metadata as Record<string, unknown> | null) ?? {};
+    const idx =
+      typeof md["batchIndex"] === "number" ? (md["batchIndex"] as number) : 0;
+    const total =
+      typeof md["batchTotal"] === "number" ? (md["batchTotal"] as number) : 0;
+    if (total > batchTotal) batchTotal = total;
+    if (typeof md["referenceId"] === "string" && !referenceId) {
+      referenceId = md["referenceId"] as string;
+    }
+
+    // Job state mapping: Job.status (QUEUED/RUNNING/SUCCEEDED/FAILED) →
+    // BatchSummary.counts bucket.
+    if (j.status === "QUEUED") counts.queued += 1;
+    else if (j.status === "RUNNING") counts.running += 1;
+    else if (j.status === "SUCCESS") counts.completed += 1;
+    else if (j.status === "FAILED") counts.failed += 1;
+    else if (j.status === "CANCELLED") counts.cancelled += 1;
+    else counts.other += 1;
+
+    const design = designByJobId.get(j.id);
+    if (design) {
+      if (!productTypeId) productTypeId = design.productTypeId;
+      if (!referenceId) referenceId = design.referenceId;
+      // CLAUDE.md Madde V: kept = APPROVED + reviewStatusSource = USER.
+      // Worker-written advisory (`SYSTEM` source) "undecided" bucket'ına
+      // düşer — operatör henüz karar vermedi.
+      reviewCounts.total += 1;
+      if (
+        design.reviewStatus === "APPROVED" &&
+        design.reviewStatusSource === "USER"
+      ) {
+        reviewCounts.kept += 1;
+      } else if (
+        design.reviewStatus === "REJECTED" &&
+        design.reviewStatusSource === "USER"
+      ) {
+        reviewCounts.rejected += 1;
+      } else {
+        reviewCounts.undecided += 1;
+      }
+    }
+
+    rows.push({
+      jobId: j.id,
+      midjourneyJobId: null, // AI pipeline'da MJ relation yok
+      state: j.status,
+      bridgeJobId: null,
+      mjJobId: null,
+      batchIndex: idx,
+      expandedPrompt: null, // AI prompt snapshot GeneratedDesign'da
+      variables: null,
+      assetCount: design ? 1 : 0,
+      blockReason: null,
+      failedReason: j.error ?? null,
+      createdAt: j.createdAt,
+      finishedAt: j.finishedAt,
+    });
+  }
+
+  rows.sort((a, b) => a.batchIndex - b.batchIndex);
+
+  return {
+    batchId,
+    pipeline: "ai-variation",
+    createdAt: jobs[0]!.createdAt,
+    batchTotal,
+    // AI pipeline'da template/prompt template snapshot Job.metadata'da yok;
+    // GeneratedDesign.promptSnapshot var ama ayrı row, batch detail için
+    // representative job'dan okuma future enhancement.
+    templateId: null,
+    promptTemplate: null,
+    referenceId,
+    productTypeId,
+    retryOfBatchId: null,
     counts,
     reviewCounts,
     jobs: rows,
@@ -270,6 +478,8 @@ export async function getBatchSummary(
 
 export type RecentBatchSummary = {
   batchId: string;
+  /** Batch-first Phase 4 — pipeline identity (UI handoff için). */
+  pipeline: BatchPipeline;
   createdAt: Date;
   batchTotal: number;
   templateId: string | null;
@@ -464,8 +674,9 @@ export async function listRecentBatches(
     }
   }
 
-  return summaries.map((b) => ({
+  const mjSummaries: RecentBatchSummary[] = summaries.map((b) => ({
     batchId: b.batchId,
+    pipeline: "midjourney" as BatchPipeline,
     createdAt: b.createdAt,
     batchTotal: b.batchTotal,
     templateId: b.templateId,
@@ -476,6 +687,180 @@ export async function listRecentBatches(
     representativeAssetId: representatives.get(b.batchId) ?? null,
     referenceId: b.referenceId,
     reviewCounts: b.reviewCounts,
+  }));
+
+  // Batch-first Phase 4 — AI variation batch'leri (GENERATE_VARIATIONS)
+  // unified surface'e merge edilir. Operatör Batches index'te iki ayrı
+  // pipeline ayrımını altyapı bilgisi olarak görmez; aynı grid'de gözlemler.
+  const aiSummaries = await listAiVariationBatches(userId, referenceIdFilter);
+
+  // Merge by createdAt desc, limit'i son anda uygula.
+  const merged = [...mjSummaries, ...aiSummaries]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, limit);
+
+  return merged;
+}
+
+// ────────────────────────────────────────────────────────────
+// Batch-first Phase 4 — AI variation batch listing.
+//
+// `Job.metadata.batchId` üzerinden GENERATE_VARIATIONS job'larını group by
+// yapar. Her batch için: counts (queued/running/completed/failed),
+// reviewCounts (kept = APPROVED + USER), referenceId, batchTotal.
+// Representative thumbnail için GeneratedDesign.assetId ilk completed
+// design'dan resolve edilir.
+// ────────────────────────────────────────────────────────────
+
+async function listAiVariationBatches(
+  userId: string,
+  referenceIdFilter?: string,
+): Promise<RecentBatchSummary[]> {
+  const jobs = await db.job.findMany({
+    where: {
+      type: JobType.GENERATE_VARIATIONS,
+      userId,
+      ...(referenceIdFilter
+        ? {
+            metadata: {
+              path: ["referenceId"],
+              equals: referenceIdFilter,
+            },
+          }
+        : {}),
+    },
+    select: {
+      id: true,
+      status: true,
+      metadata: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 2000,
+  });
+
+  if (jobs.length === 0) return [];
+
+  // Group by batchId.
+  type Entry = {
+    batchId: string;
+    createdAt: Date;
+    batchTotal: number;
+    referenceId: string | null;
+    counts: BatchSummary["counts"];
+    reviewCounts: BatchSummary["reviewCounts"];
+    jobIds: string[];
+  };
+  const byBatch = new Map<string, Entry>();
+  for (const j of jobs) {
+    const md = (j.metadata as Record<string, unknown> | null) ?? {};
+    const batchId = md["batchId"];
+    if (typeof batchId !== "string" || batchId.length === 0) continue;
+    let entry = byBatch.get(batchId);
+    if (!entry) {
+      entry = {
+        batchId,
+        createdAt: j.createdAt,
+        batchTotal:
+          typeof md["batchTotal"] === "number"
+            ? (md["batchTotal"] as number)
+            : 0,
+        referenceId:
+          typeof md["referenceId"] === "string"
+            ? (md["referenceId"] as string)
+            : null,
+        counts: {
+          total: 0,
+          queued: 0,
+          running: 0,
+          completed: 0,
+          failed: 0,
+          cancelled: 0,
+          awaiting: 0,
+          other: 0,
+        },
+        reviewCounts: { total: 0, kept: 0, rejected: 0, undecided: 0 },
+        jobIds: [],
+      };
+      byBatch.set(batchId, entry);
+    }
+    if (j.createdAt < entry.createdAt) entry.createdAt = j.createdAt;
+    if (!entry.referenceId && typeof md["referenceId"] === "string") {
+      entry.referenceId = md["referenceId"] as string;
+    }
+    entry.counts.total += 1;
+    if (j.status === "QUEUED") entry.counts.queued += 1;
+    else if (j.status === "RUNNING") entry.counts.running += 1;
+    else if (j.status === "SUCCESS") entry.counts.completed += 1;
+    else if (j.status === "FAILED") entry.counts.failed += 1;
+    else if (j.status === "CANCELLED") entry.counts.cancelled += 1;
+    else entry.counts.other += 1;
+    entry.jobIds.push(j.id);
+  }
+
+  const summaries = Array.from(byBatch.values());
+  if (summaries.length === 0) return [];
+
+  // Bulk fetch GeneratedDesigns for all job ids → reviewCounts + representative
+  // thumbnail. Per-job small projection.
+  const allJobIds = summaries.flatMap((s) => s.jobIds);
+  const designs = await db.generatedDesign.findMany({
+    where: { jobId: { in: allJobIds }, userId },
+    select: {
+      jobId: true,
+      assetId: true,
+      state: true,
+      reviewStatus: true,
+      reviewStatusSource: true,
+    },
+  });
+  const designsByJobId = new Map<string, (typeof designs)[number]>();
+  for (const d of designs) {
+    if (d.jobId) designsByJobId.set(d.jobId, d);
+  }
+
+  for (const s of summaries) {
+    let representativeAssetId: string | null = null;
+    for (const jobId of s.jobIds) {
+      const d = designsByJobId.get(jobId);
+      if (!d) continue;
+      s.reviewCounts.total += 1;
+      if (
+        d.reviewStatus === "APPROVED" &&
+        d.reviewStatusSource === "USER"
+      ) {
+        s.reviewCounts.kept += 1;
+      } else if (
+        d.reviewStatus === "REJECTED" &&
+        d.reviewStatusSource === "USER"
+      ) {
+        s.reviewCounts.rejected += 1;
+      } else {
+        s.reviewCounts.undecided += 1;
+      }
+      if (!representativeAssetId && d.state === "SUCCESS" && d.assetId) {
+        representativeAssetId = d.assetId;
+      }
+    }
+    // attach representative onto entry shape (use any-shaped local extension
+    // via a wrapper map outside, but here re-shape on map return below).
+    (s as Entry & { representativeAssetId: string | null }).representativeAssetId =
+      representativeAssetId;
+  }
+
+  return summaries.map((s) => ({
+    batchId: s.batchId,
+    pipeline: "ai-variation" as BatchPipeline,
+    createdAt: s.createdAt,
+    batchTotal: s.batchTotal,
+    templateId: null,
+    promptTemplatePreview: null,
+    counts: s.counts,
+    representativeAssetId:
+      (s as Entry & { representativeAssetId: string | null })
+        .representativeAssetId ?? null,
+    referenceId: s.referenceId,
+    reviewCounts: s.reviewCounts,
   }));
 }
 

@@ -2749,6 +2749,78 @@ fazla selection set bu yapıyı taşıyacak.
 - **Kivasy DS dışına çıkılmadı.** Yeni icon family yok; mevcut
   `Sparkles`, `ArrowRight`, `CheckCircle2`, mono caption pattern'leri.
 
+### Batch-first Phase 4 (2026-05-12 — Unified batch detail surface)
+
+Phase 2'de eklenen "View Batch" CTA AI variation batch'leri için 404
+veriyordu çünkü `getBatchSummary` sadece `JobType.MIDJOURNEY_BRIDGE`
+job'larını okuyordu. Phase 4 ile **kullanıcı-facing tek `/batches/[id]`
+yüzeyi** her iki pipeline'ı taşır:
+
+- **MIDJOURNEY_BRIDGE** (eski MJ bridge pipeline) — outputs `MidjourneyAsset`
+- **GENERATE_VARIATIONS** (yeni AI pipeline — kie.ai vb.) — outputs `GeneratedDesign`
+
+Operatör altyapı tipini bilmek zorunda kalmaz; UI küçük bir
+`MJ` / `AI` chip'i ile sinyal verir (audit/debug için).
+
+#### Unified resolver pattern
+
+- `getBatchSummary(batchId, userId)`:
+  - Önce `getAiVariationBatchSummary` (GENERATE_VARIATIONS) dener
+  - Yoksa MJ_BRIDGE fallback yapar
+  - `summary.pipeline` field'ı (`"midjourney" | "ai-variation"`) UI'da
+    chip + handoff route kararı için kullanılır
+- `listRecentBatches(userId, limit, options)`:
+  - MJ batch'leri + `listAiVariationBatches` çıktısı `createdAt desc`
+    sıralı merge edilir
+  - Aynı `referenceId` filter'ı her iki pipeline'da uygulanır
+
+Her iki pipeline aynı `Job.metadata.batchId` (cuid) semantic'ini paylaşır.
+Schema-zero — yeni tablo yok, sadece JSON path query'leri.
+
+#### AI metadata standardı
+
+`ai-generation.service.ts` artık her job'a aşağıdaki field'ları yazar:
+- `batchId` (cuid, IA-37)
+- `referenceId` (Phase 2)
+- `batchIndex` (yeni — MJ pattern parity)
+- `batchTotal` (yeni — `"X / Y done"` caption için)
+
+Eski AI batch'leri legacy `batchTotal: 0` gösterir (bir kez) — yeni
+batch'ler doğru caption verir.
+
+#### Pipeline-aware Create Selection dispatcher
+
+Yeni `createSelectionFromBatch` dispatcher (`kept.ts`) batchId'den
+pipeline'ı detect eder:
+- GENERATE_VARIATIONS bulursa → `createSelectionFromAiBatch` (Phase 4)
+  - `GeneratedDesign.reviewStatus=APPROVED + reviewStatusSource=USER`
+    olan design'ları yeni SelectionSet'e ekler
+  - `sourceMetadata.kind="variation-batch"` blob yazılır (Phase 1
+    lineage parity — Selection detail header'da `↗ BATCH XXXXXXXX`
+    görünür)
+- MJ_BRIDGE bulursa → `createSelectionFromMjBatch` (Phase 3, değişmez)
+- API endpoint `/api/batches/[batchId]/create-selection` artık
+  pipeline-agnostic — UI handoff aynı CTA üzerinden her iki pipeline'a
+  çalışır
+
+CLAUDE.md Madde V'' downstream gate (operator-only kept zinciri)
+korunur: AI batch'lerde KEPT semantic'i `reviewStatus=APPROVED +
+reviewStatusSource=USER` (Madde V).
+
+#### Değişmeyenler (Phase 4)
+
+- **Review freeze (Madde Z) korunur.** Phase 4 review modülüne dokunmaz;
+  AI pipeline'da `reviewSuggestedStatus` (advisory) ile `reviewStatus`
+  (operator decision) ayrımı zaten yerleşik.
+- **Schema migration yok.** İki pipeline aynı `Job.metadata.batchId`
+  field'ını paylaşır; Prisma JSON path query unified resolver.
+- **Yeni büyük abstraction açılmadı.** `BatchPipeline` type literal
+  union + `getAiVariationBatchSummary` private helper; ana surface
+  (`getBatchSummary`) signature'ı değişmez.
+- **WorkflowRun eklenmez** (IA Phase 11 kapsamı).
+- **Kivasy DS dışına çıkılmadı.** Pipeline chip mevcut `font-mono
+  text-[10.5px] tracking-meta` recipe'iyle yazıldı.
+
 ### Epic-agnesi branch notu
 
 `claude/epic-agnesi-7a424b` branch'inde Batch-first Phase 1'in ilk
