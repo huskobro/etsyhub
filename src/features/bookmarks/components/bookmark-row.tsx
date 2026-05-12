@@ -383,6 +383,12 @@ function BookmarkRowThumb({
           role="tooltip"
           aria-label={`Preview of ${title}`}
           className="pointer-events-none fixed z-50 w-64 rounded-md border border-line bg-paper p-2 shadow-popover"
+          // Phase 23 — Runtime-computed position for fixed popover.
+          // viewport-aware placement (sağa sığmıyorsa sola düşer); dinamik
+          // top/left Tailwind class ile ifade edilemez. CSS variable
+          // pattern de aynı runtime hesabı taşır, ek katman değer
+          // getirmez.
+          // eslint-disable-next-line no-restricted-syntax
           style={{ top: position.top, left: position.left }}
           data-placement={position.placement}
           data-testid="bookmark-thumb-preview"

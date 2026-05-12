@@ -79,7 +79,13 @@ type BookmarkLite = {
 };
 
 type SourceHint = {
-  platform: "ETSY" | "PINTEREST" | "CREATIVE_FABRICA" | "DIRECT" | "OTHER";
+  platform:
+    | "ETSY"
+    | "ETSY_LISTING"
+    | "PINTEREST"
+    | "CREATIVE_FABRICA"
+    | "DIRECT"
+    | "OTHER";
   label: string;
 };
 
@@ -93,6 +99,11 @@ type SourceHint = {
  * detectSourceFromUrl — client-side hostname classifier.
  * Server-side resolver (asset import worker) gerçek meta extraction yapar;
  * burası yalnız operatöre erken görsel ipucu verir. Negative match = "OTHER".
+ *
+ * Phase 35 — Etsy listing detail (`etsy.com/listing/{id}/...`) ile Etsy CDN
+ * direct image (`etsystatic.com/...`) ayrılır. Listing URL'i için ayrı
+ * "ETSY_LISTING" platform marker'ı dönülür; UI bu row'da "View all images"
+ * picker affordance'ı gösterir.
  */
 function detectSourceFromUrl(raw: string): SourceHint | null {
   const trimmed = raw.trim();
@@ -102,6 +113,14 @@ function detectSourceFromUrl(raw: string): SourceHint | null {
     host = new URL(trimmed).host.toLowerCase();
   } catch {
     return null;
+  }
+  // Etsy listing detail page (NOT a direct image URL) — listing picker
+  // affordance açar.
+  if (host.includes("etsy.com") && /\/listing\/\d+/i.test(trimmed)) {
+    return {
+      platform: "ETSY_LISTING",
+      label: "Etsy listing · we can pull all images",
+    };
   }
   if (host.includes("etsystatic.com") || host.includes("etsy.com")) {
     return { platform: "ETSY", label: "Looks like Etsy" };
@@ -265,6 +284,18 @@ export function AddReferenceDialog({
     { id: crypto.randomUUID(), url: "", jobId: null, status: "idle" },
   ]);
   const [urlGlobalMessage, setUrlGlobalMessage] = useState<string | null>(null);
+
+  /* Phase 35 — Etsy listing image picker state.
+   * Operator URL row'da "View all images" tıklayınca picker açılır;
+   * server `/api/scraper/etsy-listing-images` listing'in tüm görselleri
+   * + title'ı döner. Operatör multi-select yapar; "Add N images"
+   * tıkladığında seçilen URL'ler queue'ya yeni row olarak eklenir
+   * (mevcut tek-row listing URL'i kaldırılır — operatör listing değil
+   * görselleri save eder). */
+  const [listingPicker, setListingPicker] = useState<{
+    sourceRowId: string;
+    listingUrl: string;
+  } | null>(null);
 
   // Upload tab state — multi-file
   type UploadEntry = {
@@ -447,6 +478,29 @@ export function AddReferenceDialog({
         return [{ id: crypto.randomUUID(), url: "", jobId: null, status: "idle" }];
       }
       return cur.filter((e) => e.id !== id);
+    });
+  }
+
+  /* Phase 35 — Etsy listing picker entry. Operatör picker'da N görsel
+   * seçince listing URL row'unu kaldırıp N yeni idle row ekleriz.
+   * Yeni row'lar idle → operatör hepsini "Fetch N images" ile çeker. */
+  function urlReplaceRowWithUrls(rowId: string, newUrls: string[]) {
+    setUrlEntries((cur) => {
+      const filtered = cur.filter((e) => e.id !== rowId);
+      const additions: UrlEntry[] = newUrls.map((u) => ({
+        id: crypto.randomUUID(),
+        url: u,
+        jobId: null,
+        status: "idle",
+      }));
+      const merged = [...filtered, ...additions];
+      // Defansif: tüm row'lar uçtuysa 1 boş row bırak (UI hep en az 1 satır)
+      if (merged.length === 0) {
+        return [
+          { id: crypto.randomUUID(), url: "", jobId: null, status: "idle" },
+        ];
+      }
+      return merged;
     });
   }
 
@@ -842,6 +896,9 @@ export function AddReferenceDialog({
               onRemoveRow={urlRemoveRow}
               onAddRow={urlAddRow}
               onPaste={urlHandlePaste}
+              onOpenListingPicker={(rowId, url) =>
+                setListingPicker({ sourceRowId: rowId, listingUrl: url })
+              }
               globalMessage={urlGlobalMessage}
             />
           ) : null}
@@ -1002,6 +1059,24 @@ export function AddReferenceDialog({
           </div>
         ) : null}
       </div>
+
+      {/* Phase 35 — Etsy listing image picker (modal-over-modal).
+       *   Yalnız `listingPicker` non-null iken render edilir. Operatör
+       *   N image seçince `urlReplaceRowWithUrls` ile mevcut row
+       *   (listing URL'i içeren) silinir, N yeni idle row eklenir.
+       *   Operatör sonra "Fetch N images" ile normal queue flow'una
+       *   girer. Backdrop click + Escape ile picker kapanır, ana
+       *   modal hâlâ açık kalır (z-index 60 > 50). */}
+      {listingPicker ? (
+        <EtsyListingPicker
+          listingUrl={listingPicker.listingUrl}
+          onClose={() => setListingPicker(null)}
+          onSubmit={(urls) => {
+            urlReplaceRowWithUrls(listingPicker.sourceRowId, urls);
+            setListingPicker(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1023,6 +1098,11 @@ type UrlTabProps = {
   onRemoveRow: (id: string) => void;
   onAddRow: () => void;
   onPaste: (id: string, text: string) => boolean;
+  /* Phase 35 — Etsy listing URL → image picker callback.
+   * UrlTab kendisi picker UI'ı render etmez; parent component
+   * `openListingPicker(rowId, url)` ile picker'ı açar. Picker
+   * seçimleri parent tarafında queue'ya basılır. */
+  onOpenListingPicker?: (rowId: string, url: string) => void;
   globalMessage: string | null;
 };
 
@@ -1128,7 +1208,15 @@ function UrlRowThumb({
 
 const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
   function UrlTab(
-    { entries, onChangeRow, onRemoveRow, onAddRow, onPaste, globalMessage },
+    {
+      entries,
+      onChangeRow,
+      onRemoveRow,
+      onAddRow,
+      onPaste,
+      onOpenListingPicker,
+      globalMessage,
+    },
     ref,
   ) {
     return (
@@ -1215,6 +1303,32 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
                     <span className="font-mono text-[10.5px] tracking-wider text-ink-2">
                       Fetching… {entry.progress ? `${entry.progress}%` : null}
                     </span>
+                  ) : sourceHint?.platform === "ETSY_LISTING" ? (
+                    /* Phase 35 — Etsy listing detection: hint + "View all
+                     * images" affordance. Click → parent picker opens.
+                     * Direct image URL akışı bozulmaz; listing'ler için
+                     * ek bir yol açılır. */
+                    <div
+                      className="inline-flex flex-wrap items-center gap-2 font-mono text-[10.5px] tracking-wider text-success"
+                      data-testid="add-ref-source-hint"
+                    >
+                      <span>
+                        <span aria-hidden>✓</span> {sourceHint.label}
+                      </span>
+                      {onOpenListingPicker ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onOpenListingPicker(entry.id, entry.url)
+                          }
+                          className="k-btn k-btn--ghost"
+                          data-size="sm"
+                          data-testid="add-ref-open-listing-picker"
+                        >
+                          View all images
+                        </button>
+                      ) : null}
+                    </div>
                   ) : sourceHint ? (
                     <span
                       className={cn(
@@ -1619,4 +1733,288 @@ function relativeAgo(iso: string): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   return `${d}d ago`;
+}
+
+/* ───────────────────────── ETSY LISTING PICKER (Phase 35) ───────────────────────── */
+/**
+ * EtsyListingPicker — modal-over-modal Etsy listing image picker.
+ *
+ * Operatör URL row'da "View all images" tıklayınca açılır. Server-side
+ * `/api/scraper/etsy-listing-images` listing'in tüm görsellerini +
+ * title'ı döner. Operatör multi-select yapar, "Add N images" tıklayınca
+ * seçilen URL'ler queue'ya yeni idle row olarak basılır.
+ *
+ * Direct image URL akışı bozulmaz: listing detection sadece
+ * `etsy.com/listing/{id}` formatına bağlı; direct image URL paste
+ * edilirse picker hiç açılmaz, mevcut akış devam eder.
+ *
+ * a11y: role="dialog" + aria-modal + aria-labelledby + Escape close +
+ * backdrop click (busy-guard).
+ */
+function EtsyListingPicker({
+  listingUrl,
+  onClose,
+  onSubmit,
+}: {
+  listingUrl: string;
+  onClose: () => void;
+  onSubmit: (urls: string[]) => void;
+}) {
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+
+  const query = useQuery({
+    queryKey: ["etsy-listing-images", listingUrl],
+    queryFn: async () => {
+      const res = await fetch("/api/scraper/etsy-listing-images", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url: listingUrl }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()).error ?? "Couldn't fetch listing";
+        throw new Error(err);
+      }
+      return (await res.json()) as {
+        externalId: string;
+        title: string;
+        imageUrls: string[];
+        warnings: string[];
+      };
+    },
+  });
+
+  /* All-images select-all toggle (Phase 30 From Bookmark Select all pattern
+   * paritesi). */
+  const allSelected =
+    !!query.data &&
+    query.data.imageUrls.length > 0 &&
+    query.data.imageUrls.every((u) => selection.has(u));
+
+  const toggle = (url: string) => {
+    setSelection((cur) => {
+      const next = new Set(cur);
+      if (next.has(url)) next.delete(url);
+      else next.add(url);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (!query.data) return;
+    setSelection(new Set(query.data.imageUrls));
+  };
+  const clearAll = () => setSelection(new Set());
+
+  // Escape close
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const onBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    onClose();
+  };
+
+  const submit = () => {
+    if (selection.size === 0) return;
+    onSubmit(Array.from(selection));
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-bg/80 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="etsy-picker-title"
+      onClick={onBackdropClick}
+      data-testid="etsy-listing-picker"
+    >
+      <div className="flex h-[min(720px,90vh)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-line bg-paper shadow-popover">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-line bg-paper px-6 py-4">
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <h2
+              id="etsy-picker-title"
+              className="text-[16px] font-semibold text-ink"
+            >
+              Choose images from this Etsy listing
+            </h2>
+            <span
+              className="truncate font-mono text-[10.5px] tracking-wider text-ink-3"
+              title={listingUrl}
+            >
+              {listingUrl}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-k-bg hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-k-orange"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto bg-paper px-6 py-5">
+          {query.isLoading ? (
+            <div className="flex items-center gap-2 text-[12px] text-ink-3">
+              <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-k-orange" />
+              Fetching listing images…
+            </div>
+          ) : query.isError ? (
+            <div className="rounded-md border border-danger/40 bg-danger/5 p-4 text-[12.5px] text-danger">
+              <div className="font-medium">Couldn&apos;t fetch listing</div>
+              <div className="mt-1 text-[11.5px] text-ink-3">
+                {(query.error as Error).message}
+              </div>
+            </div>
+          ) : query.data && query.data.imageUrls.length === 0 ? (
+            <div className="rounded-md border border-line-soft bg-k-bg-2/30 p-4 text-[12.5px] text-ink-3">
+              No images found on this listing. Paste a direct image URL
+              instead.
+            </div>
+          ) : query.data ? (
+            <div className="flex flex-col gap-3">
+              {/* Title + caption */}
+              <div className="flex flex-col gap-1">
+                {query.data.title ? (
+                  <span className="text-[14px] font-medium text-ink truncate" title={query.data.title}>
+                    {query.data.title}
+                  </span>
+                ) : null}
+                <div className="flex items-center justify-between gap-2 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+                  <span data-testid="etsy-picker-summary">
+                    We found {query.data.imageUrls.length} image
+                    {query.data.imageUrls.length === 1 ? "" : "s"} ·{" "}
+                    {selection.size} selected
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={selectAll}
+                      disabled={allSelected}
+                      className="transition-colors hover:text-ink disabled:opacity-40"
+                      data-testid="etsy-picker-select-all"
+                    >
+                      Select all
+                    </button>
+                    {selection.size > 0 ? (
+                      <button
+                        type="button"
+                        onClick={clearAll}
+                        className="transition-colors hover:text-ink"
+                        data-testid="etsy-picker-clear"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              {/* Image grid (4-col, multi-select) */}
+              <div
+                className="grid grid-cols-4 gap-3"
+                data-testid="etsy-picker-grid"
+              >
+                {query.data.imageUrls.map((url, i) => {
+                  const sel = selection.has(url);
+                  return (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => toggle(url)}
+                      aria-pressed={sel}
+                      className={cn(
+                        "group relative overflow-hidden rounded-md border bg-paper transition-all",
+                        sel
+                          ? "border-k-orange ring-2 ring-k-orange-soft"
+                          : "border-line hover:border-line-strong",
+                      )}
+                      data-testid="etsy-picker-image"
+                    >
+                      <div className="aspect-square w-full bg-k-bg-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt={`Image ${i + 1}`}
+                          className="h-full w-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                      {/* Checkbox overlay */}
+                      <span
+                        className={cn(
+                          "absolute right-1.5 top-1.5 inline-flex h-5 w-5 items-center justify-center rounded border bg-paper/95",
+                          sel
+                            ? "border-k-orange text-k-orange-ink bg-k-orange"
+                            : "border-line text-transparent",
+                        )}
+                        aria-hidden
+                      >
+                        {sel ? (
+                          <svg
+                            width="11"
+                            height="11"
+                            viewBox="0 0 24 24"
+                            className="text-paper"
+                          >
+                            <path
+                              d="M5 12l5 5L20 7"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                              fill="none"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {query.data.warnings.length > 0 ? (
+                <div className="font-mono text-[10.5px] tracking-wider text-ink-3">
+                  Parser notes: {query.data.warnings.slice(0, 2).join(" · ")}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-line bg-paper px-6 py-3.5">
+          <button
+            type="button"
+            data-size="sm"
+            className="k-btn k-btn--ghost"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-size="sm"
+            className="k-btn k-btn--primary"
+            disabled={selection.size === 0}
+            onClick={submit}
+            data-testid="etsy-picker-add"
+          >
+            <Plus className="h-3 w-3" aria-hidden />
+            {selection.size > 1
+              ? `Add ${selection.size} images`
+              : "Add image"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

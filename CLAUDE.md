@@ -6763,6 +6763,118 @@ Phase 34 References family **finalize** noktası.
 
 ---
 
+## Phase 35 — Etsy listing URL → image picker (Add Reference URL tab)
+
+References family `main` üzerinde tamamlanmış olarak yaşıyordu. Phase 35
+yeni ürün genişletmesinin ilk adımı: **Etsy listing URL paste edildiğinde
+listing'in tüm görsellerini çıkartıp seçtirme**.
+
+Backend zaten %80 hazırdı: `parseEtsyListing(html, sourceUrl)` parser'ı
+Phase 3'ten beri `imageUrls[]` döndürüyor (Self-hosted scraper provider
+shop-level kullanıyor). Phase 35 listing-detail için ürün yüzeyine bağlar.
+
+### Backend
+
+**Service** (`src/server/services/scraper/etsy-listing-images.ts`):
+- `fetchEtsyListingImages(url)` → `{ externalId, title, imageUrls[], warnings[] }`
+- `isEtsyListingUrl(url)` regex guard: yalnız `https://(?:www\.)?etsy\.com/listing/{id}` formatı kabul (SSRF koruması)
+- UA header + Accept-Language ile fetch
+- Parser hatalarını `parseWarnings[]` olarak yansıtır; tamamen failed ise empty `imageUrls[]` döner
+- Hata davranışı: invalid URL → ValidationError; HTTP failure → "Couldn't fetch listing"
+
+**API endpoint** (`src/app/api/scraper/etsy-listing-images/route.ts`):
+- `POST /api/scraper/etsy-listing-images` body `{ url }`
+- Auth: requireUser
+- Response 200: `{ externalId, title, imageUrls, warnings }`
+- Response 400: invalid URL pattern
+- Response 500: fetch/parse failure
+- Mevcut `withErrorHandling` + `ValidationError` pattern
+
+### Frontend — AddReferenceDialog URL tab
+
+**Detection helper update** (`detectSourceFromUrl`):
+- Yeni `ETSY_LISTING` platform marker
+- Match condition: `host.includes("etsy.com") && /\/listing\/\d+/.test(url)`
+- Etsy CDN (`etsystatic.com`) ile listing-detail ayrımı: önce listing check, sonra CDN/Etsy fallback
+- Label: "Etsy listing · we can pull all images" (operatöre clear expectation)
+
+**URL row "View all images" affordance**:
+- `UrlTab` source hint satırında ETSY_LISTING branch'i; chip+button birlikte
+- "View all images" ghost button parent component'in `onOpenListingPicker(rowId, url)` callback'ini çağırır
+- Direct image URL akışı bozulmaz: listing URL **değilse** affordance render edilmez, mevcut hint+fetch flow devam eder
+
+**EtsyListingPicker component** (modal-over-modal, z-index 60):
+- React Query `useQuery` ile API çağrısı
+- States: loading (pulse) / error (danger card) / empty (helpful copy) / ready (grid)
+- 4-col image grid + checkbox overlay + k-orange ring on selected
+- Select all / Clear toggle (Phase 30 From Bookmark pattern paritesi)
+- Title + summary caption "We found N images · M selected"
+- Parser warnings collapse footer
+- a11y: role="dialog", aria-modal, aria-labelledby, Escape close, backdrop click
+- Cancel + dynamic CTA "Add N images" (singular "Add image" for 1)
+
+**Queue wiring** (`urlReplaceRowWithUrls`):
+- Picker selection → mevcut listing URL row'u silinir, N yeni idle row eklenir
+- Operatör sonra "Fetch N images" ile normal queue flow'una girer (Phase 29 multi-URL)
+- Tüm row'lar uçtuysa 1 boş row korunur (UI hep en az 1 satır)
+- Row-per-link UX **korunur**: her seçilen image queue'da kendi row'u olur
+
+### Row-per-link kararı korundu
+
+Listing picker eklenmesi row-per-link modelini güçlendirir:
+- Listing URL → picker → N seçim → N queue row (her biri tek intake birimi)
+- Per-row preview + source hint + per-row remove + bulk fetch/save mantığı bozulmaz
+- Multi-line paste split (Phase 29) hâlâ çalışır
+
+### Hibrit sınırı
+
+| Parça | Kategori | Sebep |
+|---|---|---|
+| Service + endpoint | Hibrit | DS B5 mock'unda listing detection yok; operatör için kritik bulk intake |
+| Detection helper ETSY_LISTING | Hibrit | DS B5'te tek source hint var; biz CDN-direct vs listing-page ayrımı yaptık |
+| "View all images" affordance | Hibrit | DS B5'te yok; operatör için decision point |
+| EtsyListingPicker modal-over-modal | Hibrit | DS B5'te yok; multi-select pattern bookmark tab'ından (DS canonical) inherit |
+| Row queue + per-image queue row | Hibrit | Phase 29 ürün niyeti korundu |
+
+### Doğrulama kanıtları
+
+**Quality gates**:
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{bookmarks-page, bookmarks-confirm-flow, bookmark-service, dashboard-page, references-page, collections-page, etsy-parser}`: **62/62 PASS** (Phase 34 baseline 59 + etsy-parser 3)
+- `next build`: ✓ Compiled successfully (clean except known warnings)
+- Bundle grep:
+  - `add-ref-open-listing-picker` testid bundle'da ✓
+  - `ETSY_LISTING` platform marker bundle'da ✓
+  - `.next/static/chunks/13-*.js` içeriyor
+
+**Browser smoke kısıtı**:
+- Dev server cache (`.next/`) Phase 35 değişikliklerini yeni server start sonrası bile
+  refresh etmedi; UI "Looks like Etsy" eski label gösterdi
+- Production build (next build) bundle'a YENİ kod girdiği DOĞRULANDI (grep ile)
+- Real browser smoke verification deferred — production rebuild + serve gerekli
+- Dev workflow için: server restart + `.next` clear (`rm -rf .next`) yetersizdi;
+  bu sandbox/cache anomalisi Phase 35 değişikliği değil **dev tooling sınırı**
+
+### Bilinçli scope dışı (Phase 36+ candidate)
+
+- **Creative Fabrica listing parser**: Phase 35 yalnız Etsy; CF product page için
+  `parseCreativeFabricaListing(html)` yeni backend tur
+- **Pinterest pin multi-image**: backend parser yok; ayrı tur
+- **Folder intake (4. tab)**: LocalLibraryAsset ↔ Bookmark binding
+- **CSV/Excel bulk import**: ayrı `/references/import` page
+- **Per-row failure UX polish** (asset-less promote, skip-on-save caption)
+
+### Bundan sonra Add Reference / bulk intake tarafında kalan tek doğru iş
+
+**Phase 36 candidate**: Creative Fabrica listing parser + UI sub-mode
+(aynı pattern). Etsy picker'ın hibrit pattern'ı CF için reuse edilebilir;
+yalnız parser eksik.
+
+Folder intake ve CSV/Excel **bağımsız feature alanları** — operatör
+ihtiyaç önceliğine göre sıralama.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
