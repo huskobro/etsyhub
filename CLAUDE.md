@@ -4895,6 +4895,160 @@ yapısal drift değil.
 
 ---
 
+## KK. Inbox Layout Parity Correction (Phase 21 — 2026-05-12)
+
+**Phase 19 + Phase 20 audit yetersizliğini düzeltti.** Her iki tur da
+toolbar/filter parity'sini doğrudan ölçtü ama Inbox'ın **layout
+parity'sini** (grid vs table) gözden kaçırdı. Kullanıcı bu farkı net
+gördü: B1 SubInbox **table**, app `/bookmarks` ise grid idi. Phase 21
+bunu canonical layout'a hizaladı.
+
+### B1 SubInbox canonical (screens-b1.jsx:218-260)
+
+```
+k-card overflow-hidden
+└─ <table>
+   ├─ thead: 6 column header
+   │   ├─ checkbox (w-9)
+   │   ├─ thumb (w-16)
+   │   ├─ Title
+   │   ├─ Source (w-32)
+   │   ├─ Added (w-28)
+   │   └─ action (w-44)
+   └─ tbody: row.k-row.hover:bg-k-bg.cursor-pointer
+       └─ <button class="k-btn k-btn--ghost">Promote to Pool</button>
+```
+
+Inbox content type = **triage list**, not browse grid. Operator
+hızla taraması gereken intake table; thumbnail küçük (w-16 vs w-full
+square), title scannable, row-level action (ghost CTA).
+
+### Phase 19+20 yanılgıları
+
+| Phase | Yanılgı | Düzeltilme |
+|---|---|---|
+| 19 | `reference-card.tsx` legacy dead code'u Pool sanıp "Pool drift ediyor" tanısı koydu (gerçekte Pool inline `ReferencePoolCard` zaten canonical) | Phase 20 DOM-evidence |
+| 19 | Inbox "feels different" → "actually canonical" sonucuna kart classlist tabanında vardı (toolbar/layout gözden kaçtı) | Phase 20 + Phase 21 |
+| 20 | Toolbar primitive parity'sini (k-input + k-chip) düzeltti **ama** layout parity (grid → table) atlanmıştı | Phase 21 |
+
+Her iki tur da "dürüst audit" iddialarına rağmen layout sözleşmesini
+sadece DS metin spec'iyle kontrol etti, gerçek B1 jsx layout
+yapısıyla karşılaştırmadı. Phase 21 user explicit observation
+("DS'de Inbox grid değil table") üzerine inceleme yaparak gerçek
+canonical layout'u doğruladı.
+
+### Phase 21 düzeltmesi
+
+**Yeni component**: `src/features/bookmarks/components/bookmark-row.tsx`
+B1 SubInbox row pattern'i:
+- `<tr>` content: checkbox / k-thumb !w-10 / title cell (with inline
+  meta-line: productType + tags + collection) / Source badge / Status
+  badge / Added relative / row actions (Promote to Reference + Archive)
+- B1'den fark: **7th column "Status"** eklendi (bookmark workflow
+  gereği — Risky/Referenced/Archived statusunu satırda göstermek
+  triage iş akışını destekler; B1 demo'da bütün rows uniform "Inbox"
+  varsayıyordu)
+
+**bookmarks-page.tsx refactor**:
+```jsx
+// before:
+<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+  {items.map(bm => <BookmarkCard key={bm.id} ... />)}
+</div>
+
+// after:
+<div className="k-card overflow-hidden" data-testid="bookmarks-table">
+  <table className="w-full">
+    <thead> ... </thead>
+    <tbody>
+      {items.map(bm => <BookmarkRow key={bm.id} ... />)}
+    </tbody>
+  </table>
+</div>
+```
+
+**Dead code cleanup**: `bookmark-card.tsx` artık 0 consumer (page tek
+kullanıcısıydı, BookmarkRow'a geçti). Dosya silindi (CLAUDE.md "if
+certain something is unused, delete completely").
+
+### Bookmark-specific işlevler nasıl korundu
+
+Card pattern'de kart başına ayrı satırlarda olan zenginleştirme,
+artık row title cell içinde **tek inline meta-line**:
+
+| Veri | Card'da nasıldı | Row'da nasıl |
+|---|---|---|
+| Tags | full TagPicker satırı | inline picker meta-line'ında |
+| Collection | full CollectionPicker + label | inline picker meta-line'ında |
+| Product type | font-mono caption ayrı satır | inline meta-line'da uppercase mono caption |
+| Status (Inbox/Risky/Referenced/Archived) | sağ üst badge | dedicated Status column |
+| Source (Pinterest/Etsy/...) | meta caption | dedicated Source column badge |
+| Promote action | hover bottom overlay primary | row-action k-btn--secondary (right) |
+| Archive action | footer ghost | row-action k-btn--ghost (right) |
+| Open detail action | footer ghost | (kaldırıldı — row click = future scope; Phase 21 minimal) |
+| Selection checkbox | top-left absolute k-checkbox | row checkbox column |
+
+Operator workflow korunur: tag/collection/productType inline picker
+ile değişebilir; status/source görünür; Promote/Archive row-action
+ile tetiklenir. **Hiçbir bookmark capability kaybedilmedi.**
+
+### Honest layout classification (Phase 21 sonrası)
+
+| Surface | Layout | Verdict |
+|---|---|---|
+| `/references` Pool | grid (browse) | **Canonical** (B1 SubPool grid spec) |
+| `/bookmarks` Inbox | **table** (triage) | **Canonical** ✓ (B1 SubInbox table spec) |
+| `/competitors` Shops | grid | **Canonical** (B1 SubShops 2-col grid) |
+| `/collections` | grid | **Canonical** (B1 SubCollections 3-col grid) |
+| `/trend-stories` | feed + rail | **Bespoke** (product purpose) |
+
+Family-feel **layout-aware**: aynı shell + aynı toolbar pattern + aynı
+k-card / k-thumb / k-checkbox / k-badge recipe class'ları; layout
+sub-view content type'ına göre farklılaşır (grid vs table). B1 spec
+zaten bu ayrımı yapıyor — Pool browse, Inbox triage.
+
+### Bilinçli scope dışı
+
+- **B1 SubInbox 6-col spec vs app 7-col**: app'te Status sütunu var,
+  B1 demo'da yok. Bu bilinçli karar — bookmark workflow Inbox/Risky/
+  Referenced/Archived ayrımını triage'da göstermeli. Tek sütun
+  eklemek B1 spec'i bozmaz; spec demo statik content gösterirken
+  gerçek bookmark workflow'u daha fazla state taşır.
+- **Row click → detail navigation**: B1 spec `cursor-pointer` ile
+  tüm row tıklanabilir; bizim app şu an sadece row-action butonları
+  click handler taşıyor. Detail page olmadığı için minimal kaldı.
+- **Density toggle**: B1 SubInbox density="comfortable"/"dense"
+  wrapper; bookmark intake için density az anlam taşır (row count
+  zaten az), defer.
+- **Bulk action bar**: korundu (zaten table'ın altında render olur).
+
+### Doğrulama kanıtları
+
+DOM scan (viewport 1440×900):
+```
+/bookmarks:
+  hasTable: true (data-testid="bookmarks-table")
+  rowCount: 2 (tbody)
+  thHeaders: [Title, Source, Status, Added]  // + 3 unlabeled (checkbox/thumb/action)
+  hasGrid: false  // grid drift gone
+  trLines: 0
+```
+
+Screenshot kanıtı: tek k-card içinde temiz tablo; her satırda
+checkbox + 40px thumb + title+meta + Source badge + Status badge +
+Added time + Archive ghost. Pool /references hâlâ grid (browse),
+Inbox /bookmarks artık table (triage) — B1 SubPool vs SubInbox
+layout ayrımına bire bir hizalı.
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{bookmarks,bookmarks-page,references,competitors,
+  collections,trend-stories,library} + integration tests: all PASS
+- next build: ✓ Compiled successfully
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

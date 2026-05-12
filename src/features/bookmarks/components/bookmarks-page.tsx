@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-query";
 import type { BookmarkStatus, RiskLevel } from "@prisma/client";
 import { Bookmark as BookmarkIcon, Search, Plus } from "lucide-react";
-import { BookmarkCard } from "./bookmark-card";
+import { BookmarkRow } from "./bookmark-row";
 import { ImportUrlDialog } from "./import-url-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
@@ -263,33 +263,65 @@ export function BookmarksPage({
           }
         />
       ) : (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-          {items.map((bm) => (
-            <BookmarkCard
-              key={bm.id}
-              bookmark={bm}
-              selected={selectedIds.has(bm.id)}
-              onToggleSelect={toggleSelect}
-              onArchive={(id) =>
-                confirm(
-                  confirmPresets.archiveBookmark(
-                    items.find((b) => b.id === id)?.title,
-                  ),
-                  async () => {
-                    await archiveMutation.mutateAsync(id);
-                  },
-                )
-              }
-              onPromote={(id) => setPromoteId(id)}
-              onSetCollection={(id, collectionId) =>
-                updateMutation.mutate({ id, input: { collectionId } })
-              }
-              onSetTags={(id, tagIds) =>
-                updateMutation.mutate({ id, input: { tagIds } })
-              }
-              updating={updateMutation.isPending}
-            />
-          ))}
+        /* Phase 21 — B1 Inbox canonical layout (screens-b1.jsx:218-260).
+         *   Inbox **table**, grid değil. k-card wrapper içinde 7 column:
+         *   checkbox / thumb / Title (+meta inline) / Source / Status /
+         *   Added / row-action (Promote + Archive).
+         *   Bookmark-specific metadata (tags, collection, productType,
+         *   status) row içinde korunur — Pool kart yüzeyinden farkı
+         *   "intake-yoğun" işlevi sağlar; B1 spec'inden Status sütunu
+         *   eklendi (bookmark workflow gereği; B1 demo'da status uniform
+         *   "Inbox" varsayıyordu). */
+        <div className="k-card overflow-hidden" data-testid="bookmarks-table">
+          <table className="w-full">
+            <thead className="border-b border-line bg-k-bg-2/40">
+              <tr>
+                <th className="w-9 px-3 py-2.5"></th>
+                <th className="w-16 px-3 py-2.5"></th>
+                <th className="px-3 py-2.5 text-left font-mono text-[10.5px] font-medium uppercase tracking-meta text-ink-3">
+                  Title
+                </th>
+                <th className="w-28 px-3 py-2.5 text-left font-mono text-[10.5px] font-medium uppercase tracking-meta text-ink-3">
+                  Source
+                </th>
+                <th className="w-24 px-3 py-2.5 text-left font-mono text-[10.5px] font-medium uppercase tracking-meta text-ink-3">
+                  Status
+                </th>
+                <th className="w-24 px-3 py-2.5 text-left font-mono text-[10.5px] font-medium uppercase tracking-meta text-ink-3">
+                  Added
+                </th>
+                <th className="w-64 px-3 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((bm) => (
+                <BookmarkRow
+                  key={bm.id}
+                  bookmark={bm}
+                  selected={selectedIds.has(bm.id)}
+                  onToggleSelect={toggleSelect}
+                  onArchive={(id) =>
+                    confirm(
+                      confirmPresets.archiveBookmark(
+                        items.find((b) => b.id === id)?.title,
+                      ),
+                      async () => {
+                        await archiveMutation.mutateAsync(id);
+                      },
+                    )
+                  }
+                  onPromote={(id) => setPromoteId(id)}
+                  onSetCollection={(id, collectionId) =>
+                    updateMutation.mutate({ id, input: { collectionId } })
+                  }
+                  onSetTags={(id, tagIds) =>
+                    updateMutation.mutate({ id, input: { tagIds } })
+                  }
+                  updating={updateMutation.isPending}
+                />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
