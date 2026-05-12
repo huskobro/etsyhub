@@ -42,6 +42,17 @@ export type ProductIndexRow = {
    */
   productTypeKey: string | null;
   productTypeLabel: string | null;
+  /**
+   * Phase 17 — B4 canonical failure detail line. Listing.failedReason
+   * server tarafından populate edilir (Etsy submit pipeline'ı,
+   * generate-meta service'i, vb.). UI Failed stage row'unun status
+   * badge'i altında kısa red mono caption olarak gösterir.
+   *
+   * Null değer "henüz fail olmamış" veya "fail oldu ama reason
+   * yazılmamış" — UI'da reason yoksa sadece badge görünür (sahte
+   * caption üretilmez).
+   */
+  failedReason: string | null;
 };
 
 export async function listProductsForIndex(input: {
@@ -190,6 +201,7 @@ export async function listProductsForIndex(input: {
       health,
       productTypeKey: l.productType?.key ?? null,
       productTypeLabel: l.productType?.displayName ?? null,
+      failedReason: l.failedReason ?? null,
     };
   });
 }

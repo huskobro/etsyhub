@@ -63,6 +63,41 @@ interface ProductRow {
   /** Phase 16 — B4 Type column. */
   productTypeKey: string | null;
   productTypeLabel: string | null;
+  /** Phase 17 — B4 failure detail line (Listing.failedReason). */
+  failedReason: string | null;
+}
+
+/**
+ * Phase 17 — B4 Date filter pool. Relative ranges only; absolute date
+ * picker bu turda kapsam dışı (date-range UI ağır + storage gerektirir).
+ *
+ * Bucket predicate (current updatedAt vs. now):
+ *   today  → ms < 24h
+ *   7d     → ms < 7d
+ *   30d    → ms < 30d
+ *   all    → no filter
+ *
+ * Operatör "yakın zamanda değişen / yeni gönderilen" filtresi için
+ * yeterli; B4 canonical Date chip pattern'ine birebir uyar.
+ */
+type DateBucket = "all" | "today" | "7d" | "30d";
+
+const DATE_BUCKETS: ReadonlyArray<DateBucket> = ["all", "today", "7d", "30d"];
+
+const DATE_BUCKET_LABEL: Record<DateBucket, string> = {
+  all: "Date",
+  today: "Today",
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+};
+
+function dateBucketCutoffMs(bucket: DateBucket): number | null {
+  if (bucket === "all") return null;
+  const now = Date.now();
+  if (bucket === "today") return now - 24 * 60 * 60 * 1000;
+  if (bucket === "7d") return now - 7 * 24 * 60 * 60 * 1000;
+  if (bucket === "30d") return now - 30 * 24 * 60 * 60 * 1000;
+  return null;
 }
 
 const ALL_STAGES: ReadonlyArray<ProductStage | "all"> = [
@@ -110,6 +145,11 @@ export function ProductsIndexClient({
   const stageFilter =
     (params.get("stage") as ProductStage | "all" | null) ?? "all";
   const typeFilter = params.get("type") ?? "all";
+  // Phase 17 — Date filter (today / 7d / 30d / all). URL param 'date'.
+  const rawDate = params.get("date");
+  const dateFilter: DateBucket = DATE_BUCKETS.includes(rawDate as DateBucket)
+    ? (rawDate as DateBucket)
+    : "all";
 
   const enriched = rows.map((r) => ({
     ...r,
@@ -138,9 +178,15 @@ export function ProductsIndexClient({
   }
   const TYPE_FILTER_POOL: ReadonlyArray<string> = ["all", ...typeKeysInUse];
 
+  const dateCutoff = dateBucketCutoffMs(dateFilter);
+
   const filtered = enriched.filter((r) => {
     if (stageFilter !== "all" && r.stage !== stageFilter) return false;
     if (typeFilter !== "all" && r.productTypeKey !== typeFilter) return false;
+    if (dateCutoff !== null) {
+      const updatedMs = new Date(r.updatedAt).getTime();
+      if (updatedMs < dateCutoff) return false;
+    }
     if (keyword.trim().length > 0) {
       const q = keyword.trim().toLowerCase();
       const hay = (r.title ?? "").toLowerCase();
@@ -176,6 +222,16 @@ export function ProductsIndexClient({
     const sp = new URLSearchParams(params.toString());
     if (next === "all") sp.delete("type");
     else sp.set("type", next);
+    const qs = sp.toString();
+    router.push(qs ? `/products?${qs}` : "/products");
+  }
+
+  function cycleDate() {
+    const idx = DATE_BUCKETS.indexOf(dateFilter);
+    const next = DATE_BUCKETS[(idx + 1) % DATE_BUCKETS.length] ?? "all";
+    const sp = new URLSearchParams(params.toString());
+    if (next === "all") sp.delete("date");
+    else sp.set("date", next);
     const qs = sp.toString();
     router.push(qs ? `/products?${qs}` : "/products");
   }
@@ -257,6 +313,11 @@ export function ProductsIndexClient({
             </FilterChip>
           </span>
         ) : null}
+        <span data-testid="products-filter-date">
+          <FilterChip active={dateFilter !== "all"} caret onClick={cycleDate}>
+            {DATE_BUCKET_LABEL[dateFilter]}
+          </FilterChip>
+        </span>
         <div className="ml-auto flex items-center gap-3">
           <span className="font-mono text-xs uppercase tracking-meta text-ink-3">
             {filtered.length} of {rows.length}
@@ -387,39 +448,54 @@ export function ProductsIndexClient({
                       </div>
                     </ProductTD>
                     <ProductTD className={density === "dense" ? "py-2" : "py-3"}>
-                      <div className="flex items-center gap-2">
-                        <Badge tone={productStageBadgeTone(r.stage)} dot>
-                          {r.stage}
-                        </Badge>
-                        {r.stage === "Sent" && r.etsyListingId ? (
-                          <a
-                            href={`https://www.etsy.com/your/shops/me/tools/listings/${r.etsyListingId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 rounded bg-k-amber-soft px-1.5 py-0.5 hover:bg-k-amber-soft/80"
-                            onClick={(e) => e.stopPropagation()}
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <Badge tone={productStageBadgeTone(r.stage)} dot>
+                            {r.stage}
+                          </Badge>
+                          {r.stage === "Sent" && r.etsyListingId ? (
+                            <a
+                              href={`https://www.etsy.com/your/shops/me/tools/listings/${r.etsyListingId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 rounded bg-k-amber-soft px-1.5 py-0.5 hover:bg-k-amber-soft/80"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-k-amber">
+                                Etsy
+                              </span>
+                              <span className="font-mono text-[10px] tracking-wider text-k-amber underline-offset-2">
+                                {r.etsyListingId.slice(0, 12)}
+                              </span>
+                              <ExternalLink className="h-2.5 w-2.5 text-k-amber" aria-hidden />
+                            </a>
+                          ) : null}
+                          {r.stage === "Failed" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/products/${r.id}?action=retry`);
+                              }}
+                              className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-xs font-medium text-k-red hover:bg-k-red-soft"
+                            >
+                              <RotateCw className="h-3 w-3" aria-hidden />
+                              Retry
+                            </button>
+                          ) : null}
+                        </div>
+                        {/* Phase 17 — B4 failure detail micro-copy. Only when
+                            Failed stage AND failedReason populated; sahte
+                            caption üretmiyoruz. Truncate ile uzun string
+                            satır yüksekliği bozmaz. */}
+                        {r.stage === "Failed" && r.failedReason ? (
+                          <div
+                            className="truncate font-mono text-[10px] tracking-wider text-k-red"
+                            title={r.failedReason}
+                            data-testid="products-row-failure"
                           >
-                            <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-k-amber">
-                              Etsy
-                            </span>
-                            <span className="font-mono text-[10px] tracking-wider text-k-amber underline-offset-2">
-                              {r.etsyListingId.slice(0, 12)}
-                            </span>
-                            <ExternalLink className="h-2.5 w-2.5 text-k-amber" aria-hidden />
-                          </a>
-                        ) : null}
-                        {r.stage === "Failed" ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(`/products/${r.id}?action=retry`);
-                            }}
-                            className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-xs font-medium text-k-red hover:bg-k-red-soft"
-                          >
-                            <RotateCw className="h-3 w-3" aria-hidden />
-                            Retry
-                          </button>
+                            {r.failedReason}
+                          </div>
                         ) : null}
                       </div>
                     </ProductTD>

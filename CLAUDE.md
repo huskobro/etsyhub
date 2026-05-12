@@ -4321,6 +4321,156 @@ Sonra:
 
 ---
 
+## GG. Products Index — Final B4 Polish (Phase 17 — 2026-05-12)
+
+Phase 17, Phase 16'da bilinçli deferred edilmiş B4 canonical son
+parçalarını kapatan polish turuydu. Schema migration veya yeni feature
+alanı AÇILMADI; mevcut `Listing.failedReason` field'ı UI'a kadar
+yüzeye çıkarıldı + relative date filter chip eklendi.
+
+### Pre-Phase 17 deferred listesi
+
+1. **Date filter chip** — B4 Status/Type/**Date** chip üçlüsünün
+   üçüncüsü eksikti. Operatör updated time'ı sadece görsel olarak
+   tarayabiliyordu.
+2. **Failure detail line** — Failed stage row'unda sadece Retry button
+   görünüyordu, neden fail olduğu görünmüyordu. `Listing.failedReason`
+   field'ı DB'de mevcuttu ama UI'a yansımıyordu.
+3. **Saved views** — B4 spec'te secondary "Saved views" button mevcut;
+   storage layer açılması gerektiği için Phase 17'de de **deferred**
+   tutuldu (rationale aşağıda).
+
+### Date filter chip
+
+`ProductsIndexClient.tsx`:
+
+- 4 relative bucket: `today / 7d / 30d / all` (absolute date picker bu
+  turda kapsam dışı — date-range UI ağır + state karmaşık).
+- URL param: `?date=today` / `?date=7d` / `?date=30d` (default "all" →
+  param yok). Bookmark/share edilebilir.
+- Cycle pattern: same as Status/Type — `cycleDate()` handler URL
+  param'ı next bucket'a günceller.
+- Filter predicate: `dateBucketCutoffMs(bucket)` → `updatedAt >=
+  cutoff`. null cutoff → no filter.
+- Label map (`DATE_BUCKET_LABEL`):
+  - `all` → "Date" (default label, chip muted)
+  - `today` → "Today" (chip active orange-soft)
+  - `7d` → "Last 7 days"
+  - `30d` → "Last 30 days"
+
+### Failure detail line
+
+`ProductIndexRow` extended:
+- `failedReason: string | null` field eklendi (server resolves from
+  `Listing.failedReason`).
+
+UI render (Status TD):
+- Status badge + Etsy chip + Retry button **bir satır** (flex row).
+- Altında **eğer ve sadece eğer** `stage === "Failed" && failedReason`
+  → kırmızı mono micro-copy line görünür.
+- Style: `font-mono text-[10px] tracking-wider text-k-red truncate`.
+- `title={failedReason}` attribute → full text tooltip (truncate
+  sonrası uzun reason'ları hover'da görür).
+- `data-testid="products-row-failure"` regression test surface'i.
+
+Honest fallback: `failedReason` null veya boş ise satır render
+edilmez (sahte caption üretmiyoruz; CLAUDE.md "no silent magic"
+sözleşmesi).
+
+### Saved views — bilinçli ertelendi
+
+B4 spec'te `<Btn variant="secondary">Saved views</Btn>` secondary
+header CTA var. Phase 17'de **uygulanmadı**, sebep:
+
+**Storage gereksinim — küçük ama risksiz değil:**
+
+Saved view'lar şu state'i taşır: `keyword + stage + type + date`
+4-tuple → kullanıcı tanımlı label ("My drafts this week", "Etsy
+failed last 30d", vb.). Storage seçenekleri:
+
+1. **localStorage** — kullanıcı bazında, taşınmaz, multi-device sync
+   yok. Yeterli görünüyor ama Kivasy ürün omurgası "self-managed
+   desktop product" hedefiyle multi-machine sync ileride sorun olur.
+2. **UserSetting key** — `userSetting.products.savedViews` JSON array.
+   Bu canonical yol, ama:
+   - Schema-zero korunsa da yeni setting key'i admin paneline
+     gelmesi gerekir (CLAUDE.md "no hidden behavior" sözleşmesi —
+     operatör/admin tüm settings'i görür).
+   - CRUD API endpoint + mutation hook + UI (rename, delete, set
+     active) gerekir → yeni feature alanı.
+3. **Dedicated `SavedView` model** — ileride paylaşılır views
+   (admin → user push) gerekirse. Phase 17 scope dışı.
+
+Phase 17 user talimatı: "yeni storage sistemi, yeni preference
+sistemi, yeni saved-view framework'ü açma". O yüzden Phase 17'de
+şunlar dürüstçe yapıldı: 4 filter (search + stage + type + date)
+URL param'da persist edilir → kullanıcı browser bookmark ile "saved
+view eşdeğeri" elde eder. Bu yeterli mi?
+
+- **Çoğu kullanım için: evet.** Browser bookmark UI + URL share
+  zaten "saved view" deneyiminin %80'ini verir.
+- **Yetersiz olduğu durum**: kullanıcı isim-etiketli view'lar görmek
+  ve hızlı toggle yapmak istiyor. Bu **nice-to-have**, mevcut yapı
+  blocker değil.
+
+Eğer ileride saved views eklenirse: `UserSetting.products.savedViews`
+JSON array, admin panel'de görünür, CRUD API minimal. Bu Phase 18+
+konusudur.
+
+### Operatör için ne değişti
+
+| Önceden | Şimdi |
+|---|---|
+| "Bu hafta neler değişti?" → görsel tarama + tahmin | Date chip "Last 7 days" → 1 click |
+| Failed row → "neden fail oldu?" → detail'e gir | Failed row → kırmızı micro-copy satır anında okunur |
+| Status/Type chip'leri vardı | Status/Type/**Date** triplet tamam |
+| Saved views yoktu | Filter kombinasyonu URL'de → browser bookmark eşdeğer |
+
+### EN parity (Phase 15 carry)
+
+- Date chip labels: "Date" / "Today" / "Last 7 days" / "Last 30 days"
+  (tümü EN)
+- Failure micro-copy: server-side `Listing.failedReason` field'ı —
+  submit pipeline EN error message'ları yazar (Etsy API error
+  strings, "Submission failed: ...", vb.). Operator-girdi-veri değil,
+  server message; Phase 15 sözleşmesi: server hata mesajları zaten
+  EN baseline'a hizalı.
+- DOM scan `/products`: **0 TR strings**.
+
+### B4 alignment final durumu
+
+| B4 element | Status |
+|---|---|
+| Title + uppercase subtitle | ✓ |
+| Sent this week kadans phrasing | ✓ |
+| Pluralization | ✓ |
+| Search placeholder (name, type, draft id) | ✓ |
+| Status filter chip | ✓ |
+| Type filter chip | ✓ |
+| **Date filter chip** | ✓ (Phase 17) |
+| Row counter "N of M" | ✓ |
+| Density toggle | ✓ |
+| 8-column table | ✓ |
+| Thumbnail 4-up composite | ✓ |
+| Product title + id mono caption | ✓ |
+| Type neutral badge column | ✓ |
+| Files mono numeric | ✓ |
+| Health bar + threshold colors | ✓ |
+| Stage badge with dot | ✓ |
+| Etsy chip (warm bg, deep-link) | ✓ |
+| Retry button (Failed stage) | ✓ |
+| **Failure micro-copy below badge** | ✓ (Phase 17) |
+| Updated relative time | ✓ |
+| Hover chevron | ✓ |
+| Empty state | ✓ |
+| Saved views secondary CTA | **Deferred** (rationale ↑) |
+
+20/21 B4 element complete. Saved views yalnız scope-dışı kaldı; URL
+param-based filter persistence operatöre eşdeğer pratik deneyim
+sunuyor.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
