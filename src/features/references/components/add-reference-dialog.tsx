@@ -83,6 +83,90 @@ type SourceHint = {
 };
 
 /**
+ * deriveTitleFromUrl — Phase 29 title normalization.
+ *
+ * Server-side `import-url` worker bookmark/asset metadata'sına title
+ * yazmıyor (Phase 29 audit'i: `Bookmark.title` null → row fallback raw
+ * URL veya "Untitled"). Operatöre anlamlı bir title sunmak için
+ * client tarafında URL parse:
+ *
+ *   - Etsy listing: `etsy.com/listing/{id}/{slug}` → slug ("Dragonfly
+ *     Clipart Bundle Watercolor")
+ *   - Etsy image CDN: `etsystatic.com/.../il_1140xN.jpg` → "Etsy image"
+ *   - Pinterest pin: `pinterest.com/pin/{id}/` → "Pinterest pin {id}"
+ *   - Pinterest CDN: `pinimg.com/.../X.jpg` → "Pinterest image"
+ *   - Creative Fabrica: `creativefabrica.com/product/{slug}/` → slug
+ *   - Direct image: filename basename without extension
+ *   - Unknown: hostname (kısa fallback)
+ *
+ * `null` döner sadece URL parse edilemez ise (boş / geçersiz).
+ * Operatör Inbox row'da inline edit yoluyla title'ı her zaman
+ * değiştirebilir (mevcut PATCH /api/bookmarks/[id] davranışı).
+ */
+function deriveTitleFromUrl(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  let urlObj: URL;
+  try {
+    urlObj = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  const host = urlObj.host.toLowerCase();
+  const pathParts = urlObj.pathname.split("/").filter(Boolean);
+
+  // Etsy listing slug
+  if (host.includes("etsy.com")) {
+    const listingIdx = pathParts.indexOf("listing");
+    const slug = listingIdx >= 0 ? pathParts[listingIdx + 2] : undefined;
+    if (slug) return titleize(slug);
+    return "Etsy image";
+  }
+  if (host.includes("etsystatic.com")) {
+    return "Etsy image";
+  }
+
+  // Pinterest pin id
+  if (host.includes("pinterest.")) {
+    const pinIdx = pathParts.indexOf("pin");
+    const pinId = pinIdx >= 0 ? pathParts[pinIdx + 1] : undefined;
+    if (pinId) return `Pinterest pin ${pinId}`;
+    return "Pinterest pin";
+  }
+  if (host.includes("pinimg.com")) {
+    return "Pinterest image";
+  }
+
+  // Creative Fabrica product slug
+  if (host.includes("creativefabrica.")) {
+    const productIdx = pathParts.indexOf("product");
+    const slug = productIdx >= 0 ? pathParts[productIdx + 1] : undefined;
+    if (slug) return titleize(slug);
+    return "Creative Fabrica image";
+  }
+
+  // Direct image — filename basename
+  const last = pathParts[pathParts.length - 1] ?? "";
+  if (/\.(png|jpe?g|webp|gif)$/i.test(last)) {
+    const noExt = last.replace(/\.[a-z]+$/i, "");
+    return titleize(noExt);
+  }
+
+  // Fallback: hostname
+  return host.replace(/^www\./, "");
+}
+
+function titleize(slug: string): string {
+  return slug
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .map((w) => (w && w.length > 0 ? w[0]!.toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+/**
  * detectSourceFromUrl — client-side hostname classifier.
  * Server-side resolver (asset import worker) gerçek meta extraction yapar;
  * burası yalnız operatöre erken görsel ipucu verir. Negative match = "OTHER".
@@ -231,12 +315,33 @@ export function AddReferenceDialog({
     return orderedTypes.find((p) => p.id === productTypeId)?.displayName ?? "";
   }, [productTypeId, orderedTypes]);
 
-  // URL tab state
-  const [url, setUrl] = useState("");
-  const [urlJobId, setUrlJobId] = useState<string | null>(null);
-  const [urlMessage, setUrlMessage] = useState<string | null>(null);
-  const [urlBusy, setUrlBusy] = useState(false);
-  const sourceHint = useMemo(() => detectSourceFromUrl(url), [url]);
+  /* URL tab state — Phase 29 multi-URL queue.
+   *
+   * Önceki tek-URL state (`url`, `urlJobId`, ...) bir N=1 array'in
+   * indirgenmiş hali; Phase 29'da queue mode default. Operatör default
+   * tek-satır görür, "Add another URL" ile satır ekler. Bu **B5 sapması**
+   * (DS mock'unda yok) ama operatör için kritik UX kazancı: 10 link
+   * için 10× modal aç-paste-fetch yerine paste-fetch-save bir kez.
+   *
+   * Her satır kendi lifecycle'ına sahip:
+   *   - idle: kullanıcı henüz fetch tetiklemedi
+   *   - fetching: import-url job kuyruğa atıldı, polling devam
+   *   - ready: asset fetched (assetId + thumbnail preview)
+   *   - failed: worker error
+   */
+  type UrlEntry = {
+    id: string;
+    url: string;
+    jobId: string | null;
+    status: "idle" | "fetching" | "ready" | "failed";
+    assetId?: string;
+    error?: string;
+    progress?: number;
+  };
+  const [urlEntries, setUrlEntries] = useState<UrlEntry[]>(() => [
+    { id: crypto.randomUUID(), url: "", jobId: null, status: "idle" },
+  ]);
+  const [urlGlobalMessage, setUrlGlobalMessage] = useState<string | null>(null);
 
   // Upload tab state — multi-file
   type UploadEntry = {
@@ -281,26 +386,64 @@ export function AddReferenceDialog({
     enabled: tab === "bookmark",
   });
 
-  // URL fetch job polling
-  const jobQuery = useQuery({
-    queryKey: ["job", urlJobId],
-    queryFn: async () => {
-      if (!urlJobId) return null;
-      const res = await fetch(`/api/jobs/${urlJobId}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to fetch job");
-      return (await res.json()) as { job: JobShape };
-    },
-    enabled: !!urlJobId,
-    refetchInterval: (q) => {
-      const s = q.state.data?.job.status;
-      return s === "SUCCESS" || s === "FAILED" ? false : 1500;
-    },
-  });
+  /* URL queue job polling — Phase 29.
+   *
+   * React Query per-row `useQuery` array kullanmadık (hook count
+   * dinamik olur, React kurallarına aykırı). Tek bir `useEffect`
+   * 1500ms interval ile `status === "fetching"` entry'lerin job'unu
+   * poll eder; SUCCESS/FAILED'da entry status'unu günceller.
+   */
+  useEffect(() => {
+    const pending = urlEntries.filter(
+      (e) => e.status === "fetching" && e.jobId,
+    );
+    if (pending.length === 0) return;
+    const interval = setInterval(async () => {
+      for (const entry of pending) {
+        try {
+          const res = await fetch(`/api/jobs/${entry.jobId}`, {
+            cache: "no-store",
+          });
+          if (!res.ok) continue;
+          const { job } = (await res.json()) as { job: JobShape };
+          setUrlEntries((cur) =>
+            cur.map((e) => {
+              if (e.id !== entry.id) return e;
+              if (job.status === "SUCCESS") {
+                return {
+                  ...e,
+                  status: "ready",
+                  assetId: job.metadata?.assetId,
+                  progress: 100,
+                };
+              }
+              if (job.status === "FAILED") {
+                return {
+                  ...e,
+                  status: "failed",
+                  error: job.error ?? "Couldn't fetch image",
+                };
+              }
+              return { ...e, progress: job.progress };
+            }),
+          );
+        } catch {
+          /* network glitch; retry next tick */
+        }
+      }
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [urlEntries]);
 
-  const urlJob = jobQuery.data?.job;
-  const urlSuccess = urlJob?.status === "SUCCESS";
-  const urlFailed = urlJob?.status === "FAILED";
-  const urlFetching = !!urlJobId && !urlSuccess && !urlFailed;
+  /* Aggregate state derived for footer CTA / disabled. */
+  const urlReadyCount = urlEntries.filter((e) => e.status === "ready").length;
+  const urlFetchingCount = urlEntries.filter(
+    (e) => e.status === "fetching",
+  ).length;
+  const urlIdleWithUrlCount = urlEntries.filter(
+    (e) => e.status === "idle" && e.url.trim().length > 0,
+  ).length;
+  const urlFailedCount = urlEntries.filter((e) => e.status === "failed").length;
 
   // Submission mutation — bookmark create after asset resolution
   const createBookmark = useMutation({
@@ -366,52 +509,132 @@ export function AddReferenceDialog({
     },
   });
 
-  // URL tab: fetch image
-  async function urlOnFetch() {
-    setUrlBusy(true);
-    setUrlMessage(null);
-    try {
-      const res = await fetch("/api/assets/import-url", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceUrl: url }),
-      });
-      if (!res.ok) {
-        throw new Error((await res.json()).error ?? "Failed to start job");
-      }
-      const data = (await res.json()) as { jobId: string };
-      setUrlJobId(data.jobId);
-    } catch (err) {
-      setUrlMessage((err as Error).message);
-    } finally {
-      setUrlBusy(false);
-    }
+  /* URL tab queue helpers — Phase 29 multi-URL */
+
+  function urlAddRow() {
+    setUrlEntries((cur) => [
+      ...cur,
+      { id: crypto.randomUUID(), url: "", jobId: null, status: "idle" },
+    ]);
   }
 
-  // URL tab: save as bookmark (success only)
-  async function urlOnSave() {
-    if (!urlSuccess) return;
-    try {
-      await createBookmark.mutateAsync({
-        sourceUrl: url,
-        assetId: urlJob?.metadata?.assetId,
-        title: urlJob?.metadata?.title ?? undefined,
-        sourcePlatform:
-          sourceHint?.platform === "ETSY"
-            ? "ETSY"
-            : sourceHint?.platform === "PINTEREST"
-              ? "PINTEREST"
-              : sourceHint?.platform === "CREATIVE_FABRICA"
-                ? "OTHER" // schema enum'da CREATIVE_FABRICA yok; UI tarafı tone, server OTHER
-                : undefined,
-      });
+  function urlRemoveRow(id: string) {
+    setUrlEntries((cur) => {
+      if (cur.length === 1) {
+        return [{ id: crypto.randomUUID(), url: "", jobId: null, status: "idle" }];
+      }
+      return cur.filter((e) => e.id !== id);
+    });
+  }
+
+  function urlUpdateRow(id: string, patch: Partial<UrlEntry>) {
+    setUrlEntries((cur) => cur.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  }
+
+  /* Multi-line paste support: if user pastes text with newlines into a
+   * single URL input, split into multiple entries. Operator pastes 8 URLs
+   * from notes app → 8 row instantly. */
+  function urlHandlePaste(targetId: string, text: string) {
+    const lines = text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (lines.length <= 1) return false;
+    setUrlEntries((cur) => {
+      const target = cur.find((e) => e.id === targetId);
+      const others = cur.filter((e) => e.id !== targetId && (e.url.trim() || e.status !== "idle"));
+      const newRows: UrlEntry[] = lines.map((url, idx) => ({
+        id: idx === 0 && target ? target.id : crypto.randomUUID(),
+        url,
+        jobId: null,
+        status: "idle",
+      }));
+      return [...others, ...newRows];
+    });
+    return true;
+  }
+
+  /* Bulk fetch all idle entries that have a URL. */
+  async function urlOnFetchAll() {
+    setUrlGlobalMessage(null);
+    const toFetch = urlEntries.filter(
+      (e) => e.status === "idle" && e.url.trim().length > 0,
+    );
+    if (toFetch.length === 0) return;
+    /* Mark as fetching first to disable CTA while parallel requests fly. */
+    setUrlEntries((cur) =>
+      cur.map((e) =>
+        toFetch.some((t) => t.id === e.id)
+          ? { ...e, status: "fetching", progress: 0 }
+          : e,
+      ),
+    );
+    await Promise.all(
+      toFetch.map(async (entry) => {
+        try {
+          const res = await fetch("/api/assets/import-url", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sourceUrl: entry.url }),
+          });
+          if (!res.ok) {
+            const err = (await res.json()).error ?? "Failed to start job";
+            urlUpdateRow(entry.id, { status: "failed", error: err });
+            return;
+          }
+          const data = (await res.json()) as { jobId: string };
+          urlUpdateRow(entry.id, { jobId: data.jobId });
+        } catch (err) {
+          urlUpdateRow(entry.id, {
+            status: "failed",
+            error: (err as Error).message,
+          });
+        }
+      }),
+    );
+  }
+
+  /* Bulk save all ready entries as bookmarks. */
+  const urlOnSaveAll = useMutation({
+    mutationFn: async () => {
+      const ready = urlEntries.filter((e) => e.status === "ready" && e.assetId);
+      if (ready.length === 0) throw new Error("No images ready to save");
+      if (!productTypeId) throw new Error("Pick a product type");
+      const results = await Promise.allSettled(
+        ready.map((entry) => {
+          const hint = detectSourceFromUrl(entry.url);
+          const title = deriveTitleFromUrl(entry.url) ?? undefined;
+          const sourcePlatform =
+            hint?.platform === "ETSY"
+              ? "ETSY"
+              : hint?.platform === "PINTEREST"
+                ? "PINTEREST"
+                : hint?.platform === "CREATIVE_FABRICA"
+                  ? "OTHER"
+                  : undefined;
+          return createBookmark.mutateAsync({
+            sourceUrl: entry.url,
+            assetId: entry.assetId,
+            title,
+            sourcePlatform,
+          });
+        }),
+      );
+      const failed = results.filter((r) => r.status === "rejected");
+      if (failed.length > 0) {
+        throw new Error(`${failed.length} of ${ready.length} saves failed`);
+      }
+      return results;
+    },
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["bookmarks"] });
       onCreated?.();
       onClose();
-    } catch (err) {
-      setUrlMessage((err as Error).message);
-    }
-  }
+    },
+    onError: (err: Error) => {
+      setUrlGlobalMessage(err.message);
+    },
+  });
 
   // Upload tab: accept files (single & multi)
   function acceptFiles(files: FileList | File[]) {
@@ -496,7 +719,8 @@ export function AddReferenceDialog({
 
   const closeIfIdle = () => {
     if (
-      urlBusy ||
+      urlFetchingCount > 0 ||
+      urlOnSaveAll.isPending ||
       uploadAll.isPending ||
       promoteBookmarks.isPending ||
       createBookmark.isPending
@@ -514,7 +738,8 @@ export function AddReferenceDialog({
     return () => document.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    urlBusy,
+    urlFetchingCount,
+    urlOnSaveAll.isPending,
     uploadAll.isPending,
     promoteBookmarks.isPending,
     createBookmark.isPending,
@@ -539,6 +764,11 @@ export function AddReferenceDialog({
   // Dynamic CTA label
   const bookmarkCount = bookmarkSelection.size;
   const uploadCount = uploads.length;
+
+  /* URL tab dynamic CTA — Phase 29 multi-URL.
+   * Operatör flow: fill rows → "Fetch images" → readyCount görünür →
+   * CTA "Save N references". Single ready row için "Save reference"
+   * (singular). */
   const cta = (() => {
     if (tab === "bookmark") {
       return bookmarkCount > 1
@@ -548,14 +778,37 @@ export function AddReferenceDialog({
     if (tab === "upload") {
       return uploadCount > 1 ? `Add ${uploadCount} References` : "Add Reference";
     }
-    return urlSuccess ? "Save reference" : "Fetch image";
+    // URL queue: if any ready → "Save N references"; else "Fetch images"
+    if (urlReadyCount > 0 && urlIdleWithUrlCount === 0 && urlFetchingCount === 0) {
+      return urlReadyCount > 1
+        ? `Save ${urlReadyCount} References`
+        : "Save reference";
+    }
+    if (urlReadyCount > 0 && (urlIdleWithUrlCount > 0 || urlFailedCount > 0)) {
+      return "Fetch remaining";
+    }
+    return urlIdleWithUrlCount > 1
+      ? `Fetch ${urlIdleWithUrlCount} images`
+      : "Fetch image";
   })();
 
   const ctaDisabled = (() => {
     if (tab === "url") {
       if (!productTypeId) return true;
-      if (!urlSuccess) return urlBusy || urlFetching || !url.trim();
-      return createBookmark.isPending;
+      // Save mode active when all populated rows are ready
+      if (
+        urlReadyCount > 0 &&
+        urlIdleWithUrlCount === 0 &&
+        urlFetchingCount === 0
+      ) {
+        return urlOnSaveAll.isPending;
+      }
+      // Fetch mode
+      return (
+        urlIdleWithUrlCount === 0 ||
+        urlFetchingCount > 0 ||
+        urlOnSaveAll.isPending
+      );
     }
     if (tab === "upload") {
       return (
@@ -574,8 +827,15 @@ export function AddReferenceDialog({
 
   const onPrimaryCta = () => {
     if (tab === "url") {
-      if (urlSuccess) urlOnSave();
-      else urlOnFetch();
+      if (
+        urlReadyCount > 0 &&
+        urlIdleWithUrlCount === 0 &&
+        urlFetchingCount === 0
+      ) {
+        urlOnSaveAll.mutate();
+      } else {
+        urlOnFetchAll();
+      }
     } else if (tab === "upload") {
       uploadAll.mutate();
     } else {
@@ -654,15 +914,12 @@ export function AddReferenceDialog({
           {tab === "url" ? (
             <UrlTab
               ref={urlInputRef}
-              url={url}
-              onChange={setUrl}
-              disabled={!!urlJobId}
-              sourceHint={sourceHint}
-              job={urlJob ?? null}
-              fetching={urlFetching}
-              success={urlSuccess}
-              failed={urlFailed}
-              message={urlMessage}
+              entries={urlEntries}
+              onChangeRow={(id, url) => urlUpdateRow(id, { url, status: "idle", error: undefined })}
+              onRemoveRow={urlRemoveRow}
+              onAddRow={urlAddRow}
+              onPaste={urlHandlePaste}
+              globalMessage={urlGlobalMessage}
             />
           ) : null}
 
@@ -785,16 +1042,14 @@ export function AddReferenceDialog({
             onClick={onPrimaryCta}
             data-testid="add-ref-cta"
           >
-            {tab === "url" && urlBusy ? (
-              "Starting…"
-            ) : tab === "url" && urlFetching ? (
-              "Fetching…"
+            {tab === "url" && urlFetchingCount > 0 ? (
+              `Fetching ${urlFetchingCount}…`
+            ) : tab === "url" && urlOnSaveAll.isPending ? (
+              "Saving…"
             ) : tab === "upload" && uploadAll.isPending ? (
               "Uploading…"
             ) : tab === "bookmark" && promoteBookmarks.isPending ? (
               "Promoting…"
-            ) : tab === "url" && createBookmark.isPending ? (
-              "Saving…"
             ) : (
               <>
                 <Plus className="h-3 w-3" aria-hidden />
@@ -820,84 +1075,162 @@ export function AddReferenceDialog({
   );
 }
 
-/* ───────────────────────── URL TAB ───────────────────────── */
-type UrlTabProps = {
+/* ───────────────────────── URL TAB (Phase 29 multi-URL queue) ───────────────────────── */
+type UrlEntryShape = {
+  id: string;
   url: string;
-  onChange: (v: string) => void;
-  disabled: boolean;
-  sourceHint: SourceHint | null;
-  job: JobShape | null;
-  fetching: boolean;
-  success: boolean;
-  failed: boolean;
-  message: string | null;
+  jobId: string | null;
+  status: "idle" | "fetching" | "ready" | "failed";
+  assetId?: string;
+  error?: string;
+  progress?: number;
+};
+
+type UrlTabProps = {
+  entries: UrlEntryShape[];
+  onChangeRow: (id: string, url: string) => void;
+  onRemoveRow: (id: string) => void;
+  onAddRow: () => void;
+  onPaste: (id: string, text: string) => boolean;
+  globalMessage: string | null;
 };
 
 const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
   function UrlTab(
-    { url, onChange, disabled, sourceHint, job, fetching, success, failed, message },
+    { entries, onChangeRow, onRemoveRow, onAddRow, onPaste, globalMessage },
     ref,
   ) {
     return (
       <div className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1.5">
+        <div className="flex items-baseline justify-between">
           <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
             Image URL
           </span>
-          <div className="relative">
-            <LinkIcon
-              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3"
-              aria-hidden
-            />
-            <input
-              ref={ref}
-              type="url"
-              placeholder="https://i.etsystatic.com/…/il_1140xN.jpg"
-              value={url}
-              onChange={(e) => onChange(e.target.value)}
-              disabled={disabled}
-              className="k-input !pl-9"
-              data-testid="add-ref-url-input"
-            />
-          </div>
-          {sourceHint ? (
-            /* Phase 27 — Source detection confidence tone:
-             *   - Etsy / Pinterest: known image-cdn hosts (etsystatic /
-             *     pinimg) → high confidence (success/danger tone)
-             *   - Creative Fabrica: product page detection; gerçek görsel
-             *     URL'i server resolve eder. Daha düşük confidence —
-             *     ink-2 + "page" ifadesi operatöre dürüst signal verir
-             *   - Direct image: extension match (.png/.jpg) → ink-2
-             *   - Other: ink-3 + "resolved on fetch" honest fallback */
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 font-mono text-[10.5px] tracking-wider",
-                sourceHint.platform === "ETSY" && "text-success",
-                sourceHint.platform === "PINTEREST" && "text-danger",
-                sourceHint.platform === "CREATIVE_FABRICA" && "text-ink-2",
-                sourceHint.platform === "DIRECT" && "text-ink-2",
-                sourceHint.platform === "OTHER" && "text-ink-3",
-              )}
-              data-testid="add-ref-source-hint"
-            >
-              {sourceHint.platform === "OTHER" ? null : (
-                <span aria-hidden>✓</span>
-              )}
-              {sourceHint.label}
+          {entries.length > 1 ? (
+            <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
+              {entries.length} rows · paste multiple URLs into any row to split
             </span>
           ) : (
-            <span className="text-[12px] text-ink-3">
-              Paste an image URL from Etsy, Pinterest, Creative Fabrica or
-              a direct image link.
+            <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
+              Paste one or more URLs (one per line)
             </span>
           )}
-        </label>
+        </div>
 
-        {/* DS B5 canonical disclosure (screens-b5-b6.jsx:55-65) —
-         *   "How to get the image URL" 3-step ordered list. `<details>`
-         *   native (no JS state, no animation library). Default closed
-         *   (Phase 28 compact intake niyeti); operatör ihtiyaç duyarsa
-         *   açar. */}
+        <div
+          className="flex flex-col gap-2"
+          data-testid="add-ref-url-queue"
+        >
+          {entries.map((entry, idx) => {
+            const sourceHint = detectSourceFromUrl(entry.url);
+            return (
+              <div
+                key={entry.id}
+                className="flex flex-col gap-1.5 rounded-md border border-line-soft bg-paper p-2"
+                data-testid="add-ref-url-row"
+              >
+                <div className="flex items-center gap-2">
+                  {/* Preview thumb (ready) or icon (other states) */}
+                  {entry.status === "ready" && entry.assetId ? (
+                    <div className="k-thumb !w-9 !aspect-square flex-shrink-0">
+                      <AssetImage assetId={entry.assetId} alt={entry.url} frame={false} />
+                    </div>
+                  ) : (
+                    <div
+                      className={cn(
+                        "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border",
+                        entry.status === "fetching" && "border-k-orange bg-k-orange-soft/20",
+                        entry.status === "failed" && "border-danger/40 bg-danger/5",
+                        entry.status === "idle" && "border-line bg-k-bg",
+                      )}
+                    >
+                      {entry.status === "fetching" ? (
+                        <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-k-orange" />
+                      ) : entry.status === "failed" ? (
+                        <X className="h-3.5 w-3.5 text-danger" aria-hidden />
+                      ) : (
+                        <LinkIcon className="h-3.5 w-3.5 text-ink-3" aria-hidden />
+                      )}
+                    </div>
+                  )}
+
+                  <input
+                    ref={idx === 0 ? ref : undefined}
+                    type="url"
+                    placeholder="https://i.etsystatic.com/…/il_1140xN.jpg"
+                    value={entry.url}
+                    onChange={(e) => onChangeRow(entry.id, e.target.value)}
+                    onPaste={(e) => {
+                      const text = e.clipboardData.getData("text");
+                      if (onPaste(entry.id, text)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    disabled={entry.status === "fetching" || entry.status === "ready"}
+                    className="k-input flex-1"
+                    data-testid="add-ref-url-input"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => onRemoveRow(entry.id)}
+                    aria-label="Remove URL"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-k-bg hover:text-ink"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </div>
+
+                {/* Source hint + status line */}
+                <div className="flex items-center justify-between gap-2 pl-11 pr-1">
+                  {entry.status === "failed" ? (
+                    <span className="font-mono text-[10.5px] tracking-wider text-danger">
+                      {entry.error?.trim() || "Couldn't fetch image"}
+                    </span>
+                  ) : entry.status === "ready" ? (
+                    <span className="font-mono text-[10.5px] tracking-wider text-success">
+                      ✓ Image fetched · ready to save
+                    </span>
+                  ) : entry.status === "fetching" ? (
+                    <span className="font-mono text-[10.5px] tracking-wider text-ink-2">
+                      Fetching… {entry.progress ? `${entry.progress}%` : null}
+                    </span>
+                  ) : sourceHint ? (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 font-mono text-[10.5px] tracking-wider",
+                        sourceHint.platform === "ETSY" && "text-success",
+                        sourceHint.platform === "PINTEREST" && "text-danger",
+                        sourceHint.platform === "CREATIVE_FABRICA" && "text-ink-2",
+                        sourceHint.platform === "DIRECT" && "text-ink-2",
+                        sourceHint.platform === "OTHER" && "text-ink-3",
+                      )}
+                      data-testid="add-ref-source-hint"
+                    >
+                      {sourceHint.platform === "OTHER" ? null : <span aria-hidden>✓</span>}
+                      {sourceHint.label}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-ink-3">
+                      Etsy · Pinterest · Creative Fabrica · or a direct image link
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={onAddRow}
+          className="self-start font-mono text-[10.5px] uppercase tracking-meta text-ink-3 transition-colors hover:text-ink"
+          data-testid="add-ref-url-add-row"
+        >
+          + Add another URL
+        </button>
+
+        {/* DS B5 canonical disclosure (screens-b5-b6.jsx:55-65) */}
         <details
           className="overflow-hidden rounded-lg border border-line"
           data-testid="add-ref-url-disclosure"
@@ -930,50 +1263,9 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
           </ol>
         </details>
 
-        {/* Status panel */}
-        {job ? (
-          <div
-            className={cn(
-              "rounded-md border px-3 py-2.5 text-[12.5px]",
-              failed
-                ? "border-danger/40 bg-danger/5"
-                : success
-                  ? "border-success/40 bg-success/5"
-                  : "border-line-soft bg-k-bg-2/50",
-            )}
-            role="status"
-            aria-live="polite"
-            data-testid="add-ref-url-status"
-          >
-            {fetching ? (
-              <span className="flex items-center gap-2 text-ink-2">
-                <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-k-orange" />
-                Fetching image… {job.progress > 0 ? `${job.progress}%` : null}
-              </span>
-            ) : null}
-            {success ? (
-              <span className="flex flex-col gap-0.5">
-                <span className="text-ink">Image fetched.</span>
-                <span className="text-[11.5px] text-ink-3">
-                  Ready to save. Pick a product type and Save reference.
-                </span>
-              </span>
-            ) : null}
-            {failed ? (
-              <span className="flex flex-col gap-0.5">
-                <span className="text-danger">Couldn&apos;t fetch image</span>
-                <span className="text-[11.5px] text-ink-3">
-                  {job.error?.trim() ||
-                    "The URL didn't return a usable image. Try a direct image link."}
-                </span>
-              </span>
-            ) : null}
-          </div>
-        ) : null}
-
-        {message ? (
+        {globalMessage ? (
           <p className="text-[12px] text-danger" data-testid="add-ref-url-message">
-            {message}
+            {globalMessage}
           </p>
         ) : null}
       </div>

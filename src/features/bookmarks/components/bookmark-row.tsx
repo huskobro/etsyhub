@@ -26,8 +26,6 @@ import { useEffect, useRef, useState } from "react";
 import type { BookmarkStatus, RiskLevel } from "@prisma/client";
 import { AssetImage } from "@/components/ui/asset-image";
 import { tagColorClass } from "@/features/tags/color-map";
-import { CollectionPicker } from "@/features/collections/components/collection-picker";
-import { TagPicker } from "@/features/tags/components/tag-picker";
 import { cn } from "@/lib/cn";
 
 type BookmarkLite = {
@@ -156,19 +154,37 @@ export function BookmarkRow({
         ) : null}
       </td>
 
-      {/* Thumbnail — Phase 23 hover preview popover */}
+      {/* Thumbnail — Phase 23 hover preview popover + Phase 29 metadata
+       *   (tags + collection görünür artık satırdan kalktığı için
+       *   popover'da yaşar). */}
       <td className="px-3 py-3 align-middle">
         <BookmarkRowThumb
           assetId={bookmark.asset?.id ?? null}
           alt={title}
           sourceLabel={sourceLabel}
           title={title}
+          tags={bookmark.tags}
+          collectionName={bookmark.collection?.name ?? null}
         />
       </td>
 
-      {/* Title + meta row (tags / collection / product type) */}
+      {/* Title cell — Phase 29 B1 canonical scan layout.
+       *
+       * Pre-Phase 29 sub-line: productType displayName + inline TagPicker
+       * ("No tags / Add tag") + inline CollectionPicker ("No collection").
+       * Bu B1 SubInbox canonical scan deneyimini bozuyordu — DS mock
+       * (screens-b1.jsx:240-251) yalnız title 13px font-medium gösterir.
+       *
+       * Phase 29 — kalan tek ufak meta: productType displayName mono
+       * (boş satır yerine bookmark workflow için operatöre tip ipucu).
+       * Tag rozetleri ve collection erişimi **hover preview popover**'a
+       * taşındı (BookmarkRowThumb içinde, Phase 23 thumb hover'ı zaten
+       * popover açıyor). TagPicker / CollectionPicker'a doğrudan
+       * row-level erişim **gizlendi**; bu picker'lar canonical Add
+       * Reference modal'ı + future row-detail mechanism üzerinden
+       * yönetilir. */}
       <td className="px-3 py-3 align-middle">
-        <div className="flex flex-col gap-1 min-w-0">
+        <div className="flex flex-col gap-0.5 min-w-0">
           <span
             className="text-[13px] font-medium text-ink truncate"
             title={title}
@@ -177,39 +193,19 @@ export function BookmarkRow({
           </span>
           <div className="flex flex-wrap items-center gap-1.5">
             {bookmark.productType ? (
-              <span
-                className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3"
-              >
+              <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
                 {bookmark.productType.displayName}
               </span>
             ) : null}
-            {onSetTags ? (
-              <TagPicker
-                selected={bookmark.tags.map((t) => t.tag.id)}
-                onChange={(tagIds) => onSetTags(bookmark.id, tagIds)}
-                disabled={updating}
-              />
-            ) : bookmark.tags.length > 0 ? (
-              <div className="flex flex-wrap gap-1">
-                {bookmark.tags.map((t) => (
-                  <span
-                    key={t.tag.id}
-                    className={`rounded-sm px-1.5 py-0.5 text-[10.5px] ${tagColorClass(t.tag.color)}`}
-                  >
-                    {t.tag.name}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-            {onSetCollection ? (
-              <CollectionPicker
-                value={bookmark.collection?.id ?? null}
-                onChange={(id) => onSetCollection(bookmark.id, id)}
-                disabled={updating}
-              />
-            ) : bookmark.collection ? (
+            {bookmark.collection ? (
               <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
                 · {bookmark.collection.name}
+              </span>
+            ) : null}
+            {bookmark.tags.length > 0 ? (
+              <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
+                · {bookmark.tags.length}{" "}
+                {bookmark.tags.length === 1 ? "tag" : "tags"}
               </span>
             ) : null}
           </div>
@@ -298,11 +294,15 @@ function BookmarkRowThumb({
   alt,
   sourceLabel,
   title,
+  tags,
+  collectionName,
 }: {
   assetId: string | null;
   alt: string;
   sourceLabel: string;
   title: string;
+  tags: { tag: { id: string; name: string; color: string | null } }[];
+  collectionName: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{
@@ -409,7 +409,7 @@ function BookmarkRowThumb({
           <div className="aspect-square w-full overflow-hidden rounded-sm bg-k-bg-2">
             <AssetImage assetId={assetId} alt={alt} frame={false} />
           </div>
-          <div className="mt-2 flex flex-col gap-0.5 px-0.5">
+          <div className="mt-2 flex flex-col gap-1 px-0.5">
             <span
               className="truncate text-[12px] font-medium text-ink"
               title={title}
@@ -419,6 +419,33 @@ function BookmarkRowThumb({
             <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
               {sourceLabel}
             </span>
+            {/* Phase 29 — row'dan kalkan tag chip'leri + collection adı
+             * popover içinde görünür hale geldi. */}
+            {collectionName ? (
+              <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
+                in {collectionName}
+              </span>
+            ) : null}
+            {tags.length > 0 ? (
+              <div className="flex flex-wrap gap-0.5 pt-0.5">
+                {tags.slice(0, 6).map((t) => (
+                  <span
+                    key={t.tag.id}
+                    className={cn(
+                      "rounded-sm px-1.5 py-0.5 text-[10.5px]",
+                      tagColorClass(t.tag.color),
+                    )}
+                  >
+                    {t.tag.name}
+                  </span>
+                ))}
+                {tags.length > 6 ? (
+                  <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
+                    +{tags.length - 6}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

@@ -5989,6 +5989,199 @@ endpoint, server-side source resolver) ayrı **backend turu**.
 
 ---
 
+## Phase 29 — Intake UX genişletme + Inbox row B1 canonical sadeleştirme
+
+Phase 28 B5 parity'yi disipline etmişti ama hâlâ üç kritik kullanıcı
+deneyim eksiği vardı:
+
+1. **Tek URL → tek fetch akışı yavaşlatıcı**: Operatör 10 URL eklemek
+   istiyorsa 10× modal aç-paste-fetch-save. Her seferinde modal init.
+2. **Source detection feedback yetersiz**: "✓ Looks like Etsy" chip
+   doğru ama operatör fetch öncesi/sonrası **gerçek görseli görmüyor**.
+   Yanlış URL paste → kirli Inbox + Archive zorunluluğu.
+3. **Title fallback ham URL veya "Untitled"**: `import-url` worker title
+   metadata yazmıyor; bookmark create `title: undefined` → row fallback
+   `sourceUrl ?? "Untitled"`. Operatör Inbox'ta "https://i.etsystatic.
+   com/.../il_1588xN.jpg" görüyor.
+
+Ek olarak **Inbox row gürültüsü**: title cell sub-line `productType
+displayName` + **inline TagPicker** ("No tags / Add tag" chip) +
+**inline CollectionPicker** ("No collection" / dropdown). DS B1
+SubInbox canonical (`screens-b1.jsx:240-251`) yalnız title 13px
+font-medium gösterir. Tag/collection meta-line B1 niyetinde yok.
+
+### Düzeltmeler
+
+**URL tab multi-URL queue** (hibrit — DS B5 mock'ta yok, ürün ihtiyacı):
+
+- `urlEntries` array state — her satır kendi lifecycle (idle / fetching
+  / ready / failed)
+- Her satır: preview thumb (ready'de asset thumb, diğer state'lerde
+  status icon) + URL `<input>` + source hint badge + X remove
+- **Multi-line paste split**: kullanıcı 3 URL'i textarea'dan kopyalayıp
+  herhangi bir input'a yapıştırırsa → 3 ayrı row oluşur (clipboard
+  paste handler `onPaste` event'inde split newlines, `preventDefault`
+  ile native paste'i iptal)
+- **Bulk fetch all**: `Promise.all` ile parallel import-url job; her job
+  kuyruğa atılır + `useEffect` interval polling (1500ms) status update
+- **Bulk save all**: `Promise.allSettled` per-row createBookmark;
+  partial failure tolerant (1 başarısız diğerlerini durdurmaz)
+- "+ Add another URL" satır ekleme button (default 1 row)
+- **Dynamic CTA**: idle URL > 0 ise "Fetch N images" (singular for 1);
+  all ready ise "Save N references"; mixed ise "Fetch remaining"
+
+**Per-row preview thumb**: `status === "ready"` durumunda asset
+`<AssetImage>` 36×36 thumb. Operatör Inbox'a kaydetmeden **gerçek
+görüntüyü modal içinde görür** (yanlış URL = yanlış thumb → fix öncesi
+fark edilir).
+
+**Source hint per-row** (Phase 27/28 tone'lar korundu, **artık her
+satır için ayrı**):
+- Etsy → `text-success` "✓ Looks like Etsy"
+- Pinterest → `text-danger` "✓ Looks like Pinterest"
+- Creative Fabrica → `text-ink-2` "Creative Fabrica page · we'll fetch
+  the main image" (honest page-detection tone)
+- Direct image → `text-ink-2` "✓ Direct image URL"
+- Unknown → `text-ink-3` "Source will be resolved on fetch" (no check)
+
+**Title normalization** (`deriveTitleFromUrl` helper):
+
+| Pattern | Çıktı |
+|---|---|
+| `etsy.com/listing/{id}/{slug}` | titleized slug (örn. "Dragonfly Clipart Bundle Watercolor") |
+| `etsystatic.com/...` | "Etsy image" |
+| `pinterest.com/pin/{id}/` | "Pinterest pin {id}" |
+| `pinimg.com/...` | "Pinterest image" |
+| `creativefabrica.com/product/{slug}/` | titleized slug |
+| direct image `.png/.jpg/.webp` | titleized basename ("Sunset Landscape") |
+| unknown | hostname (örn. "random-site.com") |
+
+`titleize` helper: kebab/snake → space, capitalize each word.
+Server-side meta extraction olmadan operatöre **anlamlı title**.
+Kullanıcı sonradan inline edit ile değiştirebilir (PATCH /api/bookmarks/
+[id] mevcut davranış).
+
+**Inbox row B1 canonical sadeleştirme** (`bookmark-row.tsx`):
+
+- TagPicker / CollectionPicker **kaldırıldı** (import'lar dahil)
+- `onSetTags` / `onSetCollection` prop'ları optional kalır (legacy
+  consumer'lar için) ama kullanılmıyor
+- Title cell sub-line minimum metadata:
+  - `productType.displayName` mono uppercase (operatöre tip ipucu)
+  - `· {collection.name}` mono (varsa)
+  - `· N tags` mono (varsa, sayı; rozetler yok)
+- Hover preview popover (`BookmarkRowThumb`) artık tags + collection
+  gösterir:
+  - "in {collectionName}" mono
+  - Tag chip'leri (max 6, "+N" overflow)
+- Operatör popover'da tam meta'yı görür, satırda B1 scan deneyimi
+  bozulmaz
+
+### B5 canonical sınırı — hibrit genişletme
+
+| Parça | Kategori | Gerekçe |
+|---|---|---|
+| Tek URL input + source hint | **Birebir DS B5** | mock screens-b5-b6.jsx:42-66 |
+| 3 sibling tab + product type chips + collection | **Birebir DS B5** | Phase 27/28 |
+| "How to get the image URL" disclosure | **Birebir DS B5** | mock:55-65 |
+| URL tab multi-URL queue + bulk fetch | **Hibrit (ürün ihtiyacı)** | DS B5'te yok; operatör 10+ URL workflow için kritik; B5'in single-input niyetini sub-mode olarak değil **default queue** olarak genişlettik (default 1 satır operatöre tek-URL hissi verir, "+ Add another URL" ile çoğaltır, paste split N satır) |
+| Per-row preview thumb | **Hibrit (ürün ihtiyacı)** | DS B5 mock'ta upload thumb var, URL thumb yok; bizim queue mode için gerekli (operatör hangi URL hangi görsel onayı için) |
+| Title normalization (`deriveTitleFromUrl`) | **Hibrit (yardımcı)** | DS B5'te title konusu yok; server-side meta extraction yokken operatör için zorunlu |
+| Inbox row sadeleştirme | **Birebir DS B1** | mock:240-251 — DS niyetine geri dönüş, Phase 21 fragmentation cleanup |
+| Hover preview popover tag/collection meta | **Hibrit (Phase 23 uzantısı)** | Inbox row'dan kalkan meta'yı popover'da yaşatır |
+
+### Doğrulama kanıtları
+
+**Multi-URL queue browser test**:
+
+```
+/references?add=ref → URL tab default 1 row
+Paste 3 URLs via clipboard → 3 row instantly
+  Row 1: Etsy URL, ✓ Looks like Etsy (success)
+  Row 2: Pinterest URL, ✓ Looks like Pinterest (danger)
+  Row 3: Creative Fabrica URL, ✓ Creative Fabrica page · we'll fetch... (ink-2)
+CTA dynamic: "+ Fetch 3 images"
+"3 rows · paste multiple URLs into any row to split" caption sağ üst
+"+ Add another URL" button
+```
+
+**Title normalization unit-equivalent**:
+
+```
+etsy.com/listing/.../dragonfly-clipart-bundle-watercolor → "Dragonfly Clipart Bundle Watercolor"
+etsystatic.com/.../il_1140xN.jpg → "Etsy image"
+pinterest.com/pin/3141592653589793/ → "Pinterest pin 3141592653589793"
+pinimg.com/.../xyz.jpg → "Pinterest image"
+creativefabrica.com/product/dragonfly-clipart-bundle/ → "Dragonfly Clipart Bundle"
+example.com/path/sunset_landscape.png → "Sunset Landscape"
+random-site.com/page.html → "random-site.com"
+```
+
+**Inbox row sadeleşme**:
+
+```
+/bookmarks row data-testid="bookmark-row":
+  TagPicker in row: false ✓
+  CollectionPicker in row: false ✓
+  Sub-line: "CLIPART BUNDLE" (mono) — tag/collection picker noise GONE
+  Title cell: clean 13px font-medium + ufak mono meta
+```
+
+Screenshot 1 (URL queue 3-row pasted): 3 row Etsy/Pinterest/CF +
+per-row source hint + "3 rows · paste multiple URLs into any row to
+split" + "+ Add another URL" + Product type chips (Bookmark active
+last-used) + CTA "+ Fetch 3 images"
+
+Screenshot 2 (Inbox row clean): 3 row — primary title 13px font-medium
++ thin sub-line (productType / collection / tag count, hiçbir picker
+yok). DS B1 canonical scan deneyimi.
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{bookmarks-page, bookmarks-confirm-flow,
+  bookmark-service, dashboard-page, references-page}: **50/50 PASS**
+- Browser verification: multi-URL paste split, per-row source hint,
+  dynamic CTA "Fetch N images", title normalization, Inbox row clean
+  layout
+
+### Bilinçli scope dışı (Phase 30+ candidate)
+
+- **Server-side `import-url` worker title metadata extraction** —
+  client `deriveTitleFromUrl` interim çözüm; ileride worker scraping
+  ile gerçek title (örn. Etsy listing `<title>` tag, OG meta)
+- **Tag/collection editing UI** — Phase 29 inline edit'leri row'dan
+  kaldırdı. İlerde row-detail mechanism (drawer? slide-in?) açılırsa
+  tam edit oraya taşınır
+- **Multi-URL upload combining** — operatör URL tab'da 2 link, Upload
+  tab'da 3 file ekleyip tek "Add 5 References" istemesi (cross-tab
+  bulk). Mevcut: her tab kendi flow'unda submit eder
+- **Schema migration** (`CREATIVE_FABRICA` enum, doğrudan Reference
+  endpoint, source resolver worker)
+- **Dead/bridge cleanup** (`DashboardQuickActions`, `UploadImageDialog`,
+  `ImportUrlDialog`, `?add=url` listener) — yine Phase 30 candidate
+
+### Bundan sonra Add Reference family'de kalan tek doğru iş
+
+**Phase 30 server-side title + dead/bridge cleanup combo turu**:
+
+1. `import-url` worker: Etsy listing scraper (already var) + Pinterest
+   OG meta + Creative Fabrica OG title → asset metadata title yaz
+2. Dead/bridge surface'leri sil (Phase 27/28/29'da listelenenler)
+3. Bookmark create endpoint server-side title fallback chain:
+   `payload.title ?? asset.metadata.title ?? deriveTitleFromUrl(sourceUrl)
+   ?? "Untitled"`
+
+Bu iki iş birlikte yapılırsa server-side meta extraction title
+normalization'ı tamamen server'a taşıyıp client helper'ı sade fallback
+olarak bırakır. Operatör future server resolver güçlenince modal'da
+mock'tan farklı bir değer görmez (UX stabilité).
+
+Schema değişiklikleri (`CREATIVE_FABRICA` enum, direct Reference
+endpoint) hâlâ ayrı **backend turu**.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
