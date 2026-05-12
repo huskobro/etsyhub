@@ -5812,20 +5812,180 @@ Pinterest + Boho line art Etsy), search input, product type chips
 
 ### Bundan sonra Add Reference family'de kalan tek doğru iş
 
-**Phase 28 dead/bridge surface cleanup**:
+**Phase 28 dead/bridge surface cleanup** (Phase 27'de planlanmıştı, Phase
+28'de yapılmadı — B5 parity disipline edici turuna döndü; Phase 29'a
+ertelendi):
 - `bookmarks-page.tsx` `?add=url` useEffect listener kaldır
 - `DashboardQuickActions` ya sil ya `AddReferenceDialog`'u açan Quick
   Add tile'la yeniden bağla
 - `UploadImageDialog` + ilgili test fixture sil
 - `ImportUrlDialog` sil
 
-Operatöre etki sıfır (zaten görünmüyorlardı / dead caller'a bağlı);
-kod sağlığı + yeni canonical surface'in netlik korunması için
-gerekli.
+---
+
+## Phase 28 — AddReferenceDialog B5 disipline edici parity
+
+Phase 27 modal görselini iyileştirdi ama Phase 28 honest re-audit
+gösterdi ki hâlâ üç kritik DS B5 sapması vardı:
+
+1. **"More types · 3" toggle DS canonical değildi** (mock screens-b5-b6.jsx:
+   17-23'te yalnız 5 chip; toggle yok). Phase 27'de kendim icat etmiştim
+2. **"Defaults to Wall art" hardcoded copy DS dilini kaybetmişti.** DS
+   canonical: "Defaults to your **last used** type · Wall art" —
+   persistence niyetini taşır. Bizim hardcoded fallback last-used
+   implement etmiyordu
+3. **DS B5 mock'undaki "Bookmark" product type seed'de yoktu** (Clipart /
+   Wall Art / Printable / Sticker / Canvas + physical POD'lar vardı).
+   DS B5 5-chip mock: Clipart bundle / Wall art / **Bookmark** / Sticker /
+   Printable
+
+### Düzeltmeler
+
+**Product type IA — server canonical filter + canonical order + last-used**:
+
+Server-level filter (page-level query):
+```ts
+where: {
+  isSystem: true,
+  key: { in: ["clipart", "wall_art", "bookmark", "sticker", "printable"] },
+}
+```
+Phase 27'de client-level whitelist + "More types" toggle vardı. Phase 28
+server yalnız canonical 5 key döner; client koşulsuz 5 chip render eder.
+**"More types" toggle kalktı.**
+
+Client-level canonical order (`CANONICAL_PRODUCT_TYPE_ORDER`):
+1. Clipart bundle
+2. Wall art
+3. Bookmark
+4. Sticker
+5. Printable
+
+DisplayName alphabetical sort kullanılmaz; operatör DS'le aynı sırayı
+görür.
+
+**Last-used persistence** (DS canonical niyet):
+- localStorage key `kivasy.addReference.lastProductTypeKey`
+- productTypeId değiştiğinde key persist edilir
+- Modal açılışta: localStorage'da geçerli key varsa o; yoksa wall_art
+  fallback (DS mock varsayılan); o da yoksa orderedTypes[0]
+- Sub-caption dinamik: "Defaults to your last used type · <Selected>"
+- Kullanıcı son "Bookmark" seçmişse modal yeniden açıldığında Bookmark
+  active + caption "Defaults to your last used type · Bookmark"
+
+**Seed canonical revize** (`prisma/seed.ts`):
+- `bookmark` eklendi (key: bookmark, displayName: "Bookmark", aspectRatio:
+  2:5) — DS B5 5'inci chip, CLAUDE.md scope'unda (kitap ayracı PDF/PNG)
+- `clipart` displayName: "Clipart" → "Clipart bundle" (DS B5 canonical
+  wording)
+- `wall_art` displayName: "Wall Art" → "Wall art" (sentence case)
+- Diğer canonical (`sticker`, `printable`) korundu
+- `canvas`, `tshirt`, `hoodie`, `dtf` korundu (legacy DB row uyumu;
+  intake'te server canonical-key whitelist'i ile elenirler)
+
+**URL tab disclosure — DS B5 canonical**:
+
+`<details>` "How to get the image URL" 3-step ordered list eklendi
+(mock screens-b5-b6.jsx:55-65):
+```
+01  Right-click the image on Etsy, Pinterest or Creative Fabrica
+02  Select "Copy image address"
+03  Paste here — Kivasy fetches the image and detects the source
+```
+
+Compact intake niyeti gereği **default closed** (DS mock'unda `open`
+ama mock split-modal geniş; bizim compact intake modal'da inline
+3-step liste body'yi gereksiz uzatırdı).
+
+**From Bookmark caption — DS canonical wording**:
+- Phase 27: "N selected · will promote to Pool **with the product type
+  below**" — ekstra cümle
+- Phase 28: "N selected · will promote to Pool" — DS mock satır
+  (screens-b5-b6.jsx:130)
+
+### Multi-URL / multi-upload — honest defer karar
+
+**Multi-upload zaten implement edilmiş** (Phase 26): `<input multiple>` +
+drop multi-file + per-file lifecycle (pending/uploading/ready/failed) +
+`Promise.allSettled` partial failure handling. Modal kapanmaz, her
+file kendi status'unu gösterir.
+
+**Multi-URL bu turda yapılmadı** — bilinçli erteleme:
+
+1. **DS B5 mock'unda yok** — eklemek = canonical'dan sapma, Phase 27/28
+   parity disiplinine ters
+2. **Gerçek değer 10+ URL'de** ortaya çıkar — 2-3 URL için `?add=ref`
+   her seferinde modal aç-paste-fetch yeterli
+3. **Doğru UX karmaşık**: N URL → N parallel job → N farklı sonuç +
+   progress strip + partial-success + error reporting. Kendi başına
+   bir turun işi
+4. **Bu turun hedefi B5 parity temizliği** — multi-URL eklemek bu hedefi
+   sulandırır
+
+Multi-URL bulk paste **Phase 29+ candidate**.
+
+### Doğrulama kanıtları
+
+```
+/references?add=ref → Pool open:
+  chipCount: 5 (DS canonical, "More types" YOK)
+  chips: Clipart bundle | Wall art (active) | Bookmark | Sticker | Printable
+  subCaption: "Defaults to your last used type · Wall art"
+  disclosureExists: true (How to get the image URL closed)
+
+Last-used persistence test:
+  1. User clicks "Bookmark" chip → localStorage write "bookmark"
+  2. Esc close + reopen /references?add=ref
+  3. activeChip: "Bookmark" ✓
+  4. subCaption: "Defaults to your last used type · Bookmark" ✓
+  5. localStorage value: "bookmark" ✓
+
+URL disclosure open:
+  3 ordered steps render correctly with k-orange step numbers (01/02/03)
+
+From Bookmark tab:
+  caption: "3 SELECTED · WILL PROMOTE TO POOL" ✓
+  k-stab__count: "3" ✓
+  CTA: "+ Add 3 References" ✓
+  collection field: HIDDEN ✓
+```
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{bookmarks-page, bookmarks-confirm-flow,
+  bookmark-service, dashboard-page, references-page}: **50/50 PASS**
+- Prisma seed: 9 product type upsert (8 önceki + 1 yeni `bookmark`)
+- Browser: Pool + Inbox aynı modal, 5 canonical chip, last-used
+  persistence, disclosure, From Bookmark caption DS wording
+
+### Bilinçli scope dışı (Phase 29+ candidate)
+
+- **Multi-URL bulk paste** — DS B5'te yok, ayrı tur
+- **Server-side source meta extraction worker** — client hostname regex
+  hâlâ aktif
+- **`SourcePlatform.CREATIVE_FABRICA` enum** — schema migration yasağı
+- **Direct `POST /api/references` endpoint** — modal output hâlâ bookmark
+- **Last-used per-user setting** — şu an localStorage (tek-cihaz)
+- **Collection chip-with-caret picker** — şu an `<select>` native
+- **Dead bridge cleanup** (ImportUrlDialog / UploadImageDialog /
+  DashboardQuickActions / `?add=url` listener) — Phase 29 candidate
+
+### Bundan sonra Add Reference family'de kalan tek doğru iş
+
+**Phase 29 dead/bridge cleanup turu** (Phase 27'de planlanmış, Phase
+28'de B5 parity'ye öncelik verildiği için ertelendi):
+
+1. `bookmarks-page.tsx` `?add=url` useEffect listener kaldır
+2. `DashboardQuickActions` ya sil ya `AddReferenceDialog`'u açan Quick
+   Add tile'la yeniden bağla
+3. `UploadImageDialog` + ilgili test fixture sil
+4. `ImportUrlDialog` sil
+
+Operatöre etki sıfır; kod sağlığı için.
 
 Schema değişiklikleri (`CREATIVE_FABRICA` enum, direct-reference
-endpoint, server-side source resolver) ayrı bir **backend turu**;
-References family UI işi değil.
+endpoint, server-side source resolver) ayrı **backend turu**.
 
 ---
 

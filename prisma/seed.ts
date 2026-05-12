@@ -23,12 +23,21 @@ async function main() {
     console.log(`admin user zaten var: ${adminEmail}`);
   }
 
+  // Phase 28 — DS v5 B5 mock chip set (5 canonical digital download types)
+  // tam karşılığı olarak `bookmark` eklendi; `clipart` displayName "Clipart
+  // bundle" oldu (DS canonical wording); `wall_art` displayName "Wall art"
+  // oldu (sentence case, DS B5 ile birebir). T-Shirt / Hoodie / DTF
+  // physical POD scope dışı (CLAUDE.md "Out-of-scope"); seed'de korunuyor
+  // (mevcut DB row uyumu için) ama intake server-level canonical-key
+  // whitelist'i ile filtrelenir, modal'a gelmez. Canvas dijital wall art
+  // varyantı; DS B5 mock'unda yok ama legacy product type rolü kalır.
   const productTypes = [
-    { key: "canvas", displayName: "Canvas", aspectRatio: "3:4" },
-    { key: "wall_art", displayName: "Wall Art", aspectRatio: "2:3" },
-    { key: "printable", displayName: "Printable", aspectRatio: "2:3" },
-    { key: "clipart", displayName: "Clipart", aspectRatio: "1:1" },
+    { key: "clipart", displayName: "Clipart bundle", aspectRatio: "1:1" },
+    { key: "wall_art", displayName: "Wall art", aspectRatio: "2:3" },
+    { key: "bookmark", displayName: "Bookmark", aspectRatio: "2:5" },
     { key: "sticker", displayName: "Sticker", aspectRatio: "1:1" },
+    { key: "printable", displayName: "Printable", aspectRatio: "2:3" },
+    { key: "canvas", displayName: "Canvas", aspectRatio: "3:4" },
     { key: "tshirt", displayName: "T-Shirt", aspectRatio: "1:1" },
     { key: "hoodie", displayName: "Hoodie", aspectRatio: "1:1" },
     { key: "dtf", displayName: "DTF", aspectRatio: "1:1" },

@@ -45,19 +45,28 @@ type ProductTypeOption = { id: string; displayName: string; key?: string };
 type CollectionOption = { id: string; name: string };
 
 /**
- * Canonical digital-download product type keys (CLAUDE.md scope sözleşmesi:
- * "yalnızca dijital indirilebilir ürünler"). Bu set DS B5 mock'undaki
- * 5 canonical chip'in app karşılığı. Seed'deki `tshirt`, `hoodie`, `dtf`
- * physical POD scope dışı; intake'te gösterilmez. Test fixture / admin
- * custom types (`isSystem: false`) server-level filter ile zaten elenir.
+ * DS v5 B5 canonical chip display order (mock screens-b5-b6.jsx:17-23):
+ * clipart bundle / wall art / bookmark / sticker / printable. Server
+ * already filters to these 5 keys (page-level query); client orders by
+ * canonical sequence so chips appear in DS order regardless of
+ * displayName alphabetical fallback.
  */
-const CANONICAL_PRODUCT_TYPE_KEYS = [
+const CANONICAL_PRODUCT_TYPE_ORDER = [
   "clipart",
   "wall_art",
-  "printable",
+  "bookmark",
   "sticker",
-  "canvas",
+  "printable",
 ] as const;
+
+/**
+ * localStorage key for last-used product type. DS B5 caption "Defaults to
+ * your last used type · Wall art" persistence niyetini taşır — Phase 28
+ * minimal client-side implementation. Sunucu/user-setting bağlama ileride
+ * (admin-managed default? per-user setting?) genişletilebilir; şu an
+ * tek-cihaz tarayıcı persistence yeterli.
+ */
+const LAST_USED_PT_KEY = "kivasy.addReference.lastProductTypeKey";
 
 type BookmarkLite = {
   id: string;
@@ -139,56 +148,88 @@ export function AddReferenceDialog({
   const qc = useQueryClient();
   const [tab, setTab] = useState<TabId>(defaultTab);
 
-  /* Phase 27 — Product type display IA.
-   *   v5 B5 mock 5 canonical chip gösteriyor. Bizim app'te seed +
-   *   admin custom types karışık (Phase 26'da 36 chip kaos). Server
-   *   already `isSystem: true` filter ekliyor; client tarafında
-   *   canonical-key whitelist ile core types öne çıkarılır, kalan
-   *   "More types…" disclosure'unda kalır (operatör hâlâ erişebilir,
-   *   ama default scan kaosu kalkar). */
-  const { canonical: canonicalTypes, more: moreTypes } = useMemo(() => {
-    const canonical: ProductTypeOption[] = [];
-    const more: ProductTypeOption[] = [];
-    for (const pt of productTypes) {
-      if (pt.key && (CANONICAL_PRODUCT_TYPE_KEYS as readonly string[]).includes(pt.key)) {
-        canonical.push(pt);
-      } else {
-        more.push(pt);
-      }
-    }
-    canonical.sort((a, b) => {
-      const ai = (CANONICAL_PRODUCT_TYPE_KEYS as readonly string[]).indexOf(
+  /* Phase 28 — Product type DS B5 parity cleanup.
+   *
+   * Phase 27 client-level whitelist + "More types · N" toggle DS canonical
+   * değildi (mock screens-b5-b6.jsx:17-23'te yalnız 5 chip var; "More
+   * types" yok). Phase 28: server zaten canonical 5 key'i döner (page-
+   * level query `where.key IN ('clipart','wall_art','bookmark','sticker',
+   * 'printable')`); client sadece sırayla render eder. Toggle kalktı.
+   *
+   * Sıralama: DS B5 mock'undaki canonical sıra (Clipart bundle / Wall art /
+   * Bookmark / Sticker / Printable). DisplayName alphabetical sort
+   * kullanılmaz — operatör DS'le aynı sırayı görür. */
+  const orderedTypes = useMemo(() => {
+    const sorted = [...productTypes].sort((a, b) => {
+      const ai = (CANONICAL_PRODUCT_TYPE_ORDER as readonly string[]).indexOf(
         a.key ?? "",
       );
-      const bi = (CANONICAL_PRODUCT_TYPE_KEYS as readonly string[]).indexOf(
+      const bi = (CANONICAL_PRODUCT_TYPE_ORDER as readonly string[]).indexOf(
         b.key ?? "",
       );
+      if (ai === -1 && bi === -1) return 0;
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
       return ai - bi;
     });
-    return { canonical, more };
+    return sorted;
   }, [productTypes]);
 
-  // Default: canonical "wall_art" if exists (DS B5 "Defaults to your last
-  // used type · Wall art"), else first canonical, else first overall.
+  /* Default selection — DS B5 caption: "Defaults to your last used type
+   * · Wall art". Last-used persistence localStorage'a yazılır (CTA
+   * confirmation anında). İlk girişte hiç kayıt yoksa wall_art fallback
+   * (DS mock varsayılanı); wall_art yoksa ilk canonical type. */
+  const lastUsedProductTypeId = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const lastKey = window.localStorage.getItem(LAST_USED_PT_KEY);
+      if (!lastKey) return null;
+      const match = orderedTypes.find((p) => p.key === lastKey);
+      return match?.id ?? null;
+    } catch {
+      return null;
+    }
+  }, [orderedTypes]);
+
   const defaultProductTypeId = useMemo(() => {
-    const wallArt = canonicalTypes.find((p) => p.key === "wall_art");
+    if (lastUsedProductTypeId) return lastUsedProductTypeId;
+    const wallArt = orderedTypes.find((p) => p.key === "wall_art");
     if (wallArt) return wallArt.id;
-    if (canonicalTypes[0]) return canonicalTypes[0].id;
-    return productTypes[0]?.id ?? "";
-  }, [canonicalTypes, productTypes]);
+    return orderedTypes[0]?.id ?? "";
+  }, [lastUsedProductTypeId, orderedTypes]);
 
   const [productTypeId, setProductTypeId] = useState<string>(defaultProductTypeId);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [collectionId, setCollectionId] = useState<string | null>(null);
 
-  // Re-sync default if productTypes change (page-level prop change rare,
-  // but covers HMR / re-mount with different data).
+  // Re-sync default if productTypes prop changes (HMR / re-mount edge).
   useEffect(() => {
     if (!productTypeId && defaultProductTypeId) {
       setProductTypeId(defaultProductTypeId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultProductTypeId]);
+
+  /* Persist last-used product type. Yalnız confirmation noktasında yazmak
+   * isterdik ama her tab'ın confirmation farklı flow (URL: urlOnSave,
+   * Upload: uploadAll.onSuccess, Bookmark: promoteBookmarks.onSuccess).
+   * En basit + bozucu olmayan yaklaşım: productTypeId değişiminde yaz.
+   * Kullanıcı chip'e dokunmasa bile last-used korunur. */
+  useEffect(() => {
+    if (!productTypeId) return;
+    if (typeof window === "undefined") return;
+    const pt = orderedTypes.find((p) => p.id === productTypeId);
+    if (!pt?.key) return;
+    try {
+      window.localStorage.setItem(LAST_USED_PT_KEY, pt.key);
+    } catch {
+      /* localStorage disabled — silent skip */
+    }
+  }, [productTypeId, orderedTypes]);
+
+  /* Track selected product type display name for caption. */
+  const selectedProductTypeLabel = useMemo(() => {
+    return orderedTypes.find((p) => p.id === productTypeId)?.displayName ?? "";
+  }, [productTypeId, orderedTypes]);
 
   // URL tab state
   const [url, setUrl] = useState("");
@@ -658,36 +699,28 @@ export function AddReferenceDialog({
 
         {/* Always-visible product type + collection (DS B5 pattern).
          *
-         * Phase 27 — product type IA cleanup:
-         *   - Canonical digital download types öne çıkar (DS B5 5-chip mock
-         *     hissi); seed test fixture'lar `isSystem: true` server filter
-         *     ile zaten elendi
-         *   - Kalan system types collapsible "More types" disclosure'da
-         *     (operatör erişebilir ama kaos görmez)
-         *   - Default: wall_art (DS "Defaults to your last used type · Wall
-         *     art" niyetinin sadeleştirilmiş hali)
-         *   - From Bookmark tab'ında `Collection (optional)` saklanır:
-         *     promote endpoint'i bookmark'ın kendi collection'ını **change
-         *     etmez**, reference'a yeni bir override yazar; bu bookmark
-         *     tab'ında "bu collection neyi etkiliyor?" karışıklığı yaratır.
-         *     URL/Upload tab'larında yeni bookmark oluştuğu için anlamlı,
-         *     bookmark tab'ında hide ediyoruz. */}
+         * Phase 28 — DS B5 parity cleanup:
+         *   - "More types · N" toggle kaldırıldı (DS canonical değil;
+         *     server zaten canonical 5 key dönüyor)
+         *   - Sub-caption DS dilinde: "Defaults to your last used type ·
+         *     <Selected>" — last-used localStorage persistence aktif
+         *   - From Bookmark tab'ında collection saklı (Phase 27 IA karar):
+         *     promote endpoint bookmark'ın collection'ını korur, reference'a
+         *     override yazar; bookmark tab'ında "bu collection neyi
+         *     etkiliyor?" karışıklığını ortadan kaldırmak için alanı
+         *     gizliyoruz. URL/Upload tab'larında yeni bookmark+reference
+         *     oluştuğu için anlamlı. */}
         <div className="border-t border-line-soft bg-paper px-6 py-4">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-baseline justify-between">
-                <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-                  Product type
-                </span>
-                <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
-                  Defaults to Wall art
-                </span>
-              </div>
+              <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+                Product type
+              </span>
               <div
                 className="flex flex-wrap gap-1.5"
                 data-testid="add-ref-product-types"
               >
-                {canonicalTypes.map((pt) => (
+                {orderedTypes.map((pt) => (
                   <button
                     key={pt.id}
                     type="button"
@@ -701,38 +734,14 @@ export function AddReferenceDialog({
                     {pt.displayName}
                   </button>
                 ))}
-                {moreTypes.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => setMoreOpen((v) => !v)}
-                    className="k-chip"
-                    aria-expanded={moreOpen}
-                    data-testid="add-ref-more-types-toggle"
-                  >
-                    {moreOpen ? "Hide more" : `More types · ${moreTypes.length}`}
-                  </button>
-                ) : null}
               </div>
-              {moreOpen && moreTypes.length > 0 ? (
-                <div className="mt-1.5 flex flex-wrap gap-1.5 rounded-md bg-k-bg-2/40 p-2">
-                  {moreTypes.map((pt) => (
-                    <button
-                      key={pt.id}
-                      type="button"
-                      onClick={() => setProductTypeId(pt.id)}
-                      aria-pressed={productTypeId === pt.id}
-                      className={cn(
-                        "k-chip",
-                        productTypeId === pt.id && "k-chip--active",
-                      )}
-                    >
-                      {pt.displayName}
-                    </button>
-                  ))}
-                </div>
+              {selectedProductTypeLabel ? (
+                <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
+                  Defaults to your last used type · {selectedProductTypeLabel}
+                </span>
               ) : null}
             </div>
-            {/* Collection: bookmark tab'ında saklanır (yukarıdaki yorum) */}
+            {/* Collection: bookmark tab'ında saklanır (Phase 27 IA karar) */}
             {tab !== "bookmark" && collections && collections.length > 0 ? (
               <div className="flex flex-col gap-1.5">
                 <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
@@ -883,6 +892,43 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
             </span>
           )}
         </label>
+
+        {/* DS B5 canonical disclosure (screens-b5-b6.jsx:55-65) —
+         *   "How to get the image URL" 3-step ordered list. `<details>`
+         *   native (no JS state, no animation library). Default closed
+         *   (Phase 28 compact intake niyeti); operatör ihtiyaç duyarsa
+         *   açar. */}
+        <details
+          className="overflow-hidden rounded-lg border border-line"
+          data-testid="add-ref-url-disclosure"
+        >
+          <summary className="flex cursor-pointer items-center justify-between bg-k-bg px-4 py-2.5 text-[12.5px] font-medium text-ink hover:bg-k-bg-2/60">
+            <span>How to get the image URL</span>
+            <span aria-hidden className="text-ink-3">
+              ⌄
+            </span>
+          </summary>
+          <ol className="space-y-2 bg-paper px-4 py-3 text-[12.5px] text-ink-2">
+            <li className="flex gap-3">
+              <span className="w-5 pt-0.5 font-mono text-[10.5px] tracking-wider text-k-orange">
+                01
+              </span>
+              <span>Right-click the image on Etsy, Pinterest or Creative Fabrica</span>
+            </li>
+            <li className="flex gap-3">
+              <span className="w-5 pt-0.5 font-mono text-[10.5px] tracking-wider text-k-orange">
+                02
+              </span>
+              <span>Select &ldquo;Copy image address&rdquo;</span>
+            </li>
+            <li className="flex gap-3">
+              <span className="w-5 pt-0.5 font-mono text-[10.5px] tracking-wider text-k-orange">
+                03
+              </span>
+              <span>Paste here — Kivasy fetches the image and detects the source</span>
+            </li>
+          </ol>
+        </details>
 
         {/* Status panel */}
         {job ? (
@@ -1187,8 +1233,7 @@ function BookmarkTab({
 
       {selection.size > 0 ? (
         <div className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-          {selection.size} selected · will promote to Pool with the product
-          type below
+          {selection.size} selected · will promote to Pool
         </div>
       ) : null}
     </div>

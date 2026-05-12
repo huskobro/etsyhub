@@ -17,8 +17,20 @@ export default async function Page() {
   if (!session?.user) redirect("/login");
 
   const [productTypes, counts, collections] = await Promise.all([
+    /* Phase 28 — Intake server-level canonical filter.
+     *
+     * Phase 27 client-level whitelist + "More types" toggle DS B5 mock'unda
+     * yoktu (kendi icadı). DS canonical 5 chip: Clipart bundle / Wall art /
+     * Bookmark / Sticker / Printable. Server burada yalnız bu 5'i döndürür;
+     * modal'da koşulsuz 5 chip render edilir, "More types" toggle ortadan
+     * kalkar. Admin custom types `isSystem: false` zaten elendi. Physical
+     * POD (tshirt/hoodie/dtf) ve legacy canvas burada görünmez.
+     */
     db.productType.findMany({
-      where: { isSystem: true },
+      where: {
+        isSystem: true,
+        key: { in: ["clipart", "wall_art", "bookmark", "sticker", "printable"] },
+      },
       orderBy: { displayName: "asc" },
       select: { id: true, displayName: true, key: true },
     }),

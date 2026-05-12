@@ -16,8 +16,12 @@ export default async function Page() {
   if (!session?.user) redirect("/login");
 
   const [productTypes, counts, collections] = await Promise.all([
+    /* Phase 28 — DS B5 canonical 5-type intake filter (see references/page.tsx). */
     db.productType.findMany({
-      where: { isSystem: true },
+      where: {
+        isSystem: true,
+        key: { in: ["clipart", "wall_art", "bookmark", "sticker", "printable"] },
+      },
       orderBy: { displayName: "asc" },
       select: { id: true, displayName: true, key: true },
     }),
