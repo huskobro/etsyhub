@@ -96,9 +96,9 @@ export function QuickActions({ setId, item, setStatus }: QuickActionsProps) {
     setErrorMessage(null);
     try {
       const res = await fetch(`/api/assets/${activeAssetId}/signed-url`);
-      if (!res.ok) throw new Error("Görsel URL alınamadı");
+      if (!res.ok) throw new Error("Failed to fetch image URL");
       const data = (await res.json()) as { url?: string };
-      if (!data.url) throw new Error("Görsel URL boş");
+      if (!data.url) throw new Error("Image URL is empty");
       setMagicEraserUrl(data.url);
       setMagicEraserOpen(true);
     } catch (err) {
@@ -154,7 +154,7 @@ export function QuickActions({ setId, item, setStatus }: QuickActionsProps) {
           // ignore parse hatası
         }
         throw new Error(
-          detail ? detail : `İşlem başarısız (${res.status})`,
+          detail ? detail : `Action failed (${res.status})`,
         );
       }
       return (await res.json()) as { item: SelectionItemView };
@@ -210,7 +210,7 @@ export function QuickActions({ setId, item, setStatus }: QuickActionsProps) {
 
   return (
     <div className="border-b border-border-subtle px-4 py-3">
-      <div className={SECTION_LABEL_CLASS}>Hızlı işlem</div>
+      <div className={SECTION_LABEL_CLASS}>Quick actions</div>
       <div className="mt-2 flex flex-col gap-1.5">
         {/* 1. Background remove — Task 29 heavy lifecycle (BullMQ + DB lock) */}
         <HeavyActionButton
@@ -230,11 +230,11 @@ export function QuickActions({ setId, item, setStatus }: QuickActionsProps) {
           disabled={isReadOnly || isPending || item.activeHeavyJobId !== null}
           disabledReason={
             isReadOnly
-              ? "Set finalize edildi, düzenleme kapalı"
+              ? "Selection finalized — editing disabled"
               : item.activeHeavyJobId !== null
-                ? "Bu öğede başka bir işlem sürüyor"
+                ? "Another action is in progress on this item"
                 : isPending
-                  ? "Başka bir işlem yapılıyor"
+                  ? "Another action is in progress"
                   : undefined
           }
         />
@@ -254,10 +254,10 @@ export function QuickActions({ setId, item, setStatus }: QuickActionsProps) {
         {/* 2. Upscale 2× — DISABLED (provider yok, honesty: "Yakında") */}
         <UpscaleDisabledButton />
 
-        {/* 3. Crop · oran seçimi — inline menu */}
+        {/* 3. Crop · aspect ratio — inline menu */}
         <div className="relative" ref={cropMenuRef}>
           <ActionButton
-            label="Crop · oran seçimi"
+            label="Crop · aspect ratio"
             icon={<Crop className="h-3.5 w-3.5" />}
             onClick={handleCropToggle}
             disabled={isReadOnly || isPending}
@@ -268,7 +268,7 @@ export function QuickActions({ setId, item, setStatus }: QuickActionsProps) {
           {cropOpen ? (
             <div
               role="menu"
-              aria-label="Crop ratio seçimi"
+              aria-label="Crop aspect ratio"
               className="absolute right-0 top-full z-10 mt-1 w-48 rounded-md border border-border bg-surface p-1 shadow-popover"
             >
               {CROP_RATIOS.map((opt) => (
@@ -286,9 +286,9 @@ export function QuickActions({ setId, item, setStatus }: QuickActionsProps) {
           ) : null}
         </div>
 
-        {/* 4. Transparent PNG kontrolü — read-only analiz */}
+        {/* 4. Transparent PNG check — read-only analysis */}
         <ActionButton
-          label="Transparent PNG kontrolü"
+          label="Transparent PNG check"
           icon={<CheckCircle2 className="h-3.5 w-3.5" />}
           onClick={handleTransparentCheck}
           disabled={isReadOnly || isPending}
@@ -367,7 +367,7 @@ function ActionButton({
       {loading ? (
         <span
           className="h-3 w-3 animate-spin rounded-full border-2 border-text-muted border-t-transparent"
-          aria-label="Yükleniyor"
+          aria-label="Loading"
         />
       ) : null}
     </button>
@@ -386,8 +386,8 @@ function UpscaleDisabledButton() {
     <button
       type="button"
       disabled
-      title="Yakında — provider entegrasyonu sonrası aktif"
-      aria-label="Upscale 2× (yakında aktif olacak)"
+      title="Coming soon — enabled after provider integration"
+      aria-label="Upscale 2× (coming soon)"
       className="flex h-control-md w-full cursor-not-allowed items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm text-text-muted opacity-60"
     >
       <span className="text-text-muted">
@@ -395,7 +395,7 @@ function UpscaleDisabledButton() {
       </span>
       <span className="flex-1 text-left">Upscale 2×</span>
       <span className="font-mono text-xs uppercase tracking-meta text-text-muted">
-        Yakında
+        Coming soon
       </span>
     </button>
   );

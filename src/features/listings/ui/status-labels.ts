@@ -6,12 +6,12 @@
 import type { ListingStatusValue } from "../types";
 
 export const LISTING_STATUS_LABELS: Record<ListingStatusValue, string> = {
-  DRAFT: "Taslak",
-  SCHEDULED: "Zamanlanmış",
-  PUBLISHED: "Yayınlanmış",
-  FAILED: "Başarısız",
-  REJECTED: "Reddedildi",
-  NEEDS_REVIEW: "İnceleme bekleniyor",
+  DRAFT: "Draft",
+  SCHEDULED: "Scheduled",
+  PUBLISHED: "Published",
+  FAILED: "Failed",
+  REJECTED: "Rejected",
+  NEEDS_REVIEW: "Needs review",
 };
 
 export const LISTING_STATUS_BADGE_CLASS: Record<ListingStatusValue, string> = {

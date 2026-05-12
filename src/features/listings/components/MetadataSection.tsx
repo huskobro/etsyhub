@@ -68,80 +68,80 @@ export function MetadataSection({ listing }: { listing: ListingDraftView }) {
 
   return (
     <div className="mb-8">
-      <h2 className="text-lg font-semibold mb-4">Başlık & Açıklama</h2>
+      <h2 className="text-lg font-semibold mb-4">Title & Description</h2>
 
       <div className="space-y-4">
         {/* Title */}
         <div>
           <label htmlFor="listing-title" className="block text-sm font-medium mb-2">
-            Başlık
+            Title
           </label>
           <input
             id="listing-title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Listing başlığı girin"
+            placeholder="Enter listing title"
             className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Etsy&apos;de gözükecek ana başlık (140 karaktere kadar)
+            Main title shown on Etsy (up to 140 characters)
           </p>
         </div>
 
         {/* Description */}
         <div>
           <label htmlFor="listing-desc" className="block text-sm font-medium mb-2">
-            Açıklama
+            Description
           </label>
           <textarea
             id="listing-desc"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Listing açıklaması girin"
+            placeholder="Enter listing description"
             rows={6}
             className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Ürün detayları ve özellikleri
+            Product details and features
           </p>
         </div>
 
         {/* Tags */}
         <div>
           <label htmlFor="listing-tags" className="block text-sm font-medium mb-2">
-            Etiketler (maksimum 13)
+            Tags (max 13)
           </label>
           <input
             id="listing-tags"
             type="text"
             value={tagsInput}
             onChange={(e) => setTagsInput(e.target.value)}
-            placeholder="Virgülle ayırılmış etiketler girin: ürün1, ürün2, ürün3"
+            placeholder="Comma-separated tags: tag1, tag2, tag3"
             className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Güncel: {tagsInput.split(",").filter((t: string) => t.trim()).length}/13 etiket
+            Current: {tagsInput.split(",").filter((t: string) => t.trim()).length}/13 tags
           </p>
         </div>
 
         {/* AI Generation Status */}
         {aiMutation.isSuccess && (
           <p className="text-xs text-text-subtle" role="status">
-            AI önerisi alanlara yazıldı. İncele ve &quot;Kaydet&quot; ile kaydet.
+            AI suggestion applied to the form. Review and click &quot;Save&quot; to commit.
           </p>
         )}
 
         {aiMutation.error && (
           <p role="alert" className="text-sm text-red-600">
-            AI üretim başarısız: {aiMutation.error.message}
+            AI generation failed: {aiMutation.error.message}
           </p>
         )}
 
         {/* Save Mutation Error */}
         {mutation.error && (
           <p role="alert" className="text-sm text-red-600">
-            Kaydetme başarısız: {mutation.error.message}
+            Save failed: {mutation.error.message}
           </p>
         )}
 
@@ -151,7 +151,7 @@ export function MetadataSection({ listing }: { listing: ListingDraftView }) {
             onClick={handleSave}
             disabled={mutation.isPending || !hasChanges}
           >
-            {mutation.isPending ? "Kaydediliyor…" : "Kaydet"}
+            {mutation.isPending ? "Saving…" : "Save"}
           </Button>
           <Button
             type="button"
@@ -165,7 +165,7 @@ export function MetadataSection({ listing }: { listing: ListingDraftView }) {
             ) : (
               <Wand2 className="w-4 h-4" aria-hidden />
             )}
-            {aiMutation.isPending ? "Üretiliyor…" : "AI Oluştur"}
+            {aiMutation.isPending ? "Generating…" : "Generate with AI"}
           </Button>
         </div>
       </div>

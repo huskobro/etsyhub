@@ -150,7 +150,7 @@ export function ExportButton({
           onClick={startExport}
           disabled={itemCount === 0 || exportMutation.isPending}
           title={
-            itemCount === 0 ? "Set'te en az 1 varyant olmalı" : undefined
+            itemCount === 0 ? "The set must contain at least 1 variant" : undefined
           }
           loading={exportMutation.isPending}
         >
@@ -171,7 +171,7 @@ export function ExportButton({
             className="mr-2 inline-block h-3 w-3 animate-spin rounded-full border-2 border-text-muted border-t-transparent"
             aria-label="Loading"
           />
-          Export hazırlanıyor...
+          Preparing export…
         </Button>
       </ExportButtonShell>
     );
@@ -195,7 +195,7 @@ export function ExportButton({
           className="inline-flex h-control-md items-center gap-2 rounded-md border border-accent bg-accent px-3.5 text-base font-medium text-accent-foreground transition-colors duration-fast ease-out hover:bg-accent-hover hover:border-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
           <Download className="h-4 w-4" aria-hidden />
-          İndir
+          Download
         </a>
       </ExportButtonShell>
     );
@@ -212,7 +212,7 @@ export function ExportButton({
           icon={<Download className="h-4 w-4" aria-hidden />}
           onClick={startExport}
           disabled={exportMutation.isPending}
-          title="Önceki indirme süresi doldu, yeniden hazırla"
+          title="Previous download link expired — prepare again"
           loading={exportMutation.isPending}
         >
           {exportMutation.isPending ? "Preparing…" : "Re-prepare"}
@@ -231,7 +231,7 @@ export function ExportButton({
         icon={<AlertTriangle className="h-4 w-4" aria-hidden />}
         onClick={startExport}
         disabled={exportMutation.isPending}
-        title={activeExport.failedReason ?? "Export başarısız oldu"}
+        title={activeExport.failedReason ?? "Export failed"}
         loading={exportMutation.isPending}
       >
         {exportMutation.isPending ? "Preparing…" : "Try again"}

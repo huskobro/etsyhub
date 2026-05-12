@@ -46,8 +46,8 @@ export type FilmstripProps = {
 
 const FILTER_OPTIONS: Array<{ value: FilmstripFilter; label: string }> = [
   { value: "all", label: "All" },
-  { value: "active", label: "Aktif" },
-  { value: "rejected", label: "Reddedilenler" },
+  { value: "active", label: "Active" },
+  { value: "rejected", label: "Rejected" },
 ];
 
 /** İki haneli pad. */
@@ -128,8 +128,8 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
 
   const counterLabel =
     filter === "all"
-      ? `Varyantlar (${items.length})`
-      : `Varyantlar (${filteredItems.length} / ${items.length})`;
+      ? `Variants (${items.length})`
+      : `Variants (${filteredItems.length} / ${items.length})`;
 
   return (
     <Card className="p-3">
@@ -155,8 +155,8 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
       {filteredItems.length === 0 ? (
         <div className="py-8 text-center text-sm text-text-muted">
           {filter === "rejected"
-            ? "Reddedilen varyant yok"
-            : "Bu filtreye uygun varyant yok"}
+            ? "No rejected variants"
+            : "No variants match this filter"}
         </div>
       ) : (
         <div className="grid grid-cols-8 gap-1.5 lg:grid-cols-12">
@@ -183,11 +183,11 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
               .join(" ");
 
             const ariaSuffix = isSelected
-              ? " (seçili)"
+              ? " (selected)"
               : isRejected
-                ? " (reddedildi)"
+                ? " (rejected)"
                 : "";
-            const editedSuffix = isEdited ? " (düzenlenmiş)" : "";
+            const editedSuffix = isEdited ? " (edited)" : "";
 
             // Wrapping `<div className="relative group">`: checkbox button +
             // ReorderMenu overlay HTML semantik olarak ayrı (button içinde
@@ -198,14 +198,14 @@ export function Filmstrip({ setId, items, setStatus }: FilmstripProps) {
                   type="button"
                   role="checkbox"
                   aria-checked={isMulti}
-                  aria-label={`Varyant ${pad2(idx + 1)}${ariaSuffix}${editedSuffix}`}
+                  aria-label={`Variant ${pad2(idx + 1)}${ariaSuffix}${editedSuffix}`}
                   onClick={(e) => handleItemClick(item, idx, e)}
                   className={classes}
                   data-edited={isEdited ? "true" : "false"}
                 >
                   <AssetImage
                     assetId={item.editedAssetId ?? item.sourceAssetId}
-                    alt={`Varyant ${pad2(idx + 1)} thumbnail`}
+                    alt={`Variant ${pad2(idx + 1)} thumbnail`}
                     frame={false}
                   />
                   {isSelected ? (

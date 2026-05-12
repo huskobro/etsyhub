@@ -71,7 +71,7 @@ export function PreviewCard({ items }: PreviewCardProps) {
   if (items.length === 0) {
     return (
       <Card className="flex min-h-0 flex-1 flex-col items-center justify-center bg-surface-2 p-8">
-        <p className="text-sm text-text-muted">Henüz varyant yok</p>
+        <p className="text-sm text-text-muted">No variants yet</p>
       </Card>
     );
   }
@@ -120,19 +120,19 @@ export function PreviewCard({ items }: PreviewCardProps) {
         <div className="mb-2 flex items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="accent" dot>
-              Varyant {positionLabel}
+              Variant {positionLabel}
             </Badge>
             {/* Pass 33 — edit yapılmış item'da "Düzenlenmiş" rozeti.
                 Mod "original" iken rozet gizli (kullanıcı orijinali
                 görüyor; rozet kafa karıştırırdı). */}
             {hasEdited && !showOriginal ? (
               <Badge tone="success" data-testid="edited-badge">
-                Düzenlenmiş
+                Edited
               </Badge>
             ) : null}
             {showOriginal ? (
               <Badge tone="neutral" data-testid="original-badge">
-                Orijinal
+                Original
               </Badge>
             ) : null}
             {/* Pass 91 — MJ origin badges (variant kind + batch link + job
@@ -154,8 +154,8 @@ export function PreviewCard({ items }: PreviewCardProps) {
             assetId={displayedAssetId}
             alt={
               showOriginal
-                ? `Varyant ${pad2(activeIdx + 1)} — orijinal`
-                : `Varyant ${pad2(activeIdx + 1)}`
+                ? `Variant ${pad2(activeIdx + 1)} — original`
+                : `Variant ${pad2(activeIdx + 1)}`
             }
           />
         </div>
@@ -179,7 +179,7 @@ export function PreviewCard({ items }: PreviewCardProps) {
             onClick={handlePrev}
             disabled={isFirst}
           >
-            Önceki
+            Previous
           </Button>
           <span className="font-mono text-xs text-text-muted">
             {positionLabel}
@@ -191,7 +191,7 @@ export function PreviewCard({ items }: PreviewCardProps) {
             onClick={handleNext}
             disabled={isLast}
           >
-            Sonraki
+            Next
           </Button>
         </div>
       </div>
@@ -226,7 +226,7 @@ function CompareToggle({ mode, onChange, itemId }: CompareToggleProps) {
   return (
     <div
       role="radiogroup"
-      aria-label="Düzenlenmiş ya da orijinal görseli göster"
+      aria-label="Show edited or original image"
       className="mt-2 inline-flex self-center rounded-md border border-border bg-surface p-0.5"
       data-testid="compare-toggle"
     >
@@ -242,7 +242,7 @@ function CompareToggle({ mode, onChange, itemId }: CompareToggleProps) {
         }`}
         data-testid="compare-toggle-edited"
       >
-        Düzenlenmiş
+        Edited
       </button>
       <button
         type="button"
@@ -256,7 +256,7 @@ function CompareToggle({ mode, onChange, itemId }: CompareToggleProps) {
         }`}
         data-testid="compare-toggle-original"
       >
-        Orijinal
+        Original
       </button>
     </div>
   );

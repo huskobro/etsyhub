@@ -55,7 +55,7 @@ describe("Listing readiness service (V1)", () => {
     it("should fail title when empty", () => {
       const checks = computeReadiness(baseListing);
       expect(checks[0]!.pass).toBe(false);
-      expect(checks[0]!.message).toContain("gereklidir");
+      expect(checks[0]!.message).toContain("required");
     });
 
     it("should pass title when 5-140 chars", () => {
@@ -64,20 +64,20 @@ describe("Listing readiness service (V1)", () => {
       expect(checks[0]!.pass).toBe(true);
     });
 
-    it("pass:true durumunda title mesajı pozitif (regression: 'çok uzun' fallback bug)", () => {
+    it("pass:true durumunda title mesajı pozitif (regression: 'too long' fallback bug)", () => {
       const listing = { ...baseListing, title: "Disney Castle Wall Art Print" };
       const checks = computeReadiness(listing);
       expect(checks[0]!.pass).toBe(true);
-      expect(checks[0]!.message).not.toContain("çok uzun");
-      expect(checks[0]!.message).not.toContain("çok kısa");
-      expect(checks[0]!.message).not.toContain("gereklidir");
+      expect(checks[0]!.message).not.toContain("too long");
+      expect(checks[0]!.message).not.toContain("too short");
+      expect(checks[0]!.message).not.toContain("required");
     });
 
     it("should fail title when < 5 chars", () => {
       const listing = { ...baseListing, title: "Art" };
       const checks = computeReadiness(listing);
       expect(checks[0]!.pass).toBe(false);
-      expect(checks[0]!.message).toContain("çok kısa");
+      expect(checks[0]!.message).toContain("too short");
     });
 
     it("should fail title when > 140 chars", () => {
@@ -87,7 +87,7 @@ describe("Listing readiness service (V1)", () => {
       };
       const checks = computeReadiness(listing);
       expect(checks[0]!.pass).toBe(false);
-      expect(checks[0]!.message).toContain("çok uzun");
+      expect(checks[0]!.message).toContain("too long");
     });
 
     it("should fail description when empty", () => {
@@ -137,7 +137,7 @@ describe("Listing readiness service (V1)", () => {
       const listing = { ...baseListing, priceCents: 50 };
       const checks = computeReadiness(listing);
       expect(checks[4]!.pass).toBe(false);
-      expect(checks[4]!.message).toContain("çok düşük");
+      expect(checks[4]!.message).toContain("too low");
     });
 
     it("should pass price when >= 100 cents", () => {
@@ -247,7 +247,7 @@ describe("Listing readiness service (V1)", () => {
 
       // Hiçbir "Politika uyarısı" yok
       const policyWarnings = checks.filter((c) =>
-        c.message.includes("Politika uyarısı"),
+        c.message.includes("Policy warning"),
       );
       expect(policyWarnings).toEqual([]);
     });
@@ -265,7 +265,7 @@ describe("Listing readiness service (V1)", () => {
       expect(checks.length).toBeGreaterThanOrEqual(7);
 
       const policyWarnings = checks.filter((c) =>
-        c.message.includes("Politika uyarısı"),
+        c.message.includes("Policy warning"),
       );
       expect(policyWarnings).toHaveLength(1);
       expect(policyWarnings[0]?.field).toBe("title");
@@ -283,7 +283,7 @@ describe("Listing readiness service (V1)", () => {
       const checks = computeReadiness(dirtyListing);
 
       const policyWarnings = checks.filter((c) =>
-        c.message.includes("Politika uyarısı"),
+        c.message.includes("Policy warning"),
       );
       expect(policyWarnings.length).toBeGreaterThanOrEqual(2);
       const fields = policyWarnings.map((c) => c.field).sort();
@@ -302,7 +302,7 @@ describe("Listing readiness service (V1)", () => {
 
       // Hiçbir policy warning severity:"error" değil
       const policyWarnings = checks.filter((c) =>
-        c.message.includes("Politika uyarısı"),
+        c.message.includes("Policy warning"),
       );
       expect(policyWarnings.every((c) => c.severity === "warn")).toBe(true);
     });
@@ -330,7 +330,7 @@ describe("Listing readiness service (V1)", () => {
 
       // 6 check'in hepsi pass
       const baseChecks = checks.filter(
-        (c) => !c.message.includes("Politika uyarısı"),
+        (c) => !c.message.includes("Policy warning"),
       );
       expect(baseChecks).toHaveLength(6);
       expect(baseChecks.every((c) => c.pass)).toBe(true);

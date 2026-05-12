@@ -188,10 +188,10 @@ function formatRelativeTime(iso: string | null): string | null {
   if (isNaN(d.getTime())) return null;
   const diffMs = Date.now() - d.getTime();
   const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return "az önce";
-  if (diffMin < 60) return `${diffMin} dk önce`;
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
   const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `${diffH} sa önce`;
+  if (diffH < 24) return `${diffH}h ago`;
   const diffD = Math.floor(diffH / 24);
-  return `${diffD} g önce`;
+  return `${diffD}d ago`;
 }

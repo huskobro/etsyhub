@@ -53,12 +53,12 @@ export function computeReadiness(listing: Listing): ReadinessCheck[] {
     pass: titlePass,
     severity: "warn",
     message: titlePass
-      ? `Title hazır (${titleLen} karakter)`
+      ? `Title ready (${titleLen} chars)`
       : titleLen === 0
-        ? `Title başlığı gereklidir (${TITLE_MIN_LEN}-${TITLE_MAX_LEN} karakter)`
+        ? `Title is required (${TITLE_MIN_LEN}–${TITLE_MAX_LEN} chars)`
         : titleLen < TITLE_MIN_LEN
-          ? `Title çok kısa (en az ${TITLE_MIN_LEN} karakter gerekli, şu an ${titleLen})`
-          : `Title çok uzun (maksimum ${TITLE_MAX_LEN} karakter, şu an ${titleLen})`,
+          ? `Title too short (min ${TITLE_MIN_LEN} chars, currently ${titleLen})`
+          : `Title too long (max ${TITLE_MAX_LEN} chars, currently ${titleLen})`,
   });
 
   // 2. Description check
@@ -69,8 +69,8 @@ export function computeReadiness(listing: Listing): ReadinessCheck[] {
     severity: "warn",
     message:
       descLen === 0
-        ? "Açıklama (description) gereklidir"
-        : "Açıklama hazır",
+        ? "Description is required"
+        : "Description ready",
   });
 
   // 3. Tags check (exactly 13)
@@ -81,10 +81,10 @@ export function computeReadiness(listing: Listing): ReadinessCheck[] {
     severity: "warn",
     message:
       tagsCount === 0
-        ? `${TAGS_COUNT} tag gereklidir`
+        ? `${TAGS_COUNT} tags required`
         : tagsCount < TAGS_COUNT
-          ? `${tagsCount}/${TAGS_COUNT} tag (${TAGS_COUNT - tagsCount} eksik)`
-          : `${tagsCount} tag (maksimum ${TAGS_COUNT})`,
+          ? `${tagsCount}/${TAGS_COUNT} tags (${TAGS_COUNT - tagsCount} missing)`
+          : `${tagsCount} tags (max ${TAGS_COUNT})`,
   });
 
   // 4. Category check
@@ -92,7 +92,7 @@ export function computeReadiness(listing: Listing): ReadinessCheck[] {
     field: "category",
     pass: !!listing.category && listing.category.trim().length > 0,
     severity: "warn",
-    message: listing.category ? "Kategori seçildi" : "Kategori seçimi gereklidir",
+    message: listing.category ? "Category selected" : "Category required",
   });
 
   // 5. Price check
@@ -105,10 +105,10 @@ export function computeReadiness(listing: Listing): ReadinessCheck[] {
     severity: "warn",
     message:
       !listing.priceCents || listing.priceCents === 0
-        ? `Fiyat gereklidir (minimum ${PRICE_MIN_CENTS} cent = $${(PRICE_MIN_CENTS / 100).toFixed(2)})`
+        ? `Price required (min ${PRICE_MIN_CENTS}¢ = $${(PRICE_MIN_CENTS / 100).toFixed(2)})`
         : listing.priceCents < PRICE_MIN_CENTS
-          ? `Fiyat çok düşük (minimum ${PRICE_MIN_CENTS} cent)`
-          : `Fiyat: $${(listing.priceCents / 100).toFixed(2)}`,
+          ? `Price too low (min ${PRICE_MIN_CENTS}¢)`
+          : `Price: $${(listing.priceCents / 100).toFixed(2)}`,
   });
 
   // 6. Cover image check
@@ -119,8 +119,8 @@ export function computeReadiness(listing: Listing): ReadinessCheck[] {
     pass: hasCover,
     severity: "warn",
     message: hasCover
-      ? `Kapak görseli hazır (${imageOrder[0]?.templateName ?? "Bilinmeyen"})`
-      : "Kapak görselü (cover image) gereklidir (mockup'tan generate edilmeli)",
+      ? `Cover image ready (${imageOrder[0]?.templateName ?? "Unknown"})`
+      : "Cover image required (generate one from a mockup)",
   });
 
   // 7. Negative library check (Task 12)
@@ -136,7 +136,7 @@ export function computeReadiness(listing: Listing): ReadinessCheck[] {
       field: match.field,
       pass: false,
       severity: "warn",
-      message: `Politika uyarısı: "${match.phrase}" ifadesi (${match.field}) — ${match.reason}`,
+      message: `Policy warning: "${match.phrase}" in ${match.field} — ${match.reason}`,
     });
   }
 

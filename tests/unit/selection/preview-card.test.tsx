@@ -64,9 +64,9 @@ beforeEach(() => {
 });
 
 describe("PreviewCard — empty state", () => {
-  it("items boş → 'Henüz varyant yok' render", () => {
+  it("items boş → 'No variants yet' render", () => {
     wrapper(<PreviewCard items={[]} />);
-    expect(screen.getByText(/henüz varyant yok/i)).toBeInTheDocument();
+    expect(screen.getByText(/no variants yet/i)).toBeInTheDocument();
   });
 });
 
@@ -80,7 +80,7 @@ describe("PreviewCard — default active (activeItemId null)", () => {
     wrapper(<PreviewCard items={items} />);
 
     // Badge formatı: "Varyant 01 / 03"
-    expect(screen.getByText(/Varyant 01 \/ 03/)).toBeInTheDocument();
+    expect(screen.getByText(/Variant 01 \/ 03/)).toBeInTheDocument();
     // Asset image i1 → a1
     const img = screen.getByTestId("asset-image");
     expect(img.getAttribute("data-asset-id")).toBe("a1");
@@ -95,7 +95,7 @@ describe("PreviewCard — explicit activeItemId", () => {
     useStudioStore.setState({ activeItemId: "i3" });
     wrapper(<PreviewCard items={items} />);
 
-    expect(screen.getByText(/Varyant 03 \/ 12/)).toBeInTheDocument();
+    expect(screen.getByText(/Variant 03 \/ 12/)).toBeInTheDocument();
     const img = screen.getByTestId("asset-image");
     expect(img.getAttribute("data-asset-id")).toBe("a3");
   });
@@ -124,7 +124,7 @@ describe("PreviewCard — prev/next nav", () => {
     useStudioStore.setState({ activeItemId: "i1" });
     wrapper(<PreviewCard items={items} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /sonraki/i }));
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
     expect(useStudioStore.getState().activeItemId).toBe("i2");
   });
 
@@ -137,7 +137,7 @@ describe("PreviewCard — prev/next nav", () => {
     useStudioStore.setState({ activeItemId: "i3" });
     wrapper(<PreviewCard items={items} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /önceki/i }));
+    fireEvent.click(screen.getByRole("button", { name: /previous/i }));
     expect(useStudioStore.getState().activeItemId).toBe("i2");
   });
 
@@ -149,8 +149,8 @@ describe("PreviewCard — prev/next nav", () => {
     useStudioStore.setState({ activeItemId: "i1" });
     wrapper(<PreviewCard items={items} />);
 
-    expect(screen.getByRole("button", { name: /önceki/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /sonraki/i })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: /previous/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /next/i })).not.toBeDisabled();
   });
 
   it("son item'da Sonraki disabled", () => {
@@ -161,7 +161,7 @@ describe("PreviewCard — prev/next nav", () => {
     useStudioStore.setState({ activeItemId: "i2" });
     wrapper(<PreviewCard items={items} />);
 
-    expect(screen.getByRole("button", { name: /önceki/i })).not.toBeDisabled();
-    expect(screen.getByRole("button", { name: /sonraki/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /previous/i })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: /next/i })).toBeDisabled();
   });
 });

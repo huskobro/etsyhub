@@ -78,7 +78,7 @@ export function DecisionBand({
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <p className="text-sm text-text-muted">
-              Tahmini süre: {estimatedLabel}
+              Estimated time: {estimatedLabel}
             </p>
             {isDirty && (
               <button
@@ -86,7 +86,7 @@ export function DecisionBand({
                 onClick={onReset}
                 className="text-xs text-accent hover:underline"
               >
-                Quick Pack&apos;e dön
+                Reset to Quick pack
               </button>
             )}
           </div>
@@ -105,7 +105,7 @@ export function DecisionBand({
               <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
             )}
             <span>
-              Render et ({isQuickPack ? "Quick Pack" : "Custom Pack"})
+              Render ({isQuickPack ? "Quick pack" : "Custom pack"})
             </span>
           </button>
         </div>

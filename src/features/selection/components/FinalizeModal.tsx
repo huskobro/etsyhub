@@ -114,10 +114,10 @@ export function FinalizeModal({
           }}
         >
           <Dialog.Title className="text-lg font-semibold text-text">
-            Set&apos;i finalize et
+            Finalize selection
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-text-muted">
-            Bu set Mockup Studio&apos;ya hazır olarak işaretlenecek.
+            The set will be marked ready for Mockup Studio.
           </Dialog.Description>
 
           {/* Breakdown grid — selected / pending / rejected.
@@ -136,13 +136,13 @@ export function FinalizeModal({
                 <div className="font-mono text-2xl font-semibold text-text-muted">
                   {pendingCount}
                 </div>
-                <div className="text-xs text-text-muted">Beklemede</div>
+                <div className="text-xs text-text-muted">Pending</div>
               </div>
               <div data-testid="finalize-breakdown-rejected">
                 <div className="font-mono text-2xl font-semibold text-text-muted">
                   {rejectedCount}
                 </div>
-                <div className="text-xs text-text-muted">Reddedildi</div>
+                <div className="text-xs text-text-muted">Rejected</div>
               </div>
             </div>
           </div>
@@ -150,19 +150,19 @@ export function FinalizeModal({
           {/* Dürüst handoff açıklaması */}
           <div className="mt-4 space-y-2 text-xs text-text-muted">
             <p>
-              <span className="text-text">Only selected</span> variants in the next phase
-              8 Mockup Studio input&apos;u olur.
+              Only <span className="text-text">selected</span> variants become
+              the Mockup Studio input.
             </p>
             <p>
-              <span className="text-text">Beklemede</span> ve{" "}
-              <span className="text-text">reddedilen</span> varyantlar
-              dondurulur — sonradan değiştirilemez. Manifest dosyasına dahil
-              olur ama Mockup Studio&apos;ya geçmez.
+              <span className="text-text">Pending</span> and{" "}
+              <span className="text-text">rejected</span> variants are frozen
+              — included in the manifest for audit, but not forwarded to
+              Mockup Studio.
             </p>
             <p>
-              After finalize, the set is <span className="text-text">read-only</span>
-              {" "}
-              (yeni varyant ekleme, edit, status değişimi tümü pasif).
+              After finalize the set is{" "}
+              <span className="text-text">read-only</span> (no new variants,
+              no edits, no status changes).
             </p>
           </div>
 
@@ -172,7 +172,7 @@ export function FinalizeModal({
               role="status"
               className="mt-3 rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning"
             >
-              En az 1 &apos;Seçime ekle&apos; yapılmış varyant gerekli.
+              At least 1 variant must be marked &apos;Add to selection&apos;.
             </p>
           )}
 
@@ -193,7 +193,7 @@ export function FinalizeModal({
               onClick={() => onOpenChange(false)}
               disabled={finalizeMutation.isPending}
             >
-              İptal
+              Cancel
             </Button>
             <Button
               type="button"
@@ -202,8 +202,8 @@ export function FinalizeModal({
               disabled={!gateOk || finalizeMutation.isPending}
             >
               {finalizeMutation.isPending
-                ? "Finalize ediliyor..."
-                : "Finalize et"}
+                ? "Finalizing…"
+                : "Finalize"}
             </Button>
           </div>
         </Dialog.Content>

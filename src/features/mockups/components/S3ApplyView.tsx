@@ -66,11 +66,11 @@ export function S3ApplyView({ setId }: { setId: string }) {
   }, [setId, categoryId, packState.selectedTemplateIds, router]);
 
   if (setLoading || templatesLoading) {
-    return <div className="p-6 text-sm text-text-muted">Yükleniyor…</div>;
+    return <div className="p-6 text-sm text-text-muted">Loading…</div>;
   }
 
   if (!set) {
-    return <div className="p-6 text-sm text-text-muted">Set bulunamadı.</div>;
+    return <div className="p-6 text-sm text-text-muted">Set not found.</div>;
   }
 
   const isQuickPack = !packState.isCustom;

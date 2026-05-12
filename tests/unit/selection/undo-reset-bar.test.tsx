@@ -4,7 +4,7 @@
 //   - Undo + Reset action butonları (lastUndoableAssetId / editedAssetId
 //     varlığına göre enabled state).
 //   - History listesi info-only — max 5, en yeni üstte (reverse), op label
-//     TR mapping, params.ratio suffix, failed entry "— başarısız" + danger dot.
+//     TR mapping, params.ratio suffix, failed entry "— failed" + danger dot.
 //   - Relative timestamp TR ("az önce", "5 dk önce", "2 sa önce").
 //   - Undo click → POST /undo + invalidateQueries.
 //   - Reset click → POST /reset + invalidateQueries.
@@ -69,20 +69,20 @@ afterEach(() => {
 // ────────────────────────────────────────────────────────────
 
 describe("UndoResetBar — buton state'leri", () => {
-  it("lastUndoableAssetId yok → 'Son işlemi geri al' disabled + tooltip 'Geri alınacak işlem yok'", () => {
+  it("lastUndoableAssetId yok → 'Undo last action' disabled + tooltip 'Nothing to undo'", () => {
     const item = makeItem({ lastUndoableAssetId: null });
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    const btn = screen.getByRole("button", { name: /son işlemi geri al/i });
+    const btn = screen.getByRole("button", { name: /undo last action/i });
     expect(btn).toBeDisabled();
-    expect(btn).toHaveAttribute("title", "Geri alınacak işlem yok");
+    expect(btn).toHaveAttribute("title", "Nothing to undo");
   });
 
-  it("editedAssetId yok → 'Orijinale döndür' disabled + tooltip 'Düzenleme yok'", () => {
+  it("editedAssetId yok → 'Revert to original' disabled + tooltip 'No edits'", () => {
     const item = makeItem({ editedAssetId: null });
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    const btn = screen.getByRole("button", { name: /orijinale döndür/i });
+    const btn = screen.getByRole("button", { name: /revert to original/i });
     expect(btn).toBeDisabled();
-    expect(btn).toHaveAttribute("title", "Düzenleme yok");
+    expect(btn).toHaveAttribute("title", "No edits");
   });
 
   it("lastUndoableAssetId + editedAssetId var → her ikisi enabled", () => {
@@ -91,8 +91,8 @@ describe("UndoResetBar — buton state'leri", () => {
       editedAssetId: "asset-now",
     });
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    expect(screen.getByRole("button", { name: /son işlemi geri al/i })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /orijinale döndür/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /undo last action/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /revert to original/i })).toBeEnabled();
   });
 
   it("read-only set (isReadOnly=true) → her iki buton disabled", () => {
@@ -101,8 +101,8 @@ describe("UndoResetBar — buton state'leri", () => {
       editedAssetId: "a2",
     });
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={true} />);
-    expect(screen.getByRole("button", { name: /son işlemi geri al/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /orijinale döndür/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /undo last action/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /revert to original/i })).toBeDisabled();
   });
 });
 
@@ -121,10 +121,10 @@ describe("UndoResetBar — history listesi", () => {
     vi.useRealTimers();
   });
 
-  it("history boş → 'Henüz düzenleme yok'", () => {
+  it("history boş → 'No edits yet'", () => {
     const item = makeItem({ editHistoryJson: [] });
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    expect(screen.getByText(/henüz düzenleme yok/i)).toBeInTheDocument();
+    expect(screen.getByText(/no edits yet/i)).toBeInTheDocument();
   });
 
   it("history 3 entry → 3 satır render, en yeni üstte (reversed)", () => {
@@ -138,13 +138,13 @@ describe("UndoResetBar — history listesi", () => {
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
     // Tüm 3 entry render edilmeli — op label TR.
     const cropRow = screen.getByText(/crop/i, { exact: false });
-    const transparentRow = screen.getByText(/transparent kontrol/i);
+    const transparentRow = screen.getByText(/transparent check/i);
     const bgRow = screen.getByText(/background remove/i);
     expect(cropRow).toBeInTheDocument();
     expect(transparentRow).toBeInTheDocument();
     expect(bgRow).toBeInTheDocument();
     // hidden count yok (3 ≤ 5).
-    expect(screen.queryByText(/eski işlem/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/older action/i)).not.toBeInTheDocument();
   });
 
   it("history 7 entry → 5 satır + '... +2 eski işlem' hint", () => {
@@ -162,10 +162,10 @@ describe("UndoResetBar — history listesi", () => {
       ],
     });
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    expect(screen.getByText(/\+2 eski işlem/i)).toBeInTheDocument();
+    expect(screen.getByText(/\+2 older actions/i)).toBeInTheDocument();
   });
 
-  it("failed entry → '— başarısız' suffix + danger dot", () => {
+  it("failed entry → '— failed' suffix + danger dot", () => {
     const item = makeItem({
       editHistoryJson: [
         {
@@ -179,7 +179,7 @@ describe("UndoResetBar — history listesi", () => {
     const { container } = wrapper(
       <UndoResetBar setId="set-1" item={item} isReadOnly={false} />,
     );
-    expect(screen.getByText(/başarısız/i)).toBeInTheDocument();
+    expect(screen.getByText(/failed/i)).toBeInTheDocument();
     // Danger dot — bg-danger class.
     expect(container.querySelector(".bg-danger")).toBeTruthy();
   });
@@ -194,7 +194,7 @@ describe("UndoResetBar — history listesi", () => {
     });
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
     expect(screen.getByText("Crop")).toBeInTheDocument();
-    expect(screen.getByText("Transparent kontrol")).toBeInTheDocument();
+    expect(screen.getByText("Transparent check")).toBeInTheDocument();
     expect(screen.getByText("Background remove")).toBeInTheDocument();
   });
 
@@ -228,7 +228,7 @@ describe("UndoResetBar — relative timestamp", () => {
       editHistoryJson: [{ op: "crop", at }],
     });
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    expect(screen.getByText(/az önce/i)).toBeInTheDocument();
+    expect(screen.getByText(/just now/i)).toBeInTheDocument();
   });
 
   it("at 5 dk önce → '5 dk önce'", () => {
@@ -237,7 +237,7 @@ describe("UndoResetBar — relative timestamp", () => {
       editHistoryJson: [{ op: "crop", at }],
     });
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    expect(screen.getByText(/^5 dk önce$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^5m ago$/i)).toBeInTheDocument();
   });
 
   it("at 2 sa önce → '2 sa önce'", () => {
@@ -246,7 +246,7 @@ describe("UndoResetBar — relative timestamp", () => {
       editHistoryJson: [{ op: "crop", at }],
     });
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    expect(screen.getByText(/^2 sa önce$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^2h ago$/i)).toBeInTheDocument();
   });
 });
 
@@ -269,7 +269,7 @@ describe("UndoResetBar — Undo mutation", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    fireEvent.click(screen.getByRole("button", { name: /son işlemi geri al/i }));
+    fireEvent.click(screen.getByRole("button", { name: /undo last action/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -295,7 +295,7 @@ describe("UndoResetBar — Reset mutation", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    fireEvent.click(screen.getByRole("button", { name: /orijinale döndür/i }));
+    fireEvent.click(screen.getByRole("button", { name: /revert to original/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -321,7 +321,7 @@ describe("UndoResetBar — error handling", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    fireEvent.click(screen.getByRole("button", { name: /son işlemi geri al/i }));
+    fireEvent.click(screen.getByRole("button", { name: /undo last action/i }));
 
     await waitFor(() => {
       const alert = screen.getByRole("alert");
@@ -345,14 +345,14 @@ describe("UndoResetBar — pending state", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     wrapper(<UndoResetBar setId="set-1" item={item} isReadOnly={false} />);
-    fireEvent.click(screen.getByRole("button", { name: /son işlemi geri al/i }));
+    fireEvent.click(screen.getByRole("button", { name: /undo last action/i }));
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /son işlemi geri al/i }),
+        screen.getByRole("button", { name: /undo last action/i }),
       ).toBeDisabled();
       expect(
-        screen.getByRole("button", { name: /orijinale döndür/i }),
+        screen.getByRole("button", { name: /revert to original/i }),
       ).toBeDisabled();
     });
 

@@ -92,10 +92,10 @@ function ImageUploadDiagnostics({
     <div className="rounded-md border border-border bg-surface-2 p-3 text-xs">
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium text-text">
-          Görsel yükleme: {successCount}/{attempts.length} başarılı
+          Image upload: {successCount}/{attempts.length} succeeded
           {partial && (
             <span className="ml-2 text-yellow-700">
-              ({failedCount} başarısız)
+              ({failedCount} failed)
             </span>
           )}
         </span>
@@ -104,7 +104,7 @@ function ImageUploadDiagnostics({
           onClick={() => setExpanded((v) => !v)}
           className="text-text-muted underline-offset-2 hover:underline"
         >
-          {expanded ? "Detayı gizle" : "Detayı göster"}
+          {expanded ? "Hide details" : "Show details"}
         </button>
       </div>
       {expanded && (
@@ -156,8 +156,8 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
       {/* DRAFT durumunda: readiness soft warn (submit'i bloklamaz, K3 lock) */}
       {hasReadinessWarn && listing.status === "DRAFT" && (
         <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded p-2">
-          ⚠ Bazı hazırlık kontrolleri eksik. Yine de gönderilebilir, ancak
-          Etsy reddedebilir.
+          ⚠ Some readiness checks are missing. You can still submit, but
+          Etsy may reject the draft.
         </p>
       )}
 
@@ -176,11 +176,11 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
               />
               <div className="flex-1 space-y-2">
                 <p className="text-sm font-medium text-green-800">
-                  Etsy&apos;ye gönderildi
+                  Sent to Etsy
                 </p>
                 {listing.etsyShop?.shopName && (
                   <p className="text-xs text-green-700">
-                    Mağaza:{" "}
+                    Shop:{" "}
                     <span className="font-medium">
                       {listing.etsyShop.shopName}
                     </span>
@@ -191,8 +191,7 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
                   <code className="font-mono">{listing.etsyListingId}</code>
                 </p>
                 <p className="text-xs text-green-700">
-                  Yayına almak için Etsy admin panelinden manuel publish
-                  yapılabilir.
+                  Publish manually from the Etsy admin panel to go live.
                 </p>
                 <div className="flex flex-wrap gap-2 pt-1">
                   <a
@@ -201,7 +200,7 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800"
                   >
-                    Etsy&apos;de Aç
+                    Open on Etsy
                     <ExternalLink className="h-3 w-3" aria-hidden />
                   </a>
                   {etsyShopUrl && (
@@ -211,14 +210,14 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
                     >
-                      Mağazaya Git
+                      Go to shop
                       <ExternalLink className="h-3 w-3" aria-hidden />
                     </a>
                   )}
                 </div>
                 {listing.failedReason && (
                   <p className="text-xs text-yellow-700 mt-2">
-                    Not: {listing.failedReason}
+                    Note: {listing.failedReason}
                   </p>
                 )}
               </div>
@@ -241,14 +240,14 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
               />
               <div className="flex-1 space-y-2">
                 <p className="text-sm font-medium text-red-800">
-                  Önceki gönderim başarısız
+                  Previous submission failed
                 </p>
                 <p className="text-xs text-red-700">{listing.failedReason}</p>
                 {listing.etsyListingId && (
                   <p className="text-xs text-red-700">
-                    Etsy tarafında orphan listing kalmış olabilir (ID:{" "}
+                    An orphan listing may exist on Etsy (ID:{" "}
                     <code className="font-mono">{listing.etsyListingId}</code>
-                    ). Etsy admin panelinden manuel inceleyip silebilirsin.
+                    ). Review and delete it manually from the Etsy admin panel.
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2 pt-1">
@@ -261,8 +260,8 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
                   >
                     <RotateCcw className="h-4 w-4" aria-hidden />
                     {resetMutation.isPending
-                      ? "Sıfırlanıyor…"
-                      : "Yeniden DRAFT'a çevir"}
+                      ? "Resetting…"
+                      : "Reset to DRAFT"}
                   </Button>
                   {listing.etsyListingId && (
                     <a
@@ -271,14 +270,14 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
                     >
-                      Etsy&apos;de Orphan&apos;ı Aç
+                      Open orphan on Etsy
                       <ExternalLink className="h-3 w-3" aria-hidden />
                     </a>
                   )}
                 </div>
                 {resetMutation.isError && (
                   <p role="alert" className="text-xs text-red-800 mt-2">
-                    Sıfırlama başarısız: {resetMutation.error.message}
+                    Reset failed: {resetMutation.error.message}
                   </p>
                 )}
               </div>
@@ -299,11 +298,11 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
             />
             <div className="flex-1 space-y-2">
               <p className="text-sm font-medium text-green-800">
-                Etsy taslağı oluşturuldu
+                Etsy draft created
               </p>
               {listing.etsyShop?.shopName && (
                 <p className="text-xs text-green-700">
-                  Mağaza:{" "}
+                  Shop:{" "}
                   <span className="font-medium">
                     {listing.etsyShop.shopName}
                   </span>
@@ -325,12 +324,11 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
               )}
               {submitMutation.data.failedReason && (
                 <p className="text-xs text-yellow-700">
-                  Not: {submitMutation.data.failedReason}
+                  Note: {submitMutation.data.failedReason}
                 </p>
               )}
               <p className="text-xs text-green-700">
-                Yayına almak için Etsy admin panelinden manuel publish
-                yapabilirsin.
+                Publish manually from the Etsy admin panel to go live.
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
                 <a
@@ -339,7 +337,7 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800"
                 >
-                  Etsy&apos;de Aç
+                  Open on Etsy
                   <ExternalLink className="h-3 w-3" aria-hidden />
                 </a>
                 {etsyShopUrl && (
@@ -349,7 +347,7 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
                   >
-                    Mağazaya Git
+                    Go to shop
                     <ExternalLink className="h-3 w-3" aria-hidden />
                   </a>
                 )}
@@ -375,7 +373,7 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
             />
             <div className="flex-1 space-y-1">
               <p className="text-sm font-medium text-red-800">
-                Gönderme başarısız
+                Submission failed
               </p>
               <p className="text-xs text-red-700">
                 {submitMutation.error.message}
@@ -392,12 +390,12 @@ export function SubmitResultPanel({ listing }: { listing: ListingDraftView }) {
           disabled={submitMutation.isPending || !isEditable}
           loading={submitMutation.isPending}
         >
-          {submitMutation.isPending ? "Gönderiliyor…" : "Taslak Gönder"}
+          {submitMutation.isPending ? "Submitting…" : "Submit draft"}
         </Button>
 
         {!isEditable && (
           <p className="text-xs text-muted-foreground">
-            Bu durumda yeniden gönderilemez (status:{" "}
+            Cannot resubmit in this state (status:{" "}
             {LISTING_STATUS_LABELS[listing.status]}).
           </p>
         )}

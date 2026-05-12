@@ -87,13 +87,13 @@ describe("QuickActions — render", () => {
       />,
     );
     // Section başlığı
-    expect(screen.getByText(/^hızlı işlem$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^quick actions$/i)).toBeInTheDocument();
     // 4 buton (background remove + upscale + crop + transparent)
     expect(screen.getByRole("button", { name: /background remove/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /upscale 2/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^crop · oran seçimi$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^crop · aspect ratio$/i })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /transparent png kontrolü/i }),
+      screen.getByRole("button", { name: /transparent png check/i }),
     ).toBeInTheDocument();
   });
 });
@@ -109,9 +109,9 @@ describe("QuickActions — Upscale disabled", () => {
     );
     const btn = screen.getByRole("button", { name: /upscale 2/i });
     expect(btn).toBeDisabled();
-    expect(btn).toHaveAttribute("title", expect.stringMatching(/yakında/i));
+    expect(btn).toHaveAttribute("title", expect.stringMatching(/coming soon/i));
     // Yakında rozeti aynı buton içinde
-    expect(btn.textContent ?? "").toMatch(/yakında/i);
+    expect(btn.textContent ?? "").toMatch(/coming soon/i);
   });
 });
 
@@ -124,7 +124,7 @@ describe("QuickActions — Crop dropdown", () => {
         setStatus="draft"
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /^crop · oran seçimi$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^crop · aspect ratio$/i }));
     expect(screen.getByRole("menuitem", { name: /2:3 portrait/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /4:5 portrait/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /1:1 square/i })).toBeInTheDocument();
@@ -149,7 +149,7 @@ describe("QuickActions — Crop dropdown", () => {
         setStatus="draft"
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /^crop · oran seçimi$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^crop · aspect ratio$/i }));
     fireEvent.click(screen.getByRole("menuitem", { name: /4:5 portrait/i }));
 
     await waitFor(() => {
@@ -201,7 +201,7 @@ describe("QuickActions — Transparent check", () => {
         setStatus="draft"
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /transparent png kontrolü/i }));
+    fireEvent.click(screen.getByRole("button", { name: /transparent png check/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -242,7 +242,7 @@ describe("QuickActions — Transparent check", () => {
     wrapper(
       <QuickActions setId="set-1" item={makeItem()} setStatus="draft" />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /transparent png kontrolü/i }));
+    fireEvent.click(screen.getByRole("button", { name: /transparent png check/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/temiz transparent png/i)).toBeInTheDocument();
@@ -280,7 +280,7 @@ describe("QuickActions — Transparent check", () => {
     wrapper(
       <QuickActions setId="set-1" item={makeItem()} setStatus="draft" />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /transparent png kontrolü/i }));
+    fireEvent.click(screen.getByRole("button", { name: /transparent png check/i }));
 
     // Result görünür hale geldi mi?
     await waitFor(() => {
@@ -315,7 +315,7 @@ describe("QuickActions — pending state", () => {
       <QuickActions setId="set-1" item={makeItem()} setStatus="draft" />,
     );
     const transparentBtn = screen.getByRole("button", {
-      name: /transparent png kontrolü/i,
+      name: /transparent png check/i,
     });
     fireEvent.click(transparentBtn);
 
@@ -323,7 +323,7 @@ describe("QuickActions — pending state", () => {
       expect(transparentBtn).toBeDisabled();
       // Crop & background remove de disabled olmalı (single mutation in-flight)
       expect(
-        screen.getByRole("button", { name: /^crop · oran seçimi$/i }),
+        screen.getByRole("button", { name: /^crop · aspect ratio$/i }),
       ).toBeDisabled();
       expect(
         screen.getByRole("button", { name: /background remove/i }),
@@ -372,7 +372,7 @@ describe("QuickActions — error state", () => {
     wrapper(
       <QuickActions setId="set-1" item={makeItem()} setStatus="draft" />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /transparent png kontrolü/i }));
+    fireEvent.click(screen.getByRole("button", { name: /transparent png check/i }));
 
     await waitFor(
       () => {
@@ -397,10 +397,10 @@ describe("QuickActions — read-only set", () => {
     // Upscale zaten disabled
     expect(screen.getByRole("button", { name: /upscale 2/i })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: /^crop · oran seçimi$/i }),
+      screen.getByRole("button", { name: /^crop · aspect ratio$/i }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: /transparent png kontrolü/i }),
+      screen.getByRole("button", { name: /transparent png check/i }),
     ).toBeDisabled();
   });
 
@@ -409,10 +409,10 @@ describe("QuickActions — read-only set", () => {
       <QuickActions setId="set-1" item={makeItem()} setStatus="archived" />,
     );
     expect(
-      screen.getByRole("button", { name: /^crop · oran seçimi$/i }),
+      screen.getByRole("button", { name: /^crop · aspect ratio$/i }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: /transparent png kontrolü/i }),
+      screen.getByRole("button", { name: /transparent png check/i }),
     ).toBeDisabled();
   });
 });

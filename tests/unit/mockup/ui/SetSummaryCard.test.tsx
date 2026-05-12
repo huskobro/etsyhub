@@ -68,7 +68,7 @@ describe("<SetSummaryCard>", () => {
     );
 
     expect(screen.getByText("Test Set")).toBeInTheDocument();
-    expect(screen.getByText(/2 tasarım seçili/)).toBeInTheDocument();
+    expect(screen.getByText(/2 designs selected/)).toBeInTheDocument();
   });
 
   it("shows status badge (ready)", () => {
@@ -80,10 +80,10 @@ describe("<SetSummaryCard>", () => {
       />
     );
 
-    expect(screen.getByText("Hazır")).toBeInTheDocument();
+    expect(screen.getByText("Ready")).toBeInTheDocument();
   });
 
-  it("shows Quick Pack label", () => {
+  it("shows Quick pack label", () => {
     render(
       <SetSummaryCard
         set={mockSet}
@@ -92,7 +92,7 @@ describe("<SetSummaryCard>", () => {
       />
     );
 
-    expect(screen.getByText("Quick Pack")).toBeInTheDocument();
+    expect(screen.getByText("Quick pack")).toBeInTheDocument();
   });
 
   it("shows Custom Pack label when not quick pack", () => {
@@ -104,7 +104,7 @@ describe("<SetSummaryCard>", () => {
       />
     );
 
-    expect(screen.getByText("Özel Seçim")).toBeInTheDocument();
+    expect(screen.getByText("Custom selection")).toBeInTheDocument();
   });
 
   it("displays selected mockup count", () => {
@@ -129,7 +129,7 @@ describe("<SetSummaryCard>", () => {
       />
     );
 
-    expect(screen.getByText("Taslak")).toBeInTheDocument();
+    expect(screen.getByText("Draft")).toBeInTheDocument();
   });
 
   it("handles archived status", () => {
@@ -142,6 +142,6 @@ describe("<SetSummaryCard>", () => {
       />
     );
 
-    expect(screen.getByText("Arşivlendi")).toBeInTheDocument();
+    expect(screen.getByText("Archived")).toBeInTheDocument();
   });
 });

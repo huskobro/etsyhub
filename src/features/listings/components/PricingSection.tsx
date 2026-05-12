@@ -53,13 +53,13 @@ export function PricingSection({ listing }: { listing: ListingDraftView }) {
 
   return (
     <div className="mb-8">
-      <h2 className="text-lg font-semibold mb-4">Fiyat & Malzemeler</h2>
+      <h2 className="text-lg font-semibold mb-4">Price & Materials</h2>
 
       <div className="space-y-4">
         {/* Price */}
         <div>
           <label htmlFor="listing-price" className="block text-sm font-medium mb-2">
-            Fiyat (USD)
+            Price (USD)
           </label>
           <div className="flex items-center gap-2">
             <span className="text-gray-600">$</span>
@@ -75,7 +75,7 @@ export function PricingSection({ listing }: { listing: ListingDraftView }) {
             />
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Etsy satış fiyatı (indirim ve vergiler hariç)
+            Etsy sale price (excluding discounts and taxes)
           </p>
         </div>
 
@@ -110,7 +110,7 @@ export function PricingSection({ listing }: { listing: ListingDraftView }) {
             onClick={handleSave}
             disabled={mutation.isPending || !hasChanges}
           >
-            {mutation.isPending ? "Kaydediliyor…" : "Kaydet"}
+            {mutation.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
       </div>

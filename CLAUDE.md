@@ -4027,6 +4027,154 @@ olarak migrate edilir; tek tek string replace turu verimsiz olur.
 
 ---
 
+## EE. Visible UI Language Parity (Phase 15 — 2026-05-12)
+
+Phase 15, Selection + Product yüzeylerinde **operatöre görünür** TR/EN
+karışıklığını sıfıra indiren bir **surface cleanup** turuydu. Yeni
+i18n framework açılmadı; mevcut hardcoded string'ler tek tek EN'e
+geçirildi.
+
+### Audit kapsamı
+
+10 dosya, ~70 görünür operator-facing TR string'i:
+
+- `src/features/selection/components/`
+  - StudioShell.tsx (Phase 14'te kısmen) — error/loading state TR temizlendi
+  - RightPanel.tsx — Edit / Editing variant / No variant selected /
+    Pick a variant from the filmstrip / Reject / Add to selection /
+    Remove from selection / Undo reject
+  - AiQualityPanel.tsx — AI quality / Resolution / Clean / Flagged /
+    Rejected / Pending / Send for review / No AI analysis…
+  - QuickActions.tsx — Quick actions / Magic Eraser / Crop · aspect
+    ratio / Transparent PNG check / Selection finalized — editing
+    disabled / Another action is in progress / Coming soon / Loading
+  - UndoResetBar.tsx — Action history / Undo last action / Revert to
+    original / Nothing to undo / No edits / No edits yet / older
+    actions / Transparent check / "just now" / "Nm ago" / "Nh ago" /
+    "Nd ago"
+  - Filmstrip.tsx — All / Active / Rejected / Variants (N) /
+    Variants (M / N) / No rejected variants / No variants match this
+    filter / aria-labels "Variant NN (selected)" / "(rejected)" /
+    "(edited)" / thumbnail alt
+  - PreviewCard.tsx — Variant NN / NN / Variant NN — original /
+    Edited / Original / Previous / Next / No variants yet / Show
+    edited or original image
+  - SelectionBulkBar.tsx — variant(s) selected / Reject (N) / Add to
+    selection (N) / Permanently remove (N) / Bulk action failed
+  - BulkHardDeleteDialog.tsx — Permanently remove / N rejected
+    variants will be permanently removed / Cancel
+  - FinalizeModal.tsx — Finalize selection / The set will be marked
+    ready for Mockup Studio / Pending / Rejected / Only selected
+    variants become the Mockup Studio input / Cancel / Finalize /
+    Finalizing… / At least 1 variant must be marked 'Add to
+    selection'
+  - ArchiveAction.tsx — Set options / Set options menu / Archive set /
+    Archived sets are hidden from the main /selection list / Archive
+    / Cancel
+  - ExportButton.tsx — The set must contain at least 1 variant /
+    Preparing export… / Download / Previous download link expired —
+    prepare again / Export failed
+  - MjOriginBar.tsx — relative time EN ("just now" / "Nm ago" / etc.)
+
+- `src/features/listings/` (Product/Listing visible)
+  - server/readiness.service.ts — Right-rail check labels: Title
+    ready (N chars) / Description ready / N tags (max N) / Category
+    selected / Price: $N.NN / Cover image ready / "required" /
+    "too short" / "too long" / "too low" / "Policy warning"
+  - ui/status-labels.ts — Draft / Scheduled / Published / Failed /
+    Rejected / Needs review
+  - ui/ListingDraftView.tsx — Loading listing… / Failed to load
+    listing / Untitled / Readiness checks / passed / warning
+  - components/MetadataSection.tsx — Title & Description / Title /
+    Description / Tags (max 13) / "Comma-separated tags…" / "AI
+    suggestion applied to the form…" / Save / Saving… / Generate
+    with AI / Generating…
+  - components/PricingSection.tsx — Price & Materials / Price (USD) /
+    Etsy sale price (excluding discounts and taxes) / Save / Saving…
+  - components/AssetSection.tsx — Images & Files / Download ZIP /
+    Cover image / No image / Ready for ZIP / Waiting for all images
+    to upload
+  - components/SubmitResultPanel.tsx — Image upload: N/M succeeded
+    (M failed) / Show details / Hide details / Some readiness checks
+    are missing / Sent to Etsy / Open on Etsy / Go to shop / Submit
+    draft / Submitting… / Submission failed / Note: … / Previous
+    submission failed / Reset to DRAFT / Resetting… / Open orphan on
+    Etsy / Reset failed / Etsy draft created
+  - components/ListingsIndexView.tsx — Listings / All / Draft /
+    Published / Failed / Loading… / Failed to load listings / No
+    listings yet / No listings in {Status} status / Untitled draft /
+    Listing cards / Updated: {date(en-US)} / Open on Etsy / No
+    preview
+
+- `src/features/mockups/components/`
+  - SetSummaryCard.tsx — Set summary / Draft / Ready / Archived / N
+    designs selected / Quick pack / Custom selection
+  - PackPreviewCard.tsx — Pack preview / ★ Quick pack / Custom pack /
+    N images to render / Customized / "Different from the default
+    Quick pack"
+  - DecisionBand.tsx — Render (Quick pack) / Render (Custom pack) /
+    Reset to Quick pack / Estimated time
+  - S3ApplyView.tsx — Loading… / Set not found.
+
+### Sözleşmeyi yeniden teyit
+
+- **Tek dil**: UI'da görünür her metin **İngilizce**. TR sadece
+  operator-girdi-veri (örn. reference label "Smoke Aşama 2A reference")
+  alanlarında kalır — bu kullanıcının kendi yazdığı içeriktir, UI
+  string değil.
+- **Yeni i18n framework AÇILMADI**: `@/lib/i18n` veya next-intl
+  eklenmedi. Bu turun amacı parity, framework değil.
+- **Code comments TR bırakıldı**: doc comment blokları, JSDoc, inline
+  açıklamalar (// veya /* */ içinde) TR kalabilir — CLAUDE.md "kod,
+  dosya adları, teknik terimler İngilizce kalır; comments TR can stay"
+  sözleşmesine bağlıdır. Yalnız operator-görünür string'ler EN.
+
+### Test fixtures TR → EN
+
+UI string'leri EN'e geçince testler de güncellendi (~10 test
+dosyası): selection (ai-quality-panel, archive-action, bulk-hard-
+delete-dialog, export-button, filmstrip, finalize-modal, preview-
+card, quick-actions, right-panel, selection-bulk-bar, studio-shell,
+undo-reset-bar), listings (ListingDraftView, ListingsIndexView,
+MetadataSection, PricingSection, SubmitResultPanel, AssetSection,
+readiness.test), mockup (S3ApplyView, SetSummaryCard, PackPreviewCard,
+DecisionBand). Targeted testler tüm dosyalarda PASS.
+
+### Bilinçli scope dışı
+
+Bu tur Selection + Product visible yüzeyle sınırlandırıldı (user
+talimatı: "scope'u Selection + Product hattında tut"). Aşağıdaki
+diğer modüllerin TR drift audit'i bu turda **yapılmadı**:
+
+- Reference / Bookmark / Story / Competitor surfaces
+- Batch detail comments + audit messages
+- Admin / Settings surfaces
+- Job lifecycle / SSE notifications
+- Mockup orchestration internals (S5/S6/S7 views — Phase 15
+  S3ApplyView + DecisionBand + PackPreviewCard + SetSummaryCard kapatıldı)
+
+Bunlar ileride bir **i18n katmanı** açılırsa tek pasta migrate
+edilir; o güne kadar bu yüzeylerde TR sızıntı kalabilir.
+
+### Doğrulama kanıtları
+
+- Selection studio `/selection/sets/cmordz90j001buuvcgsceygvy` —
+  DOM scan: **0 TR string** in operator-facing UI.
+- Product detail `/products/cmort0m2t0044udcxco3xrl14` — DOM scan:
+  **0 TR string**.
+- Batch detail `/batches/mgge2ao38wx8r81vpmel1pyh` — DOM scan: **1 TR
+  line** ("Smoke Aşama 2A reference" — operator-entered reference
+  label, not UI string).
+
+Quality gates:
+- `tsc --noEmit`: clean
+- `vitest tests/unit/selection tests/unit/listings tests/unit/mockup
+  tests/unit/products tests/integration/listing tests/integration/
+  products`: all PASS
+- `next build`: ✓ Compiled successfully
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

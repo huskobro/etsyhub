@@ -71,7 +71,7 @@ describe("<ListingsIndexView>", () => {
   it("loading state görünür", () => {
     mockUseListingsReturn = { data: undefined, isLoading: true, error: null };
     render(<ListingsIndexView />, { wrapper });
-    expect(screen.getByRole("status")).toHaveTextContent(/yükleniyor/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/loading/i);
   });
 
   it("error state görünür", () => {
@@ -87,14 +87,14 @@ describe("<ListingsIndexView>", () => {
   it("empty state — listing yok mesajı", () => {
     mockUseListingsReturn = { data: [], isLoading: false, error: null };
     render(<ListingsIndexView />, { wrapper });
-    expect(screen.getByText(/Henüz listing yok/i)).toBeInTheDocument();
+    expect(screen.getByText(/No listings yet/i)).toBeInTheDocument();
   });
 
   it("empty state with status filter", () => {
     mockSearchParams = new URLSearchParams("status=PUBLISHED");
     mockUseListingsReturn = { data: [], isLoading: false, error: null };
     render(<ListingsIndexView />, { wrapper });
-    expect(screen.getByText(/Yayınlanmış durumda listing yok/i)).toBeInTheDocument();
+    expect(screen.getByText(/No listings in Published status/i)).toBeInTheDocument();
   });
 
   it("listings grid render edilir (3 listing)", () => {
@@ -120,7 +120,7 @@ describe("<ListingsIndexView>", () => {
       error: null,
     };
     render(<ListingsIndexView />, { wrapper });
-    expect(screen.getByTestId("listing-status-l1")).toHaveTextContent(/Taslak/);
+    expect(screen.getByTestId("listing-status-l1")).toHaveTextContent(/Draft/);
   });
 
   it("listing card → /listings/draft/[id] link'e bağlı", () => {
@@ -143,7 +143,7 @@ describe("<ListingsIndexView>", () => {
 
   it("filter button click → router.push çağrılır", () => {
     render(<ListingsIndexView />, { wrapper });
-    const draftButton = screen.getByRole("button", { name: /Taslak/ });
+    const draftButton = screen.getByRole("button", { name: /Draft/ });
     fireEvent.click(draftButton);
     expect(mockRouter.push).toHaveBeenCalledWith(
       "/listings?status=DRAFT",
@@ -154,7 +154,7 @@ describe("<ListingsIndexView>", () => {
   it("active filter aria-pressed highlight", () => {
     mockSearchParams = new URLSearchParams("status=PUBLISHED");
     render(<ListingsIndexView />, { wrapper });
-    const publishedButton = screen.getByRole("button", { name: /Yayınlanmış/ });
+    const publishedButton = screen.getByRole("button", { name: /Published/ });
     expect(publishedButton).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -174,7 +174,7 @@ describe("<ListingsIndexView>", () => {
     };
     render(<ListingsIndexView />, { wrapper });
 
-    const etsyLink = screen.getByRole("link", { name: /Etsy'de Aç/i });
+    const etsyLink = screen.getByRole("link", { name: /Open on Etsy/i });
     expect(etsyLink).toHaveAttribute(
       "href",
       "https://www.etsy.com/your/shops/me/tools/listings/12345",
@@ -197,6 +197,6 @@ describe("<ListingsIndexView>", () => {
     };
     render(<ListingsIndexView />, { wrapper });
 
-    expect(screen.queryByRole("link", { name: /Etsy'de Aç/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Open on Etsy/i })).toBeNull();
   });
 });

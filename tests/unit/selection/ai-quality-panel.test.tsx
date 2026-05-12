@@ -1,15 +1,15 @@
 // Phase 7 Task 27 — AiQualityPanel testleri.
 //
 // Sözleşme (plan Task 27 + spec Section 3.2 + Section 1.4 + Section 8.1):
-//   - Review yok (`null`) → muted hint metni + disabled "Review'a gönder"
+//   - Review yok (`null`) → muted hint metni + disabled "Send for review"
 //     buton (Phase 6 canlı smoke sonrası aktif tooltip).
 //   - Review var → score (büyük font + tone'a göre renk), status Badge
-//     (Türkçe "Onaylandı" / "Gözden geçir" / "Reddedildi" / "Beklemede"),
+//     (Türkçe "Onaylandı" / "Gözden geçir" / "Rejected" / "Pending"),
 //     4 sinyal listesi (Çözünürlük / Text detection / Artifact check /
 //     Trademark risk) — sırasıyla.
 //   - Sinyaller TR human-readable: ok→OK, low→Düşük, unknown→Bilinmiyor,
 //     clean→Temiz, issue→İşaret var, low(trademark)→Düşük, high→Yüksek.
-//   - Disabled "Review'a gönder" butonu click'i no-op (disabled attribute).
+//   - Disabled "Send for review" butonu click'i no-op (disabled attribute).
 //
 // Phase 6 emsali: tests/unit/selection/preview-card.test.tsx — store reset +
 // tek-component test paterni.
@@ -54,27 +54,27 @@ function makeReview(overrides: Partial<ReviewView> = {}): ReviewView {
 }
 
 describe("AiQualityPanel — review yok (null)", () => {
-  it("muted hint metni + disabled 'Review'a gönder' buton render", () => {
+  it("muted hint metni + disabled 'Send for review' buton render", () => {
     render(<AiQualityPanel item={makeItem(null)} />);
     expect(
-      screen.getByText(/bu varyant için ai kalite analizi yapılmamış/i),
+      screen.getByText(/ai quality analysis has not run on this variant yet/i),
     ).toBeInTheDocument();
-    const btn = screen.getByRole("button", { name: /review'a gönder/i });
+    const btn = screen.getByRole("button", { name: /send for review/i });
     expect(btn).toBeDisabled();
   });
 
   it("disabled buton aria-disabled + tooltip title attr taşır", () => {
     render(<AiQualityPanel item={makeItem(null)} />);
-    const btn = screen.getByRole("button", { name: /review'a gönder/i });
+    const btn = screen.getByRole("button", { name: /send for review/i });
     expect(btn).toBeDisabled();
-    // Phase 6 canlı smoke sonrası aktif edilecek hint
-    expect(btn).toHaveAttribute("title", expect.stringMatching(/phase 6/i));
+    // Live review smoke hint
+    expect(btn).toHaveAttribute("title", expect.stringMatching(/live review smoke/i));
   });
 
   it("AI Kalite başlık her zaman render (panel kaybolmaz)", () => {
     render(<AiQualityPanel item={makeItem(null)} />);
-    // Başlık tam metin "AI Kalite" — hint cümlesindeki "AI kalite" eşleşmemeli.
-    expect(screen.getByText("AI Kalite")).toBeInTheDocument();
+    // Başlık tam metin "AI quality" — hint cümlesindeki "AI kalite" eşleşmemeli.
+    expect(screen.getByText("AI quality")).toBeInTheDocument();
   });
 });
 
@@ -102,7 +102,7 @@ describe("AiQualityPanel — score + status", () => {
       />,
     );
     expect(screen.getByText("30")).toBeInTheDocument();
-    expect(screen.getByText(/reddedildi/i)).toBeInTheDocument();
+    expect(screen.getByText(/rejected/i)).toBeInTheDocument();
   });
 
   it("status pending → 'Beklemede' badge", () => {
@@ -111,7 +111,7 @@ describe("AiQualityPanel — score + status", () => {
         item={makeItem(makeReview({ score: 0, status: "pending" }))}
       />,
     );
-    expect(screen.getByText(/beklemede/i)).toBeInTheDocument();
+    expect(screen.getByText(/pending/i)).toBeInTheDocument();
   });
 
   it("score 90+ → success renk class'ı (text-success)", () => {
@@ -170,7 +170,7 @@ describe("AiQualityPanel — sinyal display", () => {
         } }))}
       />,
     );
-    expect(screen.getByText(/bilinmiyor/i)).toBeInTheDocument();
+    expect(screen.getByText(/unknown/i)).toBeInTheDocument();
   });
 
   it("textDetection=clean → 'Temiz'; issue → 'İşaret var'", () => {
@@ -184,7 +184,7 @@ describe("AiQualityPanel — sinyal display", () => {
         } }))}
       />,
     );
-    expect(screen.getAllByText(/temiz/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/clean/i).length).toBeGreaterThanOrEqual(1);
 
     rerender(
       <AiQualityPanel
@@ -196,7 +196,7 @@ describe("AiQualityPanel — sinyal display", () => {
         } }))}
       />,
     );
-    expect(screen.getByText("İşaret var")).toBeInTheDocument();
+    expect(screen.getByText("Flagged")).toBeInTheDocument();
   });
 
   it("artifactCheck=clean/issue → Temiz/İşaret var", () => {
@@ -210,7 +210,7 @@ describe("AiQualityPanel — sinyal display", () => {
         } }))}
       />,
     );
-    expect(screen.getByText("İşaret var")).toBeInTheDocument();
+    expect(screen.getByText("Flagged")).toBeInTheDocument();
   });
 
   it("trademarkRisk=low → 'Low'; high → 'High'", () => {
@@ -244,7 +244,7 @@ describe("AiQualityPanel — sinyal sıralaması", () => {
   it("4 sinyal sırası: Çözünürlük → Text detection → Artifact check → Trademark risk", () => {
     render(<AiQualityPanel item={makeItem(makeReview())} />);
     const html = document.body.innerHTML;
-    const idxRes = html.indexOf("Çözünürlük");
+    const idxRes = html.indexOf("Resolution");
     const idxText = html.indexOf("Text detection");
     const idxArtifact = html.indexOf("Artifact check");
     const idxTrademark = html.indexOf("Trademark risk");

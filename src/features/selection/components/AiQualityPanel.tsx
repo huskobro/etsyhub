@@ -35,7 +35,7 @@ type SignalKey =
   | "trademarkRisk";
 
 const SIGNAL_LABELS: ReadonlyArray<{ key: SignalKey; label: string }> = [
-  { key: "resolution", label: "Çözünürlük" },
+  { key: "resolution", label: "Resolution" },
   { key: "textDetection", label: "Text detection" },
   { key: "artifactCheck", label: "Artifact check" },
   { key: "trademarkRisk", label: "Trademark risk" },
@@ -59,15 +59,15 @@ function signalTone(key: SignalKey, value: string): SignalTone {
   return "muted";
 }
 
-/** Sinyal değer → TR human-readable display. */
+/** Signal value → human-readable display. */
 function signalDisplay(key: SignalKey, value: string): string {
   if (key === "resolution") {
     if (value === "ok") return "OK";
     if (value === "low") return "Low";
-    return "Bilinmiyor";
+    return "Unknown";
   }
   if (key === "textDetection" || key === "artifactCheck") {
-    return value === "clean" ? "Temiz" : "İşaret var";
+    return value === "clean" ? "Clean" : "Flagged";
   }
   if (key === "trademarkRisk") {
     return value === "low" ? "Low" : "High";
@@ -80,8 +80,8 @@ function statusDisplay(status: string): { label: string; tone: BadgeTone } {
   if (status === "approved") return { label: "Approved", tone: "success" };
   if (status === "needs_review")
     return { label: "Review", tone: "warning" };
-  if (status === "rejected") return { label: "Reddedildi", tone: "danger" };
-  return { label: "Beklemede", tone: "neutral" };
+  if (status === "rejected") return { label: "Rejected", tone: "danger" };
+  return { label: "Pending", tone: "neutral" };
 }
 
 /** Score rengi — ≥90 success, ≥60 warning, <60 danger (Phase 6 eşiği). */
@@ -110,19 +110,19 @@ export function AiQualityPanel({ item }: AiQualityPanelProps) {
   if (review === null) {
     return (
       <div className="border-b border-border-subtle px-4 py-3">
-        <div className={SECTION_LABEL_CLASS}>AI Kalite</div>
+        <div className={SECTION_LABEL_CLASS}>AI quality</div>
         <p className="mt-2 text-xs text-text-muted">
-          Bu varyant için AI kalite analizi yapılmamış.
+          AI quality analysis has not run on this variant yet.
         </p>
         <button
           type="button"
           disabled
           aria-disabled="true"
           tabIndex={-1}
-          title="Phase 6 canlı smoke sonrası aktif edilecek"
+          title="Available after live review smoke is wired in"
           className="mt-2 cursor-not-allowed text-xs text-text-muted underline decoration-dotted disabled:opacity-60"
         >
-          Review&apos;a gönder
+          Send for review
         </button>
       </div>
     );

@@ -96,13 +96,13 @@ const mockListingDraft: ListingDraftViewType = {
       field: "title",
       pass: true,
       severity: "warn",
-      message: "Başlık hazır",
+      message: "Title ready",
     },
     {
       field: "description",
       pass: true,
       severity: "warn",
-      message: "Açıklama hazır",
+      message: "Description ready",
     },
     {
       field: "tags",
@@ -160,7 +160,7 @@ describe("ListingDraftView", () => {
     });
 
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
-    expect(screen.getByText(/Listing yükleniyor/i)).toBeTruthy();
+    expect(screen.getByText(/Loading listing/i)).toBeTruthy();
   });
 
   it("should render error state on fetch failure", () => {
@@ -172,7 +172,7 @@ describe("ListingDraftView", () => {
     });
 
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
-    expect(screen.getByText(/Listing yüklenemedi/i)).toBeTruthy();
+    expect(screen.getByText(/Failed to load listing/i)).toBeTruthy();
     expect(screen.getByText(/Network error/i)).toBeTruthy();
   });
 
@@ -188,15 +188,15 @@ describe("ListingDraftView", () => {
     // Title in input value (MetadataSection Task 20)
     expect(screen.getByDisplayValue("Beautiful Canvas Wall Art")).toBeTruthy();
 
-    // Status (Turkish label via LISTING_STATUS_LABELS map)
-    expect(screen.getByText(/Status: Taslak/i)).toBeTruthy();
+    // Status (label via LISTING_STATUS_LABELS map)
+    expect(screen.getByText(/Status: Draft/i)).toBeTruthy();
 
     // Price in PricingSection input (Task 20: editable form)
-    const priceInput = screen.getByLabelText("Fiyat (USD)") as HTMLInputElement;
+    const priceInput = screen.getByLabelText("Price (USD)") as HTMLInputElement;
     expect(priceInput.value).toBe("29.99");
 
     // Tags in MetadataSection input
-    const tagsInput = screen.getByLabelText("Etiketler (maksimum 13)") as HTMLInputElement;
+    const tagsInput = screen.getByLabelText("Tags (max 13)") as HTMLInputElement;
     expect(tagsInput.value).toContain("wall art");
   });
 
@@ -255,7 +255,7 @@ describe("ListingDraftView", () => {
       ...mockListingDraft,
       readiness: [
         ...mockListingDraft.readiness.slice(0, 1),
-        { field: "description", pass: false, severity: "warn", message: "Açıklama girilmeli" },
+        { field: "description", pass: false, severity: "warn", message: "Description required" },
         ...mockListingDraft.readiness.slice(2),
       ],
     };
@@ -273,7 +273,7 @@ describe("ListingDraftView", () => {
     expect(warnings.length).toBeGreaterThan(0);
 
     // Check failing check message
-    expect(screen.getByText("Açıklama girilmeli")).toBeTruthy();
+    expect(screen.getByText("Description required")).toBeTruthy();
   });
 
   it("should render editable metadata forms (Task 20: input fields visible)", () => {
@@ -323,7 +323,7 @@ describe("ListingDraftView", () => {
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
     // Should show placeholder
-    expect(screen.getByText(/başlıksız/i)).toBeTruthy();
+    expect(screen.getByText(/untitled/i)).toBeTruthy();
   });
 
   it("should handle empty tags array", () => {
@@ -341,7 +341,7 @@ describe("ListingDraftView", () => {
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
     // Should show "0/13 etiket" in MetadataSection counter
-    expect(screen.getByText(/0\/13 etiket/)).toBeTruthy();
+    expect(screen.getByText(/0\/13 tags/)).toBeTruthy();
   });
 
   it("should display correct cover image with isCover=true", () => {
@@ -353,7 +353,7 @@ describe("ListingDraftView", () => {
 
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
-    const coverImg = screen.getByAltText(/Kapak görseli/);
+    const coverImg = screen.getByAltText(/Cover image/);
     expect(coverImg).toHaveAttribute("src", "s3://bucket/render-1.jpg");
   });
 
@@ -367,11 +367,11 @@ describe("ListingDraftView", () => {
 
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
-    // AssetSection header "Görseller & Dosyalar"
-    expect(screen.getByText("Görseller & Dosyalar")).toBeTruthy();
+    // AssetSection header "Images & Files"
+    expect(screen.getByText("Images & Files")).toBeTruthy();
 
     // ZIP download link (all images ready)
-    const zipLink = screen.getByRole("link", { name: /ZIP İndir/i });
+    const zipLink = screen.getByRole("link", { name: /Download ZIP/i });
     expect(zipLink).toBeTruthy();
     expect(zipLink).toHaveAttribute("href", `/api/listings/draft/${mockListingDraft.id}/assets/download`);
 
@@ -390,19 +390,19 @@ describe("ListingDraftView", () => {
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
     // MetadataSection header
-    expect(screen.getByText("Başlık & Açıklama")).toBeTruthy();
+    expect(screen.getByText("Title & Description")).toBeTruthy();
 
     // Input fields now visible (not read-only)
-    const titleInput = screen.getByLabelText("Başlık");
-    const descInput = screen.getByLabelText("Açıklama");
-    const tagsInput = screen.getByLabelText("Etiketler (maksimum 13)");
+    const titleInput = screen.getByLabelText("Title");
+    const descInput = screen.getByLabelText("Description");
+    const tagsInput = screen.getByLabelText("Tags (max 13)");
 
     expect(titleInput).toHaveValue("Beautiful Canvas Wall Art");
     expect(descInput).toHaveValue("Modern abstract design perfect for living rooms");
     expect(tagsInput).toHaveValue("wall art, canvas, modern, abstract, home decor, minimalist, interior design, contemporary, trendy, art print, decoration, living room, gift");
 
     // Save button visible
-    const saveMetadataBtn = screen.getAllByRole("button", { name: /Kaydet/i })[0];
+    const saveMetadataBtn = screen.getAllByRole("button", { name: /Save/i })[0];
     expect(saveMetadataBtn).toBeTruthy();
   });
 
@@ -417,10 +417,10 @@ describe("ListingDraftView", () => {
     renderWithProvider(<ListingDraftView id="clxywzk3f0000gl6h7k5j" />);
 
     // PricingSection header
-    expect(screen.getByText("Fiyat & Malzemeler")).toBeTruthy();
+    expect(screen.getByText("Price & Materials")).toBeTruthy();
 
     // Price input (converted from cents)
-    const priceInput = screen.getByLabelText("Fiyat (USD)") as HTMLInputElement;
+    const priceInput = screen.getByLabelText("Price (USD)") as HTMLInputElement;
     expect(priceInput.value).toBe("29.99");
 
     // Materials input
@@ -428,7 +428,7 @@ describe("ListingDraftView", () => {
     expect(materialsInput).toBeTruthy();
 
     // Save button visible
-    const savePricingBtn = screen.getAllByRole("button", { name: /Kaydet/i })[1];
+    const savePricingBtn = screen.getAllByRole("button", { name: /Save/i })[1];
     expect(savePricingBtn).toBeTruthy();
   });
 });

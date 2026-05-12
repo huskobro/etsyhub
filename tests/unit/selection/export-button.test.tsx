@@ -6,10 +6,10 @@
 //     olmalı".
 //   - Click idle → POST /api/selection/sets/{setId}/export +
 //     invalidateQueries(["selection","set",setId]).
-//   - State 2 (queued/running) → "Export hazırlanıyor..." + spinner +
+//   - State 2 (queued/running) → "Preparing export…" + spinner +
 //     disabled + polling enabled (refetchInterval 3000).
 //   - State 3 (completed + downloadUrl + expiresAt > now) → <a href download>
-//     "İndir" link, primary tonu (bg-accent + text-accent-foreground).
+//     "Download" link, primary tonu (bg-accent + text-accent-foreground).
 //   - State 4 (completed + expiresAt geçmiş) → "Yeniden hazırla" buton,
 //     yeni POST tetikler.
 //   - State 5 (failed) → "Tekrar dene" buton + danger tonu + failedReason
@@ -69,7 +69,7 @@ describe("ExportButton — State 1 idle (activeExport=null)", () => {
     );
     const btn = screen.getByRole("button", { name: /Download \(ZIP\)/ });
     expect(btn).toBeDisabled();
-    expect(btn.getAttribute("title")).toMatch(/en az 1 varyant olmalı/i);
+    expect(btn.getAttribute("title")).toMatch(/at least 1 variant/i);
   });
 
   it("Click idle → POST /api/selection/sets/{setId}/export çağrılır", async () => {
@@ -120,7 +120,7 @@ describe("ExportButton — State 1 idle (activeExport=null)", () => {
 // ────────────────────────────────────────────────────────────
 
 describe("ExportButton — State 2 queued/running (preparing)", () => {
-  it("queued → 'Export hazırlanıyor...' + spinner + disabled", () => {
+  it("queued → 'Preparing export…' + spinner + disabled", () => {
     const activeExport: ActiveExportView = {
       jobId: "job-q",
       status: "queued",
@@ -128,15 +128,15 @@ describe("ExportButton — State 2 queued/running (preparing)", () => {
     wrapper(
       <ExportButton setId="set-1" itemCount={3} activeExport={activeExport} />,
     );
-    // Button text "Export hazırlanıyor..." still Turkish in component
-    const btn = screen.getByRole("button", { name: /export hazırlanıyor/i });
+    // Button text "Preparing export…" still Turkish in component
+    const btn = screen.getByRole("button", { name: /preparing export/i });
     expect(btn).toBeInTheDocument();
     expect(btn).toBeDisabled();
     // Spinner aria-label="Loading"
     expect(screen.getByLabelText(/^Loading$/i)).toBeInTheDocument();
   });
 
-  it("running → 'Export hazırlanıyor...' + spinner + disabled (queued ile aynı UI)", () => {
+  it("running → 'Preparing export…' + spinner + disabled (queued ile aynı UI)", () => {
     const activeExport: ActiveExportView = {
       jobId: "job-r",
       status: "running",
@@ -144,7 +144,7 @@ describe("ExportButton — State 2 queued/running (preparing)", () => {
     wrapper(
       <ExportButton setId="set-1" itemCount={3} activeExport={activeExport} />,
     );
-    const btn = screen.getByRole("button", { name: /export hazırlanıyor/i });
+    const btn = screen.getByRole("button", { name: /preparing export/i });
     expect(btn).toBeDisabled();
     expect(screen.getByLabelText(/^Loading$/i)).toBeInTheDocument();
   });
@@ -166,7 +166,7 @@ describe("ExportButton — State 3 completed + URL geçerli", () => {
     wrapper(
       <ExportButton setId="set-1" itemCount={3} activeExport={activeExport} />,
     );
-    const link = screen.getByRole("link", { name: /İndir/ });
+    const link = screen.getByRole("link", { name: /Download/ });
     expect(link).toBeInTheDocument();
     expect(link.getAttribute("href")).toBe(
       "https://signed.example.com/file.zip?sig=abc",
@@ -197,7 +197,7 @@ describe("ExportButton — State 4 completed + URL expired", () => {
     const btn = screen.getByRole("button", { name: /Re-prepare/i });
     expect(btn).toBeInTheDocument();
     expect(btn).not.toBeDisabled();
-    expect(btn.getAttribute("title")).toMatch(/süresi doldu/i);
+    expect(btn.getAttribute("title")).toMatch(/link expired/i);
     // <a> link OLMAMALI — link state 3'e özel
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
@@ -263,7 +263,7 @@ describe("ExportButton — State 5 failed", () => {
       <ExportButton setId="set-1" itemCount={3} activeExport={activeExport} />,
     );
     const btn = screen.getByRole("button", { name: /Try again/i });
-    expect(btn.getAttribute("title")).toMatch(/başarısız/i);
+    expect(btn.getAttribute("title")).toMatch(/failed/i);
   });
 
   it("Click 'Try again' → POST /export tetiklenir", async () => {

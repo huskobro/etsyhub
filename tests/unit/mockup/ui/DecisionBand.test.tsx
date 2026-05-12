@@ -31,7 +31,7 @@ describe("<DecisionBand>", () => {
 
   it("shows Quick Pack label", () => {
     render(<DecisionBand {...defaultProps} />);
-    expect(screen.getByText(/Quick Pack/)).toBeInTheDocument();
+    expect(screen.getByText(/Quick pack/)).toBeInTheDocument();
   });
 
   it("shows Custom Pack label", () => {
@@ -41,7 +41,7 @@ describe("<DecisionBand>", () => {
         isQuickPack={false}
       />
     );
-    expect(screen.getByText(/Custom Pack/)).toBeInTheDocument();
+    expect(screen.getByText(/Custom pack/)).toBeInTheDocument();
   });
 
   it("disables button when no selection", () => {
@@ -51,7 +51,7 @@ describe("<DecisionBand>", () => {
         selectedCount={0}
       />
     );
-    const button = screen.getByRole("button", { name: /Render et/ });
+    const button = screen.getByRole("button", { name: /Render/ });
     expect(button).toBeDisabled();
   });
 
@@ -62,7 +62,7 @@ describe("<DecisionBand>", () => {
         isSubmitting={true}
       />
     );
-    const button = screen.getByRole("button", { name: /Render et/ });
+    const button = screen.getByRole("button", { name: /Render/ });
     expect(button).toBeDisabled();
   });
 
@@ -73,7 +73,7 @@ describe("<DecisionBand>", () => {
         isSubmitting={true}
       />
     );
-    expect(screen.getByRole("button", { name: /Render et/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Render/ })).toBeInTheDocument();
   });
 
   it("shows reset link when dirty", () => {
@@ -83,7 +83,7 @@ describe("<DecisionBand>", () => {
         isDirty={true}
       />
     );
-    expect(screen.getByText(/Quick Pack'e dön/)).toBeInTheDocument();
+    expect(screen.getByText(/Reset to Quick pack/)).toBeInTheDocument();
   });
 
   it("hides reset link when not dirty", () => {
@@ -93,7 +93,7 @@ describe("<DecisionBand>", () => {
         isDirty={false}
       />
     );
-    expect(queryByText(/Quick Pack'e dön/)).not.toBeInTheDocument();
+    expect(queryByText(/Reset to Quick pack/)).not.toBeInTheDocument();
   });
 
   it("shows warning when no selection", () => {
@@ -109,7 +109,7 @@ describe("<DecisionBand>", () => {
   });
 
   it("button is enabled when selection exists", () => {
-    const button = screen.queryByRole("button", { name: /Render et/ });
+    const button = screen.queryByRole("button", { name: /Render/ });
     if (button) {
       expect(button).not.toBeDisabled();
     }

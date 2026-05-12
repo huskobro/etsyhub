@@ -45,7 +45,7 @@ describe("PricingSection", () => {
 
   it("renders price input with value converted from cents", () => {
     render(<PricingSection listing={mockListing} />);
-    const priceInput = screen.getByLabelText("Fiyat (USD)") as HTMLInputElement;
+    const priceInput = screen.getByLabelText("Price (USD)") as HTMLInputElement;
     expect(priceInput.value).toBe("9.99");
   });
 
@@ -57,15 +57,15 @@ describe("PricingSection", () => {
 
   it("disables Save button initially (no changes)", () => {
     render(<PricingSection listing={mockListing} />);
-    const saveButton = screen.getByRole("button", { name: /Kaydet/i });
+    const saveButton = screen.getByRole("button", { name: /Save/i });
     expect(saveButton).toBeDisabled();
   });
 
   it("enables Save button when price changes", () => {
     render(<PricingSection listing={mockListing} />);
-    const priceInput = screen.getByLabelText("Fiyat (USD)");
+    const priceInput = screen.getByLabelText("Price (USD)");
     fireEvent.change(priceInput, { target: { value: "12.99" } });
-    const saveButton = screen.getByRole("button", { name: /Kaydet/i });
+    const saveButton = screen.getByRole("button", { name: /Save/i });
     expect(saveButton).not.toBeDisabled();
   });
 
@@ -73,7 +73,7 @@ describe("PricingSection", () => {
     render(<PricingSection listing={mockListing} />);
     const materialsInput = screen.getByLabelText("Materials");
     fireEvent.change(materialsInput, { target: { value: "PNG + Vector" } });
-    const saveButton = screen.getByRole("button", { name: /Kaydet/i });
+    const saveButton = screen.getByRole("button", { name: /Save/i });
     expect(saveButton).not.toBeDisabled();
   });
 
@@ -92,9 +92,9 @@ describe("PricingSection", () => {
     } as any);
 
     render(<PricingSection listing={mockListing} />);
-    const priceInput = screen.getByLabelText("Fiyat (USD)");
+    const priceInput = screen.getByLabelText("Price (USD)");
     fireEvent.change(priceInput, { target: { value: "15.50" } });
-    const saveButton = screen.getByRole("button", { name: /Kaydet/i });
+    const saveButton = screen.getByRole("button", { name: /Save/i });
     fireEvent.click(saveButton);
 
     expect(mockMutate).toHaveBeenCalledWith(
@@ -136,9 +136,9 @@ describe("PricingSection", () => {
     } as any);
 
     render(<PricingSection listing={mockListing} />);
-    const priceInput = screen.getByLabelText("Fiyat (USD)");
+    const priceInput = screen.getByLabelText("Price (USD)");
     fireEvent.change(priceInput, { target: { value: "10.00" } });
-    const saveButton = screen.getByRole("button", { name: /Kaydediliyor/i });
+    const saveButton = screen.getByRole("button", { name: /Saving/i });
     expect(saveButton).toBeDisabled();
   });
 
@@ -157,9 +157,9 @@ describe("PricingSection", () => {
     } as any);
 
     render(<PricingSection listing={mockListing} />);
-    const priceInput = screen.getByLabelText("Fiyat (USD)");
+    const priceInput = screen.getByLabelText("Price (USD)");
     fireEvent.change(priceInput, { target: { value: "7.999" } });
-    const saveButton = screen.getByRole("button", { name: /Kaydet/i });
+    const saveButton = screen.getByRole("button", { name: /Save/i });
     fireEvent.click(saveButton);
 
     expect(mockMutate).toHaveBeenCalledWith(

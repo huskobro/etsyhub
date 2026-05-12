@@ -70,9 +70,9 @@ beforeEach(() => {
 describe("RightPanel — boş items", () => {
   it("items boş → 'Varyant seçilmedi' subtitle + 'Filmstrip'ten...' mesaj", () => {
     wrapper(<RightPanel setId="set-1" items={[]} setStatus="draft" />);
-    expect(screen.getByText(/varyant seçilmedi/i)).toBeInTheDocument();
+    expect(screen.getByText(/no variant selected/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/filmstrip'ten bir varyant seçin/i),
+      screen.getByText(/pick a variant from the filmstrip/i),
     ).toBeInTheDocument();
   });
 });
@@ -82,7 +82,7 @@ describe("RightPanel — aktif item draft set", () => {
     const items = [makeItem({ id: "i1" }), makeItem({ id: "i2" })];
     wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
     // İlk item default → "Varyant 01 düzenleniyor"
-    expect(screen.getByText(/varyant 01 düzenleniyor/i)).toBeInTheDocument();
+    expect(screen.getByText(/editing variant 01/i)).toBeInTheDocument();
   });
 
   it("activeItemId set → o item'ın 1-based padded numarası gösterilir", () => {
@@ -93,16 +93,16 @@ describe("RightPanel — aktif item draft set", () => {
     ];
     useStudioStore.setState({ activeItemId: "i3" });
     wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
-    expect(screen.getByText(/varyant 03 düzenleniyor/i)).toBeInTheDocument();
+    expect(screen.getByText(/editing variant 03/i)).toBeInTheDocument();
   });
 
   it("AiQualityPanel render edilir (review yok → muted hint)", () => {
     const items = [makeItem({ id: "i1", review: null })];
     wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
     // AI Kalite başlık (tam metin — hint paragrafıyla karışmasın)
-    expect(screen.getByText("AI Kalite")).toBeInTheDocument();
+    expect(screen.getByText("AI quality")).toBeInTheDocument();
     expect(
-      screen.getByText(/bu varyant için ai kalite analizi yapılmamış/i),
+      screen.getByText(/ai quality analysis has not run on this variant yet/i),
     ).toBeInTheDocument();
   });
 
@@ -110,7 +110,7 @@ describe("RightPanel — aktif item draft set", () => {
     const items = [makeItem({ id: "i1" })];
     wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
     // 'Hızlı işlem' section başlığı (placeholder text artık yok).
-    expect(screen.getByText(/^hızlı işlem$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^quick actions$/i)).toBeInTheDocument();
     expect(
       screen.queryByText(/hızlı işlemler task 28'de eklenecek/i),
     ).not.toBeInTheDocument();
@@ -120,19 +120,19 @@ describe("RightPanel — aktif item draft set", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /upscale 2/i })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /^crop · oran seçimi$/i }),
+      screen.getByRole("button", { name: /^crop · aspect ratio$/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /transparent png kontrolü/i }),
+      screen.getByRole("button", { name: /transparent png check/i }),
     ).toBeInTheDocument();
   });
 
   it("draft → bottom action butonları 'Reddet' + 'Seçime ekle' render", () => {
     const items = [makeItem({ id: "i1" })];
     wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
-    expect(screen.getByRole("button", { name: /^reddet$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^reject$/i })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /^seçime ekle$/i }),
+      screen.getByRole("button", { name: /^add to selection$/i }),
     ).toBeInTheDocument();
   });
 
@@ -145,13 +145,13 @@ describe("RightPanel — aktif item draft set", () => {
     ).not.toBeInTheDocument();
     // Undo + Reset butonları render (UndoResetBar mount'unun kanıtı).
     expect(
-      screen.getByRole("button", { name: /son işlemi geri al/i }),
+      screen.getByRole("button", { name: /undo last action/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /orijinale döndür/i }),
+      screen.getByRole("button", { name: /revert to original/i }),
     ).toBeInTheDocument();
     // History boş hint (default makeItem editHistoryJson: []).
-    expect(screen.getByText(/henüz düzenleme yok/i)).toBeInTheDocument();
+    expect(screen.getByText(/no edits yet/i)).toBeInTheDocument();
   });
 });
 
@@ -160,10 +160,10 @@ describe("RightPanel — read-only", () => {
     const items = [makeItem({ id: "i1" })];
     wrapper(<RightPanel setId="set-1" items={items} setStatus="ready" />);
     expect(
-      screen.queryByRole("button", { name: /^reddet$/i }),
+      screen.queryByRole("button", { name: /^reject$/i }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /^seçime ekle$/i }),
+      screen.queryByRole("button", { name: /^add to selection$/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -171,7 +171,7 @@ describe("RightPanel — read-only", () => {
     const items = [makeItem({ id: "i1" })];
     wrapper(<RightPanel setId="set-1" items={items} setStatus="archived" />);
     expect(
-      screen.queryByRole("button", { name: /^reddet$/i }),
+      screen.queryByRole("button", { name: /^reject$/i }),
     ).not.toBeInTheDocument();
   });
 });
@@ -190,7 +190,7 @@ describe("RightPanel — status mutation", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
-    fireEvent.click(screen.getByRole("button", { name: /^seçime ekle$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add to selection$/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -212,7 +212,7 @@ describe("RightPanel — status mutation", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
-    fireEvent.click(screen.getByRole("button", { name: /^reddet$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^reject$/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -232,7 +232,7 @@ describe("RightPanel — status mutation", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
-    const btn = screen.getByRole("button", { name: /seçimden çıkar/i });
+    const btn = screen.getByRole("button", { name: /remove from selection/i });
     expect(btn).toBeInTheDocument();
     fireEvent.click(btn);
 
@@ -247,7 +247,7 @@ describe("RightPanel — status mutation", () => {
     const items = [makeItem({ id: "i1", status: "rejected" })];
     wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
     expect(
-      screen.getByRole("button", { name: /reddi geri al/i }),
+      screen.getByRole("button", { name: /undo reject/i }),
     ).toBeInTheDocument();
   });
 });
@@ -263,12 +263,12 @@ describe("RightPanel — mutation pending state", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     wrapper(<RightPanel setId="set-1" items={items} setStatus="draft" />);
-    const selectBtn = screen.getByRole("button", { name: /^seçime ekle$/i });
+    const selectBtn = screen.getByRole("button", { name: /^add to selection$/i });
     fireEvent.click(selectBtn);
 
     await waitFor(() => {
       expect(selectBtn).toBeDisabled();
-      expect(screen.getByRole("button", { name: /^reddet$/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /^reject$/i })).toBeDisabled();
     });
 
     // Cleanup — resolve pending promise (test leak'sız)

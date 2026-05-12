@@ -60,7 +60,7 @@ type EditHistoryEntry = {
 // "magic-eraser" string görünüyordu (yarı-deneysel hissi). Şimdi TR label.
 const OP_LABELS: Record<EditOp, string> = {
   crop: "Crop",
-  "transparent-check": "Transparent kontrol",
+  "transparent-check": "Transparent check",
   "background-remove": "Background remove",
   "magic-eraser": "Magic Eraser",
 };
@@ -80,14 +80,14 @@ const OP_LABELS: Record<EditOp, string> = {
 function formatRelative(at: string): string {
   const diff = Date.now() - new Date(at).getTime();
   const sec = Math.floor(diff / 1000);
-  if (sec < 30) return "az önce";
-  if (sec < 60) return `${sec} sn önce`;
+  if (sec < 30) return "just now";
+  if (sec < 60) return `${sec}s ago`;
   const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} dk önce`;
+  if (min < 60) return `${min}m ago`;
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} sa önce`;
+  if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
-  return `${day} gün önce`;
+  return `${day}d ago`;
 }
 
 export type UndoResetBarProps = {
@@ -166,15 +166,15 @@ export function UndoResetBar({ setId, item, isReadOnly }: UndoResetBarProps) {
   const resetDisabled = isReadOnly || isPending || !hasEdits;
 
   const undoTitle = hasUndoable
-    ? "Son işlemi geri al"
-    : "Geri alınacak işlem yok";
+    ? "Undo last action"
+    : "Nothing to undo";
   const resetTitle = hasEdits
-    ? "Tüm düzenlemeleri sil, orijinale dön"
-    : "Düzenleme yok";
+    ? "Discard edits and revert to original"
+    : "No edits";
 
   return (
     <div className="flex-1 flex flex-col gap-2 px-4 py-3 overflow-hidden">
-      <div className={SECTION_LABEL_CLASS}>İşlem geçmişi</div>
+      <div className={SECTION_LABEL_CLASS}>Action history</div>
 
       {/* Action butonları */}
       <div className="flex gap-1.5">
@@ -186,7 +186,7 @@ export function UndoResetBar({ setId, item, isReadOnly }: UndoResetBarProps) {
           className="flex h-control-sm items-center gap-1.5 rounded-md border border-border bg-transparent px-2 text-xs text-text transition-colors hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Undo2 className="h-3 w-3 text-text-muted" aria-hidden />
-          Son işlemi geri al
+          Undo last action
         </button>
         <button
           type="button"
@@ -196,14 +196,14 @@ export function UndoResetBar({ setId, item, isReadOnly }: UndoResetBarProps) {
           className="flex h-control-sm items-center gap-1.5 rounded-md border border-border bg-transparent px-2 text-xs text-text transition-colors hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RotateCcw className="h-3 w-3 text-text-muted" aria-hidden />
-          Orijinale döndür
+          Revert to original
         </button>
       </div>
 
       {/* History listesi (info-only — tıklanmaz) */}
       <div className="mt-2 flex flex-col gap-1 overflow-y-auto">
         {historyRaw.length === 0 ? (
-          <p className="text-xs text-text-muted">Henüz düzenleme yok</p>
+          <p className="text-xs text-text-muted">No edits yet</p>
         ) : (
           <>
             {visibleHistory.map((entry, idx) => {
@@ -211,7 +211,7 @@ export function UndoResetBar({ setId, item, isReadOnly }: UndoResetBarProps) {
               const ratioSuffix = entry.params?.ratio
                 ? ` (${entry.params.ratio})`
                 : "";
-              const failedSuffix = entry.failed ? " — başarısız" : "";
+              const failedSuffix = entry.failed ? " — failed" : "";
               return (
                 <div
                   key={`${entry.at}-${idx}`}
@@ -236,7 +236,7 @@ export function UndoResetBar({ setId, item, isReadOnly }: UndoResetBarProps) {
             })}
             {hiddenCount > 0 ? (
               <p className="text-xs text-text-muted">
-                ... +{hiddenCount} eski işlem
+                … +{hiddenCount} older action{hiddenCount === 1 ? "" : "s"}
               </p>
             ) : null}
           </>

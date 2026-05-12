@@ -86,8 +86,8 @@ export function RightPanel({ setId, items, setStatus }: RightPanelProps) {
         }
         throw new Error(
           detail
-            ? `Durum güncellenemedi (${res.status}): ${detail}`
-            : `Durum güncellenemedi (${res.status})`,
+            ? `Failed to update status (${res.status}): ${detail}`
+            : `Failed to update status (${res.status})`,
         );
       }
       return (await res.json()) as { item: SelectionItemView };
@@ -104,10 +104,10 @@ export function RightPanel({ setId, items, setStatus }: RightPanelProps) {
       <Card className="flex flex-col overflow-hidden p-0">
         <div className="border-b border-border-subtle px-4 py-3">
           <div className="text-md font-semibold text-text">Edit</div>
-          <div className="mt-1 text-xs text-text-muted">Varyant seçilmedi</div>
+          <div className="mt-1 text-xs text-text-muted">No variant selected</div>
         </div>
         <div className="p-4 text-sm text-text-muted">
-          Filmstrip&apos;ten bir varyant seçin.
+          Pick a variant from the filmstrip.
         </div>
       </Card>
     );
@@ -133,9 +133,9 @@ export function RightPanel({ setId, items, setStatus }: RightPanelProps) {
 
   // Bottom action label + variant — toggle UX (yukarıdaki açıklama).
   const rejectLabel =
-    activeItem.status === "rejected" ? "Reddi geri al" : "Reddet";
+    activeItem.status === "rejected" ? "Undo reject" : "Reject";
   const selectLabel =
-    activeItem.status === "selected" ? "Seçimden çıkar" : "Seçime ekle";
+    activeItem.status === "selected" ? "Remove from selection" : "Add to selection";
   const rejectVariant =
     activeItem.status === "rejected" ? "primary" : "secondary";
   const selectVariant =
@@ -147,7 +147,7 @@ export function RightPanel({ setId, items, setStatus }: RightPanelProps) {
       <div className="border-b border-border-subtle px-4 py-3">
         <div className="text-md font-semibold text-text">Edit</div>
         <div className="mt-1 text-xs text-text-muted">
-          Varyant {variantNumber} düzenleniyor
+          Editing variant {variantNumber}
         </div>
       </div>
 

@@ -11,7 +11,7 @@
 //   - Multi-select item → ring class.
 //   - "+ Varyant ekle" → setStatus draft ise görünür; ready/archived'da gizli.
 //   - Read-only set: click yalnız preview, multi-select yok.
-//   - Filter sayacı: "Varyantlar (3 / 12)" partial filter durumu.
+//   - Filter sayacı: "Variants (3 / 12)" partial filter durumu.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -99,26 +99,26 @@ describe("Filmstrip — filter dropdown", () => {
     expect(buttons).toHaveLength(1);
   });
 
-  it("filter empty state → 'Reddedilen varyant yok'", () => {
+  it("filter empty state → 'No rejected variants'", () => {
     useStudioStore.setState({ filter: "rejected" });
     const items = [
       makeItem({ id: "i1", status: "pending" }),
       makeItem({ id: "i2", status: "selected" }),
     ];
     wrapper(<Filmstrip setId="set-1" items={items} setStatus="draft" />);
-    expect(screen.getByText(/reddedilen varyant yok/i)).toBeInTheDocument();
+    expect(screen.getByText(/no rejected variants/i)).toBeInTheDocument();
   });
 
-  it("filter sayacı: 'Aktif' → 'Varyantlar (3 / 4)'", () => {
+  it("filter sayacı: 'Aktif' → 'Variants (3 / 4)'", () => {
     useStudioStore.setState({ filter: "active" });
     wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
-    // "Varyantlar (3 / 4)" — partial filter durumu
-    expect(screen.getByText(/Varyantlar \(3 \/ 4\)/i)).toBeInTheDocument();
+    // "Variants (3 / 4)" — partial filter durumu
+    expect(screen.getByText(/Variants \(3 \/ 4\)/i)).toBeInTheDocument();
   });
 
-  it("filter 'Tümü' → 'Varyantlar (4)'", () => {
+  it("filter 'Tümü' → 'Variants (4)'", () => {
     wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
-    expect(screen.getByText(/Varyantlar \(4\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Variants \(4\)/i)).toBeInTheDocument();
   });
 
   it("dropdown change → store filter güncellenir", () => {
@@ -186,8 +186,8 @@ describe("Filmstrip — Shift+click range", () => {
 describe("Filmstrip — visual states", () => {
   it("selected item → checkmark badge görünür", () => {
     wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
-    // i2 selected → aria-label içinde "(seçili)"
-    const i2 = screen.getByRole("checkbox", { name: /\(seçili\)/i });
+    // i2 selected → aria-label içinde "(selected)"
+    const i2 = screen.getByRole("checkbox", { name: /\(selected\)/i });
     expect(i2).toBeInTheDocument();
   });
 
@@ -198,10 +198,10 @@ describe("Filmstrip — visual states", () => {
     expect(buttons[0]!.className).toMatch(/border-accent/);
   });
 
-  it("rejected item → opacity reduced + 'Reddedildi' badge", () => {
+  it("rejected item → opacity reduced + 'Rejected' aria-label", () => {
     wrapper(<Filmstrip setId="set-1" items={sampleItems()} setStatus="draft" />);
-    expect(screen.getByText(/^Reddedildi$/i)).toBeInTheDocument();
-    const i3 = screen.getByRole("checkbox", { name: /\(reddedildi\)/i });
+    expect(screen.getByText(/^Rejected$/i)).toBeInTheDocument();
+    const i3 = screen.getByRole("checkbox", { name: /\(rejected\)/i });
     expect(i3.className).toMatch(/opacity-/);
   });
 

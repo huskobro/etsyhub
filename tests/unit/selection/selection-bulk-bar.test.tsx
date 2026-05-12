@@ -75,12 +75,12 @@ describe("SelectionBulkBar — render gating", () => {
     expect(
       screen.getByRole("region", { name: /toplu aksiyon/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/3 varyant seçildi/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 variants selected/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /reddet \(3\)/i }),
+      screen.getByRole("button", { name: /reject \(3\)/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /seçime ekle \(3\)/i }),
+      screen.getByRole("button", { name: /add to selection \(3\)/i }),
     ).toBeInTheDocument();
   });
 });
@@ -90,22 +90,22 @@ describe("SelectionBulkBar — render gating", () => {
 // ────────────────────────────────────────────────────────────
 
 describe("SelectionBulkBar — filter-aware actions", () => {
-  it("filter='all' → 'Kalıcı çıkar' GÖRÜNMEZ", () => {
+  it("filter='all' → 'Permanently remove' GÖRÜNMEZ", () => {
     useStudioStore.setState({
       multiSelectIds: new Set(["i1"]),
       filter: "all",
     });
     wrapper(<SelectionBulkBar setId="set-1" isReadOnly={false} />);
-    expect(screen.queryByRole("button", { name: /kalıcı çıkar/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /permanently remove/i })).toBeNull();
   });
 
-  it("filter='active' → 'Kalıcı çıkar' GÖRÜNMEZ", () => {
+  it("filter='active' → 'Permanently remove' GÖRÜNMEZ", () => {
     useStudioStore.setState({
       multiSelectIds: new Set(["i1"]),
       filter: "active",
     });
     wrapper(<SelectionBulkBar setId="set-1" isReadOnly={false} />);
-    expect(screen.queryByRole("button", { name: /kalıcı çıkar/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /permanently remove/i })).toBeNull();
   });
 
   it("filter='rejected' → 'Kalıcı çıkar (N)' GÖRÜNÜR", () => {
@@ -115,7 +115,7 @@ describe("SelectionBulkBar — filter-aware actions", () => {
     });
     wrapper(<SelectionBulkBar setId="set-1" isReadOnly={false} />);
     expect(
-      screen.getByRole("button", { name: /kalıcı çıkar \(2\)/i }),
+      screen.getByRole("button", { name: /permanently remove \(2\)/i }),
     ).toBeInTheDocument();
   });
 });
@@ -125,7 +125,7 @@ describe("SelectionBulkBar — filter-aware actions", () => {
 // ────────────────────────────────────────────────────────────
 
 describe("SelectionBulkBar — bulk status mutation", () => {
-  it("'Reddet' click → PATCH /items/bulk { status: 'rejected' } + clearMultiSelect", async () => {
+  it("'Reject' click → PATCH /items/bulk { status: 'rejected' } + clearMultiSelect", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ updatedCount: 2 }), {
         status: 200,
@@ -139,7 +139,7 @@ describe("SelectionBulkBar — bulk status mutation", () => {
     });
     wrapper(<SelectionBulkBar setId="set-A" isReadOnly={false} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /reddet \(2\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reject \(2\)/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -157,7 +157,7 @@ describe("SelectionBulkBar — bulk status mutation", () => {
     });
   });
 
-  it("'Seçime ekle' click → PATCH /items/bulk { status: 'selected' }", async () => {
+  it("'Add to selection' click → PATCH /items/bulk { status: 'selected' }", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ updatedCount: 1 }), {
         status: 200,
@@ -171,7 +171,7 @@ describe("SelectionBulkBar — bulk status mutation", () => {
     });
     wrapper(<SelectionBulkBar setId="set-B" isReadOnly={false} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /seçime ekle \(1\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add to selection \(1\)/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -191,7 +191,7 @@ describe("SelectionBulkBar — bulk status mutation", () => {
 // ────────────────────────────────────────────────────────────
 
 describe("SelectionBulkBar — hard delete callback", () => {
-  it("filter='rejected' + 'Kalıcı çıkar' click → onHardDeleteRequest(itemIds)", () => {
+  it("filter='rejected' + 'Permanently remove' click → onHardDeleteRequest(itemIds)", () => {
     const onHardDeleteRequest = vi.fn();
     useStudioStore.setState({
       multiSelectIds: new Set(["i1", "i2"]),
@@ -205,7 +205,7 @@ describe("SelectionBulkBar — hard delete callback", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /kalıcı çıkar \(2\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /permanently remove \(2\)/i }));
 
     expect(onHardDeleteRequest).toHaveBeenCalledTimes(1);
     const ids = onHardDeleteRequest.mock.calls[0]![0] as string[];
@@ -220,7 +220,7 @@ describe("SelectionBulkBar — hard delete callback", () => {
       filter: "rejected",
     });
     wrapper(<SelectionBulkBar setId="set-1" isReadOnly={false} />);
-    const btn = screen.getByRole("button", { name: /kalıcı çıkar/i });
+    const btn = screen.getByRole("button", { name: /permanently remove/i });
     // Click crash etmemeli (callback opsiyonel)
     expect(() => fireEvent.click(btn)).not.toThrow();
   });
@@ -231,7 +231,7 @@ describe("SelectionBulkBar — hard delete callback", () => {
 // ────────────────────────────────────────────────────────────
 
 describe("SelectionBulkBar — pending state", () => {
-  it("mutation pending → 'Reddet' ve 'Seçime ekle' butonları disabled", async () => {
+  it("mutation pending → 'Reject' ve 'Add to selection' butonları disabled", async () => {
     let resolveFn: ((v: Response) => void) | undefined;
     const pending = new Promise<Response>((resolve) => {
       resolveFn = resolve;
@@ -244,14 +244,14 @@ describe("SelectionBulkBar — pending state", () => {
     });
     wrapper(<SelectionBulkBar setId="set-1" isReadOnly={false} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /seçime ekle \(2\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add to selection \(2\)/i }));
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /seçime ekle \(2\)/i }),
+        screen.getByRole("button", { name: /add to selection \(2\)/i }),
       ).toBeDisabled();
       expect(
-        screen.getByRole("button", { name: /reddet \(2\)/i }),
+        screen.getByRole("button", { name: /reject \(2\)/i }),
       ).toBeDisabled();
     });
 
@@ -277,7 +277,7 @@ describe("SelectionBulkBar — error state", () => {
     });
     wrapper(<SelectionBulkBar setId="set-1" isReadOnly={false} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /reddet \(1\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reject \(1\)/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();

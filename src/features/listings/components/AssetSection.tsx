@@ -38,7 +38,7 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
   return (
     <div className="mb-8">
       <h2 className="text-lg font-semibold mb-4 flex items-center justify-between">
-        <span>Görseller & Dosyalar</span>
+        <span>Images & Files</span>
         {allImagesReady && (
           <a
             href={`/api/listings/draft/${listing.id}/assets/download`}
@@ -46,7 +46,7 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
             className="inline-flex items-center gap-2 px-3 py-1 bg-accent text-white rounded text-sm hover:bg-accent/90 transition-colors"
           >
             <Download className="w-4 h-4" />
-            ZIP İndir
+            Download ZIP
           </a>
         )}
       </h2>
@@ -65,11 +65,11 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={coverImage.signedUrl}
-                    alt={`Kapak görseli (${coverImage.templateName})`}
+                    alt={`Cover image (${coverImage.templateName})`}
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span className="text-gray-400 text-xs">Görsel yok</span>
+                  <span className="text-gray-400 text-xs">No image</span>
                 )}
               </div>
               <div className="absolute top-2 left-2 bg-accent text-white px-2 py-1 rounded text-xs font-bold">
@@ -88,11 +88,11 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={img.signedUrl}
-                    alt={`Görsel ${img.packPosition + 1} (${img.templateName})`}
+                    alt={`Image ${img.packPosition + 1} (${img.templateName})`}
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span className="text-gray-400 text-xs">Görsel yok</span>
+                  <span className="text-gray-400 text-xs">No image</span>
                 )}
               </div>
               <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-2">
@@ -112,12 +112,12 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
         )}
         {allImagesReady && (
           <div className="px-3 py-1 bg-green-50 border border-green-200 text-green-700 rounded">
-            ✓ ZIP&apos;e hazır
+            ✓ Ready for ZIP
           </div>
         )}
         {!allImagesReady && (
           <div className="px-3 py-1 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded">
-            Tüm görseller yüklenmeyi bekliyor
+            Waiting for all images to upload
           </div>
         )}
       </div>

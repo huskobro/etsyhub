@@ -4,7 +4,7 @@
 //
 // Sözleşme:
 //   - open=false → modal DOM'da yok.
-//   - open=true → başlık "Set'i finalize et" + breakdown grid (selected /
+//   - open=true → başlık "Finalize selection" + breakdown grid (selected /
 //     pending / rejected) + 3 sayı + dürüst handoff açıklaması + İptal +
 //     "Finalize et" butonları.
 //   - Gate fail (selectedCount === 0) → uyarı mesajı görünür ("En az 1
@@ -102,7 +102,7 @@ describe("FinalizeModal — render gating", () => {
       />,
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByText(/set'i finalize et/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/finalize selection/i)).not.toBeInTheDocument();
   });
 
   it("open=true → başlık + breakdown grid (3 cell testid) + butonlar", () => {
@@ -122,7 +122,7 @@ describe("FinalizeModal — render gating", () => {
     );
     // Başlık (Dialog.Title)
     expect(
-      screen.getByRole("heading", { name: /set'i finalize et/i }),
+      screen.getByRole("heading", { name: /finalize selection/i }),
     ).toBeInTheDocument();
     // Breakdown cells (testid net ayrım — label kelimeleri açıklama
     // metninde de geçiyor, getByText ambigous olur).
@@ -136,9 +136,9 @@ describe("FinalizeModal — render gating", () => {
       screen.getByTestId("finalize-breakdown-rejected"),
     ).toBeInTheDocument();
     // Butonlar
-    expect(screen.getByRole("button", { name: /^İptal$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Cancel$/ })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /^Finalize et$/i }),
+      screen.getByRole("button", { name: /^Finalize$/i }),
     ).toBeInTheDocument();
   });
 });
@@ -165,11 +165,11 @@ describe("FinalizeModal — gate fail (0 selected)", () => {
     // kullanıcı eylemi sonucu bir hata değil; ön koşul mesajı).
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(
-      screen.getByText(/en az 1.*seçime ekle.*varyant gerekli/i),
+      screen.getByText(/at least 1 variant must be marked/i),
     ).toBeInTheDocument();
     // Finalize buton disabled
     expect(
-      screen.getByRole("button", { name: /^Finalize et$/i }),
+      screen.getByRole("button", { name: /^Finalize$/i }),
     ).toBeDisabled();
   });
 
@@ -179,7 +179,7 @@ describe("FinalizeModal — gate fail (0 selected)", () => {
     );
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /^Finalize et$/i }),
+      screen.getByRole("button", { name: /^Finalize$/i }),
     ).toBeDisabled();
   });
 });
@@ -200,10 +200,10 @@ describe("FinalizeModal — gate ok (1+ selected)", () => {
     );
     // Uyarı yok (gate fail role=status mesajı yok)
     expect(
-      screen.queryByText(/en az 1.*seçime ekle.*varyant gerekli/i),
+      screen.queryByText(/at least 1 variant must be marked/i),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /^Finalize et$/i }),
+      screen.getByRole("button", { name: /^Finalize$/i }),
     ).not.toBeDisabled();
   });
 });
@@ -274,7 +274,7 @@ describe("FinalizeModal — submit success", () => {
     );
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
-    fireEvent.click(screen.getByRole("button", { name: /^Finalize et$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Finalize$/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -316,13 +316,13 @@ describe("FinalizeModal — pending state", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /^Finalize et$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Finalize$/i }));
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /finalize ediliyor/i }),
+        screen.getByRole("button", { name: /finalizing/i }),
       ).toBeDisabled();
-      expect(screen.getByRole("button", { name: /^İptal$/ })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /^Cancel$/ })).toBeDisabled();
     });
 
     // Cleanup
@@ -364,7 +364,7 @@ describe("FinalizeModal — submit error", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /^Finalize et$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Finalize$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
@@ -394,7 +394,7 @@ describe("FinalizeModal — submit error", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /^Finalize et$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Finalize$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
@@ -417,7 +417,7 @@ describe("FinalizeModal — İptal button", () => {
         onOpenChange={onOpenChange}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /^İptal$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Cancel$/ }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
@@ -457,7 +457,7 @@ describe("FinalizeModal — modal reopens", () => {
     );
 
     // Hata oluştur
-    fireEvent.click(screen.getByRole("button", { name: /^Finalize et$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Finalize$/i }));
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });

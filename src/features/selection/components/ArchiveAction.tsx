@@ -119,7 +119,7 @@ export function ArchiveAction({ setId, setStatus }: ArchiveActionProps) {
         onClick={() => setMenuOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        aria-label="Set seçenekleri"
+        aria-label="Set options"
         className="grid h-control-md w-control-md place-items-center rounded-md border border-border bg-surface text-text-muted transition-colors duration-fast ease-out hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <MoreVertical className="h-4 w-4" aria-hidden />
@@ -128,7 +128,7 @@ export function ArchiveAction({ setId, setStatus }: ArchiveActionProps) {
       {menuOpen ? (
         <div
           role="menu"
-          aria-label="Set seçenekleri menüsü"
+          aria-label="Set options menu"
           className="absolute right-0 top-10 z-10 min-w-44 rounded-md border border-border bg-surface p-1 shadow-popover"
         >
           <button
@@ -142,7 +142,7 @@ export function ArchiveAction({ setId, setStatus }: ArchiveActionProps) {
             className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-text hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <Archive className="h-3.5 w-3.5 text-text-muted" aria-hidden />
-            <span>Set&apos;i arşivle</span>
+            <span>Archive set</span>
           </button>
         </div>
       ) : null}
@@ -155,18 +155,17 @@ export function ArchiveAction({ setId, setStatus }: ArchiveActionProps) {
             setErrorMessage(null);
           }
         }}
-        title="Set'i arşivle"
+        title="Archive set"
         description={
           <>
-            Bu set arşivlenecek.{" "}
-            <strong className="text-text">Cannot be undone</strong>
-            Arşivlenmiş set&apos;ler /selection ana sayfasında görünmez. Set
-            verisi silinmez — ileride archive yönetimi eklendiğinde
-            erişilebilir olur.
+            This set will be archived.{" "}
+            <strong className="text-text">Cannot be undone.</strong>{" "}
+            Archived sets are hidden from the main /selection list. The data
+            is preserved — it will be reachable once archive management ships.
           </>
         }
-        confirmLabel="Arşivle"
-        cancelLabel="İptal"
+        confirmLabel="Archive"
+        cancelLabel="Cancel"
         tone="warning"
         onConfirm={() => {
           // mutate() kullanıyoruz (mutateAsync yerine) — error handling

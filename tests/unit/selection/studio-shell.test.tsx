@@ -127,7 +127,7 @@ describe("StudioShell — error state", () => {
       error: new Error("internal boom xyz"),
     });
     wrapper(<StudioShell setId="set-1" />);
-    expect(screen.getByText(/set yüklenemedi/i)).toBeInTheDocument();
+    expect(screen.getByText(/set failed to load/i)).toBeInTheDocument();
   });
 
   it("data null + error null: shell yine error path'e düşer (defensive)", () => {
@@ -137,7 +137,7 @@ describe("StudioShell — error state", () => {
       error: null,
     });
     wrapper(<StudioShell setId="set-1" />);
-    expect(screen.getByText(/set yüklenemedi/i)).toBeInTheDocument();
+    expect(screen.getByText(/set failed to load/i)).toBeInTheDocument();
   });
 });
 
@@ -177,7 +177,7 @@ describe("StudioShell — draft set", () => {
     const finalizeBtn = screen.getByRole("button", {
       name: /finalize selection/i,
     });
-    const kebabBtn = screen.getByRole("button", { name: /set seçenekleri/i });
+    const kebabBtn = screen.getByRole("button", { name: /set options/i });
 
     expect(indirBtn).not.toBeDisabled();
     expect(finalizeBtn).not.toBeDisabled();
@@ -290,7 +290,7 @@ describe("StudioShell — ready / archived (read-only)", () => {
     expect(screen.getByText("Archived")).toBeInTheDocument();
     expect(screen.getByText(/selection finalized/i)).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /set seçenekleri/i }),
+      screen.queryByRole("button", { name: /set options/i }),
     ).not.toBeInTheDocument();
   });
 });
@@ -304,12 +304,12 @@ describe("StudioShell — üç bölgeli layout (Task 26 + Task 27)", () => {
     });
     wrapper(<StudioShell setId="set-1" />);
     // PreviewCard varyant badge'i
-    expect(screen.getByText(/Varyant 01 \/ 01/)).toBeInTheDocument();
+    expect(screen.getByText(/Variant 01 \/ 01/)).toBeInTheDocument();
     // Filmstrip counter
-    expect(screen.getByText(/Varyantlar \(1\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Variants \(1\)/)).toBeInTheDocument();
     // Sağ panel (Task 27 RightPanel) — Edit header + AI Kalite başlığı
-    expect(screen.getByText(/varyant 01 düzenleniyor/i)).toBeInTheDocument();
-    expect(screen.getByText("AI Kalite")).toBeInTheDocument();
+    expect(screen.getByText(/editing variant 01/i)).toBeInTheDocument();
+    expect(screen.getByText("AI quality")).toBeInTheDocument();
   });
 });
 

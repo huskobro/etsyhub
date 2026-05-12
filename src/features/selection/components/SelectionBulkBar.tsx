@@ -73,7 +73,7 @@ export function SelectionBulkBar({
         const message =
           typeof (body as { error?: unknown }).error === "string"
             ? (body as { error: string }).error
-            : `Bulk işlemi başarısız (${res.status})`;
+            : `Bulk action failed (${res.status})`;
         throw new Error(message);
       }
       return (await res.json()) as { updatedCount: number };
@@ -99,7 +99,7 @@ export function SelectionBulkBar({
     <>
       <BulkActionBar
         selectedCount={count}
-        label={`${count} varyant seçildi`}
+        label={`${count} variant${count === 1 ? "" : "s"} selected`}
         sticky
         onDismiss={clearMultiSelect}
         actions={
@@ -116,7 +116,7 @@ export function SelectionBulkBar({
               }
               disabled={isPending}
             >
-              Reddet ({count})
+              Reject ({count})
             </Button>
             <Button
               variant="primary"
@@ -130,7 +130,7 @@ export function SelectionBulkBar({
               }
               disabled={isPending}
             >
-              Seçime ekle ({count})
+              Add to selection ({count})
             </Button>
             {showHardDelete && (
               <Button
@@ -143,7 +143,7 @@ export function SelectionBulkBar({
                 disabled={isPending}
                 className="text-danger"
               >
-                Kalıcı çıkar ({count})
+                Permanently remove ({count})
               </Button>
             )}
           </div>

@@ -126,10 +126,10 @@ describe("<SubmitResultPanel>", () => {
   it("DRAFT (no warn): submit button enabled, banner yok", () => {
     renderWithProvider(<SubmitResultPanel listing={baseListing} />);
 
-    const btn = screen.getByRole("button", { name: /Taslak Gönder/i });
+    const btn = screen.getByRole("button", { name: /Submit draft/i });
     expect(btn).not.toHaveAttribute("disabled");
 
-    expect(screen.queryByText(/hazırlık kontrolleri eksik/i)).toBeNull();
+    expect(screen.queryByText(/readiness checks are missing/i)).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -152,9 +152,9 @@ describe("<SubmitResultPanel>", () => {
     renderWithProvider(<SubmitResultPanel listing={listing} />);
 
     expect(
-      screen.getByText(/Bazı hazırlık kontrolleri eksik/i),
+      screen.getByText(/Some readiness checks are missing/i),
     ).toBeInTheDocument();
-    const btn = screen.getByRole("button", { name: /Taslak Gönder/i });
+    const btn = screen.getByRole("button", { name: /Submit draft/i });
     expect(btn).not.toHaveAttribute("disabled");
   });
 
@@ -170,17 +170,17 @@ describe("<SubmitResultPanel>", () => {
 
     renderWithProvider(<SubmitResultPanel listing={listing} />);
 
-    expect(screen.getByText(/Etsy'ye gönderildi/i)).toBeInTheDocument();
+    expect(screen.getByText(/Sent to Etsy/i)).toBeInTheDocument();
     expect(screen.getByText(/EtsyHubStore/)).toBeInTheDocument();
     expect(screen.getByText("12345")).toBeInTheDocument();
 
-    const etsyLink = screen.getByRole("link", { name: /Etsy'de Aç/i });
+    const etsyLink = screen.getByRole("link", { name: /Open on Etsy/i });
     expect(etsyLink).toHaveAttribute(
       "href",
       "https://www.etsy.com/your/shops/me/tools/listings/12345",
     );
 
-    const shopLink = screen.getByRole("link", { name: /Mağazaya Git/i });
+    const shopLink = screen.getByRole("link", { name: /Go to shop/i });
     expect(shopLink).toHaveAttribute(
       "href",
       "https://www.etsy.com/shop/EtsyHubStore",
@@ -197,22 +197,22 @@ describe("<SubmitResultPanel>", () => {
 
     renderWithProvider(<SubmitResultPanel listing={listing} />);
 
-    expect(screen.getByText(/Etsy'ye gönderildi/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Etsy'de Aç/i })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Mağazaya Git/i })).toBeNull();
+    expect(screen.getByText(/Sent to Etsy/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open on Etsy/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Go to shop/i })).toBeNull();
   });
 
-  it("PUBLISHED + failedReason (partial): 'Not: ...' mesajı", () => {
+  it("PUBLISHED + failedReason (partial): 'Note: ...' message", () => {
     const listing: ListingDraftView = {
       ...baseListing,
       status: "PUBLISHED",
       etsyListingId: "12345",
-      failedReason: "Image upload kısmen başarısız: 2/3",
+      failedReason: "Image upload partially failed: 2/3",
     };
 
     renderWithProvider(<SubmitResultPanel listing={listing} />);
 
-    expect(screen.getByText(/Not: Image upload kısmen başarısız/)).toBeInTheDocument();
+    expect(screen.getByText(/Note: Image upload partially failed/)).toBeInTheDocument();
   });
 
   it("FAILED + failedReason: kırmızı banner + 'Yeniden DRAFT'a çevir' button + reset mutation çağrısı", () => {
@@ -228,11 +228,11 @@ describe("<SubmitResultPanel>", () => {
 
     renderWithProvider(<SubmitResultPanel listing={listing} />);
 
-    expect(screen.getByText(/Önceki gönderim başarısız/)).toBeInTheDocument();
+    expect(screen.getByText(/Previous submission failed/)).toBeInTheDocument();
     expect(screen.getByText(/taxonomy_id required/)).toBeInTheDocument();
 
     const resetBtn = screen.getByRole("button", {
-      name: /Yeniden DRAFT'a çevir/i,
+      name: /Reset to DRAFT/i,
     });
     fireEvent.click(resetBtn);
     expect(resetMock.mutate).toHaveBeenCalledTimes(1);
@@ -248,7 +248,7 @@ describe("<SubmitResultPanel>", () => {
 
     renderWithProvider(<SubmitResultPanel listing={listing} />);
 
-    const orphanLink = screen.getByRole("link", { name: /Etsy'de Orphan'ı Aç/i });
+    const orphanLink = screen.getByRole("link", { name: /Open orphan on Etsy/i });
     expect(orphanLink).toHaveAttribute(
       "href",
       "https://www.etsy.com/your/shops/me/tools/listings/L-ORPHAN-77777",
@@ -262,7 +262,7 @@ describe("<SubmitResultPanel>", () => {
 
     renderWithProvider(<SubmitResultPanel listing={baseListing} />);
 
-    const btn = screen.getByRole("button", { name: /Gönderiliyor…/i });
+    const btn = screen.getByRole("button", { name: /Submitting…/i });
     expect(btn).toHaveAttribute("disabled");
   });
 
@@ -314,17 +314,17 @@ describe("<SubmitResultPanel>", () => {
 
     renderWithProvider(<SubmitResultPanel listing={baseListing} />);
 
-    expect(screen.getByText(/Etsy taslağı oluşturuldu/i)).toBeInTheDocument();
+    expect(screen.getByText(/Etsy draft created/i)).toBeInTheDocument();
     expect(screen.getByText("9999")).toBeInTheDocument();
 
     // Diagnostics summary
     expect(
-      screen.getByText(/Görsel yükleme: 2\/3 başarılı/),
+      screen.getByText(/Image upload: 2\/3 succeeded/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/\(1 başarısız\)/)).toBeInTheDocument();
+    expect(screen.getByText(/\(1 failed\)/)).toBeInTheDocument();
 
     // Expand details
-    const toggleBtn = screen.getByRole("button", { name: /Detayı göster/i });
+    const toggleBtn = screen.getByRole("button", { name: /Show details/i });
     fireEvent.click(toggleBtn);
 
     // Detail entries appear (rank=1 cover ok, rank=2 fail, rank=3 ok)
@@ -333,14 +333,14 @@ describe("<SubmitResultPanel>", () => {
     expect(screen.getByText(/Etsy image ID: i-3/)).toBeInTheDocument();
 
     // Collapse
-    const collapseBtn = screen.getByRole("button", { name: /Detayı gizle/i });
+    const collapseBtn = screen.getByRole("button", { name: /Hide details/i });
     expect(collapseBtn).toBeInTheDocument();
 
     // Provider snapshot
     expect(screen.getByText(/Provider: etsy-api-v3@2026-05-03/)).toBeInTheDocument();
 
     // Etsy URL pattern
-    const etsyLink = screen.getByRole("link", { name: /Etsy'de Aç/i });
+    const etsyLink = screen.getByRole("link", { name: /Open on Etsy/i });
     expect(etsyLink).toHaveAttribute(
       "href",
       expect.stringMatching(
@@ -362,7 +362,7 @@ describe("<SubmitResultPanel>", () => {
     renderWithProvider(<SubmitResultPanel listing={baseListing} />);
 
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("Gönderme başarısız");
+    expect(alert.textContent).toContain("Submission failed");
     expect(alert.textContent).toContain("Etsy entegrasyonu yapılandırılmamış");
   });
 
@@ -384,6 +384,6 @@ describe("<SubmitResultPanel>", () => {
 
     renderWithProvider(<SubmitResultPanel listing={listing} />);
 
-    expect(screen.getByText(/Sıfırlama başarısız: Sunucu hatası/)).toBeInTheDocument();
+    expect(screen.getByText(/Reset failed: Sunucu hatası/)).toBeInTheDocument();
   });
 });

@@ -2,11 +2,11 @@
 //
 // Sözleşme (plan Task 37 + spec Section 1.2 + 4.3):
 //   - Trigger: kebap (MoreVertical) icon button, aria-haspopup="menu",
-//     aria-expanded başlangıç false, aria-label="Set seçenekleri".
-//   - Menü açılınca tek menuitem: "Set'i arşivle" (role="menuitem").
+//     aria-expanded başlangıç false, aria-label="Set options".
+//   - Menü açılınca tek menuitem: "Archive set" (role="menuitem").
 //   - Outside click → menu kapanır.
 //   - Escape key → menu kapanır + focus trigger'a döner.
-//   - Click "Set'i arşivle" → menu kapanır + ConfirmDialog açılır.
+//   - Click "Archive set" → menu kapanır + ConfirmDialog açılır.
 //   - ConfirmDialog confirm → POST /api/selection/sets/:setId/archive →
 //     query invalidate (set detail key) + router.push("/selection").
 //   - ConfirmDialog cancel → mutation tetiklenmez, modal kapanır.
@@ -63,7 +63,7 @@ describe("ArchiveAction — archived set", () => {
       <ArchiveAction setId="set-1" setStatus="archived" />,
     );
     expect(container.firstChild).toBeNull();
-    expect(screen.queryByRole("button", { name: /set seçenekleri/i }))
+    expect(screen.queryByRole("button", { name: /set options/i }))
       .not.toBeInTheDocument();
   });
 });
@@ -75,7 +75,7 @@ describe("ArchiveAction — archived set", () => {
 describe("ArchiveAction — trigger button", () => {
   it("draft set → kebap trigger render: aria-haspopup=menu, aria-expanded=false", () => {
     wrapper(<ArchiveAction setId="set-1" setStatus="draft" />);
-    const trigger = screen.getByRole("button", { name: /set seçenekleri/i });
+    const trigger = screen.getByRole("button", { name: /set options/i });
     expect(trigger).toBeInTheDocument();
     expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
@@ -86,19 +86,19 @@ describe("ArchiveAction — trigger button", () => {
   it("ready set → kebap trigger render (archived öncesi de erişim var)", () => {
     wrapper(<ArchiveAction setId="set-1" setStatus="ready" />);
     expect(
-      screen.getByRole("button", { name: /set seçenekleri/i }),
+      screen.getByRole("button", { name: /set options/i }),
     ).toBeInTheDocument();
   });
 
   it("trigger click → menu açılır + 'Set'i arşivle' menuitem render", () => {
     wrapper(<ArchiveAction setId="set-1" setStatus="draft" />);
-    const trigger = screen.getByRole("button", { name: /set seçenekleri/i });
+    const trigger = screen.getByRole("button", { name: /set options/i });
     fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("menu")).toBeInTheDocument();
     const items = screen.getAllByRole("menuitem");
     expect(items).toHaveLength(1);
-    expect(items[0]!).toHaveTextContent(/set'i arşivle/i);
+    expect(items[0]!).toHaveTextContent(/archive set/i);
   });
 });
 
@@ -114,7 +114,7 @@ describe("ArchiveAction — menu close", () => {
         <ArchiveAction setId="set-1" setStatus="draft" />
       </div>,
     );
-    const trigger = screen.getByRole("button", { name: /set seçenekleri/i });
+    const trigger = screen.getByRole("button", { name: /set options/i });
     fireEvent.click(trigger);
     expect(screen.getByRole("menu")).toBeInTheDocument();
 
@@ -124,7 +124,7 @@ describe("ArchiveAction — menu close", () => {
 
   it("Escape key → menu kapanır + focus trigger'a döner", () => {
     wrapper(<ArchiveAction setId="set-1" setStatus="draft" />);
-    const trigger = screen.getByRole("button", { name: /set seçenekleri/i });
+    const trigger = screen.getByRole("button", { name: /set options/i });
     fireEvent.click(trigger);
     expect(screen.getByRole("menu")).toBeInTheDocument();
 
@@ -141,25 +141,25 @@ describe("ArchiveAction — menu close", () => {
 describe("ArchiveAction — confirm dialog open", () => {
   it("'Set'i arşivle' click → menu kapanır + ConfirmDialog açılır", () => {
     wrapper(<ArchiveAction setId="set-1" setStatus="draft" />);
-    fireEvent.click(screen.getByRole("button", { name: /set seçenekleri/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /set'i arşivle/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set options/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /archive set/i }));
 
     // Menu kapandı
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     // ConfirmDialog açıldı — başlığı + iki buton
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText(/set'i arşivle/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^arşivle$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^İptal$/ })).toBeInTheDocument();
+    expect(screen.getByText(/archive set/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^archive$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Cancel$/ })).toBeInTheDocument();
   });
 
   it("ConfirmDialog cancel → modal kapanır + fetch tetiklenmez", () => {
     wrapper(<ArchiveAction setId="set-1" setStatus="draft" />);
-    fireEvent.click(screen.getByRole("button", { name: /set seçenekleri/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /set'i arşivle/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set options/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /archive set/i }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /^İptal$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Cancel$/ }));
     // Modal kapandı
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     // Mutation tetiklenmedi
@@ -181,9 +181,9 @@ describe("ArchiveAction — mutation success", () => {
     } as unknown as Response);
 
     wrapper(<ArchiveAction setId="set-1" setStatus="draft" />);
-    fireEvent.click(screen.getByRole("button", { name: /set seçenekleri/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /set'i arşivle/i }));
-    fireEvent.click(screen.getByRole("button", { name: /^arşivle$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set options/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /archive set/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^archive$/i }));
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
     const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!;
@@ -217,9 +217,9 @@ describe("ArchiveAction — mutation error", () => {
     } as unknown as Response);
 
     wrapper(<ArchiveAction setId="set-1" setStatus="ready" />);
-    fireEvent.click(screen.getByRole("button", { name: /set seçenekleri/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /set'i arşivle/i }));
-    fireEvent.click(screen.getByRole("button", { name: /^arşivle$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set options/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /archive set/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^archive$/i }));
 
     await waitFor(() => {
       const alert = screen.getByRole("alert");
@@ -242,9 +242,9 @@ describe("ArchiveAction — mutation error", () => {
     } as unknown as Response);
 
     wrapper(<ArchiveAction setId="set-1" setStatus="draft" />);
-    fireEvent.click(screen.getByRole("button", { name: /set seçenekleri/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /set'i arşivle/i }));
-    fireEvent.click(screen.getByRole("button", { name: /^arşivle$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set options/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /archive set/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^archive$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/HTTP 500/i);

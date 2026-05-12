@@ -31,7 +31,7 @@ export function ListingDraftView({ id }: { id: string }) {
         className="p-8 flex items-center justify-center"
       >
         <Loader2 className="w-6 h-6 animate-spin text-accent" />
-        <span className="ml-2">Listing yükleniyor…</span>
+        <span className="ml-2">Loading listing…</span>
       </div>
     );
   }
@@ -42,10 +42,10 @@ export function ListingDraftView({ id }: { id: string }) {
         <div role="alert" className="p-6 bg-red-50 border border-red-200 rounded-lg">
           <h1 className="text-xl font-bold text-red-800 mb-2 flex items-center gap-2">
             <AlertTriangle className="w-6 h-6" />
-            Listing yüklenemedi
+            Failed to load listing
           </h1>
           <p className="text-sm text-red-700">
-            {error instanceof Error ? error.message : "Bilinmeyen hata"}
+            {error instanceof Error ? error.message : "Unknown error"}
           </p>
         </div>
       </div>
@@ -56,10 +56,10 @@ export function ListingDraftView({ id }: { id: string }) {
     <main className="p-8 max-w-4xl mx-auto">
       <header className="mb-8">
         <h1 className="text-2xl font-bold">
-          Listing Taslağı: {listing.title || "(başlıksız)"}
+          Listing draft: {listing.title || "(untitled)"}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Status: {LISTING_STATUS_LABELS[listing.status]} • Oluşturuldu: {new Date(listing.createdAt).toLocaleDateString("tr")}
+          Status: {LISTING_STATUS_LABELS[listing.status]} • Created: {new Date(listing.createdAt).toLocaleDateString("en-US")}
         </p>
       </header>
 
@@ -68,7 +68,7 @@ export function ListingDraftView({ id }: { id: string }) {
 
       {/* Readiness Checklist (soft warn) */}
       <div className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">Hazırlık Kontrolleri</h2>
+        <h2 className="text-lg font-semibold mb-4">Readiness checks</h2>
         <div className="space-y-2">
           {listing.readiness.map((check) => (
             <div
@@ -90,7 +90,7 @@ export function ListingDraftView({ id }: { id: string }) {
                   <p className="font-medium text-sm">
                     {check.field.charAt(0).toUpperCase() + check.field.slice(1)}
                     <span className="sr-only">
-                      : {check.pass ? "geçti" : "uyarı"}
+                      : {check.pass ? "passed" : "warning"}
                     </span>
                   </p>
                   <p className="text-xs text-gray-700 mt-1">{check.message}</p>

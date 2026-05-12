@@ -5,7 +5,7 @@
 //
 // Sözleşme:
 //   - open=false → modal DOM'da yok.
-//   - open=true → başlık "Kalıcı çıkar" + N varyant açıklaması +
+//   - open=true → başlık "Permanently remove" + N varyant açıklaması +
 //     TypingConfirmation primitive (phrase="SİL") + İptal butonu.
 //   - Confirm disabled — yanlış input ("sil", "SIL" ASCII, " SİL " whitespace,
 //     boş) için confirm butonu disabled.
@@ -90,10 +90,10 @@ describe("BulkHardDeleteDialog — render gating", () => {
       />,
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByText(/kalıcı çıkar/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/permanently remove/i)).not.toBeInTheDocument();
   });
 
-  it("open=true → başlık 'Kalıcı çıkar' + N varyant açıklaması + TypingConfirmation input + İptal", () => {
+  it("open=true → başlık 'Permanently remove' + N varyant açıklaması + TypingConfirmation input + İptal", () => {
     wrap(
       <BulkHardDeleteDialog
         setId="set-1"
@@ -103,13 +103,13 @@ describe("BulkHardDeleteDialog — render gating", () => {
       />,
     );
     expect(
-      screen.getByRole("heading", { name: /kalıcı çıkar/i }),
+      screen.getByRole("heading", { name: /permanently remove/i }),
     ).toBeInTheDocument();
-    // count açıklaması "3 reddedilen varyant"
-    expect(screen.getByText(/3 reddedilen varyant/i)).toBeInTheDocument();
+    // count açıklaması "3 rejected variants"
+    expect(screen.getByText(/3 rejected variants/i)).toBeInTheDocument();
     expect(screen.getByTestId("typing-confirmation-input")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /^İptal$/ }),
+      screen.getByRole("button", { name: /^Cancel$/ }),
     ).toBeInTheDocument();
   });
 });
@@ -289,7 +289,7 @@ describe("BulkHardDeleteDialog — pending state", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("typing-confirmation-confirm")).toBeDisabled();
-      expect(screen.getByRole("button", { name: /^İptal$/ })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /^Cancel$/ })).toBeDisabled();
     });
 
     // Cleanup
@@ -389,7 +389,7 @@ describe("BulkHardDeleteDialog — İptal button", () => {
         onOpenChange={onOpenChange}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /^İptal$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Cancel$/ }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -416,7 +416,7 @@ describe("BulkHardDeleteDialog — İptal button", () => {
     fireEvent.click(screen.getByTestId("typing-confirmation-confirm"));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^İptal$/ })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /^Cancel$/ })).toBeDisabled();
     });
 
     resolveFn?.(

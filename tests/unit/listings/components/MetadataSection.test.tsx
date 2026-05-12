@@ -67,38 +67,38 @@ describe("MetadataSection", () => {
 
   it("renders title input with initial value", () => {
     render(<MetadataSection listing={mockListing} />);
-    const titleInput = screen.getByLabelText("Başlık");
+    const titleInput = screen.getByLabelText("Title");
     expect(titleInput).toHaveValue("Test Title");
   });
 
   it("renders description textarea with initial value", () => {
     render(<MetadataSection listing={mockListing} />);
-    const descInput = screen.getByLabelText("Açıklama");
+    const descInput = screen.getByLabelText("Description");
     expect(descInput).toHaveValue("Test Description");
   });
 
   it("renders tags input with comma-separated tags", () => {
     render(<MetadataSection listing={mockListing} />);
-    const tagsInput = screen.getByLabelText("Etiketler (maksimum 13)");
+    const tagsInput = screen.getByLabelText("Tags (max 13)");
     expect(tagsInput).toHaveValue("tag1, tag2");
   });
 
   it("shows tag count", () => {
     render(<MetadataSection listing={mockListing} />);
-    expect(screen.getByText(/2\/13 etiket/)).toBeInTheDocument();
+    expect(screen.getByText(/2\/13 tags/)).toBeInTheDocument();
   });
 
   it("disables Save button initially (no changes)", () => {
     render(<MetadataSection listing={mockListing} />);
-    const saveButton = screen.getByRole("button", { name: /Kaydet/i });
+    const saveButton = screen.getByRole("button", { name: /Save/i });
     expect(saveButton).toBeDisabled();
   });
 
   it("enables Save button when title changes", () => {
     render(<MetadataSection listing={mockListing} />);
-    const titleInput = screen.getByLabelText("Başlık") as HTMLInputElement;
+    const titleInput = screen.getByLabelText("Title") as HTMLInputElement;
     fireEvent.change(titleInput, { target: { value: "New Title" } });
-    const saveButton = screen.getByRole("button", { name: /Kaydet/i });
+    const saveButton = screen.getByRole("button", { name: /Save/i });
     expect(saveButton).not.toBeDisabled();
   });
 
@@ -110,9 +110,9 @@ describe("MetadataSection", () => {
     });
 
     render(<MetadataSection listing={mockListing} />);
-    const titleInput = screen.getByLabelText("Başlık") as HTMLInputElement;
+    const titleInput = screen.getByLabelText("Title") as HTMLInputElement;
     fireEvent.change(titleInput, { target: { value: "Updated Title" } });
-    const saveButtons = screen.getAllByRole("button", { name: /Kaydet/i });
+    const saveButtons = screen.getAllByRole("button", { name: /Save/i });
     const saveBtn = saveButtons[0];
     if (saveBtn) fireEvent.click(saveBtn);
 
@@ -131,7 +131,7 @@ describe("MetadataSection", () => {
     });
 
     render(<MetadataSection listing={mockListing} />);
-    expect(screen.getByText(/Kaydetme başarısız: Save failed/)).toBeInTheDocument();
+    expect(screen.getByText(/Save failed: Save failed/)).toBeInTheDocument();
   });
 
   it("shows pending state on Save button during mutation", () => {
@@ -142,9 +142,9 @@ describe("MetadataSection", () => {
     });
 
     render(<MetadataSection listing={mockListing} />);
-    const titleInput = screen.getByLabelText("Başlık");
+    const titleInput = screen.getByLabelText("Title");
     fireEvent.change(titleInput, { target: { value: "New Title" } });
-    const saveButtons = screen.getAllByRole("button", { name: /Kaydediliyor/i });
+    const saveButtons = screen.getAllByRole("button", { name: /Saving/i });
     expect(saveButtons[0]).toBeDisabled();
   });
 
@@ -154,7 +154,7 @@ describe("MetadataSection", () => {
 
   it("AI button enabled by default", () => {
     render(<MetadataSection listing={mockListing} />);
-    const aiButton = screen.getByRole("button", { name: /AI Oluştur/i });
+    const aiButton = screen.getByRole("button", { name: /Generate with AI/i });
     expect(aiButton).not.toBeDisabled();
   });
 
@@ -165,7 +165,7 @@ describe("MetadataSection", () => {
       mutate: aiMutate,
     });
     render(<MetadataSection listing={mockListing} />);
-    const aiButton = screen.getByRole("button", { name: /AI Oluştur/i });
+    const aiButton = screen.getByRole("button", { name: /Generate with AI/i });
     fireEvent.click(aiButton);
     expect(aiMutate).toHaveBeenCalled();
   });
@@ -177,7 +177,7 @@ describe("MetadataSection", () => {
       status: "pending",
     });
     render(<MetadataSection listing={mockListing} />);
-    const aiButton = screen.getByRole("button", { name: /Üretiliyor/i });
+    const aiButton = screen.getByRole("button", { name: /Generating/i });
     expect(aiButton).toBeDisabled();
   });
 
@@ -189,7 +189,7 @@ describe("MetadataSection", () => {
     });
     render(<MetadataSection listing={mockListing} />);
     expect(
-      screen.getByText(/AI üretim başarısız: AI servis hatası/),
+      screen.getByText(/AI generation failed: AI servis hatası/),
     ).toBeInTheDocument();
   });
 
@@ -205,8 +205,8 @@ describe("MetadataSection", () => {
       status: "error",
     });
     render(<MetadataSection listing={mockListing} />);
-    expect(screen.getByText(/AI üretim başarısız: AI servis hatası/)).toBeInTheDocument();
-    expect(screen.getByText(/Kaydetme başarısız: Save failed/)).toBeInTheDocument();
+    expect(screen.getByText(/AI generation failed: AI servis hatası/)).toBeInTheDocument();
+    expect(screen.getByText(/Save failed: Save failed/)).toBeInTheDocument();
   });
 
   it("AI isSuccess true → status mesajı görünür", () => {
@@ -222,7 +222,7 @@ describe("MetadataSection", () => {
     });
     render(<MetadataSection listing={mockListing} />);
     expect(
-      screen.getByText(/AI önerisi alanlara yazıldı/i),
+      screen.getByText(/AI suggestion applied to the form/i),
     ).toBeInTheDocument();
   });
 
@@ -252,11 +252,11 @@ describe("MetadataSection", () => {
     });
 
     render(<MetadataSection listing={mockListing} />);
-    fireEvent.click(screen.getByRole("button", { name: /AI Oluştur/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Generate with AI/i }));
 
-    expect(screen.getByLabelText("Başlık")).toHaveValue("AI New Title");
-    expect(screen.getByLabelText("Açıklama")).toHaveValue("AI Desc");
-    expect(screen.getByLabelText("Etiketler (maksimum 13)")).toHaveValue(
+    expect(screen.getByLabelText("Title")).toHaveValue("AI New Title");
+    expect(screen.getByLabelText("Description")).toHaveValue("AI Desc");
+    expect(screen.getByLabelText("Tags (max 13)")).toHaveValue(
       tags.join(", "),
     );
     // Auto-save guard: PATCH mutation NOT called

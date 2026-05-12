@@ -123,12 +123,12 @@ export function BulkHardDeleteDialog({
           }}
         >
           <Dialog.Title className="text-base font-semibold text-text">
-            Kalıcı çıkar
+            Permanently remove
           </Dialog.Title>
           <Dialog.Description className="mt-2 text-sm text-text-muted">
-            {count} reddedilen varyant set&apos;ten kalıcı olarak çıkarılacak.
-            Asset dosyaları korunur (başka set&apos;te kullanımda olabilir). Bu
-            işlem geri alınamaz.
+            {count} rejected variant{count === 1 ? "" : "s"} will be permanently
+            removed from this set. Asset files are preserved (they may still be
+            used by another set). This action cannot be undone.
           </Dialog.Description>
 
           <div className="mt-4">
@@ -139,7 +139,7 @@ export function BulkHardDeleteDialog({
             */}
             <TypingConfirmation
               phrase="SİL"
-              buttonLabel={`Kalıcı çıkar (${count})`}
+              buttonLabel={`Permanently remove (${count})`}
               isLoading={isPending}
               onConfirm={() => deleteMutation.mutate()}
             />
@@ -161,7 +161,7 @@ export function BulkHardDeleteDialog({
               disabled={isPending}
               className="inline-flex items-center justify-center rounded-md border border-border bg-surface-muted px-4 py-2 text-sm font-medium text-text hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-70"
             >
-              İptal
+              Cancel
             </button>
           </div>
         </Dialog.Content>

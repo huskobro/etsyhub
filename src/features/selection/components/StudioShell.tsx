@@ -258,7 +258,7 @@ function StudioShellLoading() {
   return (
     <div
       role="status"
-      aria-label="Set yükleniyor"
+      aria-label="Loading set"
       className="flex h-full flex-col gap-4"
     >
       <Skeleton className="h-12 w-full" />
@@ -278,8 +278,8 @@ function StudioShellError() {
     <Card>
       <StateMessage
         tone="error"
-        title="Set yüklenemedi"
-        body="Set bilgisi alınamadı veya bulunamadı. Sayfayı yenileyin ya da seçim listesine dönün."
+        title="Set failed to load"
+        body="The set data is unavailable or not found. Reload the page or return to the selection list."
       />
     </Card>
   );

@@ -40,14 +40,14 @@ export function SetSummaryCard({
   }[set.status];
 
   const statusLabel = {
-    draft: "Taslak",
-    ready: "Hazır",
-    archived: "Arşivlendi",
+    draft: "Draft",
+    ready: "Ready",
+    archived: "Archived",
   }[set.status];
 
   return (
     <section
-      aria-label="Set özeti"
+      aria-label="Set summary"
       className="rounded-md border border-border bg-surface-2 p-4"
     >
       <div className="space-y-3">
@@ -56,7 +56,7 @@ export function SetSummaryCard({
           <div className="space-y-1">
             <h2 className="text-sm font-semibold text-text">{set.name}</h2>
             <p className="text-xs text-text-muted">
-              Toplam {set.items.length} tasarım seçili
+              {set.items.length} design{set.items.length === 1 ? "" : "s"} selected
             </p>
           </div>
           <span
@@ -70,7 +70,7 @@ export function SetSummaryCard({
         <div className="border-t border-border pt-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-text-muted">
-              {isQuickPack ? "Quick Pack" : "Özel Seçim"}
+              {isQuickPack ? "Quick pack" : "Custom selection"}
             </span>
             <span className="text-sm font-medium text-text">
               {selectedCount} mockup

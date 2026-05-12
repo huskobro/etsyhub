@@ -1,7 +1,7 @@
 // Phase 8 Task 23 — S3ApplyView default render test.
 //
-// Spec §5.2 default Quick Pack senaryosu. T23 minimum coverage:
-// rozet "★ Quick Pack" görünür + CTA "Render et (Quick Pack)" enabled.
+// Spec §5.2 default Quick pack senaryosu. T23 minimum coverage:
+// rozet "★ Quick pack" görünür + CTA "Render et (Quick pack)" enabled.
 // 9-state coverage Task 25'e ait.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -130,18 +130,18 @@ describe("<S3ApplyView>", () => {
     vi.clearAllMocks();
   });
 
-  it("default render: Quick Pack rozet + CTA enabled", () => {
+  it("default render: Quick pack rozet + CTA enabled", () => {
     render(<S3ApplyView setId="test-set" />, { wrapper });
 
-    // Quick Pack rozet görünür
-    expect(screen.getByTestId("pack-badge")).toHaveTextContent(/Quick Pack/);
+    // Quick pack rozet görünür
+    expect(screen.getByTestId("pack-badge")).toHaveTextContent(/Quick pack/);
 
     // CTA enabled (default render senaryosu)
-    const cta = screen.getByRole("button", { name: /Render et/ });
+    const cta = screen.getByRole("button", { name: /Render/ });
     expect(cta).toBeEnabled();
 
     // Seçili görsel sayısı gösterilir
-    expect(screen.getByText(/2 görsel üretilecek/)).toBeInTheDocument();
+    expect(screen.getByText(/2 images to render/)).toBeInTheDocument();
   });
 
   it("renders SetSummaryCard with set info", () => {
@@ -149,13 +149,13 @@ describe("<S3ApplyView>", () => {
 
     // SetSummaryCard heading'i
     expect(screen.getByRole("heading")).toHaveTextContent("Test Set");
-    expect(screen.getByText(/2 tasarım seçili/)).toBeInTheDocument();
+    expect(screen.getByText(/2 designs selected/)).toBeInTheDocument();
   });
 
   it("renders PackPreviewCard with selected templates", () => {
     render(<S3ApplyView setId="test-set" />, { wrapper });
 
-    expect(screen.getByText(/2 görsel üretilecek/)).toBeInTheDocument();
+    expect(screen.getByText(/2 images to render/)).toBeInTheDocument();
     expect(screen.getByText("Modern Sofa Wall")).toBeInTheDocument();
     expect(screen.getByText("Boho Canvas")).toBeInTheDocument();
   });
@@ -163,7 +163,7 @@ describe("<S3ApplyView>", () => {
   it("renders DecisionBand with submit button", () => {
     render(<S3ApplyView setId="test-set" />, { wrapper });
 
-    const button = screen.getByRole("button", { name: /Render et/ });
+    const button = screen.getByRole("button", { name: /Render/ });
     expect(button).toBeInTheDocument();
     expect(button).toBeEnabled();
   });

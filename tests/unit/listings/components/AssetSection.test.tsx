@@ -54,7 +54,7 @@ const mockListing: ListingDraftView = {
 describe("AssetSection", () => {
   it("renders cover image with orange border", () => {
     render(<AssetSection listing={mockListing} />);
-    const coverImg = screen.getByAltText(/Kapak görseli/);
+    const coverImg = screen.getByAltText(/Cover image/);
     expect(coverImg).toBeInTheDocument();
     expect(coverImg.closest("div")).toHaveClass("border-accent");
   });
@@ -72,7 +72,7 @@ describe("AssetSection", () => {
 
   it("shows ZIP download link when all images ready", () => {
     render(<AssetSection listing={mockListing} />);
-    const zipLink = screen.getByRole("link", { name: /ZIP İndir/i });
+    const zipLink = screen.getByRole("link", { name: /Download ZIP/i });
     expect(zipLink).toBeInTheDocument();
     expect(zipLink).toHaveAttribute("href", `/api/listings/draft/${mockListing.id}/assets/download`);
   });
@@ -85,7 +85,7 @@ describe("AssetSection", () => {
       ),
     };
     render(<AssetSection listing={listingWithoutCoverOutput} />);
-    expect(screen.queryByRole("link", { name: /ZIP İndir/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Download ZIP/i })).not.toBeInTheDocument();
   });
 
   it("shows mockup count badge", () => {
@@ -95,7 +95,7 @@ describe("AssetSection", () => {
 
   it("shows ZIP ready indicator", () => {
     render(<AssetSection listing={mockListing} />);
-    expect(screen.getByText("✓ ZIP'e hazır")).toBeInTheDocument();
+    expect(screen.getByText("✓ Ready for ZIP")).toBeInTheDocument();
   });
 
   it("shows waiting indicator when not all images ready", () => {
@@ -106,6 +106,6 @@ describe("AssetSection", () => {
       ),
     };
     render(<AssetSection listing={listingNotReady} />);
-    expect(screen.getByText("Tüm görseller yüklenmeyi bekliyor")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for all images to upload")).toBeInTheDocument();
   });
 });

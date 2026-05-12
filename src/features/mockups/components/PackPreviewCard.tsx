@@ -60,26 +60,26 @@ export function PackPreviewCard({
 
   return (
     <section
-      aria-label="Pack önizleme"
+      aria-label="Pack preview"
       className="space-y-4 rounded-md border border-border p-4"
     >
-      {/* Header: Pack türü + sayı */}
+      {/* Header: pack type + count */}
       <div className="flex items-center gap-2">
         <span
           data-testid="pack-badge"
           className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900"
         >
-          {isQuickPack ? "★ Quick Pack" : "Custom Pack"}
+          {isQuickPack ? "★ Quick pack" : "Custom pack"}
         </span>
         <span className="text-sm text-text">
-          • {selectedTemplateIds.length} görsel üretilecek
+          • {selectedTemplateIds.length} image{selectedTemplateIds.length === 1 ? "" : "s"} to render
         </span>
         {isDirty && (
           <span
             className="ml-auto inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700"
-            title="Varsayılan Quick Pack ayarlarından farklı"
+            title="Different from the default Quick pack"
           >
-            Özelleştirildi
+            Customized
           </span>
         )}
       </div>

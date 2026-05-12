@@ -74,7 +74,7 @@ describe("<PackPreviewCard>", () => {
 
   it("displays Quick Pack badge", () => {
     render(<PackPreviewCard {...defaultProps} />);
-    expect(screen.getByTestId("pack-badge")).toHaveTextContent(/Quick Pack/);
+    expect(screen.getByTestId("pack-badge")).toHaveTextContent(/Quick pack/);
   });
 
   it("displays Custom Pack badge", () => {
@@ -84,12 +84,12 @@ describe("<PackPreviewCard>", () => {
         isQuickPack={false}
       />
     );
-    expect(screen.getByTestId("pack-badge")).toHaveTextContent(/Custom Pack/);
+    expect(screen.getByTestId("pack-badge")).toHaveTextContent(/Custom pack/);
   });
 
   it("shows selected template count", () => {
     render(<PackPreviewCard {...defaultProps} />);
-    expect(screen.getByText(/2 görsel üretilecek/)).toBeInTheDocument();
+    expect(screen.getByText(/2 images to render/)).toBeInTheDocument();
   });
 
   it("shows customized badge when isDirty", () => {
@@ -99,7 +99,7 @@ describe("<PackPreviewCard>", () => {
         isDirty={true}
       />
     );
-    expect(screen.getByText("Özelleştirildi")).toBeInTheDocument();
+    expect(screen.getByText("Customized")).toBeInTheDocument();
   });
 
   it("displays empty state when no templates selected", () => {
