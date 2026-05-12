@@ -17,8 +17,9 @@ export default async function Page() {
 
   const [productTypes, counts, collections] = await Promise.all([
     db.productType.findMany({
+      where: { isSystem: true },
       orderBy: { displayName: "asc" },
-      select: { id: true, displayName: true },
+      select: { id: true, displayName: true, key: true },
     }),
     getReferencesSubViewCounts(session.user.id),
     db.collection.findMany({

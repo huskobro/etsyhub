@@ -41,8 +41,23 @@ import { cn } from "@/lib/cn";
 
 type TabId = "url" | "upload" | "bookmark";
 
-type ProductTypeOption = { id: string; displayName: string };
+type ProductTypeOption = { id: string; displayName: string; key?: string };
 type CollectionOption = { id: string; name: string };
+
+/**
+ * Canonical digital-download product type keys (CLAUDE.md scope sözleşmesi:
+ * "yalnızca dijital indirilebilir ürünler"). Bu set DS B5 mock'undaki
+ * 5 canonical chip'in app karşılığı. Seed'deki `tshirt`, `hoodie`, `dtf`
+ * physical POD scope dışı; intake'te gösterilmez. Test fixture / admin
+ * custom types (`isSystem: false`) server-level filter ile zaten elenir.
+ */
+const CANONICAL_PRODUCT_TYPE_KEYS = [
+  "clipart",
+  "wall_art",
+  "printable",
+  "sticker",
+  "canvas",
+] as const;
 
 type BookmarkLite = {
   id: string;
@@ -82,7 +97,14 @@ function detectSourceFromUrl(raw: string): SourceHint | null {
     host.includes("creativefabrica.com") ||
     host.includes("creativefabrica.")
   ) {
-    return { platform: "CREATIVE_FABRICA", label: "Looks like Creative Fabrica" };
+    // Creative Fabrica product pages aren't direct images. Server-side
+    // resolver fetches the page's main asset on fetch. Confidence tone
+    // ink-2 (lower than Etsy/Pinterest CDN-direct) to set honest
+    // expectation.
+    return {
+      platform: "CREATIVE_FABRICA",
+      label: "Creative Fabrica page · we'll fetch the main image",
+    };
   }
   // Direct image URL: extension-based hint
   if (/\.(png|jpe?g|webp|gif)(\?|$)/i.test(trimmed)) {
@@ -116,10 +138,57 @@ export function AddReferenceDialog({
 }) {
   const qc = useQueryClient();
   const [tab, setTab] = useState<TabId>(defaultTab);
-  const [productTypeId, setProductTypeId] = useState<string>(
-    productTypes[0]?.id ?? "",
-  );
+
+  /* Phase 27 — Product type display IA.
+   *   v5 B5 mock 5 canonical chip gösteriyor. Bizim app'te seed +
+   *   admin custom types karışık (Phase 26'da 36 chip kaos). Server
+   *   already `isSystem: true` filter ekliyor; client tarafında
+   *   canonical-key whitelist ile core types öne çıkarılır, kalan
+   *   "More types…" disclosure'unda kalır (operatör hâlâ erişebilir,
+   *   ama default scan kaosu kalkar). */
+  const { canonical: canonicalTypes, more: moreTypes } = useMemo(() => {
+    const canonical: ProductTypeOption[] = [];
+    const more: ProductTypeOption[] = [];
+    for (const pt of productTypes) {
+      if (pt.key && (CANONICAL_PRODUCT_TYPE_KEYS as readonly string[]).includes(pt.key)) {
+        canonical.push(pt);
+      } else {
+        more.push(pt);
+      }
+    }
+    canonical.sort((a, b) => {
+      const ai = (CANONICAL_PRODUCT_TYPE_KEYS as readonly string[]).indexOf(
+        a.key ?? "",
+      );
+      const bi = (CANONICAL_PRODUCT_TYPE_KEYS as readonly string[]).indexOf(
+        b.key ?? "",
+      );
+      return ai - bi;
+    });
+    return { canonical, more };
+  }, [productTypes]);
+
+  // Default: canonical "wall_art" if exists (DS B5 "Defaults to your last
+  // used type · Wall art"), else first canonical, else first overall.
+  const defaultProductTypeId = useMemo(() => {
+    const wallArt = canonicalTypes.find((p) => p.key === "wall_art");
+    if (wallArt) return wallArt.id;
+    if (canonicalTypes[0]) return canonicalTypes[0].id;
+    return productTypes[0]?.id ?? "";
+  }, [canonicalTypes, productTypes]);
+
+  const [productTypeId, setProductTypeId] = useState<string>(defaultProductTypeId);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [collectionId, setCollectionId] = useState<string | null>(null);
+
+  // Re-sync default if productTypes change (page-level prop change rare,
+  // but covers HMR / re-mount with different data).
+  useEffect(() => {
+    if (!productTypeId && defaultProductTypeId) {
+      setProductTypeId(defaultProductTypeId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultProductTypeId]);
 
   // URL tab state
   const [url, setUrl] = useState("");
@@ -483,14 +552,14 @@ export function AddReferenceDialog({
       onClick={onBackdropClick}
     >
       <div
-        className="flex h-[min(720px,90vh)] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-line bg-paper shadow-popover"
+        className="flex h-[min(720px,90vh)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-line bg-paper shadow-popover"
         data-testid="add-reference-dialog"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-line bg-paper px-5 py-4">
+        {/* Header — Phase 27: rounded-xl + px-6 py-4 (DS B5 spacing). */}
+        <div className="flex items-center justify-between border-b border-line bg-paper px-6 py-4">
           <h2
             id="add-reference-dialog-title"
-            className="text-[15px] font-semibold text-ink"
+            className="text-[16px] font-semibold text-ink"
           >
             Add Reference
           </h2>
@@ -504,9 +573,11 @@ export function AddReferenceDialog({
           </button>
         </div>
 
-        {/* Tabs (DS sibling segment) */}
-        <div className="border-b border-line-soft bg-paper px-5 pt-3">
-          <div className="flex items-center gap-1.5">
+        {/* Tabs — Phase 27: DS B5 SiblingTabs recipe (k-stabs/k-stab,
+         *   tokens.css:310-312). Phase 26'da k-chip kullanılmıştı; DS
+         *   canonical k-stab segmented-pill container. */}
+        <div className="border-b border-line-soft bg-paper px-6 pt-4 pb-3">
+          <div className="k-stabs">
             {(
               [
                 { id: "url", label: "Image URL" },
@@ -520,30 +591,25 @@ export function AddReferenceDialog({
                 onClick={() => setTab(t.id)}
                 aria-pressed={tab === t.id}
                 className={cn(
-                  "k-chip",
-                  tab === t.id && "k-chip--active",
+                  "k-stab",
+                  tab === t.id && "k-stab--active",
                 )}
                 data-testid={`add-ref-tab-${t.id}`}
               >
                 {t.label}
                 {t.id === "bookmark" && bookmarkCount > 0 ? (
-                  <span className="ml-1 font-mono text-[10.5px] tabular-nums">
-                    · {bookmarkCount}
-                  </span>
+                  <span className="k-stab__count">{bookmarkCount}</span>
                 ) : null}
                 {t.id === "upload" && uploadCount > 0 ? (
-                  <span className="ml-1 font-mono text-[10.5px] tabular-nums">
-                    · {uploadCount}
-                  </span>
+                  <span className="k-stab__count">{uploadCount}</span>
                 ) : null}
               </button>
             ))}
           </div>
-          <div className="h-3" />
         </div>
 
-        {/* Body (scroll) */}
-        <div className="flex-1 overflow-y-auto bg-paper px-5 py-4">
+        {/* Body (scroll) — Phase 27: DS B5 px-6 py-6 spacing */}
+        <div className="flex-1 overflow-y-auto bg-paper px-6 py-5">
           {tab === "url" ? (
             <UrlTab
               ref={urlInputRef}
@@ -590,18 +656,38 @@ export function AddReferenceDialog({
           ) : null}
         </div>
 
-        {/* Always-visible product type + collection (DS B5 pattern) */}
-        <div className="border-t border-line-soft bg-paper px-5 py-3">
+        {/* Always-visible product type + collection (DS B5 pattern).
+         *
+         * Phase 27 — product type IA cleanup:
+         *   - Canonical digital download types öne çıkar (DS B5 5-chip mock
+         *     hissi); seed test fixture'lar `isSystem: true` server filter
+         *     ile zaten elendi
+         *   - Kalan system types collapsible "More types" disclosure'da
+         *     (operatör erişebilir ama kaos görmez)
+         *   - Default: wall_art (DS "Defaults to your last used type · Wall
+         *     art" niyetinin sadeleştirilmiş hali)
+         *   - From Bookmark tab'ında `Collection (optional)` saklanır:
+         *     promote endpoint'i bookmark'ın kendi collection'ını **change
+         *     etmez**, reference'a yeni bir override yazar; bu bookmark
+         *     tab'ında "bu collection neyi etkiliyor?" karışıklığı yaratır.
+         *     URL/Upload tab'larında yeni bookmark oluştuğu için anlamlı,
+         *     bookmark tab'ında hide ediyoruz. */}
+        <div className="border-t border-line-soft bg-paper px-6 py-4">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
-              <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-                Product type
-              </span>
+              <div className="flex items-baseline justify-between">
+                <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+                  Product type
+                </span>
+                <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
+                  Defaults to Wall art
+                </span>
+              </div>
               <div
                 className="flex flex-wrap gap-1.5"
                 data-testid="add-ref-product-types"
               >
-                {productTypes.map((pt) => (
+                {canonicalTypes.map((pt) => (
                   <button
                     key={pt.id}
                     type="button"
@@ -615,9 +701,39 @@ export function AddReferenceDialog({
                     {pt.displayName}
                   </button>
                 ))}
+                {moreTypes.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setMoreOpen((v) => !v)}
+                    className="k-chip"
+                    aria-expanded={moreOpen}
+                    data-testid="add-ref-more-types-toggle"
+                  >
+                    {moreOpen ? "Hide more" : `More types · ${moreTypes.length}`}
+                  </button>
+                ) : null}
               </div>
+              {moreOpen && moreTypes.length > 0 ? (
+                <div className="mt-1.5 flex flex-wrap gap-1.5 rounded-md bg-k-bg-2/40 p-2">
+                  {moreTypes.map((pt) => (
+                    <button
+                      key={pt.id}
+                      type="button"
+                      onClick={() => setProductTypeId(pt.id)}
+                      aria-pressed={productTypeId === pt.id}
+                      className={cn(
+                        "k-chip",
+                        productTypeId === pt.id && "k-chip--active",
+                      )}
+                    >
+                      {pt.displayName}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
-            {collections && collections.length > 0 ? (
+            {/* Collection: bookmark tab'ında saklanır (yukarıdaki yorum) */}
+            {tab !== "bookmark" && collections && collections.length > 0 ? (
               <div className="flex flex-col gap-1.5">
                 <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
                   Collection (optional)
@@ -628,6 +744,7 @@ export function AddReferenceDialog({
                     setCollectionId(e.target.value || null)
                   }
                   className="k-input max-w-xs"
+                  data-testid="add-ref-collection-select"
                 >
                   <option value="">None</option>
                   {collections.map((c) => (
@@ -641,8 +758,8 @@ export function AddReferenceDialog({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-line bg-paper px-5 py-3">
+        {/* Footer — Phase 27: px-6 py-3.5 DS B5 spacing. */}
+        <div className="flex items-center justify-end gap-2 border-t border-line bg-paper px-6 py-3.5">
           <button
             type="button"
             data-size="sm"
@@ -735,24 +852,34 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
             />
           </div>
           {sourceHint ? (
+            /* Phase 27 — Source detection confidence tone:
+             *   - Etsy / Pinterest: known image-cdn hosts (etsystatic /
+             *     pinimg) → high confidence (success/danger tone)
+             *   - Creative Fabrica: product page detection; gerçek görsel
+             *     URL'i server resolve eder. Daha düşük confidence —
+             *     ink-2 + "page" ifadesi operatöre dürüst signal verir
+             *   - Direct image: extension match (.png/.jpg) → ink-2
+             *   - Other: ink-3 + "resolved on fetch" honest fallback */
             <span
               className={cn(
-                "font-mono text-[10.5px] tracking-wider",
+                "inline-flex items-center gap-1 font-mono text-[10.5px] tracking-wider",
                 sourceHint.platform === "ETSY" && "text-success",
                 sourceHint.platform === "PINTEREST" && "text-danger",
-                sourceHint.platform === "CREATIVE_FABRICA" && "text-k-orange",
+                sourceHint.platform === "CREATIVE_FABRICA" && "text-ink-2",
                 sourceHint.platform === "DIRECT" && "text-ink-2",
                 sourceHint.platform === "OTHER" && "text-ink-3",
               )}
               data-testid="add-ref-source-hint"
             >
-              ✓ {sourceHint.label}
+              {sourceHint.platform === "OTHER" ? null : (
+                <span aria-hidden>✓</span>
+              )}
+              {sourceHint.label}
             </span>
           ) : (
             <span className="text-[12px] text-ink-3">
-              Paste an image URL from Etsy, Pinterest, Creative Fabrica or a
-              direct image link. We&apos;ll fetch the image and preview it
-              before saving.
+              Paste an image URL from Etsy, Pinterest, Creative Fabrica or
+              a direct image link.
             </span>
           )}
         </label>

@@ -5674,6 +5674,161 @@ endpoint) **ayrı bir backend turu**, References family UI işi değil.
 
 ---
 
+## Phase 27 — AddReferenceDialog visual + IA polish (B5 parity)
+
+Phase 26 modal'ı canonical hâle getirdi ama görsel olarak hâlâ DS B5
+ile tam oturmuyordu. Üç kritik sorun:
+
+1. **Product type 36-chip kaos** — test fixture + admin custom types
+   modal'a sızıyordu (operatör görüntüsü "kullanılamaz")
+2. **Collection alanı From Bookmark tab'ında IA conflict** — "bu
+   collection neyi etkiliyor?" karışıklığı
+3. **Modal tonu k-chip tab'lar + dar width + sıkı spacing** —
+   "çok app-modal" hissi, "Kivasy intake surface" değildi
+
+### Honest gap (Phase 26 → DS B5)
+
+| Aspect | DS B5 | Phase 26 | Phase 27 |
+|---|---|---|---|
+| Modal width | k-modal split (~1100px) | max-w-2xl ~672px | max-w-3xl ~768px (compact intake door, DS niyetine yakın) |
+| Tab strip | SiblingTabs k-stab | k-chip rectangular | **k-stabs / k-stab segmented pill container** |
+| Header spacing | px-6 py-4 | px-5 py-4 | px-6 py-4 ✓ |
+| Header title | 16px | 15px | 16px ✓ |
+| Body padding | px-6 py-6 | px-5 py-4 | px-6 py-5 (compact yet cömert) |
+| Footer | px-6 py-4 | px-5 py-3 | px-6 py-3.5 |
+| Product types | **5 canonical chip** (digital download) | 36 chip kaos (seed test fixture+ admin custom) | **5 canonical chip + "More types · N" toggle** disclosure |
+| Default selected | "Wall art" caption hint | First alphabetical (Canvas) | **Wall Art** (DS B5 default) |
+| Sub-caption | "Defaults to your last used type · Wall art" | yok | "Defaults to Wall art" |
+| Collection (URL/Upload) | optional chip | `<select>` ✓ | same `<select>` |
+| Collection (From Bookmark) | optional chip | `<select>` (IA conflict) | **hidden** (bookmark tab'ında promote endpoint kullanıcı override için yeni override yazar; bookmark tab'ında bu kafa karıştırıcıydı) |
+| Tab count badge | yok | "From Bookmark · 2" inline mono | **k-stab__count** recipe (DS canonical badge) |
+
+### Düzeltmeler
+
+**Product type IA cleanup** (en kritik):
+
+1. **Server-level filter** — `db.productType.findMany` artık `where: { isSystem: true }` ekler. Admin custom types (`isSystem: false`), test fixture'lar (`"PT-${key}"`, `"API Finalize Wall Art"`, `"phase7-qs-pt-keyonly"`, vb. hepsi `isSystem: false`) modal'a hiç gelmez.
+
+2. **Client-level canonical whitelist** — `CANONICAL_PRODUCT_TYPE_KEYS = ["clipart", "wall_art", "printable", "sticker", "canvas"]` (CLAUDE.md scope sözleşmesi: "yalnızca dijital indirilebilir ürünler"). Seed'deki `tshirt`, `hoodie`, `dtf` physical POD scope dışı; whitelist'e alınmaz.
+
+3. **Two-tier display**:
+   - **Canonical chips always-visible** (5 chip — DS B5 mock'una bire bir)
+   - **"More types · 3" toggle** (kalan `tshirt`, `hoodie`, `dtf` collapsible disclosure'a saklı; operatör erişebilir ama kaos görmez)
+
+4. **Default selection** — "wall_art" key bulunursa active; yoksa canonical[0]; yoksa first overall. DS B5 "Defaults to your last used type · Wall art" niyetinin app karşılığı.
+
+**Collection IA cleanup** — bookmark tab'ında saklandı:
+
+```tsx
+{tab !== "bookmark" && collections?.length > 0 ? <CollectionSelect/> : null}
+```
+
+Rationale: `/api/references/promote` endpoint `collectionId` parametresi
+verilirse bookmark'ın **mevcut collection'ını korur**, reference'a
+**yeni bir override** yazar. Bookmark tab'ında bu mantığı operatöre
+anlatmak için ek caption gerekirdi (UI gürültü). URL/Upload yolunda
+yeni bookmark + reference doğuyor — collection alanı doğal anlam taşır.
+Bookmark tab'ında collection field'ı saklayıp operator-confusion riskini
+sıfıra indirdik.
+
+**Tab strip k-stabs migration**:
+
+Phase 26 k-chip rectangular buttons → Phase 27 `k-stabs` segmented pill
+container + `k-stab` / `k-stab--active` recipe (`tokens.css:310-312`).
+Sayım badge'i: inline mono span → `k-stab__count` recipe (`globals.css:535`).
+DS B5 SiblingTabs ile birebir aynı görsel.
+
+**Creative Fabrica confidence tone**:
+
+Phase 26'da Creative Fabrica `text-k-orange` (Kivasy primary) + "Looks
+like Creative Fabrica" yazıyordu. Yanıltıcı — Creative Fabrica URL'leri
+**product page** (not direct image CDN). Server-side resolver gerçek
+asset URL'ini fetch'ler.
+
+Phase 27 honest signal:
+- Tone: `text-ink-2` (Etsy/Pinterest gibi yüksek confidence success/danger değil — orta confidence neutral)
+- Copy: "Creative Fabrica page · we'll fetch the main image"
+- Check icon: ✓ kalır (URL pattern tanındı), ama tone operatöre dürüst sinyal verir
+
+**Unknown URL** için ✓ check icon kaldırıldı (önceden hatalı positive sinyal); "Source will be resolved on fetch" tek başına ink-3 tonda kalır.
+
+### Doğrulama kanıtları
+
+DOM scan:
+
+```
+/references?add=ref (Pool open):
+  canonical chips: 6 (5 + "More types · 3" toggle)
+  defaultActive: "Wall Art"
+  tabClasses: "k-stab k-stab--active"
+
+URL tab source detection (Phase 27 tone update):
+  Etsy → text-success "✓Looks like Etsy"
+  Pinterest → text-danger "✓Looks like Pinterest"
+  Creative Fabrica → text-ink-2 "✓Creative Fabrica page · we'll fetch the main image"
+  Direct image → text-ink-2 "✓Direct image URL"
+  Unknown → text-ink-3 "Source will be resolved on fetch" (no checkmark)
+
+From Bookmark tab:
+  collection field: HIDDEN ✓
+  tab badge: k-stab__count "2"
+  CTA: "Add 2 References"
+  product type section: still visible (always-on)
+
+/bookmarks?add=ref (Inbox open):
+  same dialog, same 5 canonical chips, default "Wall Art" ✓
+```
+
+Screenshot kanıtı (1) URL tab: k-stabs segmented tab strip, header
+16px font-semibold, body cömert spacing, IMAGE URL k-input + link
+icon, kısa helper, **5 canonical chip + More types · 3 toggle**,
+"Defaults to Wall art" sub-caption, Collection select, "+ Fetch image"
+primary CTA. (2) From Bookmark tab: bookmark list (Nursery clipart
+Pinterest + Boho line art Etsy), search input, product type chips
+(same 5 + toggle), **Collection field YOK**, "+ Add Reference" CTA.
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{bookmarks-page, bookmarks-confirm-flow,
+  bookmark-service, dashboard-page, references-page}: **50/50 PASS**
+- Browser verification: Pool + Inbox topbar CTA'larından aynı temiz
+  modal; product type kaos kalktı; Wall Art default; tab strip k-stabs;
+  bookmark tab'ında collection saklı; Creative Fabrica honest tone
+
+### Bilinçli scope dışı (Phase 28+ candidate'ları)
+
+- **Schema enum `SourcePlatform.CREATIVE_FABRICA`** — Phase 27'de UI
+  hostname-based label/tone; server hâlâ "OTHER" yazar
+- **Server-side source resolver** — Etsy/Pinterest/Creative Fabrica
+  product page'lerini scrape edip ana asset URL'ini çekme worker'ı
+- **Direct `POST /api/references` endpoint** — modal output hâlâ
+  bookmark; doğrudan Reference yaratma yolu açılmadı
+- **Collection chip picker** — DS B5 chip-with-caret pattern.
+  App `<select>` ile basit; chip picker UI ileride
+- **URL helper disclosure "How to get the image URL"** — DS B5 3-step
+  ordered list. Şu an helper tek satır
+- **Multi-URL bulk paste** — tek URL input
+
+### Bundan sonra Add Reference family'de kalan tek doğru iş
+
+**Phase 28 dead/bridge surface cleanup**:
+- `bookmarks-page.tsx` `?add=url` useEffect listener kaldır
+- `DashboardQuickActions` ya sil ya `AddReferenceDialog`'u açan Quick
+  Add tile'la yeniden bağla
+- `UploadImageDialog` + ilgili test fixture sil
+- `ImportUrlDialog` sil
+
+Operatöre etki sıfır (zaten görünmüyorlardı / dead caller'a bağlı);
+kod sağlığı + yeni canonical surface'in netlik korunması için
+gerekli.
+
+Schema değişiklikleri (`CREATIVE_FABRICA` enum, direct-reference
+endpoint, server-side source resolver) ayrı bir **backend turu**;
+References family UI işi değil.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
