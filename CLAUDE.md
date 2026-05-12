@@ -6182,6 +6182,176 @@ endpoint) hâlâ ayrı **backend turu**.
 
 ---
 
+## Phase 30 — Intake confidence + Inbox row B1 daha da yakınlaştırma
+
+Phase 29'da multi-URL queue + per-row preview + title normalization +
+Inbox row Phase 21 noise cleanup yapılmıştı. Phase 30 honest re-audit
+hâlâ beş confidence açığı tespit etti:
+
+1. **Pre-fetch preview yok**: URL paste → fetch 2-5s arası operatör
+   "doğru URL mi?" sorusunu cevaplayamaz. Etsy CDN raw image URL'leri
+   `<img>` ile direkt render edilebilir → instant visual feedback
+2. **From Bookmark "Select all" yok**: 60 bookmark için manuel 60× click
+3. **Upload aggregate progress yok**: per-file status var ama "5 of 10
+   ready" toplam yok
+4. **Title fallback client-only**: `deriveTitleFromUrl` modal'da
+   payload'a yazılır ama API'yı bypass eden flow'larda (competitor
+   promote, future direct routes) çalışmaz
+5. **Inbox row sub-line hala 3 meta**: productType + collection + tag
+   count. DS B1 mock title-only. productType operatöre kritik ama
+   collection/tag count popover'da zaten var
+
+### Düzeltmeler
+
+**Pre-fetch `<img>` preview** (`UrlRowThumb` yeni component):
+- URL paste → `https?://` formatta → `<img src={url}>` direkt render
+- `onLoad`: opacity-100 thumb göster
+- `onError`: fallback `<LinkIcon>`
+- `useEffect([url])` URL değişiminde state reset
+- Browser test: Etsy CDN URL paste → 2.5s sonra `imgComplete: true`,
+  `imgNaturalWidth: 1588` (gerçek görsel boyutu)
+- CORS image rendering izin verir, data extraction yok, PII güvenli
+
+**Server-side title fallback** (`@/lib/derive-title-from-url`):
+- Phase 29 client-side `deriveTitleFromUrl` shared lib'e taşındı
+- `createBookmark` service:
+  ```ts
+  const resolvedTitle =
+    input.title?.trim() ||
+    (input.sourceUrl ? deriveTitleFromUrl(input.sourceUrl) ?? undefined : undefined);
+  ```
+- Client + server aynı helper. API'yı bypass eden flow'larda (competitor
+  promote, future direct routes, manual API call) title üretilir
+- API test: `POST /api/bookmarks { sourceUrl: "etsy.com/listing/.../
+  dragonfly-watercolor-clipart-bundle", title: undefined }` →
+  bookmark.title: "Dragonfly Watercolor Clipart Bundle" ✓ (browser
+  eval kanıtı)
+
+**From Bookmark Select all / Clear** (BookmarkTab):
+- Search input altında summary satırı: "N of M selected · filtered"
+- Sağda "Select all" (disabled tüm filtered seçili ise) + "Clear"
+  (yalnız selection > 0 ise)
+- "Select all" filtered list'i ekler (search ile daraltıp Select all,
+  search temizleyip yeni grupta tekrar Select all → daha geniş bulk)
+- Browser test: 3 row → Select all → "3 of 3 selected" + 3 row
+  `aria-pressed=true` + CTA "Add 3 References" + "Clear" görünür
+
+**Upload aggregate progress** (UploadTab):
+- Drop-zone + thumb grid arasında summary line:
+  "5 of 10 ready · 2 uploading · 1 failed"
+- Sadece relevant counts gösterilir (0 olan kategoriler geçilir)
+- Operatör tek bakışta toplam durumu okur
+
+**Inbox row sub-line trim** (`bookmark-row.tsx`):
+- Phase 29: `productType · collection · N tags` 3 meta
+- Phase 30: yalnız `productType.displayName` mono uppercase
+- Collection ve tag count tamamen hover preview popover'a (zaten
+  Phase 29'da popover enrich edilmişti)
+- DS B1 SubInbox mock'una en yakın hibrit — yalnız 1 ek meta
+  satırı, operatör triage'da productType'ı görür ama collection/tag
+  gürültüsünden korunur
+
+### Confidence kazançları
+
+| Sorun (Phase 29 sonrası) | Phase 30 fix | Operatör kazancı |
+|---|---|---|
+| URL paste → 2-5s sonra preview | Pre-fetch `<img>` instant render | "Doğru URL mi?" cevabı 0ms |
+| Server bypass'larda title undefined | Server-side fallback chain | Inbox'ta hiçbir "Untitled" kalmaz |
+| 60 bookmark manuel select | Select all + Clear | 60 click → 1 click |
+| Per-file status taraması | Aggregate "5 of 10 ready" | Tek bakışta toplam |
+| Sub-line 3 meta gürültü | Sub-line 1 meta (productType) | B1 scan deneyimi netleşti |
+
+### B5 / B1 hibrit sınırı
+
+| Parça | Kategori |
+|---|---|
+| Pre-fetch `<img>` preview | **Hibrit (ürün ihtiyacı)** — DS B5 mock'ta yok, intake confidence için kritik |
+| Server-side title fallback | **Hibrit (yardımcı)** — DS'te yok, schema title nullable; operatör için Untitled önler |
+| Select all / Clear (From Bookmark) | **Hibrit (ürün ihtiyacı)** — DS B5 mock 6 row için her satır click, gerçekte 60 row workflow |
+| Upload aggregate progress | **Hibrit (ürün ihtiyacı)** — DS B5 mock 2 file ama gerçekte 10+ file |
+| Inbox row sub-line `productType` only | **Birebir DS B1** — mock screens-b1.jsx:245 yalnız title (bizim productType ek meta DS'i biraz aşıyor ama bookmark workflow için zorunlu triage bilgisi) |
+| Popover tag + collection enrichment | **Hibrit (Phase 23/29 uzantısı)** — DS'te yok ama row'dan kalkan meta'yı popover'da yaşatır |
+
+### Doğrulama kanıtları
+
+**Pre-fetch image preview** (browser eval):
+```
+Paste 'https://i.etsystatic.com/.../il_1588xN.jpg' → 2.5s sonra:
+  imgPresent: true
+  imgComplete: true
+  imgNaturalWidth: 1588
+  opacity: 100 (loaded state)
+```
+
+**Server title fallback** (POST /api/bookmarks):
+```
+Request body: { sourceUrl: "etsy.com/listing/.../dragonfly-watercolor-
+  clipart-bundle", sourcePlatform: "ETSY" } (title omitted)
+Response: bookmark.title = "Dragonfly Watercolor Clipart Bundle" ✓
+```
+
+**From Bookmark Select all** (browser eval):
+```
+3 INBOX rows → click Select all → 3 of 3 selected
+aria-pressed=true on all 3
+CTA: "Add 3 References"
+Clear button visible
+```
+
+**Inbox row sub-line** (browser DOM scan):
+```
+titleCellLines: 2 (title + productType only)
+titleCellText: "Dragonfly Watercolor Clipart BundleClipart bundle"
+NO collection in sub-line, NO tag count in sub-line ✓
+```
+
+Screenshot 1 (URL pre-fetch preview): URL satırının sol başında **Etsy
+listing'in gerçek görseli** (kırmızı/turuncu clipart asset) +
+"✓ Looks like Etsy" + Bookmark active last-used.
+
+Screenshot 2 (Inbox yeni intake): Row 1 "Dragonfly Watercolor Clipart
+Bundle" (server-side title fallback, raw URL değil) — Phase 30 öncesi
+ikinci row hala raw URL legacy (Phase 30 server fallback yalnız yeni
+intake'lerde).
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{bookmarks-page, bookmarks-confirm-flow,
+  bookmark-service, dashboard-page, references-page}: **50/50 PASS**
+- Browser: pre-fetch preview, server title fallback (API eval),
+  Select all/Clear, Inbox sub-line trim
+
+### Bilinçli scope dışı (Phase 31+ candidate)
+
+- **Server-side `import-url` worker title metadata extraction**
+  (asset.metadata.title): Phase 30 server fallback URL slug'a yaslı;
+  worker scraping ile gerçek HTML title/OG meta daha zengin olur
+- **Bookmark.title backfill** legacy raw-URL bookmark'lar için
+  one-shot migration script
+- **Schema migration** (`CREATIVE_FABRICA` enum, direct Reference
+  endpoint, server source resolver)
+- **Dead bridge cleanup** (DashboardQuickActions / UploadImageDialog /
+  ImportUrlDialog / `?add=url` listener)
+- **Pre-fetch preview CORS hardening**: bazı host'lar `Access-Control-
+  Allow-Origin` set etmez → `<img>` render edilir ama `<canvas>`'a
+  yazılamaz; bizim use case'de canvas gerekmiyor, OK
+
+### Bundan sonra Add Reference family'de kalan tek doğru iş
+
+**Phase 31 backfill + dead bridge cleanup birleşik turu**:
+
+1. Bookmark.title backfill migration: `bookmarks.title == sourceUrl OR
+   title IS NULL` → `deriveTitleFromUrl(sourceUrl)` (one-shot script,
+   schema değişikliği yok)
+2. Dead/bridge cleanup (Phase 27/28/29'da listelenenler)
+3. Operatör için Inbox tamamen "Untitled" / raw URL'siz hale gelir
+
+Server-side `import-url` worker title metadata extraction ayrı bir
+**backend turu**, References family UI işi değil.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

@@ -38,6 +38,7 @@ import { X, Link as LinkIcon, Upload, Search, Plus } from "lucide-react";
 import { useFocusTrap } from "@/components/ui/use-focus-trap";
 import { AssetImage } from "@/components/ui/asset-image";
 import { cn } from "@/lib/cn";
+import { deriveTitleFromUrl } from "@/lib/derive-title-from-url";
 
 type TabId = "url" | "upload" | "bookmark";
 
@@ -83,90 +84,12 @@ type SourceHint = {
 };
 
 /**
- * deriveTitleFromUrl — Phase 29 title normalization.
+ * Phase 30 — `deriveTitleFromUrl` shared lib'e taşındı
+ * (`@/lib/derive-title-from-url`). Client + server aynı helper'ı kullanır:
+ *   - Client: queue mode save anında payload `title` field için
+ *   - Server: `createBookmark` service fallback chain için (bypass'lı
+ *     API çağrıları, eksik client title, vb.)
  *
- * Server-side `import-url` worker bookmark/asset metadata'sına title
- * yazmıyor (Phase 29 audit'i: `Bookmark.title` null → row fallback raw
- * URL veya "Untitled"). Operatöre anlamlı bir title sunmak için
- * client tarafında URL parse:
- *
- *   - Etsy listing: `etsy.com/listing/{id}/{slug}` → slug ("Dragonfly
- *     Clipart Bundle Watercolor")
- *   - Etsy image CDN: `etsystatic.com/.../il_1140xN.jpg` → "Etsy image"
- *   - Pinterest pin: `pinterest.com/pin/{id}/` → "Pinterest pin {id}"
- *   - Pinterest CDN: `pinimg.com/.../X.jpg` → "Pinterest image"
- *   - Creative Fabrica: `creativefabrica.com/product/{slug}/` → slug
- *   - Direct image: filename basename without extension
- *   - Unknown: hostname (kısa fallback)
- *
- * `null` döner sadece URL parse edilemez ise (boş / geçersiz).
- * Operatör Inbox row'da inline edit yoluyla title'ı her zaman
- * değiştirebilir (mevcut PATCH /api/bookmarks/[id] davranışı).
- */
-function deriveTitleFromUrl(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  let urlObj: URL;
-  try {
-    urlObj = new URL(trimmed);
-  } catch {
-    return null;
-  }
-  const host = urlObj.host.toLowerCase();
-  const pathParts = urlObj.pathname.split("/").filter(Boolean);
-
-  // Etsy listing slug
-  if (host.includes("etsy.com")) {
-    const listingIdx = pathParts.indexOf("listing");
-    const slug = listingIdx >= 0 ? pathParts[listingIdx + 2] : undefined;
-    if (slug) return titleize(slug);
-    return "Etsy image";
-  }
-  if (host.includes("etsystatic.com")) {
-    return "Etsy image";
-  }
-
-  // Pinterest pin id
-  if (host.includes("pinterest.")) {
-    const pinIdx = pathParts.indexOf("pin");
-    const pinId = pinIdx >= 0 ? pathParts[pinIdx + 1] : undefined;
-    if (pinId) return `Pinterest pin ${pinId}`;
-    return "Pinterest pin";
-  }
-  if (host.includes("pinimg.com")) {
-    return "Pinterest image";
-  }
-
-  // Creative Fabrica product slug
-  if (host.includes("creativefabrica.")) {
-    const productIdx = pathParts.indexOf("product");
-    const slug = productIdx >= 0 ? pathParts[productIdx + 1] : undefined;
-    if (slug) return titleize(slug);
-    return "Creative Fabrica image";
-  }
-
-  // Direct image — filename basename
-  const last = pathParts[pathParts.length - 1] ?? "";
-  if (/\.(png|jpe?g|webp|gif)$/i.test(last)) {
-    const noExt = last.replace(/\.[a-z]+$/i, "");
-    return titleize(noExt);
-  }
-
-  // Fallback: hostname
-  return host.replace(/^www\./, "");
-}
-
-function titleize(slug: string): string {
-  return slug
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .split(" ")
-    .map((w) => (w && w.length > 0 ? w[0]!.toUpperCase() + w.slice(1) : w))
-    .join(" ");
-}
-
-/**
  * detectSourceFromUrl — client-side hostname classifier.
  * Server-side resolver (asset import worker) gerçek meta extraction yapar;
  * burası yalnız operatöre erken görsel ipucu verir. Negative match = "OTHER".
@@ -950,6 +873,14 @@ export function AddReferenceDialog({
                   return next;
                 })
               }
+              selectAll={() =>
+                setBookmarkSelection((cur) => {
+                  const next = new Set(cur);
+                  for (const b of bookmarkItems) next.add(b.id);
+                  return next;
+                })
+              }
+              clearAll={() => setBookmarkSelection(new Set())}
             />
           ) : null}
         </div>
@@ -1095,6 +1026,106 @@ type UrlTabProps = {
   globalMessage: string | null;
 };
 
+/**
+ * UrlRowThumb — Phase 30 pre-fetch image preview.
+ *
+ * URL queue row'un thumb slot'unda. Kullanıcı URL paste ettiğinde:
+ *   - status === "idle" + URL boş değil → `<img>` direkt yükle.
+ *     onLoad: thumb göster. onError: fallback icon (URL image değil
+ *     veya 404). Operatör fetch öncesi "doğru URL mi?" cevabını alır.
+ *   - status === "fetching" → pulse dot
+ *   - status === "ready" + assetId → server-side `<AssetImage>` (fetch
+ *     sonrası asset thumb, daha güvenli kaynak)
+ *   - status === "failed" → X danger icon
+ *
+ * Pre-fetch `<img>` yalnız client-side display; backend job yok, no
+ * upload, no PII. URL hostname allow-list yapmıyoruz çünkü kullanıcı
+ * zaten kendi seçtiği URL'i paste ediyor (anti-pattern: kullanıcı URL'i
+ * yasaklamak). CORS image rendering izin verir; data exfil yok.
+ */
+function UrlRowThumb({
+  url,
+  status,
+  assetId,
+}: {
+  url: string;
+  status: "idle" | "fetching" | "ready" | "failed";
+  assetId?: string;
+}) {
+  const [imgState, setImgState] = useState<"loading" | "loaded" | "error">(
+    "loading",
+  );
+  const trimmedUrl = url.trim();
+
+  // Reset image state when URL changes
+  useEffect(() => {
+    setImgState("loading");
+  }, [trimmedUrl]);
+
+  // Ready (post-fetch): server asset
+  if (status === "ready" && assetId) {
+    return (
+      <div className="k-thumb !w-9 !aspect-square flex-shrink-0">
+        <AssetImage assetId={assetId} alt={trimmedUrl} frame={false} />
+      </div>
+    );
+  }
+
+  // Fetching: pulse
+  if (status === "fetching") {
+    return (
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-k-orange bg-k-orange-soft/20">
+        <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-k-orange" />
+      </div>
+    );
+  }
+
+  // Failed: X
+  if (status === "failed") {
+    return (
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-danger/40 bg-danger/5">
+        <X className="h-3.5 w-3.5 text-danger" aria-hidden />
+      </div>
+    );
+  }
+
+  // Idle with valid-looking URL → attempt `<img>` pre-fetch render
+  const looksLikeUrl = /^https?:\/\//i.test(trimmedUrl);
+
+  if (looksLikeUrl && imgState !== "error") {
+    return (
+      <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-k-bg">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={trimmedUrl}
+          alt=""
+          aria-hidden
+          className={cn(
+            "h-full w-full object-cover transition-opacity",
+            imgState === "loaded" ? "opacity-100" : "opacity-0",
+          )}
+          onLoad={() => setImgState("loaded")}
+          onError={() => setImgState("error")}
+          referrerPolicy="no-referrer"
+        />
+        {imgState === "loading" ? (
+          <LinkIcon
+            className="absolute h-3.5 w-3.5 text-ink-3"
+            aria-hidden
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  // Idle (empty URL or non-http or img failed) → link icon
+  return (
+    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-line bg-k-bg">
+      <LinkIcon className="h-3.5 w-3.5 text-ink-3" aria-hidden />
+    </div>
+  );
+}
+
 const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
   function UrlTab(
     { entries, onChangeRow, onRemoveRow, onAddRow, onPaste, globalMessage },
@@ -1130,29 +1161,18 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
                 data-testid="add-ref-url-row"
               >
                 <div className="flex items-center gap-2">
-                  {/* Preview thumb (ready) or icon (other states) */}
-                  {entry.status === "ready" && entry.assetId ? (
-                    <div className="k-thumb !w-9 !aspect-square flex-shrink-0">
-                      <AssetImage assetId={entry.assetId} alt={entry.url} frame={false} />
-                    </div>
-                  ) : (
-                    <div
-                      className={cn(
-                        "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border",
-                        entry.status === "fetching" && "border-k-orange bg-k-orange-soft/20",
-                        entry.status === "failed" && "border-danger/40 bg-danger/5",
-                        entry.status === "idle" && "border-line bg-k-bg",
-                      )}
-                    >
-                      {entry.status === "fetching" ? (
-                        <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-k-orange" />
-                      ) : entry.status === "failed" ? (
-                        <X className="h-3.5 w-3.5 text-danger" aria-hidden />
-                      ) : (
-                        <LinkIcon className="h-3.5 w-3.5 text-ink-3" aria-hidden />
-                      )}
-                    </div>
-                  )}
+                  {/* Phase 30 — pre-fetch preview: idle durumunda direct
+                   *   `<img>` ile URL'i render eder. CORS image rendering
+                   *   permissive (binary load + display, data extraction
+                   *   yok). Kullanıcı paste anında "doğru URL'i mi attım?"
+                   *   sorusunu fetch'ten önce cevaplar. Image değilse
+                   *   onError ile fallback icon. Fetching/Failed/Ready
+                   *   state'ler önceki davranış (Phase 29) korunur. */}
+                  <UrlRowThumb
+                    url={entry.url}
+                    status={entry.status}
+                    assetId={entry.assetId}
+                  />
 
                   <input
                     ref={idx === 0 ? ref : undefined}
@@ -1351,8 +1371,24 @@ function UploadTab({
       </div>
 
       {uploads.length > 0 ? (
-        <div className="grid grid-cols-3 gap-2">
-          {uploads.map((u) => (
+        <>
+          {/* Phase 30 — aggregate progress hint. Operatör 10 file
+           *   upload edince "5 of 10 ready · 2 uploading · 1 failed"
+           *   gibi tek satır toplamı görür. Per-file status detail
+           *   aşağıdaki thumb grid'de zaten var. */}
+          <div className="flex items-center justify-between font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+            <span data-testid="add-ref-upload-summary">
+              {uploads.filter((u) => u.status === "ready").length} of {uploads.length} ready
+              {uploads.filter((u) => u.status === "uploading").length > 0
+                ? ` · ${uploads.filter((u) => u.status === "uploading").length} uploading`
+                : null}
+              {uploads.filter((u) => u.status === "failed").length > 0
+                ? ` · ${uploads.filter((u) => u.status === "failed").length} failed`
+                : null}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {uploads.map((u) => (
             <div
               key={u.id}
               className="overflow-hidden rounded-md border border-line bg-paper"
@@ -1396,7 +1432,8 @@ function UploadTab({
               ) : null}
             </div>
           ))}
-        </div>
+          </div>
+        </>
       ) : null}
     </div>
   );
@@ -1410,6 +1447,8 @@ function BookmarkTab({
   loading,
   selection,
   toggleSelect,
+  selectAll,
+  clearAll,
 }: {
   search: string;
   onSearch: (v: string) => void;
@@ -1417,7 +1456,11 @@ function BookmarkTab({
   loading: boolean;
   selection: Set<string>;
   toggleSelect: (id: string) => void;
+  selectAll: () => void;
+  clearAll: () => void;
 }) {
+  const allInListSelected =
+    items.length > 0 && items.every((b) => selection.has(b.id));
   return (
     <div className="flex flex-col gap-3">
       <div className="relative">
@@ -1434,6 +1477,41 @@ function BookmarkTab({
           data-testid="add-ref-bookmark-search"
         />
       </div>
+
+      {/* Phase 30 — bulk select affordance. Operatör 60 bookmark için
+       *   tek-tek click yerine "Select all (filtered)" ile hızlı seçim
+       *   yapar. Filtre değişince Select all yeniden filtered list'i
+       *   ifade eder (search'le daraltıp seçtikten sonra search temizleyip
+       *   yeni grupta yeniden Select all uygular). */}
+      {items.length > 0 ? (
+        <div className="flex items-center justify-between font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+          <span>
+            {selection.size} of {items.length} selected
+            {search.trim() ? " · filtered" : null}
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={selectAll}
+              disabled={allInListSelected}
+              className="transition-colors hover:text-ink disabled:opacity-40"
+              data-testid="add-ref-bookmark-select-all"
+            >
+              Select all
+            </button>
+            {selection.size > 0 ? (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="transition-colors hover:text-ink"
+                data-testid="add-ref-bookmark-clear-all"
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="text-[12px] text-ink-3">Loading bookmarks…</div>

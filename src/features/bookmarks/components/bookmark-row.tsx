@@ -168,21 +168,15 @@ export function BookmarkRow({
         />
       </td>
 
-      {/* Title cell — Phase 29 B1 canonical scan layout.
+      {/* Title cell — Phase 30 B1 canonical scan layout.
        *
-       * Pre-Phase 29 sub-line: productType displayName + inline TagPicker
-       * ("No tags / Add tag") + inline CollectionPicker ("No collection").
-       * Bu B1 SubInbox canonical scan deneyimini bozuyordu — DS mock
-       * (screens-b1.jsx:240-251) yalnız title 13px font-medium gösterir.
-       *
-       * Phase 29 — kalan tek ufak meta: productType displayName mono
-       * (boş satır yerine bookmark workflow için operatöre tip ipucu).
-       * Tag rozetleri ve collection erişimi **hover preview popover**'a
-       * taşındı (BookmarkRowThumb içinde, Phase 23 thumb hover'ı zaten
-       * popover açıyor). TagPicker / CollectionPicker'a doğrudan
-       * row-level erişim **gizlendi**; bu picker'lar canonical Add
-       * Reference modal'ı + future row-detail mechanism üzerinden
-       * yönetilir. */}
+       * Phase 29 sub-line: productType displayName + · collection +
+       * · N tags. Phase 30: yalnız productType displayName (en kritik
+       * triage bilgisi — promote öncesi karar). Collection ve tag
+       * count tamamen hover preview popover'a taşındı (BookmarkRowThumb
+       * Phase 29'da zaten enriched). Bu DS B1 SubInbox mock'una
+       * (screens-b1.jsx:240-251) daha yakın — operatör title scan'inde
+       * yalnız bir extra meta satırı görür. */}
       <td className="px-3 py-3 align-middle">
         <div className="flex flex-col gap-0.5 min-w-0">
           <span
@@ -191,24 +185,11 @@ export function BookmarkRow({
           >
             {title}
           </span>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {bookmark.productType ? (
-              <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-                {bookmark.productType.displayName}
-              </span>
-            ) : null}
-            {bookmark.collection ? (
-              <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
-                · {bookmark.collection.name}
-              </span>
-            ) : null}
-            {bookmark.tags.length > 0 ? (
-              <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
-                · {bookmark.tags.length}{" "}
-                {bookmark.tags.length === 1 ? "tag" : "tags"}
-              </span>
-            ) : null}
-          </div>
+          {bookmark.productType ? (
+            <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+              {bookmark.productType.displayName}
+            </span>
+          ) : null}
         </div>
       </td>
 

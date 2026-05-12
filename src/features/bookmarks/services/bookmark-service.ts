@@ -6,6 +6,7 @@ import {
 } from "@prisma/client";
 import { db } from "@/server/db";
 import { NotFoundError } from "@/lib/errors";
+import { deriveTitleFromUrl } from "@/lib/derive-title-from-url";
 import { assertOwnsResource } from "@/server/authorization";
 import type {
   CreateBookmarkInput,
@@ -101,13 +102,29 @@ export async function createBookmark(args: {
     );
   }
 
+  /* Phase 30 — title fallback chain.
+   *
+   * Operator explicit title > sourceUrl-derived (deriveTitleFromUrl)
+   * > undefined (Bookmark.title null, row UI shows "Untitled").
+   *
+   * Asset metadata title (server-side resolver) henüz worker tarafında
+   * yazılmıyor — Phase 30 hazırlığı: ileride `import-url` worker
+   * `Asset.metadata.title` set ederse buraya 3. fallback eklenir.
+   * Şu an client `deriveTitleFromUrl` Phase 29'da save anında payload'a
+   * yazıyor; server-side fallback paste-and-save'i bypass eden API
+   * çağrılarında (örn. competitor flow) da title doğru üretsin diye
+   * defansif olarak eklendi. */
+  const resolvedTitle =
+    input.title?.trim() ||
+    (input.sourceUrl ? deriveTitleFromUrl(input.sourceUrl) ?? undefined : undefined);
+
   return db.bookmark.create({
     data: {
       userId,
       sourceUrl: input.sourceUrl,
       sourcePlatform: (input.sourcePlatform as SourcePlatform | undefined) ?? SourcePlatform.OTHER,
       assetId: input.assetId,
-      title: input.title,
+      title: resolvedTitle,
       notes: input.notes,
       productTypeId: input.productTypeId,
       collectionId: input.collectionId,
