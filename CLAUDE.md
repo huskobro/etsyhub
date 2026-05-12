@@ -4633,6 +4633,131 @@ alanlarında kalır.
 
 ---
 
+## II. References Family — B1 Canonical Audit & Dead Code Cleanup (Phase 19 — 2026-05-12)
+
+Phase 19 References family'sinin Kivasy DS v5 B1 canonical yapısına ne
+kadar uyduğunu dürüstçe denetledi. **Beklenenin aksine ailenin büyük
+çoğunluğu zaten canonical.** Bulgular ve tek somut değişiklik aşağıda.
+
+### Dürüst audit bulgusu — beklentinin aksine
+
+Audit başlangıcında "Inbox farklı hissediyor" gözlemi, "References Pool'un
+legacy `<Card variant="asset">` kullanması nedeniyle ailenin geri kalanı
+(Inbox/Shops/Collections) Pool ile uyumsuz görünüyor" hipotezini doğurdu.
+**Bu yanlıştı.**
+
+Gerçek durum: **gerçekten render olan Pool kartı zaten canonical k-card
+recipe kullanıyor** — `src/features/references/components/references-page.
+tsx:595` içindeki inline `ReferencePoolCard` component'i. İncelenen
+`reference-card.tsx` dosyası **eski bir render path'inin kalıntısı**;
+hiçbir yerden import edilmiyor (dead code).
+
+### B1 canonical yapısı
+
+`v5/screens-b1.jsx` (file:line 11–337):
+- B1 **tek route + 5 stateful sub-tab** (`Pool / Stories / Inbox /
+  Shops / Collections`); tabs `k-stabs` segment butonları.
+- Pool: 4/6 col grid, k-card, k-thumb, k-checkbox, k-badge.
+- Inbox: B1'de **tablo layout** (B1:218–259).
+- Shops: 2-col k-card grid; "Top 3 thumbs" + Open analysis.
+- Collections: 3-col k-card grid; 3-up composite thumb.
+- Stories: shop avatar rail + 3-col grid feed.
+
+### Mevcut uygulama — gerçek durum
+
+5 ayrı Next.js route'u, **ortak shell (ReferencesShellTabs +
+ReferencesTopbar) ile sarılı**. Tabs `<Link>` (route change), B1'deki
+`<button>` (in-page state) değil. Bu mimari fark **bilinçli** —
+URL deep-link + browser history + bookmark için route-based pattern
+uygun. B1 mental model "References tek yer" korunur (shell strip
++ topbar her surface'te aynı).
+
+| Surface | Card recipe | Class kullanımı | Aile uyumu |
+|---|---|---|---|
+| `/references` Pool | inline `ReferencePoolCard` | k-card / k-thumb / k-checkbox / k-badge / k-iconbtn | **Canonical** |
+| `/bookmarks` Inbox | `BookmarkCard` | k-card / k-thumb / k-checkbox / k-badge / k-btn | **Canonical** |
+| `/competitors` Shops | `CompetitorCard` | k-card / k-badge / k-btn | **Canonical** |
+| `/collections` | `CollectionCard` | k-card / k-badge / k-btn | **Canonical** |
+| `/trend-stories` Stories | `FeedListingCard` + custom rail | k-card değil — özel layout | **Bespoke** (kabul edilebilir) |
+
+### Trend-stories neden bespoke kalıyor
+
+Trend-stories içerik türü itibarıyla **feed**'tir — grid değil:
+- Üst: shop-cluster rail (B1 spec'i de farklı tutar)
+- Alt: cluster member listings feed
+- `WindowTabs` (24h / 7d / 30d window picker) B1'deki k-stabs ile
+  benzer ama özel davranış (date range, not sub-view)
+
+Bu yapısal fark **product purpose** kaynaklı, design system drift
+değil. Trend feed'i k-card grid'ine zorlamak operatöre değer
+katmaz; bespoke kalmaya devam etmesi doğru karar.
+
+### Inbox tam olarak ne işe yarıyor
+
+**Bookmark Inbox**: source intake / ham bookmark tampon alanı.
+Operatör bookmark'ları:
+1. **Add Reference** CTA (ReferencesTopbar'da) → URL/upload modal
+2. URL bookmark'ı veya upload görseli buraya düşer (status =
+   `INBOX`)
+3. Inbox'tan **Promote to Reference** ile (k-btn--secondary) bookmark
+   reference pool'a taşınır
+4. Reference pool'da Open workshop → variation generation pipeline'ı
+
+Inbox = **bookmark eklenmiş ama henüz curate edilmemiş** ham
+girdi. Reference pool = **curate edilmiş üretim-hazır** kaynak.
+
+Kart pattern'i: BookmarkCard k-card + status badge (Inbox/Risky/
+Referenced/Archive) + collection picker + product type picker +
+Open + Promote to Reference + Archive. **B1 Inbox spec'inden
+fark**: B1 Inbox tablo, app Inbox kart grid. Bu fark **product
+purpose tabanlı** (kart inbox'ta daha bilgi-yoğun: tag, collection,
+product type picker; tabloda bunlar sığmaz).
+
+### Phase 19 tek somut değişiklik
+
+**`src/features/references/components/reference-card.tsx` silindi**
+(dead code; 0 consumer). Phase 18'de bu dosyada EN parity yapılmıştı
+ama gerçekte hiçbir surface bunu kullanmıyordu. Audit subagent
+gerçek render path'i (inline `ReferencePoolCard`) yerine bu dosyayı
+okuyup "Pool drift ediyor" tanısı koyduğu için Phase 19'da deep
+investigation yaptım.
+
+Bu silme **operatöre görünür hiçbir değişiklik üretmez** ama:
+- Dead code temizliği (CLAUDE.md "avoid backwards-compatibility
+  hacks for unused code" + "if you are certain that something is
+  unused, you can delete it completely")
+- Yanlış audit'leri engeller (sonraki agent'lar gerçek render path'i
+  okur)
+
+### Doğrulama kanıtı (DOM scan, viewport 1440×900)
+
+| Surface | k-card count | k-thumb count | k-badge count | k-checkbox count | TR strings |
+|---|---|---|---|---|---|
+| `/references` (Pool) | 3 | 3 | 3 | 3 | 0 |
+| `/bookmarks` (Inbox) | 2 | 2 | 2 | 2 | 0 |
+| `/competitors` (Shops) | 1 | - | 1 | - | 0 |
+| `/collections` | 2 | - | 2 | - | 0 |
+
+Class kullanımı **tutarlı** — aile gerçekten aile gibi davranıyor.
+
+### Sonraki iş
+
+Bu surface ailesi içinde **operatöre görünür drift kalmadı**.
+Trend-stories'in feed pattern'ini k-stabs'a hizalamak product-purpose
+çelişkisi yaratır (deferred = doğru karar).
+
+İleride yapılabilecek (Phase 19 dışı):
+- Single-route refactor: 5 route'u `/references?tab=X` ile birleştir
+  (URL deep-link ile uyumlu kalır). **Önce kullanıcı value check**
+  edilmeli; mevcut multi-route pattern history/bookmark için
+  zaten iyi çalışıyor.
+- Trend-stories shop-avatar rail'ini Stories tab'ında competitor
+  bağlamına bağla — şu an "Stories" subtitle "STORIES · N NEW
+  LISTINGS" diyor ama operatör hangi shop'lardan geldiğini
+  görmüyor.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
