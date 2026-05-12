@@ -3182,6 +3182,114 @@ viewport) **kombine** olmalı. Tek başına "screenshot küçüktü → doğrula
 demek yetmez; eval ile DOM kanıtı + okunabilir viewport screenshot
 birlikte gerekir.
 
+### Batch-first Phase 8 (2026-05-12 — Fit-and-finish: default provider UI wiring)
+
+Phase 8 yeni feature açmadı; **Phase 7'nin yarım kalan UI wiring'ini
+tamamladı**. Audit ortaya çıkardı:
+
+**Phase 7'de GERÇEKTEN tamamlanan:**
+- Server-side `BatchSummary` provider snapshot (providerId,
+  providerLabel, capabilityUsed, aspectRatio, quality)
+- Job.metadata yazımı (providerId/aspectRatio/quality/capabilityUsed)
+- BatchJobRow.assetId (Items thumbnail)
+- `formatProviderLabel` helper
+- Provider chip "Provider: <name>" UI
+- Overview/Items/Parameters tab content
+- `UserSetting.aiMode.defaultImageProvider` schema + service
+
+**Phase 7'de YARIM kalan (Phase 8 fix):**
+- `defaultImageProvider` settings field UI consumer'a bağlı **değildi**
+- `ai-mode-form.tsx` hala hardcoded `"kie-gpt-image-1.5"` initial state
+  kullanıyordu
+- `MODELS` array'inde Midjourney **yoktu** — kullanıcı default'u Midjourney
+  olarak ayarlasa bile form'da hiç göremiyordu
+
+#### Phase 8 fix — Default provider server-side resolution
+
+```
+/references/[id]/variations page (server component)
+  → auth() + getUserAiModeSettings(session.user.id)
+  → VariationsPage initialProviderId={settings.defaultImageProvider}
+  → AiModePanel initialProviderId={...}
+  → AiModeForm initialProviderId={...}
+  → useState(defaultId) — resolve: settings'ten gelen MODELS'ta varsa
+    onu kullan, yoksa ilk available provider'a düş
+```
+
+**Sonuç:** Variations sayfası açıldığında Provider dropdown
+settings'teki default'u seçili getirir. Batch bazında dropdown
+override eder.
+
+#### Phase 8 fix — MODELS list provider-first
+
+Eski:
+```
+{ id: "kie-gpt-image-1.5", label: "kie-gpt-image-1.5 (image-to-image)" }
+{ id: "kie-z-image", label: "kie-z-image (text-to-image) — Yakında" }
+```
+
+Yeni:
+```
+{ id: "midjourney", label: "Midjourney", available: false, helperText: "..." }
+{ id: "kie-gpt-image-1.5", label: "Kie · GPT Image 1.5 (image-to-image)", available: true }
+{ id: "kie-z-image", label: "Kie · Z-Image (text-to-image) — coming soon", available: false }
+```
+
+- **Midjourney** opsiyonu eklendi ama `available: false`. Form'dan
+  doğrudan tetiklenmez — MJ bridge ayrı admin akışı kullanır
+  (`/api/admin/midjourney/variation`).
+- **`helperText`** field'ı: seçili provider available değilse operatöre
+  nedenini söyler. Midjourney için: "Midjourney runs through the
+  operator browser bridge (separate admin flow). Select a Kie provider
+  here to launch from this form."
+- Provider-first labels: `Kie · GPT Image 1.5`, `Kie · Z-Image` —
+  internal id (`kie-gpt-image-1.5`) yerine kullanıcı-okur etiketler.
+
+#### Phase 8 fix — Provider-aware helper text
+
+`ai-mode-form.tsx` provider dropdown altına `data-testid="ai-mode-provider-helper"`
+helper text bloğu eklendi. Seçili provider available değilse görünür;
+boş alanları olmayan dürüst UX.
+
+#### Provider-aware form alanları (Phase 8 scope dışı)
+
+Aspect ratio / quality / variation strength gibi alanlar hala
+provider-agnostic. Bu fit-and-finish turunda **bilinçli olarak**
+düzeltilmedi — yeni big abstraction (`ImageProvider.capabilities`
+runtime mapping UI'a) açmak gerekiyor; Phase 9+ scope.
+
+#### Doğrulanan kanıtlar
+
+- `npx tsc --noEmit`: 0 errors
+- `vitest`: 90/90 PASS (Phase 1-8 invariants)
+- `npm run build`: ✓ Compiled successfully
+- Browser DOM eval:
+  - `/references/[id]/variations` → AI tab → `data-testid="ai-mode-provider-select"`
+  - `selectValue: "midjourney"` (settings'ten gelen default seçili)
+  - 3 option: Midjourney (selected, disabled), Kie · GPT Image 1.5
+    (available, selectable), Kie · Z-Image (coming soon, disabled)
+  - `data-testid="ai-mode-provider-helper"` görünüyor: "Midjourney runs
+    through the operator browser bridge..."
+
+#### Kivasy DS drift kapatma (Phase 8 minor)
+
+- Label string'i `"Model"` → `"Provider"` (provider-first dil)
+- Helper text mono caption pattern (`text-xs text-text-muted`)
+- MODELS label'ları `Kie · GPT Image 1.5` formatına çevrildi —
+  `formatProviderLabel` helper ile aynı format
+
+#### Değişmeyenler (Phase 8)
+
+- **Review freeze (Madde Z) korunur.** Phase 8 review modülüne dokunmaz.
+- **Schema migration yok.** Yalnız UI consumer wiring + label refactor.
+- **Yeni surface açılmadı.** Mevcut variations page + ai-mode-form +
+  ai-mode-panel zinciri.
+- **Yeni büyük abstraction yok.** ImageProvider.capabilities runtime
+  mapping UI'a Phase 9+ scope.
+- **WorkflowRun eklenmez** (IA Phase 11 kapsamı).
+- **Kivasy DS dışına çıkılmadı.** Var olan `<select>` recipe + mono
+  caption pattern.
+
 ### Epic-agnesi branch notu
 
 `claude/epic-agnesi-7a424b` branch'inde Batch-first Phase 1'in ilk

@@ -11,7 +11,17 @@ type Mode = "local" | "ai";
 // Phase 5 §5.2/5.3 — Variations cockpit. R0: default Local mode (offline,
 // maliyet üretmez). AI mode bilinçli aksiyonla seçilir; geçişte cost banner
 // AiModePanel içinde gösterilir.
-export function VariationsPage({ referenceId }: { referenceId: string }) {
+//
+// Phase 8 fit-and-finish — `initialProviderId` prop server-side
+// UserSetting.aiMode.defaultImageProvider'dan gelir. AiModePanel form'a
+// initial state olarak pass edilir; kullanıcı dropdown'dan override eder.
+export function VariationsPage({
+  referenceId,
+  initialProviderId,
+}: {
+  referenceId: string;
+  initialProviderId?: string;
+}) {
   const [mode, setMode] = useState<Mode>("local");
 
   const tabClass = (active: boolean) =>
@@ -73,7 +83,10 @@ export function VariationsPage({ referenceId }: { referenceId: string }) {
       {mode === "local" ? (
         <LocalModePanel />
       ) : (
-        <AiModePanel referenceId={referenceId} />
+        <AiModePanel
+          referenceId={referenceId}
+          initialProviderId={initialProviderId}
+        />
       )}
     </PageShell>
   );

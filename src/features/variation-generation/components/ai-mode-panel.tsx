@@ -10,7 +10,17 @@ import { StateMessage } from "@/components/ui/StateMessage";
 // Phase 5 §5.3 — AI mode orchestrator. Cost banner (R15) + URL public check
 // (image-to-image kapasitesi için zorunlu, sessiz fallback YOK — R17.1).
 // Gap C: truth `reference.asset.sourceUrl` (Reference.imageUrl YOK).
-export function AiModePanel({ referenceId }: { referenceId: string }) {
+//
+// Phase 8 fit-and-finish — `initialProviderId` server-side
+// UserSetting.aiMode.defaultImageProvider'dan gelir; AiModeForm initial
+// state olarak kullanır.
+export function AiModePanel({
+  referenceId,
+  initialProviderId,
+}: {
+  referenceId: string;
+  initialProviderId?: string;
+}) {
   const ref = useReference(referenceId);
   const sourceUrl = ref.data?.reference.asset?.sourceUrl ?? null;
   const urlCheck = useUrlPublicCheck(sourceUrl);
@@ -113,7 +123,11 @@ export function AiModePanel({ referenceId }: { referenceId: string }) {
         )}
       </div>
 
-      <AiModeForm referenceId={referenceId} disabled={disabled} />
+      <AiModeForm
+        referenceId={referenceId}
+        disabled={disabled}
+        initialProviderId={initialProviderId}
+      />
 
       <VariationResultGrid
         referenceId={referenceId}

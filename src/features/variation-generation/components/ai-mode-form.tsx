@@ -8,18 +8,43 @@ import { CostConfirmDialog } from "./cost-confirm-dialog";
 
 // Q6 capability görünür: z-image (text-to-image) "Yakında" disabled — sessiz
 // fallback YOK; provider yok ise UI açıkça reddeder.
-const MODELS: Array<{ id: string; label: string; available: boolean }> = [
+//
+// Batch-first Phase 8 fit-and-finish — provider-first dil + Midjourney
+// destek (canonical default). Phase 7'de UserSetting.aiMode.
+// defaultImageProvider field eklenmişti ama UI'da consume edilmiyordu;
+// burada `initialProviderId` prop'u settings'ten gelir.
+//
+// Midjourney pipeline'ı bu form'dan tetiklenmez (MJ bridge ayrı admin
+// flow'u kullanır — `/api/admin/midjourney/variation`); seçili olsa
+// bile "available: false" + helper text operatöre gerçek durumu söyler.
+const MODELS: Array<{
+  id: string;
+  label: string;
+  available: boolean;
+  helperText?: string;
+}> = [
+  {
+    id: "midjourney",
+    label: "Midjourney",
+    available: false,
+    helperText:
+      "Midjourney runs through the operator browser bridge (separate admin flow). Select a Kie provider here to launch from this form.",
+  },
   {
     id: "kie-gpt-image-1.5",
-    label: "kie-gpt-image-1.5 (image-to-image)",
+    label: "Kie · GPT Image 1.5 (image-to-image)",
     available: true,
   },
   {
     id: "kie-z-image",
-    label: "kie-z-image (text-to-image) — Yakında",
+    label: "Kie · Z-Image (text-to-image) — coming soon",
     available: false,
   },
 ];
+
+function findModel(id: string) {
+  return MODELS.find((m) => m.id === id) ?? null;
+}
 
 type AspectRatio = "1:1" | "2:3" | "3:2";
 type Quality = "medium" | "high";
@@ -45,11 +70,31 @@ function parseQuality(v: string): Quality {
 export function AiModeForm({
   referenceId,
   disabled,
+  initialProviderId,
 }: {
   referenceId: string;
   disabled: boolean;
+  /**
+   * Batch-first Phase 8 fit-and-finish — server-side resolved default
+   * provider (UserSetting.aiMode.defaultImageProvider). Settings'te
+   * Midjourney default; batch bazında dropdown override eder. Eğer
+   * default id MODELS listesinde değilse veya available=false ise
+   * UI fallback olarak ilk available provider'a düşer (dürüst —
+   * kullanıcı yine de dropdown'da hangi default olduğunu görür).
+   */
+  initialProviderId?: string;
 }) {
-  const [providerId, setProviderId] = useState("kie-gpt-image-1.5");
+  // Default resolve: settings'ten gelen id MODELS'da var ve available
+  // ise onu kullan; aksi halde ilk available provider'a düş.
+  const defaultId = (() => {
+    const fromSettings = initialProviderId
+      ? findModel(initialProviderId)
+      : null;
+    if (fromSettings) return initialProviderId!;
+    const firstAvail = MODELS.find((m) => m.available);
+    return firstAvail?.id ?? "kie-gpt-image-1.5";
+  })();
+  const [providerId, setProviderId] = useState(defaultId);
   const [aspectRatio, setAspect] = useState<AspectRatio>("2:3");
   const [quality, setQuality] = useState<Quality>("medium");
   const [brief, setBrief] = useState("");
@@ -101,11 +146,12 @@ export function AiModeForm({
       </legend>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm text-text">
-          Model
+          Provider
           <select
             value={providerId}
             onChange={(e) => setProviderId(e.target.value)}
             className="h-control-md rounded-md border border-border bg-bg px-3 text-sm text-text"
+            data-testid="ai-mode-provider-select"
           >
             {MODELS.map((m) => (
               <option key={m.id} value={m.id} disabled={!m.available}>
@@ -113,6 +159,23 @@ export function AiModeForm({
               </option>
             ))}
           </select>
+          {/* Phase 8 — provider-aware helper text. Seçili provider
+           * available değilse operatöre nedenini söyler (Midjourney
+           * separate flow, Z-Image coming soon). */}
+          {(() => {
+            const m = findModel(providerId);
+            if (!m) return null;
+            if (m.available) return null;
+            return (
+              <span
+                className="text-xs text-text-muted"
+                data-testid="ai-mode-provider-helper"
+              >
+                {m.helperText ??
+                  "This provider is not yet available — pick an available provider above."}
+              </span>
+            );
+          })()}
         </label>
         <label className="flex flex-col gap-1 text-sm text-text">
           Aspect ratio
