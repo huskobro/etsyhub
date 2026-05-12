@@ -36,6 +36,12 @@ export type BatchJobRow = {
   variables: Record<string, string> | null;
   /** Asset count (output count). */
   assetCount: number;
+  /**
+   * Batch-first Phase 7 — Items grid thumbnail için representative asset
+   * id. AI batch'lerde GeneratedDesign.assetId; MJ batch'lerde ilk
+   * MidjourneyAsset (gridIndex=0). Yoksa null (henüz import edilmemiş).
+   */
+  assetId: string | null;
   /** Block reason (FAILED ise). */
   blockReason: string | null;
   /** Failed reason mesajı. */
@@ -86,6 +92,22 @@ export type BatchSummary = {
    * server kendi resolve yapar.
    */
   productTypeId: string | null;
+  /**
+   * Batch-first Phase 7 — provider-first production snapshot.
+   *
+   * Parameters tab read-only batch request snapshot'ı bu alanlardan
+   * derler. Provider-aware: kullanıcı altyapı jargonu (MJ/AI) yerine
+   * üretim sağlayıcısı (Midjourney / Kie / vb.) bağlamı görür.
+   *
+   * Tüm alanlar nullable — eski batch'ler (Phase 7 öncesi) bu metadatayı
+   * taşımaz; UI null durumda "—" gösterir. Yeni batch'ler ai-generation.
+   * service:189-195'te bunları Job.metadata'ya yazar.
+   */
+  providerId: string | null;
+  providerLabel: string | null;
+  capabilityUsed: string | null;
+  aspectRatio: string | null;
+  quality: string | null;
   /**
    * Pass 86 — Retry lineage (varsa).
    * Bu batch bir önceki batch'in retry'ı ise:
@@ -202,7 +224,15 @@ export async function getBatchSummary(
             // already populates the relation; adding reviewDecision
             // is additive and the asset list is already small (4-8
             // per MJ job).
-            select: { id: true, reviewDecision: true },
+            // Batch-first Phase 7 — assetId + gridIndex eklendi;
+            // Items tab thumbnail grid render için.
+            select: {
+              id: true,
+              assetId: true,
+              gridIndex: true,
+              reviewDecision: true,
+            },
+            orderBy: { gridIndex: "asc" },
           },
         },
       },
@@ -237,6 +267,12 @@ export async function getBatchSummary(
   // Batch-first Phase 2 — reference lineage. Aynı batch'in tüm job'larında
   // aynı; ilk geçerli değer yakalanır.
   let referenceId: string | null = null;
+  // Batch-first Phase 7 — provider-first production snapshot. MJ
+  // pipeline'da provider sabit "midjourney" (bridge tek provider);
+  // diğer alanlar Job.metadata.promptParams üzerinden okunabilir
+  // ama mevcut MJ_BRIDGE pipeline her job'a promptParams yazmıyor.
+  // V1: providerId hardcoded "midjourney"; diğer alanlar null.
+  let mjProviderSeen = false;
   const rows: BatchJobRow[] = [];
 
   for (const j of jobs) {
@@ -259,6 +295,7 @@ export async function getBatchSummary(
     if (typeof md["referenceId"] === "string" && !referenceId) {
       referenceId = md["referenceId"] as string;
     }
+    if (!mjProviderSeen) mjProviderSeen = true;
     const state = j.midjourneyJob?.state ?? null;
     counts[bucketState(state)] += 1;
     // IA Phase 11 — aggregate review decisions for all assets.
@@ -268,6 +305,9 @@ export async function getBatchSummary(
       else if (a.reviewDecision === "REJECTED") reviewCounts.rejected += 1;
       else reviewCounts.undecided += 1;
     }
+    // Phase 7 — representative assetId (gridIndex 0 tercih) Items tab
+    // thumbnail için.
+    const firstAsset = j.midjourneyJob?.generatedAssets[0] ?? null;
     rows.push({
       jobId: j.id,
       midjourneyJobId: j.midjourneyJob?.id ?? null,
@@ -282,6 +322,7 @@ export async function getBatchSummary(
           ? (md["batchVariables"] as Record<string, string>)
           : null,
       assetCount: j.midjourneyJob?.generatedAssets.length ?? 0,
+      assetId: firstAsset?.assetId ?? null,
       blockReason: j.midjourneyJob?.blockReason ?? null,
       failedReason: j.midjourneyJob?.failedReason ?? null,
       createdAt: j.createdAt,
@@ -306,6 +347,15 @@ export async function getBatchSummary(
     // resolve yapıyor. Burada null bırakıyoruz — UI handoff'u summary.pipeline
     // üzerinden farklı service'e yönlendirir.
     productTypeId: null,
+    // Batch-first Phase 7 — provider-first snapshot. MJ pipeline tek
+    // provider (Midjourney browser bridge); kullanıcı-facing label sabit.
+    // Diğer alanlar (aspectRatio/quality/capability) MJ_BRIDGE
+    // Job.metadata'sında yazılmıyor — null kalır, UI "—" gösterir.
+    providerId: mjProviderSeen ? "midjourney" : null,
+    providerLabel: mjProviderSeen ? "Midjourney" : null,
+    capabilityUsed: null,
+    aspectRatio: null,
+    quality: null,
     retryOfBatchId,
     counts,
     reviewCounts,
@@ -352,6 +402,10 @@ async function getAiVariationBatchSummary(
   if (jobs.length === 0) return null;
 
   // Each job has one related GeneratedDesign — bulk fetch by jobId.
+  // Batch-first Phase 7 — provider snapshot fields eklendi
+  // (assetId, providerId, aspectRatio, quality, capabilityUsed,
+  // promptSnapshot). Parameters tab + Items thumbnail grid bu
+  // alanlardan beslenir.
   const designs = await db.generatedDesign.findMany({
     where: {
       jobId: { in: jobs.map((j) => j.id) },
@@ -361,8 +415,15 @@ async function getAiVariationBatchSummary(
       id: true,
       jobId: true,
       state: true,
+      assetId: true,
       productTypeId: true,
       referenceId: true,
+      providerId: true,
+      capabilityUsed: true,
+      aspectRatio: true,
+      quality: true,
+      promptSnapshot: true,
+      briefSnapshot: true,
       reviewStatus: true,
       reviewStatusSource: true,
     },
@@ -392,6 +453,14 @@ async function getAiVariationBatchSummary(
   let batchTotal = 0;
   let referenceId: string | null = null;
   let productTypeId: string | null = null;
+  // Batch-first Phase 7 — provider-first snapshot fields. AI variation
+  // batch'inde tüm job'lar aynı providerId/aspectRatio/quality paylaşır
+  // (createVariationJobs single submit). İlk geçerli değer yakalanır.
+  let providerId: string | null = null;
+  let capabilityUsed: string | null = null;
+  let aspectRatio: string | null = null;
+  let quality: string | null = null;
+  let promptSnapshot: string | null = null;
   const rows: BatchJobRow[] = [];
 
   for (const j of jobs) {
@@ -404,6 +473,20 @@ async function getAiVariationBatchSummary(
     if (total > batchTotal) batchTotal = total;
     if (typeof md["referenceId"] === "string" && !referenceId) {
       referenceId = md["referenceId"] as string;
+    }
+    // Phase 7 — Job.metadata.providerId (Phase 7+ writes); design row
+    // fallback below.
+    if (typeof md["providerId"] === "string" && !providerId) {
+      providerId = md["providerId"] as string;
+    }
+    if (typeof md["aspectRatio"] === "string" && !aspectRatio) {
+      aspectRatio = md["aspectRatio"] as string;
+    }
+    if (typeof md["quality"] === "string" && !quality) {
+      quality = md["quality"] as string;
+    }
+    if (typeof md["capabilityUsed"] === "string" && !capabilityUsed) {
+      capabilityUsed = md["capabilityUsed"] as string;
     }
 
     // Job state mapping: Job.status (QUEUED/RUNNING/SUCCEEDED/FAILED) →
@@ -419,6 +502,17 @@ async function getAiVariationBatchSummary(
     if (design) {
       if (!productTypeId) productTypeId = design.productTypeId;
       if (!referenceId) referenceId = design.referenceId;
+      // Phase 7 — design fallback: legacy batch (Phase 6 öncesi) metadata
+      // taşımaz; design row'undan provider/aspect/quality oku.
+      if (!providerId && design.providerId) providerId = design.providerId;
+      if (!aspectRatio && design.aspectRatio) aspectRatio = design.aspectRatio;
+      if (!quality && design.quality) quality = design.quality;
+      if (!capabilityUsed && design.capabilityUsed) {
+        capabilityUsed = design.capabilityUsed;
+      }
+      if (!promptSnapshot && design.promptSnapshot) {
+        promptSnapshot = design.promptSnapshot;
+      }
       // CLAUDE.md Madde V: kept = APPROVED + reviewStatusSource = USER.
       // Worker-written advisory (`SYSTEM` source) "undecided" bucket'ına
       // düşer — operatör henüz karar vermedi.
@@ -445,9 +539,12 @@ async function getAiVariationBatchSummary(
       bridgeJobId: null,
       mjJobId: null,
       batchIndex: idx,
-      expandedPrompt: null, // AI prompt snapshot GeneratedDesign'da
+      expandedPrompt: design?.promptSnapshot ?? null,
       variables: null,
       assetCount: design ? 1 : 0,
+      // Phase 7 — AI batch'inde 1 job = 1 design = 1 asset; design.assetId
+      // Items tab thumbnail için kullanılır.
+      assetId: design?.assetId ?? null,
       blockReason: null,
       failedReason: j.error ?? null,
       createdAt: j.createdAt,
@@ -466,14 +563,37 @@ async function getAiVariationBatchSummary(
     // GeneratedDesign.promptSnapshot var ama ayrı row, batch detail için
     // representative job'dan okuma future enhancement.
     templateId: null,
-    promptTemplate: null,
+    promptTemplate: promptSnapshot,
     referenceId,
     productTypeId,
+    // Batch-first Phase 7 — provider-first production snapshot.
+    providerId,
+    providerLabel: formatProviderLabel(providerId),
+    capabilityUsed,
+    aspectRatio,
+    quality,
     retryOfBatchId: null,
     counts,
     reviewCounts,
     jobs: rows,
   };
+}
+
+/**
+ * Batch-first Phase 7 — providerId → kullanıcı-facing label.
+ * Provider registry hardcoded id'leri (`kie-gpt-image-1.5`,
+ * `kie-z-image`) operatöre uygun isimle gösterilir. Bilinmeyen id ise
+ * id'nin kendisi gösterilir (fallback). MJ pipeline'da label sabit
+ * "Midjourney" (getBatchSummary MJ branch'inde literal).
+ */
+function formatProviderLabel(providerId: string | null): string | null {
+  if (!providerId) return null;
+  const PROVIDER_LABELS: Record<string, string> = {
+    "kie-gpt-image-1.5": "Kie · GPT Image 1.5",
+    "kie-z-image": "Kie · Z-Image",
+    midjourney: "Midjourney",
+  };
+  return PROVIDER_LABELS[providerId] ?? providerId;
 }
 
 export type RecentBatchSummary = {

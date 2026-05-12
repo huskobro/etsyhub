@@ -18,6 +18,7 @@ import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Tabs, type TabItem } from "@/components/ui/Tabs";
+import { UserAssetThumb } from "@/components/ui/UserAssetThumb";
 import {
   type JobState,
   JOB_STATE_LABEL_SHORT,
@@ -149,24 +150,28 @@ export function BatchDetailClient({
             <Badge tone={statusTone} dot>
               {statusLabel}
             </Badge>
-            {/* Batch-first Phase 5/6 — pipeline identity chip (ürün dili).
-             * "MJ" / "AI" altyapı jargonu değil; operatör için "Manual"
-             * (Midjourney browser bridge — operatör müdahaleli) vs
-             * "Auto" (AI provider — doğrudan üretim) ayrımı. Phase 6
-             * tooltip operatöre üretim biçimini açıklar; altyapı detayı
-             * sızmaz. data-pipeline attribute audit/debug için literal
-             * değeri korur. */}
+            {/* Batch-first Phase 7 — provider-first chip.
+             * Kullanıcı-facing dilde provider adı görünür ("Midjourney",
+             * "Kie · GPT Image 1.5"). Phase 5/6'daki "MANUAL/AUTO"
+             * dil katmanı kaldırıldı; operatör artık "üretim biçimi"
+             * değil "üretim sağlayıcısı" görür (provider-first).
+             * data-pipeline attribute audit/debug için literal değeri
+             * korur. */}
             <span
-              className="inline-flex items-center rounded-sm border border-line bg-paper px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-3"
-              data-testid="batch-detail-pipeline-chip"
+              className="inline-flex items-center rounded-sm border border-line bg-paper px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-2"
+              data-testid="batch-detail-provider-chip"
               data-pipeline={summary.pipeline}
+              data-provider-id={summary.providerId ?? "unknown"}
               title={
-                summary.pipeline === "ai-variation"
-                  ? "Auto — generated directly by AI variation provider"
-                  : "Manual — operator-driven Midjourney browser flow"
+                summary.providerLabel
+                  ? `Provider: ${summary.providerLabel}`
+                  : "Provider unknown"
               }
             >
-              {summary.pipeline === "ai-variation" ? "AUTO" : "MANUAL"}
+              <span className="text-ink-3">Provider:&nbsp;</span>
+              <span className="font-medium text-ink-2">
+                {summary.providerLabel ?? "—"}
+              </span>
             </span>
             {summary.retryOfBatchId ? (
               <Link
@@ -275,12 +280,7 @@ export function BatchDetailClient({
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {tab === "overview" ? <OverviewTab summary={summary} /> : null}
         {tab === "items" ? <ItemsTab summary={summary} /> : null}
-        {tab === "parameters" ? (
-          <EmptyTabPlaceholder
-            title="Parameters"
-            blurb="Resolved prompt, reference parameters (sref / oref / cref), aspect ratio, similarity, quality — read-only snapshot of the production request. Wires up after the unified job-stream feed lands."
-          />
-        ) : null}
+        {tab === "parameters" ? <ParametersTab summary={summary} /> : null}
         {tab === "logs" ? (
           <EmptyTabPlaceholder
             title="Logs"
@@ -556,26 +556,175 @@ function SummaryTile({
   );
 }
 
+/**
+ * Batch-first Phase 7 — Overview tab.
+ *
+ * Operatöre "bu batch'te ne oldu ve şimdi ne yapmalıyım?" sorusunun
+ * cevabını verir. v4 A3 canonical summary strip header'da zaten var;
+ * Overview tab onu **production summary** ile derinleştirir:
+ *
+ *  - Production summary card (provider + reference + product type +
+ *    aspect ratio + quality + capability)
+ *  - State breakdown (mevcut, korundu)
+ *  - Decision summary (review counts — operator gating signal)
+ *  - Prompt template snippet (korundu)
+ */
 function OverviewTab({ summary }: { summary: BatchSummary }) {
   return (
-    <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-      <div className="md:col-span-2">
-        <h3 className="text-sm font-semibold text-ink">Prompt template</h3>
-        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-k-bg-2 px-3 py-2 font-mono text-xs leading-relaxed text-ink-2">
-          {summary.promptTemplate ?? "(no prompt template snapshot)"}
-        </pre>
+    <div className="space-y-5">
+      {/* Production summary card — provider-first dil. */}
+      <div
+        className="rounded-md border border-line bg-paper p-4"
+        data-testid="batch-overview-production-summary"
+      >
+        <h3 className="font-mono text-xs uppercase tracking-meta text-ink-3">
+          Production summary
+        </h3>
+        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-3">
+          <ProductionField
+            label="Provider"
+            value={summary.providerLabel}
+            mono
+          />
+          <ProductionField
+            label="Reference"
+            value={
+              summary.referenceId ? (
+                <Link
+                  href={`/batches?referenceId=${summary.referenceId}`}
+                  className="font-mono text-info underline-offset-2 hover:underline"
+                >
+                  ↗ {summary.referenceId.slice(0, 8).toUpperCase()}
+                </Link>
+              ) : null
+            }
+          />
+          <ProductionField
+            label="Capability"
+            value={
+              summary.capabilityUsed === "IMAGE_TO_IMAGE"
+                ? "Image-to-image"
+                : summary.capabilityUsed === "TEXT_TO_IMAGE"
+                  ? "Text-to-image"
+                  : null
+            }
+          />
+          <ProductionField
+            label="Aspect ratio"
+            value={summary.aspectRatio}
+            mono
+          />
+          <ProductionField label="Quality" value={summary.quality} mono />
+          <ProductionField
+            label="Items"
+            value={`${summary.batchTotal} requested`}
+            mono
+          />
+        </div>
       </div>
-      <div>
-        <h3 className="text-sm font-semibold text-ink">State breakdown</h3>
-        <ul className="mt-2 space-y-1.5 text-xs">
-          <BreakdownRow label="Total" value={summary.counts.total} />
-          <BreakdownRow label="Queued" value={summary.counts.queued} tone="neutral" />
-          <BreakdownRow label="Running" value={summary.counts.running} tone="warning" />
-          <BreakdownRow label="Awaiting" value={summary.counts.awaiting} tone="warning" />
-          <BreakdownRow label="Succeeded" value={summary.counts.completed} tone="success" />
-          <BreakdownRow label="Failed" value={summary.counts.failed} tone="danger" />
-          <BreakdownRow label="Cancelled" value={summary.counts.cancelled} tone="neutral" />
-        </ul>
+
+      {/* Decision summary + state breakdown — operator gating signal. */}
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+        <div className="md:col-span-2">
+          <h3 className="text-sm font-semibold text-ink">Prompt template</h3>
+          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-k-bg-2 px-3 py-2 font-mono text-xs leading-relaxed text-ink-2">
+            {summary.promptTemplate ?? "(no prompt template snapshot)"}
+          </pre>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">
+              Decision summary
+            </h3>
+            <ul
+              className="mt-2 space-y-1.5 text-xs"
+              data-testid="batch-overview-decision-summary"
+            >
+              <BreakdownRow
+                label="Kept"
+                value={summary.reviewCounts.kept}
+                tone="success"
+              />
+              <BreakdownRow
+                label="Rejected"
+                value={summary.reviewCounts.rejected}
+                tone="danger"
+              />
+              <BreakdownRow
+                label="Undecided"
+                value={summary.reviewCounts.undecided}
+                tone="warning"
+              />
+            </ul>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-ink">State breakdown</h3>
+            <ul className="mt-2 space-y-1.5 text-xs">
+              <BreakdownRow label="Total" value={summary.counts.total} />
+              <BreakdownRow
+                label="Queued"
+                value={summary.counts.queued}
+                tone="neutral"
+              />
+              <BreakdownRow
+                label="Running"
+                value={summary.counts.running}
+                tone="warning"
+              />
+              <BreakdownRow
+                label="Awaiting"
+                value={summary.counts.awaiting}
+                tone="warning"
+              />
+              <BreakdownRow
+                label="Succeeded"
+                value={summary.counts.completed}
+                tone="success"
+              />
+              <BreakdownRow
+                label="Failed"
+                value={summary.counts.failed}
+                tone="danger"
+              />
+              <BreakdownRow
+                label="Cancelled"
+                value={summary.counts.cancelled}
+                tone="neutral"
+              />
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Production summary field — label (mono caption) + value.
+ * Boş değer "—" gösterir (legacy batch'ler bazı alanları taşımaz).
+ */
+function ProductionField({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div>
+      <div className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-1 text-sm",
+          mono && "font-mono text-xs",
+          value ? "text-ink" : "text-ink-3",
+        )}
+      >
+        {value ?? "—"}
       </div>
     </div>
   );
@@ -603,89 +752,239 @@ function BreakdownRow({
   );
 }
 
+/**
+ * Batch-first Phase 7 — Items tab.
+ *
+ * Operatöre "bu batch'ten hangi görseller çıktı?" sorusunun cevabını
+ * verir. v4 A3 canonical: card grid + thumbnail + state. Phase 7
+ * implementation:
+ *   - Card grid (4 column comfortable / 6 column dense — gelecek)
+ *   - Thumbnail (UserAssetThumb signed URL)
+ *   - State badge + asset count + prompt preview tooltip
+ *   - assetId yoksa placeholder + state durumu
+ *
+ * Bulk-select (re-roll / send to review / discard) v4 spec'inde var
+ * ama rollout dışı; thumbnail görünürlüğü Phase 7 öncelik.
+ */
 function ItemsTab({ summary }: { summary: BatchSummary }) {
+  if (summary.jobs.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-line bg-paper px-6 py-10 text-center text-sm text-ink-3">
+        Bu batch&apos;te henüz item yok.
+      </div>
+    );
+  }
   return (
-    <div className="overflow-hidden rounded-md border border-line bg-paper">
-      <table className="w-full" data-testid="batch-items-table">
-        <thead className="border-b border-line bg-k-bg-2/40">
-          <tr>
-            <ItemTH className="w-12">#</ItemTH>
-            <ItemTH>Status</ItemTH>
-            <ItemTH>Expanded prompt</ItemTH>
-            <ItemTH className="w-32">Variables</ItemTH>
-            <ItemTH className="w-20">Assets</ItemTH>
-            <ItemTH className="w-12" />
-          </tr>
-        </thead>
-        <tbody>
-          {summary.jobs.map((j) => (
-            <tr
-              key={j.jobId}
-              className="border-b border-line-soft last:border-b-0 hover:bg-k-bg-2/40"
+    <div
+      className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+      data-testid="batch-items-grid"
+    >
+      {summary.jobs.map((j) => (
+        <BatchItemCard key={j.jobId} job={j} />
+      ))}
+    </div>
+  );
+}
+
+function BatchItemCard({ job }: { job: BatchSummary["jobs"][number] }) {
+  const stateLabel = job.state
+    ? JOB_STATE_LABEL_SHORT[job.state as JobState] ?? job.state
+    : "—";
+  return (
+    <div
+      className="k-card overflow-hidden"
+      data-testid="batch-item-card"
+      data-state={job.state ?? "unknown"}
+    >
+      <div className="relative aspect-square bg-k-bg-2">
+        {job.assetId ? (
+          <UserAssetThumb
+            assetId={job.assetId}
+            alt={`Item ${job.batchIndex}`}
+            square
+            className="!aspect-square"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-ink-3">
+            <Layers className="h-5 w-5 opacity-60" aria-hidden />
+          </div>
+        )}
+        <div className="absolute left-2 top-2">
+          <span className="inline-flex items-center rounded bg-paper/85 px-1.5 py-0.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-2 shadow-sm">
+            #{job.batchIndex}
+          </span>
+        </div>
+        <div className="absolute right-2 top-2">
+          <Badge tone={jobStateTone(job.state)} dot>
+            {stateLabel}
+          </Badge>
+        </div>
+      </div>
+      <div className="p-3">
+        {job.expandedPrompt ? (
+          <p
+            className="line-clamp-2 font-mono text-[11px] leading-snug text-ink-2"
+            title={job.expandedPrompt}
+          >
+            {job.expandedPrompt}
+          </p>
+        ) : (
+          <p className="text-[11px] text-ink-3">—</p>
+        )}
+        <div className="mt-2 flex items-center justify-between font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+          <span>
+            {job.assetCount} asset{job.assetCount === 1 ? "" : "s"}
+          </span>
+          {job.failedReason ? (
+            <span
+              className="text-danger"
+              title={job.failedReason}
             >
-              <ItemTD>
-                <code className="font-mono text-xs tabular-nums text-ink-3">
-                  {j.batchIndex}
-                </code>
-              </ItemTD>
-              <ItemTD>
-                <Badge tone={jobStateTone(j.state)} dot>
-                  {j.state
-                    ? JOB_STATE_LABEL_SHORT[j.state as JobState] ?? j.state
-                    : "—"}
-                </Badge>
-                {j.blockReason ? (
-                  <div
-                    className="mt-1 text-xs text-danger"
-                    title={j.failedReason ?? undefined}
-                  >
-                    {j.blockReason}
-                  </div>
-                ) : null}
-              </ItemTD>
-              <ItemTD>
-                {j.expandedPrompt ? (
-                  <span
-                    className="block max-w-md truncate font-mono text-xs text-ink-2"
-                    title={j.expandedPrompt}
-                  >
-                    {j.expandedPrompt}
-                  </span>
-                ) : (
-                  <span className="text-xs text-ink-3">—</span>
-                )}
-              </ItemTD>
-              <ItemTD>
-                {j.variables ? (
-                  <span className="font-mono text-xs text-ink-3">
-                    {Object.keys(j.variables).length} vars
-                  </span>
-                ) : (
-                  <span className="text-xs text-ink-3">—</span>
-                )}
-              </ItemTD>
-              <ItemTD>
-                {j.assetCount > 0 ? (
-                  <Badge tone="success">{j.assetCount}</Badge>
-                ) : (
-                  <span className="text-xs text-ink-3">—</span>
-                )}
-              </ItemTD>
-              <ItemTD>
-                {j.midjourneyJobId ? (
-                  <Link
-                    href={`/library?days=all&parentAssetId=`}
-                    aria-label="Open in Library"
-                    className="inline-flex h-6 w-6 items-center justify-center rounded text-ink-3 hover:text-ink"
-                  >
-                    <Layers className="h-3.5 w-3.5" aria-hidden />
-                  </Link>
-                ) : null}
-              </ItemTD>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              error
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Batch-first Phase 7 — Parameters tab.
+ *
+ * Operatöre "bu batch hangi üretim ayarlarıyla koştu?" sorusunun
+ * cevabını verir. Read-only production request snapshot:
+ *   - Provider info (id + label + capability)
+ *   - Aspect ratio + quality
+ *   - Item count + batch type
+ *   - Reference parameters (sref/oref/cref) — placeholder (Phase 7
+ *     out-of-scope; design'da var ama production'da yazılmıyor)
+ *   - Prompt template / snapshot
+ *
+ * Boş alanlar "—" gösterir (legacy batch'ler bazı alanları taşımaz).
+ */
+function ParametersTab({ summary }: { summary: BatchSummary }) {
+  return (
+    <div
+      className="grid grid-cols-1 gap-5 md:grid-cols-2"
+      data-testid="batch-parameters"
+    >
+      <div className="space-y-4">
+        <div className="rounded-md border border-line bg-paper p-4">
+          <h3 className="font-mono text-xs uppercase tracking-meta text-ink-3">
+            Provider
+          </h3>
+          <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3">
+            <ProductionField
+              label="Provider label"
+              value={summary.providerLabel}
+            />
+            <ProductionField
+              label="Provider id"
+              value={summary.providerId}
+              mono
+            />
+            <ProductionField
+              label="Capability"
+              value={
+                summary.capabilityUsed === "IMAGE_TO_IMAGE"
+                  ? "Image-to-image"
+                  : summary.capabilityUsed === "TEXT_TO_IMAGE"
+                    ? "Text-to-image"
+                    : null
+              }
+            />
+            <ProductionField
+              label="Pipeline"
+              value={
+                summary.pipeline === "ai-variation"
+                  ? "AI variation"
+                  : "Midjourney bridge"
+              }
+              mono
+            />
+          </div>
+        </div>
+
+        <div className="rounded-md border border-line bg-paper p-4">
+          <h3 className="font-mono text-xs uppercase tracking-meta text-ink-3">
+            Generation parameters
+          </h3>
+          <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3">
+            <ProductionField
+              label="Aspect ratio"
+              value={summary.aspectRatio}
+              mono
+            />
+            <ProductionField label="Quality" value={summary.quality} mono />
+            <ProductionField
+              label="Count"
+              value={`${summary.batchTotal} requested`}
+              mono
+            />
+            <ProductionField
+              label="Template id"
+              value={
+                summary.templateId
+                  ? summary.templateId.slice(0, 8).toUpperCase()
+                  : null
+              }
+              mono
+            />
+          </div>
+        </div>
+
+        <div
+          className="rounded-md border border-dashed border-line bg-paper p-4"
+          data-testid="batch-parameters-ref-params"
+        >
+          <h3 className="font-mono text-xs uppercase tracking-meta text-ink-3">
+            Reference parameters
+          </h3>
+          <p className="mt-2 text-xs text-ink-3">
+            <code className="font-mono">sref</code>,{" "}
+            <code className="font-mono">oref</code>,{" "}
+            <code className="font-mono">cref</code> capture — design system v4
+            A6 advanced section&apos;da var, A6 modal implementation rollout
+            kapsamında değil. Lineage Job.metadata&apos;sında henüz yazılmıyor.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="rounded-md border border-line bg-paper p-4">
+          <h3 className="font-mono text-xs uppercase tracking-meta text-ink-3">
+            Prompt snapshot
+          </h3>
+          {summary.promptTemplate ? (
+            <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-k-bg-2 px-3 py-2 font-mono text-xs leading-relaxed text-ink-2">
+              {summary.promptTemplate}
+            </pre>
+          ) : (
+            <p className="mt-2 text-xs text-ink-3">
+              (no prompt template snapshot — inline prompt or legacy batch)
+            </p>
+          )}
+        </div>
+
+        {summary.retryOfBatchId ? (
+          <div className="rounded-md border border-warning bg-warning-soft/40 p-4">
+            <h3 className="font-mono text-xs uppercase tracking-meta text-warning">
+              Retry lineage
+            </h3>
+            <p className="mt-2 text-xs text-ink-2">
+              This batch is a retry of{" "}
+              <Link
+                href={`/batches/${summary.retryOfBatchId}`}
+                className="font-mono text-warning underline-offset-2 hover:underline"
+              >
+                {summary.retryOfBatchId.slice(0, 12)}
+              </Link>
+              .
+            </p>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -3049,6 +3049,139 @@ uygulaması **sağlam**; Phase 6 review gate'e dokunmadı.
 - **Kivasy DS dışına çıkılmadı.** Phase 6 tüm değişiklikler v4
   A2/A3 + v5 B1 canonical screen'lerle hizada.
 
+### Batch-first Phase 7 (2026-05-12 — Provider-first + batch detail content)
+
+Phase 5/6'da "MANUAL/AUTO" dil katmanı operatöre üretim biçimi
+sinyali veriyordu; kullanıcı yeni karar verdi: **provider-first dil**.
+Ayrıca batch detail tabs (Phase 6'da canonical order) boş kalıyordu —
+Phase 7 bu sekmeleri gerçek ürün değerine taşıdı.
+
+#### Provider modeli ürün diline çevrildi
+
+- **Default image provider settings'te yönetilir**: `UserSetting`
+  key `aiMode` altında yeni `defaultImageProvider` field
+  (enum: `"midjourney" | "kie-gpt-image-1.5" | "kie-z-image"`,
+  default: `"midjourney"`). Backwards compat: eski row'lar default'a düşer.
+- **Pipeline chip artık "Provider: <name>"** dilini taşır.
+  - Pre-Phase 7: `MANUAL` / `AUTO` (Phase 5/6 dili — production *biçimi*)
+  - Phase 7: `Provider: Midjourney` / `Provider: Kie · GPT Image 1.5`
+    (production *sağlayıcısı*)
+  - data-pipeline attribute literal değer korur (audit/debug).
+- **`formatProviderLabel(providerId)` helper** (`batches.ts`):
+  - `"midjourney"` → "Midjourney"
+  - `"kie-gpt-image-1.5"` → "Kie · GPT Image 1.5"
+  - `"kie-z-image"` → "Kie · Z-Image"
+  - Bilinmeyen id fallback: kendisi (operatöre dürüst).
+
+#### BatchSummary provider-first snapshot
+
+`BatchSummary` type Phase 7'de zenginleştirildi:
+
+```
+{
+  providerId, providerLabel, capabilityUsed, aspectRatio, quality,
+  ...existing fields,
+  jobs: BatchJobRow[] // her row'a assetId eklendi (thumbnail)
+}
+```
+
+**AI variation pipeline (`getAiVariationBatchSummary`):**
+- Job.metadata'dan `providerId / aspectRatio / quality / capabilityUsed`
+  okur (Phase 7'den itibaren yazılır — `ai-generation.service:189-195`).
+- Legacy AI batch'leri (Phase 7 öncesi) için `GeneratedDesign` row'undan
+  fallback resolve eder; backwards compat.
+- `GeneratedDesign.assetId` her BatchJobRow'a doldurur (Items
+  thumbnail grid için).
+
+**MJ pipeline (`getBatchSummary` MJ branch):**
+- Provider sabit: `"midjourney"`, label "Midjourney".
+- aspectRatio/quality MJ_BRIDGE Job.metadata'sında yazılmadığı için null.
+- Her job için MidjourneyAsset.assetId (gridIndex=0 tercih) BatchJobRow
+  `assetId`'sine doldurulur.
+
+#### Batch detail Overview tab — production summary
+
+**Eski:** Sadece prompt template + state breakdown (yoğun ama
+"şimdi ne yapmalıyım?" sorusuna boş).
+
+**Yeni:** İki katlı yapı:
+1. **Production summary card** (provider-first):
+   - Provider (label)
+   - Reference (clickable back-link)
+   - Capability (image-to-image / text-to-image)
+   - Aspect ratio · Quality · Items requested
+2. **Prompt template** snippet (korundu)
+3. **Decision summary** (kept · rejected · undecided — operator gate
+   sinyali zaten header CTA'sında ama burada da görünür)
+4. **State breakdown** (mevcut, korundu)
+
+#### Batch detail Items tab — thumbnail grid
+
+**Eski:** Tablo (kolonlar: #, Status, Prompt, Variables, Asset count,
+Library link). "Thumbnail olmaması ciddi eksik" yorumu doğru.
+
+**Yeni:** **Card grid** (responsive: 2/3/4/5/6 cols viewport'a göre):
+- `UserAssetThumb` ile asset render (gridIndex=0 MJ; design.assetId AI)
+- Top-left badge: `#{batchIndex}` mono caption
+- Top-right badge: state (Succeeded/Queued/Failed tone'lu)
+- Footer: prompt preview (line-clamp-2) + asset count + error indicator
+- AssetId null ise `Layers` icon placeholder (state durumunu hala
+  gösterir)
+
+#### Batch detail Parameters tab — real snapshot
+
+**Eski:** EmptyTabPlaceholder (placeholder string).
+
+**Yeni:** Read-only batch request snapshot — sol kolon Provider card +
+Generation parameters card + Reference parameters note (dashed
+border, design-only); sağ kolon Prompt snapshot + Retry lineage (varsa).
+Tüm değerler BatchSummary'den gerçek read; null ise "—".
+
+#### Tabs vs single-page karar
+
+**Karar: Tabs korundu.** Gerekçe:
+- v4 A3 canonical spec tabs ile tasarlanmış (Items/Parameters/Logs/Costs).
+- Phase 7'de tab içerikleri gerçek ürün değerine taşındı —
+  Overview = "ne oldu", Items = "ne çıktı", Parameters = "hangi
+  ayarlar". Sekmeler artık dolu.
+- Single-page'e geçmek büyük rewrite + scroll yoğunluğu
+  (kullanıcı talimatı: "tabs yapısını hemen atma; önce mevcut yapıyı
+  gerçekten doldur").
+- Logs ve Costs hala placeholder; unified job-stream feed gelene
+  kadar tab placeholder'larıyla işaretli (operatöre dürüst).
+
+#### Settings — defaultImageProvider field
+
+- `UserSetting.value.aiMode.defaultImageProvider` field eklendi
+  (Zod default "midjourney")
+- `getUserAiModeSettings` + `updateUserAiModeSettings` schema
+  güncellendi
+- Backwards compat: eski row'lar field'ı taşımıyor; Zod parse
+  default'a düşer. Migration yok.
+- AI mode form ve A6 modal bu setting'i tüketmek için sonraki phase
+  (Phase 7 scope dışı; form hardcoded provider dropdown'u korunur
+  — settings field hazır, consumer bağlantısı gelecek faz).
+
+#### Değişmeyenler (Phase 7)
+
+- **Review freeze (Madde Z) korunur.** Phase 7 review modülüne
+  dokunmaz.
+- **Schema migration yok.** `UserSetting.value` Json field zaten
+  esnek; provider snapshot Job.metadata JSON path query.
+- **Yeni surface açılmadı.** Mevcut tabs + summary strip + cards.
+- **WorkflowRun eklenmez** (IA Phase 11 kapsamı).
+- **Kivasy DS dışına çıkılmadı.** Phase 7 tüm değişiklikler v4 A3
+  canonical screen'le hizada (summary strip, tabs, card grid).
+  Sayfa-spesifik `.k-card` recipe + mono caption pattern korundu.
+
+#### Browser doğrulama disiplini (Phase 7 ders)
+
+Preview tool screenshot'ı küçük render edebiliyor — DOM
+verification (eval ile state okuma) + okunabilir screenshot (1280px+
+viewport) **kombine** olmalı. Tek başına "screenshot küçüktü → doğrulandı"
+demek yetmez; eval ile DOM kanıtı + okunabilir viewport screenshot
+birlikte gerekir.
+
 ### Epic-agnesi branch notu
 
 `claude/epic-agnesi-7a424b` branch'inde Batch-first Phase 1'in ilk

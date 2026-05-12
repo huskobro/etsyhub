@@ -13,6 +13,27 @@ import { z } from "zod";
 export const ReviewProviderChoiceSchema = z.enum(["kie", "google-gemini"]);
 export type ReviewProviderChoice = z.infer<typeof ReviewProviderChoiceSchema>;
 
+/**
+ * Batch-first Phase 7 — default image generation provider seçimi.
+ *
+ * Provider-first ürün dili: kullanıcı batch başlattığında bu varsayılan
+ * provider seçili gelir; A6 modal veya AI mode form'da override edilebilir.
+ *
+ * Şimdilik:
+ *   - "midjourney" — Midjourney bridge (default, kullanıcının kararı)
+ *   - "kie-gpt-image-1.5" — Kie GPT Image 1.5 (image-to-image)
+ *   - "kie-z-image" — Kie Z-Image (text-to-image)
+ *
+ * Yeni provider ekleme: enum'a yeni id eklemek + provider registry'e
+ * implementation eklemek yeterli. Schema-zero — UserSetting.value Json.
+ */
+export const ImageProviderChoiceSchema = z.enum([
+  "midjourney",
+  "kie-gpt-image-1.5",
+  "kie-z-image",
+]);
+export type ImageProviderChoice = z.infer<typeof ImageProviderChoiceSchema>;
+
 export const AiModeSettingsSchema = z.object({
   kieApiKey: z.string().nullable(), // encrypted at rest in service layer
   geminiApiKey: z.string().nullable(),
@@ -20,6 +41,9 @@ export const AiModeSettingsSchema = z.object({
   // Aşama 2'ye kadar bu provider STUB durumda; default user review job FAIL
   // olur (yön mesajıyla). Kullanıcı "google-gemini"ye geçebilir.
   reviewProvider: ReviewProviderChoiceSchema.default("kie"),
+  // Phase 7 — Default image provider. Midjourney varsayılan (kullanıcı
+  // kararı); batch creation surface'leri bu değeri okur ve seçili getirir.
+  defaultImageProvider: ImageProviderChoiceSchema.default("midjourney"),
 });
 
 export type AiModeSettings = z.infer<typeof AiModeSettingsSchema>;
@@ -40,6 +64,7 @@ export const StoredAiModeSettingsSchema = z
     kieApiKey: z.string().nullable(),
     geminiApiKey: z.string().nullable(),
     reviewProvider: ReviewProviderChoiceSchema.default("kie"),
+    defaultImageProvider: ImageProviderChoiceSchema.default("midjourney"),
   })
   .strict();
 

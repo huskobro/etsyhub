@@ -14,6 +14,7 @@
 // edip enqueue payload'una koyar. Phase 6 review provider'ıyla simetrik;
 // artık AI mode variation generation per-user key kullanır.
 
+import type { z } from "zod";
 import { db } from "@/server/db";
 import { encryptSecret, decryptSecret } from "@/lib/secrets";
 import { logger } from "@/lib/logger";
@@ -50,23 +51,32 @@ export async function getUserAiModeSettings(userId: string): Promise<AiModeSetti
     where: { userId_key: { userId, key: SETTING_KEY } },
   });
   if (!row) {
-    // Hiç row yoksa default'lar — reviewProvider Zod default "kie".
-    return { kieApiKey: null, geminiApiKey: null, reviewProvider: "kie" };
+    // Hiç row yoksa default'lar — reviewProvider Zod default "kie",
+    // defaultImageProvider Zod default "midjourney" (Phase 7).
+    return {
+      kieApiKey: null,
+      geminiApiKey: null,
+      reviewProvider: "kie",
+      defaultImageProvider: "midjourney",
+    };
   }
   // Task 12: parse asimetri kapatılıyor — `as` cast yerine zod parse.
   // Bozuk persist (yanlış tip / bilinmeyen alan) → fail-fast throw.
   // Aşama 1: reviewProvider field'ı eski row'larda yoksa Zod default "kie".
+  // Phase 7: defaultImageProvider field'ı eski row'larda yoksa default
+  // "midjourney" — backwards compat, migration yok.
   const raw = StoredAiModeSettingsSchema.parse(row.value);
   return {
     kieApiKey: safeDecrypt(raw.kieApiKey, "kieApiKey"),
     geminiApiKey: safeDecrypt(raw.geminiApiKey, "geminiApiKey"),
     reviewProvider: raw.reviewProvider,
+    defaultImageProvider: raw.defaultImageProvider,
   };
 }
 
 export async function updateUserAiModeSettings(
   userId: string,
-  input: AiModeSettings,
+  input: z.input<typeof AiModeSettingsSchema>,
 ): Promise<AiModeSettings> {
   const parsed = AiModeSettingsSchema.parse(input);
   const persisted = {
@@ -74,6 +84,8 @@ export async function updateUserAiModeSettings(
     geminiApiKey: parsed.geminiApiKey ? encryptSecret(parsed.geminiApiKey) : null,
     // reviewProvider sır değil; plain string olarak tutulur.
     reviewProvider: parsed.reviewProvider,
+    // Phase 7 — defaultImageProvider plain enum; sır değil.
+    defaultImageProvider: parsed.defaultImageProvider,
   };
   await db.userSetting.upsert({
     where: { userId_key: { userId, key: SETTING_KEY } },

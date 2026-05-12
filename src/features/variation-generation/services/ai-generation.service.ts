@@ -186,12 +186,19 @@ export async function createVariationJobs(
           // ile aynı schema-zero pattern'i takip eder. Unified
           // getBatchSummary AI batch'leri için "X / Y done" caption'ını
           // bu alanlardan okur.
+          // Batch-first Phase 7 — `providerId`, `aspectRatio`, `quality`,
+          // `capabilityUsed` snapshot. Parameters tab read-only batch
+          // request snapshot'ı bu alanlardan derler (provider-first dil).
           metadata: {
             designId: d.id,
             referenceId: input.reference.id,
             batchId,
             batchIndex,
             batchTotal: designs.length,
+            providerId: input.providerId,
+            capabilityUsed: dbCapability,
+            aspectRatio: input.aspectRatio,
+            quality: input.quality ?? null,
           },
         },
       });
