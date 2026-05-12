@@ -6655,6 +6655,114 @@ gerçek iş:
 
 ---
 
+## Phase 34 — Main merge + post-merge smoke verification
+
+Phase 33 sonrası References family merge-ready idi. Phase 34
+`audit/references-production-pipeline` → `main` merge'ini kontrollü
+biçimde gerçekleştirdi.
+
+### Pre-merge state
+
+- Branch: `audit/references-production-pipeline` (HEAD `b5996a7`)
+- Local == origin (synced)
+- Working tree: temiz (untracked: design system zip,
+  redesign_examples, `.claude/worktrees` — bu turun değil)
+- Audit branch vs origin/main: **0 behind / 33 ahead**
+- **Fast-forward merge mümkün**; conflict riski yok
+
+### Merge
+
+```
+git checkout main
+git merge --ff-only audit/references-production-pipeline
+  → 851ee8c..b5996a7 (33 commits, fast-forward)
+git push origin main
+  → 851ee8c..b5996a7 pushed
+```
+
+Merge commit **yok** — fast-forward. Lineer geçmiş.
+
+### Post-merge quality gates
+
+- tsc --noEmit (main üzerinde): clean
+- vitest canonical paket (main üzerinde): **59/59 PASS**
+  (bookmarks-page 16 + bookmarks-confirm-flow 5 + bookmark-service 5
+  + dashboard-page 17 + references-page 7 + collections-page 9)
+
+### Post-merge browser smoke (5/5 sub-view parity)
+
+```
+/references → CTA "/references?add=ref" ✓
+/bookmarks → CTA "/bookmarks?add=ref" ✓
+/trend-stories → CTA "/trend-stories?add=ref" ✓
+/competitors → CTA "/competitors?add=ref" ✓
+/collections → CTA "/collections?add=ref" ✓
+
+/collections?add=ref canonical modal open:
+  title: "Add Reference"
+  3 sibling tabs
+  5 canonical product type chips
+```
+
+### Pre-existing test fails — regresyon değil
+
+Phase 33'te belgelenen pre-existing TR/EN drift fails (Phase 18 EN
+parity öncesi yazılmış legacy testler):
+- `tests/unit/trend-feed.test.tsx` — 3 fail
+- `tests/unit/competitor-detail-page.test.tsx` — 7 fail
+
+Phase 33 stash karşılaştırması ile baseline'da da aynı failures
+kanıtlandı. Phase 34 fast-forward merge sonrası aynı failures —
+**regresyon değil**, ayrı test EN parity polish turu.
+
+### Yeni feature sınıflandırması (post-merge backlog)
+
+| Feature | Kategori | Effort | Schema migration |
+|---|---|---|---|
+| Folder intake (LocalLibrary ↔ AddReferenceDialog 4. tab) | Orta — UI tab + cross-feature integration | Schema değişikliği yok |
+| Etsy/CF listing URL → tüm görselleri picker | Orta-büyük — Etsy parser hazır, Pinterest/CF parser eksik | Yok |
+| CSV/Excel intake | Büyük — ayrı `/references/import` page | Yok (csv-parser lib var) |
+| Per-row failure UX (asset-less promote) | Küçük UX polish | Yok |
+| Queue mode row-per-link kararı | **Korunur** | — |
+
+Ana ürün gelişim turları (References family **dışı**):
+1. **Backend turu**: `SourcePlatform.CREATIVE_FABRICA` enum + direct
+   `POST /api/references` endpoint + server-side `import-url` source
+   resolver
+2. **Test polish**: trend-feed + competitor-detail TR/EN drift
+3. **Reference detail/edit surface** (Pool detail drawer)
+
+### Merge verdict
+
+✅ **`audit/references-production-pipeline` → `main` merge BAŞARILI.**
+
+References family bu noktada **production-ready**:
+- Tek canonical `AddReferenceDialog` (DS B5 birebir)
+- 5 sub-view'dan canonical access
+- URL/Upload/From Bookmark üç tab tam çalışıyor
+- Pre-fetch preview + server title fallback + multi-URL queue
+- Inbox row B1 canonical scan
+- Dead/bridge surfaces silindi
+- Legacy title backfill tamamlandı
+- 59/59 canonical paket tests PASS
+- 33 commits main'e fast-forward (lineer geçmiş)
+
+### Bundan sonra product olarak kalan tek doğru iş
+
+References family **kapandı**. Sonraki gerçek ürün gelişim alanları:
+
+1. **Backend genişletme turu**: schema migration (`CREATIVE_FABRICA`
+   enum + direct Reference endpoint + source resolver)
+2. **Yeni feature turları** (öncelik sırası):
+   - Folder intake (Local Library ↔ AddReferenceDialog köprüsü)
+   - Listing URL → image picker (Etsy parser hazır)
+   - CSV/Excel bulk import (ayrı page)
+3. **Test polish turu**: pre-existing TR/EN drift testleri
+
+Phase 34 References family **finalize** noktası.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
