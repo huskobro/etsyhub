@@ -3417,6 +3417,96 @@ gerektirir; Phase 9 fit-and-finish scope dışı.
 - **Kivasy DS dışına çıkılmadı.** SummaryTile recipe + mono caption +
   k-thumb pattern korundu; A3 canonical hizası güçlendirildi.
 
+### Batch-first Phase 10 (2026-05-12 — Single-branch discipline + UI English standardization polish)
+
+Phase 10 yeni feature açmadı; **branch/worktree disiplinini sabitledi**
+ve **Phase 5 İngilizce UI standardı**'na göre kalan Türkçe sızıntıları
+düzeltti.
+
+#### Single-branch discipline (kalıcı kural)
+
+Bu turdan itibaren tüm batch-first işleri **tek branch + tek worktree**
+üzerinde yapılır:
+
+- **Branch:** `audit/references-production-pipeline`
+- **Worktree:** `.claude/worktrees/audit-references`
+- **Symlink:** `node_modules` → main repo'nun `node_modules`'una
+  (audit worktree'nin kendi node_modules'u yok)
+- **Dev server:** Bash-managed external server, audit-references CWD
+  (kanıt: `lsof -p $PID -a -d cwd` ile doğrulandı)
+- **Quality gates:** typecheck/tests/build hepsi audit-references
+  worktree'de **direkt** koşar (önceden main worktree'ye sync gerekiyordu)
+- **Cookie-based auth test:** `curl /api/auth/csrf` + credentials POST
+  ile session alınır; HTTP-level page render kanıtı (Provider chip
+  + Production summary HTML'de görünür)
+
+**Preview tool kısıtı (dürüst rapor):** mcp__Claude_Preview tool
+session başlangıç worktree'sini hatırlıyor (epic-agnesi). External
+Bash-managed server bu kısıtı bypass eder; `preview_start` çağrılmaz.
+Browser doğrulaması curl + HTML inspection ile yapılır; kullanıcı
+manuel browser open ile UI'ı test edebilir.
+
+#### Phase 10 polish düzeltmeleri
+
+**1. UI English standardization (CLAUDE.md dil kuralı):**
+
+Phase 5'te kabul edilen ürün UI standardı = sadece İngilizce. Phase 10
+ai-mode-form + ai-mode-panel'da kalan Türkçe sızıntıları düzeltti:
+
+- `"AI mode formu"` → `"AI variation form"`
+- `"Kalite"` → `"Quality"`
+- `"Görsel sayısı:"` → `"Variation count:"`
+- `"Style note / ek yönlendirme (opsiyonel)"` → `"Style note (optional)"`
+- AI mode panel URL status badges:
+  - `"URL yok"` → `"No public URL"`
+  - `"Kontrol ediliyor…"` → `"Checking…"`
+  - `"Erişilebilir"` → `"Reachable"`
+  - `"Erişilemiyor · HTTP …"` → `"Unreachable · HTTP …"`
+- StateMessage title'ları:
+  - `"Reference yükleniyor…"` → `"Loading reference…"`
+  - `"Reference yüklenemedi"` + `"Beklenmeyen hata"` → İngilizce
+- No-public-URL açıklama bloğu tam İngilizceye çevrildi (Resolutions
+  listesi + Bookmark Inbox CTA)
+- ai-mode-form partial notice toast:
+  - `"X/Y kuyruk başarısız oldu (Z başarılı). Failed design'ları FAIL
+    listesinden tekrar deneyebilirsin."` → İngilizce
+
+**2. Outdated comment fix:**
+
+`references-page.tsx` header comment Phase 5 öncesi `k-btn--primary`
+referans ediyordu; Phase 5'te `k-btn--secondary` indirildi (canonical
+v5 B1 + Madde V). Comment güncellendi.
+
+#### Doğrulanan kanıtlar (single-branch live server)
+
+External Bash-managed dev server PID 7074, CWD
+`.claude/worktrees/audit-references`. Kanıt zinciri:
+
+- `lsof -p 7074 -a -d cwd` → `/audit-references` ✓
+- HTTP login: `curl /api/auth/csrf` + credentials POST → session OK
+- `curl /api/auth/session` → `{"user":{"id":"cmoqwkfls...","role":"ADMIN"}}`
+- `curl /batches/mgge2ao38wx8r81vpmel1pyh` → HTTP 200 + HTML içinde:
+  - `data-testid="batch-detail-provider-chip"` ✓
+  - `title="Provider: Midjourney"` ✓
+  - `data-testid="batch-overview-production-summary"` count 1 ✓
+- `curl /batches` → HTTP 200 + `batches-row-review-counts` chips ✓
+- `curl /references/<id>/variations` → HTTP 200 + Phase 9 subtitle
+  `"Generate a new batch from this reference"` ✓
+
+**Başka branch/worktree'ye kopyalama YAPILMADI.** Phase 10'da hiç
+"sync to epic-agnesi" hareketi yok; tüm değişiklikler audit-references
+worktree'sinde commit edildi.
+
+#### Değişmeyenler (Phase 10)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Hiç DB değişikliği yok.
+- **Yeni surface açılmadı.** Sadece copy/comment polish.
+- **Yeni büyük abstraction yok.**
+- **WorkflowRun eklenmez** (IA Phase 11).
+- **Kivasy DS dışına çıkılmadı.** Sadece UI metni İngilizce
+  standardına çekildi.
+
 ### Epic-agnesi branch notu
 
 `claude/epic-agnesi-7a424b` branch'inde Batch-first Phase 1'in ilk

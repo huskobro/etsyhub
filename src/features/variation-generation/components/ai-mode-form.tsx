@@ -143,7 +143,7 @@ export function AiModeForm({
     setConfirmOpen(false);
     if (out.failedDesignIds && out.failedDesignIds.length > 0) {
       setPartialNotice(
-        `${out.failedDesignIds.length}/${count} kuyruk başarısız oldu (${out.designIds.length} başarılı). Failed design'ları FAIL listesinden tekrar deneyebilirsin.`,
+        `${out.failedDesignIds.length}/${count} jobs failed to enqueue (${out.designIds.length} succeeded). Retry failed designs from the FAIL list.`,
       );
     }
     if (out.batchId && out.designIds.length > 0) {
@@ -161,7 +161,7 @@ export function AiModeForm({
       className="rounded-md border border-border bg-surface p-4 disabled:opacity-50"
     >
       <legend className="px-2 text-sm font-medium text-text">
-        AI mode formu
+        AI variation form
       </legend>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm text-text">
@@ -240,7 +240,7 @@ export function AiModeForm({
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm text-text">
-          Kalite
+          Quality
           {/* Phase 9 — provider-aware quality. Provider quality
            * desteklemiyorsa dropdown disabled + helper text. */}
           {(() => {
@@ -278,7 +278,7 @@ export function AiModeForm({
           })()}
         </label>
         <label className="flex flex-col gap-1 text-sm text-text">
-          Görsel sayısı: <span className="font-medium">{count}</span>
+          Variation count: <span className="font-medium">{count}</span>
           <input
             type="range"
             min={COUNT_MIN}
@@ -290,7 +290,7 @@ export function AiModeForm({
         </label>
       </div>
       <label className="mt-3 flex flex-col gap-1 text-sm text-text">
-        Style note / ek yönlendirme (opsiyonel)
+        Style note (optional)
         <textarea
           value={brief}
           onChange={(e) => setBrief(e.target.value.slice(0, BRIEF_MAX))}

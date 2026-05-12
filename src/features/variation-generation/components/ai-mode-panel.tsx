@@ -27,14 +27,14 @@ export function AiModePanel({
   const jobs = useVariationJobs(referenceId);
 
   if (ref.isLoading) {
-    return <StateMessage tone="neutral" title="Reference yükleniyor…" />;
+    return <StateMessage tone="neutral" title="Loading reference…" />;
   }
   if (ref.isError || !ref.data) {
     return (
       <StateMessage
         tone="error"
-        title="Reference yüklenemedi"
-        body={(ref.error as Error | null)?.message ?? "Beklenmeyen hata"}
+        title="Reference failed to load"
+        body={(ref.error as Error | null)?.message ?? "Unexpected error"}
       />
     );
   }
@@ -65,22 +65,22 @@ export function AiModePanel({
           </span>
           {!hasPublicUrl ? (
             <span className="rounded-md bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger">
-              URL yok
+              No public URL
             </span>
           ) : urlChecking ? (
             <span className="rounded-md bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-muted">
-              Kontrol ediliyor…
+              Checking…
             </span>
           ) : urlOk ? (
             <span className="rounded-md bg-success-soft px-2 py-0.5 text-xs font-medium text-success">
-              Erişilebilir
+              Reachable
             </span>
           ) : (
             // Task 15 (Parça 3) — status code ve reason artık görünür; sadece
             // title attribute'üne gizlenmiyor. network fail tarzı status undefined
             // ise "—" göster.
             <span className="rounded-md bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger">
-              Erişilemiyor · HTTP {urlCheck.data?.status ?? "—"}
+              Unreachable · HTTP {urlCheck.data?.status ?? "—"}
               {urlCheck.data?.reason ? ` · ${urlCheck.data.reason}` : ""}
             </span>
           )}
@@ -90,33 +90,31 @@ export function AiModePanel({
             {sourceUrl}
           </div>
         ) : (
-          // Pass 34 — "URL yok" durumu daha açık. Pre-Pass 34 mesaj net
-          // değildi: kullanıcı niye dead-end'de olduğunu ve ne yapacağını
-          // bilmiyordu. Şimdi sebep + iki olası çözüm: (1) Local mode'a geç
-          // (lokal kütüphaneden seç), (2) Public URL'li yeni reference yarat
-          // (Bookmark Inbox üzerinden).
+          // Phase 10 — "No public URL" net açıklama. Pre-Phase mesaj net
+          // değildi: kullanıcı niye dead-end'de olduğunu bilmiyordu. Şimdi
+          // sebep + iki olası çözüm: (1) Local mode'a geç, (2) Bookmark
+          // Inbox üzerinden public URL'li reference oluştur.
           <div className="mt-2 flex flex-col gap-1 text-xs">
             <p className="text-text">
-              Bu reference&apos;ın asset&apos;inde public bir kaynak URL yok —
-              AI mode image-to-image için zorunlu.
+              This reference&apos;s asset has no public source URL — required
+              for AI mode image-to-image.
             </p>
-            <p className="text-text-muted">
-              Çözümler:
-            </p>
+            <p className="text-text-muted">Resolutions:</p>
             <ul className="ml-4 list-disc text-text-muted">
               <li>
-                Yukarıdaki <strong className="text-text">Local</strong> tab&apos;ına
-                geç — lokal kütüphanen üzerinden devam et.
+                Switch to the <strong className="text-text">Local</strong> tab
+                above and continue from your local library.
               </li>
               <li>
-                Ya da{" "}
+                Or open{" "}
                 <a
                   href="/bookmarks"
                   className="text-accent underline hover:no-underline"
                 >
                   Bookmark Inbox
                 </a>
-                &apos;tan public URL&apos;li bir görsel ekleyip referansa taşı.
+                {" "}and add a publicly accessible image, then promote it to
+                a reference.
               </li>
             </ul>
           </div>

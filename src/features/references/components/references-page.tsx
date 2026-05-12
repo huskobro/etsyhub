@@ -27,8 +27,11 @@ import { cn } from "@/lib/cn";
  *       · square thumb (.k-thumb data-aspect="square") wrapped in p-2 pb-0
  *       · top-left: .k-checkbox (always visible, ring-selected on active)
  *       · top-right hover: .k-iconbtn (eye = open detail)
- *       · bottom-2 hover overlay: .k-btn--primary full-width
- *         "Create Variations" with Sparkles icon
+ *       · bottom-2 hover overlay: .k-btn--secondary full-width
+ *         "Create Variations" with Sparkles icon (Phase 5'te demote
+ *         edildi — reference card bağlamında ikincil refinement
+ *         aksiyonu; ana üretim "Start Batch" Batches index'inden
+ *         başlar)
  *       · meta block (.p-3.5 default / .p-2.5 dense):
  *         title 13px font-medium truncate + Source badge + Type · time mono
  *
