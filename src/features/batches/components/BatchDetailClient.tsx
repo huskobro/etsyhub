@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
   CheckCircle2,
   ChevronRight,
   Eye,
   Layers,
   RefreshCw,
   RotateCw,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
@@ -23,6 +26,7 @@ import {
   BATCH_STATUS_LABEL,
   batchStatusTone,
 } from "@/features/batches/state-helpers";
+import { useCreateSelectionFromBatch } from "@/features/batches/mutations/use-create-selection-from-batch";
 import type { BatchSummary } from "@/server/services/midjourney/batches";
 
 /**
@@ -373,7 +377,9 @@ function BatchStageCTA({
   }
 
   if (stage === "selection-ready") {
-    // existingSelectionSet is guaranteed non-null here by deriveBatchStage
+    // existingSelectionSet is guaranteed non-null here by deriveBatchStage.
+    // Batch-first Phase 3: name + kept item count bilgisi CTA caption'ında
+    // operator'a görünür ("which selection am I continuing?" sorusu).
     return (
       <div
         className="flex flex-col items-end gap-0.5"
@@ -388,11 +394,19 @@ function BatchStageCTA({
         >
           <CheckCircle2 className="h-3 w-3" aria-hidden />
           Continue in Selection
+          <ArrowRight className="h-3 w-3" aria-hidden />
         </Link>
         <span
-          className="font-mono text-xs uppercase tracking-meta text-ink-3"
+          className="max-w-[280px] truncate font-mono text-xs uppercase tracking-meta text-success"
           data-testid="batch-detail-review-hint"
           data-state="complete"
+          title={existingSelectionSet!.name}
+        >
+          ↗ {existingSelectionSet!.name}
+        </span>
+        <span
+          className="font-mono text-xs uppercase tracking-meta text-ink-3"
+          data-testid="batch-detail-selection-hint"
         >
           {summary.reviewCounts.kept} kept · selection started
         </span>
@@ -400,29 +414,95 @@ function BatchStageCTA({
     );
   }
 
-  // stage === "kept-no-selection": review complete, kept > 0, no set yet
+  // stage === "kept-no-selection": review complete, kept > 0, no set yet.
+  // Batch-first Phase 3: doğrudan Create Selection action — operatör'ü
+  // review'a geri göndermek yerine kept items'tan SelectionSet yaratır
+  // (downstream gate: CLAUDE.md Madde V'' — operator-only kept zinciri).
+  return (
+    <KeptNoSelectionCTA
+      batchId={summary.batchId}
+      keptCount={summary.reviewCounts.kept}
+    />
+  );
+}
+
+/**
+ * Batch-first Phase 3 — kept-no-selection stage'inin client-side CTA'sı.
+ * Server action: POST /api/batches/[batchId]/create-selection.
+ * Success → router.push(/selections/{setId}).
+ * Error → inline caption (operator-actionable mesaj).
+ */
+function KeptNoSelectionCTA({
+  batchId,
+  keptCount,
+}: {
+  batchId: string;
+  keptCount: number;
+}) {
+  const router = useRouter();
+  const create = useCreateSelectionFromBatch();
+
+  async function onCreate() {
+    try {
+      const result = await create.mutateAsync(batchId);
+      router.push(`/selections/${result.setId}`);
+    } catch {
+      // Hata create.error üzerinden render edilir; caption ile gösterilir.
+    }
+  }
+
+  const errMsg = create.error instanceof Error ? create.error.message : null;
+
   return (
     <div
       className="flex flex-col items-end gap-0.5"
       data-testid="batch-stage-cta"
       data-stage="kept-no-selection"
     >
-      <Link
-        href={`/review?batch=${summary.batchId}`}
+      <button
+        type="button"
+        onClick={onCreate}
+        disabled={create.isPending}
         data-size="sm"
-        className="k-btn k-btn--primary"
-        data-testid="batch-detail-open-review"
+        className="k-btn k-btn--primary disabled:opacity-60"
+        data-testid="batch-detail-create-selection"
       >
-        <CheckCircle2 className="h-3 w-3" aria-hidden />
-        Open Review
+        {create.isPending ? (
+          <>
+            <RefreshCw className="h-3 w-3 animate-spin" aria-hidden />
+            Creating…
+          </>
+        ) : (
+          <>
+            <Sparkles className="h-3 w-3" aria-hidden />
+            Create Selection
+          </>
+        )}
+      </button>
+      {errMsg ? (
+        <span
+          className="font-mono text-xs uppercase tracking-meta text-danger"
+          data-testid="batch-detail-create-selection-error"
+          role="alert"
+        >
+          {errMsg}
+        </span>
+      ) : (
+        <span
+          className="font-mono text-xs uppercase tracking-meta text-success"
+          data-testid="batch-detail-review-hint"
+          data-state="complete"
+        >
+          Review complete · {keptCount} kept
+        </span>
+      )}
+      <Link
+        href={`/review?batch=${batchId}`}
+        className="font-mono text-xs uppercase tracking-meta text-ink-3 underline-offset-2 hover:underline"
+        data-testid="batch-detail-reopen-review"
+      >
+        Re-open review
       </Link>
-      <span
-        className="font-mono text-xs uppercase tracking-meta text-success"
-        data-testid="batch-detail-review-hint"
-        data-state="complete"
-      >
-        Review complete · {summary.reviewCounts.kept} kept
-      </span>
     </div>
   );
 }

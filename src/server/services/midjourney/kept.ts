@@ -530,3 +530,170 @@ export async function handoffKeptAssetsToSelectionSet(
     itemsAlreadyInSet: generatedDesignIds.length - addedItems.length,
   };
 }
+
+// ────────────────────────────────────────────────────────────
+// Batch-first Phase 3 — createSelectionFromMjBatch
+//
+// Batch detail "Create Selection" CTA'sının server tarafı. Operatör
+// kept-no-selection stage'inde tek tıkla bu batch'in tüm KEPT asset'leri
+// için yeni SelectionSet yaratır. handoffKeptAssetsToSelectionSet
+// orchestrator'ının batch-scope thin wrapper'ıdır:
+//
+//   1. batchId verildiğinde tüm KEPT MidjourneyAsset'leri (bu batch'e
+//      ait) bulup ID'lerini toplar.
+//   2. Bu batch'in ilk MidjourneyJob'undan referenceId + productTypeId
+//      resolve eder (variation creation single-reference, tüm jobları
+//      aynı reference + product type taşır).
+//   3. Auto-name üretir: reference.notes (varsa) veya productType
+//      displayName, + bugünkü tarih.
+//   4. handoffKeptAssetsToSelectionSet'i çağırır — atomik tx +
+//      sourceMetadata.mjOrigin yazma + idempotent promote.
+//
+// Schema-zero korunur: yeni tablo veya migration yok. Mevcut
+// MidjourneyAsset.reviewDecision + Job.metadata.batchId + handoff
+// orchestrator yeniden kullanılır.
+// ────────────────────────────────────────────────────────────
+
+export type CreateSelectionFromMjBatchInput = {
+  userId: string;
+  /** Job.metadata.batchId — MJ_BRIDGE batch grouping kimliği. */
+  batchId: string;
+};
+
+export class MjBatchSelectionError extends Error {
+  constructor(
+    message: string,
+    public readonly code:
+      | "BATCH_NOT_FOUND"
+      | "NO_KEPT_ASSETS"
+      | "REFERENCE_NOT_RESOLVED"
+      | "PRODUCT_TYPE_NOT_RESOLVED",
+  ) {
+    super(message);
+    this.name = "MjBatchSelectionError";
+  }
+}
+
+const TR_MONTHS = [
+  "Oca", "Şub", "Mar", "Nis", "May", "Haz",
+  "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara",
+];
+
+function formatTrShortDate(d: Date): string {
+  return `${d.getDate()} ${TR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+export async function createSelectionFromMjBatch(
+  input: CreateSelectionFromMjBatchInput,
+): Promise<HandoffResult> {
+  const { userId, batchId } = input;
+
+  // 1. Batch'in MJ jobs + KEPT asset'lerini topla. User-scoped ve
+  // KEPT-only (downstream gate: CLAUDE.md Madde V'' — operator-only
+  // kept zinciri).
+  const jobs = await db.job.findMany({
+    where: {
+      type: JobType.MIDJOURNEY_BRIDGE,
+      userId,
+      metadata: { path: ["batchId"], equals: batchId },
+    },
+    select: {
+      id: true,
+      metadata: true,
+      midjourneyJob: {
+        select: {
+          referenceId: true,
+          productTypeId: true,
+          generatedAssets: {
+            where: { reviewDecision: MJReviewDecision.KEPT },
+            select: { id: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (jobs.length === 0) {
+    throw new MjBatchSelectionError(
+      "Batch bulunamadı veya size ait değil",
+      "BATCH_NOT_FOUND",
+    );
+  }
+
+  // 2. KEPT asset id'lerini topla.
+  const keptAssetIds: string[] = [];
+  for (const j of jobs) {
+    for (const a of j.midjourneyJob?.generatedAssets ?? []) {
+      keptAssetIds.push(a.id);
+    }
+  }
+  if (keptAssetIds.length === 0) {
+    throw new MjBatchSelectionError(
+      "Bu batch'te kept asset yok — önce review'da karar verin",
+      "NO_KEPT_ASSETS",
+    );
+  }
+
+  // 3. Reference + productType resolve — variation creation single-reference,
+  // tüm jobları aynı reference+product type taşır. İlk job'dan al; fallback
+  // olarak Job.metadata.referenceId'e bak (Phase 2'de eklenen schema-zero
+  // lineage, eski MJ batch'lerinde MidjourneyJob columns null olabilir).
+  let referenceId: string | null = null;
+  let productTypeId: string | null = null;
+  for (const j of jobs) {
+    if (!referenceId) {
+      referenceId =
+        j.midjourneyJob?.referenceId ??
+        (typeof j.metadata === "object" && j.metadata !== null
+          ? ((j.metadata as Record<string, unknown>)["referenceId"] as
+              | string
+              | undefined) ?? null
+          : null);
+    }
+    if (!productTypeId) {
+      productTypeId = j.midjourneyJob?.productTypeId ?? null;
+    }
+    if (referenceId && productTypeId) break;
+  }
+  if (!referenceId) {
+    throw new MjBatchSelectionError(
+      "Reference resolve edilemedi — batch reference lineage taşımıyor",
+      "REFERENCE_NOT_RESOLVED",
+    );
+  }
+  if (!productTypeId) {
+    throw new MjBatchSelectionError(
+      "ProductType resolve edilemedi",
+      "PRODUCT_TYPE_NOT_RESOLVED",
+    );
+  }
+
+  // 4. Auto-name: reference.notes (varsa) veya productType.displayName +
+  // bugünkü tarih. quickStartFromBatch'in naming pattern'ı (CLAUDE.md
+  // Madde AA'da tanımlı tutarlılık).
+  const [reference, productType] = await Promise.all([
+    db.reference.findFirst({
+      where: { id: referenceId, userId, deletedAt: null },
+      select: { notes: true },
+    }),
+    db.productType.findUnique({
+      where: { id: productTypeId },
+      select: { displayName: true },
+    }),
+  ]);
+  const trimmedNotes = reference?.notes?.trim() ?? "";
+  const namePrefix =
+    trimmedNotes.length > 0
+      ? trimmedNotes
+      : productType?.displayName ?? "Selection";
+  const autoName = `${namePrefix} — ${formatTrShortDate(new Date())}`;
+
+  // 5. handoff orchestrator'ı çağır — atomik promote + createSet + addItems.
+  return handoffKeptAssetsToSelectionSet({
+    userId,
+    midjourneyAssetIds: keptAssetIds,
+    referenceId,
+    productTypeId,
+    selectionSetName: autoName,
+  });
+}

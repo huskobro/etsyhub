@@ -2674,6 +2674,81 @@ Soft-deleted reference için back-link render edilmez (sessiz).
   family icat edilmedi; mevcut `.k-card`, `text-info`, mono caption
   pattern'leri kullanıldı.
 
+### Batch-first Phase 3 (2026-05-12 — Selection creation canonical)
+
+Phase 2'nin üzerine, **Batch → Selection** el geçişi canonical hale getirildi.
+`kept-no-selection` stage'i artık operatörü review'a geri göndermez —
+**Create Selection** primary CTA'sı ile yeni SelectionSet yaratır.
+
+#### kept-no-selection stage — Create Selection action
+
+Önceden bu stage `/review?batch=...`'a yönlendiriyordu. Sorun: review zaten
+tamamlanmış (undecided = 0, kept > 0), operatör doğal sonraki adımı
+("şimdi seçim yap") bulmak için review'a geri girip orada Studio CTA'sını
+bulmak zorundaydı. Phase 3 çözümü:
+
+- Stage CTA artık `<button>` (link değil) — onClick mutation tetikler.
+- `useCreateSelectionFromBatch` hook → POST `/api/batches/[batchId]/create-selection`.
+- Success → `router.push('/selections/{newSetId}')`. Operatör bağlamı
+  Selection scope'una doğal taşınır.
+- Loading state: spinner + "Creating…" caption.
+- Error state: caption olarak operatöre actionable mesaj
+  (`NO_KEPT_ASSETS`, `REFERENCE_NOT_RESOLVED`, vb.).
+- Secondary fallback: "Re-open review" linki (operatör yine de review'a
+  dönmek isterse görünür).
+
+#### Server orchestration — createSelectionFromMjBatch
+
+Yeni service fonksiyonu mevcut `handoffKeptAssetsToSelectionSet`'in
+**batch-scope thin wrapper'ı**dır (`kept.ts`'de tanımlı):
+
+1. `batchId`'den MJ jobs + KEPT asset id'lerini topla (user-scoped).
+2. İlk MJ job'dan `referenceId` + `productTypeId` resolve et
+   (variation single-reference; Job.metadata.referenceId fallback).
+3. Auto-name: `reference.notes` (varsa) veya `productType.displayName`
+   + bugünkü tarih — `quickStartFromBatch` pattern'ı.
+4. `handoffKeptAssetsToSelectionSet`'i çağır: atomik
+   promote + createSet + addItems + `sourceMetadata.mjOrigin` write.
+
+Yeni schema yok. Mevcut `MidjourneyAsset.reviewDecision = KEPT` filter
++ `Job.metadata.batchId` group + handoff orchestrator yeniden kullanıldı.
+
+#### selection-ready stage — context güçlendirme
+
+Önceden CTA sadece "Continue in Selection · N kept · selection started"
+gösteriyordu — operatör hangi selection set'e gittiğini görmüyordu.
+Phase 3 güçlendirmesi:
+
+- CTA artık `↗ {selectionSet.name}` caption'ı ile gösterir (max 280px
+  truncate + title tooltip uzun isimler için).
+- Secondary hint `N kept · selection started` korundu.
+- Operatör "bu batch'ten selection zaten başlamış (<isim>)" bilgisini
+  CTA üzerinde okur.
+
+#### Selection lineage — Phase 1 ile uyumlu
+
+Yeni `createSelectionFromMjBatch` `handoffKeptAssetsToSelectionSet`
+çağırdığı için `SelectionSet.sourceMetadata.mjOrigin`'a aynı blob yazılır:
+- `kindFamily: "midjourney_kept"`
+- `batchIds: [batchId]`
+- `referenceId`, `productTypeId`, `keptAssetCount`, `handedOffAt`
+
+Selection detail header'ı bu blob'u Phase 1'de eklenen
+`SelectionBatchLineage` ile zaten `↗ BATCH XXXXXXXX` clickable link
+olarak gösteriyor. Phase 3 lineage modeline dokunmadı — sadece daha
+fazla selection set bu yapıyı taşıyacak.
+
+#### Değişmeyenler (Phase 3)
+
+- **Review freeze (Madde Z) korunur.** Phase 3 review modülüne dokunmaz.
+- **Schema migration yok.** Yeni tablo veya column eklenmedi; mevcut
+  `handoffKeptAssetsToSelectionSet` orchestrator wrap edildi.
+- **Product semantics değişmez.** Phase 3 sadece Batch → Selection
+  yönüne uygulandı.
+- **`WorkflowRun` tablosu eklenmez** (IA Phase 11 kapsamı).
+- **Kivasy DS dışına çıkılmadı.** Yeni icon family yok; mevcut
+  `Sparkles`, `ArrowRight`, `CheckCircle2`, mono caption pattern'leri.
+
 ### Epic-agnesi branch notu
 
 `claude/epic-agnesi-7a424b` branch'inde Batch-first Phase 1'in ilk
