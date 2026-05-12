@@ -275,7 +275,7 @@ export function BookmarksPage({
           tone="neutral"
           icon={<BookmarkIcon className="h-5 w-5" aria-hidden />}
           title="No bookmarks yet"
-          body="Paste any URL from Etsy, Pinterest, Amazon or elsewhere to start collecting ideas. You can promote bookmarks to references later."
+          body="Paste any URL from Etsy, Pinterest, Creative Fabrica or any direct image link to start collecting ideas. You can promote bookmarks to references later."
           action={
             <Button
               variant="primary"

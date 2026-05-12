@@ -1,6 +1,16 @@
 "use client";
 
-// ImportUrlDialog — Inbox `Add from URL` modal.
+// ImportUrlDialog — Inbox `?add=url` BRIDGE modal (Phase 26).
+//
+// Phase 26 itibariyle reference intake canonical akışı `AddReferenceDialog`
+// (DS B5 split modal, 3 tab: URL / Upload / From Bookmark). `?add=url`
+// query bridge olarak kalır — eski deep-link'ler ve `dashboard-quick-actions`
+// (dead code, görünmez) yine bu modal'a düşer. Yeni traffic Pool/Inbox
+// topbar CTA → `?add=ref` → `AddReferenceDialog`'a yönlendirilir.
+//
+// İlerde temizlenecek: `?add=url` listener `bookmarks-page.tsx`'den
+// kaldırılınca ve `dashboard-quick-actions` silindiğinde bu dosya dead
+// code olur ve aynı turda silinir.
 //
 // Phase 22 → topbar action slot pattern modal'ı operatör akışına bağladı
 // (`/bookmarks?add=url`). Phase 24 → modal yüzeyini visible EN parity'ye
@@ -193,9 +203,9 @@ export function ImportUrlDialog({
               id="import-url-helper"
               className="text-[12px] text-ink-3"
             >
-              Paste any image or listing URL — Etsy, Pinterest, Amazon or a
-              direct image link. We&apos;ll fetch the image and preview it
-              before saving.
+              Paste any image or listing URL — Etsy, Pinterest, Creative
+              Fabrica or a direct image link. We&apos;ll fetch the image
+              and preview it before saving.
             </span>
           </label>
 

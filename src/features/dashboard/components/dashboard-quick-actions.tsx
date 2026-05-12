@@ -1,5 +1,24 @@
 "use client";
 
+/**
+ * DashboardQuickActions — DEAD CODE (Phase 26 audit).
+ *
+ * Bu component hiçbir page'den render edilmiyor (Overview sayfasında
+ * yok, dashboard-quick-actions sadece test fixture'ında kullanılıyor).
+ * TR sızıntı + DS-tonsuz primitives içerir; Phase 18 i18n parity turu
+ * atlamış. Operatöre görünmediği için doğrudan zarar vermiyor.
+ *
+ * Phase 26 ile intake akışı `AddReferenceDialog`'a (DS B5 canonical)
+ * birleşti. Bu component'in muhtemel evrim yolları:
+ *
+ *   1. Silinir (operatör overview'da bunu görmüyor — etki yok)
+ *   2. AddReferenceDialog'u açan bir CTA olarak yeniden bağlanır
+ *      (örn. Overview "Quick Add Reference" tile)
+ *   3. Olduğu gibi kalır (tests/unit/dashboard-page.test.tsx fixture)
+ *
+ * Karar ayrı bir küçük temizlik turunda alınır.
+ */
+
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";

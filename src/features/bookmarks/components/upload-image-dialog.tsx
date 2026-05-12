@@ -1,5 +1,20 @@
 "use client";
 
+/**
+ * UploadImageDialog — DEAD CODE (Phase 26 audit).
+ *
+ * Bu component yalnız `dashboard-quick-actions.tsx` (kendisi dead;
+ * hiçbir page render etmiyor) tarafından import ediliyor. Operatöre
+ * görünmüyor.
+ *
+ * Phase 26 ile Upload akışı `AddReferenceDialog`'un Upload tab'ında
+ * canonical hale getirildi (multi-file + drop-zone + B5 niyeti).
+ * Bu dosya silinmedi çünkü `dashboard-quick-actions` ve onun test'i
+ * (tests/unit/dashboard-page.test.tsx) hala dosyaya bağlı. Silmek
+ * ayrı bir küçük temizlik turu (DashboardQuickActions kullanım kararı
+ * dahil — silinmesi veya yeniden bağlanması).
+ */
+
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 

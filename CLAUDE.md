@@ -5490,6 +5490,190 @@ References family yüzeyleri tamamen kapanır.
 
 ---
 
+## Phase 26 — B5 canonical "Add Reference" modal (intake unification)
+
+Phase 22-24 turlarında `ImportUrlDialog` operatöre görünür yapılıp
+kalitesi yükseltilmişti, ama **yanlış modal parlatılmıştı**: DS
+canonical reference intake door `B5AddReference` (`screens-b5-b6.jsx:8-165`)
+— split modal + 3 sibling tab (URL/Upload/From Bookmark) + always-visible
+product type chips + optional collection + dinamik CTA count. Phase 25
+audit'i bunu netleştirdi.
+
+Phase 26 **kontrollü minimum viable canonicalization**: yeni
+`AddReferenceDialog` component'i DS B5 yapısında, mevcut parçalı
+intake yüzeyleri tek canonical modal'a birleştiriyor.
+
+### Mevcut parçalı akıştan ne birleşti
+
+| Önce (Phase 22-25) | Sonra (Phase 26) |
+|---|---|
+| Pool topbar "Add Reference" → `/bookmarks` navigation | Pool topbar "Add Reference" → `?add=ref` → AddReferenceDialog |
+| Inbox topbar "Add from URL" → `?add=url` → ImportUrlDialog (tek input) | Inbox topbar "Add Reference" → `?add=ref` → **aynı AddReferenceDialog** |
+| dead `DashboardQuickActions` → "URL'den Bookmark" + "Görsel Yükle" + UploadImageDialog | (hâlâ dead) — explicit DEAD CODE policy comment eklendi |
+| Bookmark-row "Promote to Reference" → PromoteDialog (tek bookmark) | korundu (atomic) + AddReferenceDialog'un "From Bookmark" tab'ı bulk-promote sağlar |
+| Hiç drop-zone / multi-file upload yoktu (operatöre görünmüyordu) | Upload tab: drop-zone + multi-file thumb grid + per-file remove |
+| Hiç from-bookmark multi-select yoktu | From Bookmark tab: search + multi-select + count caption |
+
+### Birebir DS ne uygulandı
+
+- 3 sibling tab: Image URL / Upload / From Bookmark
+- Header "Add Reference" + X icon close
+- Product type chips always-visible (modal body bottom, tab içeriği değişse de görünür)
+- Collection optional select (DS B5 chip; app `<select>` ile basitleştirildi)
+- Dynamic CTA: "Add Reference" / "Add N References" (bookmark multi-select / upload multi-file) / "Fetch image" (URL pre-fetch) / "Save reference" (URL post-fetch)
+- "N selected · will promote to Pool with the product type below" caption
+- Drop-zone DS recipe: `border-2 border-dashed border-line-strong rounded-xl p-8` (icon circle + "Drop images to upload" + format/size constraint mono caption + "Browse files" secondary CTA)
+- From Bookmark row layout: Checkbox + k-thumb (40×40 aspect-square) + title + source badge + relative time
+
+### Hibrit kararlar (DS niyeti + app gerçekleri)
+
+- **Output Bookmark, Reference değil**: Karar A=3 (audit). Schema doğrudan Reference yaratmayı destekliyor (`bookmarkId nullable`) ama yeni `POST /api/references` endpoint + service migration **bu turun scope'unda değil**. URL/Upload yolu bookmark oluşturur (eski `?add=url` ImportUrlDialog akışıyla aynı endpoint). From Bookmark tab `/api/references/promote` ile multi-promote yapar.
+- **Source detection client-side**: DS B5'in "Valid Etsy listing image · auto-detected source" green check'i server-side resolver gerektirirdi. Hibrit: `detectSourceFromUrl` client hostname regex (Etsy/Pinterest/Creative Fabrica/direct image extension/unknown) → modal içinde anında tone-coded chip ("✓ Looks like Etsy" / "✓ Looks like Pinterest" / "✓ Looks like Creative Fabrica" / "✓ Direct image URL" / "✓ Source will be resolved on fetch"). Server gerçek meta extraction `import-url` worker'da kalır.
+- **Helper text format**: DS B5 collapsible "How to get the image URL" 3-step ordered list. App inline static helper paragraph (compact dialog, viewport sığması için). Disclosure pattern ileride eklenebilir.
+- **Pool'dan modal**: Karar C=2 hibrit. Pool topbar CTA artık modal açar (DS niyeti ✓) ama içerik hâlâ bookmark output'a yazar (Karar A=3 ile uyumlu). Yeni endpoint açma ayrı tur.
+- **Tab badge count**: DS'te yok; app'te "From Bookmark · 2" / "Upload · 3" tab içine konuldu (operatör hangi tab'ta kaç item seçtiğini hatırlasın diye — kullanılabilirlik kazancı).
+
+### Özel ürün ihtiyacı
+
+- **Creative Fabrica source desteği**: DS B5'te yok (sadece Etsy/Pinterest mock). Kullanıcı talebi. Hibrit yaklaşım: `SourcePlatform` enum'a `CREATIVE_FABRICA` **eklenmedi** (schema migration yasağı). Server tarafı `sourcePlatform: "OTHER"` yazar; UI tarafı hostname'den "Creative Fabrica" label + k-orange tone gösterir. Operatör ayırt edebilir, DB legacy uyumu bozulmaz. İlerde enum genişletilirse server da doğru enum yazar.
+- **Multi-file upload**: DS B5 multi-thumb grid niyeti var, app drop-zone + per-file status (pending / uploading / ready / failed) + `Promise.allSettled` ile partial failure handling (1 başarısız diğerlerini durdurmaz). DS mock'unda bu lifecycle yok; app gerçeği aldı.
+- **Bulk URL paste**: bu turda **yapılmadı** (Karar B=3). Tek URL input. İhtiyaç netleştiğinde aynı modal'a sub-mode olarak eklenebilir.
+
+### Kaynak tipleri (Phase 26 scope)
+
+Bu turda desteklenen 4 kaynak (Amazon **scope dışı**):
+
+| Source | Hostname pattern | UI tone | sourcePlatform DB |
+|---|---|---|---|
+| Etsy | `etsystatic.com`, `etsy.com` | success (green) | `ETSY` |
+| Pinterest | `pinimg.com`, `pinterest.*` | danger (rose) | `PINTEREST` |
+| Creative Fabrica | `creativefabrica.com` | k-orange (Kivasy primary) | `OTHER` (schema enum yok) |
+| Direct image | `.png/.jpe?g/.webp/.gif` extension | ink-2 (neutral) | inferred at fetch |
+| Unknown | (none of above) | ink-3 (soft) + "resolved on fetch" copy | resolved server-side |
+
+Amazon helper text + intake source listesinden çıkarıldı:
+- `bookmarks-page.tsx` empty state: "Etsy, Pinterest, Amazon" → "Etsy, Pinterest, Creative Fabrica or any direct image link"
+- `import-url-dialog.tsx` (bridge) helper: "Etsy, Pinterest, Amazon" → "Etsy, Pinterest, Creative Fabrica"
+- `AddReferenceDialog` URL tab placeholder + helper: Amazon hiç geçmedi
+- `bookmark-row.tsx` source label map'i `AMAZON → "Amazon"` korundu (legacy DB row görüntüsü için; yeni intake yazmaz)
+
+### `ImportUrlDialog`'un yeni rolü — BRIDGE
+
+`ImportUrlDialog` artık canonical değil. `?add=url` query bridge olarak
+kalır:
+- `bookmarks-page.tsx` hâlâ `?add=url` listener'ı içerir (Phase 22 useEffect)
+- `dashboard-quick-actions.tsx` (dead code) hâlâ `ImportUrlDialog` import eder
+- Yeni traffic Pool/Inbox topbar → `?add=ref` → `AddReferenceDialog`'a gider
+
+Dosya başına BRIDGE notu eklendi. Tamamen silinmesi `bookmarks-page.tsx`
+`?add=url` listener'ını + dead `DashboardQuickActions`'ı kaldırınca
+yapılır (ayrı küçük temizlik turu).
+
+### Dead code policy (Phase 26 audit kararı)
+
+| Component | Status | Phase 26 davranış |
+|---|---|---|
+| `UploadImageDialog` | DEAD (yalnız dead caller) | DEAD CODE comment eklendi; silinmedi (test fixture hâlâ bağlı) |
+| `DashboardQuickActions` | DEAD (Overview'da render edilmiyor) | DEAD CODE comment + olası evrim yollarını listeleyen note |
+| `ImportUrlDialog` | BRIDGE | BRIDGE comment; `?add=url` query hâlâ çalışır ama yeni traffic almaz |
+| `PromoteDialog` | LIVE | Korundu (atomic single-bookmark + competitor flow) |
+| `PromoteToReferenceDialog` | LIVE | Korundu (competitor detail page) |
+| `bookmark-row` "Promote to Reference" | LIVE | Korundu (row-level single promote) |
+
+Silmeler **ayrı küçük temizlik turu** (Phase 27 candidate):
+1. `bookmarks-page.tsx` `?add=url` useEffect listener kaldır
+2. `dashboard-quick-actions.tsx` ya sil ya `AddReferenceDialog`'u açan yeni Quick Add tile'la yeniden bağla (operatör Overview'dan modal açabilsin)
+3. `UploadImageDialog` ve onun test'i sil (dashboard-quick-actions kararıyla bağlı)
+4. `ImportUrlDialog` sil (dashboard-quick-actions kararıyla bağlı)
+
+### Doğrulama kanıtları
+
+**Live dev server browser scan**:
+
+```
+/references?add=ref:
+  dialog: true
+  title: "Add Reference"
+  role: "dialog"
+  aria-modal: "true"
+  tabs: ["Image URL"(active), "Upload", "From Bookmark"]
+  product type chips: 36 (seed data)
+  cta: "Fetch image" (URL tab pre-fetch)
+
+URL tab source detection:
+  https://i.etsystatic.com/…    → "✓ Looks like Etsy" (success tone)
+  https://i.pinimg.com/…        → "✓ Looks like Pinterest" (danger tone)
+  https://www.creativefabrica…  → "✓ Looks like Creative Fabrica" (k-orange)
+  https://example.com/foo.png   → "✓ Direct image URL" (ink-2)
+  https://random.com/page.html  → "✓ Source will be resolved on fetch" (ink-3)
+
+Upload tab:
+  drop-zone visible (data-testid="add-ref-upload-zone")
+  "Browse files" button (data-testid="add-ref-upload-browse")
+  multi-file slot ready
+
+From Bookmark tab:
+  search input
+  bookmark list (2 INBOX rows, seed data)
+  multi-select → tab badge "From Bookmark · 2" + CTA "Add 2 References"
+
+/bookmarks (Inbox):
+  topbar CTA text: "Add Reference" (önceki "Add from URL")
+  topbar CTA href: "/bookmarks?add=ref" (önceki "?add=url")
+  click → same dialog, same 3 tabs
+
+Escape → modal kapanır + ?add=ref query temizlenir
+```
+
+Screenshot kanıtı: Pool topbar'dan açılan modal (Image URL tab placeholder
+`https://i.etsystatic.com/…`, k-input link-icon prefix, helper text EN +
+Creative Fabrica geçer, Amazon yok, Product type chips, Collection
+optional, Cancel + "+ Fetch image" primary CTA). From Bookmark tab
+screenshot'ı: tab badge "From Bookmark · 2", search input, k-orange
+tinted selected row + check icon, CTA "+ Add 2 References".
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{bookmarks-page, bookmarks-confirm-flow,
+  bookmark-service, dashboard-page, references-page}: **50/50 PASS**
+- Browser verification (live dev server, port 3000): Pool ve Inbox
+  topbar CTA'larından aynı canonical modal açılıyor; 4 source tipi
+  detection doğru; multi-select dynamic CTA, multi-file Upload tab,
+  Escape close + query cleanup hepsi gerçek browser kanıtıyla doğrulandı
+
+### Bilinçli scope dışı (sonraki tur candidates)
+
+- **Schema değişiklikleri**: `SourcePlatform.CREATIVE_FABRICA` enum
+  değeri, `Reference` model'e direct-from-asset path (`bookmarkId` zaten
+  nullable) için yeni endpoint
+- **Bulk URL paste**: Karar B=3 (single URL yeter şimdilik)
+- **Server-side source meta extraction**: `import-url` worker Etsy/
+  Pinterest meta scraper. Şu an client hostname regex
+- **Disclosure helper "How to get the image URL"**: DS B5 collapsible
+  3-step list. App inline static. Modal compact kalsın diye ertelendi
+- **`DashboardQuickActions` silme / yeniden bağlama kararı**: Operatöre
+  Overview'da görünmeyen dead surface. Karar açık
+- **`ImportUrlDialog` bridge tamamen silme**: `?add=url` listener +
+  dead caller kaldırılınca
+- **`/competitors`, `/collections` (top-level), Stories, Shops gibi
+  References family alt-route'larında topbar CTA**: Bu turda Pool +
+  Inbox iki ana yüzeye mount eklendi. Diğer sub-view'lar (Stories,
+  Shops, Collections) `ReferencesShellTabs` ile aynı page-shell'i
+  paylaşıyor mu kontrol gerekir; mount onlara da eklenebilir
+
+### Bundan sonra kalan tek doğru iş
+
+**Phase 27 cleanup tur**: dead bridge surface'lerin temizliği —
+`DashboardQuickActions` + `UploadImageDialog` + `ImportUrlDialog` +
+`bookmarks-page.tsx` `?add=url` useEffect listener. Yeni canonical
+modal yerleştiği için bu surface'ler artık dead. Operatöre etki
+yok (görünmüyorlardı zaten); kod sağlığı için temizlenmeli. Schema
+genişletmesi (`SourcePlatform.CREATIVE_FABRICA`, doğrudan Reference
+endpoint) **ayrı bir backend turu**, References family UI işi değil.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

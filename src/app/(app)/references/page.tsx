@@ -6,6 +6,7 @@ import { db } from "@/server/db";
 import { ReferencesPage } from "@/features/references/components/references-page";
 import { ReferencesShellTabs } from "@/features/references/components/ReferencesShellTabs";
 import { ReferencesTopbar } from "@/features/references/components/ReferencesTopbar";
+import { ReferencesAddReferenceMount } from "@/features/references/components/references-add-reference-mount";
 import { getReferencesSubViewCounts } from "@/features/references/server/sub-view-counts";
 
 export const metadata = { title: "References · Kivasy" };
@@ -15,12 +16,17 @@ export default async function Page() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [productTypes, counts] = await Promise.all([
+  const [productTypes, counts, collections] = await Promise.all([
     db.productType.findMany({
       orderBy: { displayName: "asc" },
       select: { id: true, displayName: true },
     }),
     getReferencesSubViewCounts(session.user.id),
+    db.collection.findMany({
+      where: { userId: session.user.id, deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
 
   return (
@@ -28,12 +34,17 @@ export default async function Page() {
       <ReferencesTopbar
         subtitle={`${counts.pool} REFERENCES · ${counts.poolThisWeek} ADDED THIS WEEK`}
         actions={
+          /* Phase 26 — DS B5 canonical CTA + URL-derived modal trigger.
+           * Pool/Inbox/Stories/Shops/Collections topbar'larında aynı
+           * `Add Reference` CTA `?add=ref` query'siyle AddReferenceDialog
+           * açar. Stateless Link; modal state ReferencesAddReferenceMount
+           * client component'inde URL-derived. */
           <Link
-            href="/bookmarks"
+            href="/references?add=ref"
             data-size="sm"
             className="k-btn k-btn--primary"
             data-testid="references-add-cta"
-            title="Open Inbox to add new reference (paste URL or upload image)"
+            title="Add a new reference (URL, upload, or from Inbox bookmark)"
           >
             <Plus className="h-3 w-3" aria-hidden />
             Add Reference
@@ -49,6 +60,14 @@ export default async function Page() {
       <div className="flex flex-1 flex-col overflow-hidden">
         <ReferencesPage productTypes={productTypes} />
       </div>
+
+      {/* Phase 26 — canonical intake modal (DS v5 B5). URL-derived
+       * (`?add=ref`). Stateless mount; client component listens
+       * searchParams + opens AddReferenceDialog. */}
+      <ReferencesAddReferenceMount
+        productTypes={productTypes}
+        collections={collections}
+      />
     </div>
   );
 }
