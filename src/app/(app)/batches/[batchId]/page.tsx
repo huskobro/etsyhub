@@ -5,6 +5,7 @@ import {
   getBatchSummary,
   findSelectionSetForBatch,
 } from "@/server/services/midjourney/batches";
+import { getBatchCostBreakdown } from "@/server/services/cost/batch-cost-breakdown";
 import { BatchDetailClient } from "@/features/batches/components/BatchDetailClient";
 
 /**
@@ -71,11 +72,19 @@ export default async function BatchDetailPage({
     }
   }
 
+  // Batch-first Phase 13 — batch cost breakdown.
+  // CostUsage rows yalnız variation/review/edit worker'larında yazılır;
+  // MJ bridge browser akışı CostUsage yazmaz. Helper boş array ile de
+  // güvenli sonuç döner; UI fallback "no recorded provider usage" gösterir.
+  const jobIds = summary.jobs.map((j) => j.jobId);
+  const costBreakdown = await getBatchCostBreakdown(jobIds);
+
   return (
     <BatchDetailClient
       summary={summary}
       existingSelectionSet={existingSelectionSet}
       sourceReference={sourceReference}
+      costBreakdown={costBreakdown}
     />
   );
 }

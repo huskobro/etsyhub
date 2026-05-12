@@ -32,6 +32,10 @@ import type {
   BatchSummary,
   BatchPipeline,
 } from "@/server/services/midjourney/batches";
+import {
+  formatCostUSD,
+  type BatchCostBreakdown,
+} from "@/server/services/cost/batch-cost-breakdown";
 
 /**
  * BatchDetailClient — Kivasy A3 Batch detail.
@@ -73,6 +77,13 @@ interface BatchDetailClientProps {
   summary: BatchSummary;
   existingSelectionSet: ExistingSelectionSet | null;
   sourceReference?: SourceReference | null;
+  /**
+   * Batch-first Phase 13 — batch cost breakdown.
+   * Server-resolved via getBatchCostBreakdown(jobIds). Boş breakdown da
+   * geçerli sonuçtur — UI fallback "no recorded provider usage" gösterir
+   * (MJ bridge CostUsage yazmaz; failed AI batch'lerde row yok).
+   */
+  costBreakdown?: BatchCostBreakdown | null;
 }
 
 type TabId = "overview" | "items" | "parameters" | "logs" | "costs";
@@ -109,6 +120,7 @@ export function BatchDetailClient({
   summary,
   existingSelectionSet,
   sourceReference = null,
+  costBreakdown = null,
 }: BatchDetailClientProps) {
   const [tab, setTab] = useState<TabId>("overview");
 
@@ -330,10 +342,7 @@ export function BatchDetailClient({
         {tab === "parameters" ? <ParametersTab summary={summary} /> : null}
         {tab === "logs" ? <LogsTab summary={summary} /> : null}
         {tab === "costs" ? (
-          <EmptyTabPlaceholder
-            title="Costs"
-            blurb="Cost breakdown per item + batch total. Coming soon — provider usage aggregation lands with the AI Providers pane."
-          />
+          <CostsTab summary={summary} breakdown={costBreakdown} />
         ) : null}
       </div>
     </div>
@@ -1320,6 +1329,123 @@ function EmptyTabPlaceholder({
       <h3 className="text-base font-semibold text-ink">{title}</h3>
       <p className="mt-1 text-sm text-text-muted">{blurb}</p>
       <ChevronRight className="mx-auto mt-3 h-3 w-3 text-ink-3" aria-hidden />
+    </div>
+  );
+}
+
+/**
+ * Batch-first Phase 13 — Costs tab.
+ *
+ * Veri kaynağı: CostUsage.jobId (track-usage.ts). Server-side
+ * getBatchCostBreakdown aggregate'i ile bu batch'in tüm Job ID'lerine
+ * yazılmış cost row'ları provider × model boyutunda grup'lanır.
+ *
+ * Operatörün cevabı aradığı soru: "Bu batch bana neye mal oldu?"
+ *
+ * Üç görünür duruma sahip:
+ *   1. breakdown null → server projection eklenmedi (defensive — yeni
+ *      bağlam, eski client). Fallback empty state.
+ *   2. breakdown var ama rowCount=0 → cost path bu batch için
+ *      tetiklenmedi (MJ bridge browser akışı, failed AI batch, vb.).
+ *      Dürüst empty state + sebep.
+ *   3. breakdown.rowCount > 0 → total summary + provider × model
+ *      breakdown list. Mono sayı, muted caption, k-orange total.
+ */
+function CostsTab({
+  summary,
+  breakdown,
+}: {
+  summary: BatchSummary;
+  breakdown: BatchCostBreakdown | null;
+}) {
+  // Case 1 + 2 birleştirildi — UI'da "henüz veri yok" tek empty state.
+  if (!breakdown || breakdown.rowCount === 0) {
+    return <CostsEmptyState pipeline={summary.pipeline} />;
+  }
+
+  return (
+    <div className="space-y-5" data-testid="batch-costs">
+      <div
+        className="rounded-md border border-line bg-paper p-4"
+        data-testid="batch-costs-total"
+      >
+        <h3 className="font-mono text-xs uppercase tracking-meta text-ink-3">
+          Total cost
+        </h3>
+        <div className="mt-3 flex items-baseline gap-3">
+          <span
+            className="font-mono text-3xl font-semibold text-k-orange tabular-nums"
+            data-testid="batch-costs-total-value"
+          >
+            {formatCostUSD(breakdown.totalCents)}
+          </span>
+          <span className="font-mono text-xs uppercase tracking-meta text-ink-3 tabular-nums">
+            {breakdown.totalUnits} unit
+            {breakdown.totalUnits === 1 ? "" : "s"} · {breakdown.rowCount} usage
+            row{breakdown.rowCount === 1 ? "" : "s"}
+          </span>
+        </div>
+        <p className="mt-2 text-xs text-ink-3">
+          Estimate, not contractual. Recorded by workers on provider call
+          success.
+        </p>
+      </div>
+
+      <div
+        className="rounded-md border border-line bg-paper p-4"
+        data-testid="batch-costs-breakdown"
+      >
+        <h3 className="font-mono text-xs uppercase tracking-meta text-ink-3">
+          Provider breakdown
+        </h3>
+        <ul className="mt-3 divide-y divide-line">
+          {breakdown.breakdown.map((row) => (
+            <li
+              key={`${row.providerKind}-${row.providerKey}-${row.model ?? "none"}`}
+              className="flex items-baseline justify-between gap-4 py-2.5 first:pt-0 last:pb-0"
+              data-testid="batch-costs-row"
+            >
+              <div className="flex min-w-0 flex-col">
+                <span className="text-sm text-ink">{row.providerKey}</span>
+                <span className="truncate font-mono text-[11px] text-ink-3">
+                  {row.model ?? "—"}
+                  <span className="ml-2 inline-flex items-center rounded bg-k-bg-2 px-1.5 py-0.5 text-[10.5px] uppercase tracking-meta">
+                    {row.providerKind.toLowerCase()}
+                  </span>
+                </span>
+              </div>
+              <div className="flex shrink-0 items-baseline gap-3 font-mono tabular-nums">
+                <span className="text-xs text-ink-3">
+                  {row.units} unit{row.units === 1 ? "" : "s"}
+                </span>
+                <span className="text-sm font-semibold text-ink">
+                  {formatCostUSD(row.costCents)}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function CostsEmptyState({ pipeline }: { pipeline: BatchPipeline }) {
+  // Honest reason per pipeline — operatöre teknik jargon değil, ürün
+  // dilinde "neden boş" cevabı.
+  const reason =
+    pipeline === "midjourney"
+      ? "Midjourney batches run through the operator browser bridge; provider usage is billed by Midjourney directly and isn't recorded here."
+      : "No provider usage rows for this batch yet. Costs land after each variation job completes successfully.";
+  return (
+    <div
+      className="rounded-md border border-dashed border-line bg-paper px-6 py-10 text-center"
+      data-testid="batch-costs-empty"
+    >
+      <h3 className="text-base font-semibold text-ink">
+        No recorded provider usage
+      </h3>
+      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{reason}</p>
     </div>
   );
 }

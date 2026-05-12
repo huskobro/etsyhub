@@ -3795,6 +3795,104 @@ yok" parity gap'i de bu disipline tabidir.
 
 ---
 
+## CC. Costs Tab Surface (Phase 13 — 2026-05-12)
+
+Phase 13 batch detail içindeki son büyük placeholder yüzeyi (`Costs` tab)
+gerçek operatör yüzeyine dönüştürdü. Yeni schema, yeni write path,
+yeni cost sistemi **eklenmedi** — mevcut `CostUsage.jobId` write'larını
+batch scope'una projecte eden bir aggregate helper + UI eklendi.
+
+### Parity sonrası güvenilirlik notu
+
+Phase 12'de kurulan bridge launch.json + parity disiplini bu turda
+yeniden kullanıldı:
+
+- Bridge launch.json **kalıcı çözümdür**. epic-agnesi-7a424b path'i
+  artık kalıcı bir redirect taşır (`cd audit-references && exec
+  npm run dev`). Hangi worktree dosyası editliyorsam preview tool
+  o worktree'yi servis eder; "kod var, preview yok" gap'i bu pattern
+  ile kapandı.
+- Phase 12'deki reference seed patch (`Job.metadata.referenceId`)
+  **kalıcı DB değişikliği**; runtime parity için yapıldı, üretim
+  data drift değil. Yeni MJ batch'lerinde referenceId metadata'sı
+  zaten yazılıyor — eski seed'lerde eksikti, patch ile bir batch
+  için backfill edildi.
+- Phase 13 Costs seed (`.tmp_seed_cost.mjs`) **yalnız debug
+  yardımıydı**; filled-state UI yolunu doğrulamak için 4 CostUsage
+  row eklendi, screenshot alındıktan sonra silindi. Production
+  state şu an MJ batch için "no recorded provider usage" empty
+  state'tedir — ki bu doğru ürün davranışıdır.
+
+### Costs tab veri sözleşmesi
+
+- **Tek veri kaynağı**: `CostUsage` table.
+  `track-usage.ts:39` worker'lardan job-attribued row yazıyor;
+  `generate-variations.worker.ts:121` (kie midjourney baseline
+  24¢/call), review scoring (kie-gemini-flash), vb.
+- **Batch scope query**: `getBatchCostBreakdown(jobIds)`
+  (`src/server/services/cost/batch-cost-breakdown.ts`).
+  Prisma `groupBy(providerKind, providerKey, model)` ile aggregate;
+  yeni write path yok.
+- **Birim**: cost cent (Int). `formatCostUSD(cents)` UI boyunca
+  tutarlı USD format'ı verir (`$0.24`, `$1.92`, `$45.60`).
+- **Sıralama**: costCents DESC (en pahalı üstte).
+- **Boş query**: jobIds boş ise zero result; UI fallback empty
+  state'i render eder.
+
+### Pipeline-aware honest empty state
+
+Empty state copy operatöre teknik jargon değil ürün dili sunar:
+
+- **midjourney** pipeline → "Midjourney batches run through the
+  operator browser bridge; provider usage is billed by Midjourney
+  directly and isn't recorded here." MJ_BRIDGE worker CostUsage
+  yazmaz (operator-driven browser akışı; provider fatura ayrı
+  kanaldan); "no charge recorded" doğru ürün davranışı.
+- **ai-variation** pipeline → "No provider usage rows for this
+  batch yet. Costs land after each variation job completes
+  successfully." Failed AI batch'lerde row yok (no charge for
+  failure); SUCCESS sonrası 24¢/call yazılır.
+
+Empty state "Coming soon" placeholder DEĞİLDİR; gerçek ürün cevabıdır.
+
+### UI hiyerarşisi
+
+- **Total cost card** (üstte) — k-orange büyük mono sayı, units +
+  rows caption, "Estimate, not contractual" disclaimer.
+- **Provider breakdown card** (altta) — divide-y list:
+  - sol: provider key + model + providerKind chip (AI/SCRAPER/...)
+  - sağ: units + cost (mono, tabular-nums)
+- Kivasy DS recipe'leri korundu: `k-card`, `bg-paper`, mono tracking-meta,
+  `text-k-orange` total, line divider.
+
+### Mixed pipeline ve eksik data dürüstlüğü
+
+- CostUsage row gerçekten yazılmışsa breakdown gösterilir.
+- Karışık batch (örn. variation cost + review scoring cost) doğal
+  olarak ayrı satırlarda görünür (provider key bazlı grup).
+- Yazılmamışsa "no recorded provider usage" + pipeline-spesifik
+  sebep gösterilir; sayı uydurulmaz, "$0.00" şeklinde sahte sıfır
+  gösterilmez.
+
+### Bilinçli olarak Phase 13 scope dışı
+
+- **Estimated vs actual ayrımı**: `CostUsage.costCents` zaten
+  conservative estimate (track-usage.ts:8); ayrı "actual provider
+  invoice" alanı yok. Provider invoice reconciliation ayrı bir
+  sistem (out-of-scope).
+- **Item-level cost breakdown**: Şu an provider × model boyutunda
+  aggregate. Item-level (her job'un kendi cost'u) için yeni UI
+  iterasyonu gerekir; current surface "batch toplamı + provider
+  breakdown" sorusuna cevap verir.
+- **Cost trend / sparkline**: zaman serisi UI gerekirse ayrı bir
+  pane (Cost analytics) konusu.
+- **MJ bridge cost tracking**: provider fatura ayrı kanaldan
+  geldiği için worker write yok. İleride Midjourney fatura
+  reconciliation eklenirse aynı CostUsage table'a yazılır;
+  bu UI değişiklik yapmadan tutar.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
