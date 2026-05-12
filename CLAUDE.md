@@ -5154,6 +5154,168 @@ ikisi de References shell topbar action slot'unda primary CTA gösterir.
 
 ---
 
+## Phase 23 — Inbox triage micro-interactions (row hover + thumb preview)
+
+Phase 21+22 sonrası `/bookmarks` layout/topbar parity tamamdı ama
+Inbox **triage deneyimi** hâlâ zayıftı. Honest audit:
+
+1. **Row hover hissi** — `tr` üzerinde tek class `hover:bg-k-bg-2/40`
+   vardı. `--k-bg-2 (#F1EEE5)` %40 opacity ile paper white üzerinde
+   ~`#F8F6EF` alpha-blend üretiyordu; pure white'tan neredeyse
+   ayırt edilemiyordu. Kullanıcı mouse'la satır üstüne gelince
+   "hangi satırdayım?" sorusuna görsel cevap alamıyordu. **Ölü satır
+   hissi**.
+2. **Thumbnail çok küçük** — `k-thumb !w-10 !aspect-square` (40×40px).
+   DS B1 SubInbox de aynı boyutu kullanıyor (`screens-b1.jsx:244`),
+   ama gerçek Etsy/Pinterest/upload görseli 40×40'ta tanınmaz.
+   Triage akışında "bu mu benim aklımdaki ref?" sorusu cevapsız;
+   kullanıcı promote'a basmadan önce **daha net görsel** ister.
+3. **Row actions hissi statik** — Promote/Archive butonları her
+   zaman full opacity. DS niyetiyle uyumlu (her zaman görünür) ama
+   "active row" sinyali yok; tablo gürültülü kalıyordu.
+
+### Detail page neden yapılmadı
+
+Inbox detail page **gereksiz** sayıldı çünkü:
+
+- Triage akışında ana sorular hover preview ile çözülüyor: "bu görsel
+  ne?" (preview), "promote edeyim mi?" (aynı satırda buton), "tag /
+  collection / not düzenle" (zaten row içinde inline pickers), "kaynak
+  görmek ister" (preview caption + future "View source" link).
+- Detail page bir tıklama + back/exit + breadcrumb + yeni route bakım
+  yükü demek; triage hızını **yavaşlatır**.
+- DS B1 SubInbox detail row gösterimi sunmuyor; route adding DS
+  niyetinden sapma olur.
+- Hover preview + row hover + cursor-pointer üçlüsü Inbox "ölü
+  satır" hissini ortadan kaldırıyor; kullanıcı satıra ulaşmadan
+  bilgiye erişiyor.
+
+Yani bu turun cevabı: **hover preview yeter, detail page yok**.
+İleride başka bir kullanıcı senaryosu (örn. çoklu notes / risk
+investigation) gerekirse drawer eklenir; yeni route henüz
+ürün niyetiyle uyuşmuyor.
+
+### Düzeltmeler (BookmarkRow)
+
+1. **Row hover tone** — `hover:bg-k-bg-2/40` → `hover:bg-k-bg`
+   (full, paper #FFFFFF → warm cream #F7F5EF). DS B1
+   `hover:bg-[var(--k-bg)]` ile birebir aynı (screens-b1.jsx:242).
+   Selected row için `hover:bg-k-orange-soft/40` ekstra-emphasis
+   (selected + hover kombinasyonu görsel olarak ayrışır).
+2. **`cursor-pointer`** — DS B1 row interactivity hissi
+   (screens-b1.jsx:242). Tüm satır artık "tıklanabilir bir nesne"
+   sinyali veriyor.
+3. **`group/row` + `transition-colors`** — Tailwind named group
+   pattern; içerideki action buton kümesi `group-hover/row` ile
+   sönük→parlak geçişi alıyor (default opacity-80,
+   group-hover:opacity-100). `focus-within:opacity-100` klavye
+   gezintisinde de tam parlak — sönük takılma yok.
+4. **`BookmarkRowThumb` (yeni alt-component)** — 40×40 thumb üzerine
+   mouse hover veya focus → 120ms gecikmeli **256×256 popover**
+   açar. Davranışlar:
+     - `aspect-square` içinde gerçek asset, alt caption (title +
+       source label DS-tone font-mono)
+     - viewport sağ kenarına sığmazsa otomatik sola yerleşir
+       (`data-placement="right" | "left"`)
+     - Escape → kapatır
+     - scroll/resize → reposition
+     - asset null → preview popover render edilmez (asset'siz
+       bookmark için büyütmek anlamsız; mevcut "No image" placeholder
+       yeterli sinyal)
+     - `role="tooltip"` + `aria-label="Preview of {title}"` — a11y
+     - thumb wrapper `tabIndex={0}` + `aria-label="Preview {title}"`
+       — klavye accessible
+     - thumb `ring-1 ring-transparent → hover:ring-line` subtle
+       focus-ring sinyali
+
+### DS micro-interaction parity hesabı
+
+| DS B1 sinyali (screens-b1.jsx) | Pre-Phase 23 | Phase 23 |
+|---|---|---|
+| `cursor-pointer` row | yok | var |
+| `hover:bg-[var(--k-bg)]` full | `bg-k-bg-2/40` zayıf | `bg-k-bg` full |
+| 40×40 thumb | aynı | aynı (preview ek katman) |
+| Row actions her zaman görünür | aynı (full opacity) | aynı (opacity-80 default, hover %100) |
+| Hover preview (popover) | yok | yeni (DS niyetinden sapma değil — DS B1 mock'unda preview yok ama ürün ihtiyacı operatöre net görsel istiyor; tooltip pattern DS Q ilkesiyle uyumlu) |
+
+### Doğrulama kanıtları
+
+DOM/computed-style scan (viewport 1440×900):
+
+```
+/bookmarks row (Phase 23):
+  rowCursor: "pointer"
+  rowGroupClass: true                          // group/row pattern
+  rowTransition: "color 0.18s ..."             // hover transition
+  actionsOpacity: "0.8"                        // default sönük
+  actionsTransition: "opacity 0.18s ..."       // group-hover parlak
+
+/bookmarks thumb (asset != null):
+  tabIndex: "0"                                // klavye accessible
+  aria-label: "Preview {title}"
+
+/bookmarks preview popover (focus tetikli):
+  previewExists: true
+  role: "tooltip"
+  aria-label: "Preview of Untitled"
+  placement: "left" (viewport sağa sığmadığı için sola düştü)
+  inner image: 238×238px (k-thumb 40px → 6× büyük)
+  Escape → previewAfterEsc: false              // klavye close
+```
+
+Screenshot kanıtı: turuncu/renkli clipart asset'i 256×~300px popover
+içinde net görünüyor, caption "Untitled" + "OTHER" source DS-tone
+font-mono. 40×40 thumb yerine ~6× büyük preview — triage için
+operatöre yeterli detay.
+
+### Bilinçli scope dışı
+
+- **Asset'siz bookmark için preview yok** (intentional). `bookmark.asset
+  === null` → `BookmarkRowThumb` interactive değil (`tabIndex={-1}`,
+  hover handler bağlı değil). Bunlar "No image" placeholder gösteren
+  satırlar; büyütülecek görsel yok, popover anlamsız olur.
+- **Row tıklama davranışı** — `cursor-pointer` görsel niyet sinyali;
+  şu an satıra tıklamak default eylem yok (tag/collection picker
+  iç-tıklamaları cell-level, thumb hover preview). DS B1
+  cursor-pointer'la "satır tıklanabilir hissi" veriyor ama aksiyon
+  tetiklemiyor — biz aynı pattern. İlerideki bir tur "satır tıklama
+  = preview popover toggle" veya "satır tıklama = promote" eklemek
+  isterse explicit ürün kararı gerekir.
+- **`ImportUrlDialog` TR copy** (Phase 22 not'undan devir) — bu
+  turda dokunulmadı; Phase 22 modal'ı görünür yaptığında not edilen
+  liability hâlâ açık.
+- **Test coverage gap** — `BookmarkRowThumb` için targeted hover/
+  focus/escape testi henüz yok (mevcut suite hâlâ 26 PASS, regression
+  yok). Phase 23 component'i runtime-driven (timer + position
+  calculation); test eklemek için fake timers + DOM rect mock
+  gerekir. İleride hover preview davranışı değişirse veya yeni
+  source ailesi eklenirse (örn. Stories) burası test'le sıkılaştırılır.
+- **`/references`, `/collections`, `/competitors` family hover
+  micro-interaction parity** — bu turun scope'u Inbox idi. Pool'da
+  grid kart hover'ı zaten DS B1 SubPool group-hover pattern'inde
+  (`group-hover:opacity-100`). Diğer family yüzeylerine ihtiyaç
+  görülürse ayrı bir turda hizalanır; family hissi şu an bozulmuyor.
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{bookmarks-page, bookmarks-confirm-flow,
+  bookmark-service}: 26 PASS (regression yok)
+- Browser verification (live dev server, screenshot + DOM scan):
+  row hover class + cursor + transition uygulanmış; thumb focus →
+  256×~300px popover, role=tooltip, aria-label, placement auto;
+  Escape kapatır; asset null satırlarda preview YAPMAZ.
+
+### Bundan sonra References family'de kalan tek doğru iş
+
+`ImportUrlDialog` EN parity migration — Phase 22'de görünür hale
+gelen TR copy (`URL'den bookmark ekle`, `Kapat`, `Bookmark olarak
+kaydet`, `Hata:`) bir sonraki turun bilinçli işi. Bu modal
+ImportUrlDialog'a özgü; başka surface'leri etkilemiyor, focused
+bir tur olur.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

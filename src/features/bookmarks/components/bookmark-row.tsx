@@ -10,7 +10,19 @@
 // metadata (tags, collection, productType, status) row içinde
 // inline meta-line + Source cell badge'i ile korunur — workflow
 // bozulmaz.
+//
+// Phase 23 — Inbox triage micro-interaction polish:
+//   * Row hover artık DS-tone (`hover:bg-k-bg` full, paper→warm cream)
+//     — eski `hover:bg-k-bg-2/40` neredeyse görünmüyordu. DS B1
+//     screens-b1.jsx:242 `hover:bg-[var(--k-bg)]` ile birebir aynı.
+//   * `cursor-pointer` row interactivity hissi (DS B1 pattern).
+//   * Thumbnail hover/focus → 256×256 popover preview (`BookmarkRowThumb`
+//     alt-component). 40×40 thumb triage için yetersiz: kullanıcı
+//     Etsy/Pinterest/upload görselini promote öncesi net görmek ister.
+//     Detail page yerine hover preview seçildi — triage hızı korunur,
+//     yeni route gerekmez (CLAUDE.md Phase 23 notu).
 
+import { useEffect, useRef, useState } from "react";
 import type { BookmarkStatus, RiskLevel } from "@prisma/client";
 import { AssetImage } from "@/components/ui/asset-image";
 import { tagColorClass } from "@/features/tags/color-map";
@@ -106,8 +118,13 @@ export function BookmarkRow({
   return (
     <tr
       className={cn(
-        "border-b border-line-soft last:border-b-0 hover:bg-k-bg-2/40",
-        selected && "bg-k-orange-soft/30",
+        // Phase 23 — DS B1 SubInbox row tone (screens-b1.jsx:242).
+        // `hover:bg-k-bg-2/40` çok zayıftı (paper üzerine alpha blend,
+        // neredeyse görünmüyordu). Full `hover:bg-k-bg` = paper→warm
+        // cream (#FFFFFF → #F7F5EF) → fark edilir, sakin kalır.
+        // `cursor-pointer` row interactivity hissi.
+        "group/row cursor-pointer border-b border-line-soft last:border-b-0 transition-colors hover:bg-k-bg",
+        selected && "bg-k-orange-soft/30 hover:bg-k-orange-soft/40",
       )}
       data-testid="bookmark-row"
       data-bookmark-id={bookmark.id}
@@ -139,15 +156,14 @@ export function BookmarkRow({
         ) : null}
       </td>
 
-      {/* Thumbnail */}
+      {/* Thumbnail — Phase 23 hover preview popover */}
       <td className="px-3 py-3 align-middle">
-        <div className="k-thumb !w-10 !aspect-square">
-          <AssetImage
-            assetId={bookmark.asset?.id ?? null}
-            alt={title}
-            frame={false}
-          />
-        </div>
+        <BookmarkRowThumb
+          assetId={bookmark.asset?.id ?? null}
+          alt={title}
+          sourceLabel={sourceLabel}
+          title={title}
+        />
       </td>
 
       {/* Title + meta row (tags / collection / product type) */}
@@ -221,9 +237,13 @@ export function BookmarkRow({
         </span>
       </td>
 
-      {/* Row actions */}
+      {/* Row actions — Phase 23: sönük→parlak hover cue (default
+       *   opacity-80, group-hover:opacity-100). DS B1 her zaman görünür
+       *   tutuyor; bilgiyi gizlemiyoruz, sadece "active row" sinyali
+       *   güçleniyor. focus-within'da da %100 → klavye gezintisi sönük
+       *   takılmaz. */}
       <td className="px-3 py-3 text-right align-middle">
-        <div className="inline-flex items-center gap-1.5">
+        <div className="inline-flex items-center gap-1.5 opacity-80 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
           {onPromote && isPromotable ? (
             <button
               type="button"
@@ -250,5 +270,158 @@ export function BookmarkRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+/**
+ * BookmarkRowThumb — Phase 23 hover-preview thumbnail.
+ *
+ * Inbox triage akışında 40×40 küçük thumb operatöre yetersiz: kullanıcı
+ * promote öncesi "bu mu benim ref?" sorusuna görsel cevap arar. Detail
+ * page eklemek triage hızını bozardı (extra route + back/exit + bakım
+ * yükü). Bunun yerine hover/focus ile **256×256 popover** açıyoruz —
+ * tıklamadan, sakin, sağa yaslı, viewport-clipped.
+ *
+ * Davranışlar:
+ *   - mouse enter / focus → 120ms gecikmeli aç (jitter yok)
+ *   - mouse leave / blur → hemen kapat
+ *   - Escape → kapat
+ *   - viewport sağ kenara çok yakınsa otomatik sola taşır
+ *   - popover sağa konumlanır (left = thumb.right + 12px); altta vurgu
+ *     için thumb caption mevcut değilse de title + source line gösterir
+ *   - reduced-motion saygılı (transition CSS, ek motion yok)
+ *   - asset null → preview popover açılmaz (asset olmayan bookmark için
+ *     büyütmek anlamsız; mevcut 40×40 placeholder yeterli sinyal)
+ */
+function BookmarkRowThumb({
+  assetId,
+  alt,
+  sourceLabel,
+  title,
+}: {
+  assetId: string | null;
+  alt: string;
+  sourceLabel: string;
+  title: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{
+    top: number;
+    left: number;
+    placement: "right" | "left";
+  } | null>(null);
+  const thumbRef = useRef<HTMLDivElement | null>(null);
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const computePosition = () => {
+    const el = thumbRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const previewSize = 256;
+    const gap = 12;
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+    // Sağa yerleşmeye çalış; viewport sağa sığmıyorsa sola al.
+    const wantsRightLeft = rect.right + gap;
+    const fitsRight = wantsRightLeft + previewSize + 8 <= viewportW;
+    const left = fitsRight
+      ? wantsRightLeft
+      : Math.max(8, rect.left - previewSize - gap);
+    // Top: thumb merkez hizasından preview yüksekliğini sığdır.
+    const desiredTop = rect.top + rect.height / 2 - previewSize / 2;
+    const top = Math.min(
+      Math.max(8, desiredTop),
+      viewportH - previewSize - 8,
+    );
+    setPosition({ top, left, placement: fitsRight ? "right" : "left" });
+  };
+
+  const scheduleOpen = () => {
+    if (!assetId) return;
+    if (openTimerRef.current) clearTimeout(openTimerRef.current);
+    openTimerRef.current = setTimeout(() => {
+      computePosition();
+      setOpen(true);
+    }, 120);
+  };
+
+  const cancelOpen = () => {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current);
+      openTimerRef.current = null;
+    }
+    setOpen(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (openTimerRef.current) clearTimeout(openTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onScrollOrResize = () => computePosition();
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [open]);
+
+  const interactive = !!assetId;
+
+  return (
+    <>
+      <div
+        ref={thumbRef}
+        className={cn(
+          "k-thumb !w-10 !aspect-square",
+          interactive &&
+            "ring-1 ring-transparent transition-shadow hover:ring-line focus-visible:ring-line",
+        )}
+        tabIndex={interactive ? 0 : -1}
+        aria-label={interactive ? `Preview ${title}` : undefined}
+        onMouseEnter={scheduleOpen}
+        onMouseLeave={cancelOpen}
+        onFocus={scheduleOpen}
+        onBlur={cancelOpen}
+        data-preview-open={open || undefined}
+        data-testid="bookmark-thumb"
+      >
+        <AssetImage assetId={assetId} alt={alt} frame={false} />
+      </div>
+      {open && position && interactive ? (
+        <div
+          role="tooltip"
+          aria-label={`Preview of ${title}`}
+          className="pointer-events-none fixed z-50 w-64 rounded-md border border-line bg-paper p-2 shadow-popover"
+          style={{ top: position.top, left: position.left }}
+          data-placement={position.placement}
+          data-testid="bookmark-thumb-preview"
+        >
+          <div className="aspect-square w-full overflow-hidden rounded-sm bg-k-bg-2">
+            <AssetImage assetId={assetId} alt={alt} frame={false} />
+          </div>
+          <div className="mt-2 flex flex-col gap-0.5 px-0.5">
+            <span
+              className="truncate text-[12px] font-medium text-ink"
+              title={title}
+            >
+              {title}
+            </span>
+            <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+              {sourceLabel}
+            </span>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
