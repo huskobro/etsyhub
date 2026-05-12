@@ -3664,6 +3664,137 @@ bu implementasyon tamamlandıktan sonra silinebilir veya yoksayılabilir.
 
 ---
 
+## BB. Runtime Reconciliation Discipline (Phase 12 — 2026-05-12)
+
+**"Code exists" is NOT enough.** Kod-level değişiklik bittiğinde iş bitmiş
+sayılmaz; aynı değişiklik **çalışan runtime'da operatörün gözüyle**
+görünür olmalı. Phase 1-11 turlarının kapanışında ortaya çıkan güven
+problemi (kod var ama preview göstermiyor) bu maddeyi doğurdu.
+
+### Disiplin
+
+Bir feature/refactor "tamam" sayılmadan önce:
+
+1. **Kod**: edit + typecheck + unit test geçti.
+2. **Build**: `npm run build` veya equivalent başarılı.
+3. **Runtime parity**: Değişiklik **gerçek çalışan dev/preview server'da
+   browser kullanıcısı gözüyle** görünür. DOM grep veya bundle string
+   araması yardımcıdır, **final kanıt değildir**.
+4. **Visual proof**: Ekran görüntüsü veya gerçek DOM inspection — pixel
+   boyutları, image natural width, computed style — talep edilen
+   davranışın görünür olduğunu kanıtlar.
+5. **Honest gap reporting**: Eğer kanıtlanamayan bir parça kaldıysa
+   açıkça yaz; "muhtemelen çalışıyor" yerine "şu nedenle browser
+   kanıtı alınamadı".
+
+### Worktree / preview tool köşe taşı
+
+Multi-worktree development ortamında runtime parity'nin **en sık
+unutulan** kök nedeni:
+
+- Preview tool (örn. `mcp__Claude_Preview`) genelde session-start
+  worktree'sini hardcoded path olarak tutar.
+- Kod gerçek geliştirme worktree'sinde (örn. `audit-references`)
+  yazılır.
+- Preview tool eski worktree'yi (örn. `epic-agnesi-7a424b`) servis
+  eder ve eski (Phase N-K) kodu gösterir.
+- "Kod var ama preview yok" parity gap'i bu yüzden ortaya çıkar.
+
+**Çözüm — bridge launch.json pattern:**
+
+Preview tool'un beklediği session-start path'e (`.claude/worktrees/
+<frozen-name>/.claude/launch.json`) yalnızca redirect yapan bir
+launch config bırakılır:
+
+```json
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "etsyhub-dev",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-c",
+        "cd <absolute-path-to-real-worktree> && exec npm run dev"
+      ],
+      "port": 3000,
+      "autoPort": false
+    }
+  ]
+}
+```
+
+Bu pattern:
+- Preview tool'un MCP'inde tek bir hardcoded path varsayımını bozmaz.
+- Süreç gerçekten **target worktree'nin CWD'sinde** başlar (lsof ile
+  doğrulanır).
+- Single-branch discipline'i korur — git çalışmaları gerçek worktree'de
+  yapılır, bridge worktree yalnız bir launch redirect taşır.
+
+### Browser preview viewport sözleşmesi
+
+Headless browser preview tool'ları default viewport ile 0×0 başlayabilir.
+Bu durumda flex/grid layout collapse olur ve thumbnail / kart / grid
+"görünmez" sanılır — halbuki kod doğru, **viewport sıfırdır**.
+
+**Kural**: Preview-based visual verification'ın ilk adımı viewport
+boyutunu set etmektir. Default: 1440×900 desktop. Visual regression
+testleri viewport-aware olmalı.
+
+Pre-flight pattern:
+
+```js
+await preview_resize({ width: 1440, height: 900 });
+// then inspect DOM, take screenshots, etc.
+```
+
+### Visual proof checklist
+
+Yeni feature claim'i için kanıt seti:
+
+1. **DOM presence**: `[data-testid="..."]` query, count, outerHTML.
+2. **Layout dimensions**: `offsetWidth`, `offsetHeight`,
+   `getBoundingClientRect()`. Pixel düzeyinde sıfır olmamalı.
+3. **Image health**: `naturalWidth > 0`, `complete === true`,
+   `src` URL signed/valid.
+4. **Active state**: tab `aria-selected="true"`, route match
+   `location.href`, gerekirse `aria-controls` paneli görünür.
+5. **Screenshot**: en az 1280px geniş bir görüntü.
+
+Beşinden biri eksikse "kanıtlandı" denmez — eksik kanıt PR notunda
+yazılır.
+
+### Honest placeholder declaration
+
+Bazı surface'ler hâlâ placeholder (örn. Costs tab "Coming soon —
+provider usage aggregation lands with the AI Providers pane").
+Bu durum:
+
+- UI'da **görünür** placeholder copy ile söylenir; sessiz boş alan
+  bırakılmaz.
+- CLAUDE.md / docs'ta "henüz implement değil" açıkça yazılır.
+- Phase rollout planında kalan iş haritalanır.
+
+Placeholder bir başarısızlık değil; **sessiz** placeholder
+başarısızlıktır.
+
+### Seed data parity gap
+
+Bir kod path canonical olarak doğru olsa bile seed data o path'i
+egzersiz etmiyorsa runtime parity **görünmez**. Phase 12'de
+karşılaşılan örnek: Reference tile + back-link kodu mevcut idi
+(`page.tsx` sourceReference projection, `BatchDetailClient` RefTile
+component), ama tüm seed MJ batch'ler `Job.metadata.referenceId`
+olmadan üretildiği için tile asla render olmuyordu.
+
+**Kural**: Yeni feature için **en az bir** seed senaryosu o path'i
+egzersiz etmeli. Eğer mevcut seed bunu kapsamıyorsa, controlled
+test seed ile path doğrulanır (Phase 12'de `referenceId` patch ile
+Reference tile görünür yapıldı). "Code path var, seed yok → runtime
+yok" parity gap'i de bu disipline tabidir.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
