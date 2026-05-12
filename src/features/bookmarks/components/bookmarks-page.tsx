@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   useMutation,
   useQuery,
@@ -55,12 +56,40 @@ export function BookmarksPage({
   productTypes: ProductTypeOption[];
 }) {
   const qc = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { confirm, close, run, state } = useConfirm();
   const [status, setStatus] = useState<BookmarkStatus | "ALL">("INBOX");
   const [q, setQ] = useState("");
-  const [importOpen, setImportOpen] = useState(false);
+  const [importOpenLocal, setImportOpenLocal] = useState(false);
   const [promoteId, setPromoteId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  /* Phase 22 — Pool-canonical action slot pattern (page.tsx tarafı).
+   * Topbar CTA stateless Link → /bookmarks?add=url query'si bırakır.
+   *
+   * Modal "open" durumu URL-derived: `?add=url` görünür olduğu
+   * sürece modal açık sayılır. Bu pattern Next.js App Router'da
+   * en stabil çözüm — `setState + router.replace` çakışması
+   * (re-render sırasında state'in yutulması) burada olmuyor çünkü
+   * URL'in kendisi truth. Modal close → `router.replace(pathname)`
+   * ile param'ı çıkarıyoruz; aynı zamanda manuel "+ New" buton
+   * (`setImportOpenLocal(true)`) için local state var (örn. empty
+   * state CTA, future entries). İki kaynak `OR`'lanır. */
+  const importOpen =
+    importOpenLocal || searchParams?.get("add") === "url";
+
+  const closeImport = () => {
+    setImportOpenLocal(false);
+    if (searchParams?.get("add") === "url") {
+      const next = new URLSearchParams(searchParams);
+      next.delete("add");
+      const queryString = next.toString();
+      router.replace(queryString ? `${pathname}?${queryString}` : pathname);
+    }
+    qc.invalidateQueries({ queryKey: ["bookmarks"] });
+  };
 
   const query = useQuery<ListResponse>({
     queryKey: ["bookmarks", status, q],
@@ -162,18 +191,13 @@ export function BookmarksPage({
     <div className="flex flex-col gap-6">
       {/* R11.14.3 — Çift header kaldırıldı; üst topbar References shell
        * tarafından tek h1 + sub-view subtitle olarak render ediliyor.
-       * Sadece CTA + toolbar + grid burada kalır. */}
-      <div className="flex justify-end">
-        <button
-          type="button"
-          data-size="sm"
-          className="k-btn k-btn--primary"
-          onClick={() => setImportOpen(true)}
-        >
-          <Plus className="h-3 w-3" aria-hidden />
-          Add from URL
-        </button>
-      </div>
+       *
+       * Phase 22 — Pool-canonical action slot pattern uygulandı.
+       * Pre-Phase 22 "Add from URL" inline `<div justify-end>` satırı
+       * burada yaşıyordu; wrapper `gap-6` ile toolbar'a 70px boş satır
+       * üretiyordu. CTA artık references shell topbar action slot'unda
+       * (bkz. app/(app)/bookmarks/page.tsx) — Link href="?add=url"
+       * yukarıdaki `importOpen` URL-derived state'ini açar. */}
 
       {/* Phase 20 — B1 family parity toolbar.
        *   v5 SubInbox: k-input (left, prefix search icon) + inline segmented
@@ -256,7 +280,7 @@ export function BookmarksPage({
             <Button
               variant="primary"
               icon={<Plus className="h-4 w-4" aria-hidden />}
-              onClick={() => setImportOpen(true)}
+              onClick={() => setImportOpenLocal(true)}
             >
               Add your first bookmark
             </Button>
@@ -325,14 +349,7 @@ export function BookmarksPage({
         </div>
       )}
 
-      {importOpen ? (
-        <ImportUrlDialog
-          onClose={() => {
-            setImportOpen(false);
-            qc.invalidateQueries({ queryKey: ["bookmarks"] });
-          }}
-        />
-      ) : null}
+      {importOpen ? <ImportUrlDialog onClose={closeImport} /> : null}
 
       {state.preset ? (
         <ConfirmDialog

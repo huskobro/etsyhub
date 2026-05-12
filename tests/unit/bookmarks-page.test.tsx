@@ -36,6 +36,16 @@ import {
   within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+// Phase 22 — BookmarksPage now reads ?add=url via next/navigation
+// (Pool-canonical action slot trigger). Vitest harness does not mount
+// the App Router; provide minimal mocks so component renders.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/bookmarks",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 import { BookmarksPage } from "@/features/bookmarks/components/bookmarks-page";
 
 function wrapper(ui: ReactElement) {

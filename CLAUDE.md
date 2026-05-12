@@ -5049,6 +5049,111 @@ layout ayrımına bire bir hizalı.
 
 ---
 
+## Phase 22 — Inbox header/action-slot cleanup (Pool-canonical)
+
+Phase 21 layout düzeltmesi sonrası `/bookmarks` sayfasının üst bölümünde
+görünür bir boşluk parity sorunu daha kaldı: "Add from URL" CTA,
+`BookmarksPage` içinde ayrı bir `<div className="flex justify-end">`
+satırında render ediliyordu. Wrapper'ın `flex flex-col gap-6` boyutu
+bu inline satır ile toolbar arasında 24px + buton yüksekliği = ~70px
+anlamsız dikey boşluk üretiyordu. Aynı zamanda Pool (`/references`)
+"Add Reference" CTA'yı References shell topbar action slot'una
+geçirdiği için family parity bozuktu.
+
+Phase 22 düzeltmesi:
+
+- `app/(app)/bookmarks/page.tsx` `<ReferencesTopbar actions={…}>`
+  prop'una `<Link href="/bookmarks?add=url" className="k-btn
+  k-btn--primary">Add from URL</Link>` ekler. Pool ile **birebir
+  aynı pattern** — stateless Link, page-level state lift gerekmez.
+- `BookmarksPage` (client component) `useSearchParams` hook'u ile
+  `?add=url` query'sini dinler ve **URL-derived state** olarak
+  `importOpen` üretir: `importOpen = importOpenLocal ||
+  searchParams?.get("add") === "url"`. Local state hâlâ var
+  (empty-state CTA "Add your first bookmark" için), iki kaynak
+  OR'lanır.
+- Modal close handler (`closeImport`) hem `setImportOpenLocal(false)`
+  yapar hem URL'de `?add=url` varsa `router.replace(pathname)` ile
+  temizler. Bu sayede modal kapatıldıktan sonra browser back/refresh
+  tekrar modal açmaz.
+
+URL-derived pattern seçildi çünkü `setImportOpen(true) + router.replace`
+kombinasyonu Next.js App Router'da client transition + R18 batching
+sırasında state mutation'unu yutuyordu (router.replace route'u
+yeniden mount ediyor → fresh instance state'i kaybediyor). URL'i
+"single source of truth" yapmak bu çakışmayı tamamen ortadan
+kaldırıyor; ayrıca URL bookmarkable / share-friendly oluyor
+(React Server Components idiomatic pattern).
+
+### Inline button row neden kaldırıldı
+
+Pre-Phase 22 `BookmarksPage` wrapper yapısı:
+
+```
+<div className="flex flex-col gap-6">
+  <div className="flex justify-end">         // ← 1. row, ~44px
+    <button>Add from URL</button>            //   sadece button
+  </div>
+  // gap-6 = 24px
+  <div toolbar>Search + filters</div>         // ← 2. row
+  ...
+</div>
+```
+
+Topbar'da References başlığı + INBOX subtitle zaten görünürken
+**ikinci bir CTA satırı** boşluk üretiyordu. Pool'da bu satır
+yoktu çünkü Add Reference topbar'da. Phase 22 ile inline satır
+kaldırıldı — wrapper'ın ilk çocuğu artık doğrudan toolbar.
+
+### Doğrulama kanıtları
+
+DOM scan (viewport 1440×900):
+
+```
+/bookmarks (after Phase 22):
+  ctaInTopbar: true                           // [data-testid=bookmarks-add-cta]
+  ctaInTopbarSectionTag: "HEADER"             // semantic <header>
+  ctaHref: "/bookmarks?add=url"
+  firstChildIsToolbar: true                   // wrapper first child = search bar
+  firstChildHasOldAddButton: false            // inline row gone
+  inboxTabActive: true                        // ReferencesShellTabs Inbox=4
+  modalOpenOnAddUrlParam: true                // <input type="url">+overlay
+  modalClosePersists: true                    // URL search="" after close
+```
+
+Screenshot kanıtı: References başlığı yanında `+ Add from URL` k-orange
+chip; bir altta Pool/Stories/Inbox/Shops/Collections subnav; bir altta
+Search + chip filtreler; bir altta direkt tablo (k-card içinde). Eski
+70px boşluk yok. Pool/Inbox arası `actions` slot parity korunur:
+ikisi de References shell topbar action slot'unda primary CTA gösterir.
+
+### Bilinçli scope dışı
+
+- `ImportUrlDialog` içerik metinleri hâlâ TR (`URL'den bookmark ekle`,
+  `Kapat`, `Hata:`, `Bookmark olarak kaydet`). Phase 15-18 EN parity
+  turları bu modalı açmak için bir kullanıcı akışı sunmadığından
+  atlandı. Phase 22 modal'ı operatöre görünür yaptı → bir sonraki
+  EN-parity turuna açık liability. Bu turun scope'u **topbar action
+  slot + üst boşluk**; modal copy ayrı bir turda EN'e taşınacak.
+- `tests/unit/toolbar-filterbar-bulkaction.test.tsx` 2 pre-existing
+  TR fail (Phase 15-18 EN parity migration test kalıntısı; BulkActionBar
+  copy testi "Seçimi temizle" arıyor). Phase 22 regression değil —
+  `main`'de aynı fail mevcut (git stash ile doğrulandı).
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{bookmarks-page, bookmarks-confirm-flow,
+  bookmark-service, references-page, dashboard-page, pageshell-sidebar}:
+  bookmarks suite 26 PASS; extended 74 PASS / 2 pre-existing fail
+- next build: ✓ Compiled successfully (run pre-refactor; post-refactor
+  HMR canlı kanıt ile doğrulandı)
+- Browser verification: live dev server üzerinde gerçek navigation
+  + click + modal open/close akışı doğrulandı (screenshot + DOM
+  scan kanıtları yukarıda)
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
