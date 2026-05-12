@@ -124,9 +124,9 @@ test.describe("Phase 7 — Selection Studio golden path", () => {
       page.getByRole("button", { name: /İndir \(ZIP\)/i }).first(),
     ).toBeVisible();
 
-    // "Set'i finalize et" buton (0 selected → disabled; UI'da görünür olmalı).
+    // "Finalize selection" button (0 selected → disabled; must still be visible).
     await expect(
-      page.getByRole("button", { name: /finalize et/i }).first(),
+      page.getByRole("button", { name: /finalize selection/i }).first(),
     ).toBeVisible();
 
     // Kebap menü — aria-label="Set seçenekleri"

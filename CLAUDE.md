@@ -3893,6 +3893,140 @@ Empty state "Coming soon" placeholder DEĞİLDİR; gerçek ürün cevabıdır.
 
 ---
 
+## DD. Selection → Product Handoff & Product Detail (Phase 14 — 2026-05-12)
+
+Phase 14 Selection → Product hattını **ürün yüzeyi olarak** netleştirdi.
+Yeni feature alanı, yeni schema, yeni "Product" modeli açılmadı —
+mevcut Selection → Mockup Apply → Listing zinciri üzerine handoff dili
+ve Product detail canonical summary strip eklendi.
+
+### Audit bulguları
+
+**Selection → Product handoff doğal zincir aşağıdaki gibi (değişmedi):**
+
+```
+SelectionSet  →  Mockup Apply  →  MockupJob result
+               (operator click)    "Listing'e gönder" CTA
+                                    │
+                                    ▼
+                                  Listing  →  /products/[id]
+                                  (DB row;     (UI brand:
+                                  schema-      Product)
+                                  zero — yeni
+                                  "Product"
+                                  modeli yok)
+```
+
+Yani **Product = Listing**. UI'da "Product" branding'i kullanılır, DB'de
+`Listing` tablosu yaşar. Doğrudan Selection → Product CTA'sı YOK; mockup
+apply zorunlu ara durak. Bu ürün kararı korundu (Mockup → Listing zinciri
+selection finalize sonrası gerekli).
+
+**Product detail mevcut olgunluğu (pre-Phase 14):**
+
+4 tab canonical (A5 spec): Mockups · Listing · Files · History. Header'da
+arrow back · title · stage badge · Etsy chip · Duplicate (disabled) ·
+Preview (disabled) · "Send to Etsy as Draft" CTA. ListingTab tam
+fonksiyonel (title, description, 13 tags, category, price, materials,
+file types, instant download). FilesTab gerçek deliverable tablosu.
+HistoryTab timeline.
+
+### Phase 14 ürün düzeltmeleri
+
+**Selection handoff (StudioShell):**
+
+- Read-only banner copy TR → EN; internal phase etiketi ("Phase 8")
+  operatör UI'ından kaldırıldı. Yeni copy: "Selection finalized — next
+  step is applying mockups to prepare a product listing." CTA: "Apply
+  mockups →" (önceki: "Mockup Studio'da Aç →").
+- Üst bar "Set'i finalize et" → "Finalize selection". Subtitle "varyant ·
+  seçili" → "variant(s) · selected". Finalize tooltip "En az 1 'Seçime
+  ekle' yapılmış varyant gerekli" → "Mark at least 1 variant as selected
+  before finalizing".
+- data-testid: `selection-handoff-banner`, `selection-handoff-apply-mockups`
+  (sonraki turlarda regression testleri için).
+- Error block TR ("Bilinmeyen hata", "Product yüklenemedi") → EN
+  ("Unknown error", "Product failed to load").
+
+**Product detail canonical summary strip (A5/B4 alignment):**
+
+Header altında 5 muted tile, batch detail overview-production-summary
+ile parity. Operatör tek bakışta cevap alır: "ne için product var,
+nereden geldi, ne kadar hazır?". Tile'lar:
+
+1. **Source selection** — `useProductSourceSelection(productId)` hook
+   `/api/products/[id]/source-selection` üzerinden listing.mockupJobId →
+   MockupJob.setId → SelectionSet zincirini izler. Tile back-link
+   olarak `/selections/[setId]`'e çıkar (ArrowUpRight glyph). null →
+   "—" fallback.
+2. **Mockups** — `listing.imageOrder.length` mono numeric.
+3. **Files** — aynı sayı (deliverable count); file types tab'ta detay.
+4. **Listing health** — `listingHealthScore(listing.readiness)`
+   threshold-aware ton: ≥80 success, ≥50 k-amber, <50 ink-3.
+5. **Next step** — stage'e göre operatöre tek-cümle sıradaki aksiyon
+   ("Apply mockups", "Review listing → send to Etsy", "Scheduled for
+   Etsy", "Track on Etsy", "Resolve failure on Listing tab").
+
+Tile pattern Kivasy DS A5 / batch detail summary strip ile uyumlu:
+`bg-paper`, font-mono `text-[10.5px] uppercase tracking-meta` label,
+body value tabular-nums.
+
+### Kivasy DS referansları
+
+- `docs/design-system/kivasy/ui_kits/kivasy/v4/screens-a5.jsx` — Product
+  detail (4 tabs, header, listing health sidebar).
+- `docs/design-system/kivasy/ui_kits/kivasy/v5/screens-b2-b3.jsx` —
+  Selection index card stages (Curating/Edits/Mockup ready/Sent) ve
+  "Apply Mockups" primary CTA.
+- `docs/design-system/kivasy/ui_kits/kivasy/v5/screens-b4.jsx` — Products
+  index table + retry/Etsy chip pattern.
+- `docs/design-system/kivasy/ui_kits/kivasy/v4/base.jsx` — Tabs, Badge,
+  Btn recipe'leri (zaten kullanımda).
+
+### Bilinçli olarak Phase 14 scope dışı kalan drift
+
+Bu tur "küçük ama kritik düzeltmeler" scope'unda kaldı. Aşağıdaki TR
+drift'ler **intra-surface** (handoff touchpoint değil) olduğu için
+sonraki turlara bırakıldı:
+
+- `StudioShell` RightPanel: "Edit", "AI KALİTE", "HIZLI İŞLEM", "İŞLEM
+  GEÇMİŞİ", "Background remove", "Magic Eraser", "Upscale 2× YAKINDA",
+  "Transparent PNG kontrolü", quick-actions panel.
+- `Filmstrip` empty states: "Reddedilen varyant yok", "Henüz varyant
+  yok", "Varyantlar (N)".
+- `PreviewCard` placeholder + "Varyant N / M" badge (kullanıcı UI
+  içinde görülür — string mixed).
+- `BulkHardDeleteDialog` confirmation copy.
+- `SelectionBulkBar` "N varyant seçildi" toast.
+- `AiQualityPanel` "Bu varyant için AI kalite analizi yapılmamış".
+- `MjOriginBar` (Pass 91) handoff bar TR caption.
+- `Product detail Listing tab` RIGHT RAIL Listing Health item labels:
+  "Title hazır (N karakter)", "Açıklama hazır", "13 tag (maksimum 13)",
+  "Kategori seçimi geçerli", "Fiyat geçerlilik", "Kapak görseli hazır
+  (Pass'le wall_art QA template)".
+- `MockupsTab` / `FilesTab` / `HistoryTab` internal TR strings (audit
+  edilmedi).
+
+Bu drift'leri kapatmak ayrı bir "i18n cleanup" turunun konusudur. Bir
+i18n katmanı (`@/lib/i18n` veya next-intl) açılırsa hepsi tek pasta
+olarak migrate edilir; tek tek string replace turu verimsiz olur.
+
+### Selection → Product handoff sözleşmesi (kalıcı)
+
+- Selection canonical detail = `/selection/sets/[setId]` (StudioShell).
+- Read-only banner finalized status'te görünür (status === "ready").
+- Tek primary CTA: "Apply mockups →" → `/selection/sets/[setId]/
+  mockup/apply`.
+- Mockup apply başarılı olduğunda S8ResultView "Listing'e gönder" CTA
+  ile `createListingDraftFromMockupJob` → `/products/[id]` redirect.
+- `/products/[id]` server-rendered, `ProductDetailClient` hydrates;
+  source selection back-link summary strip ile görünür.
+- Product detail kendisi yeni mockup uygulayabilir (Mockups tab swap UI)
+  ama Selection edit'i yapamaz; SelectionSet finalize sonrası
+  immutable (Phase 7 Task 35 invariant).
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

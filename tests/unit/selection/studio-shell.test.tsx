@@ -175,7 +175,7 @@ describe("StudioShell — draft set", () => {
 
     const indirBtn = screen.getByRole("button", { name: /Download \(ZIP\)/i });
     const finalizeBtn = screen.getByRole("button", {
-      name: /set'i finalize et/i,
+      name: /finalize selection/i,
     });
     const kebabBtn = screen.getByRole("button", { name: /set seçenekleri/i });
 
@@ -193,12 +193,12 @@ describe("StudioShell — draft set", () => {
     });
     wrapper(<StudioShell setId="set-1" />);
     const finalizeBtn = screen.getByRole("button", {
-      name: /set'i finalize et/i,
+      name: /finalize selection/i,
     });
     expect(finalizeBtn).toBeDisabled();
-    // Native title attribute: "En az 1 'Seçime ekle' yapılmış varyant gerekli"
+    // Native title attribute: "Mark at least 1 variant as selected before finalizing"
     expect(finalizeBtn.getAttribute("title")).toMatch(
-      /en az 1.*seçime ekle.*varyant gerekli/i,
+      /mark at least 1 variant as selected/i,
     );
   });
 
@@ -228,7 +228,7 @@ describe("StudioShell — draft set", () => {
     });
     wrapper(<StudioShell setId="set-1" />);
     const finalizeBtn = screen.getByRole("button", {
-      name: /set'i finalize et/i,
+      name: /finalize selection/i,
     });
     expect(finalizeBtn).not.toBeDisabled();
     expect(finalizeBtn.getAttribute("title")).toBeNull();
@@ -257,7 +257,7 @@ describe("StudioShell — draft set", () => {
       error: null,
     });
     wrapper(<StudioShell setId="set-1" />);
-    expect(screen.getByText(/5 varyant.*2 seçili/i)).toBeInTheDocument();
+    expect(screen.getByText(/5 variants.*2 selected/i)).toBeInTheDocument();
   });
 });
 
@@ -270,9 +270,9 @@ describe("StudioShell — ready / archived (read-only)", () => {
     });
     wrapper(<StudioShell setId="set-1" />);
     expect(screen.getByText("Ready")).toBeInTheDocument();
-    expect(screen.getByText(/finalize edildi/i)).toBeInTheDocument();
+    expect(screen.getByText(/selection finalized/i)).toBeInTheDocument();
     const finalizeBtn = screen.getByRole("button", {
-      name: /set'i finalize et/i,
+      name: /finalize selection/i,
     });
     expect(finalizeBtn).toBeDisabled();
   });
@@ -288,7 +288,7 @@ describe("StudioShell — ready / archived (read-only)", () => {
     });
     wrapper(<StudioShell setId="set-1" />);
     expect(screen.getByText("Archived")).toBeInTheDocument();
-    expect(screen.getByText(/finalize edildi/i)).toBeInTheDocument();
+    expect(screen.getByText(/selection finalized/i)).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /set seçenekleri/i }),
     ).not.toBeInTheDocument();

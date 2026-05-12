@@ -131,7 +131,7 @@ export function StudioShell({ setId }: StudioShellProps) {
   const finalizeDisabled = isReadOnly || selectedCount === 0;
   const finalizeTooltip =
     !isReadOnly && selectedCount === 0
-      ? "En az 1 'Seçime ekle' yapılmış varyant gerekli"
+      ? "Mark at least 1 variant as selected before finalizing"
       : undefined;
 
   return (
@@ -151,7 +151,8 @@ export function StudioShell({ setId }: StudioShellProps) {
             <Badge tone={statusTone}>{statusLabel}</Badge>
           </div>
           <p className="text-sm text-text-muted">
-            {set.items.length} varyant · {selectedCount} seçili
+            {set.items.length} variant{set.items.length === 1 ? "" : "s"} ·{" "}
+            {selectedCount} selected
           </p>
         </div>
 
@@ -167,7 +168,7 @@ export function StudioShell({ setId }: StudioShellProps) {
             onClick={() => setFinalizeOpen(true)}
             title={finalizeTooltip}
           >
-            Set&apos;i finalize et
+            Finalize selection
           </Button>
           {/* Task 37 — ArchiveAction (set kebap menü minimal). Archived set'te
               ArchiveAction null döner; spec Section 4.3 (archived → archived
@@ -179,17 +180,20 @@ export function StudioShell({ setId }: StudioShellProps) {
       {isReadOnly && (
         <div
           role="note"
+          data-testid="selection-handoff-banner"
           className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-4 py-3 text-sm text-text-muted"
         >
           <span>
-            Bu set finalize edildi — Phase 8 Mockup Studio&apos;da işlenecek.
+            Selection finalized — next step is applying mockups to prepare a
+            product listing.
           </span>
           {set.status === "ready" && (
             <Link
               href={`/selection/sets/${setId}/mockup/apply`}
+              data-testid="selection-handoff-apply-mockups"
               className="shrink-0 rounded-md bg-text px-3 py-1.5 text-xs font-medium text-bg hover:opacity-90"
             >
-              Mockup Studio&apos;da Aç →
+              Apply mockups →
             </Link>
           )}
         </div>

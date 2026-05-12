@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowUpRight,
   Copy,
   Eye,
   Loader2,
@@ -13,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import { Tabs, type TabItem } from "@/components/ui/Tabs";
 import { useListingDraft } from "@/features/listings/hooks/useListingDraft";
+import { useProductSourceSelection } from "@/features/products/hooks/useProductSourceSelection";
 import {
   deriveProductStage,
   productStageBadgeTone,
@@ -43,6 +45,7 @@ interface Props {
 export function ProductDetailClient({ productId }: Props) {
   const [tab, setTab] = useState<TabId>("listing");
   const { data: listing, isLoading, error } = useListingDraft(productId);
+  const sourceSelection = useProductSourceSelection(productId);
 
   if (isLoading) {
     return (
@@ -75,10 +78,10 @@ export function ProductDetailClient({ productId }: Props) {
               <AlertTriangle className="mt-0.5 h-4 w-4 text-danger" aria-hidden />
               <div>
                 <h2 className="text-sm font-semibold text-danger">
-                  Product yüklenemedi
+                  Product failed to load
                 </h2>
                 <p className="mt-1 text-sm text-ink-2">
-                  {error instanceof Error ? error.message : "Bilinmeyen hata"}
+                  {error instanceof Error ? error.message : "Unknown error"}
                 </p>
               </div>
             </div>
@@ -188,6 +191,68 @@ export function ProductDetailClient({ productId }: Props) {
         </button>
       </header>
 
+      {/* Phase 14 — A5/B4 canonical summary strip. Parity with Batch detail
+          overview-production-summary; gives operator one-glance answer to
+          "what selection became this product? how ready is it for Etsy?". */}
+      <div
+        className="flex-shrink-0 border-b border-line bg-paper px-6 py-3"
+        data-testid="product-detail-summary-strip"
+      >
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
+          <SummaryTile label="Source selection">
+            {sourceSelection.data ? (
+              <Link
+                href={`/selections/${sourceSelection.data.setId}`}
+                className="inline-flex items-center gap-1 text-sm text-ink hover:underline"
+                data-testid="product-summary-source-selection-link"
+              >
+                <span className="truncate max-w-[180px]">
+                  {sourceSelection.data.setName}
+                </span>
+                <ArrowUpRight className="h-3 w-3 text-ink-3" aria-hidden />
+              </Link>
+            ) : sourceSelection.isLoading ? (
+              <span className="text-sm text-ink-3">Resolving…</span>
+            ) : (
+              <span className="text-sm text-ink-3">—</span>
+            )}
+          </SummaryTile>
+          <SummaryTile label="Mockups">
+            <span
+              className="font-mono text-sm tabular-nums text-ink"
+              data-testid="product-summary-mockup-count"
+            >
+              {mockupCount}
+            </span>
+          </SummaryTile>
+          <SummaryTile label="Files">
+            <span
+              className="font-mono text-sm tabular-nums text-ink"
+              data-testid="product-summary-file-count"
+            >
+              {filesCount}
+            </span>
+          </SummaryTile>
+          <SummaryTile label="Listing health">
+            <span
+              className={`font-mono text-sm tabular-nums ${health >= 80 ? "text-success" : health >= 50 ? "text-k-amber" : "text-ink-3"}`}
+              data-testid="product-summary-health"
+            >
+              {health}
+              <span className="ml-0.5 text-ink-3">/100</span>
+            </span>
+          </SummaryTile>
+          <SummaryTile label="Next step">
+            <span
+              className="text-sm text-ink"
+              data-testid="product-summary-next-step"
+            >
+              {nextStepCopy(stage)}
+            </span>
+          </SummaryTile>
+        </div>
+      </div>
+
       {/* Tabs */}
       <div className="flex-shrink-0 border-b border-line bg-bg px-6">
         <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id as TabId)} />
@@ -200,4 +265,45 @@ export function ProductDetailClient({ productId }: Props) {
       {tab === "history" ? <HistoryTab listing={listing} /> : null}
     </div>
   );
+}
+
+/**
+ * Compact summary strip tile — label + slot content. Matches batch detail
+ * production-summary visual tone (font-mono caption + body value).
+ */
+function SummaryTile({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Operatöre "şimdi ne yapmalıyım?" cevabı veren tek satır. Stage'e göre.
+ */
+function nextStepCopy(stage: ReturnType<typeof deriveProductStage>): string {
+  switch (stage) {
+    case "Draft":
+      return "Apply mockups";
+    case "Mockup ready":
+      return "Review listing → send to Etsy";
+    case "Etsy-bound":
+      return "Scheduled for Etsy";
+    case "Sent":
+      return "Track on Etsy";
+    case "Failed":
+      return "Resolve failure on Listing tab";
+    default:
+      return "—";
+  }
 }
