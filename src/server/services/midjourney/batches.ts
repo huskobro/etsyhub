@@ -618,6 +618,47 @@ export type RetryFailedJobsResult = {
   >;
 };
 
+/**
+ * Batch-first Phase 1 — batch → selection set lineage resolver.
+ *
+ * SelectionSet.sourceMetadata iki format taşır:
+ *   1. MJ kept handoff: { mjOrigin: { batchIds: [batchId, ...] } }
+ *   2. variation-batch quickStart: { kind: "variation-batch", batchId }
+ *
+ * Her iki path'i de kontrol eder; bulunan ilk set döner.
+ * Schema migration yok — Prisma JSON path query.
+ */
+export async function findSelectionSetForBatch(
+  userId: string,
+  batchId: string,
+): Promise<{ id: string; name: string } | null> {
+  const [mjKept, variation] = await Promise.all([
+    db.selectionSet.findFirst({
+      where: {
+        userId,
+        sourceMetadata: {
+          path: ["mjOrigin", "batchIds"],
+          array_contains: batchId,
+        },
+      },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    db.selectionSet.findFirst({
+      where: {
+        userId,
+        sourceMetadata: {
+          path: ["batchId"],
+          equals: batchId,
+        },
+      },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
+  return mjKept ?? variation ?? null;
+}
+
 export async function retryFailedJobsFromBatch(input: {
   userId: string;
   sourceBatchId: string;

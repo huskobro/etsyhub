@@ -2538,6 +2538,73 @@ Reference  →  Batch  →  Library  →  Selection  →  Product  →  Etsy Dra
 
 ---
 
+## AA. Batch-First Production Pipeline (2026-05-12)
+
+**Batch, üretim pipeline'ının merkezi çalışma birimidir.**
+Bu madde `audit/references-production-pipeline` branch'inde Batch-first
+Phase 1 olarak uygulandı (2026-05-12). Madde Z (Review Freeze) korunarak,
+review modülüne dokunulmadan uygulandı.
+
+Canonical tek yönlü akış:
+
+```
+Reference  →  Batch  →  Review  →  Selection  →  Product  →  Etsy Draft
+```
+
+Her ok bir **action** (single primary CTA). Geri yazım yok.
+
+### Roller
+
+| Yüzey | Tek-cümle tanım |
+|---|---|
+| **Reference** | Üretim öncesi input/havuz. "Bu kaynaktan kaç batch/design üretildi?" özeti kart üzerinde gösterilir. Primary CTA: "Create Variations" → yeni batch. |
+| **Batch** | Tek üretim birimi. Başı/sonu olan, izlenebilir, kararla kapatılan iş birimi. Stage logic: running → review-pending → selection-ready / kept-no-selection → no-kept. |
+| **Review** | `/review?batch={id}` — canonical scope. Freeze altında (Madde Z). |
+| **Selection** | Kürate edilmiş set. Header'da batch lineage linki görünür (sourceMetadata JSON'dan okunur, schema migration yok). |
+| **Product** | Mockup + listing + Etsy draft. |
+
+### Batch detail stage logic (5 ayrı stage, CTA tekrarsız)
+
+`deriveBatchStage()` 5 semantik olarak ayrı değer döndürür. `BatchStageCTA`
+bu değerleri sadece render eder — re-derivasyon yapmaz.
+
+| Stage | Koşul | Primary CTA |
+|---|---|---|
+| `running` | `running + queued > 0` | Spinner (bekleniyor) |
+| `review-pending` | `undecided > 0` veya `reviewCounts.total = 0` | **Open Review** |
+| `selection-ready` | `undecided = 0, kept > 0, set var` | **Continue in Selection** |
+| `kept-no-selection` | `undecided = 0, kept > 0, set yok` | **Open Review** (kept badge) |
+| `no-kept` | `kept = 0` | **New Batch** |
+
+### Teknik kararlar (schema-zero)
+
+- Batch kimliği: `Job.metadata.batchId` JSON field (schema migration yok).
+- Batch → SelectionSet bağlantısı: `findSelectionSetForBatch()` Prisma
+  JSON path query — hem `mjOrigin.batchIds[]` hem `{kind:"variation-batch",batchId}` path'ini kontrol eder.
+- Selection → Batch lineage: `sourceMetadata.mjOrigin.batchIds[0]` →
+  `/batches/{id}` link (SelectionBatchLineage component, header'da).
+- Reference production history: `_count: { generatedDesigns, midjourneyJobs }`
+  Prisma include ile; ReferenceBatchSummary card meta component'i.
+
+### Değişmeyenler
+
+- **Review freeze (Madde Z) korunur** — bu madde review semantics, scoring,
+  automation contract veya review UI'a dokunmaz.
+- `WorkflowRun` tablosu eklenmez (IA Phase 11 kapsamı).
+- Schema migration yapılmaz.
+- Yeni büyük abstraction açılmaz.
+
+### Epic-agnesi branch notu
+
+`claude/epic-agnesi-7a424b` branch'inde Batch-first Phase 1'in ilk
+implementasyonu yanlışlıkla review kapanış branch'ine yazıldı (commit
+`f3e3476`). Bu branch artık yalnız review kapanış değişikliklerini içermeli;
+batch-first değişiklikler `audit/references-production-pipeline`'da temiz
+şekilde yeniden uygulandı. `epic-agnesi` branch'inin batch-first commit'i
+bu implementasyon tamamlandıktan sonra silinebilir veya yoksayılabilir.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, ChevronRight, Layers, RotateCw, Eye } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronRight,
+  Eye,
+  Layers,
+  RefreshCw,
+  RotateCw,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -20,22 +28,63 @@ import type { BatchSummary } from "@/server/services/midjourney/batches";
 /**
  * BatchDetailClient — Kivasy A3 Batch detail.
  *
- * Source: docs/design-system/kivasy/ui_kits/kivasy/v4/screens-a3-a4.jsx
- * → A3BatchDetail.
+ * Batch-first Phase 1: stage-aware CTA block (CLAUDE.md Madde AA).
  *
- * Tabs (4): Overview · Items · Logs · Costs (per design Wave A — Review is
- * a dedicated full-screen workspace at /batches/[id]/review, NOT a tab).
- * Per docs/IMPLEMENTATION_HANDOFF.md §5: this surface owns generation +
- * review-routing only — no listing, no mockup CRUD here.
+ * Stage derivation (5 distinct values — no overlap between derive and render):
+ *   running         → batch still generating
+ *   review-pending  → generation done, undecided items remain (or no review yet)
+ *   selection-ready → review complete, kept > 0, selection set exists
+ *   kept-no-selection → review complete, kept > 0, no selection set yet
+ *   no-kept         → review complete, kept = 0
+ *
+ * BatchStageCTA receives the resolved stage and renders only — no conditional
+ * re-derivation inside the component.
  */
+
+export interface ExistingSelectionSet {
+  id: string;
+  name: string;
+}
 
 interface BatchDetailClientProps {
   summary: BatchSummary;
+  existingSelectionSet: ExistingSelectionSet | null;
 }
 
 type TabId = "overview" | "items" | "logs" | "costs";
 
-export function BatchDetailClient({ summary }: BatchDetailClientProps) {
+type BatchStage =
+  | "running"
+  | "review-pending"
+  | "selection-ready"
+  | "kept-no-selection"
+  | "no-kept";
+
+function deriveBatchStage(
+  summary: BatchSummary,
+  existingSelectionSet: ExistingSelectionSet | null,
+): BatchStage {
+  const status = batchAggregateStatus(summary.counts);
+  if (status === "running" || status === "queued") return "running";
+
+  // Generation complete — check review state
+  if (
+    summary.reviewCounts.total === 0 ||
+    summary.reviewCounts.undecided > 0
+  ) {
+    return "review-pending";
+  }
+
+  // Review complete (undecided = 0)
+  if (summary.reviewCounts.kept === 0) return "no-kept";
+  if (existingSelectionSet) return "selection-ready";
+  return "kept-no-selection";
+}
+
+export function BatchDetailClient({
+  summary,
+  existingSelectionSet,
+}: BatchDetailClientProps) {
   const [tab, setTab] = useState<TabId>("overview");
 
   const status = batchAggregateStatus(summary.counts);
@@ -45,9 +94,10 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
   const total = summary.counts.total;
   const decided = summary.counts.completed + summary.counts.failed;
   const progressPct = total > 0 ? Math.round((decided / total) * 100) : 0;
-  const succeededPct = total > 0
-    ? Math.round((summary.counts.completed / total) * 100)
-    : 0;
+  const succeededPct =
+    total > 0 ? Math.round((summary.counts.completed / total) * 100) : 0;
+
+  const stage = deriveBatchStage(summary, existingSelectionSet);
 
   const tabs: TabItem[] = [
     { id: "overview", label: "Overview" },
@@ -100,60 +150,12 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
             </span>
           </div>
         </div>
-        {summary.counts.failed > 0 ? (
-          <Link
-            href={`/batches/${summary.batchId}?action=retry-failed`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink"
-          >
-            <RotateCw className="h-3 w-3" aria-hidden />
-            Retry-failed-only ({summary.counts.failed})
-          </Link>
-        ) : null}
-        {/* IA Phase 11 — undecided gate visibility (CLAUDE.md Madde H).
-         *   Live `reviewCounts.undecided` reads from the batch summary
-         *   so the operator sees the gating signal without entering the
-         *   workspace. When all items are decided we flip to a calmer
-         *   "Review complete" caption; when no assets exist yet (still
-         *   generating) we fall back to a generic "every item decided"
-         *   hint instead of a misleading 0 / 0 display. */}
-        <div className="flex flex-col items-end gap-0.5">
-          <Link
-            href={`/review?batch=${summary.batchId}`}
-            data-size="sm"
-            className="k-btn k-btn--primary"
-            data-testid="batch-detail-open-review"
-          >
-            <Eye className="h-3 w-3" aria-hidden />
-            Open Review
-          </Link>
-          {summary.reviewCounts.total > 0 ? (
-            summary.reviewCounts.undecided > 0 ? (
-              <span
-                className="font-mono text-xs uppercase tracking-meta text-k-orange-bright"
-                data-testid="batch-detail-review-hint"
-                data-state="pending"
-              >
-                {summary.reviewCounts.undecided} undecided · decide before next stage
-              </span>
-            ) : (
-              <span
-                className="font-mono text-xs uppercase tracking-meta text-ink-3"
-                data-testid="batch-detail-review-hint"
-                data-state="complete"
-              >
-                Review complete · {summary.reviewCounts.kept} kept
-              </span>
-            )
-          ) : (
-            <span
-              className="font-mono text-xs uppercase tracking-meta text-ink-3"
-              data-testid="batch-detail-review-hint"
-              data-state="empty"
-            >
-              Decide every item before next stage
-            </span>
-          )}
-        </div>
+        {/* Batch-first Phase 1 — stage-aware CTA (CLAUDE.md Madde AA). */}
+        <BatchStageCTA
+          summary={summary}
+          stage={stage}
+          existingSelectionSet={existingSelectionSet}
+        />
       </header>
 
       {/* Summary strip — A3 Pattern */}
@@ -205,11 +207,7 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
 
       {/* Tabs */}
       <div className="px-6">
-        <Tabs
-          tabs={tabs}
-          active={tab}
-          onChange={(id) => setTab(id as TabId)}
-        />
+        <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id as TabId)} />
       </div>
 
       {/* Content */}
@@ -219,18 +217,181 @@ export function BatchDetailClient({ summary }: BatchDetailClientProps) {
         {tab === "logs" ? (
           <EmptyTabPlaceholder
             title="Logs"
-            blurb="Per-job state transitions + bridge errors. Wires up after the unified
-            job-stream feed lands (rollout-3.5)."
+            blurb="Per-job state transitions + bridge errors. Wires up after the unified job-stream feed lands."
           />
         ) : null}
         {tab === "costs" ? (
           <EmptyTabPlaceholder
             title="Costs"
-            blurb="Per-job and per-batch cost breakdown. Pulls from CostUsage; UI lands
-            with the AI Providers pane (rollout-7 / mini Wave D)."
+            blurb="Per-job and per-batch cost breakdown. Pulls from CostUsage; UI lands with the AI Providers pane."
           />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Batch-first Phase 1 — stage-aware CTA block.
+ *
+ * Receives a pre-resolved `stage` value from `deriveBatchStage`.
+ * Does NOT re-derive the stage — pure render only.
+ */
+function BatchStageCTA({
+  summary,
+  stage,
+  existingSelectionSet,
+}: {
+  summary: BatchSummary;
+  stage: BatchStage;
+  existingSelectionSet: ExistingSelectionSet | null;
+}) {
+  if (stage === "running") {
+    return (
+      <div
+        className="flex flex-col items-end gap-0.5"
+        data-testid="batch-stage-cta"
+        data-stage="running"
+      >
+        <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-3">
+          <RefreshCw className="h-3 w-3 animate-spin" aria-hidden />
+          Generating…
+        </div>
+        {summary.counts.failed > 0 ? (
+          <Link
+            href={`/batches/${summary.batchId}?action=retry-failed`}
+            className="font-mono text-xs uppercase tracking-meta text-danger underline-offset-2 hover:underline"
+          >
+            {summary.counts.failed} failed · retry
+          </Link>
+        ) : (
+          <span className="font-mono text-xs uppercase tracking-meta text-ink-3">
+            {summary.counts.completed}/{summary.counts.total} done
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (stage === "review-pending") {
+    return (
+      <div
+        className="flex flex-col items-end gap-0.5"
+        data-testid="batch-stage-cta"
+        data-stage="review-pending"
+      >
+        <Link
+          href={`/review?batch=${summary.batchId}`}
+          data-size="sm"
+          className="k-btn k-btn--primary"
+          data-testid="batch-detail-open-review"
+        >
+          <Eye className="h-3 w-3" aria-hidden />
+          Open Review
+        </Link>
+        {summary.reviewCounts.total > 0 ? (
+          <span
+            className="font-mono text-xs uppercase tracking-meta text-k-orange-bright"
+            data-testid="batch-detail-review-hint"
+            data-state="pending"
+          >
+            {summary.reviewCounts.undecided} undecided · decide before next stage
+          </span>
+        ) : (
+          <span
+            className="font-mono text-xs uppercase tracking-meta text-ink-3"
+            data-testid="batch-detail-review-hint"
+            data-state="empty"
+          >
+            Review every item before proceeding
+          </span>
+        )}
+        {summary.counts.failed > 0 ? (
+          <Link
+            href={`/batches/${summary.batchId}?action=retry-failed`}
+            className="font-mono text-xs uppercase tracking-meta text-ink-3 underline-offset-2 hover:underline"
+          >
+            <RotateCw className="inline h-3 w-3" aria-hidden />{" "}
+            Retry {summary.counts.failed} failed
+          </Link>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (stage === "no-kept") {
+    return (
+      <div
+        className="flex flex-col items-end gap-0.5"
+        data-testid="batch-stage-cta"
+        data-stage="no-kept"
+      >
+        <Link href="/batches" data-size="sm" className="k-btn k-btn--primary">
+          <RefreshCw className="h-3 w-3" aria-hidden />
+          New Batch
+        </Link>
+        <span
+          className="font-mono text-xs uppercase tracking-meta text-ink-3"
+          data-testid="batch-detail-review-hint"
+          data-state="no-kept"
+        >
+          No items kept · start a new batch
+        </span>
+      </div>
+    );
+  }
+
+  if (stage === "selection-ready") {
+    // existingSelectionSet is guaranteed non-null here by deriveBatchStage
+    return (
+      <div
+        className="flex flex-col items-end gap-0.5"
+        data-testid="batch-stage-cta"
+        data-stage="selection-ready"
+      >
+        <Link
+          href={`/selections/${existingSelectionSet!.id}`}
+          data-size="sm"
+          className="k-btn k-btn--primary"
+          data-testid="batch-detail-continue-selection"
+        >
+          <CheckCircle2 className="h-3 w-3" aria-hidden />
+          Continue in Selection
+        </Link>
+        <span
+          className="font-mono text-xs uppercase tracking-meta text-ink-3"
+          data-testid="batch-detail-review-hint"
+          data-state="complete"
+        >
+          {summary.reviewCounts.kept} kept · selection started
+        </span>
+      </div>
+    );
+  }
+
+  // stage === "kept-no-selection": review complete, kept > 0, no set yet
+  return (
+    <div
+      className="flex flex-col items-end gap-0.5"
+      data-testid="batch-stage-cta"
+      data-stage="kept-no-selection"
+    >
+      <Link
+        href={`/review?batch=${summary.batchId}`}
+        data-size="sm"
+        className="k-btn k-btn--primary"
+        data-testid="batch-detail-open-review"
+      >
+        <CheckCircle2 className="h-3 w-3" aria-hidden />
+        Open Review
+      </Link>
+      <span
+        className="font-mono text-xs uppercase tracking-meta text-success"
+        data-testid="batch-detail-review-hint"
+        data-state="complete"
+      >
+        Review complete · {summary.reviewCounts.kept} kept
+      </span>
     </div>
   );
 }
@@ -265,36 +426,12 @@ function OverviewTab({ summary }: { summary: BatchSummary }) {
         <h3 className="text-sm font-semibold text-ink">State breakdown</h3>
         <ul className="mt-2 space-y-1.5 text-xs">
           <BreakdownRow label="Total" value={summary.counts.total} />
-          <BreakdownRow
-            label="Queued"
-            value={summary.counts.queued}
-            tone="neutral"
-          />
-          <BreakdownRow
-            label="Running"
-            value={summary.counts.running}
-            tone="warning"
-          />
-          <BreakdownRow
-            label="Awaiting"
-            value={summary.counts.awaiting}
-            tone="warning"
-          />
-          <BreakdownRow
-            label="Succeeded"
-            value={summary.counts.completed}
-            tone="success"
-          />
-          <BreakdownRow
-            label="Failed"
-            value={summary.counts.failed}
-            tone="danger"
-          />
-          <BreakdownRow
-            label="Cancelled"
-            value={summary.counts.cancelled}
-            tone="neutral"
-          />
+          <BreakdownRow label="Queued" value={summary.counts.queued} tone="neutral" />
+          <BreakdownRow label="Running" value={summary.counts.running} tone="warning" />
+          <BreakdownRow label="Awaiting" value={summary.counts.awaiting} tone="warning" />
+          <BreakdownRow label="Succeeded" value={summary.counts.completed} tone="success" />
+          <BreakdownRow label="Failed" value={summary.counts.failed} tone="danger" />
+          <BreakdownRow label="Cancelled" value={summary.counts.cancelled} tone="neutral" />
         </ul>
       </div>
     </div>
@@ -436,9 +573,7 @@ function ItemTD({
   children?: React.ReactNode;
   className?: string;
 }) {
-  return (
-    <td className={cn("px-3 py-3 align-top", className)}>{children}</td>
-  );
+  return <td className={cn("px-3 py-3 align-top", className)}>{children}</td>;
 }
 
 function EmptyTabPlaceholder({

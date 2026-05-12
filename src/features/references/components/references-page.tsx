@@ -59,6 +59,8 @@ type ReferenceLite = {
     sourcePlatform?: string | null;
   } | null;
   tags: { tag: { id: string; name: string; color: string | null } }[];
+  /** Batch-first Phase 1 — production history counts. */
+  _count?: { generatedDesigns: number; midjourneyJobs: number } | null;
 };
 
 type ListResponse = {
@@ -727,6 +729,8 @@ function ReferencePoolCard({
             {createdLabel}
           </span>
         </div>
+        {/* Batch-first Phase 1 — production history summary. */}
+        <ReferenceBatchSummary count={reference._count} referenceId={reference.id} />
       </div>
     </div>
   );
@@ -786,6 +790,39 @@ function SkeletonGrid({ density }: { density: Density }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── ReferenceBatchSummary ───────────────────────────────────────────────
+/**
+ * Batch-first Phase 1 — compact production history indicator on reference cards.
+ *
+ * Shows total design count (generatedDesigns + MJ outputs) with a link to
+ * /batches filtered by referenceId. Renders nothing when count is zero or
+ * data is absent — no noise on references without batch history.
+ */
+function ReferenceBatchSummary({
+  count,
+  referenceId,
+}: {
+  count?: { generatedDesigns: number; midjourneyJobs: number } | null;
+  referenceId: string;
+}) {
+  if (!count) return null;
+  const total = count.generatedDesigns + count.midjourneyJobs;
+  if (total === 0) return null;
+
+  return (
+    <div className="mt-1.5">
+      <Link
+        href={`/batches?referenceId=${referenceId}`}
+        className="inline-flex items-center gap-1 font-mono text-[10.5px] uppercase tracking-wider text-info underline-offset-2 hover:underline"
+        data-testid="reference-batch-summary"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {total} design{total !== 1 ? "s" : ""} · view batches
+      </Link>
     </div>
   );
 }
