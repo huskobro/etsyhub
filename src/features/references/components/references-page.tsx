@@ -417,14 +417,14 @@ export function ReferencesPage({
       </div>
 
       {/* Floating bulk bar — k-fab recipe.
-       *   v5 B1 spec: Create Variations primary + Add to Collection +
-       *   Archive + Delete. Burada subset: Create Variations primary
-       *   (tek-asset bulk path: ilk seçili asset'in /variations sayfasına
-       *   yönlendir), Archive (mevcut), Delete deferred.
-       *   R11.14.9 — k-fab recipe inline style yerine pure className.
-       *   Kullanıcı feedback: "bulk bar HTML target'tan farklı hissediyor"
-       *   → primary CTA + Sparkles icon eklendi, layout v4 source'a
-       *   tamamen uydu. */}
+       *   v5 B1 spec: Create Variations + Add to Collection + Archive +
+       *   Delete. Batch-first Phase 5 — kavramsal düzeltme:
+       *   "Create Variations" ana üretim aksiyonu DEĞİLDİR; reference
+       *   görselini yeniden varyantlamak için ikincil refinement
+       *   aksiyonudur. Bu yüzden bulk bar'da primary class kaldırıldı
+       *   (k-fab__btn neutral kalır). Ana üretim aksiyonu "Start Batch"
+       *   Batches index topbar'ında yaşar (v4 A2 canonical).
+       *   R11.14.9 — k-fab recipe inline style yerine pure className. */}
       {selectedCount >= 1 ? (
         <div className="k-fab" data-testid="references-bulk-bar">
           <span className="k-fab__count">{selectedCount} selected</span>
@@ -434,8 +434,9 @@ export function ReferencesPage({
               return id ? (
                 <Link
                   href={`/references/${id}/variations`}
-                  className="k-fab__btn k-fab__btn--primary"
+                  className="k-fab__btn"
                   data-testid="references-bulk-create-variations"
+                  title="Re-variate this reference (refinement — not main batch creation)"
                 >
                   <Sparkles className="h-3 w-3" aria-hidden />
                   Create Variations
@@ -694,13 +695,20 @@ function ReferencePoolCard({
           </button>
         </div>
 
-        {/* Hover bottom: full-width primary CTA (Reference → Batch hand-off) */}
+        {/* Batch-first Phase 5 — hover CTA secondary (ikincil refinement
+         * aksiyonu). "Create Variations" ana üretim omurgasının adı
+         * DEĞİL; bir referans görseli beğenilmediğinde / yetersiz
+         * bulunduğunda küçük değişikliklerle yeniden üretim için
+         * kullanılan ikincil aksiyondur. Ana üretim aksiyonu Batches
+         * index'teki "Start Batch" CTA'sı + Library reference picker
+         * üzerinden A6 modal'a iner. */}
         <div className="absolute bottom-2 left-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
           <Link
             href={`/references/${reference.id}/variations`}
             data-size="sm"
-            className="k-btn k-btn--primary w-full"
+            className="k-btn k-btn--secondary w-full"
             onClick={(e) => e.stopPropagation()}
+            title="Re-variate this reference (refinement action — not main batch creation)"
           >
             <Sparkles className="h-3 w-3" aria-hidden />
             Create Variations

@@ -2821,6 +2821,92 @@ reviewStatusSource=USER` (Madde V).
 - **Kivasy DS dışına çıkılmadı.** Pipeline chip mevcut `font-mono
   text-[10.5px] tracking-meta` recipe'iyle yazıldı.
 
+### Batch-first Phase 5 (2026-05-12 — Kavramsal netleştirme + DS hizası)
+
+Phase 1-4 boyunca implementasyon ilerlerken ürün dilinde iki kritik
+karışıklık görüldü ve Phase 5'te netleştirildi:
+
+#### Kavram 1: Batch ana üretim birimi, Create Variations ikincil refinement
+
+- **Batch** ürün omurgasının **ana üretim birimi**dir. Pipeline:
+  Reference → **Batch** → Review → Selection → Product. Batch creation
+  birincil iş akışı.
+- **Create Variations** ana üretim aksiyonu **DEĞİLDİR**. Bir
+  referans/asset beğenilmediğinde veya yetersiz bulunduğunda
+  küçük değişikliklerle yeniden üretim için kullanılan **ikincil
+  refinement / re-variation** aksiyonudur.
+- **Ana üretim aksiyonu**: `Batches index` (`/batches`) topbar'ındaki
+  **`Start Batch`** primary CTA. Bu CTA Library'ye yönlendirir,
+  operatör reference seçer, A6 modal açılır.
+- **A6 "Create Variations" modal**: Reference seçildikten sonra
+  açılan modal; modal title "Create Variations" canonical (v4 A6
+  spec). Modal'ın primary CTA'sı da "Create Variations" — çünkü
+  modal bu aksiyonun **trigger surface**'idir. Modal başlığı
+  doğru.
+- **Reference card hover CTA**: Phase 5 öncesi `k-btn--primary`
+  ile renderlanıyordu; Phase 5'te `k-btn--secondary` indirildi.
+  Reference card bağlamında "Create Variations" ikincil
+  refinement aksiyonudur, ana üretim aksiyonu değildir.
+- **Reference bulk floating bar**: Aynı şekilde primary class
+  kaldırıldı, `k-fab__btn` neutral kalır.
+
+#### Kavram 2: Pipeline naming — "MJ/AI" yerine "Auto/Manual"
+
+Phase 4'te eklenen pipeline chip kullanıcı diline altyapı jargonu
+("MJ" / "AI") taşıyordu. Phase 5'te ürün diline çevrildi:
+
+- `"midjourney"` pipeline (MIDJOURNEY_BRIDGE — operatör Midjourney
+  browser bridge üzerinden üretti) → chip label **`MANUAL`**
+- `"ai-variation"` pipeline (GENERATE_VARIATIONS — AI provider
+  doğrudan üretti) → chip label **`AUTO`**
+
+Operatör artık altyapı detayı yerine "üretim biçimi" sinyali görür.
+`data-pipeline` attribute audit/debug için literal değer korur.
+
+#### Kavram 3: Review gate (CLAUDE.md Madde H reiteration)
+
+Phase 3 `kept-no-selection` Create Selection CTA'sı **yalnız** şu
+koşulda görünür:
+- `summary.reviewCounts.undecided === 0` AND
+- `summary.reviewCounts.kept > 0` AND
+- `existingSelectionSet === null`
+
+`undecided > 0` olduğu sürece stage `review-pending` kalır ve
+primary CTA "Open Review" olur. Operatör selection creation'ı
+review tamamlamadan tetikleyemez. Bu CLAUDE.md Madde H "decision
+gate" prensibinin batch detail'deki uygulanışıdır.
+
+#### Kavram 4: Kivasy DS canonical screen hizası
+
+Phase 5 audit'inde mevcut surface'ler v4-v7 canonical screen
+ailelerine göre konumlandırıldı:
+
+| Surface | Canonical screen | Hiza durumu |
+|---|---|---|
+| `/library` (Pool) | v4 A1 LIBRARY | ✓ Aligned — "Start Batch" topbar primary |
+| `/batches` | v4 A2 BATCHES INDEX | ✓ Aligned — "Start Batch" + "Retry-failed-only" |
+| `/batches/[id]` | v4 A3 BATCH DETAIL | ✓ Aligned + Phase 1-4 enhancements |
+| `/review` | v4 A4 BATCH REVIEW STUDIO | ✓ Aligned (review freeze) |
+| `/products/[id]` | v4 A5 PRODUCT DETAIL | Aligned (this rollout dışı) |
+| A6 Create Variations modal | v4 A6 SPLIT MODAL | ✓ Canonical (modal IS trigger surface) |
+| A7 Apply Mockups modal | v4 A7 SPLIT MODAL | Aligned (Phase 3 selection-ready) |
+| `/references` (Pool) | v5 B1 REFERENCES | ✓ Aligned + Phase 5 CTA demotion |
+| `/selections` | v5 B2 SELECTIONS INDEX | Aligned |
+| `/selections/[id]` | v5 B3 SELECTION DETAIL | ✓ Aligned + Phase 1-3 enhancements |
+| Settings surfaces | v6 / v7 D screens | Aligned (this rollout dışı) |
+
+#### Değişmeyenler (Phase 5)
+
+- **Review freeze (Madde Z) korunur.** Phase 5 yalnız UI dili +
+  CTA emphasis düzeltti.
+- **Schema migration yok.** Hiç DB değişikliği yok.
+- **Yeni surface açılmadı.** Yalnız mevcut surface'lerde copy /
+  className / priority ayarlamaları.
+- **WorkflowRun eklenmez** (IA Phase 11 kapsamı).
+- **Kivasy DS dışına çıkılmadı.** Tüm değişiklikler mevcut
+  recipe'leri (`k-btn--secondary`, `k-fab__btn`, mono caption)
+  kullanır.
+
 ### Epic-agnesi branch notu
 
 `claude/epic-agnesi-7a424b` branch'inde Batch-first Phase 1'in ilk
