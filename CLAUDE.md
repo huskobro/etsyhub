@@ -5316,6 +5316,180 @@ bir tur olur.
 
 ---
 
+## Phase 24 — ImportUrlDialog visible parity + modal polish
+
+Phase 22 modal'ı operatör akışına bağladı (`/bookmarks?add=url` →
+topbar CTA → modal). Phase 24 modal'ın kendi yüzeyini "çalışıyor
+ama TR sızıntı + DS-tonsuz" durumundan **ürün yüzeyi** seviyesine
+taşıyor.
+
+### Honest audit (modal'ın çıkış durumu)
+
+Visible TR string'ler (operatöre direkt görünüyordu):
+
+1. Header title: `URL'den bookmark ekle`
+2. Header close: `Kapat`
+3. Error prefix: `Hata: …`
+4. Success state primary CTA: `Bookmark olarak kaydet`
+
+Polish/a11y eksikleri:
+
+- `role="dialog"`, `aria-modal`, `aria-labelledby` yoktu
+- Escape close yoktu; backdrop click yoktu — operatör hapis kalıyordu
+- Focus trap yoktu (Tab outside'a sızıyordu)
+- Initial focus URL input'a değil; modal açılınca odak nereye giderse
+- URL input: legacy `bg-bg border-border` primitive (DS `k-input`
+  recipe varken kullanılmıyordu)
+- Buttons: legacy `bg-accent rounded-md py-2 text-sm` primitive
+  (DS `k-btn k-btn--primary` recipe varken kullanılmıyordu)
+- "Start" CTA wording — neyi başlat? Operatör için anlamsız
+- Helper text yok — operatör "ne olacak?" sorusuyla baş başa
+- Status panel teknik kalabalık: `Job xxxxxxxxxx… · RUNNING · 45%`
+  operatöre job ID gösterilir, raw status enum gösterilir
+- Success: `Asset ready: xxxxxxxxxx…` — yine asset ID
+- Error: `Hata: -` — `error: null` boş ise tire göstererek
+- Footer'da yalnız header X-close; ikinci yol (footer Cancel) yok
+
+### Düzeltmeler (`ImportUrlDialog` rewrite)
+
+**Visible EN parity (TR sıfırlandı):**
+
+| Önce | Sonra |
+|---|---|
+| `URL'den bookmark ekle` | `Add bookmark from URL` |
+| `Kapat` | header X icon `aria-label="Close"` |
+| `Bookmark olarak kaydet` | `Save bookmark` |
+| `Hata: -` | `Couldn't fetch image` + detail satırı (boşsa fallback copy) |
+| `Start` | `Fetch image` (eylem-explicit) |
+| `Bookmark created.` | `Bookmark saved.` |
+| Helper text yok | "Paste any image or listing URL — Etsy, Pinterest, Amazon or a direct image link. We'll fetch the image and preview it before saving." |
+| `Asset ready: …` | "Image fetched." + "Ready to save as a bookmark." |
+| `Job xxx · RUNNING · 45%` | "Fetching image… 45%" (job ID kaldırıldı; sadece progress) |
+
+**a11y sözleşmesi (PromoteDialog T-39 parity):**
+
+- `role="dialog"` outer wrapper
+- `aria-modal="true"`
+- `aria-labelledby="import-url-dialog-title"` (title id ile eşli)
+- `useFocusTrap` → Tab boundary + initial focus URL input
+- Escape → close (busy/pending iken iptal edilmez)
+- Backdrop click → close (target === currentTarget guard; busy iken
+  korunur)
+- Close button `aria-label="Close"` + footer "Cancel" iki yollu kapatma
+
+**DS recipe parity:**
+
+- URL field: `k-input` recipe (paper bg, k-orange focus ring,
+  Phase 20 toolbar primitives ile aile birliği)
+- Primary CTA: `k-btn k-btn--primary` (`data-size="sm"`)
+- Secondary CTA: `k-btn k-btn--ghost`
+- Card shell: `rounded-lg border-line bg-paper shadow-popover`
+  (önceden `rounded-md border-border bg-surface` legacy semantic
+  token'lar — Kivasy v4/v5 paper white + line token aile dili)
+- Header/footer separator: `border-line` (DS k-modal pattern'a
+  benzer compact-dialog form)
+- Status panel: tone-aware border + bg (`border-danger/40 bg-danger/5`
+  hatada, `border-success/40 bg-success/5` başarıda,
+  `border-line-soft bg-k-bg-2/50` fetching durumunda)
+
+**Operatör-anlamlı status panel:**
+
+- Fetching: nabız atışı k-orange dot + "Fetching image… {progress}%"
+  (job ID kaldırıldı, sadece yüzde varsa)
+- Success: "Image fetched." + "Ready to save as a bookmark." (asset ID
+  kaldırıldı)
+- Failed: "Couldn't fetch image" + worker error trim edilmiş; boş ise
+  "The URL didn't return a usable image. Try a direct image link."
+  fallback (önceden boş error için tire)
+
+**Inbox akışı korundu:**
+
+- Topbar CTA `/bookmarks?add=url` → modal açılır (Phase 22 contract)
+- Close → `?add=url` query temizlenir (Phase 22'deki `closeImport`
+  helper — URL-derived modal state)
+- Local manual open path (gelecek empty state CTA için) korundu
+  (`importOpenLocal` OR `searchParams.get("add") === "url"`)
+- Hover preview, row hover, table layout, bulk actions etkilenmedi
+
+### Browser verification kanıtı
+
+DOM scan (modal açıkken):
+
+```
+title: "Add bookmark from URL"
+helper: "Paste any image or listing URL — Etsy, Pinterest, Amazon..."
+fetchBtn: "Fetch image"
+cancelBtn: "Cancel"
+closeAriaLabel: "Close"
+trHits: []                                      // sıfır TR sızıntı
+
+outerRole: "dialog"
+outerAriaModal: "true"
+outerAriaLabelledby: "import-url-dialog-title"
+
+focusedAria: "import-url-input"                 // useFocusTrap initial focus
+```
+
+Lifecycle:
+
+```
+Escape → dialog kapanır + ?add=url temizlenir       ✓
+Backdrop click → dialog kapanır + ?add=url temizlenir ✓
+Invalid URL fetch → status panel danger-tone:
+  "Couldn't fetch image" + "fetch failed"            ✓
+Esc sonrası Inbox table intact (2 row, topbar CTA yerinde) ✓
+```
+
+Screenshot kanıtı: 1) modal idle state — Add bookmark from URL
+title, SOURCE URL label (font-mono uppercase), https://… placeholder
+input k-orange focus ring, helper text gri, Cancel + Fetch image
+footer; 2) error state — `Couldn't fetch image` rose-tinted card +
+"fetch failed" detail.
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{bookmarks-page, bookmarks-confirm-flow,
+  bookmark-service, dashboard-page}: **43/43 PASS** (regression yok;
+  dashboard-page testi de dahil — `ImportUrlDialog` dashboard quick
+  actions tarafından da kullanılıyor)
+- Browser verification: live dev server (audit-refs worktree, port
+  3000) üzerinde modal lifecycle + a11y + error state + Inbox
+  intact doğrulandı (screenshot + DOM scan kanıtları yukarıda)
+
+### Bilinçli scope dışı
+
+- **PromoteDialog'un kendi TR yokluğu** zaten EN ("Move to reference",
+  "Close", "Cancel"). Phase 22'de doğrulanmıştı; bu turun scope'u
+  değil.
+- **`dashboard-quick-actions` modal'ı aynı `ImportUrlDialog`'u
+  kullanıyor** — Phase 24 değişikliği orayı da otomatik kapsıyor.
+  Ayrı dosya/route'a dokunmadık. Dashboard tests 17/17 PASS — yan
+  etki yok.
+- **Modal sistemi rewrite YAPILMADI** — `ConfirmDialog` /
+  `PromoteDialog` / `ImportUrlDialog` üçü hâlâ ad-hoc focus-trap
+  pattern'ı paylaşıyor. Ortak `Dialog` primitive'i çıkarmak büyük
+  abstraction olurdu (bu turun kuralı dışı). İleride birikim
+  artarsa shell extraction ayrı tur olur.
+- **`URL field validation`** (geçerli URL olmadan submit) tarayıcı
+  native HTML5 validation'a bırakıldı (`type="url"`). Custom inline
+  validation kit'i bu turda eklenmedi.
+- **Job lifecycle UI rich-state** — `pending → fetching → ready`
+  arasındaki ara durumlar (`QUEUED`, `RUNNING`) UI'da tek "Fetching
+  image…" katmanında toplandı. Operatöre teknik enum gösterilmez;
+  job ID + raw status gizlendi. İleride download/probe/normalize
+  ayrı substep'ler olursa UI bunu yansıtacak şekilde genişler.
+
+### Bundan sonra References family'de kalan tek doğru iş
+
+`PromoteDialog`'un Kivasy DS recipe migration'ı — `ImportUrlDialog`
+ile şimdi tonsuz hissetmiyor ama PromoteDialog hâlâ legacy
+`bg-surface rounded-md border-border` primitive'lerinde. İçeriği
+EN, a11y temiz; sadece DS recipe parity eksik. Küçük bir tur olur,
+References family yüzeyleri tamamen kapanır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
