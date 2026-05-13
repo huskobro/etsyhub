@@ -307,17 +307,31 @@ export function BatchQueuePanel() {
       </div>
 
       {referencesWithoutPublicUrl > 0 ? (
+        /* Phase 49 — Warning sakinleştirildi (Phase 48 sürdürüldü).
+         * Sakin info tone + actionable copy: operatör hangisini fix
+         * edeceğini ve nereye gideceğini öğrenir. */
         <div
-          className="border-t border-warning/40 bg-warning-soft/40 px-4 py-2 text-[11.5px] text-ink"
+          className="flex items-start gap-2 border-t border-line-soft bg-k-bg-2/50 px-4 py-2 text-[11px] text-ink"
           data-testid="batch-queue-warning"
         >
-          {referencesWithoutPublicUrl} reference
-          {referencesWithoutPublicUrl === 1 ? "" : "s"} without a public URL —
-          AI launch needs URL-sourced references.
+          <span
+            className="mt-1 inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-k-amber"
+            aria-hidden
+          />
+          <span className="text-ink-2">
+            {referencesWithoutPublicUrl === batch.items.length
+              ? "All references are local-only — AI launch needs URL-sourced refs."
+              : `${referencesWithoutPublicUrl} of ${batch.items.length} reference${
+                  batch.items.length === 1 ? "" : "s"
+                } local-only — launch will skip them.`}
+          </span>
         </div>
       ) : null}
 
-      <div className="border-t border-line bg-paper px-3 py-3">
+      <div
+        className="border-t border-line bg-paper px-3 py-3"
+        data-testid="batch-queue-footer"
+      >
         <button
           type="button"
           onClick={() => setMode("compose")}
@@ -330,9 +344,53 @@ export function BatchQueuePanel() {
           Create Similar ({batch.items.length})
           <ArrowRight className="h-3 w-3" aria-hidden />
         </button>
+
+        {/* Phase 49 — Next-step handoff strip.
+         *
+         * Operatör draft'ı doldurduktan sonra "ne olacak?" sorusunun
+         * cevabını burada görür. Three-line subtle guidance:
+         *   1) After launch this becomes a Batch in Batches
+         *   2) Track progress + decide kept items there
+         *   3) You can stage multiple drafts in parallel from Pool
+         *
+         * Görünüm: küçük border-t separator + mono caption + Batches
+         * link chip. Didaktik metin değil; küçük yönlendirme satırı.
+         * Operatör çoklu batch modelini de görerek "tek batch zorunda
+         * değilim" mental model'ini alır. */}
+        <div
+          className="mt-3 rounded-md border border-line-soft bg-k-bg-2/40 px-2.5 py-2"
+          data-testid="batch-queue-handoff"
+        >
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="font-mono text-[9.5px] uppercase tracking-meta text-ink-3">
+              Next
+            </span>
+            <Link
+              href="/batches"
+              className="font-mono text-[9.5px] uppercase tracking-meta text-ink-2 underline-offset-2 hover:text-ink hover:underline"
+              data-testid="batch-queue-handoff-batches-link"
+              title="Open Batches to see all draft + running batches"
+            >
+              All batches →
+            </Link>
+          </div>
+          <p className="mt-1 text-[11px] leading-tight text-ink-2">
+            Launching this draft creates a batch you'll track in{" "}
+            <Link
+              href="/batches"
+              className="text-ink hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Batches
+            </Link>
+            . You can keep multiple drafts in parallel — each Pool
+            selection starts its own batch.
+          </p>
+        </div>
+
         <Link
           href={`/batches/${batch.id}/compose`}
-          className="mt-1.5 block w-full text-center font-mono text-[10px] uppercase tracking-meta text-ink-3 hover:text-ink-2"
+          className="mt-2 block w-full text-center font-mono text-[10px] uppercase tracking-meta text-ink-3 hover:text-ink-2"
           data-testid="batch-queue-open-compose-page"
           title="Open compose in a dedicated page (deep-link)"
         >
@@ -401,9 +459,62 @@ function ComposePanel({
         };
         throw new Error(payload.error ?? "Failed to launch batch");
       }
-      return (await res.json()) as { batchId: string; state: string };
+      return (await res.json()) as {
+        batchId: string;
+        state: string;
+        designIds: string[];
+        failedDesignIds: string[];
+        perReference: Array<{
+          referenceId: string;
+          designIds: string[];
+          failedDesignIds: string[];
+          error?: string;
+        }>;
+      };
     },
-    onSuccess: onLaunchSuccess,
+    onSuccess: (result) => {
+      /* Phase 49 — Stash one-shot launch outcome for batch detail
+       * banner. sessionStorage chosen because:
+       *   - one-shot delivery (banner reads + deletes on mount)
+       *   - survives navigation hop (queue panel → /batches/[id])
+       *   - cleared on refresh, so banner doesn't haunt the page
+       * CLAUDE.md Madde A "tek canonical surface": result görünür
+       * yüzeyi yalnız batch detail; queue panel'inde değil. */
+      try {
+        const successRefs = result.perReference.filter(
+          (r) => r.designIds.length > 0,
+        ).length;
+        const skippedRefs = result.perReference.filter(
+          (r) => r.error && r.designIds.length === 0,
+        ).length;
+        const failedRefs = result.perReference.filter(
+          (r) => r.error || r.failedDesignIds.length > 0,
+        ).length;
+        window.sessionStorage.setItem(
+          `kivasy.launchOutcome.${result.batchId}`,
+          JSON.stringify({
+            ts: Date.now(),
+            state: result.state,
+            totalRefs: result.perReference.length,
+            totalDesigns: result.designIds.length,
+            totalFailed: result.failedDesignIds.length,
+            successRefs,
+            skippedRefs,
+            failedRefs,
+            perReference: result.perReference,
+            composeParams: {
+              count,
+              aspectRatio: aspect,
+              quality: supportsQuality ? quality : null,
+              providerId,
+            },
+          }),
+        );
+      } catch {
+        /* sessionStorage disabled — silent; redirect still works */
+      }
+      onLaunchSuccess();
+    },
   });
 
   const hasItems = batch.items.length > 0;

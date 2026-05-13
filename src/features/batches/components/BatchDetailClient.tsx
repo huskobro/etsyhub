@@ -2,17 +2,20 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Eye,
   Layers,
   RefreshCw,
   RotateCw,
   Sparkles,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
@@ -73,6 +76,23 @@ export interface SourceReference {
   assetId: string | null;
 }
 
+/**
+ * Phase 49 — Real Batch row context (Phase 43 schema). Multi-reference
+ * summary'i besler. Legacy batch'lerde null kalır; UI tek-ref diline
+ * graceful fallback.
+ */
+export interface BatchContext {
+  itemCount: number;
+  composeParams: {
+    providerId?: string;
+    aspectRatio?: string;
+    quality?: string | null;
+    count?: number;
+    brief?: string | null;
+    itemCount?: number;
+  } | null;
+}
+
 interface BatchDetailClientProps {
   summary: BatchSummary;
   existingSelectionSet: ExistingSelectionSet | null;
@@ -84,6 +104,11 @@ interface BatchDetailClientProps {
    * (MJ bridge CostUsage yazmaz; failed AI batch'lerde row yok).
    */
   costBreakdown?: BatchCostBreakdown | null;
+  /**
+   * Phase 49 — Real Batch row context. Multi-reference summary'i besler.
+   * Legacy batch'lerde null.
+   */
+  batchContext?: BatchContext | null;
 }
 
 type TabId = "overview" | "items" | "parameters" | "logs" | "costs";
@@ -121,8 +146,24 @@ export function BatchDetailClient({
   existingSelectionSet,
   sourceReference = null,
   costBreakdown = null,
+  batchContext = null,
 }: BatchDetailClientProps) {
   const [tab, setTab] = useState<TabId>("overview");
+
+  /* Phase 49 — Multi-reference batch context derived once.
+   *   refCount        : gerçek BatchItem sayısı (canonical)
+   *   perRefCount     : composeParams.count (her ref için kaç similar)
+   *   totalRequested  : refCount × perRefCount; legacy fallback summary.batchTotal
+   * Legacy synthetic-batchId batch'lerde batchContext null → UI eski
+   * "Variation · N requested" diline düşer (geriye uyum).
+   */
+  const isMultiRef = (batchContext?.itemCount ?? 0) > 1;
+  const refCount = batchContext?.itemCount ?? null;
+  const perRefCount = batchContext?.composeParams?.count ?? null;
+  const totalRequested =
+    refCount !== null && perRefCount !== null
+      ? refCount * perRefCount
+      : summary.batchTotal;
 
   const status = batchAggregateStatus(summary.counts);
   const statusTone = batchStatusTone(status);
@@ -243,6 +284,22 @@ export function BatchDetailClient({
         />
       </header>
 
+      {/* Phase 49 — LaunchOutcomeBanner (per-reference feedback).
+       *
+       * Queue panel `onSuccess` yolunda
+       * `sessionStorage.kivasy.launchOutcome.{batchId}` JSON'unu yazar
+       * (perReference, totalDesigns, successRefs, failedRefs,
+       * skippedRefs). Banner bu key'i okur, render eder, sonra siler —
+       * one-shot. Operatör launch sonrası tek bakışta:
+       *   - full success: yeşil rozet + tüm refs queued
+       *   - partial: amber dot + "X of N launched · K skipped"
+       *     + "See why" disclosure → per-ref reason listesi
+       *   - all-failed: kırmızı + sebep listesi
+       * Refresh sonrası banner kalmaz (sessionStorage temizlendi);
+       * state Items/Logs sekmelerinden okunur.
+       */}
+      <LaunchOutcomeBanner batchId={summary.batchId} />
+
       {/* Summary strip — A3 Pattern.
        * Phase 9 fit-and-finish — "Source" tile yerine "Reference" tile
        * (canonical v4 A3'te de Reference + thumbnail). Reference yoksa
@@ -297,7 +354,16 @@ export function BatchDetailClient({
         )}
         <SummaryTile
           label="Type"
-          value={`Variation · ${summary.batchTotal} requested`}
+          value={
+            isMultiRef && refCount !== null && perRefCount !== null
+              ? `Variation · ${refCount} × ${perRefCount}`
+              : `Variation · ${summary.batchTotal} requested`
+          }
+          sub={
+            isMultiRef && refCount !== null && perRefCount !== null
+              ? `${totalRequested} generations requested`
+              : undefined
+          }
         />
         <div>
           <div className="font-mono text-xs uppercase tracking-meta text-ink-3">
@@ -593,9 +659,12 @@ function KeptNoSelectionCTA({
 function SummaryTile({
   label,
   value,
+  sub,
 }: {
   label: string;
   value: React.ReactNode;
+  /** Phase 49 — optional secondary line (multi-ref expansion caption). */
+  sub?: string;
 }) {
   return (
     <div>
@@ -603,6 +672,14 @@ function SummaryTile({
         {label}
       </div>
       <div className="mt-2 truncate text-sm font-medium text-ink">{value}</div>
+      {sub ? (
+        <div
+          className="mt-0.5 truncate font-mono text-[10.5px] uppercase tracking-meta text-ink-3"
+          title={sub}
+        >
+          {sub}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1446,6 +1523,183 @@ function CostsEmptyState({ pipeline }: { pipeline: BatchPipeline }) {
         No recorded provider usage
       </h3>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{reason}</p>
+    </div>
+  );
+}
+
+/* ---------------- Phase 49 — LaunchOutcomeBanner ---------------- */
+
+type LaunchOutcome = {
+  ts: number;
+  state: string;
+  totalRefs: number;
+  totalDesigns: number;
+  totalFailed: number;
+  successRefs: number;
+  skippedRefs: number;
+  failedRefs: number;
+  perReference: Array<{
+    referenceId: string;
+    designIds: string[];
+    failedDesignIds: string[];
+    error?: string;
+  }>;
+  composeParams: {
+    count: number;
+    aspectRatio: string;
+    quality: string | null;
+    providerId: string;
+  };
+};
+
+function LaunchOutcomeBanner({ batchId }: { batchId: string }) {
+  const [outcome, setOutcome] = useState<LaunchOutcome | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const key = `kivasy.launchOutcome.${batchId}`;
+      const raw = window.sessionStorage.getItem(key);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as LaunchOutcome;
+      // One-shot: read + delete. Refresh sonrası banner görünmez.
+      window.sessionStorage.removeItem(key);
+      // Stale > 5min → ignore (operatör URL'i bookmark'tan tekrar açabilir).
+      if (Date.now() - parsed.ts < 5 * 60 * 1000) {
+        setOutcome(parsed);
+        // Partial/failed durumda otomatik expand (sebebi görmeli);
+        // full success'te collapsed kalır.
+        if (parsed.skippedRefs > 0 || parsed.failedRefs > 0) {
+          setExpanded(true);
+        }
+      }
+    } catch {
+      /* sessionStorage disabled — banner görünmez (graceful) */
+    }
+  }, [batchId]);
+
+  if (!outcome || dismissed) return null;
+
+  const isFullSuccess =
+    outcome.skippedRefs === 0 && outcome.failedRefs === 0;
+  const isAllFailed = outcome.successRefs === 0;
+  const isPartial = !isFullSuccess && !isAllFailed;
+
+  const tone = isFullSuccess
+    ? "border-success/40 bg-success-soft/40"
+    : isAllFailed
+      ? "border-danger/40 bg-danger/5"
+      : "border-line-soft bg-k-bg-2/60";
+
+  const accentColor = isFullSuccess
+    ? "text-success"
+    : isAllFailed
+      ? "text-danger"
+      : "text-k-amber";
+
+  const title = isFullSuccess
+    ? `All ${outcome.totalRefs} reference${outcome.totalRefs === 1 ? "" : "s"} launched · ${outcome.totalDesigns} generation${outcome.totalDesigns === 1 ? "" : "s"} queued`
+    : isAllFailed
+      ? `Launch failed — no references queued`
+      : `${outcome.successRefs} of ${outcome.totalRefs} references launched · ${outcome.totalDesigns} generation${outcome.totalDesigns === 1 ? "" : "s"} queued`;
+
+  const problemRefs = outcome.perReference.filter(
+    (r) => r.error || (r.designIds.length === 0 && r.failedDesignIds.length === 0),
+  );
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-2 border-b px-6 py-3 text-[12.5px] text-ink",
+        tone,
+      )}
+      data-testid="batch-launch-outcome-banner"
+      data-state={
+        isFullSuccess ? "success" : isAllFailed ? "failed" : "partial"
+      }
+      role="status"
+    >
+      <div className="flex items-start gap-3">
+        {isFullSuccess ? (
+          <CheckCircle2
+            className={cn("mt-0.5 h-4 w-4 flex-shrink-0", accentColor)}
+            aria-hidden
+          />
+        ) : isAllFailed ? (
+          <AlertTriangle
+            className={cn("mt-0.5 h-4 w-4 flex-shrink-0", accentColor)}
+            aria-hidden
+          />
+        ) : (
+          <span
+            className="mt-1.5 inline-flex h-2 w-2 flex-shrink-0 rounded-full bg-k-amber"
+            aria-hidden
+          />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="font-medium leading-tight text-ink">{title}</div>
+          {(isPartial || isAllFailed) && problemRefs.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              className="mt-1 inline-flex items-center gap-1 font-mono text-[10.5px] uppercase tracking-meta text-ink-3 hover:text-ink-2"
+              data-testid="batch-launch-outcome-toggle"
+            >
+              {expanded ? (
+                <ChevronDown className="h-3 w-3" aria-hidden />
+              ) : (
+                <ChevronRight className="h-3 w-3" aria-hidden />
+              )}
+              {expanded ? "Hide reasons" : "See why"}
+            </button>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-paper hover:text-ink"
+          aria-label="Dismiss launch outcome banner"
+          data-testid="batch-launch-outcome-dismiss"
+        >
+          <X className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      </div>
+
+      {expanded && problemRefs.length > 0 ? (
+        <ul
+          className="ml-7 mt-1 flex flex-col gap-1.5"
+          data-testid="batch-launch-outcome-details"
+        >
+          {problemRefs.map((r) => (
+            <li
+              key={r.referenceId}
+              className="flex items-start gap-2 rounded-md border border-line-soft bg-paper px-2.5 py-1.5"
+              data-testid="batch-launch-outcome-skipped-ref"
+              data-reference-id={r.referenceId}
+            >
+              <span
+                className="mt-1 inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-k-amber"
+                aria-hidden
+              />
+              <div className="flex-1 min-w-0">
+                <div className="truncate font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+                  ref_{r.referenceId.slice(0, 8)}
+                </div>
+                <div className="mt-0.5 text-[11.5px] text-ink-2">
+                  {r.error ?? "No designs queued — see Logs for details"}
+                </div>
+              </div>
+            </li>
+          ))}
+          {isPartial ? (
+            <li className="mt-0.5 font-mono text-[10px] uppercase tracking-meta text-ink-3">
+              Next: remove the skipped refs from the next draft or
+              replace them via Add Reference with a URL-sourced image.
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
     </div>
   );
 }

@@ -9661,6 +9661,254 @@ detail). References tarafı şu an **production-ready**.
 
 ---
 
+## Phase 49 — Pool card clarity + queue handoff + batch detail/feedback finalization
+
+Phase 48 multi-reference launch akışını backend tarafında açtı ama
+operator-facing UX hâlâ üç açık taşıyordu:
+
+1. **In Draft state silikti**: Phase 48'de "çift sinyal" temizliği
+   için kart üstündeki "In Draft" chip 10×10 orange dot'a indirildi.
+   Operatör grid'i tararken hangi kartın draft'ta olduğunu çıkaramıyordu.
+2. **Remove from Draft niyeti gizliydi**: Resting state "In Draft"
+   yazıyordu, hover'da "Remove from Draft" swap oluyordu. Tam buton
+   üstüne gelinmeden niyet okunmuyordu.
+3. **`6 designs · view batches` zayıftı**: Underline'lı muted mono
+   link teknik dipnot gibi duruyordu. Ürünün kart-level üretim geçmişi
+   surface'i olarak görsel ağırlığı yoktu.
+4. **Draft panel altında handoff yoktu**: "Create Similar (N)" tek
+   CTA; operatör "sonra ne?" sorusuna cevap alamıyordu.
+5. **Batch detail multi-ref dili konuşmuyordu**: `summary.batchTotal`
+   "6 requested" gösteriyordu — multi-ref batch için yanıltıcı.
+6. **`perReference` launch outcome görünmüyordu**: Backend Phase 48'de
+   `perReference: Array<{ referenceId, designIds, failedDesignIds,
+   error }>` dönüyordu; UI bu zenginliği drop ediyordu. Operatör
+   "neden partial?" sorusunu cevapsız bırakıyordu.
+
+Phase 49 tüm altısını birlikte kapatır:
+
+### In Draft chip yeniden görünür (review-card kalitesinde)
+
+`references-page.tsx` `ReferencePoolCard`:
+
+- Phase 48 dot → küçük chip (`k-orange-soft` bg + `k-orange-ink`
+  text + `border-k-orange/40` + paper shadow)
+- Check icon + "Draft" label (mono uppercase tracking-meta, 10px)
+- Sol-üst köşe (top-right bulk-select checkbox alanı)
+- Boyut: 61×21px (önceki 10×10 dot vs Phase 47 büyük chip arasında
+  zarif denge)
+- Operatör grid'i tararken "bu kart draft'ta" sinyalini **hemen** alır
+
+### Remove from Draft CTA okunur ve dürüst
+
+CTA'nın görevi state göstermek değil **aksiyon**. Phase 49:
+
+- Resting state: `border-danger/30 bg-paper text-danger` + Trash2
+  icon + "Remove from draft" label (statik, hover gerekmez)
+- Hover state: `bg-danger text-white` (tam danger fill — operatör
+  niyeti net görür)
+- Focus-visible: aynı tam danger fill (klavye user'a parity)
+- State chip kart üstünde; CTA aksiyon — **tek-yer-tek-anlam**
+
+### Batch relation chip surface (production lineage)
+
+`ReferenceBatchSummary` component'i Phase 49:
+
+- Eski: `text-info` underline muted mono link "6 designs · view batches"
+- Yeni: `border-line-soft + bg-k-bg-2/60` chip → hover `border-k-orange/50 + bg-k-orange-soft + text-k-orange-ink`
+- İçerik: `Layers icon + count + · + "batches" + ArrowRight icon`
+- Davranış intakt: `href="/batches?referenceId={id}"` server-side
+  filter (Phase 2 C) doğru çalışır
+- Singular pluralization: "1 batch" / "N batches"
+- Boş geçmişte chip render edilmez (sinyal değil gürültü)
+
+### Draft panel next-step handoff strip
+
+`BatchQueuePanel` expanded queue mode footer'ı:
+
+- Mevcut primary "Create Similar (N) →" CTA korundu
+- Altına yeni handoff strip (`bg-k-bg-2/40 + border-line-soft`):
+  - Üst satır: mono `Next` label + sağda `All batches →` link chip
+  - Alt satır: "Launching this draft creates a batch you'll track in
+    [Batches]. You can keep multiple drafts in parallel — each Pool
+    selection starts its own batch."
+- Üçüncü satır: eski "Or open full compose page →" deep-link
+  (backward-compat) korundu
+
+Operatör compose'a inmeden önce mental model'i alır:
+1. Bu draft launch sonrası Batches sekmesinde batch olarak yaşayacak
+2. Operatör birden fazla draft tutabilir (multi-batch model görünür)
+3. Şu anki batch için "All batches" tek tıkla erişilebilir
+
+URL warning de aynı turda sakinleştirildi: agresif amber warning-soft
+→ ink-toned k-bg-2/50 + k-amber dot accent + actionable copy
+("X of N reference(s) local-only — launch will skip them.").
+
+### Launch outcome sessionStorage handoff (one-shot)
+
+`BatchQueuePanel` `ComposePanel` `launchMutation.onSuccess`:
+
+- Response shape genişletildi: artık `perReference`, `designIds`,
+  `failedDesignIds`, `state` hepsi okunur
+- Aggregate computed: `successRefs` (designIds > 0), `skippedRefs`
+  (error AND designIds === 0), `failedRefs` (error OR failedDesignIds > 0)
+- `sessionStorage.kivasy.launchOutcome.{batchId}` JSON write:
+  ```json
+  {
+    ts, state, totalRefs, totalDesigns, totalFailed,
+    successRefs, skippedRefs, failedRefs,
+    perReference: [...], composeParams: {...}
+  }
+  ```
+- Redirect `/batches/{batchId}` (mevcut davranış intakt)
+
+### Batch detail multi-ref summary + LaunchOutcomeBanner
+
+`/batches/[batchId]/page.tsx`:
+
+- Yeni server-side fetch: real `Batch` row (`composeParams` +
+  `_count.items`). Schema değişikliği yok; Phase 43 tablo yalnız
+  okunur. Legacy synthetic batches'de `null` (graceful fallback).
+- `BatchContext` interface BatchDetailClient'a prop olarak geçer.
+
+`BatchDetailClient` Phase 49:
+
+- `isMultiRef`, `refCount`, `perRefCount`, `totalRequested` derived
+- Type tile multi-ref dili: `"Variation · N × M"` + sub-caption
+  `"Total generations requested"`. Tek-ref batch'lerde eski format
+  (`"Variation · N requested"`) — geriye uyum.
+- `SummaryTile` `sub` prop eklendi (optional secondary line).
+- `LaunchOutcomeBanner` header'ın hemen altında render edilir.
+
+`LaunchOutcomeBanner` component (yeni, BatchDetailClient.tsx içi):
+
+- `useEffect` mount'ta `sessionStorage.getItem` + `removeItem`
+  (one-shot — refresh sonrası banner görünmez)
+- Stale > 5min ignore (operatör bookmark'tan tekrar açabilir)
+- Three states (tone-aware):
+  - **Full success** (`success` bg + CheckCircle2): "All N references
+    launched · M generations queued"
+  - **Partial** (`k-bg-2 + k-amber dot`): "X of N references
+    launched · M generations queued" + auto-expanded reasons
+  - **All-failed** (`danger` bg + AlertTriangle): "Launch failed —
+    no references queued" + reasons
+- "See why" / "Hide reasons" toggle (partial/failed default expanded)
+- Per-reference skipped detail (mono `ref_xxxxxxxx` + error message)
+- Actionable footer ("Next: remove the skipped refs from the next
+  draft or replace them via Add Reference with a URL-sourced image.")
+- X dismiss button (component-state, refresh sonrası zaten görünmez)
+
+### Compose shell duplicate — bilinçli defer
+
+`BatchComposeClient` (page form factor, 624 satır) ve
+`ComposePanel` (inline, ~330 satır) iki ayrı render path benzer
+form alanları taşıyor. Phase 49 audit:
+
+- Ortak shell extraction prop boğulmasına yol açar (`density`,
+  `showAdvancedParams`, `inlineSize`, vb.) — premature abstraction
+- İki yer **görsel/funktional olarak farklı**: page = derin compose
+  oturumu (advanced ref params); inline = hızlı launch decision
+- Launch endpoint zaten ortak (`/api/batches/[id]/launch`); davranış
+  divergence riski backend katmanında, tek yer
+- Form alanları küçük; bir değişiklik iki dosyaya da düşse de patch
+  kabul edilebilir
+
+**Karar: defer extraction.** İki render path açıkça scope'lu kalır;
+gelecek tur'da gerçek davranış sapması doğarsa ortak `ComposeForm`
+çıkarılır.
+
+### Honest field markers
+
+Inline `ComposePanel` `Similarity` field'ı dürüst:
+- hint: `${SIMILARITY_STOPS[similarity]} · preview only`
+- title attribute: "Similarity is a UI hint only — backend wiring
+  lands in a later phase."
+
+Page-form `BatchComposeClient` (Phase 44'ten beri "advisory only for
+now") Phase 49'da paralel güçlendirildi:
+- hint: `${SIMILARITY_HINTS[similarity]} · preview only`
+- Caption: "Preview control · backend wiring next phase"
+
+Operatör "gerçekten bağlı" alanlar (provider, aspect, count, quality,
+brief) ile "preview only" alanları (similarity, sref/oref/cref,
+prompt template placeholder) arasında **açık ayrım** görür.
+
+### Browser verification (live dev server, gerçek end-to-end kanıt)
+
+| Test | Sonuç |
+|---|---|
+| In Draft chip | 61×21px, bg `rgb(251, 234, 223)`, color `rgb(142, 58, 18)`, Check icon + "Draft" label |
+| Remove from Draft CTA | Resting border `rgba(179, 59, 41, 0.3)`, color `rgb(179, 59, 41)`, text "Remove from draft" (statik, hover bekleme yok) |
+| Batch chip | "6·batches" + Layers icon + ArrowRight, href `/batches?referenceId=...` |
+| Draft panel handoff | "Next · All batches →" link + multi-batch guidance copy |
+| Compose mode | 440px, "Create Similar · 2 × 6" CTA, k-amber URL warning sakin |
+| Launch → redirect | `/batches/[id]` ✓ + sessionStorage one-shot key okundu + silindi |
+| LaunchOutcomeBanner | `data-state="partial"`, başlık "1 of 2 references launched · 6 generations queued", auto-expanded, 1 skipped ref ("URL public doğrulanamadı: HEAD 404"), actionable footer |
+| Type tile multi-ref | "Variation · 2 × 6" + sub "12 generations requested" |
+| Pool screenshot | In Draft chip + batch chip + draft panel hep birlikte görünür, review-card seviyesinde clarity |
+
+Visible EN parity korundu — yeni UI metni TR sızıntısı taşımıyor.
+Phase 31+ baseline intakt.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: 59/59 PASS (canonical paket: bookmarks-page, references-page,
+  bookmark-service, collections-page, dashboard-page, bookmarks-confirm-flow)
+- Browser end-to-end: chip clarity + Remove CTA + batch chip + handoff +
+  compose multi-ref + launch + banner + multi-ref Type tile + screenshot
+- `next build`: skip (Phase 48 baseline + pre-existing `/api/admin/midjourney/asset/bulk-export` route runtime; Phase 49 değişiklikleri yalnız client-side render + read-only Batch row query — runtime path'i ayrı module)
+
+### Değişmeyenler (Phase 49)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Phase 43 Batch tablosu yalnız okunur.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `LaunchOutcomeBanner` küçük local
+  component (BatchDetailClient.tsx içi); ortak compose shell defer'lendi.
+- **Add Reference / duplicate / local folder / direct image intake
+  akışları intakt** (Phase 26-41 baseline).
+- **Multi-reference launch** Phase 48 mekanizması (perReference,
+  partial-failure) Phase 49'da yalnız UI'a çıktı; backend dokunulmadı.
+- **Kivasy DS dışına çıkılmadı.** k-orange / k-orange-soft / k-orange-ink,
+  k-bg-2, k-amber, line-soft, border-danger, success-soft recipe'leri
+  kullanıldı; yeni recipe family icat edilmedi.
+
+### Bilinçli scope dışı (Phase 50+ candidate)
+
+- **Shared compose shell**: page + inline ortak `ComposeForm`. İki
+  consumer'da davranış sapması doğmazsa erteleme devam edebilir.
+- **Similarity backend wiring**: brief prompt'a inject veya provider
+  parametresi olarak gerçek davranışa bağlanma (Phase 44'ten devir).
+- **Prompt template picker**: v7 d2a/d2b PromptPreviewSection seviyesinde.
+- **`perReference` post-launch toast** queue panel'inde (şu an yalnız
+  batch detail banner; queue panel'inden de görünebilir).
+- **Items tab multi-ref grouping**: batch detail Items tab job'ları
+  reference'a göre grupla göstermesi (`group by referenceId`).
+- **Logs/Costs/Parameters tab'ları multi-ref dili**: şu an Type tile'da
+  multi-ref görünür; içerik tab'ları placeholder ile birlikte tek-ref
+  diline yakın.
+
+### Bundan sonra production tarafında kalan tek doğru iş
+
+Phase 49 ile References → Pool → Queue → Compose → Multi-Launch →
+**Batch Detail (multi-ref summary + per-ref outcome banner)** zinciri
+operator-facing UX olarak **production-ready** durumda. Operatör artık:
+- Pool kartında "Draft" chip ile state'i hemen görür
+- Tek tıkla "Remove from draft" yapabilir (niyet okunur)
+- Kartı altındaki batches chip ile geçmiş işlere navigate edebilir
+- Queue panel'inde "Next · All batches" handoff'unu okur
+- Compose'a inline geçer, multi-ref launch eder
+- Batch detail'a iner, "1 of 2 launched · See why" banner'ından
+  partial failure sebebini direkt görür
+- Type tile multi-ref dilini taşır
+
+Sıradaki **tek doğru iş**: References tarafından çıkıp **Selection
+studio + Mockup studio + Listing builder** detail surface'lerinin
+olgunlaştırılması (canonical ürün omurgası: References → Batch →
+Review → **Selection** → **Product** → Etsy Draft zincirinin sonu).
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

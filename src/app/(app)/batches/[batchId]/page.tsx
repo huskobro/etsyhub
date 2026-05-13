@@ -79,12 +79,60 @@ export default async function BatchDetailPage({
   const jobIds = summary.jobs.map((j) => j.jobId);
   const costBreakdown = await getBatchCostBreakdown(jobIds);
 
+  // Phase 49 — Real Batch row context.
+  // Phase 43+ launch'lar gerçek `Batch` row taşır; legacy synthetic-
+  // batchId akışında bu row yok (UI multi-ref dili graceful fallback'a
+  // düşer). Schema değişikliği yok, yalnız okuma.
+  let batchContext: {
+    itemCount: number;
+    composeParams: {
+      providerId?: string;
+      aspectRatio?: string;
+      quality?: string | null;
+      count?: number;
+      brief?: string | null;
+      itemCount?: number;
+    } | null;
+  } | null = null;
+  try {
+    const realBatch = await db.batch.findFirst({
+      where: {
+        id: resolved.batchId,
+        userId: session.user.id,
+        deletedAt: null,
+      },
+      select: {
+        composeParams: true,
+        _count: { select: { items: true } },
+      },
+    });
+    if (realBatch) {
+      batchContext = {
+        itemCount: realBatch._count.items,
+        composeParams:
+          (realBatch.composeParams as BatchContextComposeParams) ?? null,
+      };
+    }
+  } catch {
+    /* legacy batch — silent fallback; UI uses single-ref language */
+  }
+
   return (
     <BatchDetailClient
       summary={summary}
       existingSelectionSet={existingSelectionSet}
       sourceReference={sourceReference}
       costBreakdown={costBreakdown}
+      batchContext={batchContext}
     />
   );
 }
+
+type BatchContextComposeParams = {
+  providerId?: string;
+  aspectRatio?: string;
+  quality?: string | null;
+  count?: number;
+  brief?: string | null;
+  itemCount?: number;
+};

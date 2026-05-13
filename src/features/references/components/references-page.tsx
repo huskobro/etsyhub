@@ -10,10 +10,12 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Archive,
+  ArrowRight,
   Check,
   ChevronDown,
   Eye,
   Info,
+  Layers,
   Search,
   Sparkles,
   Trash2,
@@ -862,24 +864,28 @@ function ReferencePoolCard({
       data-in-draft={inDraft || undefined}
     >
       {inDraft ? (
-        /* Phase 47 — Refined in-draft badge.
-         * Phase 48 — Sade icon-only dot. Önceki "In Draft" chip kart
-         *   üstünde + CTA'da iki kez aynı bilgiyi söylüyordu (çift
-         *   sinyal). Phase 48 stratejisi:
-         *     - kart üstünde KÜÇÜK dot (sadece scan'de "bu in-draft
-         *       işaretli" sinyali; "In Draft" kelimesi yok)
-         *     - alttaki CTA tek-yer-tek-sinyal: resting "In Draft" /
-         *       hover "Remove from Draft" — operatör aksiyona ve
-         *       state'e CTA'dan ulaşır
-         *   Dot sol-üstte (top-right'ı bulk-select checkbox'una
-         *   bırakmak için); k-orange fill + ring koruması ile thumb
-         *   üzerinde okunur. tooltip "In current draft batch". */
+        /* Phase 49 — In Draft state clarity tekrar yükseltildi.
+         *   Phase 48 dot fazla silikti (operator scan'de göremiyordu).
+         *   Phase 47 chip fazla baskındı (CTA ile çift sinyaldi).
+         *   Phase 49: küçük ama okunur chip, review-card Decision pill
+         *   kalitesine yakın. Bileşenler:
+         *     - sol-üst köşe (top-right bulk-select checkbox alanı)
+         *     - k-orange-soft bg + k-orange-ink text + k-orange border
+         *       (review-card-soft tone variant'ına paralel)
+         *     - Check icon + "Draft" label (mono uppercase)
+         *     - paper shadow → thumb gradient üzerinde okunur kalır
+         *   CTA tarafı (Phase 49) artık "Remove" diline değişiyor
+         *   (resting "In draft · click to remove"); badge state, CTA
+         *   aksiyon olarak ayrışıyor. */
         <span
-          className="absolute left-2 top-2 z-10 inline-flex h-2.5 w-2.5 items-center justify-center rounded-full bg-k-orange ring-2 ring-paper"
+          className="absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-md border border-k-orange/40 bg-k-orange-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-meta text-k-orange-ink shadow-sm"
           data-testid="reference-card-in-draft-badge"
           title="In current draft batch"
           aria-label="In current draft batch"
-        />
+        >
+          <Check className="h-2.5 w-2.5" strokeWidth={3} aria-hidden />
+          Draft
+        </span>
       ) : null}
       <div className="relative">
         <div className="p-2 pb-0">
@@ -970,11 +976,27 @@ function ReferencePoolCard({
             *   /api/batches/[batchId]/items/[itemId] endpoint
             *   (Phase 46). */}
           {inDraft ? (
+            /* Phase 49 — Remove from Draft CTA okunur ve dürüst.
+             *
+             * Önceki davranış (Phase 47/48): resting state "In Draft"
+             * görünüyordu, hover'da "Remove from Draft" swap oluyordu.
+             * Sorun: kullanıcı tam buton üzerine gelmeden niyet
+             * okumuyordu; "click etmek state mi action mi?" muğlak.
+             *
+             * Phase 49: state görsel olarak chip'te (kart üstü orange
+             * "Draft" badge); CTA'nın görevi **aksiyon**. Resting state
+             * → `Trash2 + "Remove"` ghost button (danger tone hint,
+             * border-danger/30 ile sessiz uyarı). Hover → full danger
+             * fill (red bg + white text). İkonsuz tek-yer-tek-anlam
+             * pattern; state ile action birbirine karışmaz.
+             *
+             * data-testid stable kaldı (Phase 47'den beri). */
             <button
               type="button"
               data-size="sm"
               className={cn(
-                "k-btn k-btn--ghost w-full",
+                "k-btn w-full",
+                "border-danger/30 bg-paper text-danger",
                 "hover:!bg-danger hover:!text-white hover:!border-danger",
                 "focus-visible:!bg-danger focus-visible:!text-white focus-visible:!border-danger",
               )}
@@ -987,23 +1009,8 @@ function ReferencePoolCard({
               data-testid="reference-card-add-to-draft"
               data-in-draft="true"
             >
-              {removeFromDraft.isPending ? (
-                <>
-                  <Trash2 className="h-3 w-3" aria-hidden />
-                  Removing…
-                </>
-              ) : (
-                <>
-                  <span className="inline group-hover:hidden">
-                    <Check className="-mt-0.5 mr-1 inline h-3 w-3" strokeWidth={3} aria-hidden />
-                    In Draft
-                  </span>
-                  <span className="hidden group-hover:inline">
-                    <Trash2 className="-mt-0.5 mr-1 inline h-3 w-3" aria-hidden />
-                    Remove from Draft
-                  </span>
-                </>
-              )}
+              <Trash2 className="h-3 w-3" aria-hidden />
+              {removeFromDraft.isPending ? "Removing…" : "Remove from draft"}
             </button>
           ) : (
             <button
@@ -1113,13 +1120,24 @@ function SkeletonGrid({ density }: { density: Density }) {
 
 // ─── ReferenceBatchSummary ───────────────────────────────────────────────
 /**
- * Batch-first Phase 2 — compact production history indicator on reference cards.
+ * Batch-first Phase 2 — production history indicator on reference cards.
  *
- * Shows total design count (generatedDesigns + MJ outputs) with a clickable
- * link to /batches?referenceId={id} — the server-side referenceId filter
- * (Job.metadata.referenceId path query) is now wired (Phase 2 C). Renders
- * nothing when count is zero or data is absent — no noise on references
- * without batch history.
+ * Phase 49 — Görsel güçlendirme. Önceki underline'lı font-mono link
+ * "view batches" görsel olarak ölü meta gibi duruyordu (kart sahibinin
+ * üretim geçmişi yerine teknik dipnot hissi). Phase 49 strateji:
+ *
+ *   - **Chip surface**: `border + bg-k-bg-2/60` (Kivasy DS recipe);
+ *     review surface'teki secondary CTA tonu, ama hover'da k-orange-soft
+ *     bg + k-orange border'a açılır. Operatör chip'in tıklanabilir
+ *     olduğunu görsel olarak hisseder.
+ *   - **Layers icon**: production lineage ipucu (Layers icon = batch
+ *     family). Mono caption operatöre üretim sayısını verir; "view
+ *     batches" yerine `→` chevron, "git" semantic'i.
+ *   - **Server filter**: link hâlâ `/batches?referenceId={id}` (Phase 2);
+ *     server-side referenceId filter Phase 2 C'de wire'lı, davranış
+ *     intakt — operatör chip'e tıklayınca batches'in filtreli view'ına
+ *     iner. Boş geçmiş (`total === 0`) için chip render edilmez (
+ *     gürültü değil sinyal).
  */
 function ReferenceBatchSummary({
   count,
@@ -1133,15 +1151,23 @@ function ReferenceBatchSummary({
   if (total === 0) return null;
 
   return (
-    <div className="mt-1.5">
+    <div className="mt-2">
       <Link
         href={`/batches?referenceId=${referenceId}`}
-        className="font-mono text-[10.5px] uppercase tracking-wider text-info underline-offset-2 hover:underline"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md border border-line-soft bg-k-bg-2/60 px-2 py-1",
+          "font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2",
+          "transition-colors hover:border-k-orange/50 hover:bg-k-orange-soft hover:text-k-orange-ink",
+        )}
         data-testid="reference-batch-summary"
         onClick={(e) => e.stopPropagation()}
-        title="View batches produced from this reference"
+        title={`View ${total} batch${total === 1 ? "" : "es"} produced from this reference`}
       >
-        {total} design{total !== 1 ? "s" : ""} · view batches
+        <Layers className="h-3 w-3" aria-hidden />
+        <span>{total}</span>
+        <span className="text-ink-3">·</span>
+        <span>batch{total === 1 ? "" : "es"}</span>
+        <ArrowRight className="ml-0.5 h-3 w-3" aria-hidden />
       </Link>
     </div>
   );
