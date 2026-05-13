@@ -39,7 +39,7 @@ export function PaneScrapers() {
       if (r.status === 403) {
         throw new Error("Admin scope required");
       }
-      if (!r.ok) throw new Error("Scrapers settings yüklenemedi");
+      if (!r.ok) throw new Error("Could not load scrapers settings");
       return r.json();
     },
     retry: false,

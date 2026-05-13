@@ -32,7 +32,7 @@ export function StylePresetsSubview({ isAdmin }: { isAdmin: boolean }) {
     queryKey: QUERY_KEY,
     queryFn: async () => {
       const r = await fetch("/api/templates/style-presets");
-      if (!r.ok) throw new Error("Style presets yüklenemedi");
+      if (!r.ok) throw new Error("Could not load style presets");
       return r.json();
     },
   });

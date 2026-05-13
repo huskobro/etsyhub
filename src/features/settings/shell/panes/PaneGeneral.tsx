@@ -44,7 +44,7 @@ export function PaneGeneral() {
     queryKey: QUERY_KEY,
     queryFn: async () => {
       const r = await fetch("/api/settings/general");
-      if (!r.ok) throw new Error("General settings yüklenemedi");
+      if (!r.ok) throw new Error("Could not load general settings");
       return r.json();
     },
   });

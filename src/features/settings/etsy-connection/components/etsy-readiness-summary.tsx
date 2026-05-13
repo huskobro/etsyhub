@@ -58,7 +58,7 @@ export function EtsyReadinessSummary() {
     queryKey: QUERY_KEY,
     queryFn: async (): Promise<{ summary: EtsyReadinessSummary }> => {
       const r = await fetch("/api/settings/etsy-connection/readiness");
-      if (!r.ok) throw new Error("Hazırlık durumu alınamadı");
+      if (!r.ok) throw new Error("Could not load readiness status");
       return r.json();
     },
     refetchInterval: 30_000,
@@ -79,7 +79,7 @@ export function EtsyReadinessSummary() {
     return (
       <Card variant="stat" className="p-4">
         <p className="text-xs text-danger">
-          Etsy hazırlık durumu alınamadı:{" "}
+          Could not load Etsy readiness status:{" "}
           {(query.error as Error | null)?.message ?? "bilinmeyen hata"}
         </p>
       </Card>

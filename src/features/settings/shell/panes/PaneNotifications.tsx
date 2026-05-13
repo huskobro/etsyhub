@@ -89,7 +89,7 @@ export function PaneNotifications() {
     queryKey: QUERY_KEY,
     queryFn: async () => {
       const r = await fetch("/api/settings/notifications");
-      if (!r.ok) throw new Error("Notifications yüklenemedi");
+      if (!r.ok) throw new Error("Could not load notifications");
       return r.json();
     },
   });
@@ -254,7 +254,7 @@ function NotificationsInbox() {
     queryKey: ["notifications", "inbox"],
     queryFn: async () => {
       const r = await fetch("/api/notifications/inbox");
-      if (!r.ok) throw new Error("Inbox yüklenemedi");
+      if (!r.ok) throw new Error("Could not load inbox");
       return r.json();
     },
     staleTime: 10 * 1000,
@@ -339,7 +339,7 @@ function NotificationsInbox() {
           data-testid="inbox-error"
         >
           <span>
-            Inbox yüklenemedi: {(inbox.error as Error).message}
+            Could not load inbox: {(inbox.error as Error).message}
           </span>
           <button
             type="button"

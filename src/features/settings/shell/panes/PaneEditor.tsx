@@ -30,7 +30,7 @@ export function PaneEditor() {
     queryKey: QUERY_KEY,
     queryFn: async () => {
       const r = await fetch("/api/settings/editor");
-      if (!r.ok) throw new Error("Editor settings yüklenemedi");
+      if (!r.ok) throw new Error("Could not load editor settings");
       return r.json();
     },
   });

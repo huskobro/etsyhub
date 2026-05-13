@@ -50,7 +50,7 @@ export function PaneStorage() {
     queryKey: QUERY_KEY,
     queryFn: async () => {
       const r = await fetch("/api/settings/storage");
-      if (!r.ok) throw new Error("Storage info yüklenemedi");
+      if (!r.ok) throw new Error("Could not load storage info");
       return r.json();
     },
   });

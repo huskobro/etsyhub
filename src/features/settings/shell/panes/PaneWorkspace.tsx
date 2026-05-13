@@ -63,7 +63,7 @@ export function PaneWorkspace() {
     queryKey: ["settings", "workspace"],
     queryFn: async () => {
       const r = await fetch("/api/settings/workspace");
-      if (!r.ok) throw new Error("Workspace yüklenemedi");
+      if (!r.ok) throw new Error("Could not load workspace");
       return r.json();
     },
   });
@@ -72,7 +72,7 @@ export function PaneWorkspace() {
     queryKey: ["settings", "ai-mode"],
     queryFn: async () => {
       const r = await fetch("/api/settings/ai-mode");
-      if (!r.ok) throw new Error("AI mode yüklenemedi");
+      if (!r.ok) throw new Error("Could not load AI mode");
       return r.json();
     },
   });

@@ -57,7 +57,7 @@ async function fetchSignedUrl(key: string): Promise<string> {
   );
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? "Preview URL alınamadı");
+    throw new Error(body.error ?? "Could not load preview URL");
   }
   const data = (await res.json()) as { url: string };
   return data.url;
@@ -77,7 +77,7 @@ async function listExistingAssets(args: {
   const res = await fetch(url);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? "Mevcut asset listesi alınamadı");
+    throw new Error(body.error ?? "Could not load existing assets");
   }
   const data = (await res.json()) as { items: ExistingAsset[] };
   return data.items;

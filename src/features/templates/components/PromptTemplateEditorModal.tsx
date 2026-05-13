@@ -88,7 +88,7 @@ export function PromptTemplateEditorModal({
     enabled: mode === "edit" && !!templateId,
     queryFn: async () => {
       const r = await fetch(`/api/templates/prompts/${templateId}`);
-      if (!r.ok) throw new Error("Template yüklenemedi");
+      if (!r.ok) throw new Error("Could not load template");
       return r.json();
     },
   });

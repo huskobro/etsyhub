@@ -26,7 +26,7 @@ export function useEditorSettings() {
     queryKey: editorSettingsQueryKey,
     queryFn: async () => {
       const r = await fetch("/api/settings/editor");
-      if (!r.ok) throw new Error("Editor settings yüklenemedi");
+      if (!r.ok) throw new Error("Could not load editor settings");
       return r.json();
     },
     // Settings nadiren değişir; cache 5dk + window focus refetch yok.

@@ -88,7 +88,7 @@ export function LocalLibrarySettingsPanel() {
     queryKey: QUERY_KEY,
     queryFn: async (): Promise<{ settings: LocalLibrarySettings }> => {
       const r = await fetch("/api/settings/local-library");
-      if (!r.ok) throw new Error("Ayarlar yüklenemedi");
+      if (!r.ok) throw new Error("Could not load settings");
       return r.json();
     },
   });
@@ -137,7 +137,7 @@ export function LocalLibrarySettingsPanel() {
       <Card variant="stat" className="p-5">
         <h2 className="text-lg font-semibold text-text">Yerel kütüphane</h2>
         <p className="mt-2 text-sm text-danger">
-          {(query.error as Error | null)?.message ?? "Ayarlar yüklenemedi"}
+          {(query.error as Error | null)?.message ?? "Could not load settings"}
         </p>
       </Card>
     );
@@ -286,7 +286,7 @@ async function fetchScanSummary(): Promise<ScanSummary> {
     fetch("/api/local-library/assets"),
   ]);
   if (!foldersRes.ok || !assetsRes.ok) {
-    throw new Error("Kütüphane özeti yüklenemedi");
+    throw new Error("Could not load library summary");
   }
   const f = (await foldersRes.json()) as { folders: FolderSummary[] };
   const a = (await assetsRes.json()) as { assets: unknown[] };

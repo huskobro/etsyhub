@@ -156,7 +156,7 @@ export function PaneAIProviders() {
     queryKey: QUERY_KEY,
     queryFn: async (): Promise<{ settings: AiModeMaskedSettings }> => {
       const r = await fetch("/api/settings/ai-mode");
-      if (!r.ok) throw new Error("AI Providers settings yüklenemedi");
+      if (!r.ok) throw new Error("Could not load AI Providers settings");
       return r.json();
     },
     staleTime: 30 * 1000,
@@ -167,7 +167,7 @@ export function PaneAIProviders() {
     queryKey: ["settings", "cost-summary"],
     queryFn: async () => {
       const r = await fetch("/api/settings/cost-summary");
-      if (!r.ok) throw new Error("Cost summary yüklenemedi");
+      if (!r.ok) throw new Error("Could not load cost summary");
       return r.json();
     },
     staleTime: 60 * 1000,
@@ -183,7 +183,7 @@ export function PaneAIProviders() {
         // Non-admin user → silent fallback to defaults
         return { settings: DEFAULT_ADMIN_SETTINGS };
       }
-      if (!r.ok) throw new Error("Admin AI providers settings yüklenemedi");
+      if (!r.ok) throw new Error("Could not load admin AI providers settings");
       return r.json();
     },
     staleTime: 30 * 1000,
@@ -368,7 +368,7 @@ export function PaneAIProviders() {
         >
           <AlertTriangle className="mr-1 inline h-4 w-4" aria-hidden />
           {(aiModeQuery.error as Error).message ??
-            "AI provider settings yüklenemedi"}
+            "Could not load AI provider settings"}
           <button
             type="button"
             onClick={() => aiModeQuery.refetch()}
@@ -685,7 +685,7 @@ function ProviderCard({ provider: p }: { provider: ProviderRow }) {
       };
       if (action === "save") {
         if (!keyDraft.trim()) {
-          throw new Error("API key boş olamaz");
+          throw new Error("API key cannot be empty");
         }
         body[field] = keyDraft.trim();
       } else {

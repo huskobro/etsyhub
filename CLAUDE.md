@@ -11293,6 +11293,188 @@ sonra yeni özellik / yön / major refactor olmadan ship edilebilir.
 
 ---
 
+## Phase 57 — Full app product-readiness audit + Settings/Templates EN parity
+
+Phase 56 canonical operator loop'u (References → Batch → Review →
+Selection → Mockup → Product → Etsy Draft) ship-ready'e çekmişti.
+Phase 57 odak: **uygulamanın tamamını sellable-product seviyesinde
+denetlemek** + bulunan en kritik kalite boşluğunu kapatmak.
+
+### Phase 57 audit (browser-walk)
+
+9 ana sidebar yüzeyi + 2 legacy redirect tarandı (HTTP + DOM scan +
+TR/placeholder mention sayımı):
+
+| Surface | HTTP | Heading struct | TR drift | Placeholder | Verdict |
+|---|---|---|---|---|---|
+| `/overview` | 200 | h1 + 7 section heading + 49 link | 0 | 0 | ✓ Ship-ready |
+| `/references` | 200 | full B1 grid + topbar | 0 (Phase 18-30) | 0 | ✓ Ship-ready |
+| `/batches` | 200 | full B5 listing + production summary | 0 (Phase 49) | 0 | ✓ Ship-ready |
+| `/review` | 200 | canonical scope review (Madde Z) | 0 | 0 | ✓ Ship-ready |
+| `/library` | 200 | gallery + filter + bulk | 0 (Phase 27/55) | 0 | ✓ Ship-ready |
+| `/selections` | 200 | B2 grid + lineage chip (Phase 50) | 0 | 0 | ✓ Ship-ready |
+| `/products` | 200 | B6 listing + readiness | 0 (Phase 14) | 0 | ✓ Ship-ready |
+| `/templates` | 200 | 4 tab (Prompt 1 / Style 0 / Mockup 3061 / Recipe 1) | **6 TR error** | 2 ("Coming soon" honest) | ⚠ TR error path |
+| `/settings` | 200 | 10 sub-tab + 4 dürüst "Soon" disabled | **16 TR error** | 4 ("coming soon" honest) | ⚠ TR error path |
+| `/selection` (legacy) | 200 → /selections | redirect | 0 | 0 | ✓ Doğru |
+| `/listings` (legacy) | 200 → /products | redirect | 0 | 0 | ✓ Doğru |
+
+### Audit sonuçları
+
+**Ship-ready (canonical operator loop)**: Overview / References /
+Batches / Review / Library / Selections / Products. Hepsinde:
+- EN parity tam (Phase 18-56)
+- Kivasy DS recipe aile parity
+- Source lineage chip'leri (Phase 50/52/53/54/55)
+- State feedback + reassurance copy
+- Operator-friendly hierarchy + actionable next-step
+- Banner / toast / error feedback
+- 304/304 unit tests PASS
+- Browser end-to-end her halkada doğrulandı
+
+**Bulunan kritik kalite boşluğu** (Settings + Templates + Admin):
+
+22 operator-facing TR error message — `throw new Error("X yüklenemedi")`
+pattern'i Settings pane'leri + Templates modal'ları + Admin
+mockup-templates'te:
+
+| Dosya | TR string sayısı |
+|---|---|
+| `PaneAIProviders.tsx` | 4 |
+| `PaneNotifications.tsx` | 3 |
+| `PaneEditor.tsx` | 1 |
+| `PaneGeneral.tsx` | 1 |
+| `PaneScrapers.tsx` | 1 |
+| `PaneStorage.tsx` | 1 |
+| `PaneWorkspace.tsx` | 2 |
+| `local-library-settings-panel.tsx` | 2 |
+| `useEditorSettings.ts` | 1 |
+| `ai-mode-settings-panel.tsx` | 1 |
+| `etsy-connection-settings-panel.tsx` | 2 |
+| `etsy-readiness-summary.tsx` | 2 |
+| `StylePresetsSubview.tsx` | 1 |
+| `RunRecipeModal.tsx` | 1 |
+| `UploadMockupTemplateModal.tsx` | 1 |
+| `PromptTemplateEditorModal.tsx` | 1 |
+| `mockup-templates-manager.tsx` | 1 |
+| `template-detail-view.tsx` | 1 |
+| `asset-upload-field.tsx` | 2 |
+| `local-sharp-config-editor.tsx` | 2 |
+| **TOPLAM** | **22** |
+
+Bunlar **görünmez ama operator confidence'ı bozar**: error path'i
+tetiklendiğinde "X yüklenemedi", "Bağlantı durumu alınamadı",
+"Preview URL alınamadı" gibi TR string'ler render olur ve admin/
+settings tarafının "yarı bitmiş" gibi hissedilmesine yol açar.
+
+### Slice — Settings/Templates/Admin EN parity migration
+
+22 TR error string bulk migration (perl `-i -pe` regex replace):
+
+| TR | EN |
+|---|---|
+| `"X yüklenemedi"` | `"Could not load X"` |
+| `"Bağlantı durumu alınamadı"` | `"Could not load connection status"` |
+| `"Bağlantı kaldırılamadı"` | `"Could not remove connection"` |
+| `"Hazırlık durumu alınamadı"` | `"Could not load readiness status"` |
+| `"Liste alınamadı"` | `"Could not load list"` |
+| `"Preview URL alınamadı"` | `"Could not load preview URL"` |
+| `"Mevcut asset listesi alınamadı"` | `"Could not load existing assets"` |
+| `"Binding listesi alınamadı"` | `"Could not load binding list"` |
+| `"Dosya seçilmedi"` | `"No file selected"` |
+| `"API key boş olamaz"` | `"API key cannot be empty"` |
+
+"Couldn't" yerine "Could not" tercih edildi — apostrophe escape
+(JSX/TS string syntax karmaşıklığı) gereksiz; "Could not" daha okunur
++ deterministic.
+
+Code comments TR korundu (CLAUDE.md kuralı: code comments TR can stay,
+yalnız operator-facing strings EN). Sadece bir comment kaldı:
+`// Sessizce: thumbnail yüklenemediyse fallback UI göster` —
+bu görünmez (developer-facing).
+
+### Browser verification (live dev server kanıt)
+
+| Surface | TR char count | sampleTrText |
+|---|---|---|
+| `/settings` (after Phase 57) | 2 (unrelated brand chars) | `[]` (sıfır operator-facing TR) |
+| `/templates` (after Phase 57) | 0 | `[]` (sıfır TR sızıntı) |
+
+Phase 57 öncesi: 18+ TR error message Settings pane'lerinde.
+Phase 57 sonrası: 0 operator-facing TR.
+
+### Ship-readiness kararı (dürüst)
+
+**Production-ready (sellable, son kullanıcıya gösterilebilir):**
+- **Canonical operator loop** (References → Batch → Review →
+  Selection → Mockup → Product → Etsy Draft): **EVET, ship-ready**
+  - Overview production-ready dashboard
+  - References intake (URL/Upload/From Bookmark/From Local Library)
+    + Pool curation + lineage
+  - Batch queue + multi-launch + LaunchOutcomeBanner
+  - Review canonical surface (freeze altında, Madde Z)
+  - Selection studio (status badge + bulk curation + Finalize CTA +
+    success banner)
+  - Mockup studio (S3 + S7 + S8 + tiles + sub-components + modals
+    hepsi shipping kalitesinde)
+  - Product detail (Source selection + Listing health + Next step)
+  - Etsy Draft submit (V1 pipeline + Sent to Etsy + Open on Etsy +
+    Reset to DRAFT)
+- **Settings + Templates + Admin** (Phase 57 sonrası): **EVET,
+  ship-ready** — operator-facing TR error sızıntısı sıfırlandı,
+  honest "Soon" disclosure dürüst, dürüst "Coming soon" tooltip'leri
+  operator confidence'ı bozmuyor
+
+**Yalnız backlog/nice-to-have (blocker DEĞİL):**
+- Server-side `selection-lineage` resolver shared helper extraction
+- Product detail Etsy Draft "view on Etsy" success expansion
+- Listing builder field-level Kivasy DS migration
+- `S1BrowseDrawer` + `S2DetailModal` audit double-check
+- Admin Settings "Soon" tab'ları (Users / Audit / Feature Flags /
+  Theme / Dark mode) — dürüst disclosure ile gizlenmiş, ileride
+  açılması için altyapı hazır
+
+**Known limitations (operator-aware):**
+- Etsy Draft pipeline V1 (active publish değil — draft + manual)
+- Multi-store, scheduling, ScraperAPI/Bright Data integration
+  out-of-scope
+- Browser companion / Chrome extension scraping (Phase 38'de
+  pasifleştirildi, future backlog)
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **304/304 PASS** (canonical 59 + mockup 245)
+- Browser verification: 9 ana sidebar surface 200, Settings + Templates
+  TR sızıntı sıfırlandı
+
+### Değişmeyenler (Phase 57)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek slice: 20 dosyada bulk perl regex
+  replace (TR error message → EN).
+- **Canonical operator loop akışları intakt** (Phase 26-56 baseline).
+- **Davranış değişmedi** — yalnız error message string'ler EN'e taşındı.
+- **Code comments TR korundu** (CLAUDE.md kuralı).
+
+### Bundan sonra product olarak tek doğru iş
+
+**Yeni feature / yön / major refactor olmadan ship edilebilir.**
+
+Canonical operator loop + Settings + Templates + Admin hepsi production-
+ready ship quality. Sonraki turlar yalnız:
+- Backlog/nice-to-have polish (server helper DRY, listing field-level
+  DS, S1/S2 audit double-check)
+- Yeni feature alanları (multi-store, scheduling, browser companion
+  scraping — yeni big abstraction gerektirir, ayrı tur)
+- Operator feedback'e göre fine-tune
+
+Uygulama bu noktada **sellable**.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

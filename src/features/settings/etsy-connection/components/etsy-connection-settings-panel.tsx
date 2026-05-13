@@ -64,7 +64,7 @@ export function EtsyConnectionSettingsPanel() {
     queryKey: QUERY_KEY,
     queryFn: async (): Promise<{ status: EtsyConnectionStatus }> => {
       const r = await fetch("/api/settings/etsy-connection");
-      if (!r.ok) throw new Error("Bağlantı durumu alınamadı");
+      if (!r.ok) throw new Error("Could not load connection status");
       return r.json();
     },
   });
@@ -74,7 +74,7 @@ export function EtsyConnectionSettingsPanel() {
       const r = await fetch("/api/settings/etsy-connection", {
         method: "DELETE",
       });
-      if (!r.ok) throw new Error("Bağlantı kaldırılamadı");
+      if (!r.ok) throw new Error("Could not remove connection");
       return r.json() as Promise<{ status: EtsyConnectionStatus }>;
     },
     onSuccess: (res) => {
@@ -119,7 +119,7 @@ export function EtsyConnectionSettingsPanel() {
       <Card variant="stat" className="p-5">
         <h2 className="text-lg font-semibold text-text">Etsy bağlantısı</h2>
         <p className="mt-2 text-sm text-danger">
-          {(query.error as Error | null)?.message ?? "Bağlantı durumu alınamadı"}
+          {(query.error as Error | null)?.message ?? "Could not load connection status"}
         </p>
       </Card>
     );
@@ -232,7 +232,7 @@ export function EtsyConnectionSettingsPanel() {
             {deleteMutation.isError && (
               <p role="alert" className="text-sm text-danger">
                 {(deleteMutation.error as Error | null)?.message ??
-                  "Bağlantı kaldırılamadı"}
+                  "Could not remove connection"}
               </p>
             )}
 

@@ -486,7 +486,7 @@ function PreviewOverlay({
       .then(async (r) => {
         if (!r.ok) {
           const body = await r.json().catch(() => ({}));
-          throw new Error(body.error ?? "Preview URL alınamadı");
+          throw new Error(body.error ?? "Could not load preview URL");
         }
         const d = (await r.json()) as { url: string };
         if (!cancelled) {
@@ -507,7 +507,7 @@ function PreviewOverlay({
 
   if (error) {
     return (
-      <p className="text-xs text-danger">Preview URL alınamadı: {error}</p>
+      <p className="text-xs text-danger">Could not load preview URL: {error}</p>
     );
   }
   if (!signedUrl) return null;

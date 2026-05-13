@@ -64,7 +64,7 @@ export function UploadMockupTemplateModal({ onClose, onUploaded }: Props) {
 
   const mutation = useMutation<UploadResponse, Error, void>({
     mutationFn: async () => {
-      if (!file) throw new Error("Dosya seçilmedi");
+      if (!file) throw new Error("No file selected");
       const fd = new FormData();
       fd.append("file", file);
       fd.append("name", name);

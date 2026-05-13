@@ -91,7 +91,7 @@ type MockupTemplateBindingRow = {
 
 async function fetchAllTemplates(): Promise<MockupTemplateRow[]> {
   const res = await fetch("/api/admin/mockup-templates", { cache: "no-store" });
-  if (!res.ok) throw new Error("Liste alınamadı");
+  if (!res.ok) throw new Error("Could not load list");
   return ((await res.json()) as { items: MockupTemplateRow[] }).items;
 }
 
@@ -99,7 +99,7 @@ async function fetchBindings(templateId: string): Promise<MockupTemplateBindingR
   const res = await fetch(`/api/admin/mockup-templates/${templateId}/bindings`, {
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("Binding listesi alınamadı");
+  if (!res.ok) throw new Error("Could not load binding list");
   return ((await res.json()) as { items: MockupTemplateBindingRow[] }).items;
 }
 

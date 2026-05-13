@@ -63,7 +63,7 @@ type StatusFilter = "all" | "DRAFT" | "ACTIVE" | "ARCHIVED";
 
 async function fetchItems(): Promise<MockupTemplateRow[]> {
   const res = await fetch("/api/admin/mockup-templates", { cache: "no-store" });
-  if (!res.ok) throw new Error("Liste alınamadı");
+  if (!res.ok) throw new Error("Could not load list");
   const data = (await res.json()) as { items: MockupTemplateRow[] };
   return data.items;
 }

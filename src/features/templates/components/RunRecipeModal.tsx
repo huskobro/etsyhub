@@ -78,7 +78,7 @@ export function RunRecipeModal({ recipe, onClose }: Props) {
     queryKey: ["templates", "recipes", recipe.id, "runs"],
     queryFn: async () => {
       const r = await fetch(`/api/templates/recipes/${recipe.id}/runs`);
-      if (!r.ok) throw new Error("Recent runs yüklenemedi");
+      if (!r.ok) throw new Error("Could not load recent runs");
       return r.json();
     },
   });

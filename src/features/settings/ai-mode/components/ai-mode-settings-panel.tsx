@@ -38,7 +38,7 @@ export function AiModeSettingsPanel() {
     queryKey: QUERY_KEY,
     queryFn: async (): Promise<{ settings: MaskedSettings }> => {
       const r = await fetch("/api/settings/ai-mode");
-      if (!r.ok) throw new Error("Ayarlar yüklenemedi");
+      if (!r.ok) throw new Error("Could not load settings");
       return r.json();
     },
   });
@@ -98,7 +98,7 @@ export function AiModeSettingsPanel() {
       <Card variant="stat" className="p-5">
         <h2 className="text-lg font-semibold text-text">AI Mode anahtarları</h2>
         <p className="mt-2 text-sm text-danger">
-          {(query.error as Error | null)?.message ?? "Ayarlar yüklenemedi"}
+          {(query.error as Error | null)?.message ?? "Could not load settings"}
         </p>
       </Card>
     );
