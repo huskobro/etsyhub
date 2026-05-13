@@ -13197,6 +13197,229 @@ Sıradaki gerçek iş **Phase 67 visual editor + asset upload UI**: drag/drop sa
 
 ---
 
+## Phase 67 — Visual template editor first slice: asset upload + rect safe-area editor
+
+Phase 66 end-to-end create → bind → publish → use chain'i çalışıyordu ama
+operatör **görsel olarak hiçbir şey göremiyordu**: thumbKey text input
+yapıştırma + 1024×1024 hardcoded baseDimensions + full-canvas hardcoded
+safe-area. Operatör "asset'imi nereye yerleştirdim?" "design'ım nereye
+düşecek?" sorularına ancak başka bir kanaldan (admin manager / DB
+inspect) cevap alabilirdi. Phase 67 bu körlüğü kapatır.
+
+### Phase 66 sonrası ürün boşluğu
+
+1. **Asset upload UI yok**: Operatör MinIO'ya başka bir yolla
+   yüklemiş olduğu key'i text input'a yapıştırmak zorundaydı. Mevcut
+   admin upload-asset endpoint user-scope değildi.
+2. **Hardcoded baseDimensions**: Form `{ w: 1024, h: 1024 }` yazıyordu.
+   Yüklenen asset 256×384 ise compositor pipeline yine 1024×1024
+   sanıyor — render bozuk.
+3. **Hardcoded full-canvas safe-area**: `{ x:0, y:0, w:1, h:1 }`.
+   Operatör frame interior'ını veya gerçek "design fit" bölgesini
+   tanımlayamıyordu — design tüm asset'in üstüne basılıyor.
+4. **Visual feedback yok**: Phase 66 form'da operatör "ne yarattığını"
+   görmüyordu — submit edip publish ettikten sonra Apply drawer'da
+   görünce ne olduğunu öğreniyordu.
+
+### Slice 1 — User-scope upload-asset + asset-url endpoints
+
+`POST /api/mockup-templates/upload-asset` (`src/app/api/mockup-templates/
+upload-asset/route.ts`):
+
+- Auth: `requireUser()` (admin değil — Phase 65 user-scope policy parity)
+- Body: multipart/form-data + `file` + `categoryId` + `purpose: thumb|base`
+- Limits: PNG/JPEG/WebP only, 25MB cap (admin parity)
+- Sharp metadata extract: width + height **zorunlu** (visual editor
+  viewBox'ı için; eksikse ValidationError)
+- **Storage key prefix**: `u/{userId}/templates/{categoryId}/{purpose}/
+  {cuid}.{ext}` — user-isolation hard-coded path:
+  - Admin asset path: `templates/{categoryId}/{purpose}/...` (user prefix yok)
+  - User general asset (Asset row): `u/{userId}/{cuid}` (asset-service emsali)
+  - User template asset (Phase 67): `u/{userId}/templates/{categoryId}/...`
+- Asset DB row YAZMAZ — admin upload-asset gibi storage-only.
+  Template asset'leri Library/Selections'a karışmaz.
+- Audit: `user.mockupTemplate.uploadAsset`
+- Response: `{ storageKey, width, height, sizeBytes, mimeType }`
+
+`GET /api/mockup-templates/asset-url?key=...` (`src/app/api/
+mockup-templates/asset-url/route.ts`):
+
+- Auth: `requireUser()`
+- **Cross-user isolation hard guard**: key `u/{user.id}/templates/`
+  prefix'i ile başlamalı; başkasının `u/{otherUserId}/...` prefix'i
+  → ForbiddenError. Admin prefix `templates/...` reject (admin
+  endpoint ayrı). User general asset prefix (`u/{userId}/{cuid}`
+  templates olmadan) reject (asset signed-url endpoint ayrı).
+- TTL 5min, browser cache 4min (admin parity)
+- Response: `{ url, expiresAt }`
+
+### Slice 2 — `SafeAreaEditor` visual component
+
+`src/features/mockups/components/SafeAreaEditor.tsx` — yeni dosya, ~280
+satır. Pure SVG editor, dış library yok:
+
+- **Coordinate system**: SVG `viewBox = 0 0 ${imageWidth} ${imageHeight}`
+  (asset'in gerçek pixel dimensions). Pointer event'ler
+  `getScreenCTM().inverse()` ile native SVG transform'a düşürülür —
+  zoom/scroll/responsive doğru çalışır.
+- **Rect drag (translate)**: rect body üzerinde pointerdown → mouse
+  hareketi rect'i kaydırır, image bounds'a clamp edilir.
+- **8 resize handles**: 4 corner (nw/ne/sw/se) + 4 edge (n/s/e/w).
+  Handle'a göre x/y/w/h doğru eksen üzerinde update edilir;
+  west/north handle'ları için clamp logic asymmetric (newX = clamp
+  + w = startW + startX - newX). Min dimension 5%.
+- **Dimming overlay**: 4 rect with `rgba(22,19,15,0.45)` safe-area
+  dışında — operatör "design buraya düşecek" sinyalini açıkça görür
+  (Templated.io / Adobe smart object editor pattern parity).
+- **k-orange rect**: fill `rgba(232,93,37,0.08)` + stroke `#e85d25` +
+  white square handles with k-orange border. Cursor: grab/grabbing
+  for rect, nwse-resize/ns-resize/etc. for handles.
+- **Numeric overrides**: 4 input field altında (x/y/w/h % cinsinden,
+  step 0.5, 1 ondalık precision). Operatör visual + numeric ikisini
+  birlikte kullanabilir; numeric input clamp logic visual ile aynı
+  (min dimension 5%, image bounds).
+- **a11y**: SVG `role="application"` + aria-label; numeric input'lar
+  type="number" min/max/step.
+- **Output**: `SafeAreaRect` shape `{ x, y, w, h }` normalized 0..1
+  — schema `SafeAreaRectSchema` ile birebir uyumlu (rotation field
+  optional, Phase 67 scope dışı).
+
+### Slice 3 — `MockupTemplateCreateForm` rewrite
+
+`src/features/mockups/components/MockupTemplateCreateForm.tsx` —
+Phase 66 baseline rewrite (~440 satır). Aynı 3-step API chain
+(Phase 66 baseline) korunur, Phase 66 testid'ler korunur (regression
+safe), ama:
+
+- **Asset upload state**: `uploadMutation` POST'a multipart file
+  yollar; onSuccess `{ storageKey, width, height, sizeBytes,
+  mimeType }` form state'ine kaydeder. Reset safeArea to 10% inset
+  (operatör genelde "tüm asset'in üstünde değil, içinde" başlamak
+  ister).
+- **Signed URL fetch effect**: Asset key değişince
+  `/api/mockup-templates/asset-url`'den preview URL alır, error
+  state'i ayrı handle.
+- **Dropzone vs editor render switch**:
+  - asset null → dashed border dropzone, click-to-pick file input
+  - asset + previewUrl loaded → asset metadata caption + Replace link
+    + `<SafeAreaEditor>`
+  - asset + previewUrl loading → loading state placeholder
+- **Submit flow**: form validation `name + asset !== null` (Phase 66
+  `name + thumbKey` yerine); submit:
+  ```ts
+  baseAssetKey: asset.storageKey,
+  baseDimensions: { w: asset.width, h: asset.height }, // gerçek pixels
+  safeArea: { type: "rect", x, y, w, h },              // gerçek seçim
+  ```
+  Önceki hardcoded 1024×1024 + full-canvas tamamen kalktı.
+
+### Phase 66 testid'ler korundu (regression safe)
+
+`mockup-template-create-page` / `mockup-template-create-form` /
+`mockup-template-create-name` / `mockup-template-create-category` /
+`mockup-template-create-aspect` / `mockup-template-create-publish-toggle` /
+`mockup-template-create-submit` / `mockup-template-create-cancel` /
+`mockup-template-create-back` / `mockup-template-create-error` /
+`mockup-template-create-status` — hepsi Phase 67 form'da aynı yerlerde.
+
+Yeni testid'ler: `mockup-template-create-upload-dropzone`,
+`mockup-template-create-upload-input`,
+`mockup-template-create-editor-loaded`,
+`mockup-template-create-replace-asset`,
+`mockup-template-create-upload-error`, `safe-area-editor`,
+`safe-area-editor-image`, `safe-area-editor-rect`,
+`safe-area-editor-handle-{nw,n,ne,e,se,s,sw,w}`,
+`safe-area-editor-input-{x,y,w,h}`.
+
+### Browser end-to-end full proof
+
+Live dev server (PID intakt, viewport 1440×900, fresh navigation):
+
+| Test | Sonuç |
+|---|---|
+| Page mount | h1 "New mockup template", title "New mockup template · Kivasy", dropzone visible, submit disabled |
+| Real upload (256×384 PNG synthetic) | uploadMutation POST → storageKey returned, signed URL fetched, editor mounted |
+| Visual editor mount | rect + image + 8 handles (nw/n/ne/e/se/s/sw/w) all rendered |
+| Numeric override (x → 15) | rect attribute updated: x=38.4px (=15% × 256), inputs reflect value |
+| Submit chain | 3-step (POST template → POST binding → PATCH publish) — sayfa /templates'e yönlendirildi |
+| DB-level verify | `cmp4n6gat...` row: ACTIVE + LOCAL_SHARP binding ACTIVE + config { baseDimensions: {w:256, h:384}, safeArea: {type:"rect", x:0.15, y:0.1, w:0.8, h:0.8}, baseAssetKey: u/{userId}/templates/wall_art/base/...png } |
+| Visible in apply view | API `?scope=own&status=ACTIVE` → row found, ownership "own", binding 1 (LOCAL_SHARP/ACTIVE) |
+| Screenshot proof | wall texture frame mockup rendered, k-orange safe-area rect tightly fit on frame interior (x≈96/512=18.75%, y≈136/768=17.7%, w=320/512=62.5%, h≈496/768=64.6%), 8 white handles + dimming overlay outside |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/mockup tests/integration/api-mockup-templates-user-scope`:
+  **257/257 PASS** (no regression — Phase 66 testid'ler korunduğu için
+  apply view + create form testleri intakt)
+- Browser end-to-end: real upload + visual editor + 3-step chain +
+  DB verify + Apply view visibility — hepsi canlı dev server'da
+
+### Değişmeyenler (Phase 67)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Phase 64 MockupTemplate.userId nullable +
+  Phase 66 endpoint chain mevcut; Phase 67 yalnız 2 yeni endpoint +
+  1 yeni component + 1 form rewrite.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** SafeAreaEditor pure SVG (no react-dnd,
+  no react-svg-pan-zoom, no fabric.js); asset upload mevcut admin
+  pattern parity (formData + sharp + getStorage).
+- **Phase 66 create chain endpoint signature'ları intakt** (POST
+  template / POST binding / PATCH publish).
+- **Apply drawer + Mockup studio + Render pipeline dokunulmadı.**
+- **Canonical operator loop** (References → Batch → Review → Selection
+  → Mockup → Product → Etsy Draft) intakt.
+- **Kivasy DS dışına çıkılmadı.** k-orange (#e85d25), k-bg-2,
+  k-orange-soft, k-orange-ink, line, line-soft, paper, ink/ink-2/
+  ink-3, danger, success-soft, font-mono tracking-meta recipe'leri.
+- **Cross-user isolation hard-enforced**: user-scope upload prefix
+  `u/{userId}/templates/` + asset-url endpoint key prefix guard +
+  Phase 66 binding endpoint ownership invariant + Phase 64 read-API
+  scope filter — 4 katmanlı korunma intakt.
+
+### Bilinçli scope dışı (Phase 68+ candidate)
+
+- **Perspective quad editor**: SafeAreaEditor şu an `type: "rect"`
+  only. Phase 63 backend `placePerspective` (4-corner DLT homography)
+  hazır; UI 4 noktayı drag eden ayrı sub-mode olarak Phase 68'de
+  açılır. Schema `SafeAreaPerspectiveSchema` mevcut.
+- **Recipe editor**: Şu an `recipe: { blendMode: "normal" }` hardcoded.
+  Operatör shadow/blendMode ayarlamak için admin manager JSON
+  textarea'ya inmek zorunda. UI form: blend dropdown + shadow toggle/
+  intensity ayrı tur.
+- **Asset reuse picker**: Operatör daha önce yüklediği base asset'leri
+  yeniden seçemez (her template için yeni upload). User-scope
+  list-assets endpoint + picker UI ayrı tur.
+- **Drag-and-drop file upload**: Şu an file input click-to-pick.
+  Drag-over visual feedback + drop zone aktivasyonu ayrı küçük tur.
+- **Rotation handle**: SafeAreaRectSchema `rotation` field optional;
+  UI handle eklenmedi (rotated rect Phase 68+ candidate).
+- **Inline preview render**: Operatör "bir test design upload edip
+  bu template ile render bak" akışı — ayrı tur (Phase 8 mockup job
+  pipeline reuse edilebilir).
+- **Template detail / edit / archive page**: Phase 66'da templates
+  index'te liste vardı; detail page (rename + edit binding + archive)
+  ayrı tur.
+
+### Bundan sonra templated.io clone tarafında kalan tek doğru iş
+
+Phase 67 ile **operatör Photoshop'a inmeden ilk gerçek mockup
+template'ini sıfırdan oluşturup yayınlayabilir**:
+- Asset upload (visual feedback ile)
+- Safe-area visual editor (drag/resize + numeric override)
+- Gerçek baseDimensions (no hardcode)
+- Gerçek safeArea (no hardcode)
+- 3-step chain → ACTIVE template → Apply drawer'da kullanılabilir
+
+Sıradaki gerçek iş **Phase 68 perspective quad editor** + **recipe
+editor** + **template detail/edit page**. Bu üçü tamamlanınca
+templated.io ürün modeli **dynamic-mockups deprecation kararına
+hazır** olur (operatör paid external API'ye ihtiyaç duymadan tüm
+template authoring akışını self-hosted pipeline üzerinde yapabilir).
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
