@@ -147,8 +147,15 @@ const LISTING_SOURCES: Record<
  *
  * Phase 35 — Etsy listing detail (`etsy.com/listing/{id}/...`) ile Etsy CDN
  * direct image (`etsystatic.com/...`) ayrılır. Listing URL'i için ayrı
- * "ETSY_LISTING" platform marker'ı dönülür; UI bu row'da "View all images"
- * picker affordance'ı gösterir.
+ * "ETSY_LISTING" platform marker'ı dönülür.
+ *
+ * Phase 38 — Etsy + CF listing-image pickers PASIVE. Marker'lar
+ * detection için korunur (operatöre "biz listing URL'i tanıdık" sinyali
+ * + doğru passive copy göstermek için), ama UrlTab branch artık canlı
+ * request tetikleyen "View all images" CTA'sı yerine bilgilendirici
+ * info panel render eder. Anti-bot duvarı (Datadome / Cloudflare
+ * Turnstile) yüzünden server-side fetch güvenilir olmadığı için
+ * `View all images` deneyimi pasifleştirildi.
  */
 function detectSourceFromUrl(raw: string): SourceHint | null {
   const trimmed = raw.trim();
@@ -159,12 +166,13 @@ function detectSourceFromUrl(raw: string): SourceHint | null {
   } catch {
     return null;
   }
-  // Etsy listing detail page (NOT a direct image URL) — listing picker
-  // affordance açar.
+  // Etsy listing detail page (NOT a direct image URL) — Phase 38:
+  // passive copy; UI yönergesi direct image URL'i operatöre işaret
+  // ediyor.
   if (host.includes("etsy.com") && /\/listing\/\d+/i.test(trimmed)) {
     return {
       platform: "ETSY_LISTING",
-      label: "Etsy listing · we can pull all images",
+      label: "Etsy listing page detected",
     };
   }
   if (host.includes("etsystatic.com") || host.includes("etsy.com")) {
@@ -174,15 +182,15 @@ function detectSourceFromUrl(raw: string): SourceHint | null {
     return { platform: "PINTEREST", label: "Looks like Pinterest" };
   }
   /* Phase 37 — Creative Fabrica product page (listing) — same pattern as
-   * Etsy listing. CF product URL: creativefabrica.com/product/{slug}/
-   * picker affordance açılır. */
+   * Etsy listing.
+   * Phase 38 — passive copy paritesi. */
   if (
     host.includes("creativefabrica.com") &&
     /\/product\/[^/?#]+/i.test(trimmed)
   ) {
     return {
       platform: "CREATIVE_FABRICA_LISTING",
-      label: "Creative Fabrica listing · we can pull all images",
+      label: "Creative Fabrica product page detected",
     };
   }
   if (
@@ -956,13 +964,14 @@ export function AddReferenceDialog({
               onRemoveRow={urlRemoveRow}
               onAddRow={urlAddRow}
               onPaste={urlHandlePaste}
-              onOpenListingPicker={(rowId, url, source) =>
-                setListingPicker({
-                  sourceRowId: rowId,
-                  listingUrl: url,
-                  source,
-                })
-              }
+              /* Phase 38 — Etsy + CF listing picker pasive. UrlTab
+               * artık `onOpenListingPicker` prop'unu almıyor → "View
+               * all images" CTA render edilmez → request hiç atılmaz.
+               * UrlTab içinde detection + passive info panel kalır
+               * (operatöre net yönerge). ListingPicker component'i
+               * ve `listingPicker` state diskte korunur (Phase 35-37
+               * kodu silinmez; ileride browser-side / extension
+               * çözümüyle geri açılabilir). */
               globalMessage={urlGlobalMessage}
             />
           ) : null}
@@ -1124,17 +1133,26 @@ export function AddReferenceDialog({
         ) : null}
       </div>
 
-      {/* Phase 35 — Etsy listing image picker (modal-over-modal).
-       * Phase 37 — source-aware: aynı component Etsy + Creative
-       * Fabrica için kullanılır. `source` field'ı service endpoint
-       * + copy seçer.
+      {/* Phase 35-37: Etsy + CF listing image picker (modal-over-
+       * modal) burada render edilirdi.
        *
-       *   Yalnız `listingPicker` non-null iken render edilir. Operatör
-       *   N image seçince `urlReplaceRowWithUrls` ile mevcut row
-       *   (listing URL'i içeren) silinir, N yeni idle row eklenir.
-       *   Operatör sonra "Fetch N images" ile normal queue flow'una
-       *   girer. Backdrop click + Escape ile picker kapanır, ana
-       *   modal hâlâ açık kalır (z-index 60 > 50). */}
+       * Phase 38 — DORMANT.
+       *   UrlTab artık `onOpenListingPicker` callback'ini almadığı
+       *   için `setListingPicker` çağrılmaz; `listingPicker` state
+       *   her zaman null; bu blok hiç render edilmez.
+       *
+       *   `ListingPicker` component'i, `listingPicker` state ve
+       *   `urlReplaceRowWithUrls` helper'ı diskte KORUNUR — Phase
+       *   35-37 işi silinmedi. Gelecek browser-side / extension
+       *   tabanlı çözüm landing yaptığında UrlTab'a callback geri
+       *   geçilir → blok yeniden canlanır.
+       *
+       *   Şu an aktif olsaydı operatör "View all images" tıklardı,
+       *   server bir CF/Etsy fetch atardı, Datadome / Cloudflare
+       *   Turnstile 403 dönerdi, blocked fallback UI'ı görülürdü.
+       *   Bu deneyim "var ama çalışmıyor" hissi verdiği için (ve
+       *   IP reputation maliyeti olduğu için) Phase 38'de
+       *   pasifleştirildi. */}
       {listingPicker ? (
         <ListingPicker
           listingUrl={listingPicker.listingUrl}
@@ -1298,7 +1316,7 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
       <div className="flex flex-col gap-3">
         <div className="flex items-baseline justify-between">
           <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-            Image URL
+            Direct image URL
           </span>
           {entries.length > 1 ? (
             <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
@@ -1306,7 +1324,7 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
             </span>
           ) : (
             <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
-              Paste one or more URLs (one per line)
+              Paste one or more direct image URLs (one per line)
             </span>
           )}
         </div>
@@ -1380,43 +1398,32 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
                     </span>
                   ) : sourceHint?.platform === "ETSY_LISTING" ||
                     sourceHint?.platform === "CREATIVE_FABRICA_LISTING" ? (
-                    /* Phase 35 — Etsy listing detection: hint + "View all
-                     * images" affordance. Click → parent picker opens.
-                     * Phase 37 — same affordance for Creative Fabrica
-                     * product page. Source is dispatched via callback
-                     * `source` parameter ("etsy" | "cf"). Direct image
-                     * URL akışı bozulmaz; listing'ler için ek bir yol
-                     * açılır. */
-                    <div
-                      className="inline-flex flex-wrap items-center gap-2 font-mono text-[10.5px] tracking-wider text-success"
+                    /* Phase 35 → Phase 37: listing detection + "View all
+                     * images" affordance ile picker açılırdı.
+                     *
+                     * Phase 38 — PASSIVE STATE:
+                     *   Etsy = Datadome WAF, Creative Fabrica =
+                     *   Cloudflare Turnstile. Server-side reliable
+                     *   success path yok. Bu yüzden CTA + canlı request
+                     *   pasifleştirildi. Detection korunur (operatör
+                     *   "biz tanıdık" sinyalini görür), ama hiç request
+                     *   atılmaz; bunun yerine kullanıcıya direct image
+                     *   URL yönergesi gösterilir.
+                     *
+                     *   - hiç fetch yok
+                     *   - hiç spinner yok
+                     *   - hiç "blocked" error sayfası yok
+                     *   - operatör neyi yapmalı net görür: image
+                     *     address'i kopyala, queue'ya paste'le. */
+                    <span
+                      className="inline-flex items-center gap-1 font-mono text-[10.5px] tracking-wider text-ink-2"
                       data-testid="add-ref-source-hint"
                       data-listing-source={
                         sourceHint.platform === "ETSY_LISTING" ? "etsy" : "cf"
                       }
                     >
-                      <span>
-                        <span aria-hidden>✓</span> {sourceHint.label}
-                      </span>
-                      {onOpenListingPicker ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onOpenListingPicker(
-                              entry.id,
-                              entry.url,
-                              sourceHint.platform === "ETSY_LISTING"
-                                ? "etsy"
-                                : "cf",
-                            )
-                          }
-                          className="k-btn k-btn--ghost"
-                          data-size="sm"
-                          data-testid="add-ref-open-listing-picker"
-                        >
-                          View all images
-                        </button>
-                      ) : null}
-                    </div>
+                      <span aria-hidden>•</span> {sourceHint.label}
+                    </span>
                   ) : sourceHint ? (
                     <span
                       className={cn(
@@ -1438,6 +1445,46 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
                     </span>
                   )}
                 </div>
+
+                {/* Phase 38 — passive info panel for Etsy + CF listing
+                 *   URLs. When the row contains a product page (not a
+                 *   direct image URL), this block tells the operator
+                 *   what to do: copy the direct image address from the
+                 *   browser and paste it instead. No live request is
+                 *   triggered from this row. */}
+                {sourceHint?.platform === "ETSY_LISTING" ||
+                sourceHint?.platform === "CREATIVE_FABRICA_LISTING" ? (
+                  <div
+                    className="ml-11 mt-0.5 rounded-md border border-line-soft bg-k-bg-2/40 px-3 py-2 text-[11.5px] text-ink-2"
+                    data-testid="add-ref-listing-passive-panel"
+                    data-listing-source={
+                      sourceHint.platform === "ETSY_LISTING" ? "etsy" : "cf"
+                    }
+                  >
+                    <div className="flex items-baseline gap-1.5">
+                      <span
+                        aria-hidden
+                        className="text-[10.5px] font-mono uppercase tracking-meta text-ink-3"
+                      >
+                        Heads up
+                      </span>
+                      <span className="font-medium text-ink">
+                        Pulling images from{" "}
+                        {sourceHint.platform === "ETSY_LISTING"
+                          ? "Etsy"
+                          : "Creative Fabrica"}{" "}
+                        product pages is temporarily unavailable.
+                      </span>
+                    </div>
+                    <p className="mt-1 leading-snug text-ink-2">
+                      Open the page in your browser, right-click the
+                      image you want and choose{" "}
+                      <em>&ldquo;Copy image address&rdquo;</em>, then
+                      paste that direct image URL into this row (or any
+                      other row). The queue handles the rest.
+                    </p>
+                  </div>
+                ) : null}
               </div>
             );
           })}
@@ -1458,7 +1505,7 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
           data-testid="add-ref-url-disclosure"
         >
           <summary className="flex cursor-pointer items-center justify-between bg-k-bg px-4 py-2.5 text-[12.5px] font-medium text-ink hover:bg-k-bg-2/60">
-            <span>How to get the image URL</span>
+            <span>How to get a direct image URL</span>
             <span aria-hidden className="text-ink-3">
               ⌄
             </span>
@@ -1468,19 +1515,28 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
               <span className="w-5 pt-0.5 font-mono text-[10.5px] tracking-wider text-k-orange">
                 01
               </span>
-              <span>Right-click the image on Etsy, Pinterest or Creative Fabrica</span>
+              <span>
+                Open the source page in your browser (Etsy, Pinterest,
+                Creative Fabrica, or anywhere else)
+              </span>
             </li>
             <li className="flex gap-3">
               <span className="w-5 pt-0.5 font-mono text-[10.5px] tracking-wider text-k-orange">
                 02
               </span>
-              <span>Select &ldquo;Copy image address&rdquo;</span>
+              <span>
+                Right-click the image you want and select{" "}
+                <em>&ldquo;Copy image address&rdquo;</em>
+              </span>
             </li>
             <li className="flex gap-3">
               <span className="w-5 pt-0.5 font-mono text-[10.5px] tracking-wider text-k-orange">
                 03
               </span>
-              <span>Paste here — Kivasy fetches the image and detects the source</span>
+              <span>
+                Paste here — Kivasy fetches the image, builds a preview
+                and detects the source
+              </span>
             </li>
           </ol>
         </details>

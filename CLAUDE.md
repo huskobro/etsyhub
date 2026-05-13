@@ -7313,6 +7313,263 @@ zinciri intakt.
 
 ---
 
+## Phase 38 — Listing image picker pasifleştirme, direct image URL canonical olarak güçlendirildi
+
+Phase 35–37 turları Etsy + Creative Fabrica listing URL'lerinden tüm
+görselleri çekip operatöre seçtiren bir picker akışı kurmuştu. Bu
+akış teknik olarak çalışıyordu ama **gerçek hayatta**:
+
+- **Etsy** → Datadome WAF
+- **Creative Fabrica** → Cloudflare Turnstile (JS challenge)
+
+ikisi de server-side fetch'i agresif şekilde bloke ediyor. Phase 36
+ve Phase 37 audit'leri pratik kanıtı verdi: tüm UA varyantları
+HTTP 403 + "Just a moment" / "Please enable JS" interstitial. Picker
+operatöre her tıklamada 5–7 saniye spinner + "blocked" fallback
+gösteriyordu — "var ama çalışmıyor" deneyimi + bizim sunucu IP'mizden
+upstream'e gereksiz request yağmuru + IP reputation riski.
+
+Phase 38 kararı: **listing-image picker akışı pasifleştirildi**.
+Detection korunur, ama hiç request atılmaz; operatöre yapması
+gerekenin **net ürün copy'si** gösterilir. Direct image URL bundan
+sonraki **canonical** intake yolu.
+
+### Kapatma kararının teknik gerekçesi
+
+Aktif tutmaya devam etmenin maliyeti:
+
+1. **Gereksiz request**: Her "View all images" tıklayışı → 1 server
+   request → upstream'den 403 → 1 saniye boşa harcanmış kullanıcı
+   zamanı + bizim sunucu round-trip.
+2. **IP reputation**: Tekrar tekrar blocked request → Etsy /
+   Cloudflare nazarında bizim outbound IP'mizin skoru düşer. Etsy
+   Open API entegrasyonu, scraper provider'lar, başka legit kullanım
+   yolları olumsuz etkilenebilir.
+3. **Unreliable UX**: Operatör spinner → blocked fallback → manuel
+   paste sırasını her seferinde geçiyordu. Picker oluştuğundan beri
+   gerçek dünyada **başarılı bir tek case** yok.
+4. **Karmaşıklık**: React Query retry semantic + AbortController +
+   typed error code switch + blocked vs fetch_failed UI branch'leri
+   — hepsi yalnız "nazikçe hayır de" için. Sade pasif UI bunu
+   bir adımda çözer.
+
+Detection'ı koruma sebebi: operatör listing URL paste ettiğinde
+sistem "bu Etsy/CF listing'i farkındayım" sinyalini verir + doğru
+yönergeyi gösterir. Detection olmadan operatör direct image URL
+beklenirken listing URL atıp belirsiz hata alır.
+
+### Düzeltmeler
+
+**1. `detectSourceFromUrl` — passive copy**
+
+`ETSY_LISTING` ve `CREATIVE_FABRICA_LISTING` marker'ları korundu,
+label'lar "biz pull edeceğiz" promise'inden "bu nedir?" identification'a
+geçti:
+
+| Marker | Phase 37 label | Phase 38 label |
+|---|---|---|
+| ETSY_LISTING | "Etsy listing · we can pull all images" | "Etsy listing page detected" |
+| CREATIVE_FABRICA_LISTING | "Creative Fabrica listing · we can pull all images" | "Creative Fabrica product page detected" |
+
+**2. UrlTab listing branch — passive info panel**
+
+Eski branch "View all images" k-btn--ghost CTA render ediyordu →
+parent picker'ı tetikliyordu → request atılıyordu.
+
+Yeni branch:
+- Source hint satırı sade bullet + ink-2 tone (success tone
+  kalktı — operatöre "bu çalışacak" promise'i kalktı)
+- Bir alta **passive info panel** (`data-testid=
+  "add-ref-listing-passive-panel"`):
+  - "HEADS UP — Pulling images from Etsy/Creative Fabrica
+    product pages is temporarily unavailable."
+  - "Open the page in your browser, right-click the image you
+    want and choose 'Copy image address', then paste that
+    direct image URL into this row (or any other row). The
+    queue handles the rest."
+- Source-aware: aynı panel hem Etsy hem CF için kullanılır,
+  `data-listing-source` attribute ile farklılaşır (audit + test
+  selector için)
+
+**3. Picker dispatch — UrlTab'dan ayrılma**
+
+Parent `AddReferenceDialog` artık `onOpenListingPicker` callback'ini
+UrlTab'a geçirmiyor. UrlTab `UrlTabProps.onOpenListingPicker`
+optional kalır (geri açma yolu temiz), ama Phase 38'de undefined
+geçilir → CTA hiç render edilmez → callback hiç çağrılmaz →
+`setListingPicker` hiç tetiklenmez → `<ListingPicker>` blok hiç
+render edilmez.
+
+`ListingPicker` component'i, `LISTING_SOURCES` map'i, `listingPicker`
+state, `urlReplaceRowWithUrls` helper'ı **diskte korunur**. CF +
+Etsy service + parser + API endpoint + 32 yeni test de korunur.
+Phase 35–37 işi silinmedi — gelecekte browser-side / extension
+çözümü landing yaptığında UrlTab'a callback geri geçilir, akış
+yeniden canlanır.
+
+**4. Direct image URL canonical güçlendirme**
+
+UrlTab header:
+
+- "Image URL" → "Direct image URL" (kanonik niyet net)
+- "Paste one or more URLs (one per line)" → "Paste one or more
+  direct image URLs (one per line)"
+
+Disclosure ("How to get the image URL" → "How to get a direct
+image URL") + 3 step daha net ifade edildi:
+
+1. "Open the source page in your browser (Etsy, Pinterest,
+   Creative Fabrica, or anywhere else)"
+2. "Right-click the image you want and select 'Copy image address'"
+3. "Paste here — Kivasy fetches the image, builds a preview and
+   detects the source"
+
+Direct image URL yolunun mevcut tüm davranışları korundu:
+- Phase 30 pre-fetch `<img>` preview ✓
+- Phase 29 multi-line paste split + queue rows ✓
+- Phase 30 source detection (ETSY, PINTEREST, CREATIVE_FABRICA,
+  DIRECT, OTHER) ✓
+- Server-side title fallback (`deriveTitleFromUrl`) ✓
+- Fetch/save lifecycle ✓
+- Per-row preview + status ✓
+
+### Browser verification — gerçek kanıt
+
+Live dev server (PID 70095, CWD `EtsyHub`, viewport 1440×900),
+network spy ile capture, React fiber `__reactProps$` üzerinden
+synthetic input change:
+
+**Etsy listing URL paste edildiğinde:**
+```
+hintText: "• Etsy listing page detected"
+hintListingSource: "etsy"
+passivePanelPresent: true
+passivePanelSource: "etsy"
+passivePanelText: "Heads up - Pulling images from Etsy product
+  pages is temporarily unavailable. Open the page in your
+  browser, right-click the image you want and choose 'Copy
+  image address', then paste that direct image URL into this
+  row (or any other row). The queue handles the rest."
+pickerButtonPresent: false  ← CTA GONE
+pickerModalOpened: false    ← picker NEVER renders
+scraperRequests: []         ← ZERO requests to /api/scraper/etsy-listing-images
+totalRequests: 0
+```
+
+**CF listing URL paste edildiğinde:**
+```
+hintText: "• Creative Fabrica product page detected"
+hintListingSource: "cf"
+passivePanelPresent: true
+passivePanelSource: "cf"
+passivePanelText: "...temporarily unavailable. Open the page in
+  your browser, right-click..."
+pickerButtonPresent: false
+pickerModalOpened: false
+scraperRequests: []         ← ZERO requests to /api/scraper/creative-fabrica-listing-images
+totalRequests: 0
+```
+
+**Direct image URL regression:**
+```
+Paste "https://i.etsystatic.com/abc/il_1140xN.jpg"
+→ hint "✓ Looks like Etsy" (Phase 27 success tone, NOT passive)
+→ NO passive panel
+→ NO picker button
+→ CTA "Fetch image" ready
+
+Paste "https://example.com/sunset_landscape.png"
+→ hint "✓ Direct image URL" (Phase 27 baseline)
+
+Paste "https://i.pinimg.com/abc/xyz.jpg"
+→ hint "✓ Looks like Pinterest" (danger tone, Phase 27)
+
+Paste "https://www.creativefabrica.com/category/clipart/"
+→ hint "✓ Creative Fabrica page · we'll fetch the main image"
+   (ink-2 page tone, Phase 27 honest signal — NOT listing)
+
+Empty
+→ no hint (helper text "Etsy · Pinterest · Creative Fabrica ·
+  or a direct image link")
+```
+
+**Network spy doğrulaması:** `window.fetch` patch'i ile 5 farklı
+URL paste edildi (2 listing + 3 baseline). `scraperReqs` filter:
+`/scraper\/(etsy|creative-fabrica)-listing-images/` regex. Toplam
+listing-image fetch sayısı: **0**.
+
+### Future solution — browser-side / extension teknik değerlendirme
+
+Anti-bot duvarını server-side fetch ile aşmak yapısal olarak çok
+zor. Cloudflare Turnstile + Datadome modern challenge tipleri:
+JS execution + canvas fingerprint + WebGL + mouse movement +
+behavior timing. Server-side bypass yaklaşımları:
+
+1. **Headless browser (Puppeteer/Playwright stealth)** — JS
+   execution destekler, ama Cloudflare/Datadome bunları tanımak
+   için browser fingerprint imzalarına bakıyor; başarı oranı
+   düşük + bakım yükü yüksek.
+2. **Paid scraper proxy (ScraperAPI, Bright Data)** — başarı
+   oranı daha iyi ama opt-in/paid feature; her kullanıcının
+   API key + maliyet üstlenmesi gerekir.
+3. **Kullanıcının kendi browser'ı (Chrome extension / Tauri
+   webview)** — kullanıcı zaten Etsy/CF'de logged-in ve
+   doğal browser session'ı var. Extension DOM scrape edip
+   image URL'leri Kivasy'ye gönderebilir. **Bu yol mantıklı.**
+
+Midjourney browser bridge tarafında zaten denenmiş ve çalışan
+pattern bu üçüncüsü: operatörün kendi browser'ı Midjourney
+oturumunu tutuyor, bridge UI thread'de DOM extraction yapıyor,
+backend yalnız sonucu alıyor. Aynı yaklaşım Etsy/CF listing
+intake için:
+
+- Chrome extension: kullanıcı listing sayfasındayken sağ üst
+  ikonuna tıklar → extension page DOM'unu okur → image URL'leri
+  + title + listing ID Kivasy backend'ine POST eder
+- Yeni queue row'lar olarak görünür, normal pipeline'a girer
+
+**Avantajlar:** anti-bot duvarı aşılmış olur (zaten kullanıcının
+browser session'ı), ödeme/proxy maliyeti yok, kullanıcıyı
+açıkça control altında tutar.
+
+**Maliyet:** Chrome extension yeni bir proje yapısı (manifest.json,
+content scripts, message passing, CORS izinleri, ekstra cross-origin
+auth flow). Bu **ayrı bir altyapı/ürün turudur** — bu turun
+scope'unu aşar.
+
+Karar: pasifleştirme **doğru ara durum**. Browser-side / extension
+çözümü ayrı bir tur olarak ele alınır; Midjourney bridge'in başarılı
+çalıştığı modeli temel alır. Bu turda implement edilmedi.
+
+### Değişmeyenler (Phase 38)
+
+- **Review freeze (Madde Z) korunur.** Phase 38 review modülüne
+  dokunmaz.
+- **Schema migration yok.** Hiç DB değişikliği yok.
+- **Yeni surface açılmadı.** Sadece UrlTab listing branch'in iç
+  davranışı değişti.
+- **Yeni büyük abstraction yok.** ListingPicker + LISTING_SOURCES
+  map korundu (dormant).
+- **WorkflowRun eklenmez** (IA Phase 11 kapsamı).
+- **Kivasy DS dışına çıkılmadı.** Passive panel mevcut Kivasy
+  recipe'leri kullanır (`bg-k-bg-2/40`, `border-line-soft`,
+  font-mono caption + ink-2 body).
+
+### Bundan sonra bulk intake tarafında kalan tek doğru iş
+
+**Browser-side / extension çözümü** (Midjourney bridge pattern):
+operatörün kendi browser'ında çalışan extension/companion app
+ile listing sayfa DOM'undan image URL'leri çekme. Bu ayrı bir
+altyapı turu (Chrome extension manifest, content script, message
+passing, cross-origin auth). Phase 38 pasifleştirme bu altyapı
+gelene kadar **doğru ara durum**.
+
+Bu turun dışında, References family canlı operasyonel iş alanı
+**dijital direct image URL intake** + **bookmark promote** zinciri.
+Hiçbir bug açık değil.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
