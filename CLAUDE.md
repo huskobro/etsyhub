@@ -12375,6 +12375,196 @@ modal** + **modal-from-Batches Add Batch entry** UX polish.
 
 ---
 
+## Phase 62 — Create Similar finalize: v4 A6 split modal + Midjourney bridge confidence
+
+Phase 60-61 ile teknik dispatcher + provider-aware form bağlandı, ama
+iki UX/ops açığı kaldı:
+1. **Compose 440px panel cramped** — v4 A6 spec geniş split layout istiyor (rail + body + footer); Phase 47-61 inline panel'e sıkışıktı
+2. **Midjourney bridge dependency invisible** — operatör launch'a basıyor → 5sn sonra "neden fail oldu?" sorusu cevapsız
+
+Phase 62 her ikisini ürünleştirir + mode picker'a hiyerarşi ekler.
+
+### Ürün kararları (Phase 62)
+
+**Karar 1 — Hibrit (queue panel staging + split modal compose)**:
+- Queue panel right rail kalır (Phase 45+ baseline; Pool browse kesintisiz)
+- "Create Similar" CTA artık **inline 440px form'a değil**, **split modal**'a açar
+- v4 A6 layout: rail (sol ~280px source references composite) + body (sağ ~640px form sections) + footer (cost preview + Launch CTA)
+- Modal kapatma → operatör Pool browse + queue panel intakt
+- Phase 47 inline ComposePanel + FieldRow function'ları **silindi** (537 satır dead code temizliği); modal canonical compose
+
+**Karar 2 — Bridge state proactive göstergesi**:
+- Yeni endpoint: `GET /api/admin/midjourney/bridge/health`
+  - Mevcut `BridgeClient.health()` + UI-friendly tone wrapping
+  - 4 state: `online` / `offline` / `session-required` / `degraded`
+  - State karar tablosu:
+    - fetch fail → "Bridge not running" (start service / switch to Kie)
+    - browser.launched=false → "Bridge running but no browser attached"
+    - mjSession.likelyLoggedIn=false → "Session not detected" (sign in)
+    - jobs.blocked > 0 → "Bridge online · N blocked jobs"
+    - all healthy → "Bridge ready · session detected"
+  - Auth: requireAdmin
+- Modal Midjourney seçildiğinde `useEffect` → fetch `/api/admin/midjourney/bridge/health` → state badge render edilir
+- Online → küçük green chip; offline/degraded/session-required → tone-aware card + actionable detail + **Switch to Kie · GPT Image 1.5 →** button
+
+**Karar 3 — Mode picker hiyerarşi**:
+- Pre-Phase 62: 6 mode chip tek satır, eşit ağırlık
+- Phase 62: **3 prominent (sref/oref/cref)** her zaman görünür (k-segment ana satır) + **3 advanced (imagine/image-prompt/describe)** "More modes" toggle disclosure
+- Operator default mental model "reference-driven similar generation" → sref/oref/cref direkt hiyerarşi başında
+- Advanced senaryolar (saf prompt-only, raw image-as-prompt, describe-only) opt-in
+- Auto-toggle: operatör advanced bir mode seçer ise advanced section auto-expand olur
+
+**Karar 4 — Add Batch entry korundu** (Phase 62 scope dışı):
+- `/batches` Start Batch → `/references?intent=start-batch` → Pool yönlendirme Phase 60 baseline'da kabul
+- Phase 62 split modal eklendiğinde de **doğal kalıyor**: operatör Pool'da staging yapar (Add to Draft), sonra queue panel'den modal açar — bu mental model güçlü
+- Modal-from-Batches alternative entry Phase 63+ candidate
+
+### Yeni dosyalar / edit'ler
+
+**`src/app/api/admin/midjourney/bridge/health/route.ts` (yeni)**:
+```ts
+export const GET = withErrorHandling(async () => {
+  await requireAdmin();
+  try {
+    const health = await getBridgeClient().health();
+    // Map BridgeHealth → BridgeHealthState (online/offline/session-required/degraded)
+    // + operator-facing summary + detail copy
+  } catch (BridgeUnreachableError) {
+    return { state: "offline", summary: "Bridge not running", detail: "..." };
+  }
+});
+```
+
+**`src/features/batches/components/BatchComposeSplitModal.tsx` (yeni, ~620 satır)**:
+- v4 A6 split layout (`docs/design-system/kivasy/ui_kits/kivasy/v4/screens-a6-a7.jsx` parity)
+- Source rail: batch.items grid + per-item k-thumb + title + product type + local-only badge
+- Form body: Provider select + bridge health badge + mode picker (hierarchy) + prompt + aspect/similarity/count/quality/brief
+- Footer: Cancel + cost preview + Launch primary
+- Escape close + backdrop click + focus management
+- Phase 49 sessionStorage launchOutcome handoff intakt
+
+**`src/features/batches/components/BatchQueuePanel.tsx` (refactor)**:
+- 956 → **419 satır** (537 satır dead code silindi)
+- Inline `ComposePanel` + `FieldRow` function'ları kaldırıldı
+- `mode: "queue" | "compose"` state → `composeModalOpen: boolean`
+- "Create Similar" CTA → `setComposeModalOpen(true)` (modal açar)
+- Modal entegrasyonu fragment wrap (collapsed + expanded her ikisinde)
+
+### Browser verification (live preview, viewport 1440×900, 12 senaryo PASS)
+
+```
+/references navigate → panel expanded 320px (Phase 60 baseline intakt)
+Click "Create Similar" CTA →
+  modalPresent: true
+  modalDialogRole: "dialog"
+  modalAriaModal: "true"
+  railPresent: true, railItemCount: 2 (source references)
+  providerSelected: "midjourney" (Phase 60 default)
+  bridgeHealthPresent: true, state: "offline" (real bridge unreachable)
+  prominentChips: 3 (sref active, oref, cref)
+  advancedChipsHidden: true (default closed)
+  advancedTogglePresent: true ("More modes")
+  launchEnabled: true (Phase 61 launchBackendReady=true)
+  launchText: "Create Similar · 2 × 6"
+  costText: "12 gens · bridge (free) · est. 6m"
+
+Click "More modes" →
+  advChips: 3 (/imagine, Image prompt, Describe)
+
+Click "Describe" →
+  promptDisabled: true
+  launchText: "Describe 2 references"
+  costText: "2 describes · bridge (free)"
+
+Click "Switch to Kie" (from bridge health badge) →
+  provider: "kie-gpt-image-1.5"
+  mjChipsGone: true (mode picker disappears)
+  briefPresent: true (Kie brief field appears)
+  bridgeHealthHidden: true (no badge for Kie)
+  cost: "12 gens · ~$2.88 · est. 6m"
+  launch: "Create Similar · 2 × 6"
+```
+
+Screenshot: References Pool grid arkasında, ön planda **wide split modal** (max-w-1080) + sol 280px source references rail (2 marquee sign card) + sağ form body (Provider Midjourney + bridge offline kırmızı card + Switch to Kie button + Generation mode 3 prominent chip ile --sref active + Hide advanced + 3 advanced chip + Prompt OPTIONAL · RECOMMENDED + Aspect 2:3 + Similarity Medium + Count) + footer (Cancel + 12 gens · bridge (free) · est. 6m + Create Similar · 2 × 6 primary).
+
+Bridge health badge canlı kanıt: real bridge dev'de yok, endpoint **gerçek probe** yapıyor (BridgeUnreachableError catch → "offline"), operator actionable copy görüyor.
+
+### Self-hosted mockup generator next-step plan (somut)
+
+Phase 60 araştırması "Sharp compositor zaten elimizde" buldu. Phase 61 yol A + yol B önerisi. Phase 62'de **uygulanabilir teknik plan** detayı:
+
+**Mevcut durum** (`src/providers/mockup/local-sharp/`):
+- `compositor.ts`: Sharp pipeline (MinIO fetch base + design + safe-area + recipe + composite + thumbnail + MinIO upload)
+- `safe-area.ts`: `placeRect` çalışıyor; `placePerspective` **stub: throw NOT_IMPLEMENTED**
+- `recipe-applicator.ts`: blend + opsiyonel shadow
+
+**Yol A — `placePerspective` fill-in (~1-2 gün, RISK: DÜŞÜK)**:
+- Dosya: `src/providers/mockup/local-sharp/safe-area.ts`
+- Algoritma: 4-corner manual koordinatlar (`{ tl, tr, br, bl }`) → 8-DOF homography matris (DLT solver, ~50 satır pure math)
+- Sharp `affine(matrix)` API destekliyor (libvips internal)
+- Test: `tests/unit/mockup/local-sharp/place-perspective.test.ts` 3 fixture (identity / 45° rotate / skewed quad → corner mapping snapshot)
+- Çıktı: t-shirt/mug/kupa yamuk smart-object area'lara designer image fit; PSD smart-object parity
+
+**Yol B — PSD ETL CLI (~1 gün, RISK: DÜŞÜK)**:
+- npm dep: `ag-psd ^15` (pure-JS PSD parser, ~120KB, no native binding, well-maintained)
+- Yeni dosya: `scripts/import-psd-mockup-template.ts`
+  - CLI: `npm run mockup:import-psd <file.psd>`
+  - `ag-psd.readPsd(buffer)` → smart-object layer'ları enumerate
+  - Layer name pattern: `@kivasy:area:design` → `area: { x, y, w, h, rotation }` JSON template
+  - Output: stdout JSON (operator stdout > file ile yakalar) veya `--out path.json` flag
+- Doc: `docs/mockup-templates-from-psd.md` — operator guide (smart-object naming convention + script kullanımı)
+- Çıktı: API-free, sınırsız, operator Photoshop'ta bir kez yapar; sonraki tüm render'lar Sharp + JSON üzerinden
+
+**Önerilen sıra** (Phase 63+ candidate):
+1. Yol A önce (perspective transform mevcut Sharp recipe'sine en organik genişleme; mockup template'lerin yamuk smart-object area'ları işliyor)
+2. Yol B sonra (Yol A çalıştığında PSD import'u JSON template olarak yazılır + perspective field doğal yere gelir)
+3. Toplam ~2-3 gün; mevcut altyapıya 0 abstraction katar; `dynamic-mockups` API path'i deprecate adayı olur
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **435/435 PASS** (canonical regression)
+- `next build`: ✓ Compiled successfully (Phase 62 inline style fix: `style={{ maxHeight }}` → `max-h-[820px]` Tailwind arbitrary class)
+
+### Değişmeyenler (Phase 62)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız UI component + API endpoint + dead code cleanup.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `BatchComposeSplitModal` standalone component, `BridgeHealthBadge` private sub-component, `BridgeHealthResponse` type literal. Şared shell extraction (modal + page) Phase 63+ defer.
+- **References / Batch / Review / Selection / Mockup / Product / Etsy Draft canonical akışları intakt** (Phase 26-61 baseline).
+- **Phase 60 baseline'ı intakt**: default-expanded queue panel + Midjourney first-class + provider-aware form fields.
+- **Phase 61 dispatcher intakt**: `launchBatch` + `createMidjourneyJob`/`createMidjourneyDescribeJob` per-mode mapping unchanged.
+- **Kie path tamamen intakt** (regression: provider switch → mode picker gone, brief field, cost API).
+- **Phase 49 sessionStorage launchOutcome** modal'da da intakt (success → batch detail banner).
+- **Kivasy DS dışına çıkılmadı.** k-orange/k-orange-soft/k-orange-ink, k-bg-2, line/line-soft, k-segment recipe, paper, success-soft/danger/warning-soft tone'lar.
+
+### Bilinçli scope dışı (Phase 63+ candidate)
+
+- **Modal-from-Batches Add Batch entry**: `/batches` Start Batch CTA modal-açan değil, hâlâ Pool yönlendirme. Add Batch akışı Phase 60'ta kabul edildi; Phase 63'te modal-from-Batches alternative entry değerlendirilebilir.
+- **`BatchComposeClient` (page) silinmesi veya modal'a redirect**: Page hâlâ erişilebilir (`/batches/[id]/compose`). Page'de Midjourney mode picker yok; honest disclosure + Switch-to-Kie + Open Pool buttons sunuluyor (Phase 61). Page'i tamamen modal redirect'e çevirmek Phase 63 small cleanup.
+- **Sharp `placePerspective` + PSD ETL CLI** (Yol A + Yol B, ~2-3 gün): yukarıdaki uygulanabilir plan; mockup self-hosted pipeline finalize.
+- **Bridge health probe periodic refresh**: şu an modal mount'ta tek probe; ileride 30sn polling + manual refresh button operator confidence için ekleme.
+- **Bridge health probe aggressive UI mode**: launch button'u bridge offline iken disable etmek (şu an yalnız uyarıyor, launch izinli — operatör override edebilir, partial-failure tolerance Phase 48 baseline ile yakalanır).
+
+### Bundan sonra production tarafında kalan tek doğru iş
+
+Phase 62 ile Create Similar yüzeyi **gerçekten finalize**:
+- v4 A6 split modal layout (geniş, premium, source rail + form + footer)
+- Midjourney first-class + provider-aware fields (Phase 60-61)
+- Server-side dispatcher Midjourney path'i çalışıyor (Phase 61)
+- **Bridge health proactive göstergesi + actionable copy + Switch-to-Kie** (Phase 62 ✓)
+- **Mode picker hiyerarşi** (3 prominent reference-driven + 3 advanced disclosure) (Phase 62 ✓)
+- Kie regression intakt
+- Honest fallback'ler her seviyede
+
+Tek yarım iş hâlâ **production bridge dev environment** — operator browser bridge ayrı admin akışı, dev'de offline; bu **yapısal kısıt** Phase 62'de değişmedi (out-of-scope: bridge dev infra). UI tarafı **bridge offline state'ini honest gösteriyor**, Switch-to-Kie alternative path single click.
+
+Sıradaki gerçek iş **Phase 63 mockup generator self-hosted plan
+implementation** (Yol A + Yol B, ~2-3 gün, dosya/risk/sıra detayı yukarıda).
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
