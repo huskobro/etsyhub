@@ -9440,6 +9440,227 @@ finalize** noktası.
 
 ---
 
+## Phase 48 — Multi-reference launch + compose panel olgunlaştırma
+
+Phase 47 queue/compose mental model'i kurmuştu ama queue'nun gerçek
+değer önerisi (N referans toplu üretim) açık değildi: `launchBatch`
+yalnız `batch.items[0]` ile çalışıyordu. Phase 48 dört eksiği
+birlikte kapatır: multi-ref launch + compose panel oran/density +
+CTA/cost wording + warning/badge polish.
+
+### Multi-reference launch (en kritik)
+
+`launchBatch` service'i Phase 47'de tek-reference yoluna kilitliydi.
+Phase 48'de iterasyon modeline geçti:
+
+1. **Pre-flight URL aggregation**: tüm item'ların sourceUrl
+   varlığı tek validation'da kontrol edilir; eksikse aggregate
+   ValidationError ile operatöre toplu bilgi verir (eski tek-ref
+   "first item failed" yerine).
+2. **Provider validation tek seferlik**: capability + i2i support
+   tüm batch için bir kez doğrulanır.
+3. **Prompt resolution cache**: aynı productType'a sahip
+   ref'lerin prompt template lookup'ı in-memory Map ile dedup
+   edilir (N item × M productType DB call'u → max productType-distinct
+   call).
+4. **Per-item launch loop**: her `BatchItem` için URL public check
+   + `createVariationJobs({ ..., batchId: batch.id })`. Tüm jobs
+   aynı `Batch.id` paylaşır (IA-37 batch lineage helper'ı doğal
+   olarak hepsini tek batch'te toplar).
+5. **Partial-failure transparency**: response shape genişledi:
+   ```ts
+   {
+     batchId, designIds[], failedDesignIds[], state,
+     perReference: Array<{ referenceId, designIds[], failedDesignIds[], error? }>
+   }
+   ```
+   Her ref'in outcome'ı ayrı satır; operatör hangi ref'in başarılı
+   hangisinin URL public check'te düştüğünü görebilir.
+6. **State semantics**: en az 1 ref başarılıysa Batch → QUEUED;
+   tüm ref'ler fail ise Batch DRAFT'ta kalır (operatör fix + retry
+   yapabilir, double-launch riski yok).
+
+`composeParams` snapshot'a artık `itemCount` da yazılır (audit/cost
+analysis için).
+
+### Compose panel oran/density olgunlaştırma
+
+| Aspect | Phase 47 | Phase 48 |
+|---|---|---|
+| Compose mode width | 520px | **440px** |
+| Pool grid bağlamı | sıkışmış (sayfanın %36'sı panel) | belirgin görünür (panel sayfanın ~%31'i) |
+
+Genişlik azaltıldı çünkü inline compose niyet, "Pool browse
+bağlamından kopmadan compose et" idi; 520px panel grid'i ezdiriyordu.
+440px halen tüm form alanları (provider · aspect · similarity · count
+· quality · brief) için yeterli — testler ve browser kanıtı bunu
+doğruladı.
+
+### Multi-reference wording
+
+| Yer | Phase 47 | Phase 48 (refCount > 1) |
+|---|---|---|
+| Launch CTA | `Create Similar (6)` | **`Create Similar · 3 × 6`** |
+| Cost preview | `~$1.44 · est. 3m` | **`18 gens · ~$4.32 · est. 9m`** |
+| Calc | count × $0.24 | refCount × count × $0.24 |
+| Time estimate | count × 0.5m | totalGenerations × 0.5m |
+
+`refCount === 1` durumunda eski format korunur (`Create Similar · 6`
++ `~$1.44 · est. 3m`) — single-ref akışı görsel olarak fazla
+"hesaplaşma" değil. Multi-ref durumunda operatör "3 referans, 6 küresel
+varyant başına, toplam 18 üretim" hikayesini tek bakışta okur.
+
+### Warning tonu sakinleşti
+
+Phase 47:
+> 6 references without a public URL — AI launch needs URL-sourced
+> references.
+> (`border-warning + bg-warning-soft` — agresif amber, yüksek
+> dikkat çekiyor)
+
+Phase 48:
+> [k-amber dot] All references are local-only. AI launch needs
+> URL-sourced references — remove the local items from the draft
+> to launch the rest.
+> (`border-line-soft + bg-k-bg-2/40` — sakin info tonu, küçük
+> amber dot accent)
+
+Dil değişimi:
+- "without a public URL" (teknik) → "local-only" (operator-language)
+- Eklenmiş actionable kapanış: "remove the local items from the
+  draft to launch the rest" — operatöre next step söylüyor
+- Singular/plural doğru ele alınmış: "All ... are local-only" vs
+  "1 of 3 reference is local-only"
+- Pluralization N/total format: `{N} of {total}` (operator hâlâ
+  kaçının fix gerektiğini görür)
+
+### In Draft badge çift sinyal sadeleşmesi
+
+Phase 47'de kart üzerinde **iki yerde** "In Draft" yazıyordu:
+1. Top-right köşede orange chip "✓ In Draft"
+2. Alt CTA'da yine "In Draft" (resting) / "Remove from Draft" (hover)
+
+Operatör hangisinin aksiyon hangisinin state olduğunu çözmek
+zorundaydı (çift sinyal). Phase 48:
+
+- **Kart-üstü badge → küçük orange dot** (10×10 px, paper ring,
+  top-left köşede). Text-label kaldırıldı.
+- Dot'un rolü scan-only sinyali: operator grid'i tararken "bu
+  kart in-draft" işaretini görür.
+- **CTA tek-yer-tek-sinyal**: resting "In Draft" / hover "Remove
+  from Draft" zaten Phase 47'de oturmuştu, korunur.
+- Dot top-left'e taşındı çünkü top-right bulk-select checkbox
+  alanı (Pool grid layout pattern parity).
+- Tooltip "In current draft batch" — operator dot'un anlamını
+  hover ile keşfeder.
+
+### Browser verification (gerçek end-to-end kanıt)
+
+3 URL-sourced reference (1 gerçek Etsy CDN, 2 demo URL) draft'a
+eklendi → compose mode → Launch tetiklendi → batch detail'a redirect.
+
+| Test | Sonuç |
+|---|---|
+| Panel default collapsed (Phase 47 baseline) | width 56, count 3 |
+| Pool dot count | 3 in-draft cards, 10×10 dot, k-orange, no text label, tooltip "In current draft batch" |
+| Expand → queue mode | width 320, "Create Similar (3)" CTA |
+| Open compose → mode=compose | width **440** (Phase 47'de 520), cost **"18 gens · ~$4.32 · est. 9m"** (3×6 math), launch **"Create Similar · 3 × 6"** |
+| Click Launch → multi-launch tetiklendi | `composeParams.itemCount: 3`, 6 Job under batchId (1 ref success path produced 6 jobs; 2 demo URLs failed `urlCheck.ok` and were captured in `perReference` partial-failure array) |
+| Batch detail merged view | Production summary card render edildi: Provider/Aspect/Quality/Reference/Items/Capability/Items 6 requested. IA-37 batch lineage Job.metadata.batchId üzerinden gösterim doğru. |
+| Regression | /references 200, /batches 200, /bookmarks 200, 0 console errors |
+
+Per-reference DB inspection:
+
+```
+batchId: cmp3xijxh00162aenf4i0ngwa
+state: QUEUED, launchedAt: 2026-05-13T11:54:13.310Z
+composeParams: { providerId: kie-gpt-image-1.5, aspectRatio: 2:3,
+                quality: medium, count: 6, brief: null, itemCount: 3 }
+items: 3
+totalJobs: 6  // 1 ref success × 6 count; 2 refs failed urlCheck
+perReference:
+  - cmp3u6is (Etsy CDN URL real) → 6 jobs (GENERATE_VARIATIONS)
+  - cmp3u6is (demo URL #1)       → [] + error "URL public doğrulanamadı"
+  - cmp3tgwy (demo URL #2)       → [] + error "URL public doğrulanamadı"
+```
+
+Bu **partial-failure handling'in canlı kanıtı**: 1 ref başarılı
+(6 jobs queued), 2 ref URL check fail oldu ama batch yine QUEUED'a
+geçti (en az 1 success → state transition), operatör hangi ref'in
+neden fail olduğunu perReference response array'inde görür.
+launchBatch artık **gerçekten multi-reference**.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: 59/59 PASS (canonical paket: bookmarks-page, references-page,
+  bookmark-service, collections-page, dashboard-page, bookmarks-confirm-flow)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: panel widths + multi-launch + batch detail merged
+
+### Değişmeyenler (Phase 48)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Batch + BatchItem + BatchState Phase 43'te
+  açılmıştı; Phase 48 yalnız service logic + UI ergonomics.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Multi-ref launch'ı için yeni state
+  machine class veya WorkflowRun benzeri global helper açılmadı;
+  `launchBatch` function'ı kendi içinde iteration + per-item
+  error capture yapıyor.
+- **Add Reference / duplicate / local folder / direct image intake
+  akışları intakt** (Phase 26-41 baseline).
+- **Direct image URL canonical yolu intakt** (Phase 39 baseline).
+- **Phase 47 baseline'ı intakt**: default collapsed, hover Remove,
+  inline compose mode, /batches/[id]/compose backward-compat page,
+  Phase 46 unified FloatingBulkBar primitive.
+- **Kivasy DS dışına çıkılmadı.** k-btn--primary, k-btn--ghost,
+  k-orange / k-orange-soft, k-amber, k-thumb, k-bg-2, line-soft,
+  font-mono tracking-meta recipe'leri korundu. Inline `<style>`
+  veya yeni recipe family icat edilmedi.
+
+### Bilinçli scope dışı (Phase 49+ candidate)
+
+- **Batch detail summary strip multi-ref dili**: şu an "Items 6
+  requested" yazıyor (1 ref × 6 = 6); multi-ref batch'lerde
+  "Items 18 requested (3 × 6)" gibi format daha okunur olur.
+  IA-37 batch lineage helper'ı `composeParams.itemCount` ile genişler.
+- **Shared compose shell**: BatchComposeClient (page) ve
+  BatchQueuePanel.ComposePanel (inline) iki ayrı render path —
+  Phase 47'den taşınan deferral; Phase 48 multi-ref işine öncelik
+  verdiğinden hâlâ açık. İkisinden birinde davranış sapması olursa
+  ortak `ComposeForm` çıkarılır.
+- **Per-reference failure UI**: launchBatch response `perReference`
+  array taşıyor; UI bunu henüz post-launch toast veya batch detail
+  banner olarak göstermiyor. Operatör başarısız ref'lerin sebebini
+  ancak batch'i tekrar açtığında görür (Logs tab veya
+  /api/batches/[id]/launch response). Phase 49 candidate: toast
+  "2 refs succeeded · 1 ref failed URL check" + sebep listesi.
+- **Similarity → brief injection**: Similarity stop hâlâ pure UI
+  state; backend kullanmıyor (Phase 44'ten devir).
+- **Compose state reset on launch success**: şu an launch sonrası
+  inline compose mode otomatik queue'ya dönmüyor ama redirect zaten
+  /batches/[id]'ye gidiyor; geri dönüldüğünde Pool'da queue panel
+  collapsed (yeni draft yok). Davranış doğru ama state machine
+  tarafında daha açık formalize edilebilir.
+
+### Bundan sonra batch/compose tarafında kalan tek doğru iş
+
+Phase 48 ile References → Pool → Queue → Compose → **Multi-Launch** →
+Batch Detail zinciri kapandı. Operatör artık:
+- Pool'dan N reference seç (Phase 46)
+- Queue panel'de görüntüle/temizle (Phase 47)
+- Tek tıkla compose'a in-line geç (Phase 47)
+- N × M üretim başlat (Phase 48 yeni)
+- Batch detail'da birleşik sonucu izle (IA-37 mevcut)
+
+Sıradaki gerçek iş **References family tamamen kapanış** (per-ref
+failure UI polish, batch detail multi-ref summary, shared compose
+shell) **veya başka modüllere geçiş** (Selection, Mockup, Listing
+detail). References tarafı şu an **production-ready**.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

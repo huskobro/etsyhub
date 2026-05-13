@@ -375,9 +375,12 @@ function ComposePanel({
   const providerCap = getProviderCapability(providerId);
   const supportsQuality = (providerCap?.supportedQualities.length ?? 0) > 0;
 
-  const totalCostCents = COST_PER_VARIATION_CENTS * count;
+  // Phase 48 — Multi-reference cost: N refs × M count.
+  const refCount = batch.items.length;
+  const totalGenerations = refCount * count;
+  const totalCostCents = COST_PER_VARIATION_CENTS * totalGenerations;
   const totalCostUSD = (totalCostCents / 100).toFixed(2);
-  const estMinutes = Math.max(1, Math.round(count * 0.5));
+  const estMinutes = Math.max(1, Math.round(totalGenerations * 0.5));
 
   const launchMutation = useMutation({
     mutationFn: async () => {
@@ -413,7 +416,7 @@ function ComposePanel({
 
   return (
     <aside
-      className="sticky top-0 flex h-screen w-[520px] flex-shrink-0 flex-col border-l border-line bg-paper"
+      className="sticky top-0 flex h-screen w-[440px] flex-shrink-0 flex-col border-l border-line bg-paper"
       data-testid="batch-queue-panel"
       data-collapsed="false"
       data-mode="compose"
@@ -593,12 +596,23 @@ function ComposePanel({
 
           {someReferencesUnreachable ? (
             <div
-              className="rounded-md border border-warning/40 bg-warning-soft/40 px-3 py-2 text-[11.5px] text-ink"
+              className="flex items-start gap-2 rounded-md border border-line-soft bg-k-bg-2/40 px-3 py-2 text-[11.5px] text-ink"
               data-testid="batch-compose-inline-url-warning"
             >
-              {referencesWithoutPublicUrl} reference
-              {referencesWithoutPublicUrl === 1 ? "" : "s"} without a public
-              URL — AI launch needs URL-sourced references.
+              <span
+                className="mt-0.5 inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-k-amber"
+                aria-hidden
+              />
+              <span className="text-ink-2">
+                {referencesWithoutPublicUrl === refCount
+                  ? "All "
+                  : `${referencesWithoutPublicUrl} of ${refCount} `}
+                {referencesWithoutPublicUrl === 1 && refCount !== 1
+                  ? "reference is"
+                  : "references are"}{" "}
+                local-only. AI launch needs URL-sourced references —{" "}
+                remove the local items from the draft to launch the rest.
+              </span>
             </div>
           ) : null}
 
@@ -619,7 +633,8 @@ function ComposePanel({
           className="font-mono text-[10.5px] text-ink-3"
           data-testid="batch-compose-inline-cost"
         >
-          ~${totalCostUSD} · est. {estMinutes}m
+          {refCount > 1 ? `${totalGenerations} gens · ` : ""}~$
+          {totalCostUSD} · est. {estMinutes}m
         </span>
         <button
           type="button"
@@ -632,7 +647,9 @@ function ComposePanel({
           <Sparkles className="h-3 w-3" aria-hidden />
           {launchMutation.isPending
             ? "Launching…"
-            : `Create Similar (${count})`}
+            : refCount > 1
+              ? `Create Similar · ${refCount} × ${count}`
+              : `Create Similar · ${count}`}
         </button>
       </div>
     </aside>

@@ -862,19 +862,24 @@ function ReferencePoolCard({
       data-in-draft={inDraft || undefined}
     >
       {inDraft ? (
-        /* Phase 47 — Refined in-draft badge:
-         *  - Check icon + "In Draft" label (was text-only)
-         *  - Larger text-[10.5px] with proper line-height
-         *  - Higher contrast (k-orange fill + white text instead of
-         *    k-orange-ink which is too muted on k-orange bg)
-         *  - Mono pattern preserved (Kivasy DS-native) */
+        /* Phase 47 — Refined in-draft badge.
+         * Phase 48 — Sade icon-only dot. Önceki "In Draft" chip kart
+         *   üstünde + CTA'da iki kez aynı bilgiyi söylüyordu (çift
+         *   sinyal). Phase 48 stratejisi:
+         *     - kart üstünde KÜÇÜK dot (sadece scan'de "bu in-draft
+         *       işaretli" sinyali; "In Draft" kelimesi yok)
+         *     - alttaki CTA tek-yer-tek-sinyal: resting "In Draft" /
+         *       hover "Remove from Draft" — operatör aksiyona ve
+         *       state'e CTA'dan ulaşır
+         *   Dot sol-üstte (top-right'ı bulk-select checkbox'una
+         *   bırakmak için); k-orange fill + ring koruması ile thumb
+         *   üzerinde okunur. tooltip "In current draft batch". */
         <span
-          className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-k-orange px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase tracking-meta text-white shadow"
+          className="absolute left-2 top-2 z-10 inline-flex h-2.5 w-2.5 items-center justify-center rounded-full bg-k-orange ring-2 ring-paper"
           data-testid="reference-card-in-draft-badge"
-        >
-          <Check className="h-2.5 w-2.5" strokeWidth={3} aria-hidden />
-          In Draft
-        </span>
+          title="In current draft batch"
+          aria-label="In current draft batch"
+        />
       ) : null}
       <div className="relative">
         <div className="p-2 pb-0">

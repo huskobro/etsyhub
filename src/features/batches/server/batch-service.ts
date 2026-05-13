@@ -188,20 +188,23 @@ export async function getBatch(args: { userId: string; batchId: string }) {
 
 /**
  * Phase 44 — Launch a DRAFT batch.
+ * Phase 48 — Multi-reference launch ACTIVE.
  *
  * Workflow:
  *   1. Load batch (user-scoped) + verify state DRAFT
  *   2. Verify batch has at least 1 item (reference)
- *   3. Snapshot compose params onto Batch.composeParams
+ *   3. Validate **every** item's reference has a public sourceUrl;
+ *      collect partial-failure errors instead of aborting on first.
  *   4. For each item's reference, call createVariationJobs with the
  *      Batch.id as batchId (so Job.metadata.batchId = Batch.id —
- *      synthetic uzay birleşir)
- *   5. Transition Batch.state DRAFT → QUEUED + set launchedAt
+ *      synthetic uzay birleşir). All N×count jobs share one Batch.id.
+ *   5. Snapshot compose params onto Batch.composeParams +
+ *      transition Batch.state DRAFT → QUEUED + set launchedAt
  *
- * Phase 44 scope kısıtı: tek-reference batch yolu canonical (Pool
- * card "New Batch" → 1 reference). Multi-reference batch için
- * createVariationJobs her referans için ayrı çağrılır; tümü aynı
- * batchId paylaşır. Bu davranış IA-37 batch lineage ile uyumlu.
+ * Phase 48 değişikliği: tek-reference kısıtı kalktı. queue'da N item
+ * varsa, N reference × count similarity → toplam N*count generated
+ * design queue'ya yazılır. Batch detail (IA-37 batch lineage helper'ı
+ * Job.metadata.batchId üzerinden) hepsini birleşik gösterir.
  *
  * Hata davranışı:
  *   - Batch DRAFT değilse → ValidationError (idempotency: aynı
@@ -230,6 +233,13 @@ export type LaunchBatchOutput = {
   designIds: string[];
   failedDesignIds: string[];
   state: BatchState;
+  /** Phase 48 — per-item launch outcome for partial-failure transparency. */
+  perReference: Array<{
+    referenceId: string;
+    designIds: string[];
+    failedDesignIds: string[];
+    error?: string;
+  }>;
 };
 
 export async function launchBatch(
@@ -260,26 +270,8 @@ export async function launchBatch(
     );
   }
 
-  // Phase 44 scope: tek-reference path canonical. Multi-reference için
-  // launchBatch'i Phase 44+ candidate (her item için ayrı createVariationJobs
-  // çağrısı; tümü aynı batchId paylaşacak).
-  const firstItem = batch.items[0]!;
-  const reference = firstItem.reference;
-  const referenceImageUrl = reference.asset?.sourceUrl;
-  if (!referenceImageUrl) {
-    throw new ValidationError(
-      "Reference has no public source URL — AI launch requires URL-sourced references. " +
-        "Use Bookmark Inbox to add a publicly accessible image, then promote it to a reference.",
-    );
-  }
-
-  const urlCheck = await checkUrlPublic(referenceImageUrl);
-  if (!urlCheck.ok) {
-    throw new ValidationError(
-      `Reference URL public doğrulanamadı: ${urlCheck.reason ?? `HTTP ${urlCheck.status}`}`,
-    );
-  }
-
+  // Phase 48 — Provider + capability validation done once (provider
+  // doesn't change per item).
   let provider;
   try {
     provider = getImageProvider(input.providerId);
@@ -293,79 +285,141 @@ export async function launchBatch(
     );
   }
 
-  // Resolve active prompt (mirrors variation-jobs route logic)
-  const pt = await db.productType.findUnique({
-    where: { id: reference.productTypeId },
-  });
-  let systemPrompt = `${pt?.key ?? "variation"} variation, high quality`;
-  let promptVersionId: string | null = null;
-  if (pt) {
-    const tpl = await db.promptTemplate.findFirst({
-      where: { productTypeKey: pt.key, taskType: "image-variation" },
-      include: {
-        versions: {
-          where: { status: PromptStatus.ACTIVE },
-          orderBy: { version: "desc" },
-          take: 1,
-        },
-      },
+  // Phase 48 — Pre-flight: ALL references must have a public sourceUrl.
+  // We aggregate missing-URL items into one ValidationError so the
+  // operator sees the full picture instead of fix-one-retry-one cycles.
+  const missingUrlItems = batch.items.filter(
+    (it) => !it.reference.asset?.sourceUrl,
+  );
+  if (missingUrlItems.length > 0) {
+    throw new ValidationError(
+      `${missingUrlItems.length} reference${missingUrlItems.length === 1 ? "" : "s"} ` +
+        `without a public source URL. AI launch needs URL-sourced references; ` +
+        `remove the local-only references from the draft or replace them via Add Reference.`,
+    );
+  }
+
+  // Phase 48 — Prompt resolution cache by productTypeId so we don't
+  // hit DB N times when queue has many references of the same type.
+  const promptCache = new Map<
+    string,
+    { systemPrompt: string; promptVersionId: string | null }
+  >();
+  async function resolvePrompt(productTypeId: string) {
+    if (promptCache.has(productTypeId)) return promptCache.get(productTypeId)!;
+    const pt = await db.productType.findUnique({
+      where: { id: productTypeId },
     });
-    const active = tpl?.versions[0];
-    if (active) {
-      systemPrompt = active.systemPrompt;
-      promptVersionId = active.id;
+    let systemPrompt = `${pt?.key ?? "variation"} variation, high quality`;
+    let promptVersionId: string | null = null;
+    if (pt) {
+      const tpl = await db.promptTemplate.findFirst({
+        where: { productTypeKey: pt.key, taskType: "image-variation" },
+        include: {
+          versions: {
+            where: { status: PromptStatus.ACTIVE },
+            orderBy: { version: "desc" },
+            take: 1,
+          },
+        },
+      });
+      const active = tpl?.versions[0];
+      if (active) {
+        systemPrompt = active.systemPrompt;
+        promptVersionId = active.id;
+      }
+    }
+    const resolved = { systemPrompt, promptVersionId };
+    promptCache.set(productTypeId, resolved);
+    return resolved;
+  }
+
+  // Phase 48 — Per-item launch with partial-failure tolerance. URL
+  // public-check is per-item (different hosts may behave differently);
+  // collect outcomes so the response can surface what succeeded/failed.
+  const perReference: LaunchBatchOutput["perReference"] = [];
+  const allDesignIds: string[] = [];
+  const allFailedDesignIds: string[] = [];
+
+  for (const item of batch.items) {
+    const ref = item.reference;
+    const referenceImageUrl = ref.asset!.sourceUrl!; // guaranteed by pre-flight
+    try {
+      const urlCheck = await checkUrlPublic(referenceImageUrl);
+      if (!urlCheck.ok) {
+        perReference.push({
+          referenceId: ref.id,
+          designIds: [],
+          failedDesignIds: [],
+          error: `URL public doğrulanamadı: ${urlCheck.reason ?? `HTTP ${urlCheck.status}`}`,
+        });
+        continue;
+      }
+
+      const { systemPrompt, promptVersionId } = await resolvePrompt(
+        ref.productTypeId,
+      );
+
+      const out = await createVariationJobs({
+        userId,
+        reference: ref,
+        referenceImageUrl,
+        providerId: input.providerId,
+        capability,
+        aspectRatio: input.aspectRatio,
+        quality: input.quality,
+        brief: input.brief,
+        count: input.count,
+        systemPrompt,
+        promptVersionId,
+        batchId: batch.id, // Phase 44/48 — gerçek Batch.id thread'i
+      });
+
+      perReference.push({
+        referenceId: ref.id,
+        designIds: out.designIds,
+        failedDesignIds: out.failedDesignIds,
+      });
+      allDesignIds.push(...out.designIds);
+      allFailedDesignIds.push(...out.failedDesignIds);
+    } catch (err) {
+      perReference.push({
+        referenceId: ref.id,
+        designIds: [],
+        failedDesignIds: [],
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
-  // Snapshot compose params + transition state. createVariationJobs
-  // başarısız olursa batch DRAFT'ta kalır; bu yüzden state transition
-  // create çağrısından SONRA. Snapshot ise audit/retry için
-  // önce yazılabilir ama hata durumunda kullanıcıya yanıltıcı olur —
-  // bu yüzden ikisi de create sonrası tek transaction.
-  const out = await createVariationJobs({
-    userId,
-    reference,
-    referenceImageUrl,
-    providerId: input.providerId,
-    capability,
-    aspectRatio: input.aspectRatio,
-    quality: input.quality,
-    brief: input.brief,
-    count: input.count,
-    systemPrompt,
-    promptVersionId,
-    batchId: batch.id, // Phase 44 — gerçek Batch.id thread'i
-  });
-
-  // Snapshot + state transition. createVariationJobs partial başarı
-  // dönerse (en az 1 design queued) batch yine de QUEUED'a geçer —
-  // operatör Batches sayfasında run'ı görür. Hiç başarı yoksa
-  // createVariationJobs route'un yaptığı gibi 500'e bubble ederdi;
-  // burada launchBatch açık tip throw etmez (createVariationJobs
-  // partial OK durumunda bile döner). Tüm enqueue fail olduğunda
-  // designIds boş döner; biz Batch.state'i DRAFT'ta tutmayı tercih
-  // etmiyoruz — kayıt amacıyla QUEUED işaretliyoruz, audit log
-  // failedDesignIds taşıyor.
-  await db.batch.update({
-    where: { id: batchId },
-    data: {
-      state: BatchState.QUEUED,
-      launchedAt: new Date(),
-      composeParams: {
-        providerId: input.providerId,
-        aspectRatio: input.aspectRatio,
-        quality: input.quality ?? null,
-        count: input.count,
-        brief: input.brief ?? null,
+  // Phase 48 — If NO reference produced any designs (all fully failed),
+  // keep the batch in DRAFT so the operator can fix and retry. Otherwise
+  // transition to QUEUED (partial-success acceptable).
+  const anySuccess = allDesignIds.length > 0;
+  if (anySuccess) {
+    await db.batch.update({
+      where: { id: batchId },
+      data: {
+        state: BatchState.QUEUED,
+        launchedAt: new Date(),
+        composeParams: {
+          providerId: input.providerId,
+          aspectRatio: input.aspectRatio,
+          quality: input.quality ?? null,
+          count: input.count,
+          brief: input.brief ?? null,
+          itemCount: batch.items.length,
+        },
       },
-    },
-  });
+    });
+  }
 
   return {
     batchId: batch.id,
-    designIds: out.designIds,
-    failedDesignIds: out.failedDesignIds,
-    state: BatchState.QUEUED,
+    designIds: allDesignIds,
+    failedDesignIds: allFailedDesignIds,
+    state: anySuccess ? BatchState.QUEUED : BatchState.DRAFT,
+    perReference,
   };
 }
 
