@@ -95,6 +95,37 @@ export function VariationsPage({
         </div>
       }
     >
+      {/* Phase 44 — Legacy deprecation banner. Pool card "New Batch"
+        * artık yeni canonical akışı kullanıyor: POST /api/batches → real
+        * Batch row → /batches/[id]/compose (v4 A6 launch screen). Bu
+        * route hâlâ erişilebilir (eski test fixture'ları + derin link'ler
+        * için bridge) ama yeni operasyona uygun değil. */}
+      <div
+        className="mb-4 flex items-start gap-3 rounded-md border border-warning bg-warning-soft/40 px-4 py-3"
+        role="status"
+        data-testid="variations-legacy-banner"
+      >
+        <div className="flex-1">
+          <div className="text-[13px] font-medium text-ink">
+            Legacy single-reference flow
+          </div>
+          <p className="mt-0.5 text-[12.5px] text-ink-2">
+            The new canonical path is{" "}
+            <strong className="text-ink">References → New Batch</strong> →
+            batch compose page (Provider · Aspect · Count · Launch). This
+            page still works for direct deep-links but isn&apos;t the
+            recommended flow.
+          </p>
+          <a
+            href="/references"
+            className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 text-[11.5px] font-medium text-ink hover:border-line-strong"
+            data-testid="variations-legacy-banner-cta"
+          >
+            Go to References
+          </a>
+        </div>
+      </div>
+
       {mode === "local" ? (
         <LocalModePanel />
       ) : (

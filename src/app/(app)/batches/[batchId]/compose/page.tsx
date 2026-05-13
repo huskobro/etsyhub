@@ -1,26 +1,33 @@
 /**
- * Phase 43 — /batches/[batchId]/compose
+ * Phase 44 — /batches/[batchId]/compose · gerçek launch screen.
  *
- * Operatör-facing batch compose surface. Pool card "New Batch" CTA
- * yeni bir Batch yaratıp buraya yönlendirir. v7 d2a/d2b A6 modal'ının
- * page-form factor equivalent'i:
+ * v4 A6 Create Variations referansını taşıyan batch compose/launch
+ * surface'i. Pool card "New Batch" CTA yeni bir Batch yaratıp buraya
+ * yönlendirir; operatör burada provider/aspect/count/style ayarlarını
+ * yapıp Launch'a basar — gerçek `createVariationJobs` çalışır + batch
+ * state DRAFT → QUEUED transition'a girer.
  *
- *   - Source reference rail (items grid)
- *   - Variation count / aspect ratio / prompt template / cost preview
- *   - Footer: Cancel + primary "Launch Batch" (Phase 44)
+ * v4 A6 yapısı:
+ *   - Sol rail: source reference (thumb + title + product type +
+ *     resolution + view original)
+ *   - Sağ form: Aspect ratio · Similarity · Variation count ·
+ *     Prompt template (placeholder) · Reference parameters (advanced)
+ *   - Footer: Cancel (ghost) · cost preview (~$X · est. Nm) · primary
+ *     "Launch N Variations"
  *
- * Phase 43 vertical slice: scaffold + items rail görünür; launch CTA
- * placeholder (Phase 44'te real worker tetiklenecek). Server-side
- * fetch user-scoped batch detail; cross-user → notFound.
+ * v7 d2a/d2b'den şimdilik alınmayanlar (template/prompt management
+ * territory, Phase 45+ candidate):
+ *   - PromptPreviewSection collapsible disclosure
+ *   - "Edit as override" prompt edit
  *
- * Legacy /references/[id]/variations rotası Phase 43'te bridge olarak
- * korunur (CLAUDE.md decision); kullanıcı UI'da o yola düşmez, ama
- * eski derin link'ler kırılmaz.
+ * Server-side getBatch + user settings (default provider).
+ * Cross-user erişim → notFound.
  */
 
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/server/auth";
 import { getBatch } from "@/features/batches/server/batch-service";
+import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
 import { NotFoundError } from "@/lib/errors";
 import { BatchComposeClient } from "@/features/batches/components/BatchComposeClient";
 
@@ -38,11 +45,16 @@ export default async function BatchComposePage({
   const { batchId } = await Promise.resolve(params);
 
   try {
-    const batch = await getBatch({
-      userId: session.user.id,
-      batchId,
-    });
-    return <BatchComposeClient batch={batch} />;
+    const [batch, settings] = await Promise.all([
+      getBatch({ userId: session.user.id, batchId }),
+      getUserAiModeSettings(session.user.id),
+    ]);
+    return (
+      <BatchComposeClient
+        batch={batch}
+        initialProviderId={settings.defaultImageProvider}
+      />
+    );
   } catch (err) {
     if (err instanceof NotFoundError) return notFound();
     throw err;

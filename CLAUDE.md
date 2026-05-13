@@ -8628,6 +8628,221 @@ sona — operatör yeni flow'u kabul ettikten sonra.
 
 ---
 
+## Phase 44 — Real launch screen: v4 A6 compose form + Batch state transition + synthetic uzay birleşimi
+
+Phase 43 batch-first foundation'u (Batch + BatchItem schema, Pool
+card "New Batch" → draft, compose scaffold) kurmuştu; compose
+page hâlâ scaffold idi, Launch button disabled "coming Phase 44"
+diyordu. Phase 44 bu turun amacı: **compose page'i gerçek launch
+screen'e dönüştürmek**.
+
+### Ürün referansı kararı: v4 A6 ana, v7 sonra
+
+Phase 42-43 turlarında v7 d2a/d2b'yi "Create Variations modal'ı"
+olarak okumuştuk. Phase 44 daha derin yorumlama:
+
+> **v7 d2a/d2b aslında prompt template / production template
+> management yönüne yakındır** — PromptPreviewSection collapsible
+> "edit as override" + "won't save to template" semantics template
+> tuning territory'sidir. v4 A6 daha **sade ve doğrudan launch'a
+> odaklı** spec: 5 form section (Aspect / Similarity / Count /
+> Prompt template placeholder / Reference parameters) + footer
+> cost preview + primary "Create N Variations".
+
+Phase 44 ilk gerçek launch screen için **v4 A6 ana referans**.
+v7 d2a/d2b'nin PromptPreviewSection + edit-override flow'u Phase
+45+ candidate (prompt template management uçtan uca açıldığında
+oraya monte edilir).
+
+### Implemented
+
+**1. `createVariationJobs` optional `batchId` parameter** (ai-generation.service.ts):
+
+```ts
+let batchId = input.batchId;
+if (!batchId) {
+  const { createId } = await import("@paralleldrive/cuid2");
+  batchId = createId();
+}
+```
+
+Caller `Batch.id` geçerse aynı id Job.metadata.batchId'ye yazılır
+(synthetic ve real uzaylar birleşir). Geçmezse eski davranış: cuid2
+synthetic id. Legacy `/references/[id]/variations` route'u parametreyi
+geçmez — geriye uyum korunur.
+
+**2. `launchBatch` service function** (batch-service.ts):
+
+Workflow:
+1. Load batch (user-scoped) + verify state DRAFT
+2. Verify items.length > 0
+3. Validate first item's reference has public sourceUrl
+4. `checkUrlPublic` HEAD validation
+5. Resolve active prompt (product type → PromptTemplate ACTIVE version)
+6. Call `createVariationJobs({ ...params, batchId: batch.id })`
+7. Update Batch: `state: QUEUED`, `launchedAt: new Date()`,
+   `composeParams: { providerId, aspectRatio, quality, count, brief }`
+
+Hata davranışları (ValidationError):
+- Batch DRAFT değilse — idempotency: aynı batch'i ikinci kez launch
+  edilemez
+- Items boşsa
+- Reference URL public değilse (local-only upload → AI launch yok)
+- Provider i2i desteklemiyorsa veya bilinmiyorsa
+
+Phase 44 scope kısıtı: **tek-reference path canonical** (Pool card
+"New Batch" 1 reference verir). Multi-reference launch (her item
+için ayrı createVariationJobs, tümü aynı batchId paylaşacak) Phase
+44+ candidate.
+
+**3. `POST /api/batches/[batchId]/launch` endpoint**:
+
+Body Zod: `{ providerId, aspectRatio: enum["1:1","2:3","3:2"],
+quality?: enum["medium","high"], count: 1-6, brief?: string }`.
+
+`requireUser` auth + `launchBatch` service. ValidationError → 400
+(withErrorHandling middleware). Response: `{ batchId, designIds,
+failedDesignIds, state }`.
+
+**4. `BatchComposeClient` rewrite — gerçek v4 A6 form**:
+
+v4 A6 parity:
+
+| Section | Implementation |
+|---|---|
+| Source reference rail (sol) | Thumb (k-thumb aspect-square) + title + product type + resolution + source hostname (dl); no-URL warning callout when needed |
+| Provider | `<select>` (PROVIDER_CAPABILITIES); helperText displayed when unavailable provider seçili |
+| Aspect ratio | 3-card grid Square / Landscape / Portrait (k-orange-soft active) |
+| **Similarity** | 4-stop segmented Close / Medium / Loose / Inspired + hint text (v4 A6'nın signature signal — v7'de yok) |
+| Variation count | 2/3/4/6 segmented (server cap: 6) |
+| Quality | medium / high segmented (only if provider supports) |
+| Prompt template | Disabled placeholder "Active product type prompt (default)" — Phase 45+ template picker |
+| Reference parameters | sref / oref / cref chips (advisory only — Phase 44+ provider wiring) |
+| Footer cost preview | `~$N.NN · est. Nm` (k-mono, v4 A6 parity) |
+| Footer primary CTA | "Launch N Variations" (or "Launching…" pending) |
+
+Launch mutation:
+- POST `/api/batches/[id]/launch` + Zod-validated body
+- onSuccess → `router.push('/batches/[id]')` — operatör batch detail'de
+  state değişimini live görür (Phase 41 batch detail page Job.metadata.
+  batchId üzerinden okuduğu için real Batch.id ile aynı uzay → mevcut
+  UI reuse, yeni component yok)
+
+Disabled state guards:
+- `!hasItems` (boş batch)
+- `!referenceHasPublicUrl` (local reference)
+- `!providerCap?.available` (unavailable provider)
+- `launchMutation.isPending`
+
+Inline style yasağı (CLAUDE.md no-restricted-syntax lint):
+`RatioCard` v4 A6 inline `style={{ width, height, background }}`
+kullanıyordu — Phase 44'te `shape: "square" | "landscape" |
+"portrait"` prop'una çevrildi, Tailwind arbitrary classes ile fixed
+dimensions render edildi.
+
+**5. `compose/page.tsx` zenginleştirme**:
+
+Server-side fetch artık paralel:
+- `getBatch({ userId, batchId })` (Phase 43)
+- `getUserAiModeSettings(userId).defaultImageProvider` (Phase 44)
+
+`BatchComposeClient` `initialProviderId` prop alıyor; ilk render
+operatörün settings'teki default provider'ı seçili gösterir.
+
+**6. Legacy `/references/[id]/variations` deprecation banner**:
+
+`variations-page.tsx` üstüne warning-soft banner:
+
+```
+⚠ Legacy single-reference flow
+  The new canonical path is References → New Batch → batch compose
+  page (Provider · Aspect · Count · Launch). This page still works
+  for direct deep-links but isn't the recommended flow.
+  [Go to References]
+```
+
+Hard redirect değil (Phase 43'te aldığımız "keep as bridge" kararı
+korunur) — operatör yine de URL ile gelirse uyarı görür + canonical
+yola yönlendirilir. Phase 45+ candidate: redirect.
+
+### Browser verification (6 senaryo PASS, real end-to-end)
+
+Live dev server (fresh `.next/` rebuild, viewport 1440×900, real DB):
+
+| # | Senaryo | Kanıt |
+|---|---|---|
+| 1 | Pool card → New Batch → compose real form | 7 sections render: Provider select + 3 aspect cards + 4 similarity stops + 4 count stops + 2 quality stops + prompt template placeholder + 3 refparam chips. Cost preview "~$1.44 · est. 3m" (6 × $0.24 cost calc correct) |
+| 2 | No-URL warning for local reference | "This reference has no public source URL — AI launch requires URL-sourced references..." warning visible, Launch disabled |
+| 3 | URL-sourced reference → enabled launch | Real Etsy CDN reference, Launch button enabled |
+| 4 | Click Launch → POST `/api/batches/[id]/launch` → redirect | API call observable in network spy, redirect to `/batches/[id]` |
+| 5 | Batch state transitioned + jobs created | DB read: `state: QUEUED`, `launchedAt` set, `composeParams: { providerId, aspectRatio, count, quality }` snapshot stored |
+| 6 | Synthetic + real Batch.id uzayı birleşti | Batch detail page title `batch_cmp3x4g87000` matches `Batch.id`; existing Phase 41 batch detail logic reads `Job.metadata.batchId` and sees the real Batch's id; "Variation · 6 requested · 3/6 progress" live rendering |
+
+Regression PASS:
+- Direct image URL Add Reference flow (Phase 39 baseline)
+- Legacy `/references/[id]/variations` accessible + deprecation banner
+  visible + "Go to References" CTA wired
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **59/59 PASS** (canonical regression — bookmarks-page,
+  bookmarks-confirm-flow, bookmark-service, collections-page,
+  dashboard-page, references-page)
+- `next build`: ✓ Compiled successfully
+- Inline style lint violation (`no-restricted-syntax`) düzeltildi —
+  `RatioCard` Tailwind arbitrary classes'a geçirildi
+
+### Değişmeyenler (Phase 44)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yapılmadı** (Phase 43'te Batch + BatchItem +
+  BatchState açılmıştı; Phase 44 yalnız yeni endpoint + UI + service
+  fonksiyonu)
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok**: `launchBatch` küçük modüler servis;
+  template management, prompt preview disclosure, multi-reference
+  launch hepsi Phase 45+ candidate olarak işaretli.
+- **Add Reference / duplicate / local folder / direct image intake
+  akışları intakt** (Phase 26-41 baseline).
+- **Legacy `/references/[id]/variations` rotası erişilebilir**, ama
+  deprecation banner ile yeni canonical yola yönlendiriliyor.
+- **Kivasy DS dışına çıkılmadı.** k-btn, k-thumb, k-orange,
+  k-orange-soft, font-mono tracking-meta, line/line-soft border
+  recipe'leri. RatioCard v4 A6 inline style → Tailwind arbitrary
+  classes (no-restricted-syntax compliance).
+
+### Production tarafında kalan tek doğru iş
+
+Phase 45 candidate'lar — kalan kapanış işleri:
+
+1. **Batches index unification** — job-aggregator service real Batch
+   row'larını da listemeye başlar (DRAFT batches dahil); state filter
+   bar (Draft/Queued/Running/Finished/Failed) Review sayfası
+   pattern'iyle. Operatör DRAFT batch'lerini Batches hub'ında
+   görür (şu an yalnız compose page'den yarattığı batch'i biliyor;
+   listede görmek için sayfa refresh + Job.metadata.batchId üzerinden).
+2. **Bulk-bar staging** — Pool'da multi-select N reference → "New
+   Batch from N References" CTA (`createDraftBatch` zaten N
+   referenceId kabul ediyor)
+3. **Multi-reference launch** — `launchBatch` her item için ayrı
+   `createVariationJobs` çağrısı yapsın; tüm Job'lar aynı batchId
+   paylaşsın
+4. **Compose advanced sections wiring** — Similarity → brief'e
+   prefix injection, sref/oref/cref → provider parameters
+5. **Prompt template picker** (Phase 45+ v7 d2a/d2b PromptPreviewSection
+   territory) — operatör batch başına farklı prompt template
+   seçebilsin, "edit as override" advanced
+6. **Legacy variations page hard redirect** — Phase 45'te operatör
+   yeni flow'u kabul ettikten sonra eski rota `redirect()` ile
+   compose'a yönlendirilir
+
+Öncelik önerim: **1 + 2 birlikte** (Batches'in DRAFT'leri de
+göstermesi + bulk-bar staging operatöre "batch oluştur, listede gör,
+sonra compose et" hikayesi verir). 3 sonra. 4-5 advanced. 6 en sona.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

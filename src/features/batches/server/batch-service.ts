@@ -21,9 +21,13 @@
  * korunur, hata yok (skipDuplicates).
  */
 
-import { BatchState } from "@prisma/client";
+import { BatchState, PromptStatus } from "@prisma/client";
 import { db } from "@/server/db";
 import { NotFoundError, ValidationError } from "@/lib/errors";
+import { createVariationJobs } from "@/features/variation-generation/services/ai-generation.service";
+import { getImageProvider } from "@/providers/image/registry";
+import { checkUrlPublic } from "@/features/variation-generation/url-public-check";
+import type { ImageCapability } from "@/providers/image/types";
 
 export type BatchWithItems = Awaited<ReturnType<typeof getBatch>>;
 
@@ -180,6 +184,189 @@ export async function getBatch(args: { userId: string; batchId: string }) {
   });
   if (!batch) throw new NotFoundError("Batch not found");
   return batch;
+}
+
+/**
+ * Phase 44 — Launch a DRAFT batch.
+ *
+ * Workflow:
+ *   1. Load batch (user-scoped) + verify state DRAFT
+ *   2. Verify batch has at least 1 item (reference)
+ *   3. Snapshot compose params onto Batch.composeParams
+ *   4. For each item's reference, call createVariationJobs with the
+ *      Batch.id as batchId (so Job.metadata.batchId = Batch.id —
+ *      synthetic uzay birleşir)
+ *   5. Transition Batch.state DRAFT → QUEUED + set launchedAt
+ *
+ * Phase 44 scope kısıtı: tek-reference batch yolu canonical (Pool
+ * card "New Batch" → 1 reference). Multi-reference batch için
+ * createVariationJobs her referans için ayrı çağrılır; tümü aynı
+ * batchId paylaşır. Bu davranış IA-37 batch lineage ile uyumlu.
+ *
+ * Hata davranışı:
+ *   - Batch DRAFT değilse → ValidationError (idempotency: aynı
+ *     batch'i ikinci kez launch edemezsin)
+ *   - Items boşsa → ValidationError
+ *   - createVariationJobs içinde provider/budget/URL hatası
+ *     yukarı bubble eder (transaction yok — Batch state hâlâ
+ *     DRAFT kalır, operatör tekrar deneyebilir)
+ *
+ * composeParams shape (provider/aspectRatio/quality/brief/count) —
+ * cost preview ve audit için snapshot. Tekrar deneme/retry için
+ * read kaynağı (Phase 44+ candidate).
+ */
+export type LaunchBatchInput = {
+  userId: string;
+  batchId: string;
+  providerId: string;
+  aspectRatio: "1:1" | "2:3" | "3:2";
+  quality?: "medium" | "high";
+  count: number;
+  brief?: string;
+};
+
+export type LaunchBatchOutput = {
+  batchId: string;
+  designIds: string[];
+  failedDesignIds: string[];
+  state: BatchState;
+};
+
+export async function launchBatch(
+  input: LaunchBatchInput,
+): Promise<LaunchBatchOutput> {
+  const { userId, batchId } = input;
+
+  const batch = await db.batch.findFirst({
+    where: { id: batchId, userId, deletedAt: null },
+    include: {
+      items: {
+        include: {
+          reference: { include: { asset: true } },
+        },
+        orderBy: { position: "asc" },
+      },
+    },
+  });
+  if (!batch) throw new NotFoundError("Batch not found");
+  if (batch.state !== BatchState.DRAFT) {
+    throw new ValidationError(
+      `Cannot launch a ${batch.state} batch — only DRAFT batches launch`,
+    );
+  }
+  if (batch.items.length === 0) {
+    throw new ValidationError(
+      "Cannot launch an empty batch — add at least one reference first",
+    );
+  }
+
+  // Phase 44 scope: tek-reference path canonical. Multi-reference için
+  // launchBatch'i Phase 44+ candidate (her item için ayrı createVariationJobs
+  // çağrısı; tümü aynı batchId paylaşacak).
+  const firstItem = batch.items[0]!;
+  const reference = firstItem.reference;
+  const referenceImageUrl = reference.asset?.sourceUrl;
+  if (!referenceImageUrl) {
+    throw new ValidationError(
+      "Reference has no public source URL — AI launch requires URL-sourced references. " +
+        "Use Bookmark Inbox to add a publicly accessible image, then promote it to a reference.",
+    );
+  }
+
+  const urlCheck = await checkUrlPublic(referenceImageUrl);
+  if (!urlCheck.ok) {
+    throw new ValidationError(
+      `Reference URL public doğrulanamadı: ${urlCheck.reason ?? `HTTP ${urlCheck.status}`}`,
+    );
+  }
+
+  let provider;
+  try {
+    provider = getImageProvider(input.providerId);
+  } catch {
+    throw new ValidationError(`Bilinmeyen provider: ${input.providerId}`);
+  }
+  const capability: ImageCapability = "image-to-image";
+  if (!provider.capabilities.includes(capability)) {
+    throw new ValidationError(
+      `Provider "${input.providerId}" "${capability}" capability'sini desteklemiyor.`,
+    );
+  }
+
+  // Resolve active prompt (mirrors variation-jobs route logic)
+  const pt = await db.productType.findUnique({
+    where: { id: reference.productTypeId },
+  });
+  let systemPrompt = `${pt?.key ?? "variation"} variation, high quality`;
+  let promptVersionId: string | null = null;
+  if (pt) {
+    const tpl = await db.promptTemplate.findFirst({
+      where: { productTypeKey: pt.key, taskType: "image-variation" },
+      include: {
+        versions: {
+          where: { status: PromptStatus.ACTIVE },
+          orderBy: { version: "desc" },
+          take: 1,
+        },
+      },
+    });
+    const active = tpl?.versions[0];
+    if (active) {
+      systemPrompt = active.systemPrompt;
+      promptVersionId = active.id;
+    }
+  }
+
+  // Snapshot compose params + transition state. createVariationJobs
+  // başarısız olursa batch DRAFT'ta kalır; bu yüzden state transition
+  // create çağrısından SONRA. Snapshot ise audit/retry için
+  // önce yazılabilir ama hata durumunda kullanıcıya yanıltıcı olur —
+  // bu yüzden ikisi de create sonrası tek transaction.
+  const out = await createVariationJobs({
+    userId,
+    reference,
+    referenceImageUrl,
+    providerId: input.providerId,
+    capability,
+    aspectRatio: input.aspectRatio,
+    quality: input.quality,
+    brief: input.brief,
+    count: input.count,
+    systemPrompt,
+    promptVersionId,
+    batchId: batch.id, // Phase 44 — gerçek Batch.id thread'i
+  });
+
+  // Snapshot + state transition. createVariationJobs partial başarı
+  // dönerse (en az 1 design queued) batch yine de QUEUED'a geçer —
+  // operatör Batches sayfasında run'ı görür. Hiç başarı yoksa
+  // createVariationJobs route'un yaptığı gibi 500'e bubble ederdi;
+  // burada launchBatch açık tip throw etmez (createVariationJobs
+  // partial OK durumunda bile döner). Tüm enqueue fail olduğunda
+  // designIds boş döner; biz Batch.state'i DRAFT'ta tutmayı tercih
+  // etmiyoruz — kayıt amacıyla QUEUED işaretliyoruz, audit log
+  // failedDesignIds taşıyor.
+  await db.batch.update({
+    where: { id: batchId },
+    data: {
+      state: BatchState.QUEUED,
+      launchedAt: new Date(),
+      composeParams: {
+        providerId: input.providerId,
+        aspectRatio: input.aspectRatio,
+        quality: input.quality ?? null,
+        count: input.count,
+        brief: input.brief ?? null,
+      },
+    },
+  });
+
+  return {
+    batchId: batch.id,
+    designIds: out.designIds,
+    failedDesignIds: out.failedDesignIds,
+    state: BatchState.QUEUED,
+  };
 }
 
 /**

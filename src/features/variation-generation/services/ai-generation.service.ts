@@ -54,6 +54,15 @@ export type CreateVariationJobsInput = {
   count: number;
   systemPrompt: string;
   promptVersionId?: string | null;
+  /**
+   * Phase 44 — Batch-first launch wiring. Caller (compose page launch
+   * endpoint) gerçek `Batch.id` geçirir; createVariationJobs aynı id'yi
+   * tüm Job.metadata.batchId'lere yazar, böylece synthetic uzay ile
+   * real Batch row aynı kimliği paylaşır. Legacy
+   * /references/[id]/variations route'u bu alanı geçmez; eski davranış
+   * (createId() ile yeni synthetic batchId) korunur.
+   */
+  batchId?: string;
 };
 
 export type CreateVariationJobsOutput = {
@@ -138,11 +147,17 @@ export async function createVariationJobs(
   // IA-37 — Batch lineage. Bu çağrıdan oluşan tüm N variation job
   // aynı `batchId`'yi paylaşır; review queue scope priority bu kimliği
   // batch > reference baskınlığına göre kullanır (CLAUDE.md Madde G,
-  // schema-zero pattern). cuid2 ile generate ederiz; ileride
-  // `WorkflowRun` tablosu canonical lineage'ı taşıdığında bu alan
-  // o tabloyla mapping'lenir.
-  const { createId } = await import("@paralleldrive/cuid2");
-  const batchId = createId();
+  // schema-zero pattern).
+  //
+  // Phase 44 — Caller real Batch.id geçirebilir; geçilmezse cuid2 ile
+  // synthetic id üretilir (eski davranış korunur). Compose page launch
+  // endpoint'i real Batch.id geçirir → synthetic ve real uzaylar tek
+  // kimlikte birleşir.
+  let batchId = input.batchId;
+  if (!batchId) {
+    const { createId } = await import("@paralleldrive/cuid2");
+    batchId = createId();
+  }
 
   // Transaction: N design + N job atomik commit. Hiçbiri yarıda kalmaz.
   // designId ↔ jobId eşlemesi index'le korunur (transaction içinde job
