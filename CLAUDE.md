@@ -12131,6 +12131,250 @@ Sıradaki tek doğru iş: **Phase 61 Midjourney launch dispatcher** (UI hazır +
 
 ---
 
+## Phase 61 — Midjourney launch dispatcher bağlandı + Create Similar finalize
+
+Phase 60 ile UI Midjourney first-class oldu (mode picker, provider-aware
+form, honest "Awaiting backend handoff" disclosure) ama dispatcher henüz
+bağlanmamıştı. Phase 61 bu açık'ı kapatır: **launchBatch dispatcher
+provider-aware**, **Midjourney mode → backend param mapping aktif**,
+**Kie path bozulmadı**.
+
+### Phase 60 sonrası kalan boşluk
+
+| # | Açık | Severity |
+|---|---|---|
+| 1 | `launchBatch` yalnız `createVariationJobs` (Kie) çağırıyor; Midjourney UI seçili ama backend dispatch yok | Kritik |
+| 2 | mjMode/mjPrompt UI state'i ComposePanel'de var ama launch endpoint body'sinde geçirilmiyor | Kritik |
+| 3 | Compose split modal v4 A6 layout açılmadı — 440px panel hâlâ kabul edilebilir interim | Orta — Phase 62+ |
+| 4 | Add Batch akışı hâlâ Pool'a yönlendirme — modal-from-Batches yok | Düşük — Phase 60 kabul, Phase 62+ |
+
+Phase 61 kritik #1+#2'yi kapattı. #3 ve #4 honest defer (mevcut akış
+operatör için yeterince doğal).
+
+### Mode → backend mapping (server-side source of truth)
+
+| Mode | Backend call | Param mapping |
+|---|---|---|
+| `imagine` | `createMidjourneyJob` × count | `prompt` operatör girdisi (zorunlu); reference URL **enjekte edilmez** (pure /imagine) |
+| `image-prompt` | `createMidjourneyJob` × count | `prompt` zorunlu; `referenceUrls: [refUrl]` (image-prompt slot) |
+| `sref` | `createMidjourneyJob` × count | `prompt` opsiyonel (yoksa system prompt fallback); `styleReferenceUrls: [refUrl]` |
+| `oref` | `createMidjourneyJob` × count | `prompt` opsiyonel; `omniReferenceUrl: refUrl` |
+| `cref` | `createMidjourneyJob` × count | `prompt` opsiyonel; `characterReferenceUrls: [refUrl]` |
+| `describe` | `createMidjourneyDescribeJob` × **1** per ref (count ignored) | `imageUrl: refUrl`. Generation YOK; prompt suggestions üretir. |
+
+### Fix #1 — launchBatch dispatcher provider-aware (batch-service.ts)
+
+```ts
+const isMidjourney = input.providerId === "midjourney";
+
+if (!isMidjourney) {
+  // Phase 48 baseline — Kie + diğer ImageProvider registry
+  const provider = getImageProvider(input.providerId);
+  if (!provider.capabilities.includes("image-to-image")) throw ...
+} else {
+  // Phase 61 — Server-side MJ mode validation
+  if (!input.mjMode) throw ValidationError("mjMode zorunludur");
+  if ((mjMode === "imagine" || mjMode === "image-prompt") && !mjPrompt) throw ...
+  if (mjMode === "describe" && mjPrompt) throw ...
+}
+
+for (const item of batch.items) {
+  // ... URL pre-flight ...
+  if (isMidjourney) {
+    if (mjMode === "describe") {
+      // Single describe per ref (count ignored)
+      await createMidjourneyDescribeJob({ userId, imageUrl, sourceAssetId });
+    } else {
+      // Imagine/image-prompt/sref/oref/cref — N calls per ref
+      for (let i = 0; i < input.count; i++) {
+        const mjInput = {
+          userId, prompt: finalPrompt, aspectRatio, referenceId,
+          productTypeId, batchMeta: { batchId, batchIndex: i, batchTotal: count },
+        };
+        if (mode === "image-prompt") mjInput.referenceUrls = [referenceImageUrl];
+        else if (mode === "sref") mjInput.styleReferenceUrls = [referenceImageUrl];
+        else if (mode === "oref") mjInput.omniReferenceUrl = referenceImageUrl;
+        else if (mode === "cref") mjInput.characterReferenceUrls = [referenceImageUrl];
+        // imagine → no reference URL injection
+        await createMidjourneyJob(mjInput);
+      }
+    }
+  } else {
+    // Phase 48 baseline — Kie path
+    await createVariationJobs({ ... });
+  }
+}
+```
+
+Per-item partial-failure tolerance + DRAFT korunma (anySuccess=false ise)
++ composeParams snapshot'a `mjMode` + `mjPrompt` audit trail yazımı
+hepsi Phase 48 baseline ile aynı.
+
+### Fix #2 — Launch endpoint Zod schema (route.ts)
+
+```ts
+const MidjourneyDispatchModeSchema = z.enum([
+  "imagine", "image-prompt", "sref", "oref", "cref", "describe",
+]);
+
+const BodySchema = z.object({
+  providerId, aspectRatio, quality?, count, brief?,
+  // Phase 61 — Midjourney-specific (validated server-side per provider)
+  mjMode: MidjourneyDispatchModeSchema.optional(),
+  mjPrompt: z.string().max(800).optional(),
+});
+```
+
+### Fix #3 — UI launch payload + provider-aware cost (BatchQueuePanel.tsx)
+
+```ts
+body: JSON.stringify({
+  providerId, aspectRatio, count, brief, ...quality,
+  // Phase 61 — Midjourney payload
+  ...(isMidjourney ? {
+    mjMode,
+    ...(mjPrompt.trim() && mjMode !== "describe" ? { mjPrompt } : {}),
+  } : {}),
+})
+```
+
+Cost preview provider-aware:
+- Kie: `12 gens · ~$2.88 · est. 6m` (API cost)
+- Midjourney: `12 gens · bridge (free) · est. 6m` (operator MJ subscription)
+- Describe: `2 describes · bridge (free)` (count ignored, no time est)
+
+Launch CTA dili:
+- Kie: `Create Similar · 2 × 6`
+- Midjourney generate: `Create Similar · 2 × 6`
+- Midjourney describe: `Describe 2 references`
+
+### provider-capabilities.ts: launchBackendReady=true
+
+```ts
+{
+  id: "midjourney",
+  available: true,
+  launchBackendReady: true,  // Phase 60'da false idi
+  // helperText kaldırıldı — disclosure kalkıyor
+  ...
+}
+```
+
+`backendNotReady` artık `false` → UI honest disclosure block + Switch-to-
+Kie button kalkar; launch CTA enabled; cost preview gerçek değer.
+
+### Full-page BatchComposeClient (Phase 61 minimal scope)
+
+Page mode picker eklenmedi — yalnız ComposePanel inline'da Midjourney
+mode picker mevcut. Page'de Midjourney seçildiğinde **honest page-level
+disclosure**: "Midjourney mode picker yalnız References Pool inline draft
+panel'inde mevcut" + **Open References Pool** + **Switch to Kie**
+buttons. Operatör fake CTA görmez; doğru yolu bilir. Phase 62+'da full
+v4 A6 split modal landing yaparsa page'in rolü revize edilir.
+
+### Browser verification — 9 senaryo PASS
+
+Server-side validation (3 negative test):
+- `providerId="midjourney"` + no mjMode → 400 "mjMode zorunludur"
+- `mjMode="imagine"` + no mjPrompt → 400 "prompt zorunludur"
+- `mjMode="describe"` + mjPrompt → 400 "prompt almaz"
+
+Server-side dispatch (2 positive test):
+- Midjourney sref + accessible URL → status 200, `failedDesignIds=2`,
+  error="MJ Bridge erişilemiyor: fetch failed" (per-item; dispatcher
+  doğru çalıştığı kanıt — Kie path olsaydı farklı hata olurdu)
+- Kie regression (aynı draft, provider switch) → state="QUEUED",
+  designIds=2, failedDesignIds=0 (full happy path)
+
+UI verification (4 test, viewport 1440×900):
+- Pool default panel expanded 320px (Phase 60 baseline intakt)
+- Click "Create Similar" → compose 440px, Midjourney selected,
+  disclosure ABSENT (Phase 60 disclosure kalktı),
+  launch enabled "Create Similar · 2 × 6", cost "12 gens · bridge (free) · est. 6m"
+- Click "Describe" mode → prompt disabled, cost "2 describes · bridge (free)",
+  launch text "Describe 2 references"
+- Switch to Kie → mode picker gone, brief field back, cost "12 gens · ~$2.88 · est. 6m"
+
+Screenshot: Pool grid + sağda 440px compose panel + Provider="Midjourney"
++ Generation mode 6 chips (--sref active) + Prompt OPTIONAL · RECOMMENDED
++ Aspect 2:3 + Similarity Medium + Count 6 + Quality medium.
+
+### Self-hosted mockup generator — somut next-step plan
+
+Phase 60 araştırması özet: `src/providers/mockup/local-sharp/` Sharp
+compositor zaten mevcut (Phase 8 Task 9). API-free, sınırsız, MinIO
+storage'a bağlı, batch-friendly. İki organik genişleme:
+
+**Yol A — `placePerspective` stub fill-in** (~1-2 gün iş)
+
+| Dosya | Değişiklik | Risk |
+|---|---|---|
+| `src/providers/mockup/local-sharp/safe-area.ts` | `placePerspective(input, opts)` stub'ı doldur — 4-corner manual koordinatlar → 8-DOF homography matris → `sharp(buffer).affine(matrix)` + extract + composite | Düşük — Sharp `affine` 4×4 destekliyor (libvips), homography solver pure-math (~50 satır) |
+| `tests/unit/mockup/local-sharp/place-perspective.test.ts` | 3 fixture test: identity transform (pass-through), 45° rotate, skewed quad → corner mapping | Düşük — Sharp deterministic, fixture-based snapshot test |
+
+**Çıktı**: t-shirt/mug yamuk smart-object area'lara designer image'i fit. PSD smart-object parity yakalanır. Mockup template JSON şemasına `perspective: { tl, tr, br, bl }` field eklenebilir (PSD parser'dan extract edilir).
+
+**Yol B — PSD → JSON template ETL CLI** (~1 gün iş)
+
+| Dosya | Değişiklik | Risk |
+|---|---|---|
+| `package.json` | `ag-psd` ^15 npm dep (pure-JS PSD parser, ~120KB, no native binding) | Düşük — well-maintained, Adobe spec %95+ coverage |
+| `scripts/import-psd-mockup-template.ts` | CLI: `npm run mockup:import-psd <file.psd>` → JSON template stdout. Smart-object layer'ları enumerate et, name pattern parse → `area: {x, y, w, h, rotation}` JSON. Operatör template'leri Photoshop'ta bir kez yapar; sonraki tüm render'lar Sharp + JSON üzerinden. | Düşük — script-level, runtime path'lere dokunmaz |
+| `docs/mockup-templates-from-psd.md` | Operatör guide: smart-object layer naming convention (`@kivasy:area:design`) + script kullanım örneği | Yok — yalnız docs |
+
+**Çıktı**: API-free, sınırsız, Photoshop'a yatırım yapmadan tekrar tekrar render. Mevcut `MockupTemplate.smartObjects` JSON şeması zaten kompatibl; Phase 8 baseline'ı bozulmaz.
+
+**Phase 62+ kararı**: Yol A + Yol B birlikte yapılır (~2-3 gün). Sharp pipeline tek canonical olur; `dynamic-mockups` API path'i deprecate edilebilir (mevcut consumer yoksa silinir).
+
+### Quality gates (Phase 61)
+
+- `tsc --noEmit`: clean
+- `vitest`: **435/435 PASS** (canonical regression)
+- `next build`: ✓ Compiled successfully (Phase 61 apostrophe escape düzeltildi)
+
+### Değişmeyenler (Phase 61)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `Batch.composeParams` JSON field zaten esnek; mjMode/mjPrompt yazılır.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Dispatcher inline switch + per-mode param mapping; ortak `LaunchExecutor` abstraction çıkarılmadı (iki provider yeterli, premature).
+- **References / Batch / Review / Selection / Mockup / Product / Etsy Draft canonical akışları intakt** (Phase 26-60 baseline).
+- **Phase 60 baseline'ı tamamlanır**: default-expanded queue panel + Midjourney-first + provider-aware form Phase 60'ta açılmıştı; Phase 61 launch path'i bağladı + disclosure'u kaldırdı.
+- **Kie path tamamen intakt** (regression: 2/2 design queued, state QUEUED transition).
+- **Kivasy DS dışına çıkılmadı.**
+
+### Bilinçli scope dışı (Phase 62+ candidate)
+
+- **Full v4 A6 split modal**: 440px panel canlı + functional; modal expansion compose-from-Batches CTA için Phase 62.
+- **`/batches` Start Batch → modal-from-Batches**: mevcut Pool yönlendirme Phase 60'ta kabul edildi; Phase 62'de Pool'a inmeyen direct modal değerlendirilebilir.
+- **Compose shared shell extraction**: BatchComposeClient (page) + BatchQueuePanel.ComposePanel (inline) iki render path; davranış divergence görülürse ortak `ComposeForm` çıkarılır.
+- **BatchComposeClient full-page Midjourney mode picker**: page'de mode picker eklenmedi (Phase 61 minimal scope); honest disclosure + Switch-to-Kie + Open Pool buttons sunuluyor.
+- **Mockup generator yol A + yol B** (Sharp placePerspective + PSD ETL): ~2-3 günlük altyapı turu.
+
+### Bundan sonra production tarafında kalan tek doğru iş
+
+Phase 61 ile Create Similar / Midjourney launch akışı **operatör için
+tam fonksiyonel**:
+- Pool'a girer girmez queue panel açık (Phase 60)
+- Midjourney default + provider-aware form (Phase 60)
+- Mode picker + prompt + ref params (Phase 60)
+- **Server-side dispatcher Midjourney'i gerçekten launch ediyor** (Phase 61 ✓)
+- Kie regression intakt
+- Honest fallback'ler (page-level Midjourney disclosure → Pool inline)
+
+Tek yarım iş **Midjourney bridge dev ortamı** — bridge server operator'ün
+local browser session'ında çalışır; dev'de yok. Bu yapısal kısıt, Phase
+61'de değişmedi (out-of-scope: bridge dev infrastructure). UI tarafı
+backendNotReady=false yansıtır; production'da operatör'ün bridge'i
+açıkken launch çalışır. Test path: `createMidjourneyJob` → bridge fetch
+failed → per-item error doğru raporlanıyor.
+
+Sıradaki gerçek iş **Phase 62 mockup generator self-hosted plan
+implementation** (Yol A + Yol B, ~2-3 gün) veya **full v4 A6 split
+modal** + **modal-from-Batches Add Batch entry** UX polish.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

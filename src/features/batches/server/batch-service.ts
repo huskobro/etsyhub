@@ -28,6 +28,10 @@ import { createVariationJobs } from "@/features/variation-generation/services/ai
 import { getImageProvider } from "@/providers/image/registry";
 import { checkUrlPublic } from "@/features/variation-generation/url-public-check";
 import type { ImageCapability } from "@/providers/image/types";
+import {
+  createMidjourneyJob,
+  createMidjourneyDescribeJob,
+} from "@/server/services/midjourney/midjourney.service";
 
 export type BatchWithItems = Awaited<ReturnType<typeof getBatch>>;
 
@@ -218,6 +222,19 @@ export async function getBatch(args: { userId: string; batchId: string }) {
  * cost preview ve audit için snapshot. Tekrar deneme/retry için
  * read kaynağı (Phase 44+ candidate).
  */
+/**
+ * Phase 61 — Midjourney mode → backend mapping.
+ * Mirrors src/features/variation-generation/provider-capabilities.ts
+ * MidjourneyMode type. Server-side validation source-of-truth.
+ */
+export type MidjourneyDispatchMode =
+  | "imagine"
+  | "image-prompt"
+  | "sref"
+  | "oref"
+  | "cref"
+  | "describe";
+
 export type LaunchBatchInput = {
   userId: string;
   batchId: string;
@@ -226,6 +243,17 @@ export type LaunchBatchInput = {
   quality?: "medium" | "high";
   count: number;
   brief?: string;
+  /**
+   * Phase 61 — Midjourney-specific. Required when providerId === "midjourney".
+   * Other providers ignore.
+   */
+  mjMode?: MidjourneyDispatchMode;
+  /**
+   * Phase 61 — Midjourney prompt. Required for "imagine" + "image-prompt"
+   * modes; optional for sref/oref/cref (system prompt fallback); forbidden
+   * for "describe" (returns prompt suggestions, no generation).
+   */
+  mjPrompt?: string;
 };
 
 export type LaunchBatchOutput = {
@@ -270,19 +298,54 @@ export async function launchBatch(
     );
   }
 
-  // Phase 48 — Provider + capability validation done once (provider
-  // doesn't change per item).
-  let provider;
-  try {
-    provider = getImageProvider(input.providerId);
-  } catch {
-    throw new ValidationError(`Bilinmeyen provider: ${input.providerId}`);
-  }
-  const capability: ImageCapability = "image-to-image";
-  if (!provider.capabilities.includes(capability)) {
-    throw new ValidationError(
-      `Provider "${input.providerId}" "${capability}" capability'sini desteklemiyor.`,
-    );
+  /* Phase 61 — Provider dispatcher.
+   * "midjourney" → bridge path (createMidjourneyJob/createMidjourneyDescribeJob)
+   * Diğer providers → Kie image registry path (Phase 48 baseline).
+   *
+   * Midjourney bridge ImageProvider registry'de yok (tarihsel olarak
+   * ayrı admin akışıydı); Phase 61 provider literal switch ile dispatch.
+   */
+  const isMidjourney = input.providerId === "midjourney";
+
+  if (!isMidjourney) {
+    // Phase 48 baseline — Kie + diğer ImageProvider registry yolları.
+    let provider;
+    try {
+      provider = getImageProvider(input.providerId);
+    } catch {
+      throw new ValidationError(`Bilinmeyen provider: ${input.providerId}`);
+    }
+    const capability: ImageCapability = "image-to-image";
+    if (!provider.capabilities.includes(capability)) {
+      throw new ValidationError(
+        `Provider "${input.providerId}" "${capability}" capability'sini desteklemiyor.`,
+      );
+    }
+  } else {
+    /* Phase 61 — Midjourney mode validation (server-side source of truth).
+     * UI provider-capabilities.ts ile birebir aynı kurallar:
+     *   - mjMode zorunlu
+     *   - imagine + image-prompt → mjPrompt zorunlu
+     *   - sref/oref/cref → mjPrompt opsiyonel (yoksa system prompt fallback)
+     *   - describe → mjPrompt YASAK (DescribeJob prompt almaz)
+     */
+    const mjMode = input.mjMode;
+    if (!mjMode) {
+      throw new ValidationError(
+        "Midjourney launch için mjMode zorunludur (imagine | image-prompt | sref | oref | cref | describe).",
+      );
+    }
+    const promptTrim = (input.mjPrompt ?? "").trim();
+    if ((mjMode === "imagine" || mjMode === "image-prompt") && !promptTrim) {
+      throw new ValidationError(
+        `Midjourney "${mjMode}" mode'u için prompt zorunludur.`,
+      );
+    }
+    if (mjMode === "describe" && promptTrim) {
+      throw new ValidationError(
+        `Midjourney "describe" mode'u prompt almaz — describe pipeline yalnız reference URL ile çalışır.`,
+      );
+    }
   }
 
   // Phase 48 — Pre-flight: ALL references must have a public sourceUrl.
@@ -356,32 +419,121 @@ export async function launchBatch(
         continue;
       }
 
-      const { systemPrompt, promptVersionId } = await resolvePrompt(
-        ref.productTypeId,
-      );
+      if (isMidjourney) {
+        /* Phase 61 — Midjourney dispatch path. Per-item, mode-aware.
+         *
+         * "describe" mode: tek DescribeJob per reference (count ignored;
+         * MJ describe prompt suggestion üretir, generation değil). UI
+         * tarafı operatöre describe outcome'larını batch detail'da
+         * gösterecek.
+         *
+         * Diğer modlar: createMidjourneyJob × count, mode'a göre param
+         * mapping (referenceUrls / styleReferenceUrls / omniReferenceUrl /
+         * characterReferenceUrls). Tek call per generation — MJ /imagine
+         * default 4-grid döner; bizim count parametremiz "kaç ayrı
+         * /imagine job" anlamına gelir.
+         */
+        const mode = input.mjMode!; // validated above
+        const opPrompt = (input.mjPrompt ?? "").trim();
+        const itemDesignIds: string[] = [];
+        const itemFailed: string[] = [];
 
-      const out = await createVariationJobs({
-        userId,
-        reference: ref,
-        referenceImageUrl,
-        providerId: input.providerId,
-        capability,
-        aspectRatio: input.aspectRatio,
-        quality: input.quality,
-        brief: input.brief,
-        count: input.count,
-        systemPrompt,
-        promptVersionId,
-        batchId: batch.id, // Phase 44/48 — gerçek Batch.id thread'i
-      });
+        if (mode === "describe") {
+          // Single describe job per ref; count ignored.
+          try {
+            const out = await createMidjourneyDescribeJob({
+              userId,
+              imageUrl: referenceImageUrl,
+              sourceAssetId: ref.asset!.id,
+            });
+            itemDesignIds.push(out.midjourneyJob.id);
+          } catch (err) {
+            itemFailed.push(
+              err instanceof Error ? err.message : String(err),
+            );
+          }
+        } else {
+          // Imagine / image-prompt / sref / oref / cref — N calls
+          const { systemPrompt } = await resolvePrompt(ref.productTypeId);
+          const finalPrompt =
+            opPrompt ||
+            (mode === "imagine" || mode === "image-prompt"
+              ? "" // shouldn't reach (validated)
+              : systemPrompt);
 
-      perReference.push({
-        referenceId: ref.id,
-        designIds: out.designIds,
-        failedDesignIds: out.failedDesignIds,
-      });
-      allDesignIds.push(...out.designIds);
-      allFailedDesignIds.push(...out.failedDesignIds);
+          for (let i = 0; i < input.count; i++) {
+            try {
+              const mjInput: Parameters<typeof createMidjourneyJob>[0] = {
+                userId,
+                prompt: finalPrompt,
+                aspectRatio: input.aspectRatio,
+                referenceId: ref.id,
+                productTypeId: ref.productTypeId,
+                batchMeta: {
+                  batchId: batch.id,
+                  batchIndex: i,
+                  batchTotal: input.count,
+                },
+              };
+              if (mode === "image-prompt") {
+                mjInput.referenceUrls = [referenceImageUrl];
+              } else if (mode === "sref") {
+                mjInput.styleReferenceUrls = [referenceImageUrl];
+              } else if (mode === "oref") {
+                mjInput.omniReferenceUrl = referenceImageUrl;
+              } else if (mode === "cref") {
+                mjInput.characterReferenceUrls = [referenceImageUrl];
+              }
+              // mode === "imagine" → no reference URL injection (pure /imagine)
+              const out = await createMidjourneyJob(mjInput);
+              itemDesignIds.push(out.midjourneyJob.id);
+            } catch (err) {
+              itemFailed.push(
+                err instanceof Error ? err.message : String(err),
+              );
+            }
+          }
+        }
+
+        perReference.push({
+          referenceId: ref.id,
+          designIds: itemDesignIds,
+          failedDesignIds: itemFailed,
+          ...(itemFailed.length > 0 && itemDesignIds.length === 0
+            ? { error: itemFailed[0] }
+            : {}),
+        });
+        allDesignIds.push(...itemDesignIds);
+        allFailedDesignIds.push(...itemFailed);
+      } else {
+        // Phase 48 baseline — Kie path
+        const { systemPrompt, promptVersionId } = await resolvePrompt(
+          ref.productTypeId,
+        );
+
+        const out = await createVariationJobs({
+          userId,
+          reference: ref,
+          referenceImageUrl,
+          providerId: input.providerId,
+          capability: "image-to-image",
+          aspectRatio: input.aspectRatio,
+          quality: input.quality,
+          brief: input.brief,
+          count: input.count,
+          systemPrompt,
+          promptVersionId,
+          batchId: batch.id, // Phase 44/48 — gerçek Batch.id thread'i
+        });
+
+        perReference.push({
+          referenceId: ref.id,
+          designIds: out.designIds,
+          failedDesignIds: out.failedDesignIds,
+        });
+        allDesignIds.push(...out.designIds);
+        allFailedDesignIds.push(...out.failedDesignIds);
+      }
     } catch (err) {
       perReference.push({
         referenceId: ref.id,
@@ -409,6 +561,13 @@ export async function launchBatch(
           count: input.count,
           brief: input.brief ?? null,
           itemCount: batch.items.length,
+          // Phase 61 — Midjourney audit trail
+          ...(isMidjourney
+            ? {
+                mjMode: input.mjMode ?? null,
+                mjPrompt: input.mjPrompt ?? null,
+              }
+            : {}),
         },
       },
     });

@@ -467,9 +467,15 @@ function ComposePanel({
   const mjReq = isMidjourney ? midjourneyModeRequirements(mjMode) : null;
 
   // Phase 48 — Multi-reference cost: N refs × M count.
+  // Phase 61 — Describe mode: count ignored (1 describe per ref).
+  //            Midjourney bridge: no API cost (operator's MJ subscription).
   const refCount = batch.items.length;
-  const totalGenerations = refCount * count;
-  const totalCostCents = COST_PER_VARIATION_CENTS * totalGenerations;
+  const isDescribe = isMidjourney && mjMode === "describe";
+  const effectiveCount = isDescribe ? 1 : count;
+  const totalGenerations = refCount * effectiveCount;
+  const totalCostCents = isMidjourney
+    ? 0
+    : COST_PER_VARIATION_CENTS * totalGenerations;
   const totalCostUSD = (totalCostCents / 100).toFixed(2);
   const estMinutes = Math.max(1, Math.round(totalGenerations * 0.5));
 
@@ -484,6 +490,15 @@ function ComposePanel({
           ...(supportsQuality ? { quality } : {}),
           count,
           ...(brief.trim() ? { brief: brief.trim() } : {}),
+          // Phase 61 — Midjourney provider-specific payload
+          ...(isMidjourney
+            ? {
+                mjMode,
+                ...(mjPrompt.trim() && mjMode !== "describe"
+                  ? { mjPrompt: mjPrompt.trim() }
+                  : {}),
+              }
+            : {}),
         }),
       });
       if (!res.ok) {
@@ -882,7 +897,11 @@ function ComposePanel({
         >
           {backendNotReady
             ? "Backend handoff pending"
-            : `${refCount > 1 ? `${totalGenerations} gens · ` : ""}~$${totalCostUSD} · est. ${estMinutes}m`}
+            : isMidjourney
+              ? isDescribe
+                ? `${refCount} describe${refCount === 1 ? "" : "s"} · bridge (free)`
+                : `${totalGenerations} gen${totalGenerations === 1 ? "" : "s"} · bridge (free) · est. ${estMinutes}m`
+              : `${refCount > 1 ? `${totalGenerations} gens · ` : ""}~$${totalCostUSD} · est. ${estMinutes}m`}
         </span>
         <button
           type="button"
@@ -893,8 +912,10 @@ function ComposePanel({
           data-testid="batch-compose-inline-launch"
           title={
             backendNotReady
-              ? "Midjourney launch dispatcher arrives in Phase 61. Switch provider to launch now."
-              : undefined
+              ? "Backend handoff pending — switch provider to launch now."
+              : isDescribe
+                ? "Describe pipeline returns prompt suggestions (no generation)."
+                : undefined
           }
         >
           <Sparkles className="h-3 w-3" aria-hidden />
@@ -902,9 +923,15 @@ function ComposePanel({
             ? "Launching…"
             : backendNotReady
               ? "Awaiting backend handoff"
-              : refCount > 1
-                ? `Create Similar · ${refCount} × ${count}`
-                : `Create Similar · ${count}`}
+              : isDescribe
+                ? `Describe ${refCount} reference${refCount === 1 ? "" : "s"}`
+                : isMidjourney
+                  ? refCount > 1
+                    ? `Create Similar · ${refCount} × ${count}`
+                    : `Create Similar · ${count}`
+                  : refCount > 1
+                    ? `Create Similar · ${refCount} × ${count}`
+                    : `Create Similar · ${count}`}
         </button>
       </div>
     </aside>

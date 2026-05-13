@@ -126,9 +126,15 @@ export function BatchComposeClient({
   const providerCap = getProviderCapability(providerId);
   const supportsQuality = (providerCap?.supportedQualities.length ?? 0) > 0;
   /* Phase 60 — Honest backend disclosure for full-page compose.
-   * Same logic as BatchQueuePanel ComposePanel: Midjourney `available:
-   * true` ama `launchBackendReady: false` durumunda launch disabled
-   * + actionable hint. Inline duplicate (deferred extraction Phase 61+). */
+   * Phase 61 — Page-level Midjourney UX: bu page Midjourney mode picker
+   * taşımıyor (mode picker yalnız BatchQueuePanel.ComposePanel inline'da).
+   * Midjourney seçildiğinde page'den launch yapılmaz (server side mjMode
+   * zorunlu); operatöre inline panel akışına yönlendirme + soft disable.
+   *
+   * `pageNotMjReady`: page-level Midjourney unsupported flag.
+   * `backendNotReady` (legacy Phase 60): provider.launchBackendReady=false. */
+  const isMidjourneyPage = providerId === "midjourney";
+  const pageNotMjReady = isMidjourneyPage; // page-side limitation, not provider
   const backendNotReady = providerCap?.launchBackendReady === false;
 
   // Cost + time preview (v4 A6 footer parity)
@@ -186,6 +192,7 @@ export function BatchComposeClient({
     !referenceHasPublicUrl ||
     !providerCap?.available ||
     backendNotReady ||
+    pageNotMjReady ||
     launchMutation.isPending;
 
   return (
@@ -329,9 +336,45 @@ export function BatchComposeClient({
                   </option>
                 ))}
               </select>
-              {/* Phase 60 — Honest backend disclosure (full-page parity).
-               * BatchQueuePanel ComposePanel ile aynı mesaj. */}
-              {backendNotReady && providerCap?.helperText ? (
+              {/* Phase 60/61 — Page-level Midjourney disclosure.
+               * Page Midjourney mode picker taşımıyor; operatör inline
+               * BatchQueuePanel.ComposePanel'e yönlendirilir. References
+               * Pool'a back-link + Switch-to-Kie alternative path. */}
+              {pageNotMjReady ? (
+                <div
+                  className="mt-2 rounded-md border border-warning/40 bg-warning-soft/30 px-3 py-2 text-[12px] text-ink"
+                  data-testid="batch-compose-mj-page-disclosure"
+                >
+                  <p className="text-ink-2">
+                    Midjourney mode picker (imagine / image-prompt /
+                    sref / oref / cref / describe) yalnız References Pool
+                    inline draft panel&apos;inde mevcut. Bu sayfa Kie path
+                    için kalır; Midjourney launch&apos;ı için Pool&apos;a dön.
+                  </p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Link
+                      href="/references"
+                      className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-2 hover:border-line-strong hover:text-ink"
+                      data-testid="batch-compose-back-to-pool"
+                    >
+                      Open References Pool →
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => setProviderId("kie-gpt-image-1.5")}
+                      className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-2 hover:border-line-strong hover:text-ink"
+                      data-testid="batch-compose-switch-to-kie"
+                    >
+                      Switch to Kie · GPT Image 1.5 →
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {/* Phase 60 — Honest backend disclosure (legacy, non-MJ).
+               * Phase 61: Midjourney launchBackendReady=true olduğu için
+               * bu blok artık yalnız ileride launchBackendReady=false
+               * yapılan provider'lar için tetiklenir (ör. Z-Image). */}
+              {backendNotReady && !isMidjourneyPage && providerCap?.helperText ? (
                 <div
                   className="mt-2 rounded-md border border-warning/40 bg-warning-soft/30 px-3 py-2 text-[12px] text-ink"
                   data-testid="batch-compose-backend-disclosure"
@@ -552,9 +595,11 @@ export function BatchComposeClient({
             className="font-mono text-[11px] text-ink-3"
             data-testid="batch-compose-cost"
           >
-            {backendNotReady
-              ? "Backend handoff pending"
-              : `~$${totalCostUSD} · est. ${estMinutes}m`}
+            {pageNotMjReady
+              ? "Use Pool inline panel for Midjourney"
+              : backendNotReady
+                ? "Backend handoff pending"
+                : `~$${totalCostUSD} · est. ${estMinutes}m`}
           </span>
           <button
             type="button"
@@ -564,17 +609,21 @@ export function BatchComposeClient({
             onClick={() => launchMutation.mutate()}
             data-testid="batch-compose-launch"
             title={
-              backendNotReady
-                ? "Midjourney launch dispatcher arrives in Phase 61. Switch provider to launch now."
-                : undefined
+              pageNotMjReady
+                ? "Midjourney launch needs the Pool inline draft panel (mode picker)."
+                : backendNotReady
+                  ? "Backend handoff pending — switch provider to launch."
+                  : undefined
             }
           >
             <Sparkles className="h-3 w-3" aria-hidden />
             {launchMutation.isPending
               ? "Launching…"
-              : backendNotReady
-                ? "Awaiting backend handoff"
-                : `Create Similar (${count})`}
+              : pageNotMjReady
+                ? "Open Pool for Midjourney"
+                : backendNotReady
+                  ? "Awaiting backend handoff"
+                  : `Create Similar (${count})`}
           </button>
         </div>
       </div>

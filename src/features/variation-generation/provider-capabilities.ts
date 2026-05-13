@@ -113,12 +113,13 @@ export const PROVIDER_CAPABILITIES: ReadonlyArray<ProviderCapability> = [
   {
     id: "midjourney",
     label: "Midjourney",
-    // Phase 60 — UI'da görünür. Operator default tercihi; backend
-    // dispatcher Phase 61'de bağlanana kadar launchBackendReady=false.
+    // Phase 60 — UI'da görünür. Operator default tercihi.
+    // Phase 61 — Launch dispatcher bağlandı; launchBackendReady=true.
     available: true,
-    launchBackendReady: false,
-    helperText:
-      "Midjourney /imagine + --sref/--oref/--cref backend is wired; launch dispatcher arrives in Phase 61. For now, switch to Kie · GPT Image 1.5 to launch the batch immediately, or keep the form filled and wait for the handoff.",
+    launchBackendReady: true,
+    // helperText artık operatöre context bilgisi (warning değil) — Midjourney
+    // bridge browser-driven (operatör login session'ında çalışır), bu admin
+    // ayarına bağlı olabilir; UI honest disclosure göstermez.
     capabilities: ["image-to-image", "text-to-image"],
     supportedAspectRatios: ["1:1", "2:3", "3:2"],
     supportedQualities: ["medium", "high"],
