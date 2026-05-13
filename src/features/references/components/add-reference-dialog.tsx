@@ -84,9 +84,54 @@ type SourceHint = {
     | "ETSY_LISTING"
     | "PINTEREST"
     | "CREATIVE_FABRICA"
+    | "CREATIVE_FABRICA_LISTING"
     | "DIRECT"
     | "OTHER";
   label: string;
+};
+
+/**
+ * Phase 37 — Listing picker source identifier. Single picker component
+ * dispatches to platform-specific service endpoint based on this value.
+ * Adding a new listing source (e.g. Pinterest pin URL) means:
+ *   - new SourceHint platform marker (above)
+ *   - new ListingSource value
+ *   - new branch in LISTING_SOURCES below
+ *   - server-side service + endpoint
+ * UI shape (header copy, error fallback, image grid, footer) stays
+ * shared.
+ */
+type ListingSource = "etsy" | "cf";
+
+const LISTING_SOURCES: Record<
+  ListingSource,
+  {
+    endpoint: string;
+    queryKeyPrefix: string;
+    siteLabel: string;
+    headerTitle: string;
+    blockedTitle: string;
+    blockedExplanation: string;
+  }
+> = {
+  etsy: {
+    endpoint: "/api/scraper/etsy-listing-images",
+    queryKeyPrefix: "etsy-listing-images",
+    siteLabel: "Etsy",
+    headerTitle: "Choose images from this Etsy listing",
+    blockedTitle: "Etsy is blocking server-side requests",
+    blockedExplanation:
+      "Etsy uses anti-bot protection on listing pages, so we can't auto-pull the images. You have two options:",
+  },
+  cf: {
+    endpoint: "/api/scraper/creative-fabrica-listing-images",
+    queryKeyPrefix: "cf-listing-images",
+    siteLabel: "Creative Fabrica",
+    headerTitle: "Choose images from this Creative Fabrica listing",
+    blockedTitle: "Creative Fabrica is blocking server-side requests",
+    blockedExplanation:
+      "Creative Fabrica uses anti-bot protection on product pages, so we can't auto-pull the images. You have two options:",
+  },
 };
 
 /**
@@ -127,6 +172,18 @@ function detectSourceFromUrl(raw: string): SourceHint | null {
   }
   if (host.includes("pinimg.com") || host.includes("pinterest.")) {
     return { platform: "PINTEREST", label: "Looks like Pinterest" };
+  }
+  /* Phase 37 — Creative Fabrica product page (listing) — same pattern as
+   * Etsy listing. CF product URL: creativefabrica.com/product/{slug}/
+   * picker affordance açılır. */
+  if (
+    host.includes("creativefabrica.com") &&
+    /\/product\/[^/?#]+/i.test(trimmed)
+  ) {
+    return {
+      platform: "CREATIVE_FABRICA_LISTING",
+      label: "Creative Fabrica listing · we can pull all images",
+    };
   }
   if (
     host.includes("creativefabrica.com") ||
@@ -286,15 +343,18 @@ export function AddReferenceDialog({
   const [urlGlobalMessage, setUrlGlobalMessage] = useState<string | null>(null);
 
   /* Phase 35 — Etsy listing image picker state.
-   * Operator URL row'da "View all images" tıklayınca picker açılır;
-   * server `/api/scraper/etsy-listing-images` listing'in tüm görselleri
-   * + title'ı döner. Operatör multi-select yapar; "Add N images"
-   * tıkladığında seçilen URL'ler queue'ya yeni row olarak eklenir
-   * (mevcut tek-row listing URL'i kaldırılır — operatör listing değil
-   * görselleri save eder). */
+   * Phase 37 — source-aware genişletme: aynı picker artık iki kaynak
+   * destekler (Etsy, Creative Fabrica). `source` field'ı hangi
+   * upstream service endpoint'inin çağrılacağını belirler. Operatör
+   * "View all images" tıklayınca picker açılır; server ilgili listing
+   * service'i (Etsy / CF) tüm görselleri + title'ı döner. Operatör
+   * multi-select yapar; "Add N images" tıkladığında seçilen URL'ler
+   * queue'ya yeni row olarak eklenir (mevcut tek-row listing URL'i
+   * kaldırılır — operatör listing değil görselleri save eder). */
   const [listingPicker, setListingPicker] = useState<{
     sourceRowId: string;
     listingUrl: string;
+    source: ListingSource;
   } | null>(null);
 
   // Upload tab state — multi-file
@@ -896,8 +956,12 @@ export function AddReferenceDialog({
               onRemoveRow={urlRemoveRow}
               onAddRow={urlAddRow}
               onPaste={urlHandlePaste}
-              onOpenListingPicker={(rowId, url) =>
-                setListingPicker({ sourceRowId: rowId, listingUrl: url })
+              onOpenListingPicker={(rowId, url, source) =>
+                setListingPicker({
+                  sourceRowId: rowId,
+                  listingUrl: url,
+                  source,
+                })
               }
               globalMessage={urlGlobalMessage}
             />
@@ -1061,6 +1125,10 @@ export function AddReferenceDialog({
       </div>
 
       {/* Phase 35 — Etsy listing image picker (modal-over-modal).
+       * Phase 37 — source-aware: aynı component Etsy + Creative
+       * Fabrica için kullanılır. `source` field'ı service endpoint
+       * + copy seçer.
+       *
        *   Yalnız `listingPicker` non-null iken render edilir. Operatör
        *   N image seçince `urlReplaceRowWithUrls` ile mevcut row
        *   (listing URL'i içeren) silinir, N yeni idle row eklenir.
@@ -1068,8 +1136,9 @@ export function AddReferenceDialog({
        *   girer. Backdrop click + Escape ile picker kapanır, ana
        *   modal hâlâ açık kalır (z-index 60 > 50). */}
       {listingPicker ? (
-        <EtsyListingPicker
+        <ListingPicker
           listingUrl={listingPicker.listingUrl}
+          source={listingPicker.source}
           onClose={() => setListingPicker(null)}
           onSubmit={(urls) => {
             urlReplaceRowWithUrls(listingPicker.sourceRowId, urls);
@@ -1099,10 +1168,16 @@ type UrlTabProps = {
   onAddRow: () => void;
   onPaste: (id: string, text: string) => boolean;
   /* Phase 35 — Etsy listing URL → image picker callback.
+   * Phase 37 — source-aware genişletme: `source` parametresi hangi
+   * listing service'inin tetikleneceğini ("etsy" | "cf") taşır.
    * UrlTab kendisi picker UI'ı render etmez; parent component
-   * `openListingPicker(rowId, url)` ile picker'ı açar. Picker
-   * seçimleri parent tarafında queue'ya basılır. */
-  onOpenListingPicker?: (rowId: string, url: string) => void;
+   * `openListingPicker(rowId, url, source)` ile picker'ı açar.
+   * Picker seçimleri parent tarafında queue'ya basılır. */
+  onOpenListingPicker?: (
+    rowId: string,
+    url: string,
+    source: ListingSource,
+  ) => void;
   globalMessage: string | null;
 };
 
@@ -1303,14 +1378,21 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
                     <span className="font-mono text-[10.5px] tracking-wider text-ink-2">
                       Fetching… {entry.progress ? `${entry.progress}%` : null}
                     </span>
-                  ) : sourceHint?.platform === "ETSY_LISTING" ? (
+                  ) : sourceHint?.platform === "ETSY_LISTING" ||
+                    sourceHint?.platform === "CREATIVE_FABRICA_LISTING" ? (
                     /* Phase 35 — Etsy listing detection: hint + "View all
                      * images" affordance. Click → parent picker opens.
-                     * Direct image URL akışı bozulmaz; listing'ler için
-                     * ek bir yol açılır. */
+                     * Phase 37 — same affordance for Creative Fabrica
+                     * product page. Source is dispatched via callback
+                     * `source` parameter ("etsy" | "cf"). Direct image
+                     * URL akışı bozulmaz; listing'ler için ek bir yol
+                     * açılır. */
                     <div
                       className="inline-flex flex-wrap items-center gap-2 font-mono text-[10.5px] tracking-wider text-success"
                       data-testid="add-ref-source-hint"
+                      data-listing-source={
+                        sourceHint.platform === "ETSY_LISTING" ? "etsy" : "cf"
+                      }
                     >
                       <span>
                         <span aria-hidden>✓</span> {sourceHint.label}
@@ -1319,7 +1401,13 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
                         <button
                           type="button"
                           onClick={() =>
-                            onOpenListingPicker(entry.id, entry.url)
+                            onOpenListingPicker(
+                              entry.id,
+                              entry.url,
+                              sourceHint.platform === "ETSY_LISTING"
+                                ? "etsy"
+                                : "cf",
+                            )
                           }
                           className="k-btn k-btn--ghost"
                           data-size="sm"
@@ -1735,41 +1823,53 @@ function relativeAgo(iso: string): string {
   return `${d}d ago`;
 }
 
-/* ───────────────────────── ETSY LISTING PICKER (Phase 35) ───────────────────────── */
+/* ───────────────────────── LISTING PICKER (Phase 35 → Phase 37) ───────────────────────── */
 /**
- * EtsyListingPicker — modal-over-modal Etsy listing image picker.
+ * ListingPicker — modal-over-modal listing image picker.
+ *
+ * Phase 35: yalnız Etsy listing destekliyordu (`EtsyListingPicker`).
+ * Phase 37: source-aware refactor → aynı component Etsy + Creative
+ * Fabrica için kullanılır. `source` prop'u service endpoint + copy
+ * seçer (`LISTING_SOURCES` map).
  *
  * Operatör URL row'da "View all images" tıklayınca açılır. Server-side
- * `/api/scraper/etsy-listing-images` listing'in tüm görsellerini +
- * title'ı döner. Operatör multi-select yapar, "Add N images" tıklayınca
- * seçilen URL'ler queue'ya yeni idle row olarak basılır.
+ * platform-specific service (Etsy: `/api/scraper/etsy-listing-images`,
+ * CF: `/api/scraper/creative-fabrica-listing-images`) listing'in tüm
+ * görsellerini + title'ı döner. Operatör multi-select yapar, "Add N
+ * images" tıklayınca seçilen URL'ler queue'ya yeni idle row olarak
+ * basılır.
  *
- * Direct image URL akışı bozulmaz: listing detection sadece
- * `etsy.com/listing/{id}` formatına bağlı; direct image URL paste
+ * Direct image URL akışı bozulmaz: listing detection sadece domain +
+ * path formatına bağlı (Etsy: `etsy.com/listing/{id}`, CF:
+ * `creativefabrica.com/product/{slug}`); direct image URL paste
  * edilirse picker hiç açılmaz, mevcut akış devam eder.
  *
  * a11y: role="dialog" + aria-modal + aria-labelledby + Escape close +
  * backdrop click (busy-guard).
  */
-function EtsyListingPicker({
+function ListingPicker({
   listingUrl,
+  source,
   onClose,
   onSubmit,
 }: {
   listingUrl: string;
+  source: ListingSource;
   onClose: () => void;
   onSubmit: (urls: string[]) => void;
 }) {
   const [selection, setSelection] = useState<Set<string>>(new Set());
+
+  const sourceConfig = LISTING_SOURCES[source];
 
   /* Phase 36 — error code'u Error object'ine doğrudan field olarak
    * attach ediyoruz. Class instanceof React Query queryFn boundary'sinde
    * stable reference vermiyor (component re-render her seferinde yeni
    * class oluşturur); plain `error.code` field'ı serialization-safe. */
   const query = useQuery({
-    queryKey: ["etsy-listing-images", listingUrl],
+    queryKey: [sourceConfig.queryKeyPrefix, listingUrl],
     queryFn: async () => {
-      const res = await fetch("/api/scraper/etsy-listing-images", {
+      const res = await fetch(sourceConfig.endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url: listingUrl }),
@@ -1842,19 +1942,20 @@ function EtsyListingPicker({
       className="fixed inset-0 z-[60] flex items-center justify-center bg-bg/80 p-4"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="etsy-picker-title"
+      aria-labelledby="listing-picker-title"
       onClick={onBackdropClick}
-      data-testid="etsy-listing-picker"
+      data-testid="listing-picker"
+      data-source={source}
     >
       <div className="flex h-[min(720px,90vh)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-line bg-paper shadow-popover">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-line bg-paper px-6 py-4">
           <div className="flex flex-col gap-0.5 min-w-0">
             <h2
-              id="etsy-picker-title"
+              id="listing-picker-title"
               className="text-[16px] font-semibold text-ink"
             >
-              Choose images from this Etsy listing
+              {sourceConfig.headerTitle}
             </h2>
             <span
               className="truncate font-mono text-[10.5px] tracking-wider text-ink-3"
@@ -1888,18 +1989,17 @@ function EtsyListingPicker({
              * hissi alır. */
             <div
               className="flex flex-col gap-3 rounded-md border border-danger/40 bg-danger/5 p-4 text-[12.5px]"
-              data-testid="etsy-picker-error"
+              data-testid="listing-picker-error"
               data-error-code={errorCode}
             >
               {errorCode === "blocked" ? (
                 <>
                   <div className="flex flex-col gap-1">
                     <div className="font-medium text-danger">
-                      Etsy is blocking server-side requests
+                      {sourceConfig.blockedTitle}
                     </div>
                     <div className="text-[11.5px] text-ink-2">
-                      Etsy uses anti-bot protection on listing pages, so we
-                      can&apos;t auto-pull the images. You have two options:
+                      {sourceConfig.blockedExplanation}
                     </div>
                   </div>
                   <ol className="ml-1 flex flex-col gap-1.5 text-[12px] text-ink-2">
@@ -1918,8 +2018,8 @@ function EtsyListingPicker({
                         02
                       </span>
                       <span>
-                        Try again later — Etsy occasionally lets the
-                        request through.
+                        Try again later — {sourceConfig.siteLabel}{" "}
+                        occasionally lets the request through.
                       </span>
                     </li>
                   </ol>
@@ -1929,7 +2029,7 @@ function EtsyListingPicker({
                       data-size="sm"
                       className="k-btn k-btn--ghost"
                       onClick={() => query.refetch()}
-                      data-testid="etsy-picker-retry"
+                      data-testid="listing-picker-retry"
                     >
                       Try again
                     </button>
@@ -1938,7 +2038,7 @@ function EtsyListingPicker({
                       data-size="sm"
                       className="k-btn k-btn--ghost"
                       onClick={onClose}
-                      data-testid="etsy-picker-cancel-blocked"
+                      data-testid="listing-picker-cancel-blocked"
                     >
                       Close & paste URLs directly
                     </button>
@@ -1957,7 +2057,7 @@ function EtsyListingPicker({
                     data-size="sm"
                     className="k-btn k-btn--ghost self-start"
                     onClick={() => query.refetch()}
-                    data-testid="etsy-picker-retry"
+                    data-testid="listing-picker-retry"
                   >
                     Try again
                   </button>
@@ -1979,7 +2079,7 @@ function EtsyListingPicker({
                   </span>
                 ) : null}
                 <div className="flex items-center justify-between gap-2 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-                  <span data-testid="etsy-picker-summary">
+                  <span data-testid="listing-picker-summary">
                     We found {query.data.imageUrls.length} image
                     {query.data.imageUrls.length === 1 ? "" : "s"} ·{" "}
                     {selection.size} selected
@@ -1990,7 +2090,7 @@ function EtsyListingPicker({
                       onClick={selectAll}
                       disabled={allSelected}
                       className="transition-colors hover:text-ink disabled:opacity-40"
-                      data-testid="etsy-picker-select-all"
+                      data-testid="listing-picker-select-all"
                     >
                       Select all
                     </button>
@@ -1999,7 +2099,7 @@ function EtsyListingPicker({
                         type="button"
                         onClick={clearAll}
                         className="transition-colors hover:text-ink"
-                        data-testid="etsy-picker-clear"
+                        data-testid="listing-picker-clear"
                       >
                         Clear
                       </button>
@@ -2011,7 +2111,7 @@ function EtsyListingPicker({
               {/* Image grid (4-col, multi-select) */}
               <div
                 className="grid grid-cols-4 gap-3"
-                data-testid="etsy-picker-grid"
+                data-testid="listing-picker-grid"
               >
                 {query.data.imageUrls.map((url, i) => {
                   const sel = selection.has(url);
@@ -2027,7 +2127,7 @@ function EtsyListingPicker({
                           ? "border-k-orange ring-2 ring-k-orange-soft"
                           : "border-line hover:border-line-strong",
                       )}
-                      data-testid="etsy-picker-image"
+                      data-testid="listing-picker-image"
                     >
                       <div className="aspect-square w-full bg-k-bg-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2096,7 +2196,7 @@ function EtsyListingPicker({
             className="k-btn k-btn--primary"
             disabled={selection.size === 0}
             onClick={submit}
-            data-testid="etsy-picker-add"
+            data-testid="listing-picker-add"
           >
             <Plus className="h-3 w-3" aria-hidden />
             {selection.size > 1

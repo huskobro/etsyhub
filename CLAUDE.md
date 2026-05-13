@@ -7057,6 +7057,262 @@ ele alınır.
 
 ---
 
+## Phase 37 — Creative Fabrica listing URL → image picker (Add Reference URL tab)
+
+Phase 35-36 Etsy listing picker pattern'ini Creative Fabrica'ya taşır.
+Aynı canonical ListingPicker artık iki kaynak destekler (Etsy + CF);
+yeni big abstraction açılmaz, schema migration yok, Phase 22-34
+References family canonical akışı aynen korunur.
+
+### Düzeltmeler / yeni dosyalar
+
+**1. CF parser** — `src/providers/scraper/parsers/creative-fabrica-parser.ts`
+
+CF product page HTML'inden imageUrls + title + externalId çıkarır:
+
+- **Priority order**: JSON-LD Product `image[]` (en zengin) → OG meta
+  (`og:image`, `og:image:secure_url`) → twitter:image → DOM gallery
+  (`.product-gallery img`, `.gallery-thumb`)
+- DOM fallback yalnız CF CDN host filtresi (`creativefabrica.com`
+  subdomain'leri) ile dedup edilir; başka host'lar reklam/embed olabilir
+- External ID = product slug (`/product/{slug}/`)
+- Bozuk HTML için warning'ler döner (Etsy parser pattern)
+- Etsy parser'ın aksine price/review/rating çıkarmaz — CF intake yalnız
+  asset acquisition için (Etsy'deki competitor analytics use-case'i
+  CF için yok)
+
+**2. CF service** — `src/server/services/scraper/creative-fabrica-listing-images.ts`
+
+`fetchCreativeFabricaListingImages(rawUrl)` Etsy service pattern'ı
+birebir mirror'lar:
+
+- URL validation: `isCreativeFabricaListingUrl()` regex
+  (`^https:\/\/(?:www\.)?creativefabrica\.com\/product\/[^/?#]+`)
+- Browser-like headers (Sec-Ch-Ua, Sec-Fetch-*, Cache-Control,
+  Upgrade-Insecure-Requests)
+- 6s AbortController timeout + 1 retry with 400ms delay
+- Typed errors:
+  - `CreativeFabricaFetchBlockedError` (HTTP 403/429/503 →
+    Cloudflare Turnstile WAF) — operatöre actionable fallback için
+  - `CreativeFabricaFetchError` (network failure, 500, 404, vb.)
+- Invalid URL → `ValidationError`
+
+**Live anti-bot kanıtı**: `curl https://www.creativefabrica.com/product/<slug>/` browser-like header'larla bile **HTTP 403**
++ HTML body'sinde "Just a moment" / "Cloudflare" / "challenge"
+text'leri. Etsy Datadome ile aynı pattern; server-side reliable
+success path **imkânsız** mevcut mimari altında. Bu nedenle
+`CreativeFabricaFetchBlockedError` operatöre dürüst fallback UX
+açar (kopyalanmış URL paste yolu).
+
+**3. API endpoint** — `src/app/api/scraper/creative-fabrica-listing-images/route.ts`
+
+POST endpoint Etsy route pattern'ini birebir izler:
+
+- `requireUser()` auth gate (user-isolated)
+- Zod body validation: `{ url: z.string().url() }`
+- Try/catch typed errors → JSON response:
+  - `CreativeFabricaFetchBlockedError` → 502 + `{ error,
+    code: "blocked", upstreamStatus }`
+  - `CreativeFabricaFetchError` → 502 + `{ error,
+    code: "fetch_failed", upstreamStatus }`
+  - Diğer hatalar `withErrorHandling` middleware'a düşer
+
+**4. Source detection** — `add-reference-dialog.tsx`
+
+`SourceHint.platform` union'a `CREATIVE_FABRICA_LISTING` eklendi.
+`detectSourceFromUrl` artık üç farklı CF case'i ayırır:
+
+| URL | platform | Behavior |
+|---|---|---|
+| `creativefabrica.com/product/{slug}/` | `CREATIVE_FABRICA_LISTING` | success tone + "View all images" affordance |
+| `creativefabrica.com/category/...` | `CREATIVE_FABRICA` | ink-2 page tone (Phase 27 honest signal) |
+| `creativefabrica.com` root | `CREATIVE_FABRICA` | ink-2 page tone |
+
+Listing detection regex `/\/product\/[^/?#]+/i` ile yalnız product
+slug var ise tetiklenir.
+
+**5. ListingPicker source-aware refactor**
+
+Phase 35'in `EtsyListingPicker` component'i Phase 37'de **`ListingPicker`**
+olarak yeniden adlandırıldı, `source: "etsy" | "cf"` prop alıyor.
+Endpoint, query key, header title, blocked title/explanation, siteLabel
+hepsi `LISTING_SOURCES` map'inden okunur:
+
+```ts
+type ListingSource = "etsy" | "cf";
+
+const LISTING_SOURCES: Record<ListingSource, { ... }> = {
+  etsy: { endpoint: "/api/scraper/etsy-listing-images", siteLabel: "Etsy", ... },
+  cf:   { endpoint: "/api/scraper/creative-fabrica-listing-images", siteLabel: "Creative Fabrica", ... },
+};
+```
+
+Component shape (header, blocked fallback, image grid, footer, escape/
+backdrop close, multi-select, Select all/Clear) tamamen ortak. Source
+yalnız endpoint dispatcher + copy switch'i tetikler. Yeni listing
+source eklemek (örn. Pinterest pin URL) için yapılması gerekenler:
+
+1. `SourceHint.platform` union'a yeni marker
+2. `ListingSource` union'a yeni value
+3. `LISTING_SOURCES` map'e yeni branch
+4. Server-side service + endpoint + parser
+5. UrlTab detection branch'inde yeni hostname pattern
+
+UI shape (modal layout, error UX, image grid, klavye sözleşmesi)
+değiştirilmez.
+
+**6. UrlTab listing branch genişletme**
+
+Mevcut `sourceHint?.platform === "ETSY_LISTING"` koşulu
+`|| sourceHint?.platform === "CREATIVE_FABRICA_LISTING"` ile
+genişletildi. Aynı kart UI ("View all images" k-btn--ghost), `data-listing-source` attribute ile source taşır;
+`onOpenListingPicker(rowId, url, source)` callback'i parent'a
+`source: "etsy" | "cf"` parametresini iletir.
+
+### Test kapsamı
+
+**CF parser tests** — `tests/unit/creative-fabrica-parser.test.ts` (5 test):
+- Fixture HTML'den title + imageUrls + externalId extraction
+- Bozuk HTML'de externalId URL'den çıkar, imageUrls boş + warning
+- URL'de product slug yoksa externalId boş + warning
+- Yalnız OG meta varsa primary image OG'dan
+- JSON-LD + OG aynı URL'i dönerse dedup edilir
+
+**CF service tests** — `tests/unit/creative-fabrica-listing-images-service.test.ts` (13 test):
+- `isCreativeFabricaListingUrl` 5 case
+- Invalid URL → ValidationError
+- 403/429/503 → `CreativeFabricaFetchBlockedError`
+- 500/404 → `CreativeFabricaFetchError`
+- 200 + fixture HTML → success path (mock fetch)
+- Network error → `CreativeFabricaFetchError`
+
+**Fixture** — `tests/fixtures/creative-fabrica-listing.html`:
+- JSON-LD Product (`name`, `image[]` 3 URL)
+- OG meta (`og:image`, `og:image:secure_url`)
+- Twitter image
+- DOM gallery (`.product-gallery img`, `.gallery-thumb`) — CF CDN
+  host filtresi test'i için
+
+**Regression**: Etsy parser+service tests (`tests/unit/etsy-parser.test.ts`, `tests/unit/etsy-listing-images-service.test.ts`) bozulmadı; Phase 22-34 References family canonical paket
+(`bookmarks-page`, `references-page`, `bookmark-service`, `collections-page`, `dashboard-page`, `bookmarks-confirm-flow`)
+**59/59 PASS**.
+
+### Live browser verification (canlı kanıt)
+
+DOM eval + screenshot kanıtları (viewport 1440×900, dev server canlı,
+authenticated):
+
+**CF listing detection** (`/references?add=ref` URL tab):
+```
+Paste "https://www.creativefabrica.com/product/floral-watercolor-clipart-bundle/"
+→ data-testid="add-ref-source-hint" rendered
+→ data-listing-source="cf"
+→ hint text "✓ Creative Fabrica listing · we can pull all images"
+→ "View all images" k-btn--ghost button visible
+```
+
+**CF picker open** (click "View all images"):
+```
+data-testid="listing-picker" rendered (z-index 60 > 50 main modal)
+data-source="cf"
+#listing-picker-title text: "Choose images from this Creative Fabrica listing"
+data-testid="listing-picker-error" rendered
+data-error-code="blocked"
+Blocked title: "Creative Fabrica is blocking server-side requests"
+Step 02: "Try again later — Creative Fabrica occasionally lets the request through."
+Buttons: "Try again" + "Close & paste URLs directly"
+```
+
+**Etsy listing detection (regression)**:
+```
+Paste "https://www.etsy.com/listing/1234567890/dragonfly-watercolor-clipart-bundle"
+→ data-listing-source="etsy"
+→ hint text "✓ Etsy listing · we can pull all images"
+```
+
+**Etsy picker open (regression)**:
+```
+data-source="etsy"
+#listing-picker-title text: "Choose images from this Etsy listing"
+Blocked title: "Etsy is blocking server-side requests"
+Step 02: "Try again later — Etsy occasionally lets the request through."
+```
+
+**Direct image URL (Phase 30 baseline regression)**:
+```
+Paste "https://example.com/path/sunset_landscape.png"
+→ hint text "✓ Direct image URL"
+→ NO listing picker button
+→ NO data-listing-source attribute
+```
+
+**CF category URL (Phase 27 baseline regression)**:
+```
+Paste "https://www.creativefabrica.com/category/clipart/"
+→ hint text "✓ Creative Fabrica page · we'll fetch the main image"
+→ NO listing picker button (only /product/ paths trigger picker)
+→ NO data-listing-source attribute
+```
+
+### CLAUDE.md Madde V (operator decision canonical) parity
+
+Phase 37 CF intake yolunda da operator-only kept zinciri aynen
+korunur: CF listing'den seçilen image URL'leri queue'ya idle row
+olarak basılır → "Fetch N images" → `import-url` worker bookmark
+oluşturur → operatör Inbox'ta promote eder. CF endpoint hiçbir
+zaman doğrudan Reference yazmaz; canonical bookmark → reference
+zinciri intakt.
+
+### Bilinçli scope dışı (Phase 38+ candidate)
+
+- **CF live success path browser kanıtı** — Cloudflare Turnstile
+  her IP/UA için 403 döndüğü için server-side reliable success
+  YOK; operatör manuel URL paste yolu (blocked fallback'in
+  birinci adımı) canonical CF intake yolu olarak kalır
+- **Browser-based scraping** (Puppeteer/Playwright headless +
+  Turnstile çözücü) — heavyweight backend tur; ürün şu an
+  blocked fallback ile çalışır
+- **Pinterest pin URL listing picker** — Pinterest'in pin
+  page'leri image carousel taşıyor; aynı ListingPicker pattern'i
+  ile entegre edilebilir
+- **Source resolver worker'da meta extraction** — `import-url`
+  job zaten Etsy listing scraper'ı çağırıyor; CF için aynı path
+  açılabilir ama Cloudflare blokajı sebebiyle pratik olarak
+  başarı oranı düşük
+- **Folder intake** (4. tab) — Local Library ↔ AddReferenceDialog
+  köprüsü; bağımsız feature
+- **CSV/Excel bulk import** — ayrı `/references/import` page;
+  bağımsız feature
+- **`SourcePlatform.CREATIVE_FABRICA` schema enum eklenmesi** —
+  ayrı backend migration turu; şu an client hostname-based label/
+  tone, server `OTHER` yazıyor
+
+### Değişmeyenler (Phase 37)
+
+- **Review freeze (Madde Z) korunur.** Phase 37 review modülüne
+  dokunmaz
+- **Schema migration yok.** Yeni tablo/column eklenmedi
+- **Yeni surface açılmadı.** Mevcut AddReferenceDialog URL tab'ı,
+  mevcut listing picker (renamed + source-aware)
+- **Yeni büyük abstraction yok.** `LISTING_SOURCES` static literal
+  map; UI-side dispatcher
+- **WorkflowRun eklenmez** (IA Phase 11 kapsamı)
+- **Kivasy DS dışına çıkılmadı.** k-btn, k-thumb, k-chip, k-input,
+  font-mono caption, paper bg + line border recipe'leri korundu
+
+### Sıradaki feature kategorizasyonu
+
+| Feature | Effort | Schema? | Bağımsızlık |
+|---|---|---|---|
+| Folder intake (LocalLibrary ↔ AddReferenceDialog 4. tab) | Orta — UI tab + cross-feature | Yok | Bağımsız |
+| Pinterest pin URL → image picker | Orta — yeni parser + service + ListingPicker source genişletme | Yok | Bağımsız |
+| CSV/Excel bulk import (`/references/import` page) | Büyük — ayrı page + csv-parser entegrasyonu | Yok | Bağımsız |
+| Browser-based scraping (Puppeteer + Turnstile) | Büyük — backend infra | Yok | CF/Etsy success path için kritik |
+| Per-row failure UX (asset-less promote) | Küçük UX polish | Yok | Add Reference sub-tur |
+| `SourcePlatform.CREATIVE_FABRICA` schema enum | Küçük — migration | Var | Backend turu |
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
