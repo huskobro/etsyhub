@@ -174,7 +174,7 @@ export function BatchesIndexClient({
               Retry-failed-only
             </Link>
             <Link
-              href="/library?intent=start-batch"
+              href="/references?intent=start-batch"
               data-size="sm"
               className="k-btn k-btn--primary"
               data-testid="batches-new-cta"
@@ -186,8 +186,12 @@ export function BatchesIndexClient({
         }
       />
 
-      {/* R11.7 — Start-batch hint banner. Operator legacy redirect ile
-          buraya geldi; reference olmadan A6 modal anlamlı değil. */}
+      {/* Phase 42 — Batch-first architecture. Start-batch entry now
+          routes to References (curated Pool), NOT Library (generated
+          outputs). Variation batches anchor on a Reference asset; the
+          v7 d2a/d2b batch-config surface lives at /references/[id]/
+          variations (provider + count + aspect + prompt template +
+          generate → real batch row created). */}
       {startBatchHint ? (
         <div
           className="flex items-start gap-3 border-b border-line bg-k-orange-soft/40 px-6 py-3"
@@ -197,19 +201,20 @@ export function BatchesIndexClient({
           <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-k-orange-ink" aria-hidden />
           <div className="flex-1">
             <div className="text-[13px] font-medium text-ink">
-              Pick a reference asset to start a batch
+              Pick a reference to start a batch
             </div>
             <p className="mt-0.5 text-[12.5px] text-ink-2">
-              Variation batches start from a Library asset. Open Library,
-              select an asset, then use{" "}
-              <span className="font-medium text-ink">Create Variations</span>.
+              Variation batches anchor on a reference. Open References,
+              pick a card, then use{" "}
+              <span className="font-medium text-ink">Create Variations</span>{" "}
+              to configure and launch the batch.
             </p>
             <Link
-              href="/library?intent=start-batch"
+              href="/references?intent=start-batch"
               className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 text-[11.5px] font-medium text-ink hover:border-line-strong"
               data-testid="batches-start-hint-cta"
             >
-              Open Library
+              Open References
               <ChevronRight className="h-3 w-3" aria-hidden />
             </Link>
           </div>

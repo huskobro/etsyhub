@@ -7,7 +7,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import Link from "next/link";
-import { ChevronDown, Eye, Search, Sparkles, X } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ChevronDown, Eye, Info, Search, Sparkles, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { confirmPresets } from "@/components/ui/confirm-presets";
@@ -94,6 +95,27 @@ export function ReferencesPage({
 }) {
   const qc = useQueryClient();
   const { confirm, close, run, state } = useConfirm();
+
+  /* Phase 42 — Start-batch entry intent banner.
+   *
+   * Operator hits "Start Batch" on /batches → routed here with
+   * ?intent=start-batch (Phase 42 — previously routed to /library
+   * which is the OUTPUT gallery, conceptual contradiction). Banner
+   * guides operator to pick a Reference card; clicking the card's
+   * "Create Variations" CTA opens /references/[id]/variations
+   * (the v7 d2a/d2b A6-equivalent batch-config page). Dismiss
+   * removes the query param so banner doesn't linger. */
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const startBatchIntent = searchParams?.get("intent") === "start-batch";
+  const dismissStartBatchIntent = () => {
+    if (!searchParams) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("intent");
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  };
 
   const [q, setQ] = useState("");
   const [activeCollection, setActiveCollection] = useState<
@@ -269,6 +291,43 @@ export function ReferencesPage({
 
   return (
     <div className="flex flex-col">
+      {/* Phase 42 — Start-batch intent banner. Mirrors the
+       *   /library?intent=start-batch banner pattern, but here we
+       *   actually have the canonical reference Pool, so the
+       *   instruction lands operator on real picker context. */}
+      {startBatchIntent ? (
+        <div
+          className="flex items-start gap-3 border-b border-line bg-k-orange-soft/40 px-6 py-3"
+          data-testid="references-start-batch-hint"
+          role="status"
+        >
+          <Info
+            className="mt-0.5 h-4 w-4 flex-shrink-0 text-k-orange-ink"
+            aria-hidden
+          />
+          <div className="flex-1">
+            <div className="text-[13px] font-medium text-ink">
+              Pick a reference to start a batch
+            </div>
+            <p className="mt-0.5 text-[12.5px] text-ink-2">
+              Hover a reference card and click{" "}
+              <span className="font-medium text-ink">Create Variations</span>{" "}
+              to configure and launch the batch (count, aspect ratio,
+              prompt template).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissStartBatchIntent}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-3 hover:bg-ink/5 hover:text-ink"
+            aria-label="Dismiss"
+            data-testid="references-start-batch-hint-dismiss"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      ) : null}
+
       {/* Toolbar: search + 4 caret chips + count caption.
        *   v5 SubPool toolbar (screens-b1.jsx lines 108-120) parity. */}
       <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-line bg-bg px-6 py-3">

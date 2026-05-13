@@ -8184,6 +8184,195 @@ diğer parçaları (Selection, Mockup, Listing) daha rahat ele alınabilir.
 
 ---
 
+## Phase 42 — Batch-first architecture: Start Batch entry-point fix + Reference role clarification
+
+Phase 41 sonrası ürün kararı: production omurgasının ana sahibi **Batches**
+modülü. References tarafı yalnız **collect / select / curate**; Batches
+tarafı ise **configure / launch / monitor / review**. Bu turun amacı bu
+ürün kararını UI'da somut hale getirmek.
+
+### Tespit edilen kopukluk
+
+Batches index sayfasındaki **"Start Batch"** primary CTA şuna yönlendiriyordu:
+
+```
+/library?intent=start-batch
+```
+
+Ama Library = **üretim çıktısı galerisi** (MidjourneyAsset + Asset rows,
+generated variations, kept assets). Reference picker değil. Operatör
+"yeni bir batch başlatmak istiyorum, bana bir reference seçtir" beklerken
+generated outputs galerisinde "click an asset, then Create Variations"
+yönergesiyle karşılaşıyordu. Bu **kavramsal çelişki**.
+
+Audit (Phase 42):
+| Surface | Gerçek rol | Eski "Start Batch" hedefi |
+|---|---|---|
+| `/references` | Curated reference Pool (input pool) | — (canonical source) |
+| `/library` | Üretim çıktısı galerisi (output) | ✗ Start Batch buraya yönlendiriyordu |
+| `/references/[id]/variations` | Batch-config + launch page (v7 d2a/d2b A6 equivalent) | — (Pool card CTA buraya gider) |
+| `/batches` | Production hub (active/recent batches) | — (entry point) |
+| `/batches/[id]` | Batch detail (monitor + review) | — |
+
+Reference card hover CTA **"Create Variations"** zaten doğru çalışıyordu
+(Phase 41'de DS B1 spec'ine re-elevate edildi — `k-btn k-btn--primary
+w-full`, v7 d2a/d2b semantic title). Tek sorun: Batches'tan başlayan
+yol yanlış hedefe gidiyordu.
+
+### Düzeltme
+
+**1. `Start Batch` CTA artık `/references?intent=start-batch`'e gider**
+
+`BatchesIndexClient.tsx`:
+```tsx
+- href="/library?intent=start-batch"
++ href="/references?intent=start-batch"
+```
+
+**2. Batches "start-batch hint" banner copy güncellendi**
+
+Eski copy: "Variation batches start from a Library asset. Open Library,
+select an asset..." → operatöre yanlış mental model veriyordu.
+
+Yeni copy: "Variation batches anchor on a reference. Open References,
+pick a card, then use Create Variations to configure and launch the
+batch." → batch-first dilini taşır; v7 d2a/d2b A6 modal'ının job'ını
+("configure and launch") açıkça söyler.
+
+Banner button "Open Library" → "Open References".
+
+**3. References Pool'a Start Batch intent banner eklendi**
+
+`/references?intent=start-batch` query'siyle gelindiğinde turuncu-soft
+banner gösterilir:
+
+```
+ℹ Pick a reference to start a batch
+  Hover a reference card and click Create Variations to configure
+  and launch the batch (count, aspect ratio, prompt template).
+                                                              [×]
+```
+
+Dismiss × butonu `router.replace(pathname)` ile query temizler;
+intent yokken banner render edilmez. Banner copy doğrudan v7 d2a/d2b
+A6 modal'ının formuna (count, aspect ratio, prompt template) işaret
+eder — operatör nereye gideceğini ve neyi yapılandıracağını bilir.
+
+### v7 d2a/d2b yeniden yorumlama (batch-first context)
+
+Phase 41'de d2a/d2b "Create Variations modal'ı **endorsing**" olarak
+okunmuştu (action name canonical). Phase 42 daha derin yorumlar:
+
+> v7 A6 modal **aslında "Create Variations" değil, "Launch Batch"
+> surface'idir**. Source-reference rail + count + aspect + prompt
+> template + cost preview + primary "Create N Variations" — bunlar
+> tek bir batch'in **yapılandırma adımlarıdır**. Modal kapatıldığında
+> Job + MidjourneyJob + Asset row'ları üretilir; UI tarafı operatöre
+> "View Batch" handoff banner'ı gösterir.
+
+Bu okumayla:
+- Pool card hover CTA "Create Variations" = "open batch-launch surface
+  with this reference as anchor". Action name doğru (v7 endorses);
+  semantic batch-first.
+- Mevcut `/references/[id]/variations` page **A6'nın full-page
+  versiyonu**. Modal değil, page; ama içerik birebir aynı rol:
+  Provider · Aspect ratio · Quality · Variation count · Style note →
+  Generate → batch row created + "View Batch" handoff banner (Phase 2).
+
+Yani **/references/[id]/variations page'i = v7 A6 modal'ının functional
+equivalent'i**. Sadece form factor farkı (page vs modal). Operatör için
+deneyim aynı.
+
+**Yeniden adlandırma kararı**: Pool card CTA'sı **"Create Variations"**
+olarak kalır (DS spec match, v7 endorses). "Add to Batch" gibi yeni bir
+isim YENİ KAVRAM gerektirir (staging area, batch with multiple
+references) — bu schema-zero turun sözleşmesini ihlal eder. Şu an
+canonical model: **1 reference → 1 batch**; staging yok.
+
+### Role separation kalıcı olarak yazıldı
+
+| Sürface | Rol | Primary CTA |
+|---|---|---|
+| **References Pool** (`/references`) | Collect & select — curate reference images | Add Reference (intake) · Card hover: Create Variations (launch) |
+| **Batches index** (`/batches`) | Production hub — list active/recent batches | Start Batch → routes to References Pool with intent banner |
+| **Batch-config page** (`/references/[id]/variations`) | Configure & launch (v7 A6 equivalent) — Provider + Aspect + Quality + Count + Style note → Generate | Generate (cost confirm → real Batch + View Batch handoff) |
+| **Batch detail** (`/batches/[id]`) | Monitor & review — run progress, items, kept selection, review queue | Open Review · Continue in Selection · New Batch · etc. |
+| **Library** (`/library`) | Üretim çıktısı galerisi — generated variations + kept | (NOT a reference picker — Phase 42 explicitly removed start-batch routing here) |
+
+Reference detail page'i (`/references/[id]`) **hâlâ açılmadı** — Phase
+41'de Phase 42 candidate olarak işaretlenmişti, ama Phase 42 batch-first
+entry-point fix'e öncelik verdi. Detail page Phase 43+ candidate olarak
+durur (canonical batch-first ürün kararı verildiği için detail page rolü
+artık daha net: "tek bir reference'ın evidans/home surface'i — tüm
+batches, variation lineage, edit, archive, duplicate analysis").
+
+### Browser verification (5 senaryo PASS)
+
+Live dev server (fresh `.next/` rebuild, viewport 1440×900):
+
+| # | Senaryo | Kanıt |
+|---|---|---|
+| 1 | `/batches` Start Batch CTA href | `/references?intent=start-batch` (önceki: `/library?...`) ✓ |
+| 2 | Click Start Batch → land on References | URL = `/references?intent=start-batch`, banner rendered with batch-first copy |
+| 3 | Banner dismiss | `router.replace(pathname)` → URL = `/references` clean, banner removed |
+| 4 | Pool card CTA regression | Phase 41 baseline intact — `k-btn k-btn--primary w-full`, v7 d2a/d2b title, route to `/references/[id]/variations` |
+| 5 | Direct image URL regression | Phase 39 baseline intact — "✓ Direct image URL" hint, multi-row helper |
+
+Screenshot: References Pool with banner "Pick a reference to start a
+batch · Hover a reference card and click Create Variations to configure
+and launch the batch (count, aspect ratio, prompt template)" + dismiss
+button + Pool grid below.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **59/59 PASS** (canonical regression suite)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 42)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Hiç DB/schema değişikliği yok.
+- **Yeni büyük abstraction yok.** Mevcut `?intent=start-batch` query
+  pattern (Library'de zaten vardı) yalnız References Pool'a taşındı.
+- **Yeni surface açılmadı.** Sadece banner + CTA href değişikliği.
+- **Action name "Create Variations" korundu** (DS spec match).
+  "Add to Batch" rename YAPILMADI (yeni kavram gerektirirdi).
+- **WorkflowRun eklenmez.**
+- **Kivasy DS dışına çıkılmadı.** Banner mevcut k-orange-soft +
+  Info icon + Phase 22+ banner recipe'i.
+- **Add Reference / duplicate / local folder akışları intakt**
+  (Phase 26-41 baseline).
+- **Direct image URL canonical yolu intakt** (Phase 39 baseline).
+
+### Production tarafında kalan tek doğru iş
+
+Phase 42 batch-first entry-point fix tamam. Bundan sonra production
+tarafında kalan en kritik iş **iki yoldan biri**:
+
+**Yol A — Reference detail page** (`/references/[id]`):
+- Card click davranışı (şu an yok)
+- Reference home surface: tüm batches, variation lineage, edit,
+  archive, duplicate analysis
+- Canonical batch-first ürün kararı netleştiği için detail page
+  artık daha net rol taşır
+
+**Yol B — Library entry-point semantic cleanup**:
+- Phase 42 `?intent=start-batch` artık References'a yönlendiriyor;
+  Library'deki eski intent handler (banner + redirect logic) DEAD
+  code olarak kaldı
+- Library'nin gerçek role (output gallery) UI seviyesinde net
+  olmalı; "you can re-variate from here" gibi paralel akışlar
+  varsa temizlenmeli (legacy MJ pipeline)
+- Yeni intent: `/library` saf üretim çıktısı galerisi olarak
+  konumlandırılmalı (read-only kept assets + filter + bulk
+  delete + add-to-selection)
+
+İki yol birbirinden bağımsız; öncelik operatörün hangisini daha çok
+hissedeceğine bağlı.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
