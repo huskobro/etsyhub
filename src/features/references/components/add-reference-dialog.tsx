@@ -40,7 +40,25 @@ import { AssetImage } from "@/components/ui/asset-image";
 import { cn } from "@/lib/cn";
 import { deriveTitleFromUrl } from "@/lib/derive-title-from-url";
 
-type TabId = "url" | "upload" | "bookmark";
+type TabId = "url" | "upload" | "bookmark" | "local";
+
+/* Phase 40 — Local Library tab data shapes (kept lightweight on the
+ * client; full schema lives server-side). */
+type LocalFolderLite = {
+  name: string;
+  path: string;
+  fileCount: number;
+  coverHashes: string[];
+};
+
+type LocalAssetLite = {
+  id: string;
+  hash: string;
+  fileName: string;
+  mimeType: string;
+  width: number;
+  height: number;
+};
 
 type ProductTypeOption = { id: string; displayName: string; key?: string };
 type CollectionOption = { id: string; name: string };
@@ -408,6 +426,58 @@ export function AddReferenceDialog({
     enabled: tab === "bookmark",
   });
 
+  /* Phase 40 — Local Library tab state.
+   *
+   * Operator picks an active root folder (from settings), this tab
+   * lists folders + their assets, multi-select, then commits via
+   * POST /api/references/from-local-library which:
+   *   1. reads each LocalLibraryAsset filePath from disk
+   *   2. uploads to storage via createAssetFromBuffer (hash dedup)
+   *   3. creates an INBOX Bookmark
+   *   4. promotes to Reference (single transactional chain reuse)
+   *
+   * No schema migration. LocalLibraryAsset stays in place; we copy
+   * the byte content into the canonical Asset/storage pipeline. */
+  const [localFolder, setLocalFolder] = useState<string | null>(null);
+  const [localAssetSelection, setLocalAssetSelection] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const localFoldersQuery = useQuery({
+    queryKey: ["local-library", "folders"],
+    queryFn: async () => {
+      const res = await fetch("/api/local-library/folders", {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("Failed to load folders");
+      return (await res.json()) as { folders: LocalFolderLite[] };
+    },
+    enabled: tab === "local",
+  });
+
+  const localAssetsQuery = useQuery({
+    queryKey: ["local-library", "assets", localFolder],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (localFolder) params.set("folder", localFolder);
+      const res = await fetch(
+        `/api/local-library/assets?${params.toString()}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) throw new Error("Failed to load assets");
+      return (await res.json()) as { assets: LocalAssetLite[] };
+    },
+    enabled: tab === "local" && !!localFolder,
+  });
+
+  // Auto-pick first folder when the tab loads (cheap UX).
+  useEffect(() => {
+    if (tab !== "local") return;
+    if (localFolder) return;
+    const first = localFoldersQuery.data?.folders?.[0]?.name;
+    if (first) setLocalFolder(first);
+  }, [tab, localFolder, localFoldersQuery.data]);
+
   /* URL queue job polling — Phase 29.
    *
    * React Query per-row `useQuery` array kullanmadık (hook count
@@ -487,6 +557,54 @@ export function AddReferenceDialog({
       if (!res.ok)
         throw new Error((await res.json()).error ?? "Failed to create bookmark");
       return res.json();
+    },
+  });
+
+  // Phase 40 — Multi local-asset promote → Reference (From Local
+  // Library tab). Single endpoint handles disk→buffer→Asset→Bookmark→
+  // Reference chain server-side; idempotent at hash level.
+  const promoteLocalAssets = useMutation({
+    mutationFn: async () => {
+      const ids = Array.from(localAssetSelection);
+      if (ids.length === 0) throw new Error("No local assets selected");
+      if (!productTypeId) throw new Error("Pick a product type");
+      const res = await fetch("/api/references/from-local-library", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          localAssetIds: ids,
+          productTypeId,
+          collectionId: collectionId ?? undefined,
+        }),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(payload.error ?? "Failed to import local assets");
+      }
+      const data = (await res.json()) as {
+        references: Array<{ referenceId: string; bookmarkId: string }>;
+        failed: Array<{ localAssetId: string; error: string }>;
+      };
+      if (data.references.length === 0 && data.failed.length > 0) {
+        throw new Error(
+          `${data.failed.length} of ${ids.length} imports failed`,
+        );
+      }
+      return data;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["references"] });
+      qc.invalidateQueries({ queryKey: ["bookmarks"] });
+      // If everything succeeded, close. If partial, leave open so the
+      // operator can see the surfaced failure message.
+      if (data.failed.length === 0) {
+        onCreated?.();
+        onClose();
+      } else {
+        onCreated?.();
+      }
     },
   });
 
@@ -801,6 +919,7 @@ export function AddReferenceDialog({
       urlOnSaveAll.isPending ||
       uploadAll.isPending ||
       promoteBookmarks.isPending ||
+      promoteLocalAssets.isPending ||
       createBookmark.isPending
     )
       return;
@@ -820,6 +939,7 @@ export function AddReferenceDialog({
     urlOnSaveAll.isPending,
     uploadAll.isPending,
     promoteBookmarks.isPending,
+    promoteLocalAssets.isPending,
     createBookmark.isPending,
   ]);
 
@@ -842,6 +962,7 @@ export function AddReferenceDialog({
   // Dynamic CTA label
   const bookmarkCount = bookmarkSelection.size;
   const uploadCount = uploads.length;
+  const localCount = localAssetSelection.size;
 
   /* URL tab dynamic CTA — Phase 29 multi-URL.
    * Operatör flow: fill rows → "Fetch images" → readyCount görünür →
@@ -855,6 +976,11 @@ export function AddReferenceDialog({
     }
     if (tab === "upload") {
       return uploadCount > 1 ? `Add ${uploadCount} References` : "Add Reference";
+    }
+    if (tab === "local") {
+      return localCount > 1
+        ? `Add ${localCount} References`
+        : "Add Reference";
     }
     // URL queue: if any ready → "Save N references"; else "Fetch images"
     if (urlReadyCount > 0 && urlIdleWithUrlCount === 0 && urlFetchingCount === 0) {
@@ -896,6 +1022,13 @@ export function AddReferenceDialog({
         uploads.some((u) => u.status === "uploading")
       );
     }
+    if (tab === "local") {
+      return (
+        !productTypeId ||
+        localCount === 0 ||
+        promoteLocalAssets.isPending
+      );
+    }
     return (
       !productTypeId ||
       bookmarkCount === 0 ||
@@ -916,6 +1049,8 @@ export function AddReferenceDialog({
       }
     } else if (tab === "upload") {
       uploadAll.mutate();
+    } else if (tab === "local") {
+      promoteLocalAssets.mutate();
     } else {
       promoteBookmarks.mutate();
     }
@@ -962,6 +1097,7 @@ export function AddReferenceDialog({
                 { id: "url", label: "Image URL" },
                 { id: "upload", label: "Upload" },
                 { id: "bookmark", label: "From Bookmark" },
+                { id: "local", label: "From Local Library" },
               ] as { id: TabId; label: string }[]
             ).map((t) => (
               <button
@@ -981,6 +1117,9 @@ export function AddReferenceDialog({
                 ) : null}
                 {t.id === "upload" && uploadCount > 0 ? (
                   <span className="k-stab__count">{uploadCount}</span>
+                ) : null}
+                {t.id === "local" && localCount > 0 ? (
+                  <span className="k-stab__count">{localCount}</span>
                 ) : null}
               </button>
             ))}
@@ -1044,6 +1183,53 @@ export function AddReferenceDialog({
                 })
               }
               clearAll={() => setBookmarkSelection(new Set())}
+            />
+          ) : null}
+
+          {tab === "local" ? (
+            <LocalLibraryTab
+              folders={localFoldersQuery.data?.folders ?? []}
+              foldersLoading={localFoldersQuery.isLoading}
+              foldersError={
+                localFoldersQuery.isError
+                  ? (localFoldersQuery.error as Error).message
+                  : null
+              }
+              activeFolder={localFolder}
+              onPickFolder={(name) => {
+                setLocalFolder(name);
+                setLocalAssetSelection(new Set());
+              }}
+              assets={localAssetsQuery.data?.assets ?? []}
+              assetsLoading={localAssetsQuery.isLoading}
+              selection={localAssetSelection}
+              toggleSelect={(id) =>
+                setLocalAssetSelection((cur) => {
+                  const next = new Set(cur);
+                  if (next.has(id)) next.delete(id);
+                  else next.add(id);
+                  return next;
+                })
+              }
+              selectAll={() =>
+                setLocalAssetSelection((cur) => {
+                  const next = new Set(cur);
+                  for (const a of localAssetsQuery.data?.assets ?? []) {
+                    next.add(a.id);
+                  }
+                  return next;
+                })
+              }
+              clearAll={() => setLocalAssetSelection(new Set())}
+              partialFailureMessage={
+                promoteLocalAssets.data &&
+                promoteLocalAssets.data.failed.length > 0
+                  ? `${promoteLocalAssets.data.references.length} of ${
+                      promoteLocalAssets.data.references.length +
+                      promoteLocalAssets.data.failed.length
+                    } imported; ${promoteLocalAssets.data.failed.length} failed.`
+                  : null
+              }
             />
           ) : null}
         </div>
@@ -1144,6 +1330,8 @@ export function AddReferenceDialog({
               "Uploading…"
             ) : tab === "bookmark" && promoteBookmarks.isPending ? (
               "Promoting…"
+            ) : tab === "local" && promoteLocalAssets.isPending ? (
+              "Importing…"
             ) : (
               <>
                 <Plus className="h-3 w-3" aria-hidden />
@@ -1162,6 +1350,14 @@ export function AddReferenceDialog({
         {uploadAll.isError ? (
           <div className="border-t border-danger/40 bg-danger/5 px-5 py-2 text-[12px] text-danger">
             {(uploadAll.error as Error).message}
+          </div>
+        ) : null}
+        {promoteLocalAssets.isError ? (
+          <div
+            className="border-t border-danger/40 bg-danger/5 px-5 py-2 text-[12px] text-danger"
+            data-testid="add-ref-local-error"
+          >
+            {(promoteLocalAssets.error as Error).message}
           </div>
         ) : null}
       </div>
@@ -1959,6 +2155,233 @@ function relativeAgo(iso: string): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   return `${d}d ago`;
+}
+
+/* ───────────────────────── LOCAL LIBRARY TAB (Phase 40) ───────────────────────── */
+/**
+ * LocalLibraryTab — folder picker + asset grid + multi-select.
+ *
+ * Operatör Settings → Local library altında bir rootFolderPath
+ * ayarlamış olmalı. Yoksa folders listesi boş döner ve operatöre
+ * "no folders" mesajı gösterilir.
+ *
+ * Asset grid 4-col, k-thumb pattern (B5 Upload tab parallel'i),
+ * select all / clear (Phase 30 BookmarkTab pattern paritesi).
+ *
+ * Thumbnail endpoint: `/api/local-library/thumbnail?hash=...` (var
+ * olan endpoint, IA-33). Asset id'leri parent state'ine seçilir;
+ * commit anında parent `POST /api/references/from-local-library`
+ * ile gerçek import yapar.
+ */
+function LocalLibraryTab({
+  folders,
+  foldersLoading,
+  foldersError,
+  activeFolder,
+  onPickFolder,
+  assets,
+  assetsLoading,
+  selection,
+  toggleSelect,
+  selectAll,
+  clearAll,
+  partialFailureMessage,
+}: {
+  folders: LocalFolderLite[];
+  foldersLoading: boolean;
+  foldersError: string | null;
+  activeFolder: string | null;
+  onPickFolder: (name: string) => void;
+  assets: LocalAssetLite[];
+  assetsLoading: boolean;
+  selection: Set<string>;
+  toggleSelect: (id: string) => void;
+  selectAll: () => void;
+  clearAll: () => void;
+  partialFailureMessage: string | null;
+}) {
+  const allInListSelected =
+    assets.length > 0 && assets.every((a) => selection.has(a.id));
+
+  if (foldersError) {
+    return (
+      <div className="rounded-md border border-danger/40 bg-danger/5 p-4 text-[12.5px] text-danger">
+        {foldersError}
+      </div>
+    );
+  }
+
+  if (foldersLoading) {
+    return (
+      <div className="text-[12px] text-ink-3">Loading local folders…</div>
+    );
+  }
+
+  if (folders.length === 0) {
+    return (
+      <div
+        className="rounded-md border border-line-soft bg-k-bg-2/30 p-4 text-[12.5px] text-ink-3"
+        data-testid="add-ref-local-empty"
+      >
+        <div className="font-medium text-ink">No local folders found</div>
+        <p className="mt-1 leading-snug">
+          Set a local library root folder in{" "}
+          <span className="font-mono text-[11.5px]">
+            Settings → Local library
+          </span>{" "}
+          and scan it. Folders that contain scanned assets will appear
+          here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Folder picker — segmented chips. Phase 30 BookmarkTab/Filter
+        * chip pattern; many folders → operator scrolls horizontally. */}
+      <div className="flex flex-col gap-1.5">
+        <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+          Folder
+        </span>
+        <div
+          className="flex flex-wrap gap-1.5"
+          data-testid="add-ref-local-folder-list"
+        >
+          {folders.map((f) => (
+            <button
+              key={f.path}
+              type="button"
+              onClick={() => onPickFolder(f.name)}
+              aria-pressed={activeFolder === f.name}
+              className={cn(
+                "k-chip",
+                activeFolder === f.name && "k-chip--active",
+              )}
+              data-testid="add-ref-local-folder-chip"
+            >
+              {f.name}
+              <span className="ml-1.5 font-mono text-[10px] text-ink-3">
+                · {f.fileCount}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {assets.length > 0 ? (
+        <div className="flex items-center justify-between font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+          <span data-testid="add-ref-local-summary">
+            {selection.size} of {assets.length} selected · will promote
+            to Pool
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={selectAll}
+              disabled={allInListSelected}
+              className="transition-colors hover:text-ink disabled:opacity-40"
+              data-testid="add-ref-local-select-all"
+            >
+              Select all
+            </button>
+            {selection.size > 0 ? (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="transition-colors hover:text-ink"
+                data-testid="add-ref-local-clear-all"
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {assetsLoading ? (
+        <div className="text-[12px] text-ink-3">Loading assets…</div>
+      ) : activeFolder && assets.length === 0 ? (
+        <div className="rounded-md border border-line-soft bg-k-bg-2/30 p-4 text-[12.5px] text-ink-3">
+          No assets in this folder.
+        </div>
+      ) : assets.length > 0 ? (
+        <div
+          className="grid grid-cols-4 gap-3"
+          data-testid="add-ref-local-grid"
+        >
+          {assets.map((a) => {
+            const sel = selection.has(a.id);
+            return (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => toggleSelect(a.id)}
+                aria-pressed={sel}
+                className={cn(
+                  "group relative overflow-hidden rounded-md border bg-paper transition-all",
+                  sel
+                    ? "border-k-orange ring-2 ring-k-orange-soft"
+                    : "border-line hover:border-line-strong",
+                )}
+                data-testid="add-ref-local-asset"
+                title={a.fileName}
+              >
+                <div className="aspect-square w-full bg-k-bg-2">
+                  {/* Server-rendered thumbnail; reuses Phase 21 endpoint. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/local-library/thumbnail?hash=${encodeURIComponent(
+                      a.hash,
+                    )}`}
+                    alt={a.fileName}
+                    className="h-full w-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <span
+                  className={cn(
+                    "absolute right-1.5 top-1.5 inline-flex h-5 w-5 items-center justify-center rounded border bg-paper/95",
+                    sel
+                      ? "border-k-orange text-k-orange-ink bg-k-orange"
+                      : "border-line text-transparent",
+                  )}
+                  aria-hidden
+                >
+                  {sel ? (
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      className="text-paper"
+                    >
+                      <path
+                        d="M5 12l5 5L20 7"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {partialFailureMessage ? (
+        <div
+          className="rounded-md border border-warning/40 bg-warning/5 p-3 text-[12px] text-warning"
+          data-testid="add-ref-local-partial-failure"
+        >
+          {partialFailureMessage}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /* ───────────────────────── LISTING PICKER (Phase 35 → Phase 37) ───────────────────────── */

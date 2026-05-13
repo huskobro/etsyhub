@@ -7777,6 +7777,219 @@ line ignore + Phase 30 pre-fetch preview kombinasyonu ile hızla
 
 ---
 
+## Phase 40 — Folder intake: From Local Library tab (migration-free)
+
+Phase 39'da folder intake "honest defer" olarak işaretlenmişti
+("LocalLibraryAsset ↔ Bookmark/Reference zinciri yok; schema
+migration gerekir"). Phase 40 audit'inde **migration-FREE bir
+köprü** bulundu: mevcut `createAssetFromBuffer` helper'ı disk
+buffer'ı storage provider'a kopyalayıp `Asset` row üretir; hash
+dedup ile idempotent. Bu sayede:
+
+```
+LocalLibraryAsset (filePath on disk)
+  → readFile(buffer)
+  → createAssetFromBuffer(buffer, mimeType)     // existing helper
+     → hash dedup → Asset row (S3/R2 upload)
+  → createBookmark(assetId, status=INBOX)
+  → createReferenceFromBookmark(bookmarkId)     // existing helper
+  → Pool grid'de yeni Reference
+```
+
+Yeni schema, yeni FK, yeni big abstraction **yok**.
+`LocalLibraryAsset` ↔ `Asset` arasında FK kurulmaz — Local asset
+diskte yerinde kalır; sadece byte içeriği canonical pipeline'a
+kopyalanır (storage provider zaten S3/R2 üzerinde yaşıyor; local
+fs ile parallel storage hâlâ kabul edilir).
+
+### Audit bulguları
+
+| Model | Storage | Pool ile bağlantı |
+|---|---|---|
+| `LocalLibraryAsset` | local fs (`filePath`) | yok |
+| `Asset` | storage provider (`storageProvider`+`storageKey`+`bucket`) | `Bookmark.assetId` ve `Reference.assetId` ile bağlanır |
+| `Bookmark.assetId` | nullable; INBOX/REFERENCED/RISKY/ARCHIVED statüleri | promote endpoint `createReferenceFromBookmark` ile Reference üretir |
+| `Reference.assetId` | NOT NULL | her Reference bir Asset'e zorunlu bağlı |
+
+**Çözüm path'i**: `LocalLibraryAsset.filePath`'i disk'ten okuyup
+`createAssetFromBuffer` köprüsünden geçirmek. `createAssetFromBuffer`
+zaten `import-url` worker tarafından kullanılıyor (URL fetch buffer'ını
+aynı şekilde Asset'e dönüştürüyor). Local fs read pattern mevcut
+`/api/local-library/asset` endpoint'inde de kullanılıyor (focus mode
+asset stream).
+
+### Yeni endpoint — `POST /api/references/from-local-library`
+
+`src/app/api/references/from-local-library/route.ts`:
+
+Body: `{ localAssetIds: string[], productTypeId, collectionId?, notes? }`
+
+İşlem (her asset için):
+1. **User isolation guards**: `LocalLibraryAsset.userId == session.user.id`
+   + `getActiveLocalRootFilter` (rootFolderPath altında) + `isUserDeleted=false`
+   + `deletedAt=null` (CLAUDE.md Madde V parity)
+2. `readFile(asset.filePath)` — path traversal koruması: filePath
+   DB'den okunur, operator query ile inject edemez (schema-zero
+   pattern, IA-33 `/api/local-library/asset` ile aynı)
+3. `createAssetFromBuffer({ userId, buffer, mimeType, sourcePlatform: OTHER })`
+   — hash dedup; aynı içerikli ikinci asset yeni row üretmez (operator
+   bir local asset'i ikinci kez seçerse mevcut Asset reuse edilir)
+4. `db.bookmark.create` (status INBOX, sourcePlatform OTHER, assetId
+   set, title = fileName stripped of extension)
+5. `createReferenceFromBookmark` — mevcut transaction helper; Bookmark
+   status'unu REFERENCED'a çevirir, Reference row üretir
+
+Response: `{ references: SuccessItem[], failed: FailureItem[] }` —
+`Promise.all` (cross-asset parallel) ile partial failure tolerant.
+
+**Schema değişiklik**: 0. Yeni column, yeni table, yeni enum yok.
+
+### Yeni UI sekmesi — "From Local Library" (4. sibling tab)
+
+`AddReferenceDialog`'a 4. sekme eklendi:
+
+- `TabId = "url" | "upload" | "bookmark" | "local"`
+- Folder picker: `/api/local-library/folders` (mevcut endpoint)
+  döndürdüğü folder listesi `k-chip` segmented chip'leri olarak
+  render edilir. Her chip folder name + `· N` dosya sayısı.
+- İlk yüklemede ilk folder otomatik seçili (cheap UX).
+- Asset grid: 4-col k-thumb pattern (Phase 35-37 listing-picker
+  multi-select pattern'ı paritesi). Thumbnail
+  `/api/local-library/thumbnail?hash=...` (Phase 21 endpoint) ile
+  yüklenir.
+- Multi-select: `localAssetSelection: Set<string>`. Select all /
+  Clear pattern (Phase 30 BookmarkTab parity).
+- Empty state: settings'te rootFolderPath yoksa veya tarama
+  yapılmamışsa "No local folders found · Set a local library root
+  folder in Settings → Local library and scan it." mesajı.
+- Partial failure caption: "X of N imported; Y failed" — modal açık
+  kalır (operatör hatalı satırları görüp tekrar deneyebilir).
+
+CTA dispatcher genişletildi:
+
+```ts
+if (tab === "local") return localCount > 1
+  ? `Add ${localCount} References`
+  : "Add Reference";
+```
+
+`onPrimaryCta` → `promoteLocalAssets.mutate()` → endpoint POST.
+Tab badge `<span className="k-stab__count">{localCount}</span>`
+(Phase 27 pattern parity).
+
+### Backward compatibility
+
+- **Direct image URL akışı korundu** (Phase 39 baseline):
+  - Helper text "Direct image URL · 2 rows · Enter to advance ..."
+  - Enter → next row / new row
+  - Multi-line paste split + blank line ignore
+  - Pre-fetch `<img>` preview
+- **Upload tab**: dokunulmadı
+- **From Bookmark tab**: dokunulmadı
+- **Phase 38 listing picker dormant durumu**: korundu (UrlTab
+  `onOpenListingPicker` undefined → request hiç atılmaz)
+
+### Operator workflow
+
+Operatör akışı:
+1. Settings → Local library → rootFolderPath ayarla + scan
+2. References → Pool → "+ Add Reference" → modal açılır
+3. "From Local Library" tab'ına geç
+4. Folder chip seç
+5. Asset grid'inden istediği görseller seç (multi-select + Select all)
+6. Product type chip seç
+7. "+ Add N References" → tek tıkla N reference Pool'a düşer
+
+Bu akış tamamen migration-free, mevcut altyapı + tek yeni endpoint
+ile çalışıyor.
+
+### Browser verification (gerçek end-to-end kanıt)
+
+Live dev server (PID 70095, viewport 1440×900, fresh `.next/` rebuild):
+
+| Adım | Kanıt |
+|---|---|
+| 4 tab listesi render edildi | `add-ref-tab-{url,upload,bookmark,local}` data-testid'ler ✓ |
+| "From Local Library" sekmesine geç | `tabBadge`, click handler ✓ |
+| Folder list yüklendi | API call `/api/local-library/folders` → 6 folder chip |
+| İlk folder otomatik aktif | `aria-pressed="true"` first chip |
+| Asset list yüklendi | API call `/api/local-library/assets?folder=...` → 10 asset thumb |
+| 3 asset seçildi | summary "3 of 10 selected · will promote to Pool", tab badge "3", CTA "Add 3 References" |
+| CTA enabled | wall_art product type already last-used selected |
+| Click CTA | POST `/api/references/from-local-library` triggered ✓ |
+| Modal auto-closed | success path; no errors, no partial failures |
+| Pool subtitle güncellendi | "7 REFERENCES" (baseline 4 + 3 new) ✓ |
+| Direct URL regression | hint "✓ Looks like Etsy", Enter advances to row 2, helper "2 rows · Enter to advance ..." ✓ |
+
+Screenshot: 4-tab strip + "From Local Library" active + folder chip
+list + 4-col asset grid + 3 selected (k-orange ring + check overlay)
++ summary "3 of 10 selected · will promote to Pool · select all
+clear" + product type "Wall art" active + CTA "+ Add 3 References".
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **59/59 PASS** (bookmarks-page, references-page,
+  collections-page, dashboard-page, bookmark-service,
+  bookmarks-confirm-flow). Yeni endpoint için unit test eklenmedi
+  (server-side disk read + storage provider + 3 model write zinciri
+  unit test için fixture-heavy; integration test ayrı tur).
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 40)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration YAPILMADI.** Yeni FK, column, table, enum yok.
+- **Yeni büyük abstraction yok.** Mevcut `createAssetFromBuffer` +
+  `createBookmark` + `createReferenceFromBookmark` zinciri reuse.
+- **Yeni surface açılmadı.** Sadece AddReferenceDialog'a 4. sekme.
+- **WorkflowRun eklenmez.**
+- **Kivasy DS dışına çıkılmadı.** k-stab, k-chip, k-thumb, k-orange,
+  k-orange-soft, line, paper recipe'leri kullanıldı.
+- **Direct image URL canonical yolu bozulmadı.** Phase 39 baseline
+  Enter advance, paste split, blank line ignore, pre-fetch preview
+  hepsi intakt.
+
+### Future companion backlog — neden ayrı kaldı
+
+Page-level scraping (Etsy listing, CF product, Pinterest pin/board)
+**ayrı bir altyapı turu** (browser companion / Chrome extension —
+Midjourney bridge pattern):
+
+| Kaynak | Phase 40 statüsü | Sebep |
+|---|---|---|
+| Etsy listing page | future companion backlog | Datadome WAF |
+| CF product page | future companion backlog | Cloudflare Turnstile |
+| Pinterest pin/board/profile | future companion backlog | Cloudflare + login wall |
+| **Local Library folder** | **AKTİF (Phase 40)** | local fs, no anti-bot |
+| Direct image URL | AKTİF (Phase 39 baseline) | server-side fetch güvenilir |
+| Upload tab | AKTİF | local file |
+| Bookmark Inbox → Promote | AKTİF | mevcut yol |
+
+Folder intake **scraping-tabanlı kaynaklardan ayrı ve daha güvenli
+bir alan**: anti-bot duvarı yok, IP reputation maliyeti yok,
+deterministic disk read, idempotent storage provider write.
+
+### Bundan sonra bulk intake tarafında kalan tek doğru iş
+
+**Browser companion / extension** (Midjourney bridge pattern) —
+page-level scraping başlamak için tek doğru yol. Chrome extension
+content script + manifest + cross-origin auth. Ayrı altyapı turu;
+folder intake Phase 40'ta çözüldüğü için artık intake tarafında
+"yarım" akış yok:
+
+- Direct image URL → aktif canonical (Phase 39)
+- Upload → aktif canonical (Phase 26)
+- From Bookmark → aktif canonical (Phase 26)
+- **From Local Library → aktif canonical (Phase 40)**
+- Page-level scraping → future companion backlog (Phase 38'de
+  pasifleştirildi)
+
+Bundan sonraki tur **browser companion** veya **References
+detail/edit surface** gibi başka modüllere geçilebilir.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
