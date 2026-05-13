@@ -18,6 +18,7 @@ describe("<S1BrowseDrawer>", () => {
       thumbKey: "thumb-1",
       estimatedRenderMs: 2000,
       hasActiveBinding: true,
+    ownership: "global" as const,
     },
     {
       id: "t2",
@@ -27,6 +28,7 @@ describe("<S1BrowseDrawer>", () => {
       thumbKey: "thumb-2",
       estimatedRenderMs: 2100,
       hasActiveBinding: true,
+    ownership: "global" as const,
     },
     {
       id: "t3",
@@ -36,6 +38,7 @@ describe("<S1BrowseDrawer>", () => {
       thumbKey: "thumb-3",
       estimatedRenderMs: 2200,
       hasActiveBinding: true,
+    ownership: "global" as const,
     },
     {
       id: "t4",
@@ -45,6 +48,7 @@ describe("<S1BrowseDrawer>", () => {
       thumbKey: "thumb-4",
       estimatedRenderMs: 2000,
       hasActiveBinding: true,
+    ownership: "global" as const,
     },
     {
       id: "t5",
@@ -54,6 +58,7 @@ describe("<S1BrowseDrawer>", () => {
       thumbKey: "thumb-5",
       estimatedRenderMs: 2150,
       hasActiveBinding: true,
+    ownership: "global" as const,
     },
     {
       id: "t6",
@@ -63,6 +68,7 @@ describe("<S1BrowseDrawer>", () => {
       thumbKey: "thumb-6",
       estimatedRenderMs: 2050,
       hasActiveBinding: true,
+    ownership: "global" as const,
     },
     {
       id: "t7",
@@ -72,6 +78,7 @@ describe("<S1BrowseDrawer>", () => {
       thumbKey: "thumb-7",
       estimatedRenderMs: 2100,
       hasActiveBinding: true,
+    ownership: "global" as const,
     },
     {
       id: "t8",
@@ -81,6 +88,7 @@ describe("<S1BrowseDrawer>", () => {
       thumbKey: "thumb-8",
       estimatedRenderMs: 2200,
       hasActiveBinding: true,
+    ownership: "global" as const,
     },
   ];
 
@@ -100,14 +108,14 @@ describe("<S1BrowseDrawer>", () => {
 
   it("renders drawer with header and title", () => {
     render(<S1BrowseDrawer {...defaultProps} />);
-    expect(screen.getByText("Template Kütüphanesi")).toBeInTheDocument();
+    expect(screen.getByText("Template library")).toBeInTheDocument();
   });
 
   it("closes drawer via X button", () => {
     const onOpenChange = vi.fn();
     render(<S1BrowseDrawer {...defaultProps} onOpenChange={onOpenChange} />);
 
-    const closeBtn = screen.getByLabelText("Kapat");
+    const closeBtn = screen.getByLabelText("Close");
     fireEvent.click(closeBtn);
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -116,7 +124,7 @@ describe("<S1BrowseDrawer>", () => {
   it("renders 8 template grid with cards", () => {
     render(<S1BrowseDrawer {...defaultProps} />);
     // Drawer header ve 3-4 template adını kontrol et (8 kart render edilir)
-    expect(screen.getByText("Template Kütüphanesi")).toBeInTheDocument();
+    expect(screen.getByText("Template library")).toBeInTheDocument();
     expect(screen.getByText("Modern Sofa Wall")).toBeInTheDocument();
     expect(screen.getByText("Scandinavian Bedroom")).toBeInTheDocument();
   });
@@ -328,7 +336,7 @@ describe("<S1BrowseDrawer>", () => {
       />
     );
 
-    expect(screen.getByText("Template Kütüphanesi")).toBeInTheDocument();
+    expect(screen.getByText("Template library")).toBeInTheDocument();
 
     rerender(
       <S1BrowseDrawer

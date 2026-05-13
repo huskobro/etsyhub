@@ -17,7 +17,8 @@
     "test:all": "npm run typecheck && npm run lint && npm run check:tokens && npm run test && npm run test:ui && npm run test:e2e",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "tsx scripts/reset-db.ts"
+    "db:reset": "tsx scripts/reset-db.ts",
+    "cleanup:test-mockup-templates": "tsx scripts/cleanup-test-mockup-templates.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.670.0",

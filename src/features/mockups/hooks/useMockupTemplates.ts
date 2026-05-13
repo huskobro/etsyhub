@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 
 // View shape — Task 14'ten taşınan sabit sözleşme.
+// Phase 65 — `ownership` field eklendi (admin catalog vs my templates ayrımı).
 const MockupTemplateViewSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -21,6 +22,8 @@ const MockupTemplateViewSchema = z.object({
   thumbKey: z.string(),
   estimatedRenderMs: z.number(),
   hasActiveBinding: z.boolean(),
+  /** Phase 65 — "global" (admin catalog) | "own" (operator's library). */
+  ownership: z.enum(["global", "own"]).default("global"),
 });
 
 const ResponseSchema = z.object({

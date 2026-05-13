@@ -12892,6 +12892,156 @@ Sıradaki gerçek iş **Phase 65 user upload UI** (write side): operatör kendi 
 
 ---
 
+## Phase 65 — Test data cleanup + Admin/My templates ürün modeli + first user-create slice
+
+Phase 64 ownership foundation (`MockupTemplate.userId`) + read API kurmuştu. Phase 65 audit'te ortaya çıktı: **3061 template'in 3058'i test fixture** (Phase8 Swap Test seed + integration test orphan + QA marker'lar). Operatör admin manager'da bu yapay "katalog"u görüyor → ürün hissi bozuluyor + templated.io ürün modeli (admin catalog vs my templates) anlamsız hale geliyor.
+
+Bu turun üç ana çıktısı:
+1. **Test data cleanup** (3061 → 3, 3058 silindi)
+2. **Admin/My templates ürün ayrımı** mockup apply UI'da görünür
+3. **First user-create slice**: `POST /api/mockup-templates` canlı (operatör kendi template'ini DRAFT olarak oluşturabilir)
+
+### Ürün modeli (templated.io stili)
+
+| Tab | Filter | Operatör için |
+|---|---|---|
+| **All** | `userId NULL OR userId === currentUser` | Tüm görülebilir templates (default) |
+| **Admin templates** | `userId === NULL` | Admin'in global catalog'u (herkesin gördüğü) |
+| **My templates** | `userId === currentUser` | Operatör'ün kendi library'si |
+
+**Cross-user isolation guarantee** korundu (Phase 64 baseline): başka kullanıcıların template'leri ASLA hiçbir surface'te görünmez.
+
+### Cleanup detayı
+
+**Pattern-based hard delete** (`scripts/cleanup-test-mockup-templates.ts`):
+- `Template 0 - Phase8 Swap Test` (145 row)
+- `phase8-api-cover-swap-tpl-*` (yüzlerce integration test orphan)
+- `Pass <N>` keyword
+- `[V2-test]`, `[Phase64-test]`, `[QA]` marker'lar
+- name içinde `*test*`, `*Test*`, `*TEST*`, `*fixture*`, `*Fixture*`
+- **Korunanlar**: `Bundle Preview *` prefix, `userId IS NOT NULL` (user-owned), real catalog (audit'te 3 row: "Bundle Preview · 9-up Grid", "Sticker Sheet · 8 Die-Cut", "Studio Frame Mockup · Wall Art")
+- **Cascade safety**: `MockupTemplateBinding onDelete: Cascade` → binding rows otomatik; `MockupRender.templateSnapshot.config` snapshot self-contained → geçmiş render'lar bozulmaz
+- **Dry-run flag** desteği: `--dry-run` → silinecekleri listele, asıl silme yapma
+- npm script: `cleanup:test-mockup-templates`
+
+**Sonuç**: 3061 → 3 (3058 test fixture deleted, 3 real catalog template preserved).
+
+### POST /api/mockup-templates (user-scope create)
+
+Phase 65 first user-upload write endpoint:
+- `requireUser` auth (cross-user enforced; operator userId override edemez)
+- Body: `{ categoryId, name, thumbKey, aspectRatios, tags?, estimatedRenderMs? }`
+- `userId = currentUser.id` (server-side hard set)
+- Status: `DRAFT` (publish to ACTIVE = Phase 66 PATCH endpoint candidate)
+- Bindings: empty (binding create ayrı endpoint, Phase 66)
+- Response 201 with `ownership: "own"`
+
+**Phase 66 candidate** (full upload UI):
+- Asset upload UI (thumb file picker + MinIO upload via existing admin pattern)
+- Template editor (safe-area visual editor + recipe config)
+- Binding create form (LOCAL_SHARP provider config)
+- Status transition (DRAFT → ACTIVE publish)
+
+### /api/mockup/templates (Apply view consumer) — ownership-aware
+
+Mevcut endpoint Phase 65'te ownership filter ekledi (mevcut Apply view consumer'ları için):
+- Query: `categoryId` + `scope=all|global|own` (default `all`)
+- Response items'a `ownership: "global" | "own"` projected
+- Where: `userId NULL` veya `userId currentUser` (cross-user isolation)
+- Order: own first (operator's library on top), then alphabetical
+- `MockupTemplateView` schema (useMockupTemplates hook): `ownership` field eklendi (default "global" backward-compat)
+
+### S1BrowseDrawer (mockup apply UI) — Admin/My/All tab strip
+
+`src/features/mockups/components/S1BrowseDrawer.tsx`:
+- **3 tab strip header altında**: All / Admin templates / My templates
+- Each tab counts badge (own=N total)
+- `aria-selected` canonical pattern; default "all"
+- Filter logic genişletildi: ownership filter + vibe + room + aspect (ownership client-side filter, mevcut filter'lara ek)
+- **Empty state for "My templates"**:
+  - Title: "No templates of your own yet"
+  - Copy: "Templated.io-style: upload your own PSD/PNG mockup template and reuse it across selections. The upload editor is coming soon (Phase 66); the API endpoint POST /api/mockup-templates is live now."
+  - CTA: "Browse admin templates →" (operatör admin scope'a geçer)
+- `data-testid`: `template-library-ownership-tabs`, `template-library-ownership-tab[data-ownership]`, `template-library-empty-state`, `template-library-empty-switch-admin`
+
+Header copy update: "Template Kütüphanesi" → "Template library", "Kapat" → "Close" (CLAUDE.md Phase 18-31 EN parity).
+
+### local-sharp ile templated.io modelinin birleşmesi
+
+| Katman | Phase | Rol |
+|---|---|---|
+| Sharp pipeline (compositor + recipe + thumbnail) | Phase 8 | Render engine |
+| placePerspective (4-corner DLT homography) | Phase 63 | T-shirt/mug yamuk smart-object area transform |
+| MockupTemplate ownership (userId nullable) | Phase 64 | Foundation: admin catalog vs user library |
+| User-scope read endpoint (GET /api/mockup-templates) | Phase 64 | Catalog read; cross-user isolation |
+| Admin manager Ownership column | Phase 64 | Admin transparency |
+| **Test data cleanup** (3061 → 3) | Phase 65 | Ürün hissi (operatör artık gerçek katalog görür) |
+| **POST /api/mockup-templates (user-scope create)** | Phase 65 | First user-upload write path |
+| **Apply view Admin/My/All tab strip + empty state** | Phase 65 | Operator-facing ayrım canlı |
+| Apply endpoint ownership-aware (`/api/mockup/templates`) | Phase 65 | Mevcut consumer'lar global+own merge görür |
+
+**Self-hosted templated.io clone bu noktada**: rect + perspective render engine self-hosted (no API), ownership schema + read + write endpoints var, operator UI'da admin/my ayrımı canlı, ilk user-create yolu açık. Eksik: full upload UI editor (Phase 66) + binding create form + status publish flow.
+
+### Test coverage
+
+**`tests/unit/mockup/ui/S1BrowseDrawer.test.tsx`** — 17/17 PASS (Phase 64 fixture'lara `ownership: "global"` eklendi; "Template Kütüphanesi" → "Template library" / "Kapat" → "Close" assertion update'leri).
+
+**`tests/unit/mockup/ui/S2DetailModal.test.tsx`, `tests/unit/mockup/ui/PackPreviewCard.test.tsx`** — fixture'lara `ownership: "global"` eklendi (TS strict required field).
+
+Phase 64 user-scope endpoint test'leri (6/6) intakt.
+
+### Browser verification (canlı kanıt)
+
+- **Cleanup verification**: `/api/admin/mockup-templates` → 3 templates (önceden 3061), names: "Bundle Preview · 9-up Grid", "Sticker Sheet · 8 Die-Cut", "Studio Frame Mockup · Wall Art"
+- **POST endpoint live**: `POST /api/mockup-templates` body Phase 65 → HTTP 201 + `ownership: "own"` + `status: "DRAFT"`. `GET ?scope=own&status=DRAFT` → 1 item, ownership "own", endpoint persisted
+- **Tab strip**: 3 tab rendered (All 1 / Admin templates 1 / **My templates 0**), aria-selected default "all"
+- **Empty state**: My templates tab tıklanınca "No templates of your own yet" + copy + CTA "Browse admin templates →" canlı
+- **Screenshot**: drawer open, tab strip header altında orange "My templates 0" active, empty state body'si "Templated.io-style: upload your own PSD/PNG..." + CTA görünür
+
+### Quality gates
+
+- `tsc --noEmit`: clean (5 fixture'a `ownership` field eklendi)
+- `vitest`: **674/674 PASS** (650 baseline + 6 Phase 64 user-scope + 18 mockup UI fixtures)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 65)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok** (Phase 64 baseline kullanıldı; ownership zaten yerinde).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok**: Cleanup script + tek POST handler + 3 tab UI + ownership filter (mevcut filter zincirine ek).
+- **Cross-user isolation guarantee korundu** (Phase 64 baseline; user1 user2'nin template'ini ASLA görmez).
+- **Render history korundu**: `MockupRender.templateSnapshot.config` self-contained → silinen template'in render'ları hâlâ render snapshot'tan çalışır.
+- **References / Batch / Review / Selection / Mockup / Product / Etsy Draft canonical akışları intakt** (Phase 26-64 baseline).
+- **Mockup pipeline + worker + S7/S8 result view + dynamic-mockups path dokunulmadı** (yalnız tab strip + empty state UI değişikliği).
+- **Admin endpoint baseline intakt** (`requireAdmin` GET/POST/PATCH/DELETE değişmedi).
+- **Kivasy DS dışına çıkılmadı**.
+
+### Bilinçli scope dışı (Phase 66+ candidate)
+
+- **Full user upload UI editor**: asset upload form + safe-area visual editor + recipe config (template create flow operator için end-to-end UI)
+- **User-scope binding create endpoint**: POST /api/mockup-templates/[id]/bindings (LOCAL_SHARP provider config; operator template'ini render-able yapar)
+- **Status transition endpoint**: PATCH /api/mockup-templates/[id] (DRAFT → ACTIVE publish; ARCHIVE)
+- **PSD ETL CLI**: `ag-psd` parser + `scripts/import-psd-mockup-template.ts` (Phase 60 araştırma + Phase 62 plan)
+- **User template thumbnail upload endpoint**: `POST /api/mockup-templates/upload-asset` user-scope (admin endpoint reuse pattern)
+- **Reusable library mgmt UI**: rename, categorize (favorite/default), product type binding, archive
+- **Quota/limits** (plan tier-based)
+- **Sharing** semantics (kullanıcı template'ini başkasına kopyalayabilir mi?)
+- **dynamic-mockups consumer audit + deprecation karar** (Phase 63+64+65 sonrası hangi case'lerde hâlâ external API gerek?)
+
+### Bundan sonra production tarafında kalan tek doğru iş
+
+Phase 65 ile **templated.io clone'un canlı vertical slice'ı kuruldu**:
+- Test data cleanup ✓ (3 real template kaldı)
+- Admin/My/All ayrımı UI'da canlı ✓
+- First user-create write endpoint ✓
+- Cross-user isolation guarantee ✓
+- Render history protected ✓
+
+Sıradaki gerçek iş **Phase 66 user template editor UI** (write side full UI): asset upload form + safe-area editor + recipe config + binding create + status publish. Phase 65 schema + write API'si + UI ayrımı bu UI'yı operator-end-to-end deneyime bağlar. Sonra dynamic-mockups deprecation kararı.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

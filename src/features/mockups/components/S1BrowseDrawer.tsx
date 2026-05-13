@@ -71,13 +71,36 @@ export function S1BrowseDrawer({
     // Default: set'in ilk aspect'i, yoksa boş (All)
     () => setAspectRatios?.[0] ?? ""
   );
+  /* Phase 65 — Ownership scope filter ("Admin templates" / "My templates"). */
+  const [ownershipFilter, setOwnershipFilter] = useState<
+    "all" | "global" | "own"
+  >("all");
 
   // Min/max enforcement toast state (3sn auto-clear)
   const [showMaxWarning, setShowMaxWarning] = useState(false);
 
+  /* Phase 65 — Ownership counts for tab badges. */
+  const ownershipCounts = useMemo(() => {
+    let global = 0;
+    let own = 0;
+    for (const t of templates) {
+      if (t.ownership === "own") own++;
+      else global++;
+    }
+    return { global, own, all: templates.length };
+  }, [templates]);
+
   // Filter logic (Spec §5.3 line 1208: filter chip'ler client-side query)
   const filteredTemplates = useMemo(() => {
     return templates.filter((t) => {
+      if (
+        ownershipFilter === "global" && t.ownership !== "global"
+      ) {
+        return false;
+      }
+      if (ownershipFilter === "own" && t.ownership !== "own") {
+        return false;
+      }
       if (vibeFilter && !t.tags.some((tag) => tag.includes(vibeFilter))) {
         return false;
       }
@@ -89,7 +112,7 @@ export function S1BrowseDrawer({
       }
       return true;
     });
-  }, [templates, vibeFilter, roomFilter, aspectFilter]);
+  }, [templates, ownershipFilter, vibeFilter, roomFilter, aspectFilter]);
 
   // Handle template toggle (Spec §5.3 line 1217-1218 max enforcement)
   const handleToggleTemplate = (templateId: string) => {
@@ -117,16 +140,68 @@ export function S1BrowseDrawer({
           {/* Header (Spec §5.3 satır 1187) */}
           <div className="flex items-center justify-between border-b border-border px-6 py-3">
             <Dialog.Title className="text-base font-semibold">
-              Template Kütüphanesi
+              Template library
             </Dialog.Title>
             <button
               type="button"
               onClick={() => onOpenChange(false)}
-              aria-label="Kapat"
+              aria-label="Close"
               className="text-lg font-bold text-text-muted hover:text-text"
             >
               ×
             </button>
+          </div>
+
+          {/* Phase 65 — Ownership tab strip (Admin / My / All).
+           *   Templated.io ürün modeli: operatör admin catalog ile kendi
+           *   library'sini ayrı görsün. Counts badge ile kaç template
+           *   olduğu net. CLAUDE.md "USER_TEMPLATE" sözleşmesinin
+           *   ürün surface'i. */}
+          <div
+            className="flex gap-1 border-b border-border bg-bg px-6 py-2"
+            role="tablist"
+            aria-label="Template ownership scope"
+            data-testid="template-library-ownership-tabs"
+          >
+            {(
+              [
+                { id: "all", label: "All", count: ownershipCounts.all },
+                {
+                  id: "global",
+                  label: "Admin templates",
+                  count: ownershipCounts.global,
+                },
+                {
+                  id: "own",
+                  label: "My templates",
+                  count: ownershipCounts.own,
+                },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={ownershipFilter === tab.id}
+                onClick={() => setOwnershipFilter(tab.id)}
+                className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  ownershipFilter === tab.id
+                    ? "bg-accent text-accent-foreground"
+                    : "text-text-muted hover:bg-surface-2 hover:text-text"
+                }`}
+                data-testid="template-library-ownership-tab"
+                data-ownership={tab.id}
+              >
+                {tab.label}
+                <span
+                  className={`font-mono text-[10px] tabular-nums ${
+                    ownershipFilter === tab.id ? "opacity-80" : "opacity-60"
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            ))}
           </div>
 
           {/* Filter chips (Spec §5.3 satır 1189) */}
@@ -199,6 +274,53 @@ export function S1BrowseDrawer({
               En fazla 8 template ekleyebilirsin
             </div>
           )}
+
+          {/* Phase 65 — Empty state for ownership scope (esp. "My templates"
+           *   first-upload prompt). When operator selects "My templates" tab
+           *   and own catalog is empty, show actionable hint pointing to
+           *   the user-scope create endpoint (POST /api/mockup-templates).
+           *   The full upload UI editor is Phase 66 candidate. */}
+          {filteredTemplates.length === 0 ? (
+            <div
+              className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center"
+              data-testid="template-library-empty-state"
+              data-scope={ownershipFilter}
+            >
+              {ownershipFilter === "own" ? (
+                <>
+                  <div className="text-base font-semibold text-text">
+                    No templates of your own yet
+                  </div>
+                  <p className="mt-2 max-w-xs text-xs text-text-muted">
+                    Templated.io-style: upload your own PSD/PNG mockup
+                    template and reuse it across selections. The upload
+                    editor is coming soon (Phase 66); the API endpoint{" "}
+                    <code className="rounded bg-surface-2 px-1 font-mono text-[11px]">
+                      POST /api/mockup-templates
+                    </code>{" "}
+                    is live now.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setOwnershipFilter("global")}
+                    className="mt-4 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-text hover:bg-surface-2"
+                    data-testid="template-library-empty-switch-admin"
+                  >
+                    Browse admin templates →
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm font-semibold text-text">
+                    No templates match
+                  </div>
+                  <p className="mt-1 text-xs text-text-muted">
+                    Clear filters or switch tab.
+                  </p>
+                </>
+              )}
+            </div>
+          ) : null}
 
           {/* Grid (Spec §5.3 satır 1193-1201: 8 template grid) */}
           <div className="grid grid-cols-2 gap-4 overflow-auto px-6 py-4 sm:grid-cols-3">

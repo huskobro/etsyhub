@@ -17,6 +17,7 @@ describe("<S2DetailModal>", () => {
     thumbKey: "thumb-1",
     estimatedRenderMs: 2000,
     hasActiveBinding: true,
+    ownership: "global" as const,
   };
 
   const defaultProps = {
@@ -225,6 +226,7 @@ describe("<S2DetailModal>", () => {
       thumbKey: "thumb-2",
       estimatedRenderMs: 2200,
       hasActiveBinding: true,
+    ownership: "global" as const,
     };
 
     const { rerender } = render(

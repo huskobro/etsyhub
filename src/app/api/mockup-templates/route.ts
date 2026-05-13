@@ -1,10 +1,13 @@
 /**
- * Phase 64 — User-scope mockup template catalog (GET only).
+ * Phase 64 — User-scope mockup template catalog (GET).
+ * Phase 65 — User-scope create (POST) — first user-upload path.
  *
  * Templated.io modeli:
  *   - Operatör kendi mockup template'lerini tutabilir (userId set)
  *   - Aynı zamanda admin'in global catalog'una erişebilir (userId NULL)
- *   - Bu endpoint ikisini merge eder: global (NULL) + own (userId == current)
+ *   - GET endpoint ikisini merge eder: global (NULL) + own (userId == current)
+ *   - POST endpoint operator'un kendi DRAFT template'ini oluşturur
+ *     (userId currentUser; status DRAFT default)
  *
  * Cross-user izolasyon: başka kullanıcıların template'leri ASLA dönülmez
  * (where: OR [userId NULL, userId currentUser]).
@@ -12,7 +15,7 @@
  * Auth: requireUser (USER veya ADMIN — admin de kendi user-scope view'ini
  * görür; admin global catalog'u admin endpoint'inden yönetir).
  *
- * Response shape (her item):
+ * GET response shape (her item):
  *   {
  *     id, categoryId, name, status, thumbKey, aspectRatios, tags,
  *     estimatedRenderMs, archivedAt, createdAt, updatedAt,
@@ -20,11 +23,20 @@
  *     bindings: [{ id, providerId, status, version, estimatedRenderMs }],
  *   }
  *
- * Filter: categoryId opsiyonel; status opsiyonel (default ACTIVE — operatör
- * yalnız kullanılabilir template'leri görsün).
+ * POST body (Phase 65):
+ *   {
+ *     categoryId, name, thumbKey, aspectRatios, tags?, estimatedRenderMs?
+ *   }
  *
- * V1: write yok (POST/PATCH/DELETE Phase 65 candidate). Bu endpoint
- * READ-ONLY canlı catalog read.
+ * POST behavior:
+ *   - status = DRAFT (operator publishes via PATCH later, Phase 66)
+ *   - userId = currentUser (cross-user isolation enforced)
+ *   - thumbKey caller-provided (operator önce /api/admin/mockup-templates/
+ *     upload-asset ile MinIO key alır VEYA Phase 66 user-scope upload
+ *     endpoint açıldığında oradan)
+ *   - bindings empty (binding create ayrı endpoint, Phase 66)
+ *
+ * Filter (GET): categoryId opsiyonel; status opsiyonel (default ACTIVE).
  */
 
 import { NextResponse } from "next/server";
@@ -40,6 +52,15 @@ const listQuerySchema = z.object({
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).default("ACTIVE"),
   /** "all" | "global" | "own" — default "all" (global + own merge) */
   scope: z.enum(["all", "global", "own"]).default("all"),
+});
+
+const createBodySchema = z.object({
+  categoryId: MockupCategorySchema,
+  name: z.string().min(1).max(120),
+  thumbKey: z.string().min(1).max(500),
+  aspectRatios: z.array(z.string().min(1).max(10)).min(1).max(8),
+  tags: z.array(z.string().min(1).max(40)).max(20).default([]),
+  estimatedRenderMs: z.number().int().min(100).max(60_000).default(2000),
 });
 
 export const GET = withErrorHandling(async (req: Request) => {
@@ -114,4 +135,59 @@ export const GET = withErrorHandling(async (req: Request) => {
   }));
 
   return NextResponse.json({ items });
+});
+
+/**
+ * Phase 65 — POST /api/mockup-templates (user-scope create).
+ *
+ * First user-upload path. Operator creates a DRAFT template; binding
+ * (provider config) ayrı endpoint (Phase 66 candidate). Asset upload
+ * (thumbKey) Phase 66 user-scope upload endpoint açıldığında bağlanır;
+ * Phase 65 baseline: caller-provided thumbKey (admin upload-asset
+ * endpoint zaten requireUser değil — Phase 66'da user-scope upload
+ * endpoint açılır).
+ *
+ * Cross-user isolation: userId hard-coded currentUser.id (caller body
+ * userId override edemez).
+ *
+ * Response: created template (ownership="own", bindings=[]).
+ */
+export const POST = withErrorHandling(async (req: Request) => {
+  const user = await requireUser();
+  const parsed = createBodySchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    throw new ValidationError("Invalid input", parsed.error.flatten());
+  }
+
+  const created = await db.mockupTemplate.create({
+    data: {
+      categoryId: parsed.data.categoryId,
+      name: parsed.data.name,
+      thumbKey: parsed.data.thumbKey,
+      aspectRatios: parsed.data.aspectRatios,
+      tags: parsed.data.tags,
+      estimatedRenderMs: parsed.data.estimatedRenderMs,
+      userId: user.id,
+      // status default DRAFT (Prisma schema)
+    },
+  });
+
+  return NextResponse.json(
+    {
+      id: created.id,
+      categoryId: created.categoryId,
+      name: created.name,
+      status: created.status,
+      thumbKey: created.thumbKey,
+      aspectRatios: created.aspectRatios,
+      tags: created.tags,
+      estimatedRenderMs: created.estimatedRenderMs,
+      archivedAt: created.archivedAt,
+      createdAt: created.createdAt,
+      updatedAt: created.updatedAt,
+      ownership: "own" as const,
+      bindings: [],
+    },
+    { status: 201 },
+  );
 });

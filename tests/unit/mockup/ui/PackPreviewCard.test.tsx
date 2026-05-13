@@ -49,6 +49,7 @@ const mockTemplates: MockupTemplateView[] = [
     thumbKey: "thumb-1",
     estimatedRenderMs: 3000,
     hasActiveBinding: true,
+  ownership: "global" as const,
   },
   {
     id: "t2",
@@ -58,6 +59,7 @@ const mockTemplates: MockupTemplateView[] = [
     thumbKey: "thumb-2",
     estimatedRenderMs: 3000,
     hasActiveBinding: true,
+  ownership: "global" as const,
   },
 ];
 

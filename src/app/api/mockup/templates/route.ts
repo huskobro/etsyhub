@@ -1,18 +1,20 @@
 // Phase 8 Task 22 — GET /api/mockup/templates route handler.
+// Phase 65 — Ownership-aware: returns global (userId NULL) + own (userId
+//   == currentUser) merged. Apply view shows admin catalog + user library
+//   side-by-side (CLAUDE.md USER_TEMPLATE sözleşmesi karşılığı).
 //
-// Spec §4.3: Admin-managed template katalog. Sistem-wide read-only.
-//   - Auth: requireUser (auth'lu ama cross-user yok)
-//   - Query: categoryId — V2 (HEAD `d1fee51`+) MockupCategorySchema 8-değer
-//     enum (canvas + wall_art + printable + clipart + sticker + tshirt +
-//     hoodie + dtf). V1 sadece "canvas" template seed'liyordu; V2 admin
-//     non-canvas kategorilerde de template ekleyebilir
-//     (`/admin/mockup-templates/new`). DB seed'i olmayan kategoriler için
-//     boş array döner (honest empty state).
-//   - Filter: status=ACTIVE templates; ACTIVE binding aggregate
+// Spec §4.3: Apply page template katalog.
+//   - Auth: requireUser (auth'lu)
+//   - Query:
+//     - categoryId — MockupCategorySchema 8-değer enum
+//     - scope (Phase 65) — "all" | "global" | "own" (default "all")
+//   - Filter: status=ACTIVE; ACTIVE binding aggregate
 //   - Response 200: { templates: MockupTemplateView[] }
 //   - Provider-agnostik: providerId, config, binding internal alanları ELENİR
+//   - Phase 65: ownership: "global" | "own" projected per item
 //
-// Phase 8 emsali: Task 17 GET /jobs/[id] — direct Prisma, read-only.
+// Cross-user isolation: where filter never matches other users' rows
+// (OR [userId NULL, userId currentUser] — Phase 64 baseline).
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -24,14 +26,16 @@ import { MockupCategorySchema } from "@/features/mockups/schemas";
 
 const QuerySchema = z.object({
   categoryId: MockupCategorySchema,
+  scope: z.enum(["all", "global", "own"]).default("all"),
 });
 
 export const GET = withErrorHandling(async (req: Request) => {
-  await requireUser();
+  const user = await requireUser();
 
   const { searchParams } = new URL(req.url);
   const parsed = QuerySchema.safeParse({
     categoryId: searchParams.get("categoryId"),
+    scope: searchParams.get("scope") ?? undefined,
   });
   if (!parsed.success) {
     throw new ValidationError(
@@ -39,10 +43,20 @@ export const GET = withErrorHandling(async (req: Request) => {
       parsed.error.flatten(),
     );
   }
+  const { categoryId, scope } = parsed.data;
+
+  /* Phase 65 — Ownership scope filter. */
+  const ownershipWhere =
+    scope === "global"
+      ? { userId: null }
+      : scope === "own"
+        ? { userId: user.id }
+        : { OR: [{ userId: null }, { userId: user.id }] };
 
   const rows = await db.mockupTemplate.findMany({
     where: {
-      categoryId: parsed.data.categoryId,
+      ...ownershipWhere,
+      categoryId,
       status: "ACTIVE",
     },
     include: {
@@ -51,7 +65,11 @@ export const GET = withErrorHandling(async (req: Request) => {
         select: { id: true }, // sadece varlık kontrolü; internal alan SIZMAZ
       },
     },
-    orderBy: { name: "asc" }, // deterministik sıra (test stability)
+    orderBy: [
+      // Own first (operator's library on top), then alphabetical
+      { userId: { sort: "desc", nulls: "last" } },
+      { name: "asc" },
+    ],
   });
 
   const templates = rows.map((t) => ({
@@ -62,6 +80,8 @@ export const GET = withErrorHandling(async (req: Request) => {
     tags: t.tags,
     estimatedRenderMs: t.estimatedRenderMs,
     hasActiveBinding: t.bindings.length > 0,
+    // Phase 65 — Ownership signal for UI tabs/badge
+    ownership: (t.userId === null ? "global" : "own") as "global" | "own",
   }));
 
   return NextResponse.json({ templates });
