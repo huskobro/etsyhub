@@ -10314,6 +10314,175 @@ Draft** zincirinin sonu kalıyor.
 
 ---
 
+## Phase 52 — Selection finalize handoff + Mockup studio lineage strip
+
+Phase 51 Selection studio'yu çalışma yüzeyi yaptı (status badge, bulk
+curation, finalize CTA). Phase 52 odak: **finalize sonrası operatörün
+ne yapacağını net görmesi** + Mockup studio'da **context kaybının
+önlenmesi**.
+
+### Phase 51 sonrası ürün boşluğu
+
+1. **Finalize sonrası silent transition**: `finalizeMutation.onSuccess`
+   yalnız `router.refresh()` yapıyordu. Server stage'i `Edits`→`Mockup
+   ready`'ye çeviriyordu, header CTA Apply Mockups'a dönüyordu — ama
+   operatör "finalize başarılı mı, şimdi ne yapacağım?" sorusuna
+   görsel cevap almıyordu. Dead-end hissi devam ediyordu.
+2. **Mockup studio context kaybı**: `/selection/sets/{id}/mockup/apply`
+   surface'inde:
+   - SetSummaryCard `set.name` gösteriyordu ama "hangi batch'ten
+     geldi" (sourceMetadata) drop ediliyordu
+   - Product type sadece `categoryId` resolve'ünde sessizce kullanılıyordu
+     (operatör hangi template havuzunun açıldığını bilmiyordu)
+   - Selection detail'a geri dönüş yolu sadece breadcrumb (üstte
+     küçük `← Selections / setName / Mockup Studio`)
+3. **Product detail Source selection tile** Phase 14'te zaten vardı —
+   Phase 52 burada dokunulmadı (mevcut davranış intakt).
+
+### Slice 1 — Selection detail post-finalize success banner
+
+`SelectionDetailClient`:
+
+- `finalizeMutation.onSuccess` artık `sessionStorage.kivasy.finalizeOutcome.{setId}`
+  one-shot key yazar (Phase 49 LaunchOutcomeBanner pattern parity).
+- Mount'ta `useEffect` key'i okur + siler. Stale > 5min ignore.
+- Yeni banner (header altı, tabs üstü):
+  - `success-soft` bg + CheckCircle2 icon
+  - Copy: "N items finalized · set ready for mockups"
+  - Primary CTA: "Apply Mockups" → `/selection/sets/{setId}/mockup/apply`
+  - Dismiss (×) button (component-state, refresh'te zaten görünmez)
+- Refresh sonrası banner kalmaz; haunt etmez.
+
+### Slice 2 — SetSummaryCard lineage strip
+
+`SetSummaryCard` (mockup studio Apply view'i Zone 2):
+
+- Yeni `resolveSourceBatchId(sourceMetadata)` static helper. İki canonical
+  format'ı destekler (Phase 50 `resolveSourceLineage` ile aile parity):
+  - `{ kind: "variation-batch", batchId }` (Phase 5 quickStart)
+  - `{ mjOrigin: { batchIds: [...] } }` (Phase 1 kept-handoff)
+- Set adı + status badge altına **lineage chip strip**:
+  - **← Selection** back-link → `/selections/{setId}` (mockup'tan
+    Selection'a tek tıkla geri; "yanlış kararı düzeltmeliyim" senaryosu
+    için kritik)
+  - **From batch · {id} →** chip → `/batches/{batchId}` (Phase 50
+    Selection card batch chip ile birebir aile parity; Layers + mono
+    + arrow)
+  - **Type · {productTypeKey}** chip (mockup template havuzunun
+    hangi category'den geldiği transparent — silent "canvas" fallback'in
+    yerini alır)
+- Chip yoksa render edilmez (legacy sourceMetadata-less set'lerde
+  back-link + product type chip kalır; batch chip gizli — sinyal
+  değil gürültü).
+- Kivasy DS recipe parity: `border-line-soft + bg-k-bg-2/60`, hover
+  `border-k-orange/50 + bg-k-orange-soft + text-k-orange-ink`.
+
+### Slice 3 — Product detail Source selection tile (Phase 14 baseline)
+
+Audit sırasında Phase 14'te zaten Product detail summary strip'inde
+"Source selection" tile'ı mevcut olduğu doğrulandı:
+- `useProductSourceSelection` hook
+- Tile: setName + ArrowUpRight icon link → `/selections/{setId}`
+- "Next step" tile + Listing health + Mockups + Files counts
+
+Phase 52 burada dokunmadı (mevcut Phase 14 davranışı intakt).
+
+### Mockup → Product zinciri honest audit
+
+| Yüzey | Durum |
+|---|---|
+| `/selections/{setId}` finalize gate | **Çalışıyor** (Phase 51) |
+| Finalize success banner | **Çalışıyor** (Phase 52) |
+| `/selection/sets/{setId}/mockup/apply` | **Çalışıyor** + Phase 52 lineage strip |
+| Mockup job submit (`POST /api/mockup/jobs`) | **Çalışıyor** (Phase 8) |
+| Mockup job result (`S8ResultView`) | **Çalışıyor** + "Listing'e gönder" CTA |
+| `createListingDraft` → `/products/{id}` redirect | **Çalışıyor** (Phase 14) |
+| Product detail summary strip + tabs | **Çalışıyor** (Phase 14) |
+| Listing builder (title/desc/tags) | **Çalışıyor** (Phase 9 V1 pipeline) |
+| Etsy Draft submit | **Çalışıyor** ama V1 pipeline (Phase 9), active publish değil |
+
+Bu zincirin **tamamı end-to-end fonksiyonel**. Phase 52'de eklenen iki
+slice ürün-friendly hissi güçlendirdi (transition feedback + context
+korunması).
+
+### Browser verification (live dev server kanıt)
+
+`pass57-mj-29689991` set'i (4 item, draft → finalize):
+
+| Test | Sonuç |
+|---|---|
+| 2 item promote → 200 + updatedCount=2 | ✓ |
+| Finalize endpoint çağrısı | 200, status="ready", finalizedAt set |
+| sessionStorage one-shot write | `kivasy.finalizeOutcome.{setId}` |
+| Reload sonrası banner | `selection-finalize-banner` rendered, text "2 items finalized · set ready for mockups", Apply Mockups CTA href doğru, dismiss button present, sessionStorage key silinmiş (one-shot) |
+| Stage badge | "Mockup ready" (önceden Edits idi) |
+| Header CTA | "Apply Mockups" primary (orange) — Phase 51 baseline intakt |
+| Screenshot | yeşil success banner net + header Apply Mockups CTA + tile SELECTED/PENDING badge'leri intakt |
+| Apply Mockups navigation | `/selection/sets/{setId}/mockup/apply` ✓ |
+| SetSummaryCard lineage | `mockup-set-summary-back-to-selection` → `/selections/{setId}`, **`mockup-set-summary-product-type`** "Type · clipart", `mockup-set-summary-source-batch` render edilmez (sourceMetadata=null) |
+| Screenshot | "← SELECTION" + "TYPE · CLIPART" chip'leri net görünür |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: 59/59 PASS (canonical paket)
+- Browser end-to-end: finalize → banner → Apply Mockups → lineage strip
+  tüm akış canlı doğrulandı
+
+### Değişmeyenler (Phase 52)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `SelectionItem.status` + `SelectionSet.
+  sourceMetadata` + `SelectionSet.status` zaten yıllar önce yazılıydı.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `resolveSourceBatchId` 15-satır static
+  helper (SetSummaryCard içi, Phase 50 helper ile DRY paralel ama
+  ayrı dosya). `finalizeBanner` useState + useEffect inline. Yeni
+  hooks/mutations dir açılmadı.
+- **References / Batch / Review / Selection intake / curation
+  akışları intakt** (Phase 26-51 baseline).
+- **Mockup job pipeline, listing builder, product detail Phase 8-14
+  baseline'ları dokunulmadı.**
+- **Kivasy DS dışına çıkılmadı.** `success-soft` + `CheckCircle2`
+  banner pattern Phase 49 LaunchOutcomeBanner ile aile parity;
+  lineage chip Phase 50 Selection card chip ile birebir aynı recipe.
+
+### Bilinçli scope dışı (Phase 53+ candidate)
+
+- **`SetSummaryCard` görsel parity**: surface hâlâ legacy
+  `border-border bg-surface-2 text-text-muted` token'larını kullanıyor.
+  Phase 52 yeni lineage chip'leri Kivasy DS canonical recipe'lerinde
+  ekledi ama card'ın iskeleti Phase 5-7 dönemi style'da kaldı. Card
+  shell + status badge Kivasy DS recipe'lerine migration ayrı tur.
+- **Apply Mockups detail/grid kalitesi**: Pack preview / template
+  selection görsel olarak fonksiyonel ama operatöre "studio" hissi
+  vermiyor — Phase 52 audit'inde tespit edildi, ayrı tur konusu.
+- **Product detail Etsy Draft handoff bambaşka bir polish ihtiyacı**
+  (submit error feedback, retry flow, post-submit "view on Etsy" link)
+  Phase 9 V1 pipeline çalışıyor ama operatör-friendly değil.
+- **`/selection/sets/{setId}/mockup/jobs/{jobId}/result` S8ResultView**
+  "Listing'e gönder" CTA Phase 8'de Türkçe yazılmıştı; visible UI
+  içinde i18n drift olabilir (CLAUDE.md Phase 15 EN parity scope dışı).
+
+### Bundan sonra product olarak tek doğru iş
+
+Phase 52 ile Selection finalize → Apply Mockups handoff **operatör
+gözüyle net**, Mockup studio'da **context korunuyor**. Zincir end-to-end
+çalışıyor: References → Batch → Review → Selection → Mockup → Product
+→ Etsy Draft.
+
+Sıradaki **tek doğru iş** her yüzeyin **detay polish'i**:
+- Apply Mockups surface'inin operator-friendly grade'e yükseltilmesi
+  (SetSummaryCard DS migration + Pack preview studio hissi)
+- Product detail Etsy Draft submit flow'unun ürünleştirilmesi
+  (error feedback, retry, "view on Etsy")
+- S8ResultView UI i18n + Kivasy DS parity
+
+Bu üç polish turundan sonra canonical omurga **production-ready full
+loop** durumuna gelir. Ürün omurga seviyesinde tamam.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

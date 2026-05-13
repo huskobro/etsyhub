@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  ArrowRight,
   CheckCircle2,
   Copy,
   Image as ImageIconLucide,
   MoreHorizontal,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs, type TabItem } from "@/components/ui/Tabs";
@@ -120,11 +122,11 @@ export function SelectionDetailClient({ set, items }: Props) {
   const pendingCount = items.filter((i) => i.status === "pending").length;
 
   /* Phase 51 — Finalize mutation. POST /api/selection/sets/[setId]/finalize
-   * (Phase 7 Task 22 endpoint) → status="ready" + finalizedAt. Service
-   * `finalizeSet` selected ≥ 1 gate'i zaten enforce eder; UI bu gate'i
-   * yumuşak ve okunur surface'e bağlar. onSuccess → router.refresh
-   * (server-side detail page yeniden fetch eder, stage badge "Mockup
-   * ready"ye geçer, Apply Mockups CTA enabled olur). */
+   * (Phase 7 Task 22 endpoint) → status="ready" + finalizedAt.
+   * Phase 52 — onSuccess artık sessionStorage one-shot key yazar
+   * (kivasy.finalizeOutcome.{setId}) + router.refresh. Detail page mount
+   * banner'ı okur + siler, operatöre "finalize başarılı · şimdi Apply
+   * Mockups" handoff'unu net görsel olarak gösterir. */
   const finalizeMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/selection/sets/${set.id}/finalize`, {
@@ -141,9 +143,58 @@ export function SelectionDetailClient({ set, items }: Props) {
       return res.json();
     },
     onSuccess: () => {
+      try {
+        window.sessionStorage.setItem(
+          `kivasy.finalizeOutcome.${set.id}`,
+          JSON.stringify({
+            ts: Date.now(),
+            selectedCount,
+            setName: set.name,
+          }),
+        );
+      } catch {
+        /* sessionStorage disabled — banner görünmez, akış bozulmaz */
+      }
       router.refresh();
     },
   });
+
+  /* Phase 52 — Finalize success banner state.
+   *
+   * `finalizeMutation` redirect değil refresh yapıyor (set yerinde
+   * kalır, stage "Mockup ready"ye geçer). Operatöre "tamam, finalize
+   * tamam, şimdi Apply Mockups'a in" handoff sinyali bu banner ile
+   * verilir. sessionStorage one-shot pattern (Phase 49 LaunchOutcomeBanner
+   * ile aile parity): mount'ta okunur + silinir, refresh sonrası
+   * görünmez.
+   */
+  const [finalizeBanner, setFinalizeBanner] = useState<{
+    setName: string;
+    selectedCount: number;
+  } | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      const key = `kivasy.finalizeOutcome.${set.id}`;
+      const raw = window.sessionStorage.getItem(key);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        ts: number;
+        setName: string;
+        selectedCount: number;
+      };
+      window.sessionStorage.removeItem(key);
+      // Stale > 5min ignore (operator bookmark'tan tekrar açabilir).
+      if (Date.now() - parsed.ts < 5 * 60 * 1000) {
+        setFinalizeBanner({
+          setName: parsed.setName,
+          selectedCount: parsed.selectedCount,
+        });
+      }
+    } catch {
+      /* sessionStorage disabled — silent */
+    }
+  }, [set.id]);
   /* finalizeReady: set draft durumunda (stage Curating veya Edits) +
    * en az 1 selected. Edits stage'i de geçerli — operatör edit yapmış
    * ama henüz finalize etmemiş olabilir. Mockup ready / Sent / Archived
@@ -351,6 +402,61 @@ export function SelectionDetailClient({ set, items }: Props) {
           </div>
         )}
       </header>
+
+      {/* Phase 52 — Finalize success banner.
+       *
+       * Operatör Finalize CTA'sına bastıktan sonra router.refresh ile
+       * detail page yeniden render olur — stage badge "Edits"→"Mockup
+       * ready"ye geçer, header Apply Mockups primary'ye çevrilir. Ama
+       * bu transition silent: operatör "finalize başarılı mı, şimdi ne
+       * yapacağım?" sorusuna görsel cevap almıyordu. Phase 52 banner:
+       *   - success tone (k-orange-soft + check icon)
+       *   - copy "N items finalized · Set is ready for mockups"
+       *   - primary CTA "Apply Mockups" → mockup studio
+       *   - dismiss (×) button
+       * sessionStorage one-shot (Phase 49 LaunchOutcomeBanner pattern):
+       * refresh sonrası banner kalmaz; mount okur + siler. */}
+      {finalizeBanner && !bannerDismissed ? (
+        <div
+          className="flex items-start gap-3 border-b border-success/40 bg-success-soft/50 px-6 py-3 text-[12.5px] text-ink"
+          data-testid="selection-finalize-banner"
+          role="status"
+        >
+          <CheckCircle2
+            className="mt-0.5 h-4 w-4 flex-shrink-0 text-success"
+            aria-hidden
+          />
+          <div className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-1.5">
+            <div className="font-medium leading-tight text-ink">
+              {finalizeBanner.selectedCount === 1
+                ? "1 item finalized"
+                : `${finalizeBanner.selectedCount} items finalized`}
+              <span className="ml-1 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+                set ready for mockups
+              </span>
+            </div>
+            <Link
+              href={`/selection/sets/${set.id}/mockup/apply`}
+              data-size="sm"
+              className="k-btn k-btn--primary"
+              data-testid="selection-finalize-banner-apply"
+            >
+              <ImageIconLucide className="h-3 w-3" aria-hidden />
+              Apply Mockups
+              <ArrowRight className="h-3 w-3" aria-hidden />
+            </Link>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBannerDismissed(true)}
+            className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-paper hover:text-ink"
+            aria-label="Dismiss finalize banner"
+            data-testid="selection-finalize-banner-dismiss"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      ) : null}
 
       {/* Tabs */}
       <div className="flex-shrink-0 border-b border-line bg-bg px-6">
