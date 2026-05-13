@@ -479,32 +479,21 @@ export function ReferencesPage({
       </div>
 
       {/* Floating bulk bar — k-fab recipe.
-       *   v5 B1 spec: Create Variations + Add to Collection + Archive +
-       *   Delete. Phase 41 — Create Variations re-elevated to canonical
-       *   entry (DS B1 + v7 d2a/d2b). k-fab__btn neutral renders just
-       *   slightly weaker than card hover primary; that's fine because
-       *   bulk-bar is auxiliary surface, but the action label and
-       *   semantic is consistent: "Open A6 Create Variations modal".
-       *   R11.14.9 — k-fab recipe inline style yerine pure className. */}
+       *
+       * Phase 43 scope kararı: bulk staging (multi-select N references
+       * → batch'e topluca ekleme) Phase 44 candidate. Bu turda kart
+       * üzeri "New Batch" tek-reference yolu canonical; bulk bar şu
+       * an yalnız Archive aksiyonunu taşır + tek-selection caption
+       * "Use card 'New Batch' to create batch" hint ile operatör
+       * doğru yola yönlendirilir. Multi-select N reference için
+       * "New Batch from N References" Phase 44'te eklenir
+       * (createDraftBatch zaten N referenceId kabul ediyor, sadece
+       * UI wiring kaldı).
+       *
+       * R11.14.9 — k-fab recipe inline style yerine pure className. */}
       {selectedCount >= 1 ? (
         <div className="k-fab" data-testid="references-bulk-bar">
           <span className="k-fab__count">{selectedCount} selected</span>
-          {selectedCount === 1 ? (
-            (() => {
-              const id = items.find((i) => selectedIds.has(i.id))?.id;
-              return id ? (
-                <Link
-                  href={`/references/${id}/variations`}
-                  className="k-fab__btn"
-                  data-testid="references-bulk-create-variations"
-                  title="Open the Create Variations modal — choose count, aspect ratio, prompt template"
-                >
-                  <Sparkles className="h-3 w-3" aria-hidden />
-                  Create Variations
-                </Link>
-              ) : null;
-            })()
-          ) : null}
           <button
             type="button"
             className="k-fab__btn"
@@ -662,6 +651,40 @@ function ReferencePoolCard({
   selected: boolean;
   onToggleSelect: (id: string) => void;
 }) {
+  /* Phase 43 — Pool card "New Batch" CTA.
+   *
+   * Phase 41'de "Create Variations" Link `/references/[id]/variations`
+   * route'una gidiyordu (v5 B1 line 137 + v7 d2a/d2b endorses).
+   * Phase 43 batch-first refactor: CTA artık gerçek bir Batch row
+   * yaratır (createDraftBatch service) → operatör compose page'ine
+   * yönlenir (`/batches/[id]/compose`). Mevcut variations page'i
+   * Phase 43'te legacy bridge olarak korunur (CLAUDE.md decision).
+   *
+   * Single primary CTA per DS spec; "Create Variations" wording
+   * "New Batch" oldu çünkü batch-first ürün modeli compose adımını
+   * batch entity'sinin yaratımı olarak konumlar (v7 d2a/d2b A6
+   * modal'ı = batch compose surface). */
+  const router = useRouter();
+  const newBatch = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/batches", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ referenceIds: [reference.id] }),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(payload.error ?? "Failed to create batch");
+      }
+      return (await res.json()) as { batch: { id: string } };
+    },
+    onSuccess: (data) => {
+      router.push(`/batches/${data.batch.id}/compose`);
+    },
+  });
+
   const title =
     reference.bookmark?.title ?? reference.bookmark?.sourceUrl ?? "Reference";
   const createdLabel = formatRelative(reference.createdAt);
@@ -756,28 +779,33 @@ function ReferencePoolCard({
           </button>
         </div>
 
-        {/* Phase 41 — Pool card hover CTA. v5 B1 spec line 137
-         * (`k-btn k-btn--primary w-full`) + v7 d2a/d2b reading
-         * (Create Variations IS the canonical entry to the A6 modal
-         * where batch parameters are shaped). Phase 5'in
-         * k-btn--secondary'e demotion'u over-correction'dı: kart-
-         * level CTA aslında DS'in birinci-sınıf affordance'ı; A6
-         * modalı operatöre count + aspect + prompt template seçimini
-         * vereceği için bu CTA "create N variations" promise'inin
-         * net giriş noktası. Re-elevated to primary; title hint
-         * şimdi DS d2a/d2b dilini taşıyor. */}
+        {/* Phase 43 — Pool card hover CTA "New Batch".
+         *
+         * v5 B1 line 137 primary affordance korunur (`k-btn
+         * k-btn--primary w-full`). Phase 41'de "Create Variations"
+         * wording'ini DS v7 d2a/d2b endorses olarak kabul etmiştik;
+         * Phase 43 batch-first ürün modeli compose adımını batch
+         * entity'sinin yaratımı olarak konumlar — "New Batch" daha
+         * dürüst dil çünkü bu CTA gerçekten yeni bir Batch row'u
+         * yaratır (createDraftBatch service) ve compose page'ine
+         * yönlenir. v7 A6 modal = batch compose/launch surface;
+         * compose page (Phase 43+) bu modalın page-form factor'ü. */}
         <div className="absolute bottom-2 left-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
-          <Link
-            href={`/references/${reference.id}/variations`}
+          <button
+            type="button"
             data-size="sm"
             className="k-btn k-btn--primary w-full"
-            onClick={(e) => e.stopPropagation()}
-            title="Open the Create Variations modal — choose count, aspect ratio, prompt template"
-            data-testid="reference-card-create-variations"
+            disabled={newBatch.isPending}
+            onClick={(e) => {
+              e.stopPropagation();
+              newBatch.mutate();
+            }}
+            title="Create a new draft batch with this reference and open the compose page (count, aspect ratio, prompt template)"
+            data-testid="reference-card-new-batch"
           >
             <Sparkles className="h-3 w-3" aria-hidden />
-            Create Variations
-          </Link>
+            {newBatch.isPending ? "Creating…" : "New Batch"}
+          </button>
         </div>
       </div>
 

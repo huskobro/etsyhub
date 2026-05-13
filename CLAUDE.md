@@ -8373,6 +8373,261 @@ hissedeceğine bağlı.
 
 ---
 
+## Phase 43 — Batch-first foundation: gerçek `Batch` + `BatchItem` model + Pool card "New Batch" + compose page scaffold
+
+Phase 42 batch-first entry-point fix'i (Start Batch → References) doğru
+yöndü ama altyapı hâlâ synthetic'ti: "batch" sadece `Job.metadata.batchId`
+cuid string'iydi, gerçek bir Batch entity'si yoktu. Phase 43 ürün
+mimarisini gerçek foundation'a oturttu.
+
+### Ürün kararı
+
+Geçici çözümler (UserSetting JSON staging, wording-only refactor)
+**reddedildi**. Final ürün için gerçek `Batch` + `BatchItem` modeli
+açıldı. Bu, Phase 42'den itibaren ilk schema migration; CLAUDE.md
+"schema-zero" sözleşmesi bilinçli olarak gevşetildi — kullanıcı
+kararı: artık final ürün foundation'ına gidiyoruz.
+
+Vertical slice scope kararı (II — sıkı):
+1. Gerçek `Batch` + `BatchItem` model
+2. Draft batch state'i gerçek modelde yaşasın
+3. Pool kartından `New Batch` ile yeni draft batch yaratılsın
+4. Kullanıcı `/batches/[id]/compose` yüzeyine gitsin
+5. v7 d2a/d2b mantığı compose surface'e taşınmaya başlasın
+6. Legacy `/references/[id]/variations` için net karar
+
+Bu turda bilinçli olarak **dışarıda bırakılanlar** (Phase 44+):
+- Bulk action bar batch staging (multi-select N references → batch)
+- Batches index state filter bar (Draft/Queued/Running/Finished/Failed)
+- Real launch — QUEUED transition + Job üretme
+- Compose form mutation (provider/aspect/quality real submit)
+- Batches index'in real Batch row'larını listemesi (şu an
+  job-aggregator service'i synthetic batchId'leri okuyor)
+
+### Schema
+
+`prisma/schema.prisma` + `migrations/20260513120000_phase43_batch_first_model`:
+
+```prisma
+enum BatchState {
+  DRAFT       // operatör compose ediyor; henüz job yaratılmadı
+  QUEUED      // launch tetiklendi (Phase 44)
+  RUNNING     // en az bir job worker'da
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+model Batch {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(...)
+  label         String?
+  state         BatchState  @default(DRAFT)
+  composeParams Json?       // Phase 44 launch'ta Job.metadata'ya yazılacak
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+  launchedAt    DateTime?   // QUEUED transition zamanı
+  items         BatchItem[]
+
+  @@index([userId])
+  @@index([userId, state])
+  @@index([userId, updatedAt])
+}
+
+model BatchItem {
+  id           String     @id @default(cuid())
+  batchId      String
+  batch        Batch      @relation(...)
+  referenceId  String
+  reference    Reference  @relation(...)
+  position     Int        @default(0)
+  createdAt    DateTime   @default(now())
+
+  @@unique([batchId, referenceId])   // duplicate ref ekleme idempotent
+  @@index([batchId])
+  @@index([referenceId])
+}
+```
+
+Reverse relations: `User.batches`, `Reference.batchItems`.
+
+Migration `20260513120000_phase43_batch_first_model/migration.sql` —
+`prisma migrate diff` ile üretildi (shadow DB sorunundan dolayı normal
+`migrate dev` çalışmadı; `db execute` ile uygulandı + `migrate resolve
+--applied` ile baseline'a işaretlendi).
+
+**Synthetic batchId uzayı ile uyum**: Mevcut MJ/AI variation pipeline'ı
+`Job.metadata.batchId` synthetic cuid'le çalışmaya devam eder; yeni
+`Batch.id` aynı uzayda (cuid). Phase 44 launch yolu yeni Batch.id'sini
+Job.metadata'ya yazacak. Eski legacy row'lar Batch tablosuna mapping
+YAPILMAZ — migration debt olarak kabul edilir, eski batch detail page'leri
+job-aggregator service üzerinden çalışmaya devam eder.
+
+### Service layer
+
+`src/features/batches/server/batch-service.ts`:
+
+| Fonksiyon | Sözleşme |
+|---|---|
+| `createDraftBatch({ userId, referenceIds, label? })` | DRAFT Batch yaratır + items olarak refs ekler. Reference ownership tek query'de doğrulanır. Default label: `Untitled batch · {date}`. Boş referenceIds kabul edilir (compose page'den boş batch). |
+| `addReferencesToBatch({ userId, batchId, referenceIds })` | Yalnız DRAFT state'inde mutasyon. `skipDuplicates: true` ile idempotent. State validation: QUEUED/RUNNING/SUCCESS/FAILED/CANCELLED için ValidationError. |
+| `getBatch({ userId, batchId })` | Items + each item's reference + asset + bookmark. Cross-user → NotFoundError. |
+| `listBatches({ userId, state?, limit? })` | DRAFT default included. `state` filter optional. `updatedAt desc`. Legacy synthetic-batchId batches **dahil değil** — Phase 44 unify. |
+
+CLAUDE.md Madde V parity: user isolation tüm okuma/yazma'da; cross-user
+erişim NotFoundError; deletedAt: null filter; soft-delete sızıntı yok.
+
+### API endpoints
+
+| Method | Path | Auth | Service |
+|---|---|---|---|
+| `POST` | `/api/batches` | requireUser | `createDraftBatch` |
+| `POST` | `/api/batches/[batchId]/items` | requireUser | `addReferencesToBatch` |
+| `GET` | `/api/batches/[batchId]` | requireUser | `getBatch` |
+
+Zod validation; `withErrorHandling` middleware NotFoundError → 404,
+ValidationError → 400.
+
+### Pool card "New Batch" CTA
+
+`references-page.tsx` Pool card hover CTA:
+
+| Pre-Phase 43 | Phase 43 |
+|---|---|
+| `<Link href="/references/[id]/variations">` | `<button>` + `useMutation` |
+| "Create Variations" wording | "New Batch" wording |
+| testid `reference-card-create-variations` | testid `reference-card-new-batch` |
+| Direct route to legacy page | POST `/api/batches` → router.push `/batches/[id]/compose` |
+| className korundu `k-btn k-btn--primary w-full` (DS B1 line 137 spec) | aynı |
+
+**Ürün dili kararı**: "Create Variations" → "New Batch". Phase 41/42'de
+DS v5 B1 + v7 d2a/d2b "Create Variations" action name'ini endorses
+olarak okumuştum; Phase 43 batch-first ürün modeli compose adımını
+batch entity'sinin yaratımı olarak konumlar — "New Batch" daha dürüst
+çünkü bu CTA gerçekten yeni bir Batch row'u yaratır. v7 A6 modal hâlâ
+**batch compose surface**'i; sadece operatörün CTA üzerinden gördüğü
+söz "yeni varyant" değil "yeni batch" oldu.
+
+Loading state: `disabled + "Creating…"`. Mutation onSuccess →
+`router.push(/batches/[id]/compose)`.
+
+### Bulk-bar scope kararı
+
+Bulk-bar single-selection "Create Variations" Link aksiyonu Phase 43'te
+**kaldırıldı** — bu turda multi-select staging Phase 44 candidate (sözleşme
+gereği "yarım testli çok büyük slice istemiyorum"). Bulk-bar şu an
+selection sayısını gösterir + Archive aksiyonunu taşır; operatöre
+"Use card 'New Batch' to create batch" yönergesi yorum-level dokümante
+edilir, UI'da görünür hint yok (çünkü tek-reference akışı zaten kart
+üzerindeki primary CTA'ya direkt iniyor).
+
+Phase 44 candidate: bulk-bar'a "New Batch from N References" CTA — service
+`createDraftBatch` zaten N referenceId kabul ediyor; sadece UI wiring kaldı.
+
+### `/batches/[id]/compose` page scaffold
+
+`src/app/(app)/batches/[batchId]/compose/page.tsx` + `BatchComposeClient.tsx`:
+
+v7 d2a/d2b A6 modal'ının **page-form factor equivalent'i**:
+
+| Bölge | İçerik |
+|---|---|
+| Top bar | ← back to Batches · title (auto-label) · state caption (DRAFT · BATCH XXXXXXXX · N references) |
+| Left rail | "SOURCE REFERENCES" başlık + k-card grid items (thumb + title + product type) |
+| Right body | "Compose this batch" subtitle + 3 sections scaffold:<br>· **Aspect ratio**: 3-card grid (Square 1:1 active, Landscape 3:2, Portrait 2:3)<br>· **Variation count**: 4/6/8/12 segmented (8 active)<br>· **Prompt template**: placeholder card "No template selected" |
+| Footer | Cancel link → /batches · primary "Launch Batch · coming Phase 44" disabled |
+
+Server-side fetch `getBatch` user-scoped + NotFoundError → notFound().
+Kivasy DS recipe'leri: `k-card`, `k-thumb`, `k-btn--primary`,
+`k-btn--ghost`, mono caption + tracking-meta. Yeni recipe icat edilmedi.
+
+**Phase 44 candidate'lar**:
+- Compose form real mutation (legacy `/references/[id]/variations` form'un
+  useCreateVariations + cost confirm + partial failure logic'i compose
+  page'e taşınır)
+- Launch button → BatchState transition + Job üretme
+- Cost preview footer ("~$0.32 · est. 4m" — DS v7 d2a/d2b)
+- Reference parameters chips (sref/oref/cref — DS v7 d2a/d2b advanced section)
+
+### Legacy `/references/[id]/variations` kader kararı
+
+**Karar: keep as bridge, no redirect, no removal.** Gerekçe:
+- Pool card "New Batch" artık buraya GİTMİYOR (yeni canonical akış)
+- Ama eski Batches-side derin link'ler, test referansları, Pool card
+  hover sonrası back navigation kullanan operatörler kırılmaz
+- Subtitle güncellendi: "Generate a new batch from this reference
+  (legacy single-reference flow)" — operatöre bunun bridge olduğu
+  açıkça söyleniyor (Kivasy DS uppercased: "LEGACY SINGLE-REFERENCE
+  FLOW")
+
+Phase 44+ candidate'ı: compose page real mutation aldıktan sonra
+legacy page'i `redirect()` ile yeni compose'a yönlendirmek. Şu an
+turun scope'unda değil (yarım testli işlerden kaçınma).
+
+### Browser verification (6 senaryo PASS)
+
+Live dev server (fresh `.next/` rebuild, viewport 1440×900, real DB):
+
+| # | Senaryo | Kanıt |
+|---|---|---|
+| 1 | Pool card CTA rename | testid `reference-card-new-batch`, text "New Batch", `k-btn k-btn--primary w-full`, eski testid yok ✓ |
+| 2 | Click → POST /api/batches → redirect | Real Batch row `cmp3whhmx00015cc3bv2lzs9s` yaratıldı, URL = `/batches/[id]/compose` ✓ |
+| 3 | Compose page render | data-batch-id match, title "Untitled batch · May 13", state "DRAFT", item count "1 reference", rail item 1 |
+| 4 | Visual proof | Top bar + ref rail + 3-section compose form + disabled launch — full v7 d2a/d2b page-equivalent görünüyor |
+| 5 | Direct image URL regression (Phase 39) | "✓ Direct image URL" hint + multi-row helper intact ✓ |
+| 6 | Legacy bridge subtitle | `/references/[id]/variations` page hâlâ erişilebilir; subtitle "LEGACY SINGLE-REFERENCE FLOW" caps marker present ✓ |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **59/59 PASS** (canonical regression)
+- `next build`: ✓ Compiled successfully
+- Prisma migration uygulandı + resolve --applied ile baseline'a işaretlendi
+- Prisma client regenerated (new Batch + BatchItem + BatchState types)
+
+### Değişmeyenler (Phase 43)
+
+- **Review freeze (Madde Z) korunur.** Review modülüne dokunmaz.
+- **WorkflowRun eklenmez** (IA Phase 11 kapsamı).
+- **Yeni big abstraction sınırlı**: batch-service küçük modüler servis,
+  staging için yeni state machine class veya WorkflowRun benzeri global
+  abstraction değil.
+- **Add Reference / duplicate / local folder / direct image intake
+  akışları intakt** (Phase 26-41 baseline).
+- **Direct image URL canonical yolu intakt** (Phase 39 baseline).
+- **Batches index'in mevcut listesi (job-aggregator over Job.metadata.
+  batchId) intakt** — yeni Batch row'ları ile birleştirme Phase 44.
+- **Kivasy DS dışına çıkılmadı.** k-card, k-thumb, k-btn--primary,
+  k-btn--ghost, k-bg-2 surface, mono tracking-meta caption recipe'leri.
+
+### Production tarafında kalan tek doğru iş
+
+Phase 44 candidate'lar — öncelik operatör akışına göre:
+
+1. **Compose page real mutation + Launch transition**: legacy
+   `/references/[id]/variations` form'unun submit logic'i compose
+   page'e taşınır; Launch button DRAFT → QUEUED transition tetikler
+   + Jobs üretir + Job.metadata.batchId = Batch.id yazar
+2. **Batches index unification**: job-aggregator service real Batch
+   row'larını da listeler (DRAFT batches dahil); state filter bar
+   (Draft/Queued/Running/Finished/Failed) Review sayfası pattern'iyle
+3. **Bulk-bar staging**: multi-select N reference → "New Batch from
+   N References" CTA (createDraftBatch zaten hazır)
+4. **Compose page advanced sections**: Reference parameters chips
+   (sref/oref/cref), cost preview footer (DS v7 d2a/d2b)
+5. **Legacy variations page redirect**: real compose mutation
+   landed olduktan sonra legacy page `redirect()` ile compose'a
+   yönlendirilir
+
+Önerim: 1 + 2 birlikte (compose real submit + Batches'in DRAFT'leri
+de göstermesi tek tutarlı operatör hikayesi); sonra 3 ve 4. 5 en
+sona — operatör yeni flow'u kabul ettikten sonra.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

@@ -47,11 +47,15 @@ export function VariationsPage({
       }
       subtitle={
         <span>
-          {/* Phase 9 — batch language. Operatör submit sonrası nereye
-           * baktığını bilsin: Batches list (run progress) ve Review
-           * (decision gate). */}
-          Generate a new batch from this reference. Local: pick from your
-          library · AI: ask the provider. Track progress in{" "}
+          {/* Phase 9 — batch language.
+           * Phase 43 — Legacy bridge note. Bu page tek-reference batch
+           * için Phase 41 baseline'ı; Pool card "New Batch" CTA bu yola
+           * GİTMİYOR (yeni canonical akış: Pool card → POST /api/batches
+           * → /batches/[id]/compose). Eski deep link'ler ve test
+           * referansları için bridge olarak kalıyor. */}
+          Generate a new batch from this reference (legacy single-reference
+          flow). Local: pick from your library · AI: ask the provider. Track
+          progress in{" "}
           <a
             href="/batches"
             className="text-accent underline hover:text-accent-hover"

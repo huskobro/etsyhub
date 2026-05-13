@@ -99,6 +99,30 @@ enum VariationCapability {
   TEXT_TO_IMAGE
 }
 
+// Phase 43 — Batch-first production model.
+//
+// Mevcut "Job.metadata.batchId" synthetic kimlik kalır (Phase 41 baseline,
+// MJ/AI variation pipeline'ı kullanıyor); yeni `Batch` row'u kullanıcı-
+// facing batch entity'sidir. Multi-reference batch'i desteklemek için
+// `BatchItem` join modeli açılır. Launch (jobları kuyruğa atma) Phase 44
+// kapsamında — bu turda DRAFT state ve compose entry'si yeterli.
+//
+// Lifecycle:
+//   DRAFT      → operatör compose ediyor; henüz job yaratılmadı
+//   QUEUED     → launch tetiklendi, jobs üretildi (Phase 44)
+//   RUNNING    → en az bir job worker'da
+//   SUCCESS    → tüm jobs SUCCESS
+//   FAILED     → tüm jobs FAILED veya partial failure operator'a iletildi
+//   CANCELLED  → operatör veya sistem cancel etti
+enum BatchState {
+  DRAFT
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
 enum ReviewStatus {
   PENDING
   APPROVED
@@ -187,6 +211,7 @@ model User {
   selectionSets      SelectionSet[]
   mockupJobs         MockupJob[]
   midjourneyJobs     MidjourneyJob[]
+  batches            Batch[]
 
   @@index([deletedAt])
 }
@@ -503,6 +528,7 @@ model Reference {
   tags             ReferenceTag[]
   generatedDesigns GeneratedDesign[]
   midjourneyJobs   MidjourneyJob[]
+  batchItems       BatchItem[]
 
   @@index([userId])
   @@index([productTypeId])
@@ -745,6 +771,73 @@ model Job {
   @@index([userId])
   @@index([status])
   @@index([type])
+}
+
+// Phase 43 — User-facing Batch entity.
+//
+// Bu turda yalnız DRAFT state'i operatöre görünür yola bağlanır
+// (Pool card → New Batch → draft Batch + /batches/[id]/compose).
+// Launch (jobs üretme, QUEUED transition) Phase 44 kapsamında.
+//
+// Mevcut MJ/AI variation pipeline'ı `Job.metadata.batchId` synthetic
+// id ile çalışıyor (Phase 41 baseline). Yeni Batch.id ile bu synthetic
+// uzay aynıdır; Phase 44 launch yolu yeni Batch.id'sini Job.metadata'ya
+// yazacak. Eski legacy row'lar Batch tablosuna mapping YAPILMAZ —
+// migration debt olarak kabul edilir; eski batch detail pageleri
+// Job.metadata.batchId üzerinden çalışmaya devam eder.
+model Batch {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  /// Operator-facing label (default "Untitled batch · {date}").
+  /// Compose page'de düzenlenebilir.
+  label         String?
+
+  state         BatchState  @default(DRAFT)
+
+  /// Compose parametreleri snapshot — Phase 44 launch'ta Job.metadata'ya
+  /// yazılır. Şu an placeholder JSON; compose form değerleri (provider,
+  /// aspectRatio, quality, count, brief) burada saklanır.
+  composeParams Json?
+
+  notes         String?
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+
+  /// Launch timestamp (state QUEUED'a geçtiğinde set edilir, Phase 44).
+  launchedAt    DateTime?
+
+  items         BatchItem[]
+
+  @@index([userId])
+  @@index([userId, state])
+  @@index([userId, updatedAt])
+}
+
+// Phase 43 — Multi-reference batch için join model. Operator Pool'dan
+// 1 veya N reference seçip Batch'e ekleyebilir; her item Batch ↔ Reference
+// bağlantısını taşır. position field operatörün sıralamasını korur.
+model BatchItem {
+  id           String     @id @default(cuid())
+  batchId      String
+  batch        Batch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  referenceId  String
+  reference    Reference  @relation(fields: [referenceId], references: [id], onDelete: Restrict)
+
+  /// Compose UI'da operatörün sıralaması için. Yeni eklemeler MAX(position)+1.
+  position     Int        @default(0)
+
+  createdAt    DateTime   @default(now())
+
+  /// Aynı Batch + Reference kombinasyonu tek BatchItem'a bağlı —
+  /// duplicate ref ekleme idempotent (service layer mevcut item'ı
+  /// reuse eder).
+  @@unique([batchId, referenceId])
+  @@index([batchId])
+  @@index([referenceId])
 }
 
 model AuditLog {
