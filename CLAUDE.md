@@ -13420,6 +13420,211 @@ template authoring akışını self-hosted pipeline üzerinde yapabilir).
 
 ---
 
+## Phase 68 — Perspective quad editor: rect/perspective mode toggle + 4-corner authoring
+
+Phase 67 visual rect editor canlıydı ama operatör hâlâ yalnız axis-
+aligned dikdörtgen alanlar tanımlayabiliyordu. Phase 63'te
+`placePerspective` (4-corner DLT homography) backend implement
+edilmişti ama UI tarafı yoktu — backend kapasitesi kullanılamıyordu.
+Phase 68 bu boşluğu kapatır: operatör artık t-shirt yamuk chest area,
+mug 4-corner approximation, tilted frame keystone gibi gerçek
+perspective smart area'ları author edebilir.
+
+### Phase 67 sonrası gap
+
+Rect editor şu mockup tipleri için yeterli:
+- Wall art frame (axis-aligned interior)
+- Poster on flat wall
+- Sticker / printable sheet
+- Clipart bundle preview
+
+Rect ile çözülemeyen tipler (Phase 68 önce yapılamıyordu):
+- T-shirt chest area (yamuk perspective)
+- Mug body (4-corner approximation; full curved cylinder
+  out-of-scope ama 4-corner çok daha yakın)
+- Poster on tilted wall / framed art with perspective angle
+- Book cover with spine (keystone)
+- Notebook cover at angle
+
+**Ürün etkisi:** Phase 63'te backend hazır `placePerspective` runtime'ı
+kullanılamıyordu. Operatör ilk anda "burada t-shirt veya kupa için
+gerçek bir editor gerekli" der.
+
+### UX model kararı
+
+Hibrit yaklaşım — rect editor bozulmadan perspective ek mod olarak:
+
+| Aspect | Karar |
+|---|---|
+| Mode toggle | k-segment button group ("Rect" / "Perspective") editor üstünde (Phase 59 filter affordance discipline parity) |
+| Default mod | `rect` (Phase 67 baseline backward-compat) |
+| Rect handles | 8 handle (Phase 67 baseline korunur) |
+| Perspective handles | 4 corner handle (TL/TR/BR/BL — Phase 63 schema sırası) |
+| Rect → Perspective conversion | Mevcut rect'in 4 köşesini quad'a otomatik dönüştür (operatör boş canvas'ta başlamaz) |
+| Perspective → Rect conversion | Quad'ın bounding-box'ını rect olarak al (bilgi kaybolmadan geri dönülebilir) |
+| Polygon overlay | SVG polygon + dimming mask (4 corner içi göster, dışı dim) |
+| Numeric override | Rect'te x/y/w/h % (4 input); perspektifte 4 corner × x/y (8 input grouped per corner) |
+| Helper text | Mode-aware caption (k-orange-ink corner labels + tooltip per mode) |
+| Save | Form binding config'e doğru `safeArea: { type: "rect"\|"perspective", ... }` yazar (SafeAreaSchema discriminated union) |
+
+### Slice 1 — `SafeAreaEditor` perspective mode + auto-conversion
+
+`src/features/mockups/components/SafeAreaEditor.tsx`:
+
+- Yeni `SafeAreaPerspective` type: `{ corners: [[x,y]×4] }` (Phase 63
+  backend ile birebir corner sırası TL/TR/BR/BL)
+- Yeni `SafeAreaValue` discriminated union (mode: "rect" | "perspective")
+- `rectToPerspective(rect)` helper — 4 köşe map (TL/TR/BR/BL)
+- `perspectiveToRect(p)` helper — axis-aligned bbox + min-dimension
+  guard
+- `DragMode` union'a `drag-corner` variant eklendi (single corner
+  movement, free quad)
+- Perspective overlay: SVG `<polygon>` + `<mask>` (paint inside-quad
+  highlight + dim outside via mask)
+- 4 corner handle: `<circle>` + label `<text>` badge (mono uppercase
+  TL/TR/BR/BL k-orange)
+- Numeric override 8 inputs: corner başına x/y inputs grouped
+  (`safe-area-editor-corner-input-{LABEL}-{x|y}`)
+- File-level `/* eslint-disable no-restricted-syntax */` SVG context
+  için (fill/stroke renk attribute'ları + cursor inline style SVG
+  attribute zorunluluğu — mevcut Settings panes pattern parity)
+
+### Slice 2 — `MockupTemplateCreateForm` mode toggle wiring
+
+`src/features/mockups/components/MockupTemplateCreateForm.tsx`:
+
+- safeArea state'i `SafeAreaValue` (mode-aware union)
+- `switchMode(next)` helper — auto-conversion (rect↔perspective)
+- k-segment mode toggle UI editor üstünde:
+  - "Rect" / "Perspective" buttons + aria-pressed canonical
+  - `data-active` attribute her button için (test selector)
+  - `title` attribute mode-aware actionable tooltip
+- Mode hint sağında (Phase 67 helper text pattern): mono uppercase
+  caption ("RECT · SIMPLE FLAT SURFACES" veya "PERSPECTIVE · YAMUK
+  SMART AREAS (T-SHIRT / MUG / TILTED FRAME)")
+- Submit chain mode-aware safeArea yazar (Phase 67'den tek değişiklik):
+  ```ts
+  safeArea: safeArea.mode === "rect"
+    ? { type: "rect", x, y, w, h }
+    : { type: "perspective", corners }
+  ```
+- Phase 67 testid'ler intakt (regression safe — `mockup-template-
+  create-*` zinciri korunur)
+
+### Slice 3 — Operator-facing polish
+
+- Header subtitle Phase 67 ("Templated.io-style · self-hosted (no
+  API calls) · your library") → Phase 68 ("...rect + perspective"
+  capability hint operatöre net gösteriliyor)
+- Mode toggle hover tooltip:
+  - rect → "Axis-aligned rectangle — wall art frames, posters,
+    stickers"
+  - perspective → "4-corner perspective quad — t-shirts, mugs,
+    tilted frames"
+- Mode hint caption mono uppercase tracking-meta ink-3 (Phase 51
+  status badge family parity)
+
+### Browser end-to-end full proof
+
+Live dev server (fresh `.next/` rebuild, viewport 1440×900, real DB):
+
+| Test | Sonuç |
+|---|---|
+| Page mount | h1 "New mockup template", header subtitle "RECT + PERSPECTIVE", dropzone visible |
+| Real upload (400×300 PNG synthetic, tilted blue chest area) | uploadMutation POST → editor mounted, mode="rect" default |
+| Mode toggle initial state | k-segment "Rect / Perspective" toggle, rect active=true, hint "RECT · SIMPLE FLAT SURFACES", 8 rect handles, 0 corner handles |
+| Click "Perspective" mode | data-mode="perspective", 0 rect handles, 4 corner handles (TL/TR/BR/BL), polygon quad rendered, hint "PERSPECTIVE · YAMUK SMART AREAS..." |
+| Auto-conversion math | Rect (10%, 10%, 80%, 80%) → corners [(10,10), (90,10), (90,90), (10,90)] (clockwise from TL); pixel coords on 400×300: TL=(40,30), TR=(360,30), BR=(360,270), BL=(40,270) |
+| Numeric override on TR-x=95, TR-y=5, BR-y=95 | Free quad: corners=[(40,30), (380,15), (360,285), (40,270)] — yamuk perspective shape |
+| Perspective submit | POST template → POST binding (config safeArea type="perspective") → PATCH publish → /templates redirect |
+| DB-level verify (perspective) | `cmp4nxlqk...`: ACTIVE + LOCAL_SHARP/ACTIVE binding + config `{ safeArea: { type: "perspective", corners: [[0.1,0.1],[0.95,0.05],[0.9,0.95],[0.1,0.9]] }, baseDimensions: {w:400, h:300} }` |
+| Rect regression test | New upload + default mode=rect + submit → DB: `safeArea: { type: "rect", x:0.1, y:0.1, w:0.8, h:0.8 }` (Phase 67 baseline intakt) |
+| Apply view visibility | API `?scope=own&status=ACTIVE` → both Phase 68 templates visible, ownership "own", binding 1 (LOCAL_SHARP/ACTIVE) |
+| Screenshot proof | k-segment "Rect / Perspective" toggle (Perspective active orange), 4 white circular corner handles + TL/TR/BR/BL k-orange labels, k-orange polygon quad with dimming mask outside, uploaded test image visible |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/mockup tests/integration/api-mockup-templates-user-scope`:
+  **257/257 PASS** (no regression — Phase 67 testid'ler intakt;
+  SafeAreaEditor refactor SafeAreaValue union'a geçti, ama çıktı
+  şekli backend schema ile aynı discriminated union)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: rect default + perspective toggle + 4-corner
+  authoring + auto-conversion math + perspective binding submit +
+  DB-verified perspective config + rect regression intact + Apply
+  view visible — hepsi canlı dev server'da
+
+### Değişmeyenler (Phase 68)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** SafeAreaSchema discriminated union (rect
+  + perspective) Phase 8'den beri tanımlı; UI artık iki branch'i de
+  yazıyor.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Pure SVG editor (no fabric.js, no
+  konva, no react-konva); auto-conversion 2 helper function (~10
+  satır pure math); mode toggle k-segment recipe reuse.
+- **Phase 67 testid'ler intakt** (regression safe).
+- **Phase 67 baseline rect davranışı tamamen korunur** (default mode,
+  8 handles, drag/resize semantics).
+- **Apply drawer + Mockup studio + Render pipeline + Phase 63
+  placePerspective backend** dokunulmadı.
+- **Canonical operator loop intakt** (References → Batch → Review
+  → Selection → Mockup → Product → Etsy Draft).
+- **Kivasy DS dışına çıkılmadı.** k-segment recipe (Phase 59 parity),
+  k-orange (#e85d25), k-orange-ink, k-bg-2, line, line-soft, paper,
+  ink/ink-2/ink-3, font-mono tracking-meta. SVG context için
+  file-level eslint suppress (mevcut Settings panes pattern parity).
+- **Cross-user isolation hard-enforced** (Phase 67 4-katmanlı koruma
+  intakt; perspective config aynı binding endpoint üzerinden
+  geçer — schema validation ile).
+
+### Bilinçli scope dışı (Phase 69+ candidate)
+
+- **Polygon validity guard**: Operatör concave veya self-intersecting
+  quad üretebilir. Backend `placePerspective` "singular matrix"
+  throw ediyor (Phase 63), ama UI'da actionable validation yok.
+  Phase 69 candidate: real-time validation badge + submit guard.
+- **Rotation handle**: SafeAreaRectSchema rotation field optional;
+  rect mode rotation handle eklenebilir.
+- **Sample design preview**: Editor'de operatörün yüklediği template
+  üzerine "test design" placeholder yerleştirip render preview
+  göstermek (Phase 8 mockup job pipeline reuse). Authoring confidence
+  artar.
+- **Recipe editor**: blendMode/shadow form (admin manager JSON
+  textarea'ya inmeden). Şu an default `{ blendMode: "normal" }`
+  hardcoded.
+- **Asset reuse picker**: Operatör daha önce yüklediği base asset'leri
+  yeniden seçemez. User-scope list-assets endpoint + picker UI.
+- **Drag-and-drop file upload**: Şu an file input click-to-pick;
+  drag-over visual feedback ayrı küçük tur.
+- **Template detail / edit / archive page**: Phase 67 candidate'tan
+  devir; templates index'te liste var, detail page (rename + edit
+  binding + archive) yok.
+- **Multi-asset templates**: single asset only.
+
+### Bundan sonra templated.io clone tarafında kalan tek doğru iş
+
+Phase 68 ile **operatör Photoshop'a inmeden gerçek perspective
+mockup template'leri sıfırdan oluşturup yayınlayabilir**:
+- Asset upload (visual feedback)
+- Mode-aware safe-area editor (rect veya perspective)
+- 4-corner quad authoring (TL/TR/BR/BL handles + numeric input)
+- Auto-conversion (mode değişiminde karar korunur)
+- Phase 63 placePerspective backend ile uyumlu config
+- 3-step chain → ACTIVE template → Apply drawer'da kullanılabilir
+- Both rect ve perspective template'ler aynı pipeline'dan render
+
+Sıradaki gerçek iş **Phase 69 sample design preview** (authoring
+confidence) + **recipe editor** (blendMode/shadow form) + **polygon
+validity guard** + **template detail/edit page**. Bu dört adımdan
+sonra templated.io ürün modeli **dynamic-mockups deprecation
+kararına gerçekten hazır** olur — operator end-to-end self-hosted
+pipeline üzerinde tüm authoring + rendering akışını yapabilir.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

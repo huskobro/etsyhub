@@ -36,7 +36,12 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { ArrowLeft, Sparkles, Upload } from "lucide-react";
 import Link from "next/link";
-import { SafeAreaEditor, type SafeAreaRect } from "./SafeAreaEditor";
+import {
+  SafeAreaEditor,
+  type SafeAreaValue,
+  rectToPerspective,
+  perspectiveToRect,
+} from "./SafeAreaEditor";
 
 const CATEGORY_OPTIONS = [
   { value: "canvas", label: "Canvas (digital wall art)" },
@@ -108,24 +113,44 @@ export function MockupTemplateCreateForm() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   // Phase 67 — asset state (upload → preview → editor)
+  // Phase 68 — safeArea now mode-aware (rect | perspective)
   const [asset, setAsset] = useState<UploadResult | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [safeArea, setSafeArea] = useState<SafeAreaRect>({
-    x: 0.1,
-    y: 0.1,
-    w: 0.8,
-    h: 0.8,
+  const [safeArea, setSafeArea] = useState<SafeAreaValue>({
+    mode: "rect",
+    rect: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 },
   });
 
   const uploadMutation = useMutation({
     mutationFn: uploadBaseAsset,
     onSuccess: (data) => {
       setAsset(data);
-      // Reset safe-area to a reasonable default (10% inset full-canvas)
-      setSafeArea({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
+      // Reset safe-area to a reasonable default (10% inset full-canvas, rect mode)
+      setSafeArea({
+        mode: "rect",
+        rect: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 },
+      });
     },
   });
+
+  /** Phase 68 — Mode toggle preserves operator's existing decision.
+   *  rect → perspective: maps the 4 rect corners to TL/TR/BR/BL quad.
+   *  perspective → rect: takes axis-aligned bounding box of the quad. */
+  const switchMode = (next: "rect" | "perspective") => {
+    if (safeArea.mode === next) return;
+    if (next === "perspective" && safeArea.mode === "rect") {
+      setSafeArea({
+        mode: "perspective",
+        perspective: rectToPerspective(safeArea.rect),
+      });
+    } else if (next === "rect" && safeArea.mode === "perspective") {
+      setSafeArea({
+        mode: "rect",
+        rect: perspectiveToRect(safeArea.perspective),
+      });
+    }
+  };
 
   // Fetch signed URL when asset uploaded (or asset key changes)
   useEffect(() => {
@@ -198,13 +223,21 @@ export function MockupTemplateCreateForm() {
             config: {
               baseAssetKey: asset.storageKey,
               baseDimensions: { w: asset.width, h: asset.height },
-              safeArea: {
-                type: "rect",
-                x: safeArea.x,
-                y: safeArea.y,
-                w: safeArea.w,
-                h: safeArea.h,
-              },
+              // Phase 68 — mode-aware safeArea (rect or perspective).
+              // Schema discriminated union (SafeAreaSchema) handles both.
+              safeArea:
+                safeArea.mode === "rect"
+                  ? {
+                      type: "rect",
+                      x: safeArea.rect.x,
+                      y: safeArea.rect.y,
+                      w: safeArea.rect.w,
+                      h: safeArea.rect.h,
+                    }
+                  : {
+                      type: "perspective",
+                      corners: safeArea.perspective.corners,
+                    },
               recipe: { blendMode: "normal" },
               coverPriority: 0,
             },
@@ -263,7 +296,7 @@ export function MockupTemplateCreateForm() {
             New mockup template
           </h1>
           <p className="mt-0.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-            Templated.io-style · self-hosted (no API calls) · your library
+            Templated.io-style · self-hosted (no API calls) · rect + perspective
           </p>
         </div>
       </header>
@@ -413,6 +446,46 @@ export function MockupTemplateCreateForm() {
                       className="hidden"
                     />
                   </label>
+                </div>
+                {/* Phase 68 — Rect/Perspective mode toggle (k-segment, Phase 59 parity) */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div
+                    className="k-segment"
+                    role="group"
+                    aria-label="Safe-area authoring mode"
+                    data-testid="safe-area-mode-toggle"
+                  >
+                    {(["rect", "perspective"] as const).map((m) => {
+                      const active = safeArea.mode === m;
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => switchMode(m)}
+                          disabled={createMutation.isPending}
+                          className={active ? "" : ""}
+                          data-testid={`safe-area-mode-${m}`}
+                          data-active={active}
+                          title={
+                            m === "rect"
+                              ? "Axis-aligned rectangle — wall art frames, posters, stickers"
+                              : "4-corner perspective quad — t-shirts, mugs, tilted frames"
+                          }
+                        >
+                          {m === "rect" ? "Rect" : "Perspective"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span
+                    className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3"
+                    data-testid="safe-area-mode-hint"
+                  >
+                    {safeArea.mode === "rect"
+                      ? "Rect · simple flat surfaces"
+                      : "Perspective · yamuk smart areas (t-shirt / mug / tilted frame)"}
+                  </span>
                 </div>
                 <SafeAreaEditor
                   imageUrl={previewUrl}
