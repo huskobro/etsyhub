@@ -12,7 +12,6 @@ import {
   Check,
   CircleSlash,
   CircleDot,
-  GripVertical,
   Plus,
   Sparkles,
   Trash2,
@@ -334,19 +333,21 @@ export function DesignsTab({ setId, items, readOnly = false }: DesignsTabProps) 
                   <StatusIcon className="h-2.5 w-2.5" strokeWidth={3} aria-hidden />
                   {statusLabel(it.status)}
                 </div>
-                {/* Drag handle moved below status badge — disabled placeholder. */}
-                <div className="absolute right-3 top-10">
-                  <button
-                    type="button"
-                    aria-label="Drag to reorder"
-                    onClick={(e) => e.stopPropagation()}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-line bg-paper/95 text-ink-3 cursor-grab disabled:opacity-50"
-                    disabled
-                    title="Reorder by drag-and-drop — coming soon. Designs currently sort by add date."
-                  >
-                    <GripVertical className="h-3 w-3" aria-hidden />
-                  </button>
-                </div>
+                {/* Phase 58 — Drag handle placeholder kaldırıldı.
+                 *
+                 * Önceki davranış: her tile sağ üstte disabled GripVertical
+                 * icon + "Reorder by drag-and-drop — coming soon. Designs
+                 * currently sort by add date." tooltip. Sorun: 4+ tile grid
+                 * (xl:grid-cols-4) → 4-16 görsel gri grip icon. Operatör
+                 * hover yapınca aynı tooltip her seferinde. Bu **görsel
+                 * gürültü** + her tile'da tekrar eden disabled sinyali.
+                 *
+                 * Phase 58 stratejisi: placeholder tamamen kaldır. Header
+                 * caption'daki "drag to reorder" promise'i de Phase 51'de
+                 * "X designs · Y selected · Z pending" status-aware
+                 * caption'a geçti — operatör drag promise'i görmüyor zaten.
+                 * Reorder gerçekten landing yaparsa drag handle component
+                 * yeniden eklenebilir; o zamana kadar tile temiz kalır. */}
                 <div className="p-3">
                   <div className="truncate text-sm font-medium leading-tight text-ink">
                     Design {it.id.slice(0, 6)}

@@ -9,10 +9,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
+  ArrowRight,
   ChevronRight,
   ExternalLink,
   ImageOff,
-  Plus,
   RotateCw,
   Search,
 } from "lucide-react";
@@ -262,21 +262,33 @@ export function ProductsIndexClient({
 
   return (
     <div className="-m-6 flex h-screen flex-col" data-testid="products-page">
+      {/* Phase 58 — "New Product" disabled primary CTA kaldırıldı.
+       *
+       * Önceki davranış: Topbar action slot'unda büyük orange "+New
+       * Product" button (k-btn--primary) görünüyor + disabled +
+       * tooltip "To create a new Product: open a Selection (Mockup
+       * ready stage)...". Bu **misleading**: operatörün ilk dürtüsü
+       * tıklamak; disabled olduğu fark edilmez ama tıklayınca hiçbir
+       * şey olmaz. Honest ama görsel hiyerarşi yanlış.
+       *
+       * Phase 58: action slot'a ghost helper chip — operatöre asıl
+       * akışı söyler (Selection → Apply Mockups). Tıklanabilir Link
+       * (`/selections`) ile asıl yere yönlendirir; "fake CTA" yerine
+       * "doğru yol haritası" sunar. */}
       <AppTopbar
         title="Products"
         subtitle={subtitleText}
         actions={
-          <button
-            type="button"
+          <Link
+            href="/selections"
             data-size="sm"
-            className="k-btn k-btn--primary"
-            disabled
-            title="To create a new Product: open a Selection (Mockup ready stage), then use 'Apply Mockups'. Products always come from finalized selections."
-            data-testid="products-new-cta"
+            className="k-btn k-btn--ghost"
+            title="Products come from finalized selections. Open Selections, then use 'Apply Mockups' on a Mockup-ready set."
+            data-testid="products-new-cta-helper"
           >
-            <Plus className="h-3 w-3" aria-hidden />
-            New Product
-          </button>
+            <ArrowRight className="h-3 w-3" aria-hidden />
+            From Selections
+          </Link>
         }
       />
 

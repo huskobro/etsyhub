@@ -11475,6 +11475,129 @@ Uygulama bu noktada **sellable**.
 
 ---
 
+## Phase 58 — Full interaction audit + 3 misleading CTA fix
+
+Phase 57 surface-level audit'iydi (HTTP 200, TR drift, placeholder
+mention). Phase 58 daha derin: **her buton/handoff/state mantığını
+denetlemek** ve **misleading CTA'ları kapatmak**.
+
+### Phase 58 audit (browser-walk, click-level)
+
+Canonical 7 surface gezildi; primary CTA / secondary CTA / disabled
+button / handoff href / tab state'leri kontrol edildi. Hepsi
+HTTP 200 + DOM yapısı doğru (Phase 57 baseline), ama 3 **mantık
+sorunu** tespit edildi:
+
+### Bulgu 1 — Overview "Apply Mockups" misleading handoff
+
+`server/services/overview/index.ts:229` — `mockupReady` rows'unun
+`href`'i `/selections/${s.id}` (Selection detail).
+
+**Sorun**: Operatör Overview'da "Apply Mockups" yazılı orange primary
+CTA görür. Mantıksal beklenti: tıkla → mockup studio açılsın. Gerçek
+davranış: Selection detail'a iner, orada **tekrar** "Apply Mockups"
+button'una tıklamak zorunda. Label ↔ destination mismatch.
+
+**Fix**: href → `/selection/sets/${s.id}/mockup/apply` (direct
+handoff). 2 tıklama → 1 tıklama. Operatör Overview'dan tek tıkla
+mockup uygular.
+
+### Bulgu 2 — Products "New Product" disabled fake CTA
+
+`features/products/components/ProductsIndexClient.tsx:269` — Topbar
+action slot'unda büyük orange `<button disabled>` "+New Product"
+(k-btn--primary) + tooltip "To create a new Product: open a Selection
+(Mockup ready stage), then use 'Apply Mockups'..."
+
+**Sorun**: Operatörün ilk dürtüsü tıklamak. Primary visual hierarchy
+(orange + Plus icon) "tıklanabilir" sinyali veriyor; disabled olduğu
+fark edilmez ama tıklayınca hiçbir şey olmaz. Honest tooltip ama
+**görsel hiyerarşi yanlış** (Phase 32 audit prensibi: yarım yüzeyler
+operatör güvenini bozar).
+
+**Fix**: Disabled primary CTA kaldırıldı; yerine **ghost helper Link**
+"From Selections" → `/selections` (canonical Product giriş noktası).
+Operatör tıklayabilir + doğru yere gider; title attribute hâlâ akış
+açıklaması taşır.
+
+### Bulgu 3 — Selection DesignsTab drag handle visual noise
+
+`features/selections/components/tabs/DesignsTab.tsx:338-349` — Her
+tile sağ üst köşede `<button disabled>` GripVertical icon + tooltip
+"Reorder by drag-and-drop — coming soon. Designs currently sort by
+add date."
+
+**Sorun**: 4-col xl grid → 4-16 görsel disabled grip icon. Operatör
+her tile hover'ında aynı tooltip tetiklenir. **Görsel gürültü** +
+tekrar eden disabled sinyali. Phase 51'de eklenmişti ama tile-level
+status badge + filter chip + bulk-bar zaten dolu — drag handle
+"coming soon" promise'i operatörü yormaktan başka değer üretmiyor.
+
+**Fix**: Tile-level drag handle placeholder tamamen kaldırıldı.
+Operatör grid'de yalnız anlamlı sinyalleri (status badge + selection
+checkbox + thumbnail + design metadata) görür. Reorder gerçekten
+landing yaparsa drag handle component yeniden eklenebilir.
+
+### Browser verification (live dev server kanıt)
+
+| Fix | Test | Sonuç |
+|---|---|---|
+| 1 Overview Apply Mockups | 3 CTA href check | 3/3 doğrudan `/selection/sets/{id}/mockup/apply` ✓ (`directHandoff: true`) |
+| 2 Products topbar | "products-new-cta" disabled button presence | Yok (eski disabled CTA kalktı) |
+| 2 Products topbar | "products-new-cta-helper" ghost link | `<A>` element, href `/selections`, text "From Selections", title actionable ✓ |
+| 3 Selection DesignsTab | drag handle button count + reorder tooltip count | 0 drag button + 0 reorder tooltip (önceden 4) ✓ |
+| Screenshot | pass57-mj-29689991 selection detail | 4 tile temiz, status badge + selection checkbox + thumbnail + meta, drag handle yok |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: 304/304 PASS (canonical 59 + mockup 245)
+- Browser end-to-end: 3 fix canlı dev server'da doğrulandı
+
+### Değişmeyenler (Phase 58)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** 3 küçük fix:
+  - Server-side `mockupReady` href değişikliği (string template)
+  - Topbar disabled button → ghost Link
+  - DesignsTab drag handle JSX block + 1 import line silinmesi
+- **References / Batch / Review / Selection / Mockup / Product / Etsy
+  Draft canonical akışları intakt** (Phase 26-57 baseline).
+- **Honest disclosure pattern korundu**: Phase 58 "fake CTA"'ları
+  kaldırdı ama "Coming soon" tooltip'leri olan **gerçek
+  meta button'lar** (Duplicate / Preview / More actions / Soon tab'lar)
+  dokunulmadı — onlar dürüst sinyal taşıyor, yarım CTA değil.
+
+### Ship-readiness güncel kararı
+
+Phase 57'de **sellable** karar verilmişti. Phase 58 bu kararı
+**güçlendirdi** — 3 misleading interaction kalktı:
+- Overview → Mockup studio doğrudan handoff (operator-friendly)
+- Products topbar fake CTA → honest ghost helper
+- Selection DesignsTab visual noise kalktı
+
+Canonical operator loop **production-ready** + **mantıken tutarlı**.
+Sonraki turlar yalnız:
+- Backlog/nice-to-have polish (server helper DRY, listing field-level
+  DS, S1/S2 audit, drag-and-drop reorder gerçek implementation)
+- Yeni feature alanları (multi-store, scheduling, browser companion)
+
+### Bilinçli scope dışı (Phase 59+ candidate)
+
+- **Product detail h1 truncation** (uzun listing title 130 char baskın):
+  Phase 58 audit'inde tespit edildi, low-severity ama ileride
+  truncate + tooltip pattern eklenebilir.
+- **Selections detail Duplicate / More button'ları**: "Coming soon"
+  honest ama gerçek implementation gelmediği sürece görsel yer
+  kaplıyor. Phase 59'da kaldırılabilir veya implement edilebilir.
+- **Product detail Duplicate / Preview button'ları**: Aynı pattern.
+
+Bu üçü **operator-blocking değil**, sadece UX yorum farkı.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
