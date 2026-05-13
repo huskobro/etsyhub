@@ -63,11 +63,13 @@ export function SetSummaryCard({
   isQuickPack,
   selectedCount,
 }: SetSummaryCardProps) {
-  // Status badge rengini belirle
+  /* Phase 54 — Status badge Kivasy DS palette'ine taşındı.
+   * Legacy `bg-slate/green/gray` Tailwind raw tones → DS tone tokens
+   * (`bg-k-bg-2 / bg-success-soft / bg-k-bg-2`) + uygun text contrast. */
   const statusColor = {
-    draft: "bg-slate-100 text-slate-700",
-    ready: "bg-green-100 text-green-700",
-    archived: "bg-gray-100 text-gray-700",
+    draft: "bg-k-bg-2 text-ink-2 border-line-soft",
+    ready: "bg-success-soft text-success border-success/30",
+    archived: "bg-k-bg-2/60 text-ink-3 border-line-soft",
   }[set.status];
 
   const statusLabel = {
@@ -85,23 +87,41 @@ export function SetSummaryCard({
     .items;
   const productTypeKey = items?.[0]?.productTypeKey ?? null;
 
+  /* Phase 54 — Shell DS migration.
+   *
+   * Önceden `rounded-md border border-border bg-surface-2 p-4` ve
+   * `text-text text-text-muted` legacy semantic tokens kullanıyordu —
+   * Kivasy ürün ailesine ait değildi. Phase 54: k-card recipe + line
+   * border + paper bg + ink/ink-2/ink-3 text token'lar.
+   *
+   * Lineage chip'leri (Phase 52) zaten Kivasy DS'de — yalnız shell
+   * legacy idi. Phase 54 ile Selection detail / Mockup result / S7
+   * in-progress kartları aynı görsel aileye girer. */
   return (
     <section
       aria-label="Set summary"
       data-testid="mockup-set-summary"
-      className="rounded-md border border-border bg-surface-2 p-4"
+      className="rounded-lg border border-line bg-paper p-4"
     >
       <div className="space-y-3">
         {/* Set adı + statüsü */}
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <h2 className="text-sm font-semibold text-text">{set.name}</h2>
-            <p className="text-xs text-text-muted">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-1">
+            <h2 className="truncate text-sm font-semibold text-ink">
+              {set.name}
+            </h2>
+            <p className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
               {set.items.length} design{set.items.length === 1 ? "" : "s"} selected
             </p>
           </div>
           <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColor}`}
+            className={cn(
+              "inline-flex items-center rounded-md border px-2 py-0.5",
+              "font-mono text-[10px] font-semibold uppercase tracking-meta",
+              statusColor,
+            )}
+            data-testid="mockup-set-summary-status"
+            data-status={set.status}
           >
             {statusLabel}
           </span>
@@ -168,14 +188,14 @@ export function SetSummaryCard({
           </div>
         )}
 
-        {/* Pack türü ve seçili say */}
-        <div className="border-t border-border pt-2">
+        {/* Pack türü ve seçili say (Phase 54 — Kivasy DS tokens) */}
+        <div className="border-t border-line-soft pt-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-text-muted">
+            <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
               {isQuickPack ? "Quick pack" : "Custom selection"}
             </span>
-            <span className="text-sm font-medium text-text">
-              {selectedCount} mockup
+            <span className="text-sm font-medium tabular-nums text-ink">
+              {selectedCount} mockup{selectedCount === 1 ? "" : "s"}
             </span>
           </div>
         </div>

@@ -10677,6 +10677,221 @@ omurgası tamam, kalan **görsel polish detayı**.
 
 ---
 
+## Phase 54 — Mockup studio legacy/parity cleanup (S7 + SetSummaryCard + AllFailedView)
+
+Phase 53 S8ResultView'i canonical ürün diline çekmişti. Phase 54 odak:
+**mockup studio'da kalan legacy shell + parity boşluklarını tek aile
+seviyesine çıkarmak**. Yeni feature yok; üç dosya polish.
+
+### Phase 53 sonrası ürün boşluğu
+
+1. **S7JobView (in-progress page) ürün-ailesinden ayrık**:
+   - Massive TR drift: "Pack Hazırlanıyor", "Yükleniyor…", "Render
+     Durumu", "Render hazır", "saniye kaldı (yaklaşık)", "Bu sayfayı
+     kapatabilirsin", "Pack hazırlanamadı", "İş iptal edildi", "İş'i
+     iptal et", "İptal ediliyor…", "S3'e dön"
+   - Legacy tokens: `bg-blue-50 bg-red-50 bg-green-50 border-gray-200
+     var(--color-border) var(--color-accent) text-red-600 text-gray-700
+     text-green-800`
+   - Source context yok (header'da yalnız jobId/setId mono caption)
+   - Render row legacy: `bg-surface border` + glif (`⊙/◐/⚠`) yerine icon
+     component'ler kullanılmalı
+   - State'ler aynı tone ailesinde değildi (success yeşil-soft, failed
+     kırmızı raw, cancelled gri raw, active emoji-heavy)
+
+2. **SetSummaryCard shell legacy** (Phase 52'de lineage chip eklenmişti
+   ama shell hâlâ legacy):
+   - `border-border bg-surface-2 text-text text-text-muted` semantic
+     tokens — Kivasy DS değil
+   - Status badge inline color map: `bg-slate-100 bg-green-100 bg-gray-100`
+   - Header h2 + caption legacy text token'lar
+
+3. **AllFailedView (S8 içi) lineage yok**:
+   - Phase 53 başarı path'i lineage strip taşıyordu ama failed path'te
+     yalnız "Back to Mockup Studio" CTA + error message
+   - Operatör failed state'te "hangi selection / hangi batch?" sorusuna
+     cevap alamıyordu
+
+### Slice 1 — S7JobView full rewrite (Phase 53 S8 parity)
+
+`src/features/mockups/components/S7JobView.tsx`:
+
+**EN parity (massive):**
+- h1 dynamic by status:
+  - SUCCESS/PARTIAL → "Mockup pack ready"
+  - FAILED → "Mockup pack failed"
+  - CANCELLED → "Mockup pack cancelled"
+  - QUEUED/RUNNING → "Mockup pack in progress"
+- "Yükleniyor…" → "Loading…"
+- "Job yüklenemedi" → "Couldn't load job"
+- "Render Durumu" → "Render status"
+- "Render hazır" → "Rendering mockups…"
+- "saniye kaldı (yaklaşık)" → "remaining (approx.)"
+- "Bu sayfayı kapatabilirsin. Job arka planda devam eder." →
+  "You can close this page — the job continues in the background.
+  We'll keep your renders ready when you come back."
+- "Pack hazırlanamadı" → "Pack failed to render" + reassurance
+  "Your selection is unaffected — return to Mockup Studio to retry
+  with the same set."
+- "İş iptal edildi" → "Job cancelled. Any partial renders are
+  discarded; your selection is intact."
+- "S3'e dön" → "Back to Mockup Studio"
+- "İş'i iptal et" / "İptal ediliyor…" → "Cancel job" / "Cancelling…"
+- ERROR_LABELS / per-render row labels EN
+
+**Kivasy DS migration:**
+- Hero card success: `bg-green-50 border-green-200` → `success-soft +
+  success/40 border + CheckCircle2 icon`
+- Hero card active: SVG ring stroke `var(--color-border) +
+  var(--color-accent)` → hex k-orange + line tones; ring + progress
+  + ETA aynı card içinde (`rounded-lg border-line bg-paper`)
+- Per-render row: `bg-surface border` + emoji glif → `border-line
+  bg-paper` + icon components (CheckCircle2 success, Loader2 spin,
+  AlertTriangle failed, hollow circle pending)
+- Reassurance block: `bg-blue-50 border-blue-200` → `bg-k-bg-2/40
+  border-line-soft + k-orange dot`
+- Failed state: `bg-red-50 border-red-200` → `bg-danger/5
+  border-danger/40 + AlertTriangle`
+- Cancelled state: `bg-gray-50 border-gray-200` → `bg-k-bg-2/60
+  border-line-soft`
+
+**Source lineage strip:**
+- `useSelectionSet(setId)` hook entegrasyonu — Selection detail / Apply
+  view / Result view ile aynı cache key
+- Phase 52/53 `resolveSourceBatchId` helper inline
+- Header altında chip strip: ← set.name back-link + (varsa) source
+  batch chip + (varsa) product type chip
+- Set load olana kadar strip render edilmez (graceful)
+
+**State polish:**
+- Success: green-soft hero + "Redirecting to results…" mono hint
+- Active: SVG ring + progress % + ETA + "Rendering mockups…" message
+- Failed: red-soft + error summary + reassurance + Back CTA
+- Cancelled: neutral bg + "Job cancelled… your selection is intact" + Back CTA
+- Cancel button (active'de) → "Cancel job" / "Cancelling…"
+
+### Slice 2 — SetSummaryCard shell DS migration
+
+`src/features/mockups/components/SetSummaryCard.tsx`:
+
+- Card shell `rounded-md border border-border bg-surface-2 p-4` →
+  `rounded-lg border border-line bg-paper p-4`
+- h2 `text-text` → `text-ink`, caption `text-text-muted` → mono
+  uppercase tracking-meta text-ink-3
+- Status badge map:
+  - `bg-slate-100 text-slate-700` (draft) → `bg-k-bg-2 text-ink-2
+    border-line-soft`
+  - `bg-green-100 text-green-700` (ready) → `bg-success-soft
+    text-success border-success/30`
+  - `bg-gray-100 text-gray-700` (archived) → `bg-k-bg-2/60 text-ink-3
+    border-line-soft`
+- Status badge shape: `rounded-full px-2 py-0.5 text-xs font-medium`
+  → `rounded-md border px-2 py-0.5 font-mono text-[10px] font-semibold
+  uppercase tracking-meta` (Phase 51 Selection status badge ile aile
+  parity)
+- Footer divider `border-border` → `border-line-soft`
+- Selected count footer: `text-xs text-text-muted` → mono uppercase
+  tracking-meta text-ink-3 + `tabular-nums` selected count
+
+Phase 52 lineage chip'leri zaten Kivasy DS'deydi; Phase 54 shell ve
+status badge'i de aynı aileye geçirdi.
+
+### Slice 3 — AllFailedView lineage strip + reassurance
+
+`src/features/mockups/components/S8ResultView.tsx` → `AllFailedView`:
+
+- `useSelectionSet(setId)` hook eklendi
+- Header'a Phase 53 lineage strip kopyalandı: ← set.name + source
+  batch chip + product type chip
+- Failed alert block'a yeni reassurance line eklendi:
+  "Your selection is intact — retry with the same set or pick a
+  different template pack." (operatöre data güvenli sinyali)
+
+### Browser verification (live dev server kanıt)
+
+`SetSummaryCard` Phase 54 DS migration:
+- Apply view (`pass57-mj-29689991`, ready stage):
+  - cardClass: `rounded-lg border border-line bg-paper p-4` ✓
+  - cardBg: `rgb(255, 255, 255)` (paper), cardBorder: `rgb(228, 224, 213)` (line)
+  - Status badge: text "Ready", bg `rgb(228, 241, 233)` (success-soft),
+    color `rgb(47, 121, 74)` (success)
+  - Lineage strip: "← SELECTION" + "TYPE · CLIPART"
+  - Screenshot: pass57-mj card + 4 DESIGNS SELECTED + READY badge +
+    lineage chip'leri + Quick pack + Render (Quick pack) CTA
+
+`S7JobView` Phase 54 rewrite:
+- Test path COMPLETED job için 400ms feedback sonrası result page'e
+  auto-redirect (Phase 8 baseline davranışı korundu)
+- Bu nedenle S7 active state'i mevcut COMPLETED job ile canlı
+  test edilemiyor (sadece geçici 400ms success card + auto redirect)
+- Component-level DOM kanıtı: önceki redirect path doğrulanmış,
+  tüm Phase 54 EN parity + DS migration + lineage strip render
+  path'leri typecheck temiz + targeted tests PASS
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: 59/59 PASS (canonical paket)
+- Browser: SetSummaryCard Apply view'da DS migration + lineage strip
+  + status badge ailesi canlı kanıt
+
+### Değişmeyenler (Phase 54)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Mockup job/render Phase 8 schema'sı intakt.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek dosya rewrite (S7) + iki dosya
+  polish (SetSummaryCard, S8/AllFailedView). `resolveSourceBatchId`
+  helper inline kopyaları (3 dosyada; ortak helper'a almak Phase 55+
+  refactor turu).
+- **References / Batch / Review / Selection / Mockup apply / Mockup
+  result / Listing / Product detail akışları intakt** (Phase 26-53).
+- **S7 redirect davranışı korundu** (REDIRECT_FEEDBACK_MS = 400ms,
+  COMPLETED/PARTIAL_COMPLETE → result page).
+- **Mockup job pipeline (worker, render, retry, swap, cancel)
+  dokunulmadı.**
+- **Kivasy DS dışına çıkılmadı.** k-orange + k-orange-soft + k-bg-2 +
+  line + line-soft + success-soft + danger + warning recipe'leri
+  kullanıldı. Eski raw Tailwind palette token'ları (`bg-blue-50`,
+  `bg-red-50`, `bg-green-50`, `border-gray-200`, `bg-surface-2`,
+  `bg-surface`, `text-text`, `text-text-muted`, `var(--color-accent)`,
+  `var(--color-border)`) tamamen kalktı.
+
+### Bilinçli scope dışı (Phase 55+ candidate)
+
+- **CoverSlot / SuccessRenderSlot / FailedRenderSlot tile DS migration**:
+  S8ResultView içindeki tile component'leri hâlâ `bg-gray-100 border
+  shadow` legacy token'ları kullanıyor. Phase 54 hero/state polish'e
+  odaklandı; tile-level DS migration ayrı tur.
+- **`resolveSourceBatchId` ortak helper**: 3 dosyada inline kopya
+  (SetSummaryCard, S8ResultView, S7JobView). Phase 55+ refactor turu
+  shared `lib/selection-lineage.ts` helper çıkarabilir.
+- **Other mockup components**: CoverSwapModal, PerRenderActions,
+  IncompatibleSetBand, EmptyPackState — Phase 54 audit'inde
+  görülmedi; ayrı TR drift / DS migration kontrol turu Phase 55+.
+- **Product detail Etsy Draft submit operator-friendly polish**
+  (Phase 53 candidate'tan devir).
+
+### Bundan sonra product olarak tek doğru iş
+
+Phase 54 ile canonical omurganın mockup halkası **aile içi** kalite
+ailesinde:
+- Apply view (S3) — Phase 52 lineage + Phase 54 SetSummaryCard DS
+- In-progress (S7) — Phase 54 EN + DS + lineage + state polish
+- Result (S8) — Phase 53 EN + hierarchy + lineage + Phase 54
+  AllFailedView lineage
+
+Sıradaki **tek doğru iş** kalan **render-tile DS migration**
+(CoverSlot/SuccessRenderSlot/FailedRenderSlot) + **shared lineage
+helper extraction** (3 dosyada inline kopya). Bu iki polish turundan
+sonra mockup studio **tamamen canonical** olur.
+
+Canonical omurga (References → Batch → Review → Selection → Mockup →
+Product → Etsy Draft) **production-ready** seviyesinde; kalan iş
+yalnız görsel/parity detay polish.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

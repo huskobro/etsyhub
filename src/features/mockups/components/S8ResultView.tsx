@@ -74,11 +74,77 @@ function resolveSourceBatchId(sourceMetadata: unknown): string | null {
   return null;
 }
 
-function AllFailedView({ setId, job }: { setId: string; job: MockupJobView }) {
+function AllFailedView({
+  setId,
+  job,
+}: {
+  setId: string;
+  job: MockupJobView;
+}) {
   const router = useRouter();
+  /* Phase 54 — All-failed state'te de operator selection context'ini
+   * kaybetmemeli. useSelectionSet ile set adı + lineage chip strip
+   * gösterir (Phase 53 S8ResultView başarı path'i parity).
+   * Set load olana kadar lineage strip render edilmez. */
+  const { data: set } = useSelectionSet(setId);
+  const sourceBatchId = set ? resolveSourceBatchId(set.sourceMetadata) : null;
+  const productTypeKey =
+    (set as { items?: Array<{ productTypeKey?: string | null }> } | undefined)
+      ?.items?.[0]?.productTypeKey ?? null;
 
   return (
-    <main className="mx-auto max-w-2xl p-8" data-testid="mockup-result-all-failed">
+    <main
+      className="mx-auto max-w-2xl p-8"
+      data-testid="mockup-result-all-failed"
+    >
+      {/* Phase 54 — Lineage strip (failed state'te de context korunur) */}
+      {set ? (
+        <div
+          className="mb-4 flex flex-wrap items-center gap-1.5"
+          data-testid="mockup-result-all-failed-lineage"
+        >
+          <Link
+            href={`/selections/${setId}`}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md border border-line-soft bg-k-bg-2/60 px-2 py-1",
+              "font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2",
+              "transition-colors hover:border-k-orange/50 hover:bg-k-orange-soft hover:text-k-orange-ink",
+            )}
+            title="Back to Selection detail"
+          >
+            ← {set.name}
+          </Link>
+          {sourceBatchId ? (
+            <Link
+              href={`/batches/${sourceBatchId}`}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border border-line-soft bg-k-bg-2/60 px-2 py-1",
+                "font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2",
+                "transition-colors hover:border-k-orange/50 hover:bg-k-orange-soft hover:text-k-orange-ink",
+              )}
+              title="Open the source batch this selection came from"
+            >
+              <Layers className="h-3 w-3" aria-hidden />
+              <span>From batch</span>
+              <span className="text-ink-3">·</span>
+              <span>{sourceBatchId.slice(0, 8)}</span>
+            </Link>
+          ) : null}
+          {productTypeKey ? (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border border-line-soft bg-paper px-2 py-1",
+                "font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-3",
+              )}
+            >
+              <span>Type</span>
+              <span className="text-ink-3">·</span>
+              <span className="text-ink-2">{productTypeKey}</span>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       <div
         role="alert"
         className="rounded-lg border border-danger/40 bg-danger/5 p-6"
@@ -87,9 +153,13 @@ function AllFailedView({ setId, job }: { setId: string; job: MockupJobView }) {
           <AlertTriangle className="h-6 w-6" />
           Pack failed to render
         </h1>
-        <p className="mb-4 text-sm text-ink-2">
+        <p className="mb-3 text-sm text-ink-2">
           {job.errorSummary ||
             "All renders failed. Try again or swap templates."}
+        </p>
+        <p className="mb-4 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+          Your selection is intact — retry with the same set or pick a different
+          template pack.
         </p>
         <Button
           variant="secondary"
