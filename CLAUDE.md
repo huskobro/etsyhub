@@ -12742,6 +12742,156 @@ Sıradaki tek doğru iş **Phase 64 PSD ETL CLI** (offline tooling; operator tem
 
 ---
 
+## Phase 64 — Templated.io ürün modeli: MockupTemplate ownership + user-scope catalog endpoint
+
+Phase 63 self-hosted runtime'ı (placePerspective) açtı; Phase 64
+**templated.io benzeri "operatör kendi mockup template'ini sahiplenir"
+ürün modelinin temelini** kurdu. Bu turun seçim kararı: PSD ETL CLI
+(Phase 60-62'de yol B önerisi) yerine **schema + ownership + user-scope
+read API**'yi açmak — çünkü ETL bir tooling, ownership olmadan ETL
+çıktısı user-bound olamaz. Önce ownership tabanı, sonra ETL/upload
+yazma yolları (Phase 65+).
+
+### Audit findings (kısa)
+
+| Açık | Önem |
+|---|---|
+| `MockupTemplate.userId` YOK — tüm templates admin-global | **Kritik** (templated.io modeli için zorunlu) |
+| User-scope API endpoint YOK — sadece `requireAdmin` CRUD | **Kritik** (operator kendi catalog'unu okuyamaz) |
+| User upload UI yok | Phase 65+ candidate |
+| local-sharp pipeline (Phase 63) rect + perspective tam self-hosted | ✓ baseline |
+| Apply (S3) "USER_TEMPLATE" tab CLAUDE.md sözleşmesi mevcut | data yok (template-side önce çözülmesi gerek) |
+
+### Ürün modeli kararı (templated.io benzeri)
+
+**MockupTemplate ownership = nullable userId** (templated.io ürün modeli):
+- `userId === NULL` → **global catalog** (admin-managed; tüm kullanıcılar görür)
+- `userId === <X>` → **X'in özel template'i** (kendi library'si; cross-user erişilemez)
+
+**Kademe yaklaşımı**:
+- **Phase 64**: schema + user-scope read API + admin manager'da Ownership column (Global/User badge)
+- **Phase 65+**: user upload UI (template editor + asset upload form) + "My templates" tab in mockup apply (CLAUDE.md USER_TEMPLATE sözleşmesi karşılığı) + reusable library mgmt (name/categorize/favorite)
+
+### local-sharp'ın rolü
+
+**Local-sharp self-hosted mockup engine'in omurgası**:
+- Phase 8: rect + recipe + thumbnail + storage upload
+- Phase 63: 4-corner perspective transform (yamuk smart-object area'lar)
+- Phase 64: ownership-aware (user templates kendi binding'leriyle aynı pipeline'dan geçer)
+
+**Kullanıcı kendi mockup'unu nasıl eklemeli (Phase 65+ ürün modeli)**:
+1. Asset upload → MinIO (base image + opsiyonel design overlay)
+2. Template config editor → safe-area (rect veya 4-corner perspective) + recipe (blend + shadow)
+3. MockupTemplate row create (userId = current; status: DRAFT)
+4. Binding create (providerId: LOCAL_SHARP; config: local-sharp JSON)
+5. User publish → status ACTIVE → mockup apply'da görünür
+
+PSD ETL (Phase 65+ candidate): operatör Photoshop'ta `@kivasy:area:design` smart-object naming convention ile çalışır; `npm run mockup:import-psd <file.psd>` CLI ile JSON template'e dönüşür → user upload flow'una otomatik import. PSD parse: `ag-psd ^15` pure-JS dep (~120KB, native binding yok).
+
+### API-free / unlimited dürüst değerlendirme
+
+| Mockup tipi | local-sharp ile yeterli mi? |
+|---|---|
+| Wall art / poster on flat wall (rect) | ✓ tam |
+| Framed art with slight angle (perspective rect) | ✓ tam |
+| T-shirt with chest area (perspective quad) | ✓ Phase 63 ile |
+| Mug with curved cylinder | ⚠ kısmi — 4-corner approximation; gerçek cylindrical mapping yok (Phase 66+ candidate, displacement map gerek) |
+| Book cover with spine | ⚠ aynı — multi-quad needed |
+| Photorealistic 3D scene (multi-layer + lighting) | ❌ Sharp scope dışı (Blender/photopea track) |
+
+**dynamic-mockups deprecation**: rect + perspective dünyasının %80+'ı (wall art, t-shirt, poster) local-sharp ile karşılanır. Cylindrical/3D ihtiyaçları için dynamic-mockups path optional kalır; Phase 65+ kararı (consumer audit).
+
+### Vertical slice — Schema + API + Manager UI
+
+**Schema migration** (`prisma/migrations/20260514120000_phase64_mockup_template_user_ownership/`):
+- `ALTER TABLE "MockupTemplate" ADD COLUMN "userId" TEXT;`
+- `CREATE INDEX "MockupTemplate_userId_idx" ON "MockupTemplate"("userId");`
+- `ADD CONSTRAINT "MockupTemplate_userId_fkey" FK → User ON DELETE CASCADE`
+- Backward-compat: existing rows `userId = NULL` (global catalog)
+- User reverse relation: `User.mockupTemplates`
+
+**User-scope read endpoint** (`GET /api/mockup-templates`):
+- `requireUser` auth (admin değil)
+- Query params:
+  - `scope=all|global|own` (default: `all` → global + own merged)
+  - `categoryId` (optional)
+  - `status` (default: `ACTIVE`)
+- Where clause:
+  - `scope=global` → `userId: null`
+  - `scope=own` → `userId: currentUser.id`
+  - `scope=all` → `OR: [{userId: null}, {userId: currentUser.id}]`
+- Response: items with **ownership field projected** (`"global" | "own"`)
+- Cross-user isolation: where filter asla `userId != null AND userId != currentUser` döndürmez
+
+**Admin manager UI** (`mockup-templates-manager.tsx`):
+- 7-column table (Ad / Kategori / **Ownership** / Status / Aspect / Bindings / İşlemler)
+- Ownership badge: `Global` (neutral tone) / `User` (success tone)
+- Title attribute actionable: "Global admin catalog — all users see this template" vs "User-owned template (Phase 64): scoped to user X…"
+- `data-testid="admin-template-ownership"` + `data-ownership="global"|"own"` (test/automation)
+
+### Test coverage
+
+**`tests/integration/api-mockup-templates-user-scope.test.ts`** — 6 senaryo, 233ms PASS:
+1. 401 unauthenticated
+2. **Cross-user isolation**: user1 görür: global + own; user2'nin template'i ASLA görünmez
+3. **scope=global**: yalnız `userId NULL`
+4. **scope=own**: yalnız `currentUser.id`
+5. **Default status filter**: DRAFT/ARCHIVED gizli (default ACTIVE)
+6. **categoryId filter**: kategoriler arası filtre
+
+Cross-user isolation testi en kritik: SQL where clause `OR [userId NULL, userId currentUser]` — user2 row'u **asla** matched değil; integration test bunu user1 ve user2 fixture'ları ile gerçek DB üzerinde doğruluyor.
+
+### Browser verification
+
+- `GET /api/mockup-templates` user-scoped: HTTP 200, **729 ACTIVE template** dönüyor (admin DB'sinde 3061 total, 729 ACTIVE)
+- Tüm 729 template **`ownership: "global"`** (henüz hiç user-owned yok — beklenen baseline)
+- Admin manager page: **3061 ownership badge render edildi**, hepsi `data-ownership="global"`, title attribute actionable
+- 7-column header doğru sırada: `Ad / Kategori / Ownership / Status / Aspect / Bindings / İşlemler`
+- Bundle string verification: `admin-template-ownership`, `data-ownership`, "Phase 64", "User-owned template", "Global admin catalog" tümü chunk'ta
+
+### Quality gates
+
+- `tsc --noEmit`: clean (Phase 63 perspective test + 2 mockup unit fixture'ına `userId: null` eklendi)
+- `vitest`: **691/691 PASS** (650 baseline + 6 new Phase 64 user-scope + 35 admin endpoint regression)
+- `next build`: ✓ Compiled successfully
+- Server-side: 401 auth gate çalışıyor (`/api/mockup-templates` requireUser, `/api/admin/mockup-templates` requireAdmin)
+- Browser-side: re-login + endpoint hit + manager render canlı doğrulandı
+
+### Değişmeyenler (Phase 64)
+
+- **Review freeze (Madde Z) korunur.**
+- **WorkflowRun eklenmez.**
+- **Schema migration var** ama additive (nullable userId + index + FK); zero data risk; backward-compat (mevcut 3061 row `userId=NULL` global olarak kalır)
+- **Yeni big abstraction yok.** Tek nullable field + tek user-scope endpoint + 1 column UI değişikliği
+- **References / Batch / Review / Selection / Mockup / Product / Etsy Draft canonical akışları intakt** (Phase 26-63 baseline)
+- **Mockup apply pipeline + worker + S7/S8 result view + dynamic-mockups path dokunulmadı** (yalnız read API + admin manager UI)
+- **Admin endpoint baseline intakt** (`requireAdmin` GET/POST/PATCH/DELETE değişmedi)
+- **local-sharp pipeline + perspective + recipe Phase 63 baseline intakt**
+- **Kivasy DS dışına çıkılmadı.** Ownership badge `neutral` + `success` tone'ları (Phase 53/54 status badge family parity)
+
+### Bilinçli scope dışı (Phase 65+ candidate)
+
+- **User upload UI** (template editor + asset upload form for non-admin users) — gerçekten kullanıcı kendi mockup'unu ekleyebilmesi için zorunlu sonraki adım
+- **User-scope write endpoints** (POST /api/mockup-templates with userId scoped to currentUser)
+- **PSD → JSON ETL CLI** (`ag-psd` + `scripts/import-psd-mockup-template.ts` + operator guide) — offline tooling
+- **"My templates" tab** in mockup apply S3 view (CLAUDE.md USER_TEMPLATE sözleşmesi karşılığı)
+- **Reusable library mgmt**: rename, categorize (favorite/default), product type binding, archive
+- **Quota/limits** (user başına maksimum template count? plan tier?)
+- **Sharing** (kullanıcı template'ini başka user'a kopyalayabilir mi?) — Phase 66+ ürün kararı
+- **dynamic-mockups consumer audit + deprecation** — Phase 63 + Phase 64'ten sonra hangi case'lerde hâlâ dış API gerek?
+
+### Bundan sonra production tarafında kalan tek doğru iş
+
+Phase 64 ile **templated.io ürün modelinin temeli** kuruldu:
+- Schema ownership ✓
+- User-scope read API ✓
+- Admin transparency badge ✓
+- Cross-user isolation guarantee ✓
+
+Sıradaki gerçek iş **Phase 65 user upload UI** (write side): operatör kendi MockupTemplate'ini editor üzerinden create eder, asset upload eder, status DRAFT → ACTIVE geçer, mockup apply'da kendi library'sini görür. Bu adım Phase 64 schema'sını gerçek operator deneyimine bağlar — templated.io clone'un olgun ürün hali.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

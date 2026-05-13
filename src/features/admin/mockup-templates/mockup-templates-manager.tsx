@@ -56,6 +56,8 @@ type MockupTemplateRow = {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+  /** Phase 64 — Ownership. NULL = global admin catalog; set = user-owned. */
+  userId: string | null;
   bindings: MockupTemplateBindingRow[];
 };
 
@@ -278,6 +280,7 @@ export function MockupTemplatesManager() {
           <TR>
             <TH>Ad</TH>
             <TH>Kategori</TH>
+            <TH>Ownership</TH>
             <TH>Status</TH>
             <TH>Aspect</TH>
             <TH>Bindings</TH>
@@ -287,7 +290,7 @@ export function MockupTemplatesManager() {
         <TBody>
           {filtered.length === 0 ? (
             <TR>
-              <TD colSpan={6}>
+              <TD colSpan={7}>
                 <span className="text-text-muted">Sonuç yok</span>
               </TD>
             </TR>
@@ -304,6 +307,23 @@ export function MockupTemplatesManager() {
                 </TD>
                 <TD>
                   <span className="font-mono text-xs">{row.categoryId}</span>
+                </TD>
+                <TD>
+                  {/* Phase 64 — Ownership column.
+                   * NULL → global catalog (admin-managed, all users see)
+                   * SET → user-owned (templated.io self-hosted model) */}
+                  <Badge
+                    tone={row.userId === null ? "neutral" : "success"}
+                    data-testid="admin-template-ownership"
+                    data-ownership={row.userId === null ? "global" : "own"}
+                    title={
+                      row.userId === null
+                        ? "Global admin catalog — all users see this template"
+                        : `User-owned template (Phase 64): scoped to user ${row.userId.slice(0, 8)}…`
+                    }
+                  >
+                    {row.userId === null ? "Global" : "User"}
+                  </Badge>
                 </TD>
                 <TD>
                   <Badge tone={statusBadgeTone(row.status)}>

@@ -57,11 +57,11 @@ describe("computeHomography", () => {
     const H = computeHomography(src, dst);
     // For each (xs, ys) in src, applying H must yield the corresponding dst
     for (let i = 0; i < 4; i++) {
-      const [xs, ys] = src[i];
-      const [xdExpected, ydExpected] = dst[i];
-      const w = H[6] * xs + H[7] * ys + 1;
-      const xd = (H[0] * xs + H[1] * ys + H[2]) / w;
-      const yd = (H[3] * xs + H[4] * ys + H[5]) / w;
+      const [xs, ys] = src[i]!;
+      const [xdExpected, ydExpected] = dst[i]!;
+      const w = H[6]! * xs + H[7]! * ys + 1;
+      const xd = (H[0]! * xs + H[1]! * ys + H[2]!) / w;
+      const yd = (H[3]! * xs + H[4]! * ys + H[5]!) / w;
       expect(xd).toBeCloseTo(xdExpected, 4);
       expect(yd).toBeCloseTo(ydExpected, 4);
     }

@@ -212,6 +212,8 @@ model User {
   mockupJobs         MockupJob[]
   midjourneyJobs     MidjourneyJob[]
   batches            Batch[]
+  // Phase 64 — User-owned mockup templates (templated.io self-hosted model)
+  mockupTemplates    MockupTemplate[]
 
   @@index([deletedAt])
 }
@@ -1174,6 +1176,12 @@ model MockupTemplate {
   tags              String[]
   /// En hızlı active binding'in tahmini render süresi (ms). Job ETA hesabında kullanılır.
   estimatedRenderMs Int
+  /// Phase 64 — Ownership. NULL = global admin catalog (mevcut + admin-managed).
+  /// SET = bu user'ın özel template'i (templated.io modeli).
+  /// User-scope read endpoint hem global hem own templates'i merge eder.
+  /// Schema-level: nullable + indexed; backwards-compat (mevcut tüm satırlar NULL kalır).
+  userId            String?
+  user              User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   archivedAt        DateTime?
@@ -1181,6 +1189,7 @@ model MockupTemplate {
   bindings MockupTemplateBinding[]
 
   @@index([categoryId, status])
+  @@index([userId])
 }
 
 model MockupTemplateBinding {

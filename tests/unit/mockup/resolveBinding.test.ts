@@ -31,6 +31,7 @@ function makeTemplate(
     aspectRatios: ["2:3"],
     tags: ["modern"],
     estimatedRenderMs: 2000,
+    userId: null, // Phase 64 — global catalog (fixture default)
     createdAt: new Date(),
     updatedAt: new Date(),
     archivedAt: null,

@@ -33,6 +33,7 @@ function makePair(opts: {
     aspectRatios: opts.templateAspects,
     tags: ["modern"],
     estimatedRenderMs: 2000,
+    userId: null, // Phase 64 — global catalog (fixture default)
     createdAt: new Date(),
     updatedAt: new Date(),
     archivedAt: null,
