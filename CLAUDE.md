@@ -10483,6 +10483,200 @@ loop** durumuna gelir. Ürün omurga seviyesinde tamam.
 
 ---
 
+## Phase 53 — Mockup result view: EN parity + hierarchy + lineage + error feedback
+
+Phase 52 finalize handoff + Mockup studio lineage strip eklemişti. Phase
+53 odak: **mockup result → product handoff'unun ürün-friendly hale
+gelmesi**. S8ResultView Phase 8'den beri **çalışıyor ama yarım**
+yüzeyiydi: TR drift, yanlış CTA hierarchy, source context yok, listing
+creation silent fail.
+
+### Phase 52 sonrası ürün boşluğu
+
+`/selection/sets/{setId}/mockup/jobs/{jobId}/result` (S8ResultView):
+
+1. **TR drift**: "Pack hazır", "Yükleniyor…", "Listing'e gönder",
+   "Bulk download ZIP (N görsel)", "Cover'ı Değiştir", "İndir",
+   "Görsel yok", "Bilinmeyen hata", "Detay yok", "Pack üretilemedi",
+   "Zaman aşımı"… CLAUDE.md Phase 15 EN parity baseline'ından kalmış.
+2. **CTA hierarchy yanlış**: "Bulk download ZIP" **primary** (orange),
+   "Listing'e gönder →" **secondary** (gray). Operatör mockup'ları
+   product/Etsy zincirine taşımak için buraya iniyor — download
+   yan-aksiyon. Hierarchy operatöre yanlış yön gösteriyordu.
+3. **Source context yok**: header "Pack hazır: 10/10" + path mono
+   caption (`/selection/sets/.../result` — operatöre teknik). Hangi
+   selection set'i / hangi batch'ten geldiği görünür değildi.
+4. **Listing creation silent fail**: `createListingMutation.isError`
+   UI'da handle edilmiyordu. Spinner kayboluyor, kullanıcı "butona
+   bastım, bir şey oldu sanırım" hissiyle kalıyordu.
+5. **Success hint yok**: tüm renders OK durumunda da operatöre
+   "all clean" sinyali verilmiyordu.
+
+### Slice — S8ResultView rewrite (single file, scope'lu)
+
+`src/features/mockups/components/S8ResultView.tsx`:
+
+**EN parity:**
+- "Pack hazır: N/M görsel" → "Mockup pack ready" h1 + subtitle
+  "N of M renders succeeded · K failed" (mono uppercase tracking-meta)
+- "Yükleniyor…" → "Loading…"
+- "Listing'e gönder →" → "Create listing draft →"
+- "Bulk download ZIP (N görsel)" → "Download ZIP (N)"
+- "Cover'ı Değiştir" → "Swap cover"
+- "İndir" → "Download"
+- "Görsel yok" → "No image"
+- "Bilinmeyen hata" → "Unknown error"
+- "Detay yok" → "No detail"
+- "Pack üretilemedi" → "Pack failed to render"
+- ERROR_LABELS: "Zaman aşımı/Şablon geçersiz/Tasarım sığmadı/Kaynak
+  yetersiz/Motor erişilemez" → "Render timeout/Template invalid/Design
+  didn't fit/Source quality too low/Provider unreachable"
+- "S3'e dön" → "Back to Mockup Studio"
+
+**CTA hierarchy fix:**
+- **Primary**: `Button variant="primary"` "Create listing draft →"
+  (orange, ana akış — operatör product/Etsy zincirine taşınır)
+- **Secondary**: `Button variant="secondary"` "Download ZIP (N)"
+  (yan-aksiyon)
+- Next caption: `"Next · Product/listing prep"` (mono uppercase
+  tracking-meta — Phase 52 SetSummaryCard "Next · Apply Mockups
+  after finalize" parity)
+
+**Source context lineage strip:**
+- `useSelectionSet(setId)` React Query hook — Selection detail /
+  Apply view ile aynı cache key
+- Phase 52 `resolveSourceBatchId` helper inline (sourceMetadata'dan
+  variation-batch + mjOrigin format'larını destekler — Phase 50
+  parity)
+- Header altında chip strip:
+  - **← {set.name}** back-link → `/selections/{setId}`
+  - **From batch · {id}** chip → `/batches/{batchId}` (varsa)
+  - **Type · {productTypeKey}** chip (varsa)
+- Phase 52 lineage chip recipe ile birebir aile parity
+  (`border-line-soft + bg-k-bg-2/60`, hover `k-orange-soft +
+  text-k-orange-ink`)
+
+**Listing creation error feedback:**
+- `createListingMutation.isError` → red alert block:
+  - `AlertTriangle` icon + "Couldn't create listing draft" title
+  - Error message body
+  - Mono caption: "Try again — your mockup renders are unaffected."
+    (operatöre "data güvende, yeniden dene" güveni)
+- Önceden silent fail; Phase 53 net feedback.
+
+**Success hint (operator confidence):**
+- `failedRenders.length === 0 && !createListingMutation.isError` ise
+  yeşil block: "All N mockups rendered successfully. Ready to create
+  the listing draft." (CheckCircle2 icon)
+- Sessiz başarı yok artık.
+
+**Partial warning güçlendirildi:**
+- Önceden: "⚠ N render başarısız oldu. Tekrar dene veya swap yap."
+  (Türkçe, emoji)
+- Yeni: "**N renders** failed. Hover the failed tiles below to retry
+  or swap templates. You can still proceed with the M successful
+  mockups." (operatöre actionable + reassurance)
+
+### Mockup → Product → Etsy Draft zincirinin honest status
+
+Audit + Phase 53'ten sonra:
+
+| Surface | Phase | Durum |
+|---|---|---|
+| `/selections/{id}` finalize gate | Phase 51 | ✓ |
+| Finalize success banner | Phase 52 | ✓ |
+| `/selection/sets/{id}/mockup/apply` | Phase 8 + Phase 52 lineage | ✓ |
+| Mockup job submit (`POST /api/mockup/jobs`) | Phase 8 | ✓ |
+| `/selection/sets/{id}/mockup/jobs/{jobId}` (S7) | Phase 8 | ✓ (TR drift kalmış olabilir, Phase 53 scope dışı) |
+| `/selection/sets/{id}/mockup/jobs/{jobId}/result` (S8) | Phase 8 + **Phase 53 rewrite** | ✓ EN + hierarchy + lineage + error feedback |
+| `createListingDraft` → `/products/{id}` redirect | Phase 14 | ✓ |
+| Product detail summary strip + tabs | Phase 14 | ✓ Source selection tile mevcut |
+| Listing builder (title/desc/tags) | Phase 9 V1 | ✓ EN (Phase 15 baseline) |
+| Etsy Draft submit (SubmitResultPanel) | Phase 9 V1 | ✓ EN + "Sent to Etsy" + "Open on Etsy" |
+
+Zincir **end-to-end fonksiyonel ve operatör-friendly**.
+
+### Browser verification (live dev server kanıt)
+
+Mevcut COMPLETED mockup job (`cmordz8ps000puuvcnorz285w`, 10/10
+successful renders, `[QA] Phase 8 fixture set`, wall_art product
+type):
+
+| Test | Sonuç |
+|---|---|
+| `h1` text | "Mockup pack ready" (TR "Pack hazır" yerine) |
+| Counts | "10 of 10 renders succeeded" |
+| Lineage chip "← [QA] Phase 8 fixture set" | href `/selections/cmordz8pe000huuvcsyih9k3z` ✓ |
+| Product type chip | "Type · wall_art" ✓ |
+| Primary CTA | "Create listing draft" (variant primary, orange) ✓ |
+| Secondary CTA | "Download ZIP (10)" ✓ |
+| Next caption | "NEXT · PRODUCT/LISTING PREP" |
+| Success hint | "All 10 mockups rendered successfully. Ready to create the listing draft." ✓ |
+| Partial warning | not present (10/10 OK) ✓ |
+| Screenshot | header lineage chips + orange primary CTA + Download secondary + success block + 3-col mockup grid |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: 59/59 PASS (canonical paket)
+- Browser end-to-end: S8ResultView mevcut COMPLETED job üzerinde
+  EN + hierarchy + lineage + success hint canlı kanıt
+
+### Değişmeyenler (Phase 53)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Mockup job/render Phase 8 schema'sı
+  intakt.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek dosya rewrite + Phase 52
+  `resolveSourceBatchId` helper inline kopyası (DRY için ortak
+  helper'a almak ayrı bir refactor turu olurdu; Phase 53 kapsam dışı).
+- **References / Batch / Review / Selection / Mockup apply
+  akışları intakt** (Phase 26-52 baseline).
+- **Listing builder + Etsy Draft submit yüzeyleri dokunulmadı**
+  (Phase 9 V1 baseline).
+- **Mockup job pipeline (worker, render, retry, swap) dokunulmadı.**
+- **Kivasy DS dışına çıkılmadı.** k-orange + k-orange-soft +
+  k-bg-2 + line-soft + success-soft + danger + warning-soft
+  recipe'leri kullanıldı; legacy `bg-yellow-50 bg-red-50` token'lar
+  Kivasy DS karşılıklarına geçirildi.
+
+### Bilinçli scope dışı (Phase 54+ candidate)
+
+- **`SetSummaryCard` shell DS migration**: Apply view zone 2 hâlâ
+  legacy `border-border bg-surface-2 text-text-muted` token'larında
+  (Phase 52'de lineage chip eklendi, shell migration ertelendi).
+  Phase 54 candidate.
+- **S7 mockup job in-progress view** (jobs/{jobId} route) Phase 8
+  baseline'ında TR drift olabilir; Phase 53 scope dışı.
+- **CoverSlot / SuccessRenderSlot tile DS migration**: tiles
+  `border bg-gray-100 shadow-lg` legacy; Kivasy DS recipe migration
+  ayrı tur.
+- **AllFailedView lineage**: yalnız "Back to Mockup Studio" CTA;
+  selection/batch context yok. Phase 54 candidate.
+- **Product detail Etsy Draft submit operator-friendly polish**
+  (error retry, view-on-Etsy success expansion) — Phase 9 V1 baseline
+  zaten EN + working; operatör için ayrı polish turu.
+
+### Bundan sonra product olarak tek doğru iş
+
+Phase 53 ile **canonical omurga production-ready full loop**:
+- References → Batch → Review → Selection → Mockup → Product → Etsy
+  Draft
+- Her stage'de operator-facing UX (clarity, lineage, feedback)
+- Hata/retry path'leri operatör-friendly
+
+Sıradaki **tek doğru iş** kalan **legacy yüzey polish** turları:
+- **Apply Mockups SetSummaryCard shell DS migration** (lineage chip
+  zaten Kivasy DS'de, shell legacy token'larında)
+- **S7 in-progress view** (TR drift kontrol)
+- **CoverSlot/RenderSlot tile DS migration**
+
+Bu üçü tamamlanınca mockup studio tam canonical hale gelir. Ürün
+omurgası tamam, kalan **görsel polish detayı**.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

@@ -1,43 +1,103 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMockupJob, type MockupRenderView, type MockupJobView } from "@/features/mockups/hooks/useMockupJob";
+import {
+  useMockupJob,
+  type MockupRenderView,
+  type MockupJobView,
+} from "@/features/mockups/hooks/useMockupJob";
 import { useCreateListingDraft } from "@/features/listings/hooks/useCreateListingDraft";
+import { useSelectionSet } from "@/features/selection/queries";
 import { Button } from "@/components/ui/Button";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Download,
+  Layers,
+  Loader2,
+} from "lucide-react";
+import { cn } from "@/lib/cn";
 import { CoverSwapModal } from "./CoverSwapModal";
 import { PerRenderActions } from "./PerRenderActions";
 
-const ERROR_LABELS: Record<
-  string,
-  { label: string; actions: string[] }
-> = {
-  RENDER_TIMEOUT: { label: "Zaman aşımı", actions: ["retry"] },
-  TEMPLATE_INVALID: { label: "Şablon geçersiz", actions: ["swap"] },
-  SAFE_AREA_OVERFLOW: { label: "Tasarım sığmadı", actions: ["swap"] },
-  SOURCE_QUALITY: { label: "Kaynak yetersiz", actions: ["swap", "phase7-link"] },
-  PROVIDER_DOWN: { label: "Motor erişilemez", actions: ["retry"] },
+/**
+ * S8ResultView — Mockup job result + Listing handoff surface.
+ *
+ * Phase 53 — Studio polish:
+ *   - **EN parity**: TR copy temizlendi (Phase 15 baseline catch-up).
+ *   - **CTA hierarchy düzeltildi**: Phase 8'de "Bulk download ZIP"
+ *     primary, "Listing'e gönder" secondary'di — ürün omurgası açısından
+ *     yanlış. Operatör mockup'ları product/Etsy zincirine taşımak için
+ *     buraya iniyor; download yan-aksiyon. Phase 53 hierarchy:
+ *       - **Primary**: "Create listing draft →" (orange, ana akış)
+ *       - **Secondary**: "Download ZIP" (yan-aksiyon)
+ *   - **Source context lineage strip**: useSelectionSet hook ile set
+ *     name + back-link + (varsa) batch chip + product type chip. Phase
+ *     52 SetSummaryCard pattern parity.
+ *   - **Listing creation feedback**: mutation isError → operatöre net
+ *     error mesajı + retry guidance. Önceden silent fail (yalnız spinner
+ *     kayboluyordu, kullanıcı "şey oldu mu?" sorusunda kalıyordu).
+ *   - **Pending sub-states**: Pack hazır status'ünden bağımsız warning
+ *     korundu (partial = success + failed renders).
+ */
+
+const ERROR_LABELS: Record<string, { label: string; actions: string[] }> = {
+  RENDER_TIMEOUT: { label: "Render timeout", actions: ["retry"] },
+  TEMPLATE_INVALID: { label: "Template invalid", actions: ["swap"] },
+  SAFE_AREA_OVERFLOW: { label: "Design didn't fit", actions: ["swap"] },
+  SOURCE_QUALITY: {
+    label: "Source quality too low",
+    actions: ["swap", "phase7-link"],
+  },
+  PROVIDER_DOWN: { label: "Provider unreachable", actions: ["retry"] },
 };
+
+/* Phase 52 lineage helper parity — resolve canonical source batch id
+ * from SelectionSet.sourceMetadata (two formats: variation-batch or
+ * mjOrigin). Schema-zero read. */
+function resolveSourceBatchId(sourceMetadata: unknown): string | null {
+  if (!sourceMetadata || typeof sourceMetadata !== "object") return null;
+  const md = sourceMetadata as Record<string, unknown>;
+  if (md.kind === "variation-batch" && typeof md.batchId === "string") {
+    return md.batchId;
+  }
+  const mjOrigin = md.mjOrigin;
+  if (mjOrigin && typeof mjOrigin === "object") {
+    const batchIds = (mjOrigin as Record<string, unknown>).batchIds;
+    if (Array.isArray(batchIds) && typeof batchIds[0] === "string") {
+      return batchIds[0] as string;
+    }
+  }
+  return null;
+}
 
 function AllFailedView({ setId, job }: { setId: string; job: MockupJobView }) {
   const router = useRouter();
 
   return (
-    <main className="p-8 max-w-2xl mx-auto">
-      <div role="alert" className="p-6 bg-red-50 border border-red-200 rounded-lg">
-        <h1 className="text-xl font-bold text-red-800 mb-2 flex items-center gap-2">
-          <AlertTriangle className="w-6 h-6" />
-          Pack üretilemedi
+    <main className="mx-auto max-w-2xl p-8" data-testid="mockup-result-all-failed">
+      <div
+        role="alert"
+        className="rounded-lg border border-danger/40 bg-danger/5 p-6"
+      >
+        <h1 className="mb-2 flex items-center gap-2 text-xl font-bold text-danger">
+          <AlertTriangle className="h-6 w-6" />
+          Pack failed to render
         </h1>
-        <p className="text-sm text-red-700 mb-4">
-          {job.errorSummary || "Tüm render'ler başarısız oldu. Lütfen tekrar dene."}
+        <p className="mb-4 text-sm text-ink-2">
+          {job.errorSummary ||
+            "All renders failed. Try again or swap templates."}
         </p>
         <Button
           variant="secondary"
-          onClick={() => router.push(`/selection/sets/${setId}/mockup/apply`)}
+          onClick={() =>
+            router.push(`/selection/sets/${setId}/mockup/apply`)
+          }
         >
-          S3&apos;e dön
+          Back to Mockup Studio
         </Button>
       </div>
     </main>
@@ -57,32 +117,27 @@ function CoverSlot({
 
   return (
     <>
-      <div className="relative group rounded-lg overflow-hidden shadow-lg border-2 border-accent">
-        <div className="aspect-square bg-gray-100 flex items-center justify-center">
+      <div className="group relative overflow-hidden rounded-lg border-2 border-accent shadow-lg">
+        <div className="flex aspect-square items-center justify-center bg-gray-100">
           {render.outputKey ? (
-            // Pass 16 fix — render.outputKey storage path; doğrudan src olarak
-            // kullanılınca browser current page'e relative interpret eder. Mevcut
-            // download endpoint (Content-Type: image/png stream) preview için de
-            // çalışır — hem signed URL fetch overhead'inden kurtulur hem auth
-            // korunur.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={`/api/mockup/jobs/${jobId}/renders/${render.id}/download`}
               alt="cover"
-              className="w-full h-full object-cover"
+              className="h-full w-full object-cover"
             />
           ) : (
-            <span className="text-gray-400">Görsel yok</span>
+            <span className="text-gray-400">No image</span>
           )}
         </div>
 
         {/* Cover badge */}
-        <div className="absolute top-2 left-2 bg-accent text-white px-2 py-1 rounded text-xs font-bold">
+        <div className="absolute left-2 top-2 rounded bg-accent px-2 py-1 text-xs font-bold text-white">
           ★ COVER
         </div>
 
         {/* Hover actions */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded flex flex-col items-center justify-end p-4 gap-2">
+        <div className="absolute inset-0 flex flex-col items-center justify-end gap-2 rounded bg-black/60 p-4 opacity-0 transition-opacity group-hover:opacity-100">
           {otherSuccessRenders.length > 0 && (
             <Button
               size="sm"
@@ -90,7 +145,7 @@ function CoverSlot({
               onClick={() => setShowCoverSwap(true)}
               className="w-full"
             >
-              Cover&apos;ı Değiştir
+              Swap cover
             </Button>
           )}
           <a
@@ -99,7 +154,7 @@ function CoverSlot({
             download
           >
             <Button size="sm" variant="secondary" className="w-full">
-              İndir
+              Download
             </Button>
           </a>
         </div>
@@ -116,20 +171,25 @@ function CoverSlot({
   );
 }
 
-function SuccessRenderSlot({ render, jobId }: { render: MockupRenderView; jobId: string }) {
+function SuccessRenderSlot({
+  render,
+  jobId,
+}: {
+  render: MockupRenderView;
+  jobId: string;
+}) {
   return (
-    <div className="relative group rounded-lg overflow-hidden shadow border">
-      <div className="aspect-square bg-gray-100 flex items-center justify-center">
+    <div className="group relative overflow-hidden rounded-lg border shadow">
+      <div className="flex aspect-square items-center justify-center bg-gray-100">
         {render.outputKey ? (
-          // Pass 16 fix — bkz. CoverSlot yorumu (download endpoint stream)
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={`/api/mockup/jobs/${jobId}/renders/${render.id}/download`}
             alt="render"
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover"
           />
         ) : (
-          <span className="text-gray-400">Görsel yok</span>
+          <span className="text-gray-400">No image</span>
         )}
       </div>
 
@@ -137,23 +197,30 @@ function SuccessRenderSlot({ render, jobId }: { render: MockupRenderView; jobId:
       <PerRenderActions render={render} jobId={jobId} isCover={false} />
 
       {/* Variant ID */}
-      <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-2">
+      <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 text-xs text-white">
         {render.variantId.substring(0, 12)}
       </div>
     </div>
   );
 }
 
-function FailedRenderSlot({ render, jobId }: { render: MockupRenderView; jobId: string }) {
+function FailedRenderSlot({
+  render,
+  jobId,
+}: {
+  render: MockupRenderView;
+  jobId: string;
+}) {
   const errorClass = render.errorClass || "PROVIDER_DOWN";
-  const errorInfo = ERROR_LABELS[errorClass] || { label: "Bilinmeyen hata", actions: [] };
+  const errorInfo =
+    ERROR_LABELS[errorClass] || { label: "Unknown error", actions: [] };
 
   return (
-    <div className="relative rounded-lg overflow-hidden shadow border-2 border-red-200 bg-red-50">
-      <div className="aspect-square bg-red-100 flex items-center justify-center">
+    <div className="relative overflow-hidden rounded-lg border-2 border-danger/40 bg-danger/5 shadow">
+      <div className="flex aspect-square items-center justify-center bg-danger/10">
         <div className="text-center">
-          <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-2" />
-          <p className="text-xs text-red-700">{errorInfo.label}</p>
+          <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-danger" />
+          <p className="text-xs text-danger">{errorInfo.label}</p>
         </div>
       </div>
 
@@ -161,16 +228,27 @@ function FailedRenderSlot({ render, jobId }: { render: MockupRenderView; jobId: 
       <PerRenderActions render={render} jobId={jobId} isCover={false} />
 
       {/* Error detail */}
-      <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-2">
-        <p className="truncate">{render.errorDetail || "Detay yok"}</p>
+      <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 text-xs text-white">
+        <p className="truncate">{render.errorDetail || "No detail"}</p>
       </div>
     </div>
   );
 }
 
-export function S8ResultView({ setId, jobId }: { setId: string; jobId: string }) {
+export function S8ResultView({
+  setId,
+  jobId,
+}: {
+  setId: string;
+  jobId: string;
+}) {
   const router = useRouter();
   const { data: job, isLoading } = useMockupJob(jobId);
+  /* Phase 53 — Source set lineage. Mockup result page'ine direct deep-link
+   * de gelinebilir; setId üzerinden set adı + sourceMetadata fetch'i
+   * context'i korur. useSelectionSet React Query hook'u zaten cache var
+   * (Selection detail / Apply view ile aynı key). */
+  const { data: set } = useSelectionSet(setId);
   const createListingMutation = useCreateListingDraft();
   const [isCreatingListing, setIsCreatingListing] = useState(false);
 
@@ -198,9 +276,10 @@ export function S8ResultView({ setId, jobId }: { setId: string; jobId: string })
     }
   }, [job?.status, jobId, setId, router]);
 
-  if (isLoading) return <div className="p-8">Yükleniyor…</div>;
+  if (isLoading) return <div className="p-8">Loading…</div>;
   if (!job) return null;
-  if (job.status !== "COMPLETED" && job.status !== "PARTIAL_COMPLETE") return null;
+  if (job.status !== "COMPLETED" && job.status !== "PARTIAL_COMPLETE")
+    return null;
 
   // All failed (success=0): recovery layout
   if (job.successRenders === 0) {
@@ -215,53 +294,207 @@ export function S8ResultView({ setId, jobId }: { setId: string; jobId: string })
     .filter((r) => r.id !== job.coverRenderId)
     .sort((a, b) => (a.packPosition ?? 0) - (b.packPosition ?? 0));
 
+  // Phase 53 — Source context lineage.
+  const sourceBatchId = set ? resolveSourceBatchId(set.sourceMetadata) : null;
+  const productTypeKey = (set as { items?: Array<{ productTypeKey?: string | null }> } | undefined)
+    ?.items?.[0]?.productTypeKey ?? null;
+
   return (
-    <main className="p-8 max-w-6xl mx-auto">
-      <header className="mb-8">
-        <h1 className="text-2xl font-bold">
-          Pack hazır: {job.successRenders}/{job.actualPackSize} görsel
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          /selection/sets/{setId}/mockup/jobs/{jobId}/result
-        </p>
+    <main className="mx-auto max-w-6xl p-8" data-testid="mockup-result-view">
+      <header className="mb-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h1 className="k-display text-[24px] font-semibold leading-none tracking-tight text-ink">
+              Mockup pack ready
+            </h1>
+            <p
+              className="mt-1.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-3"
+              data-testid="mockup-result-counts"
+            >
+              {job.successRenders} of {job.actualPackSize} render
+              {job.actualPackSize === 1 ? "" : "s"} succeeded
+              {failedRenders.length > 0 ? (
+                <>
+                  {" · "}
+                  <span className="text-danger">
+                    {failedRenders.length} failed
+                  </span>
+                </>
+              ) : null}
+            </p>
+          </div>
+        </div>
+
+        {/* Phase 53 — Source context lineage strip.
+         *
+         * Operatör mockup result'a indikten sonra "bu hangi selection,
+         * hangi batch'ten geldi?" sorusuna anında cevap alır. SetSummaryCard
+         * (Phase 52) pattern parity: back-link + batch chip + product type
+         * chip. set load olana kadar strip render edilmez (graceful). */}
+        {set ? (
+          <div
+            className="mt-3 flex flex-wrap items-center gap-1.5"
+            data-testid="mockup-result-lineage"
+          >
+            <Link
+              href={`/selections/${setId}`}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border border-line-soft bg-k-bg-2/60 px-2 py-1",
+                "font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2",
+                "transition-colors hover:border-k-orange/50 hover:bg-k-orange-soft hover:text-k-orange-ink",
+              )}
+              data-testid="mockup-result-back-to-selection"
+              title="Back to Selection detail"
+            >
+              ← {set.name}
+            </Link>
+            {sourceBatchId ? (
+              <Link
+                href={`/batches/${sourceBatchId}`}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border border-line-soft bg-k-bg-2/60 px-2 py-1",
+                  "font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2",
+                  "transition-colors hover:border-k-orange/50 hover:bg-k-orange-soft hover:text-k-orange-ink",
+                )}
+                data-testid="mockup-result-source-batch"
+                title="Open the source batch this selection came from"
+              >
+                <Layers className="h-3 w-3" aria-hidden />
+                <span>From batch</span>
+                <span className="text-ink-3">·</span>
+                <span>{sourceBatchId.slice(0, 8)}</span>
+              </Link>
+            ) : null}
+            {productTypeKey ? (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md border border-line-soft bg-paper px-2 py-1",
+                  "font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-3",
+                )}
+                data-testid="mockup-result-product-type"
+                title="Product type — selection's first item productTypeKey"
+              >
+                <span>Type</span>
+                <span className="text-ink-3">·</span>
+                <span className="text-ink-2">{productTypeKey}</span>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       {/* Warning — failed renders */}
       {failedRenders.length > 0 && (
-        <div role="alert" className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-sm text-yellow-800 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" />
-            ⚠ {failedRenders.length} render başarısız oldu. Tekrar dene veya swap yap.
-          </p>
+        <div
+          role="alert"
+          className="mb-6 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-soft/40 p-4"
+          data-testid="mockup-result-partial-warning"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-warning" />
+          <div className="text-sm text-ink">
+            <strong>{failedRenders.length} render{failedRenders.length === 1 ? "" : "s"}</strong>{" "}
+            failed. Hover the failed tiles below to retry or swap templates.
+            You can still proceed with the {job.successRenders} successful
+            mockup{job.successRenders === 1 ? "" : "s"}.
+          </div>
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex flex-wrap gap-3 mb-8">
+      {/* Phase 53 — Actions row with proper hierarchy.
+       *
+       * Primary: "Create listing draft →" (orange) — ana akış, operatör
+       *   product/Etsy zincirine taşınır.
+       * Secondary: "Download ZIP" — yan-aksiyon.
+       *
+       * isError → kırmızı alert + retry hint (operatör 'butona bastım,
+       * sanırım bir şey oldu' hissinden kurtulur). */}
+      <div
+        className="mb-6 flex flex-wrap items-center gap-3"
+        data-testid="mockup-result-actions"
+      >
+        <Button
+          onClick={handleCreateListing}
+          disabled={isCreatingListing || createListingMutation.isPending}
+          variant="primary"
+          data-testid="mockup-result-create-listing"
+        >
+          {isCreatingListing || createListingMutation.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Creating listing draft…
+            </>
+          ) : (
+            <>
+              Create listing draft
+              <ArrowRight className="ml-2 h-4 w-4" aria-hidden />
+            </>
+          )}
+        </Button>
         <a
           href={`/api/mockup/jobs/${jobId}/download`}
           download
           className="inline-flex"
+          data-testid="mockup-result-download-zip"
         >
-          <Button>
-            ⬇ Bulk download ZIP ({job.successRenders} görsel)
+          <Button variant="secondary">
+            <Download className="mr-2 h-4 w-4" aria-hidden />
+            Download ZIP ({job.successRenders})
           </Button>
         </a>
-        <Button
-          onClick={handleCreateListing}
-          disabled={isCreatingListing || createListingMutation.isPending}
-          variant="secondary"
-        >
-          {isCreatingListing || createListingMutation.isPending ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              Listing oluşturuluyor…
-            </>
-          ) : (
-            "Listing'e gönder →"
-          )}
-        </Button>
+        <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+          Next · Product/listing prep
+        </span>
       </div>
+
+      {/* Phase 53 — Listing creation error feedback.
+       *
+       * createListingMutation.isError → operatöre net mesaj + retry
+       * yönergesi. Önceden silent fail (spinner kayboluyordu, kullanıcı
+       * sayfa donmuş gibi hissediyordu). */}
+      {createListingMutation.isError ? (
+        <div
+          role="alert"
+          className="mb-6 flex items-start gap-2 rounded-lg border border-danger/40 bg-danger/5 p-4"
+          data-testid="mockup-result-listing-error"
+        >
+          <AlertTriangle
+            className="mt-0.5 h-4 w-4 flex-shrink-0 text-danger"
+            aria-hidden
+          />
+          <div className="flex-1 text-sm text-ink">
+            <div className="font-medium text-danger">
+              Couldn't create listing draft
+            </div>
+            <p className="mt-1 text-ink-2">
+              {(createListingMutation.error as Error)?.message ??
+                "An unexpected error occurred."}
+            </p>
+            <p className="mt-1 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+              Try again — your mockup renders are unaffected.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Phase 53 — Optional success hint (operator confidence).
+       *
+       * Mockup job COMPLETED ve hiç failed render yoksa operatöre
+       * "all clean" sinyali ver. Sessiz başarı değil. */}
+      {failedRenders.length === 0 && !createListingMutation.isError ? (
+        <div
+          className="mb-6 flex items-start gap-2 rounded-lg border border-success/40 bg-success-soft/40 p-3 text-sm text-ink"
+          data-testid="mockup-result-success-hint"
+        >
+          <CheckCircle2
+            className="mt-0.5 h-4 w-4 flex-shrink-0 text-success"
+            aria-hidden
+          />
+          <div>
+            All {job.successRenders} mockup{job.successRenders === 1 ? "" : "s"}{" "}
+            rendered successfully. Ready to create the listing draft.
+          </div>
+        </div>
+      ) : null}
 
       {/* Grid layout — cover first, 3-column */}
       <div className="grid grid-cols-3 gap-4">
