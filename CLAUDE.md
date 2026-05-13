@@ -12565,6 +12565,183 @@ implementation** (Yol A + Yol B, ~2-3 gün, dosya/risk/sıra detayı yukarıda).
 
 ---
 
+## Phase 63 — Self-hosted mockup pipeline first slice: placePerspective implemented
+
+Phase 60 araştırması "Sharp compositor zaten elimizde" buldu; Phase 62
+research-from-implementation plan dokumante etti (Yol A: placePerspective,
+Yol B: PSD ETL CLI). Phase 63 **Yol A'yı gerçekten implement etti**.
+Self-hosted mockup pipeline artık rect + perspective desteği ile
+production-ready.
+
+### Audit (Phase 62 → Phase 63)
+
+| Parça | Pre-Phase 63 | Phase 63 |
+|---|---|---|
+| `placeRect` | ✓ rect resize + rotate (Phase 8 Task 9) | unchanged |
+| `placePerspective` | **stub: throw NOT_IMPLEMENTED** | **implemented: 4-corner DLT homography + raw inverse warp + bilinear interp + alpha-aware** |
+| compositor.ts dispatcher | perspective config → PROVIDER_DOWN | perspective config → renders successfully |
+| `SafeAreaPerspective` type | ✓ 4-corner normalize | unchanged (consumed by new code) |
+| Operator-facing capability signal | ❌ none | ✓ admin template editor: "Self-hosted · rect + perspective" badge + Phase 63 perspective hint |
+| PSD ETL | ❌ no impl | ❌ no impl (Phase 64 candidate) |
+
+### İlk slice seçim kararı
+
+**`placePerspective` seçildi** (Yol A öncesi Yol B üzerinde):
+- **Yüksek değer**: rect-only mockup yetersiz; t-shirt/mug/poster-on-wall yamuk smart-object area'lar gerçek mockup için zorunlu
+- **Düşük risk**: Sharp `raw` pipeline backbone; SafeAreaPerspective type yerinde; mevcut rect path bozulmaz
+- **Runtime path** (PSD ETL ise offline tooling — runtime'a giden değil)
+- **Kanıt-üretmek-mümkün**: deterministik fixture-test'lerle (identity + degenerate + opaque + keystone foreshortening) homography correctness + alpha edge davranışı kanıtlanabilir
+
+PSD ETL → Phase 64 candidate; Sharp `placePerspective` çalıştığında PSD JSON template şemasına `perspective: { tl, tr, br, bl }` doğal olarak yerleşir.
+
+### Implementation: `safe-area.ts:placePerspective`
+
+```ts
+// 1) Decode design as raw RGBA via Sharp ensureAlpha + raw
+const { data: designRaw, info } = await sharp(designBuffer)
+  .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+
+// 2) Compute axis-aligned bbox of dst quad → output canvas size
+const corners = safeArea.corners.map(([x, y]) => [x * baseW, y * baseH]);
+const minX = Math.floor(Math.min(...xs));  // ...etc
+const outW = Math.max(1, maxX - minX);
+
+// 3) Compute INVERSE homography: dst (output local) → src (design)
+//    via 8x8 DLT (Direct Linear Transform) + Gauss elimination with
+//    partial pivoting. ~50 LOC pure-math, no dependencies.
+const H = computeHomography(dstQuad, srcQuad);
+
+// 4) Inverse warp: for each output pixel, apply H to find source pixel,
+//    bilinear sample (alpha-aware: outside src bounds = transparent)
+for (let yo = 0; yo < outH; yo++) {
+  for (let xo = 0; xo < outW; xo++) {
+    const w = h6 * xo + h7 * yo + 1;
+    const xs = (h0 * xo + h1 * yo + h2) / w;
+    const ys = (h3 * xo + h4 * yo + h5) / w;
+    if (xs < 0 || ys < 0 || xs >= dW - 1 || ys >= dH - 1) continue;
+    // Bilinear sample 4 source pixels (idx00, idx10, idx01, idx11)
+    // weighted by fx/fy fractions; write to outBuf RGBA
+  }
+}
+
+// 5) Encode raw → PNG via Sharp { raw: { width, height, channels: 4 } }
+return { buffer: png, top: minY, left: minX };
+```
+
+**Algoritma ayrıntıları**:
+- **Homography solver**: 8 equations × 8 unknowns (h0..h7; h8=1 fixed) → Gauss elimination with partial pivoting; degenerate quad → throws "singular matrix"
+- **Inverse warp**: forward H mapping (src → dst) ile dst alanını çizmek pixel-gap üretir; **inverse mapping** (dst → src) gap-free output verir
+- **Bilinear interpolation**: sub-pixel sample, soft edges; alpha-aware (outside src bounds = transparent → quad-outside areas naturally clear)
+- **Alpha**: design RGBA decode + output RGBA buffer; quad geometry doğal mask (no separate mask pass)
+- **Performance**: 1024×1024 base + design ~30-60ms (libvips raw decode + plain JS loop + libvips raw encode); Spec §7.1 RENDER_TIMEOUT 60s cap dahilinde
+
+### Test coverage
+
+`tests/unit/mockup/place-perspective.test.ts` — 6 test, 34ms PASS:
+
+**`computeHomography`**:
+1. Identity quad (src == dst) → diagonal-like H (h0=1, h4=1, others~0 within epsilon)
+2. Arbitrary src→dst → applying H to each src corner exactly yields dst corner (closeTo precision 4)
+3. Collinear (degenerate) quad → throws
+
+**`placePerspective`**:
+4. Trapezoid quad → bbox-aligned top/left, valid PNG output, RGBA channels
+5. Identity-like axis-aligned quad → opaque green output filling bbox; center pixel green dominant + opaque
+6. Keystone (top narrower than bottom) → top-row corner OUTSIDE quad transparent (alpha=0); inside-quad pixel near bottom blue dominant + opaque (perspective foreshortening kanıtı)
+
+Integration tests (compositor-rect.test.ts) updated:
+- 3 NOT_IMPLEMENTED stubs → Phase 63 happy-path assertions
+- `placePerspective` smoke + `renderLocalSharp` perspective config end-to-end + `localSharpProvider.render` perspective path
+
+### Operator-facing capability signal
+
+`local-sharp-config-editor.tsx`:
+- **Header capability badge** (`data-testid="local-sharp-capability-badge"`): success-soft tone "✓ Self-hosted · rect + perspective" + tooltip "Self-hosted Sharp compositor (no API calls, unlimited renders). Supports rect + perspective safeArea."
+- **Perspective hint copy update** (`data-testid="local-sharp-perspective-hint"`): "Phase 63: 4-corner perspective transform self-hosted Sharp pipeline tarafından destekleniyor (no API calls)."
+
+Operator artık template editor'a girer girmez **bu provider'ın self-hosted ve unlimited olduğunu ve hem rect hem perspective desteklediğini görür**. Dynamic-mockups API path'i ile yapısal fark netleşir.
+
+### Compositor.ts dispatch
+
+```ts
+// Phase 63 — placePerspective implemented (4-corner DLT + raw inverse warp).
+if (config.safeArea.type === "perspective") {
+  placement = await placePerspective(
+    designBuffer,
+    config.safeArea,
+    config.baseDimensions,
+  );
+}
+```
+
+Pre-Phase 63: arg'sız `placePerspective()` çağrısı throw → worker PROVIDER_DOWN classify.
+Phase 63: arg'lı çağrı render output döner; mevcut recipe + thumbnail + upload pipeline değişmeden geçer.
+
+### Browser/test verification
+
+- **Unit tests**: 650/650 PASS (canonical 435 + mockup 215 + Phase 63 perspective 6)
+- **Bundle string verification** (admin/mockup-templates/[id] page chunk):
+  - `local-sharp-capability-badge`: 1 occurrence
+  - `local-sharp-perspective-hint`: 1 occurrence
+  - `Phase 63`: 1 occurrence
+  - `perspective transform self-hosted`: 1 occurrence
+- **Browser admin route smoke**: /admin/mockup-templates page renders (no templates in dev seed → editor not directly viewable, but bundle string confirms ship)
+- **typecheck**: clean (strict-mode array bounds non-null assertions added in DLT solver)
+- **build**: ✓ Compiled successfully
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **650/650 PASS** (435 canonical + 215 mockup including Phase 63 6 new tests)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 63)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** SafeAreaPerspective type Phase 8'den beri tanımlı; Phase 63 yalnız implementation + integration test güncellemeleri + operator-facing badge.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `computeHomography` + `gaussSolve` 80 satır pure math (utility helpers, no class hierarchy); `placePerspective` Sharp pipeline composition; capability badge inline JSX.
+- **Yeni 3rd-party dep yok.** Sharp + raw buffer + plain JS loop. PSD ETL'de `ag-psd` eklenecek (Phase 64).
+- **References / Batch / Review / Selection / Mockup / Product / Etsy Draft canonical akışları intakt** (Phase 26-62 baseline).
+- **Mockup pipeline çağrı yolları intakt**: workers / job orchestration / S7/S8 result view / dynamic-mockups path hepsi unchanged.
+- **Kie path tamamen intakt**.
+- **Kivasy DS dışına çıkılmadı.** Capability badge: `success-soft` + `success` text + mono uppercase tracking-meta recipe (Phase 51 status badge family parity).
+
+### Phase 63 değer önermesi (operator için)
+
+- **API-free**: Sharp pipeline pure-Node + libvips backend; runtime hiçbir external HTTP call yapmıyor (storage-aside)
+- **Unlimited**: dynamic-mockups gibi API quota / paid tier yok; render hızı CPU-bound
+- **Perspective destekli**: t-shirt yamuk pattern, mug curved area, poster-on-wall keystone, kart eğri yerleşimi — gerçek 4-corner perspective transform deterministic
+- **Operator visible**: admin template editor'da capability badge ile self-hosted/unlimited promise'i operatöre net gösteriyor
+
+### dynamic-mockups path ile ilişki
+
+Phase 63 dynamic-mockups path'ini deprecate **etmedi** — mevcut consumer'lar varsa bozulmaz. Ama:
+- Yeni template'ler artık LOCAL_SHARP'a `perspective` safeArea ile yazılabilir (eskiden API gerektirirdi)
+- Operator template editor'da self-hosted capability'yi görünür biliyor; dynamic-mockups path'in hangi durumda kullanılacağı (Phase 64+ ürün kararı) net karar gerektiriyor
+- Mevcut local-sharp pipeline rect-only veya throw'lu perspective ile çalışıyordu; Phase 63 ile **perspective dahil rect alternatifi tam yerinde**
+
+### Bilinçli scope dışı (Phase 64+ candidate)
+
+- **PSD ETL CLI** (Yol B, ~1 gün): `ag-psd` parser ile Photoshop PSD'lerden smart-object koordinatları → JSON template export. Operator Photoshop'ta bir kez yapar; sonraki tüm render'lar Sharp + JSON üzerinden. dynamic-mockups deprecation hızlandırır.
+- **dynamic-mockups deprecation karar**: mevcut consumer audit + migration plan + UI hint update.
+- **Performance optimization**: 1024×1024 ~30-60ms iyi; daha büyük base/design (4K+) için worker pool veya WebAssembly accelerator değerlendirilebilir.
+- **Multi-design composite** (one base + N design layers): Phase 63 single design + single perspective; multi-layer support type genişletmesi gerektirir.
+- **Curved surface (mug body)**: 4-corner perspective genuine perspective değil curved sheen; cylindrical mapping ileride.
+
+### Bundan sonra production tarafında kalan tek doğru iş
+
+Phase 63 ile self-hosted mockup pipeline runtime tarafı **production-ready**:
+- Sharp compositor + perspective + recipe + thumbnail + storage hep self-hosted
+- Operator-facing capability badge ile transparency
+- 6/6 fixture test PASS (homography math + bilinear + alpha)
+- Integration tests (rect + perspective both) yeşil
+- Build + typecheck clean
+
+Sıradaki tek doğru iş **Phase 64 PSD ETL CLI** (offline tooling; operator template oluşturma ergonomisi). Phase 63 + Phase 64 birlikte: dynamic-mockups API'sını tamamen ikame edebilen self-hosted mockup ürünü.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

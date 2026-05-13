@@ -1,4 +1,5 @@
 // Phase 8 Task 9 — Sharp compositor render orchestration.
+// Phase 63 — placePerspective wired (4-corner DLT homography active).
 //
 // Pipeline:
 //   1. Snapshot config TypeGuard (providerId === "local-sharp").
@@ -6,7 +7,7 @@
 //   3. Design asset MinIO fetch (input.designUrl — storageKey).
 //   4. SafeArea dispatch:
 //        - rect → placeRect (Task 9)
-//        - perspective → placePerspective (Task 10 stub; throw NOT_IMPLEMENTED)
+//        - perspective → placePerspective (Phase 63 — 4-corner inverse warp)
 //   5. Recipe apply (blend + opsiyonel shadow).
 //   6. Output PNG + thumbnail (400×400 inside fit).
 //   7. MinIO upload (versionlı path).
@@ -78,8 +79,12 @@ export async function renderLocalSharp(input: RenderInput): Promise<RenderOutput
       config.baseDimensions,
     );
   } else if (config.safeArea.type === "perspective") {
-    // Task 10 stub — throw'a kadar gider; worker PROVIDER_DOWN classify eder.
-    placement = await placePerspective();
+    // Phase 63 — placePerspective implemented (4-corner DLT + raw inverse warp).
+    placement = await placePerspective(
+      designBuffer,
+      config.safeArea,
+      config.baseDimensions,
+    );
   } else {
     // Discriminated union exhaustive check.
     const _exhaustive: never = config.safeArea;

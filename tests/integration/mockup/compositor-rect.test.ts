@@ -150,12 +150,34 @@ describe("placeRect", () => {
 });
 
 // ────────────────────────────────────────────────────────────
-// placePerspective stub (Task 10)
+// placePerspective — Phase 63 implemented (no longer stub)
+// Detailed unit coverage: tests/unit/mockup/place-perspective.test.ts
 // ────────────────────────────────────────────────────────────
 
-describe("placePerspective (Task 10 stub)", () => {
-  it("throws NOT_IMPLEMENTED with Task 10 reference", async () => {
-    await expect(placePerspective()).rejects.toThrow(/NOT_IMPLEMENTED.*Task 10/);
+describe("placePerspective (Phase 63)", () => {
+  it("resolves successfully for axis-aligned quad (smoke)", async () => {
+    const designBuffer = await solidPng(100, 100, {
+      r: 255,
+      g: 0,
+      b: 0,
+      alpha: 1,
+    });
+    const placement = await placePerspective(
+      designBuffer,
+      {
+        type: "perspective",
+        corners: [
+          [0.1, 0.1],
+          [0.5, 0.1],
+          [0.5, 0.5],
+          [0.1, 0.5],
+        ],
+      },
+      { w: 1000, h: 1000 },
+    );
+    expect(placement.top).toBe(100);
+    expect(placement.left).toBe(100);
+    expect(placement.buffer.length).toBeGreaterThan(0);
   });
 });
 
@@ -375,7 +397,7 @@ describe("renderLocalSharp orchestration", () => {
     expect((thumbMeta.height ?? 0)).toBeLessThanOrEqual(400);
   });
 
-  it("throws NOT_IMPLEMENTED for perspective safeArea (Task 10 stub)", async () => {
+  it("renders perspective safeArea successfully (Phase 63)", async () => {
     const storage = getStorage();
     const baseKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/base.png`;
     const designKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/design.png`;
@@ -414,21 +436,25 @@ describe("renderLocalSharp orchestration", () => {
       bindingVersion: 1,
       providerId: "LOCAL_SHARP",
       config,
-      templateName: "Phase8 Task9 Persp Stub",
+      templateName: "Phase63 Persp",
       aspectRatios: ["1:1"],
     };
 
     const input: RenderInput = {
-      renderId: `phase8-task9-persp-${crypto.randomUUID()}`,
+      renderId: `phase63-persp-${crypto.randomUUID()}`,
       designUrl: designKey,
       designAspectRatio: "1:1",
       snapshot,
       signal: AbortSignal.timeout(60_000),
     };
 
-    await expect(renderLocalSharp(input)).rejects.toThrow(
-      /NOT_IMPLEMENTED.*Task 10/,
-    );
+    const output = await renderLocalSharp(input);
+    uploadedKeys.push(output.outputKey, output.thumbnailKey);
+
+    expect(output.outputKey).toMatch(/\.png$/);
+    expect(output.thumbnailKey).toMatch(/-thumb\.png$/);
+    expect(output.outputDimensions).toEqual({ w: 100, h: 100 });
+    expect(output.renderDurationMs).toBeGreaterThanOrEqual(0);
   });
 
   it("rejects invalid provider config (non local-sharp providerId)", async () => {
@@ -546,7 +572,7 @@ describe("localSharpProvider.render (rect path artık gerçek)", () => {
     expect(result.outputKey).toContain(`mockup-renders/${renderId}/`);
   });
 
-  it("perspective path: hâlâ NOT_IMPLEMENTED (Task 10)", async () => {
+  it("perspective path: provider.render succeeds (Phase 63)", async () => {
     const storage = getStorage();
     const baseKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/base.png`;
     const designKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/design.png`;
@@ -583,18 +609,19 @@ describe("localSharpProvider.render (rect path artık gerçek)", () => {
         },
         recipe: { blendMode: "normal" },
       },
-      templateName: "Phase8 Task9 Persp Prov",
+      templateName: "Phase63 Persp Prov",
       aspectRatios: ["1:1"],
     };
 
-    await expect(
-      localSharpProvider.render({
-        renderId: "phase8-task9-persp-prov",
-        designUrl: designKey,
-        designAspectRatio: "1:1",
-        snapshot,
-        signal: AbortSignal.timeout(60_000),
-      }),
-    ).rejects.toThrow(/NOT_IMPLEMENTED.*Task 10/);
+    const result = await localSharpProvider.render({
+      renderId: "phase63-persp-prov",
+      designUrl: designKey,
+      designAspectRatio: "1:1",
+      snapshot,
+      signal: AbortSignal.timeout(60_000),
+    });
+    uploadedKeys.push(result.outputKey, result.thumbnailKey);
+    expect(result.outputKey).toMatch(/\.png$/);
+    expect(result.outputDimensions).toEqual({ w: 80, h: 80 });
   });
 });

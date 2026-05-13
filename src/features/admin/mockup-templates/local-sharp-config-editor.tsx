@@ -203,7 +203,19 @@ export function LocalSharpConfigEditor({
     <div className="flex flex-col gap-4 rounded-md border border-border bg-bg p-4">
       {/* Provider info */}
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-text">LOCAL_SHARP Config</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-text">LOCAL_SHARP Config</h3>
+          {/* Phase 63 — Self-hosted capability signal. Operator-facing
+           *   confidence: this template ships through pure Sharp pipeline
+           *   (no API calls, unlimited renders, perspective supported). */}
+          <span
+            className="inline-flex items-center gap-1 rounded-md border border-success/30 bg-success-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-meta text-success"
+            data-testid="local-sharp-capability-badge"
+            title="Self-hosted Sharp compositor (no API calls, unlimited renders). Supports rect + perspective safeArea."
+          >
+            ✓ Self-hosted · rect + perspective
+          </span>
+        </div>
         <button
           type="button"
           onClick={onJsonModeToggle}
@@ -345,8 +357,16 @@ export function LocalSharpConfigEditor({
               </p>
             </div>
           ) : (
-            <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-text">
-              Perspective safeArea form modunda düzenlenemiyor. JSON moduna geç.
+            <div
+              className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-text"
+              data-testid="local-sharp-perspective-hint"
+            >
+              Perspective safeArea form modunda düzenlenemiyor — JSON moduna
+              geç.{" "}
+              <span className="font-medium">
+                Phase 63: 4-corner perspective transform self-hosted Sharp
+                pipeline tarafından destekleniyor (no API calls).
+              </span>
             </div>
           )}
 
