@@ -53,6 +53,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback, type ReactNode } from "react";
+import { RotateCcw, Eye, EyeOff } from "lucide-react";
 
 export type SafeAreaRect = {
   /** Normalized 0..1, top-left origin */
@@ -153,6 +154,13 @@ export type SafeAreaEditorProps = {
   value: SafeAreaValue;
   onChange: (next: SafeAreaValue) => void;
   disabled?: boolean;
+  /** Phase 69 — Show static sample design placeholder inside safe-area
+   *  to give operator a "design will go here" preview. */
+  showSamplePreview?: boolean;
+  /** Phase 69 — Toggle sample preview on/off (operator decides). */
+  onToggleSamplePreview?: () => void;
+  /** Phase 69 — Reset safe-area to a sane default for current mode. */
+  onReset?: () => void;
 };
 
 export function SafeAreaEditor({
@@ -162,6 +170,9 @@ export function SafeAreaEditor({
   value,
   onChange,
   disabled = false,
+  showSamplePreview = false,
+  onToggleSamplePreview,
+  onReset,
 }: SafeAreaEditorProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragMode, setDragMode] = useState<DragMode>({ kind: "none" });
@@ -308,6 +319,44 @@ export function SafeAreaEditor({
         <rect x={0} y={pxY} width={pxX} height={pxH} fill="rgba(22,19,15,0.45)" pointerEvents="none" />
         <rect x={pxX + pxW} y={pxY} width={imageWidth - pxX - pxW} height={pxH} fill="rgba(22,19,15,0.45)" pointerEvents="none" />
 
+        {/* Phase 69 — Sample design preview placeholder (toggle) */}
+        {showSamplePreview ? (
+          <g pointerEvents="none" data-testid="safe-area-editor-sample-rect">
+            <defs>
+              <pattern
+                id="sample-stripes-rect"
+                width="20"
+                height="20"
+                patternUnits="userSpaceOnUse"
+                patternTransform="rotate(45)"
+              >
+                <rect width="20" height="20" fill="#fbeadf" />
+                <rect width="10" height="20" fill="#e85d25" opacity="0.55" />
+              </pattern>
+            </defs>
+            <rect
+              x={pxX}
+              y={pxY}
+              width={pxW}
+              height={pxH}
+              fill="url(#sample-stripes-rect)"
+              opacity="0.85"
+            />
+            <text
+              x={pxX + pxW / 2}
+              y={pxY + pxH / 2}
+              fill="#16130f"
+              fontSize={Math.max(imageWidth, imageHeight) * 0.025}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontFamily="ui-monospace, SFMono-Regular, monospace"
+              fontWeight="700"
+            >
+              SAMPLE DESIGN
+            </text>
+          </g>
+        ) : null}
+
         {/* Rect body — drag to translate */}
         <rect
           x={pxX}
@@ -399,6 +448,46 @@ export function SafeAreaEditor({
           pointerEvents="none"
         />
 
+        {/* Phase 69 — Sample design preview placeholder (toggle).
+            Striped pattern fills the quad to show "design will land here". */}
+        {showSamplePreview ? (
+          <g pointerEvents="none" data-testid="safe-area-editor-sample-quad">
+            <defs>
+              <pattern
+                id="sample-stripes-quad"
+                width="20"
+                height="20"
+                patternUnits="userSpaceOnUse"
+                patternTransform="rotate(45)"
+              >
+                <rect width="20" height="20" fill="#fbeadf" />
+                <rect width="10" height="20" fill="#e85d25" opacity="0.55" />
+              </pattern>
+            </defs>
+            <polygon
+              points={polygonPoints}
+              fill="url(#sample-stripes-quad)"
+              opacity="0.85"
+            />
+            <text
+              x={
+                pxCorners.reduce((sum, [px]) => sum + px, 0) / 4
+              }
+              y={
+                pxCorners.reduce((sum, [, py]) => sum + py, 0) / 4
+              }
+              fill="#16130f"
+              fontSize={Math.max(imageWidth, imageHeight) * 0.025}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontFamily="ui-monospace, SFMono-Regular, monospace"
+              fontWeight="700"
+            >
+              SAMPLE DESIGN
+            </text>
+          </g>
+        ) : null}
+
         {/* Quad polygon — drag area + visible boundary */}
         <polygon
           points={polygonPoints}
@@ -457,6 +546,50 @@ export function SafeAreaEditor({
 
   return (
     <div className="flex flex-col gap-3" data-testid="safe-area-editor" data-mode={value.mode}>
+      {/* Phase 69 — Editor toolbar: Sample preview toggle + Reset to default */}
+      {(onToggleSamplePreview || onReset) ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {onToggleSamplePreview ? (
+            <button
+              type="button"
+              onClick={onToggleSamplePreview}
+              disabled={disabled}
+              className="k-btn k-btn--ghost"
+              data-size="sm"
+              data-testid="safe-area-editor-sample-toggle"
+              data-active={showSamplePreview}
+              title={
+                showSamplePreview
+                  ? "Hide sample design preview overlay"
+                  : "Show sample design preview to see where the design will land"
+              }
+            >
+              {showSamplePreview ? (
+                <>
+                  <EyeOff className="h-3 w-3" aria-hidden /> Hide sample
+                </>
+              ) : (
+                <>
+                  <Eye className="h-3 w-3" aria-hidden /> Show sample
+                </>
+              )}
+            </button>
+          ) : null}
+          {onReset ? (
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={disabled}
+              className="k-btn k-btn--ghost"
+              data-size="sm"
+              data-testid="safe-area-editor-reset"
+              title="Reset safe-area to a 10% inset default for this mode"
+            >
+              <RotateCcw className="h-3 w-3" aria-hidden /> Reset
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="relative w-full overflow-hidden rounded-md border border-line bg-k-bg-2">
         <svg
           ref={svgRef}

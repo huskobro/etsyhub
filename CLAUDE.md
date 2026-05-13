@@ -13625,6 +13625,213 @@ pipeline üzerinde tüm authoring + rendering akışını yapabilir.
 
 ---
 
+## Phase 69 — Authoring confidence: validity guard + sample preview + edit page
+
+Phase 67/68 ile rect + perspective visual editor canlıydı ama operatör
+hâlâ "güvenle kullanılabilir" seviyeye tam gelmemişti:
+- "Design buraya geldiğinde nasıl görünecek?" sorusu cevapsızdı
+- Self-intersecting bowtie veya degenerate quad gibi yanlış config'ler
+  silent kabul ediliyor, runtime'da `placePerspective` "singular matrix"
+  throw ediyordu
+- Bir kere yarattıktan sonra rename / safe-area güncelle / archive yolu yoktu
+
+Phase 69 bu üç gap'i kapatır: **polygon validity guard + sample preview
++ template edit page**. Recipe editor için zemin (placeholder caption)
+hazırlanır ama form Phase 70+ candidate olarak ertelenir.
+
+### Slice 1 — Polygon validity helper + UI guard
+
+`src/features/mockups/components/safe-area-validity.ts` — pure-math
+helper, 0 dep, ~80 LOC:
+
+- `validateSafeArea(value: SafeAreaValue): ValidityResult`
+- 7 issue code: rect-too-small / rect-out-of-bounds / quad-too-small
+  / quad-out-of-bounds / quad-self-intersecting / quad-degenerate
+  / quad-near-collinear
+- Severity ayrımı: `error` (submit blocks) vs `warning` (allow with
+  caution)
+- Algoritmalar: shoelace area + segment intersection (cross product)
+  + min interior angle (acos of dot products)
+
+UI integration:
+- `MockupTemplateCreateForm` + `MockupTemplateEditForm` her safeArea
+  değişikliğinde `validateSafeArea` çağırır
+- Issue varsa `<div role="alert" data-validity-code data-validity-severity>`
+  blok render edilir (rose-tint error / amber-tint warning + AlertCircle
+  / AlertTriangle icon + actionable message)
+- `formValid` artık `validity.ok` koşulunu da içerir → submit button
+  disabled olur ve title "Fix the safe-area validation errors below"
+  gösterir
+
+10/10 unit test PASS (`tests/unit/mockup/safe-area-validity.test.ts`).
+Backend `placePerspective` "singular matrix" throw'u artık yalnız
+defansif — UI tarafı operator'a save öncesinde net actionable bilgi
+verir.
+
+### Slice 2 — Sample design preview overlay
+
+`SafeAreaEditor` 3 yeni opsiyonel prop:
+- `showSamplePreview: boolean`
+- `onToggleSamplePreview?: () => void`
+- `onReset?: () => void`
+
+Editor üstüne küçük toolbar (k-btn--ghost):
+- "Show sample" / "Hide sample" (Eye / EyeOff icon)
+- "Reset" (RotateCcw icon, 10% inset varsayılana dön)
+
+Sample preview overlay:
+- **Rect mode**: striped pattern (k-orange + cream çapraz çizgiler) +
+  "SAMPLE DESIGN" mono uppercase label safe-area içinde
+- **Perspective mode**: aynı pattern polygon içine yerleşir, label
+  centroid'de
+- SVG `<defs><pattern>` reuse, pure render — runtime cost yok
+- Operator artık "design buraya geldiğinde alanın ne kadarını
+  kaplayacak" sorusunu görsel olarak görür (lightweight non-destructive
+  preview; tam render pipeline gerekmedi)
+
+Reset davranışı mode-aware:
+- rect mode → `{ x: 0.1, y: 0.1, w: 0.8, h: 0.8 }`
+- perspective mode → `{ corners: [[0.1,0.1],[0.9,0.1],[0.9,0.9],[0.1,0.9]] }`
+- Mevcut bowtie/degenerate config tek tıkla temizlenir + validity ok'a döner
+
+### Slice 3 — Template detail/edit page
+
+Yeni route: `/templates/mockups/[id]/edit`
+
+Server-side guards:
+- `auth()` + redirect /login
+- Template fetch user-scoped (cross-user veya global → notFound)
+- LOCAL_SHARP binding zorunlu (Phase 66 baseline'dan beri)
+
+`MockupTemplateEditForm` component:
+- Mevcut name + safe-area config'ten initial state
+- Phase 67/68 SafeAreaEditor + Phase 69 validity/sample/reset reuse
+- Mode toggle (Phase 68 paritesi)
+- Save (status unchanged) / Save & publish (DRAFT iken görünür) /
+  Archive (confirm() prompt + status=ARCHIVED)
+- Recipe editor placeholder ("coming soon" caption + mevcut blendMode
+  display) — Phase 70+ zemini
+
+API endpoint extension (`/api/mockup-templates/[id]/route.ts`):
+- **GET** yeni: single template + bindings detay (cross-user 404)
+- **PATCH** extended: optional `name` + optional `bindingConfig`
+  (LOCAL_SHARP shape, ProviderConfigSchema parse) + optional `status`
+- Publish guard korunur (DRAFT → ACTIVE en az 1 ACTIVE binding)
+- Binding update yalnız LOCAL_SHARP (paid external scope dışı)
+- Cross-user/global ownership invariant (Phase 66/67/68 paritesi)
+
+Edit page navigation entry: bilinçli olarak yalnız **direct URL** ile
+erişilebilir (Phase 70+ candidate: templates listing'e "Edit" link
+eklemek). Operator kendi template URL'ini bookmark edebilir veya
+admin scope dışında bir UI'dan edit'e gider; Phase 69 scope'u edit
+flow'unu **end-to-end çalışır hale getirmek**, navigation polish ayrı
+tur.
+
+### Recipe editor zemini (Phase 70+ hazırlığı)
+
+Edit page'e küçük placeholder card:
+- "Recipe (blend mode / shadow) · coming soon"
+- Mevcut binding'in blendMode'u display edilir
+- Operator ileride bu alanın nereye gideceğini bilir; UI sürpriz değil
+
+Form/control eklenmedi — Phase 69 scope'unu sınırlı tutuyoruz.
+
+### Browser end-to-end full proof
+
+Live dev server (fresh `.next/` rebuild, viewport 1440×900, real DB):
+
+| Test | Sonuç |
+|---|---|
+| Sample toggle (rect mode) | Click "Show sample" → striped pattern + "SAMPLE DESIGN" label rect içinde, toggle text "Hide sample" |
+| Mode switch + sample (perspective) | "Perspective" → striped pattern polygon içinde, label centroid |
+| Bowtie quad (TL.x=90, TR.x=10) | 2 validity error: `quad-self-intersecting` + `quad-too-small`, submit disabled, title "Fix the safe-area validation errors below before publishing" |
+| Reset button | bowtie → clean default quad (TL/TR/BR/BL = 10/10/90/10/90/90/10/90), issues cleared, submit enabled |
+| Successful submit | Phase 69 Bowtie Test template ACTIVE created (after reset) |
+| Edit page mount | `/templates/mockups/[id]/edit` HTTP 200, page mounted, h1 "Edit mockup template", status caption "ACTIVE · SAFE-AREA + NAME EDITABLE · BASE ASSET LOCKED", name pre-filled, mode "perspective", corners pre-loaded |
+| Edit save | Rename + corner update (TR.x=85, BR.x=95, BR.y=95) + Save → /templates redirect |
+| DB edit verify | Name updated "Phase 69 Edited Quad Template", safe-area corners updated TR=0.85/0.1 + BR=0.95/0.95, baseAssetKey + baseDimensions LOCKED unchanged |
+| Rect regression | New template default mode=rect, 8 handles, validity ok, 3-step chain → DB safeArea {type:"rect", x:0.1, y:0.1, w:0.8, h:0.8} (Phase 67/68 baseline intact) |
+| Visual screenshot | Edit page header + name input + Safe-area card + Rect/Perspective toggle + Hide sample/Reset toolbar + perspective quad with TL/TR/BR/BL labels + striped sample design pattern + "SAMPLE DESIGN" label |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **267/267 PASS** (Phase 68 baseline 257 + 10 yeni validity tests)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: hepsi canlı dev server'da
+
+### Değişmeyenler (Phase 69)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Phase 64 ownership + Phase 8 SafeAreaSchema
+  + Phase 66 endpoint chain hepsi mevcut. Phase 69 yalnız:
+  - 1 yeni endpoint method (GET single template)
+  - 1 endpoint extension (PATCH name + bindingConfig opsiyonelleri)
+  - 1 yeni page (edit)
+  - 1 yeni component (MockupTemplateEditForm)
+  - 1 yeni helper (safe-area-validity)
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** validity helper pure functions; edit
+  form create form'la aynı SafeAreaEditor + Phase 69 prop set; sample
+  preview SVG `<pattern>` reuse.
+- **Phase 67 testid'ler intakt** (regression safe — `mockup-template-
+  create-*` zinciri korunur).
+- **Phase 68 mode toggle + 4-corner authoring intakt.**
+- **Apply drawer + Mockup studio + Render pipeline + placePerspective
+  backend dokunulmadı.**
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → Mockup → Product → Etsy Draft).
+- **Kivasy DS dışına çıkılmadı.** k-btn--ghost (Phase 53/54 toolbar
+  parity), k-segment (Phase 59 parity), AlertCircle/AlertTriangle
+  icons, danger/40 + danger/5 (Phase 53 alert pattern parity), warning/40
+  + warning-soft/40, font-mono tracking-meta. SVG sample pattern
+  inline hex (Phase 67 file-level eslint suppress paritesi).
+- **Cross-user isolation hard-enforced** (Phase 67 4-katmanlı
+  koruma + Phase 69 PATCH ownership invariant: cross-user 404,
+  global ForbiddenError).
+
+### Bilinçli scope dışı (Phase 70+ candidate)
+
+- **Templates listing'e edit entry**: Phase 65 admin manager'da
+  yalnız "Activate" CTA var; user-scope template list yüzeyinde
+  edit linki Phase 70 candidate. Şu an direct URL bookmark ile
+  edit erişilebilir.
+- **Recipe editor (blendMode + shadow form)**: edit page'de
+  placeholder caption mevcut; Phase 70'te form açılır.
+- **Replace base asset**: Mevcut template'te asset değişimi sırasında
+  baseDimensions değişebilir → safeArea normalize gerekir; "yeni
+  template oluştur" path operator'e net (no-op için yeniden upload).
+- **Aspect ratio / category değişimi**: existing template'in mevcut
+  apply zincirini bozar (mockup category filter); değiştirmek
+  Phase 70+ ürün kararı.
+- **Soft-restore (ARCHIVED → ACTIVE)**: PATCH backend hazır ama UI
+  archive sonrası reverse path açmadık; operator template'e direct
+  URL ile geri dönerse status değiştirebilir.
+- **Inline render preview (real Sharp pipeline tetikleme)**: Phase 8
+  mockup job pipeline reuse mümkün ama maliyetli (worker dispatch +
+  render time). Sample preview lightweight overlay yeterli authoring
+  confidence sağlıyor; tam render preview Phase 70+.
+- **Snap-to-grid / aspect-ratio lock / rotation handle**: rect/perspective
+  authoring ergonomi polish'i; Phase 70+ candidate.
+
+### Bundan sonra templated.io clone tarafında kalan tek doğru iş
+
+Phase 69 ile **template authoring artık güvenle kullanılabilir**:
+- Operator yanlış config kaydetmez (validity gate)
+- Sample preview ile design'ın nereye düşeceğini görür
+- Reset ile bozuk config'i tek tıkla temizler
+- Bir kere yarattıktan sonra rename + safe-area edit + archive
+  yapabilir
+
+Sıradaki gerçek iş **Phase 70 recipe editor** (blendMode dropdown +
+shadow toggle/intensity form) + **edit entry navigation** (templates
+listing'e link) + **inline render preview** (real Sharp pipeline
+tetikleme — lightweight). Bu üç adım templated.io ürün modeli'nin
+"olgun" olduğunu confirm eder; **dynamic-mockups deprecation kararı
+verilebilir hale gelir**.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

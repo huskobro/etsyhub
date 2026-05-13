@@ -42,6 +42,8 @@ import {
   rectToPerspective,
   perspectiveToRect,
 } from "./SafeAreaEditor";
+import { validateSafeArea } from "./safe-area-validity";
+import { AlertTriangle, AlertCircle } from "lucide-react";
 
 const CATEGORY_OPTIONS = [
   { value: "canvas", label: "Canvas (digital wall art)" },
@@ -114,6 +116,7 @@ export function MockupTemplateCreateForm() {
 
   // Phase 67 — asset state (upload → preview → editor)
   // Phase 68 — safeArea now mode-aware (rect | perspective)
+  // Phase 69 — sample preview toggle + validity gate
   const [asset, setAsset] = useState<UploadResult | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -121,6 +124,32 @@ export function MockupTemplateCreateForm() {
     mode: "rect",
     rect: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 },
   });
+  const [showSamplePreview, setShowSamplePreview] = useState(false);
+
+  // Phase 69 — Live validity (recomputed on every safeArea change)
+  const validity = validateSafeArea(safeArea);
+
+  // Phase 69 — Reset to a sane default for current mode
+  const resetSafeArea = () => {
+    if (safeArea.mode === "rect") {
+      setSafeArea({
+        mode: "rect",
+        rect: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 },
+      });
+    } else {
+      setSafeArea({
+        mode: "perspective",
+        perspective: {
+          corners: [
+            [0.1, 0.1],
+            [0.9, 0.1],
+            [0.9, 0.9],
+            [0.1, 0.9],
+          ],
+        },
+      });
+    }
+  };
 
   const uploadMutation = useMutation({
     mutationFn: uploadBaseAsset,
@@ -274,7 +303,9 @@ export function MockupTemplateCreateForm() {
     },
   });
 
-  const formValid = name.trim().length > 0 && asset !== null;
+  // Phase 69 — formValid now also requires safe-area validity (no blocking errors)
+  const formValid =
+    name.trim().length > 0 && asset !== null && validity.ok;
 
   return (
     <div
@@ -494,7 +525,40 @@ export function MockupTemplateCreateForm() {
                   value={safeArea}
                   onChange={setSafeArea}
                   disabled={createMutation.isPending}
+                  showSamplePreview={showSamplePreview}
+                  onToggleSamplePreview={() =>
+                    setShowSamplePreview((v) => !v)
+                  }
+                  onReset={resetSafeArea}
                 />
+                {/* Phase 69 — Live validity feedback */}
+                {validity.issues.length > 0 ? (
+                  <div
+                    className="space-y-1.5"
+                    data-testid="safe-area-validity-block"
+                  >
+                    {validity.issues.map((issue, i) => (
+                      <div
+                        key={i}
+                        role="alert"
+                        data-validity-code={issue.code}
+                        data-validity-severity={issue.severity}
+                        className={
+                          issue.severity === "error"
+                            ? "flex items-start gap-2 rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12px] text-danger"
+                            : "flex items-start gap-2 rounded-md border border-warning/40 bg-warning-soft/40 px-3 py-2 text-[12px] text-ink-2"
+                        }
+                      >
+                        {issue.severity === "error" ? (
+                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                        ) : (
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden />
+                        )}
+                        <span>{issue.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="mt-3 flex items-center justify-center rounded-md border border-line bg-k-bg-2/40 px-6 py-12 text-[13px] text-ink-3">
@@ -571,6 +635,15 @@ export function MockupTemplateCreateForm() {
               className="k-btn k-btn--primary"
               data-size="sm"
               data-testid="mockup-template-create-submit"
+              title={
+                !asset
+                  ? "Upload a base image first"
+                  : !name.trim()
+                    ? "Enter a template name"
+                    : !validity.ok
+                      ? "Fix the safe-area validation errors below before publishing"
+                      : undefined
+              }
             >
               <Sparkles className="h-3 w-3" aria-hidden />
               {createMutation.isPending
