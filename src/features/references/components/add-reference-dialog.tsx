@@ -1762,6 +1762,10 @@ function EtsyListingPicker({
 }) {
   const [selection, setSelection] = useState<Set<string>>(new Set());
 
+  /* Phase 36 — error code'u Error object'ine doğrudan field olarak
+   * attach ediyoruz. Class instanceof React Query queryFn boundary'sinde
+   * stable reference vermiyor (component re-render her seferinde yeni
+   * class oluşturur); plain `error.code` field'ı serialization-safe. */
   const query = useQuery({
     queryKey: ["etsy-listing-images", listingUrl],
     queryFn: async () => {
@@ -1771,8 +1775,13 @@ function EtsyListingPicker({
         body: JSON.stringify({ url: listingUrl }),
       });
       if (!res.ok) {
-        const err = (await res.json()).error ?? "Couldn't fetch listing";
-        throw new Error(err);
+        const payload = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          code?: "blocked" | "fetch_failed";
+        };
+        const err = new Error(payload.error ?? "Couldn't fetch listing");
+        (err as Error & { code?: string }).code = payload.code ?? "unknown";
+        throw err;
       }
       return (await res.json()) as {
         externalId: string;
@@ -1781,7 +1790,11 @@ function EtsyListingPicker({
         warnings: string[];
       };
     },
+    retry: false,
   });
+
+  const errorCode =
+    (query.error as Error & { code?: string } | null)?.code ?? "unknown";
 
   /* All-images select-all toggle (Phase 30 From Bookmark Select all pattern
    * paritesi). */
@@ -1868,11 +1881,88 @@ function EtsyListingPicker({
               Fetching listing images…
             </div>
           ) : query.isError ? (
-            <div className="rounded-md border border-danger/40 bg-danger/5 p-4 text-[12.5px] text-danger">
-              <div className="font-medium">Couldn&apos;t fetch listing</div>
-              <div className="mt-1 text-[11.5px] text-ink-3">
-                {(query.error as Error).message}
-              </div>
+            /* Phase 36 — typed error UX. `blocked` code (Datadome WAF /
+             * HTTP 403/429/503) için actionable fallback copy. Generic
+             * fetch_failed için retry + raw error mesajı. Kullanıcı
+             * "broken affordance" hissi yerine "alternatif yol var"
+             * hissi alır. */
+            <div
+              className="flex flex-col gap-3 rounded-md border border-danger/40 bg-danger/5 p-4 text-[12.5px]"
+              data-testid="etsy-picker-error"
+              data-error-code={errorCode}
+            >
+              {errorCode === "blocked" ? (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <div className="font-medium text-danger">
+                      Etsy is blocking server-side requests
+                    </div>
+                    <div className="text-[11.5px] text-ink-2">
+                      Etsy uses anti-bot protection on listing pages, so we
+                      can&apos;t auto-pull the images. You have two options:
+                    </div>
+                  </div>
+                  <ol className="ml-1 flex flex-col gap-1.5 text-[12px] text-ink-2">
+                    <li className="flex gap-2">
+                      <span className="font-mono text-[10.5px] tracking-wider text-k-orange pt-0.5">
+                        01
+                      </span>
+                      <span>
+                        Open the listing in your browser, right-click each
+                        image, choose <em>&ldquo;Copy image address&rdquo;</em>{" "}
+                        and paste those direct URLs into the queue.
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="font-mono text-[10.5px] tracking-wider text-k-orange pt-0.5">
+                        02
+                      </span>
+                      <span>
+                        Try again later — Etsy occasionally lets the
+                        request through.
+                      </span>
+                    </li>
+                  </ol>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      data-size="sm"
+                      className="k-btn k-btn--ghost"
+                      onClick={() => query.refetch()}
+                      data-testid="etsy-picker-retry"
+                    >
+                      Try again
+                    </button>
+                    <button
+                      type="button"
+                      data-size="sm"
+                      className="k-btn k-btn--ghost"
+                      onClick={onClose}
+                      data-testid="etsy-picker-cancel-blocked"
+                    >
+                      Close & paste URLs directly
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="font-medium text-danger">
+                    Couldn&apos;t fetch listing
+                  </div>
+                  <div className="text-[11.5px] text-ink-3">
+                    {(query.error as Error).message}
+                  </div>
+                  <button
+                    type="button"
+                    data-size="sm"
+                    className="k-btn k-btn--ghost self-start"
+                    onClick={() => query.refetch()}
+                    data-testid="etsy-picker-retry"
+                  >
+                    Try again
+                  </button>
+                </>
+              )}
             </div>
           ) : query.data && query.data.imageUrls.length === 0 ? (
             <div className="rounded-md border border-line-soft bg-k-bg-2/30 p-4 text-[12.5px] text-ink-3">

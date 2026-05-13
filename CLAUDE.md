@@ -6875,6 +6875,188 @@ ihtiyaç önceliğine göre sıralama.
 
 ---
 
+## Phase 36 — Etsy listing fetch reliability + dev tooling fix
+
+Phase 35 Etsy listing picker UI wiring'i canlı doğrulanmıştı ama backend
+fetch tarafında **403 / Datadome WAF bloğu** vardı. Phase 36 iki gerçek
+problemi çözer:
+
+1. **Dev server stale bundle** — bridge launch.json'ın yanlış worktree'ye
+   redirect etmesi
+2. **Etsy fetch reliability** — Datadome WAF altında honest fallback
+
+### Dev tooling fix (önemli)
+
+Bridge launch.json (`/.claude/worktrees/epic-agnesi-7a424b/.claude/launch.json`):
+```json
+"cd /Users/huseyincoskun/Downloads/AntigravityProje/EtsyHub/.claude/worktrees/audit-references && exec npm run dev"
+```
+
+Bu redirect **`audit-references` worktree'sine** (HEAD `b5996a7` = Phase 33)
+işaret ediyordu. Phase 35 değişiklikleri **`main` HEAD `12c9860`**'a yazıldı;
+audit-references'ta yok. Sonuç: server hep eski state'i compile ediyordu —
+"bundle stale" gibi görünen problem aslında **yanlış kaynak ağacından serve**
+ediliyordu.
+
+Fix: bridge launch.json **`EtsyHub` ana repo'ya** repoint edildi:
+```json
+"cd /Users/huseyincoskun/Downloads/AntigravityProje/EtsyHub && exec npm run dev"
+```
+
+Bu Phase 12'de kurulmuş bridge pattern'ın güncellemesi (kalıcı, gelecek
+turlar için doğru baseline).
+
+### 403 root cause analysis
+
+curl ile Etsy listing direkt fetch testleri:
+- Chrome 121 UA → `HTTP 403` body: `Please enable JS and disable any ad blocker`
+- Firefox 128 UA → `HTTP 403`
+- Googlebot UA → `HTTP 429`
+- Rich browser headers (Sec-Ch-Ua, Sec-Fetch-*, Accept-Encoding) → hâlâ `HTTP 403`
+
+Body inspection: Datadome captcha-delivery script + canvas fingerprint
+challenge. **Server-side fetch ile bypass edilemez** — JS execution,
+mouse motion, canvas fingerprint ister.
+
+Bu **production'da da aynı**. residential IP veya headless browser dahi
+%100 garanti vermez. Çözüm header-only değil; **honest fallback +
+actionable UX**.
+
+### Service hardening
+
+`src/server/services/scraper/etsy-listing-images.ts` Phase 36:
+
+- **Browser-like headers**: Sec-Ch-Ua, Sec-Fetch-Mode, Accept-Encoding,
+  Cache-Control, vb. Datadome'u bypass etmez ama basit anti-bot için
+  daha iyi success rate verir.
+- **1 retry** (400ms delay, 5xx için; 4xx için retry yok)
+- **6s timeout** (AbortController)
+- **Typed error classes**:
+  - `EtsyFetchBlockedError` — HTTP 403/429/503 (WAF / bot block)
+  - `EtsyFetchError` — diğer non-OK + network/timeout
+- Generic `Error` kullanmıyoruz; caller (API route) kategori bazlı UX
+  map'leyebilir.
+
+### API typed error mapping
+
+`/api/scraper/etsy-listing-images/route.ts`:
+
+```ts
+if (err instanceof EtsyFetchBlockedError) {
+  return NextResponse.json({
+    error: "...paste direct image URLs from the listing page instead.",
+    code: "blocked",
+    upstreamStatus: err.status,
+  }, { status: 502 });
+}
+if (err instanceof EtsyFetchError) {
+  return NextResponse.json({
+    error: err.message,
+    code: "fetch_failed",
+    upstreamStatus: err.status ?? null,
+  }, { status: 502 });
+}
+```
+
+Frontend `code` field'a göre actionable UX gösterir.
+
+### Picker fallback UX
+
+`EtsyListingPicker` error state Phase 36'da **kategori bazlı**:
+
+- `errorCode === "blocked"`:
+  - Başlık: "Etsy is blocking server-side requests"
+  - Açıklama: "Etsy uses anti-bot protection on listing pages, so we
+    can't auto-pull the images. You have two options:"
+  - Step 01: "Open the listing in your browser, right-click each image,
+    choose 'Copy image address' and paste those direct URLs into the
+    queue."
+  - Step 02: "Try again later — Etsy occasionally lets the request
+    through."
+  - Buttons: **"Try again"** (retry) + **"Close & paste URLs directly"**
+    (cancel + dismiss)
+- Generic `fetch_failed`:
+  - Başlık: "Couldn't fetch listing"
+  - Raw error message + "Try again" button
+
+Error code error.code field olarak attach edildi (class-instanceof yerine
+plain property — React Query queryFn boundary stable reference yok,
+class instance her render değişir).
+
+### Tests
+
+**`tests/unit/etsy-listing-images-service.test.ts`** (yeni, 11 senaryo):
+- `isEtsyListingUrl` kabul/red 4 case
+- `fetchEtsyListingImages`:
+  - Invalid URL → ValidationError
+  - 403 → EtsyFetchBlockedError
+  - 429 → EtsyFetchBlockedError
+  - 500 → EtsyFetchError (retried; non-blocked)
+  - 404 → EtsyFetchError (not blocked)
+  - 200 + fixture HTML → success result (externalId, title, imageUrls)
+  - Network error → EtsyFetchError
+
+**Success path fixture HTML ile doğrulandı** (`tests/fixtures/etsy-listing.html`).
+Service typed errors, parser pipeline, retry behavior — hepsi 11/11 PASS.
+
+### Browser verification
+
+Live dev server (after bridge fix + `.next` clear + server restart):
+
+1. **Listing detection**: Etsy listing URL paste edildiğinde:
+   - Hint: "✓ Etsy listing · we can pull all images"
+   - "View all images" button visible
+
+2. **Picker click → blocked fallback** (real Etsy returns 403):
+   - `data-error-code="blocked"` ✓
+   - Actionable 3-step copy
+   - "Try again" + "Close & paste URLs directly" buttons
+   - Screenshot: danger card + 01/02 numbered steps + retry buttons
+
+3. **Direct image URL regression**:
+   - `https://i.etsystatic.com/.../il_1140xN.jpg` paste edildi
+   - Hint: "✓ Looks like Etsy" (eski ETSY branch korundu)
+   - **Listing picker button YOK** ✓ — direct CDN URL listing path'ine
+     düşmüyor; mevcut hızlı yol intakt
+
+### Quality gates
+
+- tsc --noEmit: clean
+- vitest tests/unit/{etsy-listing-images-service, etsy-parser,
+  bookmarks-page, references-page}: **37/37 PASS**
+- next build: ✓ Compiled successfully
+
+### Bilinçli scope dışı
+
+- **Stealth scraping (puppeteer/playwright)**: Datadome JS challenge
+  bypass için bile garanti yok; CAPTCHA arms race ürün niyetiyle
+  çelişir
+- **3rd-party scraper proxy** (ScraperAPI, Bright Data, etc.): paid,
+  opt-in feature. Operatör tercih ederse Settings'te entegre edilebilir
+  — Phase 37+ konusu
+- **Etsy Open API entegrasyonu**: OAuth flow + listing read permission +
+  rate limit management. Resmi ama daha karmaşık; ayrı backend tur
+- **Creative Fabrica parser**: Etsy fallback pattern'ı oturduktan sonra
+  CF için aynı service+endpoint+UI pattern'i reuse edilebilir; parser
+  yazılması ayrı tur
+
+### Bundan sonra kalan tek doğru iş
+
+Etsy listing picker artık **production-ready fallback**'le güvenilir:
+- WAF block → operatör actionable copy görüyor + alternative path
+- Success path (rare, ama Etsy bazen geçirir) → image grid + multi-select
+  + queue conversion
+
+**Phase 37 candidate**: Creative Fabrica listing parser. Etsy
+service+endpoint+UI pattern'ı %90 reuse edilebilir; eksik **parseCreativeFabricaListing(html)** parser (CF product page OG meta +
+DOM image gallery extraction). CF Datadome kullanıyor mu test edilmemiş —
+muhtemelen daha permissive (Etsy kadar agresif değil).
+
+Folder intake (4. tab) ve CSV/Excel bulk import bağımsız sıralarına göre
+ele alınır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
