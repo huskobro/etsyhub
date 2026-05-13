@@ -421,12 +421,11 @@ export function ReferencesPage({
 
       {/* Floating bulk bar — k-fab recipe.
        *   v5 B1 spec: Create Variations + Add to Collection + Archive +
-       *   Delete. Batch-first Phase 5 — kavramsal düzeltme:
-       *   "Create Variations" ana üretim aksiyonu DEĞİLDİR; reference
-       *   görselini yeniden varyantlamak için ikincil refinement
-       *   aksiyonudur. Bu yüzden bulk bar'da primary class kaldırıldı
-       *   (k-fab__btn neutral kalır). Ana üretim aksiyonu "Start Batch"
-       *   Batches index topbar'ında yaşar (v4 A2 canonical).
+       *   Delete. Phase 41 — Create Variations re-elevated to canonical
+       *   entry (DS B1 + v7 d2a/d2b). k-fab__btn neutral renders just
+       *   slightly weaker than card hover primary; that's fine because
+       *   bulk-bar is auxiliary surface, but the action label and
+       *   semantic is consistent: "Open A6 Create Variations modal".
        *   R11.14.9 — k-fab recipe inline style yerine pure className. */}
       {selectedCount >= 1 ? (
         <div className="k-fab" data-testid="references-bulk-bar">
@@ -439,7 +438,7 @@ export function ReferencesPage({
                   href={`/references/${id}/variations`}
                   className="k-fab__btn"
                   data-testid="references-bulk-create-variations"
-                  title="Re-variate this reference (refinement — not main batch creation)"
+                  title="Open the Create Variations modal — choose count, aspect ratio, prompt template"
                 >
                   <Sparkles className="h-3 w-3" aria-hidden />
                   Create Variations
@@ -698,20 +697,24 @@ function ReferencePoolCard({
           </button>
         </div>
 
-        {/* Batch-first Phase 5 — hover CTA secondary (ikincil refinement
-         * aksiyonu). "Create Variations" ana üretim omurgasının adı
-         * DEĞİL; bir referans görseli beğenilmediğinde / yetersiz
-         * bulunduğunda küçük değişikliklerle yeniden üretim için
-         * kullanılan ikincil aksiyondur. Ana üretim aksiyonu Batches
-         * index'teki "Start Batch" CTA'sı + Library reference picker
-         * üzerinden A6 modal'a iner. */}
+        {/* Phase 41 — Pool card hover CTA. v5 B1 spec line 137
+         * (`k-btn k-btn--primary w-full`) + v7 d2a/d2b reading
+         * (Create Variations IS the canonical entry to the A6 modal
+         * where batch parameters are shaped). Phase 5'in
+         * k-btn--secondary'e demotion'u over-correction'dı: kart-
+         * level CTA aslında DS'in birinci-sınıf affordance'ı; A6
+         * modalı operatöre count + aspect + prompt template seçimini
+         * vereceği için bu CTA "create N variations" promise'inin
+         * net giriş noktası. Re-elevated to primary; title hint
+         * şimdi DS d2a/d2b dilini taşıyor. */}
         <div className="absolute bottom-2 left-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
           <Link
             href={`/references/${reference.id}/variations`}
             data-size="sm"
-            className="k-btn k-btn--secondary w-full"
+            className="k-btn k-btn--primary w-full"
             onClick={(e) => e.stopPropagation()}
-            title="Re-variate this reference (refinement action — not main batch creation)"
+            title="Open the Create Variations modal — choose count, aspect ratio, prompt template"
+            data-testid="reference-card-create-variations"
           >
             <Sparkles className="h-3 w-3" aria-hidden />
             Create Variations

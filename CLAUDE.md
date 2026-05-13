@@ -7990,6 +7990,200 @@ detail/edit surface** gibi başka modüllere geçilebilir.
 
 ---
 
+## Phase 41 — Final quality: duplicate dedup + folder-mode upload + Create Variations CTA re-elevation
+
+Phase 40'ta folder intake aktif canonical yola alınmıştı. Phase 41
+final ürün kalitesini üç eksende yükseltti:
+
+### A. Duplicate image dedup (intake-level reuse)
+
+**Audit bulgusu**: `createAssetFromBuffer` hash dedup yalnız `Asset`
+katmanında çalışıyordu. Aynı görsel ikinci kez intake edilince:
+1. `createAssetFromBuffer` → mevcut `Asset` reuse ✓
+2. `db.bookmark.create` → **YENİ Bookmark** ✗
+3. `createReferenceFromBookmark` → **YENİ Reference** ✗
+
+Sonuç: aynı görsel için Pool'da N tane Reference card.
+
+**Düzeltme** (`/api/references/from-local-library`):
+
+```ts
+const existingRef = await db.reference.findFirst({
+  where: { userId, assetId: asset.id, deletedAt: null },
+  select: { id: true, bookmarkId: true },
+});
+if (existingRef) {
+  successes.push({ ...existingRef, reused: true });
+  return;  // skip bookmark + reference creation
+}
+```
+
+Soft enforcement (no `@@unique` schema constraint). Response payload'a
+`reused: boolean` field eklendi; client tarafı 4 farklı durumda
+operatöre net mesaj gösterir:
+
+| Senaryo | Modal davranışı | Caption |
+|---|---|---|
+| All new | auto-close | — |
+| All reused | stay open | "3 already in Pool (reused)" |
+| Mixed (N new + M reused) | stay open | "2 added · 1 already in Pool (reused)" |
+| With failures | stay open | "2 added · 1 already in Pool · 1 failed" |
+
+**Davranış kararı**: replace/sil/yeniden yarat **YASAK** — mevcut
+entity reuse edilir, operatöre transparent şekilde gösterilir.
+
+Bu turda yalnız `from-local-library` endpoint'i için uygulandı.
+URL/Upload/From Bookmark path'leri için aynı dedup yararlı olurdu
+ama scope'ları farklı (URL fetch'i hash bilinmeden ilerliyor;
+Upload tab `createBookmark` mutation'ı zaten ayrı code path; From
+Bookmark zaten existing bookmark üzerinden çalışıyor). **Phase 42
+candidate**: tüm intake path'leri için ortak `Reference.findFirst`
+dedup helper'ı (mini-abstraction değil — 5 satırlık inline check).
+
+### B. Upload tab folder picker + multi-folder grouping
+
+User talebi: "From Local Library içinde temporary external folder
+seçimi". Audit'te netleşti: gerçek temporary folder (Settings root
+dışında) için iki seçenek vardı:
+
+| Seçenek | Maliyet |
+|---|---|
+| (a) `LocalLibraryAsset.isTransient` schema field + scan worker özel-modu | Schema migration + yeni abstraction (user contract'ı kırar) |
+| (b) `<input webkitdirectory>` ile in-memory folder browse + Upload tab grouping | Yeni schema yok, yeni abstraction yok, mevcut Upload pipeline reuse |
+
+(b) seçildi. From Local Library tab semantic'i temiz kaldı (yalnız
+Settings root altındaki scanned `LocalLibraryAsset` rows), ama
+Upload tab artık **folder mode** destekliyor:
+
+- **"Pick a folder"** sibling button ("Browse files"in yanında)
+- Hidden `<input webkitdirectory>` (Chrome/Safari/Firefox supported,
+  non-standard but widely-implemented)
+- `acceptFiles` her `File`'ın `webkitRelativePath`'inden sourceFolder
+  derive eder (last directory segment)
+- `UploadEntry.sourceFolder` field eklendi
+- UI: 1 folder → flat grid (eski davranış). 2+ folder → her folder
+  kendi başlık satırı + grid'i altında. Summary "X of N ready · from
+  K folders".
+
+Path traversal / filesystem layout leak yok: browser File objects
+zaten in-memory blob'lar; biz sadece `webkitRelativePath`'ten group
+label çıkarıyoruz (full path UI'da görünmüyor). Settings root değişmez.
+
+Operatör artık:
+- Tek dosya: Browse files → bireysel pick → grouped olmadan flat grid
+- Bir folder: Pick a folder → tüm içerik tek group
+- Çok folder: 2 ayrı folder picker session → iki ayrı group, görsel
+  ayrım net
+- Drop drag-and-drop: "Browser drop" group label (folder-mode pretense
+  yok — dürüst)
+
+### C. Pool card Create Variations CTA re-elevation
+
+**Audit bulgusu**: DS v5 B1 (line 137) Pool card hover CTA için
+`k-btn k-btn--primary w-full` belirler. v7 d2a/d2b screens-d.jsx
+Create Variations'ı A6 modal'ının canonical entry'si olarak konumlar
+(operatöre count + aspect + prompt template + reference parameters
+seçimini orada sunar). Yani **kart-level CTA = canonical primary
+affordance**.
+
+Phase 5'in `k-btn--secondary`'e demotion'u (Batch-first phase'ten
+kalma) over-correction'dı: "Create Variations bir refinement, ana
+batch creation Batches index'tedir" gerekçesi mantıklıydı ama
+DS'i ve operator mental modelini kırıyordu (operatör kart üstünde
+zayıf CTA'yı görüyor, "primary aksiyon ne?" sorusuyla kalıyor).
+
+Phase 41 düzeltmesi (`references-page.tsx`):
+- Hover CTA className → `k-btn k-btn--primary w-full` (DS B1 spec
+  match)
+- Title attribute → "Open the Create Variations modal — choose count,
+  aspect ratio, prompt template" (v7 d2a/d2b dilini taşıyor)
+- `data-testid="reference-card-create-variations"` eklendi (test
+  selector)
+- Bulk-bar single-selection CTA title aynı v7 semantic'ine hizalandı
+
+### Browser verification (gerçek end-to-end kanıt)
+
+7 senaryo, live dev server (PID restart, fresh `.next/`, viewport
+1440×900):
+
+| # | Senaryo | Kanıt |
+|---|---|---|
+| 1 | Duplicate dedup (3 asset zaten Pool'da) | partial caption "3 already in Pool (reused)", modal stays open, Pool count stays at 7 |
+| 2 | Mixed reuse (1 reuse + 2 new) | caption "2 added · 1 already in Pool (reused)", Pool 7 → 9 |
+| 3 | Pool count delta math | server-truth 9 = 7 baseline + 2 new (no dup) |
+| 4 | Pool card CTA primary | `k-btn k-btn--primary w-full`, title "Open the Create Variations modal — choose count, aspect ratio, prompt template" |
+| 5 | Upload tab folder picker | "Browse files" + "Pick a folder" buttons present, webkitdirectory input present, drop zone "Drop images or pick a folder" |
+| 6 | Multi-folder grouping (5 files across 2 folders) | 2 `add-ref-upload-group` elements, labels FolderAlpha + FolderBeta, summary "0 of 5 ready · from 2 folders" |
+| 7 | Direct image URL regression | hint "✓ Direct image URL", Enter advances to row 2, helper "2 rows · Enter to advance ..." (Phase 39 baseline intact) |
+
+Screenshots:
+- Modal duplicate state: 3 selected, amber partial caption "3 already
+  in Pool (reused)"
+- Upload tab folder grouping: drop zone updated copy, 2 folder
+  headers (`▸ FolderAlpha · 2`, `▸ FolderBeta · 3`), separated grids
+
+### Quality gates
+
+- `tsc --noEmit`: clean (1 unused `@ts-expect-error` directive
+  silinmiştir)
+- `vitest`: **91/91 PASS** (canonical regression suite)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 41)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration YAPILMADI.** Dedup soft enforcement at service
+  layer; folder upload `webkitRelativePath` browser feature, no DB.
+- **Yeni büyük abstraction yok.** Mevcut helper'lar reuse,
+  `UploadThumb` küçük render extraction (DRY için).
+- **Yeni surface açılmadı.**
+- **WorkflowRun eklenmez.**
+- **Direct image URL canonical yolu intakt** (Phase 39 baseline).
+- **From Local Library tab semantic'i temiz kaldı**: yalnız scanned
+  `LocalLibraryAsset` rows altında. Temp folder gereksinimi Upload
+  tab folder-mode'a yönlendirildi (dürüst, browser-native).
+- **Kivasy DS dışına çıkılmadı.** Folder grouping mevcut mono
+  caption pattern (`▸ FolderName · N`), card recipe, k-btn--primary,
+  k-btn--ghost.
+
+### References tarafında final ürüne ulaşmak için sıradaki en kritik iş
+
+Phase 41 ile References family intake **çok büyük ölçüde tamam**:
+- 4 intake yolu aktif canonical
+- Duplicate dedup intake-level (folder path için; diğer path'ler
+  için Phase 42 candidate)
+- Folder-mode upload + multi-folder grouping
+- Create Variations CTA DS B1 + v7 d2a/d2b spec'inde
+
+Bundan sonra en kritik iş **Reference detail surface**:
+
+**Phase 42 candidate — Reference detail page** (`/references/[id]`):
+
+Şu an Pool'da kart var, ama detail page yok. Operator bir reference'ın:
+- tüm batches'lerini görmek
+- variation lineage'ını izlemek
+- notes/tags/collection edit etmek
+- archive/restore yapmak
+- duplicate olarak görmek
+- benzer reference'ları keşfetmek
+
+için gidebileceği bir yer yok. Pool kartından doğal navigation hedefi
+**bu detail page** olmalı. Card click → detail; hover Create
+Variations CTA → A6 modal. İki ayrı affordance.
+
+Bunu açan kararlar:
+- Card click davranışı (Phase 5'ten beri archive bulk-bar veya
+  hover CTA dışında "ana etkileşim" yok)
+- Detail page IA (tab'lar? sub-section'lar? prompt history?)
+- Reference-level dedup audit (UI'da "this reference shares hash
+  with X other references" sinyali — Phase 41 intake-level dedup'ın
+  görünür uzantısı)
+
+Bu **References family'nin son büyük kapanış işi**. Sonrasında modül
+diğer parçaları (Selection, Mockup, Listing) daha rahat ele alınabilir.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

@@ -384,6 +384,9 @@ export function AddReferenceDialog({
   } | null>(null);
 
   // Upload tab state — multi-file
+  // Phase 41 — sourceFolder added for folder-mode upload (operator
+  // picks a whole folder, all images grouped by their relative
+  // subfolder). `<root>` for files dropped/picked individually.
   type UploadEntry = {
     id: string;
     file: File;
@@ -391,10 +394,12 @@ export function AddReferenceDialog({
     status: "pending" | "uploading" | "ready" | "failed";
     assetId?: string;
     error?: string;
+    sourceFolder: string;
   };
   const [uploads, setUploads] = useState<UploadEntry[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
 
   // Bookmark tab state — multi-select promote
   const [bookmarkSearch, setBookmarkSearch] = useState("");
@@ -584,7 +589,11 @@ export function AddReferenceDialog({
         throw new Error(payload.error ?? "Failed to import local assets");
       }
       const data = (await res.json()) as {
-        references: Array<{ referenceId: string; bookmarkId: string }>;
+        references: Array<{
+          referenceId: string;
+          bookmarkId: string;
+          reused: boolean;
+        }>;
         failed: Array<{ localAssetId: string; error: string }>;
       };
       if (data.references.length === 0 && data.failed.length > 0) {
@@ -597,9 +606,12 @@ export function AddReferenceDialog({
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["references"] });
       qc.invalidateQueries({ queryKey: ["bookmarks"] });
-      // If everything succeeded, close. If partial, leave open so the
-      // operator can see the surfaced failure message.
-      if (data.failed.length === 0) {
+      // If everything succeeded AND no items were reused (Phase 41
+      // dedup), close immediately. If partial OR any reuse happened,
+      // leave the modal open so the operator can read the breakdown
+      // — "X added, Y already in Pool".
+      const reusedCount = data.references.filter((r) => r.reused).length;
+      if (data.failed.length === 0 && reusedCount === 0) {
         onCreated?.();
         onClose();
       } else {
@@ -833,17 +845,43 @@ export function AddReferenceDialog({
   });
 
   // Upload tab: accept files (single & multi)
+  // Phase 41 — folder-mode support. When the operator picks a whole
+  // folder via `<input webkitdirectory>`, each File carries a
+  // `webkitRelativePath` like "MyFolder/sub/img.png". We derive the
+  // source folder (last directory segment) for visual grouping
+  // without touching the LocalLibraryAsset / settings root pipeline.
+  // Files dropped/picked individually keep `sourceFolder = "<root>"`
+  // (rendered as "Browser drop" in UI to avoid pretending these are
+  // a folder).
   function acceptFiles(files: FileList | File[]) {
     const list = Array.from(files).filter((f) =>
       /^image\/(png|jpe?g|webp)$/i.test(f.type),
     );
-    const entries: UploadEntry[] = list.map((file) => ({
-      id: `${file.name}-${file.size}-${file.lastModified}`,
-      file,
-      previewUrl: URL.createObjectURL(file),
-      status: "pending",
-    }));
-    setUploads((cur) => [...cur, ...entries]);
+    const entries: UploadEntry[] = list.map((file) => {
+      // webkitRelativePath: empty for individually picked files;
+      // "FolderName/img.png" for folder-mode; nested "FolderName/sub/img.png"
+      // for nested folders. We take the last directory segment as a
+      // simple grouping label (no full-path display, no leak of
+      // operator's filesystem layout).
+      const relPath = (file as File & { webkitRelativePath?: string })
+        .webkitRelativePath ?? "";
+      const segments = relPath.split("/").filter((s) => s.length > 0);
+      const sourceFolder =
+        segments.length >= 2 ? segments[segments.length - 2]! : "<root>";
+      return {
+        id: `${file.name}-${file.size}-${file.lastModified}-${relPath}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        status: "pending" as const,
+        sourceFolder,
+      };
+    });
+    // Dedup by id (same file picked twice during folder picker re-open
+    // wouldn't show a second entry).
+    setUploads((cur) => {
+      const seen = new Set(cur.map((u) => u.id));
+      return [...cur, ...entries.filter((e) => !seen.has(e.id))];
+    });
   }
 
   function removeUpload(id: string) {
@@ -1156,7 +1194,9 @@ export function AddReferenceDialog({
               acceptFiles={acceptFiles}
               removeUpload={removeUpload}
               openFilePicker={() => fileInputRef.current?.click()}
+              openFolderPicker={() => folderInputRef.current?.click()}
               fileInputRef={fileInputRef}
+              folderInputRef={folderInputRef}
             />
           ) : null}
 
@@ -1221,15 +1261,20 @@ export function AddReferenceDialog({
                 })
               }
               clearAll={() => setLocalAssetSelection(new Set())}
-              partialFailureMessage={
-                promoteLocalAssets.data &&
-                promoteLocalAssets.data.failed.length > 0
-                  ? `${promoteLocalAssets.data.references.length} of ${
-                      promoteLocalAssets.data.references.length +
-                      promoteLocalAssets.data.failed.length
-                    } imported; ${promoteLocalAssets.data.failed.length} failed.`
-                  : null
-              }
+              partialFailureMessage={(() => {
+                const data = promoteLocalAssets.data;
+                if (!data) return null;
+                const added = data.references.filter((r) => !r.reused).length;
+                const reused = data.references.filter((r) => r.reused).length;
+                const failed = data.failed.length;
+                if (failed === 0 && reused === 0) return null;
+                const parts: string[] = [];
+                if (added > 0) parts.push(`${added} added`);
+                if (reused > 0)
+                  parts.push(`${reused} already in Pool (reused)`);
+                if (failed > 0) parts.push(`${failed} failed`);
+                return parts.join(" · ");
+              })()}
             />
           ) : null}
         </div>
@@ -1837,7 +1882,9 @@ function UploadTab({
   acceptFiles,
   removeUpload,
   openFilePicker,
+  openFolderPicker,
   fileInputRef,
+  folderInputRef,
 }: {
   uploads: {
     id: string;
@@ -1845,14 +1892,33 @@ function UploadTab({
     previewUrl: string;
     status: "pending" | "uploading" | "ready" | "failed";
     error?: string;
+    sourceFolder: string;
   }[];
   dragOver: boolean;
   setDragOver: (b: boolean) => void;
   acceptFiles: (files: FileList | File[]) => void;
   removeUpload: (id: string) => void;
   openFilePicker: () => void;
+  openFolderPicker: () => void;
   fileInputRef: React.RefObject<HTMLInputElement>;
+  folderInputRef: React.RefObject<HTMLInputElement>;
 }) {
+  /* Phase 41 — folder-mode upload. Files carrying a non-empty
+   * webkitRelativePath are grouped by their immediate parent folder
+   * (sourceFolder), giving the operator a visible "these came from
+   * Folder A, those came from Folder B" picture. Individual drops
+   * are grouped under "Browser drop" so they don't masquerade as a
+   * folder. Order preserved (insertion order). */
+  const grouped = (() => {
+    const map = new Map<string, typeof uploads>();
+    for (const u of uploads) {
+      const key = u.sourceFolder === "<root>" ? "Browser drop" : u.sourceFolder;
+      const arr = map.get(key) ?? [];
+      arr.push(u);
+      map.set(key, arr);
+    }
+    return Array.from(map.entries());
+  })();
   return (
     <div className="flex flex-col gap-3">
       <div
@@ -1878,25 +1944,58 @@ function UploadTab({
           <Upload className="h-5 w-5" aria-hidden />
         </div>
         <div className="text-[14px] font-semibold text-ink">
-          Drop images to upload
+          Drop images or pick a folder
         </div>
         <div className="mt-1 font-mono text-[10.5px] tracking-wider text-ink-3">
-          PNG · JPG · JPEG · WEBP · max 20 MB each
+          PNG · JPG · JPEG · WEBP · max 20 MB each · folder mode groups by subfolder
         </div>
-        <button
-          type="button"
-          onClick={openFilePicker}
-          data-size="sm"
-          className="k-btn k-btn--secondary mt-3"
-          data-testid="add-ref-upload-browse"
-        >
-          <Plus className="h-3 w-3" aria-hidden />
-          Browse files
-        </button>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={openFilePicker}
+            data-size="sm"
+            className="k-btn k-btn--secondary"
+            data-testid="add-ref-upload-browse"
+          >
+            <Plus className="h-3 w-3" aria-hidden />
+            Browse files
+          </button>
+          <button
+            type="button"
+            onClick={openFolderPicker}
+            data-size="sm"
+            className="k-btn k-btn--ghost"
+            data-testid="add-ref-upload-folder"
+            title="Pick a folder — every image inside it is loaded, grouped by subfolder. No filesystem path is stored; this is browser-only intake."
+          >
+            <Plus className="h-3 w-3" aria-hidden />
+            Pick a folder
+          </button>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
           accept="image/png,image/jpeg,image/webp"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files) acceptFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        {/* Phase 41 — folder mode. webkitdirectory is non-standard but
+         * supported by Chromium/WebKit/Gecko. accept attribute is
+         * ignored by directory pickers (browsers walk the whole tree),
+         * so we filter MIME types in acceptFiles(). */}
+        <input
+          ref={folderInputRef}
+          type="file"
+          // @ts-expect-error — webkitdirectory is a non-standard but
+          // widely-supported attribute; React's HTMLInputElement type
+          // doesn't include it.
+          webkitdirectory="true"
+          // directory mirror for Firefox compat (no-op elsewhere).
+          directory="true"
           multiple
           className="hidden"
           onChange={(e) => {
@@ -1911,7 +2010,8 @@ function UploadTab({
           {/* Phase 30 — aggregate progress hint. Operatör 10 file
            *   upload edince "5 of 10 ready · 2 uploading · 1 failed"
            *   gibi tek satır toplamı görür. Per-file status detail
-           *   aşağıdaki thumb grid'de zaten var. */}
+           *   aşağıdaki thumb grid'de zaten var.
+           *   Phase 41 — folder count surfaced too. */}
           <div className="flex items-center justify-between font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
             <span data-testid="add-ref-upload-summary">
               {uploads.filter((u) => u.status === "ready").length} of {uploads.length} ready
@@ -1921,55 +2021,114 @@ function UploadTab({
               {uploads.filter((u) => u.status === "failed").length > 0
                 ? ` · ${uploads.filter((u) => u.status === "failed").length} failed`
                 : null}
+              {grouped.length > 1
+                ? ` · from ${grouped.length} folders`
+                : null}
             </span>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            {uploads.map((u) => (
-            <div
-              key={u.id}
-              className="overflow-hidden rounded-md border border-line bg-paper"
-              data-testid="add-ref-upload-thumb"
-            >
-              <div className="aspect-square w-full bg-k-bg-2">
-                <img
-                  src={u.previewUrl}
-                  alt={u.file.name}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-1 px-2 py-1.5">
-                <span
-                  className="truncate text-[11px] text-ink-2"
-                  title={u.file.name}
-                >
-                  {u.file.name}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeUpload(u.id)}
-                  aria-label={`Remove ${u.file.name}`}
-                  className="text-ink-3 hover:text-danger"
-                >
-                  <X className="h-3 w-3" aria-hidden />
-                </button>
-              </div>
-              {u.status !== "pending" ? (
-                <div
-                  className={cn(
-                    "px-2 pb-1.5 font-mono text-[10px] uppercase tracking-meta",
-                    u.status === "uploading" && "text-ink-3",
-                    u.status === "ready" && "text-success",
-                    u.status === "failed" && "text-danger",
-                  )}
-                >
-                  {u.status}
-                  {u.error ? ` · ${u.error.slice(0, 40)}` : null}
-                </div>
-              ) : null}
+          {/* Phase 41 — per-folder grouping. Single source (all "<root>"
+           * drops or one folder pick) renders as flat grid without
+           * folder header. Multiple sources render with mono caption
+           * folder headers + their own grid each, so the operator
+           * sees the intake provenance clearly. */}
+          {grouped.length === 1 ? (
+            <div className="grid grid-cols-3 gap-2">
+              {grouped[0]![1].map((u) => (
+                <UploadThumb key={u.id} u={u} removeUpload={removeUpload} />
+              ))}
             </div>
-          ))}
-          </div>
+          ) : (
+            <div
+              className="flex flex-col gap-4"
+              data-testid="add-ref-upload-groups"
+            >
+              {grouped.map(([folder, items]) => (
+                <div
+                  key={folder}
+                  data-testid="add-ref-upload-group"
+                  data-folder={folder}
+                >
+                  <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+                    <span aria-hidden>▸</span>
+                    <span className="text-ink-2">{folder}</span>
+                    <span>· {items.length}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {items.map((u) => (
+                      <UploadThumb
+                        key={u.id}
+                        u={u}
+                        removeUpload={removeUpload}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </>
+      ) : null}
+    </div>
+  );
+}
+
+/* UploadThumb — shared thumbnail card used by flat and grouped
+ * render paths above. Phase 41 split to avoid duplicating the
+ * thumb markup in two branches. */
+function UploadThumb({
+  u,
+  removeUpload,
+}: {
+  u: {
+    id: string;
+    file: File;
+    previewUrl: string;
+    status: "pending" | "uploading" | "ready" | "failed";
+    error?: string;
+  };
+  removeUpload: (id: string) => void;
+}) {
+  return (
+    <div
+      className="overflow-hidden rounded-md border border-line bg-paper"
+      data-testid="add-ref-upload-thumb"
+    >
+      <div className="aspect-square w-full bg-k-bg-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={u.previewUrl}
+          alt={u.file.name}
+          className="h-full w-full object-cover"
+        />
+      </div>
+      <div className="flex items-center justify-between gap-1 px-2 py-1.5">
+        <span
+          className="truncate text-[11px] text-ink-2"
+          title={u.file.name}
+        >
+          {u.file.name}
+        </span>
+        <button
+          type="button"
+          onClick={() => removeUpload(u.id)}
+          aria-label={`Remove ${u.file.name}`}
+          className="text-ink-3 hover:text-danger"
+        >
+          <X className="h-3 w-3" aria-hidden />
+        </button>
+      </div>
+      {u.status !== "pending" ? (
+        <div
+          className={cn(
+            "px-2 pb-1.5 font-mono text-[10px] uppercase tracking-meta",
+            u.status === "uploading" && "text-ink-3",
+            u.status === "ready" && "text-success",
+            u.status === "failed" && "text-danger",
+          )}
+        >
+          {u.status}
+          {u.error ? ` · ${u.error.slice(0, 40)}` : null}
+        </div>
       ) : null}
     </div>
   );

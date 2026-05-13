@@ -57,6 +57,11 @@ type SuccessItem = {
   bookmarkId: string;
   referenceId: string;
   assetId: string;
+  /* Phase 41 — when this asset (same content hash) was already a
+   * Reference in the user's Pool, we don't create a duplicate; we
+   * surface the existing Reference. `reused = true` lets the UI
+   * show "X added, Y already in Pool" breakdown. */
+  reused: boolean;
 };
 
 type FailureItem = {
@@ -138,6 +143,37 @@ export const POST = withErrorHandling(async (req: Request) => {
           // No sourceUrl — local-only origin. sourcePlatform OTHER.
           sourcePlatform: SourcePlatform.OTHER,
         });
+
+        /* Phase 41 — Reference-level dedup. createAssetFromBuffer
+         * dedups at Asset layer (same hash → same Asset row); but
+         * we used to create a brand-new Bookmark + Reference for
+         * every intake. Now: if a non-deleted Reference for
+         * (userId, assetId) already exists, REUSE it. The operator
+         * sees "X added, Y already in Pool" and Pool doesn't grow
+         * duplicates. Soft enforcement (no @@unique constraint
+         * change). */
+        const existingRef = await db.reference.findFirst({
+          where: {
+            userId: user.id,
+            assetId: asset.id,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            bookmarkId: true,
+          },
+        });
+        if (existingRef) {
+          successes.push({
+            localAssetId,
+            bookmarkId: existingRef.bookmarkId ?? "",
+            referenceId: existingRef.id,
+            assetId: asset.id,
+            reused: true,
+          });
+          return;
+        }
+
         // Strip extension from fileName for display title.
         const baseName = cand.fileName.replace(/\.[^.]+$/, "");
         const bookmark = await db.bookmark.create({
@@ -165,6 +201,7 @@ export const POST = withErrorHandling(async (req: Request) => {
           bookmarkId: bookmark.id,
           referenceId: reference.id,
           assetId: asset.id,
+          reused: false,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
