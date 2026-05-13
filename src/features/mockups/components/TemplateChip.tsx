@@ -34,13 +34,15 @@ export function TemplateChip({
       type="button"
       onClick={onToggle}
       disabled={disabled}
-      className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+      data-testid="mockup-template-chip"
+      data-selected={isSelected || undefined}
+      className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
         isSelected
-          ? "bg-accent text-white"
-          : "bg-surface border border-border text-text hover:bg-surface-2"
+          ? "border-k-orange bg-k-orange text-white"
+          : "border-line bg-paper text-ink-2 hover:border-line-strong hover:bg-k-bg-2"
       } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
     >
-      {isSelected && <span>✓</span>}
+      {isSelected && <span aria-hidden>✓</span>}
       <span className="line-clamp-1">{template.name}</span>
     </button>
   );

@@ -116,7 +116,7 @@ describe("<SetSummaryCard>", () => {
       />
     );
 
-    expect(screen.getByText("6 mockup")).toBeInTheDocument();
+    expect(screen.getByText("6 mockups")).toBeInTheDocument();
   });
 
   it("handles draft status", () => {

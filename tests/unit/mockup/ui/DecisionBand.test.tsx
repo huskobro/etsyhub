@@ -104,7 +104,7 @@ describe("<DecisionBand>", () => {
       />
     );
     expect(
-      screen.getByText(/Seçilmiş şablon yok/)
+      screen.getByText(/No templates selected/)
     ).toBeInTheDocument();
   });
 

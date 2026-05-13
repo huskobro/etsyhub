@@ -11118,6 +11118,181 @@ component DS migration + last-mile confidence polish.
 
 ---
 
+## Phase 56 — Final confidence sweep (secondary mockup components + toast hook + test fixture EN migration)
+
+Phase 55 mockup studio'nun ana yüzey ailesini shipping kalitesine çekmişti.
+Phase 56 odak: **canonical loop'ta kalan ikincil component'lerin parity
+catch-up'ı** + biriken **test fixture TR drift'i**. Yeni feature yok;
+yalnız final confidence sweep.
+
+### Phase 55 sonrası kalan boşluk
+
+1. **3 secondary mockup component hâlâ legacy/TR**:
+   - `TemplateChip`: `bg-accent text-white` selected / `bg-surface
+     border-border text-text hover:bg-surface-2` resting — Kivasy DS
+     değil
+   - `DecisionBand`: legacy tokens (`border-border bg-white bg-red-50
+     text-red-700 text-text-muted text-accent bg-zinc-200 bg-zinc-900
+     text-amber-700`) + 2 TR string ("Bilinmeyen bir hata oluştu",
+     "Seçilmiş şablon yok. Lütfen en az bir şablon seçiniz.")
+   - `PackPreviewCard`: legacy tokens (`border-border bg-amber-50
+     text-amber-900 bg-blue-100 text-blue-700 text-text text-text-muted
+     bg-white hover:bg-surface`) + 2 TR string ("Seçili Şablonlar",
+     "Şablonları Özelleştir")
+2. **`useMockupJobCompletionToast` hook TR mesajları**: COMPLETED/
+   PARTIAL_COMPLETE/FAILED toast'larında "Pack hazır", "Pack hazırlanamadı",
+   "bilinmeyen hata", "Sonucu gör" — operatöre TR yansıyordu
+3. **Test fixtures massive TR drift**: Phase 53/54/55'te component'lerde
+   yapılan EN parity değişiklikleri `tests/unit/mockup/ui/` altındaki
+   26 testte fail'e neden olmuştu
+
+### Slice 1 — Secondary mockup components DS migration
+
+**`TemplateChip`** (Kivasy DS):
+- Selected: `bg-accent text-white` → `border-k-orange bg-k-orange text-white`
+- Resting: `bg-surface border-border text-text hover:bg-surface-2` →
+  `border-line bg-paper text-ink-2 hover:border-line-strong hover:bg-k-bg-2`
+- Padding `px-3 py-2` → `px-3 py-1.5` (compact chip)
+- `data-testid="mockup-template-chip"` + `data-selected` attribute
+
+**`DecisionBand`** (EN parity + DS):
+- "Bilinmeyen bir hata oluştu" → "Unexpected error"
+- "Seçilmiş şablon yok. Lütfen en az bir şablon seçiniz." → "No
+  templates selected. Pick at least one template to render."
+- Container `border-border bg-white` → `border-line bg-paper`
+- Error block `bg-red-50 text-red-700` → `border-danger/40 bg-danger/5
+  text-danger` (Phase 53 alert pattern parity)
+- ETA caption `text-sm text-text-muted` → `font-mono text-[10.5px]
+  uppercase tracking-meta text-ink-3`
+- Reset link `text-xs text-accent` → mono uppercase + `text-k-orange-ink`
+- Render button raw `bg-zinc-900/zinc-200` → `k-btn k-btn--primary`
+  recipe (Kivasy DS canonical)
+- No-selection warning `text-amber-700` flat → `border-warning/40
+  bg-warning-soft/40 + warning dot + text-ink-2` (Phase 55 pattern parity)
+- `data-testid="mockup-decision-band"` + `data-testid="mockup-decision-
+  band-render"`
+
+**`PackPreviewCard`** (EN parity + DS):
+- "Seçili Şablonlar" → "Selected templates"
+- "Şablonları Özelleştir" → "Customize templates"
+- Section `border-border` → `rounded-lg border-line bg-paper`
+- Quick pack badge `bg-amber-50 text-amber-900 rounded-full px-2.5 py-0.5
+  text-xs font-medium` → `border-k-orange/40 bg-k-orange-soft rounded-md
+  px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-meta
+  text-k-orange-ink shadow-sm` (Phase 51 status badge parity)
+- Customized chip `bg-blue-100 text-blue-700 rounded-full px-2 py-0.5
+  text-xs` → `border-line-soft bg-k-bg-2 rounded-md px-2 py-0.5
+  font-mono text-[10px] font-semibold uppercase tracking-meta text-ink-2`
+- Caption `text-xs font-medium text-text-muted` → `font-mono text-[10.5px]
+  uppercase tracking-meta text-ink-3`
+- Customize button raw `bg-white border-border hover:bg-surface` →
+  `k-btn k-btn--secondary w-full`
+- `data-testid="mockup-pack-preview-card"` + `data-testid="mockup-pack-
+  customize"`
+
+### Slice 2 — `useMockupJobCompletionToast` hook EN
+
+`src/features/mockups/hooks/useMockupJobCompletionToast.ts`:
+
+- COMPLETED toast: "Pack hazır: N görsel — Sonucu gör" → "Mockup pack
+  ready: N renders — see result"
+- PARTIAL_COMPLETE toast: "Pack hazır: N/M görsel — Sonucu gör" →
+  "Mockup pack ready: N of M renders — see result"
+- FAILED toast: "Pack hazırlanamadı: {error|"bilinmeyen hata"}" →
+  "Pack failed to render: {error|"unknown error"}"
+
+### Slice 3 — Test fixture EN migration (26 → 0 fail)
+
+`tests/unit/mockup/ui/` 7 dosyada toplam 26 fail; Phase 53/54/55/56
+component-level EN değişikliklerinin doğal yansıması. Hepsi assertion-
+only güncellemeleri (component davranışı zaten doğruydu):
+
+- `S8ResultView.test.tsx` (12 fail): "Pack hazır", "★ COVER", error
+  labels (Zaman aşımı/Şablon geçersiz/Tasarım sığmadı/Kaynak yetersiz/
+  Motor erişilemez), "Bulk download ZIP", "Listing'e gönder", partial
+  warning (text split → `getByTestId`), cover badge class regex order
+- `S7JobView.test.tsx` (6 fail): "Pack hazır", "3 render hazır",
+  "10 render toplamında", "~12 saniye kaldı", "Bu sayfayı kapatabilirsin",
+  "Pack hazırlanamadı", "İş iptal edildi", "S3'e dön", "İş'i iptal et"
+- `useMockupJobCompletionToast.test.tsx` (3 fail): toast mesajları EN
+- `SetSummaryCard.test.tsx` (1 fail): "6 mockup" → "6 mockups" (Phase
+  54 pluralization)
+- `DecisionBand.test.tsx` (1 fail): "Seçilmiş şablon yok…" → EN
+- `CoverSwapModal.test.tsx` (3 fail): TR copy → EN
+- `PackPreviewCard.test.tsx` (2 fail): TR copy → EN
+
+**Toplam: 26 → 0 fail**. Canonical paket (59) + mockup (245) = **304/304 PASS**.
+
+### Browser verification (live dev server kanıt)
+
+Apply view (`/selection/sets/cmov0ia370019149ljyu7divh/mockup/apply`):
+
+| Component | DOM kanıt |
+|---|---|
+| PackPreviewCard | `space-y-4 rounded-lg border border-line bg-paper p-4` ✓ |
+| Quick pack badge | text "★ Quick pack", bg `rgb(251, 234, 223)` k-orange-soft, color `rgb(142, 58, 18)` k-orange-ink ✓ |
+| DecisionBand | rendered + "Render (Quick pack)" CTA (k-btn--primary) ✓ |
+| SetSummaryCard | Phase 54-55 baseline intakt ✓ |
+| Screenshot | header lineage + READY badge + ★ QUICK PACK orange chip + SELECTED TEMPLATES mono cap + Bundle Preview chip (k-orange selected) + ESTIMATED TIME mono + Render primary — tek görsel aile |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **304/304 PASS** (canonical 59 + mockup 245)
+- Browser end-to-end: Apply view'da Phase 56 components Kivasy DS aile
+  parity'sinde canlı render
+
+### Değişmeyenler (Phase 56)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Mockup pipeline + hook semantics + test
+  fixture data shape intakt.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** 3 secondary component DS migration +
+  1 toast hook EN + bulk test fixture migration. Davranış değişmedi.
+- **References / Batch / Review / Selection / Mockup canonical akışları
+  intakt** (Phase 26-55 baseline).
+- **Listing builder + Product detail + Etsy Draft submit yüzeyleri
+  dokunulmadı** (Phase 9/14 baseline'ı EN parity'de).
+- **Kivasy DS dışına çıkılmadı.** Legacy raw tokens (`bg-accent`,
+  `bg-zinc-*`, `bg-amber-*`, `bg-blue-*`, `bg-red-*`, `bg-surface`,
+  `bg-surface-2`, `text-text`, `text-text-muted`, `border-border`,
+  `border-border-strong`, `text-accent`, `text-amber-700`) tamamen
+  silindi.
+
+### Bilinçli scope dışı (gerçek backlog/nice-to-have)
+
+- **`S1BrowseDrawer` + `S2DetailModal`**: Phase 56 audit'inde
+  comment-only TR (block comments + JSDoc) tespit edildi, visible UI
+  TR drift yok. Component-level scan: drawer template grid + detail
+  modal CTA copy mevcut hâliyle EN.
+- **Server-side `selection-lineage` resolver shared helper**: UI/server
+  build boundary nedeniyle ayrı tutuldu.
+- **Product detail Etsy Draft submit operator-friendly polish**:
+  SubmitResultPanel "view on Etsy" success expansion + retry flow
+  detail polish. Mevcut Phase 9 V1 EN + working baseline yeterli.
+- **Listing builder field-level polish**: Phase 9 V1 mevcut hâliyle
+  EN + production-ready.
+
+### Bundan sonra product olarak tek doğru iş
+
+**Canonical operator loop için artık ship-ready**:
+- References → Batch → Review → Selection → Mockup → Product → Etsy Draft
+- Her stage operator-friendly EN + Kivasy DS + lineage + state feedback
+  + reassurance
+- 304/304 unit tests PASS, typecheck clean
+- Browser end-to-end her halkada doğrulanmış
+
+Mockup studio + sub-components + toast hook + test fixtures hepsi tek
+ailede. Yalnız **backlog/nice-to-have** kaldı (server-side helper DRY,
+Product Etsy Draft "view on Etsy" success expansion, listing field-level
+polish, S1/S2 audit double-check).
+
+Canonical operator loop **production-ready ship quality**. Bu turdan
+sonra yeni özellik / yön / major refactor olmadan ship edilebilir.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

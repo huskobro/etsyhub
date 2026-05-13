@@ -75,7 +75,7 @@ describe("useMockupJobCompletionToast", () => {
     expect(mockToasts).toHaveLength(1);
     expect(mockToasts[0]).toEqual({
       tone: "success",
-      message: "Pack hazır: 10 görsel — Sonucu gör",
+      message: "Mockup pack ready: 10 renders — see result",
       source: "mockup-job",
     });
   });
@@ -105,7 +105,7 @@ describe("useMockupJobCompletionToast", () => {
     expect(mockToasts).toHaveLength(1);
     expect(mockToasts[0]).toEqual({
       tone: "success",
-      message: "Pack hazır: 7/10 görsel — Sonucu gör",
+      message: "Mockup pack ready: 7 of 10 renders — see result",
       source: "mockup-job",
     });
   });
@@ -135,7 +135,7 @@ describe("useMockupJobCompletionToast", () => {
     expect(mockToasts).toHaveLength(1);
     expect(mockToasts[0]).toEqual({
       tone: "error",
-      message: "Pack hazırlanamadı: Provider timeout",
+      message: "Pack failed to render: Provider timeout",
       source: "mockup-job",
     });
   });
@@ -165,7 +165,7 @@ describe("useMockupJobCompletionToast", () => {
     expect(mockToasts).toHaveLength(1);
     expect(mockToasts[0]).toEqual({
       tone: "error",
-      message: "Pack hazırlanamadı: bilinmeyen hata",
+      message: "Pack failed to render: unknown error",
       source: "mockup-job",
     });
   });

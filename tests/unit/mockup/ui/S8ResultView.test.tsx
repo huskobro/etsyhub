@@ -140,10 +140,10 @@ describe("<S8ResultView>", () => {
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
     // Başlık
-    expect(screen.getByText(/Pack hazır: 10\/10/)).toBeInTheDocument();
+    expect(screen.getByText(/10 of 10 renders succeeded/)).toBeInTheDocument();
 
     // Cover rozetini bul
-    expect(screen.getByText(/★ COVER/)).toBeInTheDocument();
+    expect(screen.getByText(/★ Cover/)).toBeInTheDocument();
   });
 
   it("Completed compat-limited (6/10): dürüst sayım + standart grid (6 slot)", () => {
@@ -174,10 +174,10 @@ describe("<S8ResultView>", () => {
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
     // Başlık dürüst sayım
-    expect(screen.getByText(/Pack hazır: 6\/6/)).toBeInTheDocument();
+    expect(screen.getByText(/Mockup pack ready/)).toBeInTheDocument();
 
     // Cover slot görünsün
-    expect(screen.getByText(/★ COVER/)).toBeInTheDocument();
+    expect(screen.getByText(/★ Cover/)).toBeInTheDocument();
   });
 
   it("Partial complete (8/10): grid + failed slot rozet + retry/swap", () => {
@@ -223,13 +223,15 @@ describe("<S8ResultView>", () => {
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
     // Başlık
-    expect(screen.getByText(/Pack hazır: 8\/10/)).toBeInTheDocument();
+    expect(screen.getByText(/8 of 10 renders succeeded/)).toBeInTheDocument();
 
-    // Failed renderler warning
-    expect(screen.getByText(/⚠ 2 render başarısız/)).toBeInTheDocument();
+    // Phase 53 — partial warning data-testid (copy text split across <strong> + text nodes)
+    expect(
+      screen.getByTestId("mockup-result-partial-warning"),
+    ).toBeInTheDocument();
   });
 
-  it("All failed: 'Pack üretilemedi' + hata özeti + recovery", () => {
+  it("All failed: 'Pack failed to render' + hata özeti + recovery", () => {
     const renders = [
       createMockRender({
         id: "render-1",
@@ -262,13 +264,13 @@ describe("<S8ResultView>", () => {
 
     // All failed view başlığı
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent(/Pack üretilemedi/);
+    expect(alert).toHaveTextContent(/Pack failed to render/);
 
     // Hata özeti
     expect(screen.getByText(/Provider erişilemez/)).toBeInTheDocument();
 
-    // S3'e dön butonu (recovery)
-    expect(screen.getByRole("button", { name: /S3'e dön/ })).toBeInTheDocument();
+    // Back to Mockup Studio butonu (recovery)
+    expect(screen.getByRole("button", { name: /Back to Mockup Studio/ })).toBeInTheDocument();
   });
 
   it("cover slot has ★ Cover badge + büyük thumbnail (sol üst)", () => {
@@ -291,11 +293,11 @@ describe("<S8ResultView>", () => {
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
     // Cover badge
-    const coverBadge = screen.getByText(/★ COVER/);
+    const coverBadge = screen.getByText(/★ Cover/);
     expect(coverBadge).toBeInTheDocument();
 
     // Cover badge pozisyonu (sol üst = top-2 left-2)
-    expect(coverBadge.className).toMatch(/top-2.*left-2/);
+    expect(coverBadge.className).toMatch(/left-2.*top-2/);
   });
 
   it("Bulk download ZIP triggers /download endpoint", () => {
@@ -309,7 +311,7 @@ describe("<S8ResultView>", () => {
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
     // Download link
-    const downloadLink = screen.getByRole("link", { name: /Bulk download ZIP/ });
+    const downloadLink = screen.getByRole("link", { name: /Download ZIP/ });
     expect(downloadLink).toHaveAttribute(
       "href",
       "/api/mockup/jobs/job-1/download"
@@ -350,7 +352,7 @@ describe("<S8ResultView>", () => {
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
     // 5-class hata rozet görünür
-    expect(screen.getByText(/Şablon geçersiz/)).toBeInTheDocument();
+    expect(screen.getByText(/Template invalid/)).toBeInTheDocument();
 
     // Swap butonu görünür (TEMPLATE_INVALID swap-only, retry yok)
     const swapButtons = screen.getAllByRole("button", { name: /^Swap$/i });
@@ -404,7 +406,7 @@ describe("<S8ResultView>", () => {
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
     // 5-class hata rozet görünür
-    expect(screen.getByText(/Zaman aşımı/)).toBeInTheDocument();
+    expect(screen.getByText(/Render timeout/)).toBeInTheDocument();
 
     // RENDER_TIMEOUT retryable → Retry butonu görünür
     const retryButtons = screen.getAllByRole("button", { name: /^Retry$/i });
@@ -508,11 +510,11 @@ describe("<S8ResultView>", () => {
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
     // ERROR_LABELS mapping kontrolü
-    expect(screen.getByText(/Zaman aşımı/)).toBeInTheDocument(); // RENDER_TIMEOUT
-    expect(screen.getByText(/Şablon geçersiz/)).toBeInTheDocument(); // TEMPLATE_INVALID
-    expect(screen.getByText(/Tasarım sığmadı/)).toBeInTheDocument(); // SAFE_AREA_OVERFLOW
-    expect(screen.getByText(/Kaynak yetersiz/)).toBeInTheDocument(); // SOURCE_QUALITY
-    expect(screen.getByText(/Motor erişilemez/)).toBeInTheDocument(); // PROVIDER_DOWN
+    expect(screen.getByText(/Render timeout/)).toBeInTheDocument(); // RENDER_TIMEOUT
+    expect(screen.getByText(/Template invalid/)).toBeInTheDocument(); // TEMPLATE_INVALID
+    expect(screen.getByText(/Design didn't fit/)).toBeInTheDocument(); // SAFE_AREA_OVERFLOW
+    expect(screen.getByText(/Source quality too low/)).toBeInTheDocument(); // SOURCE_QUALITY
+    expect(screen.getByText(/Provider unreachable/)).toBeInTheDocument(); // PROVIDER_DOWN
   });
 
   // ────────────────────────────────────────────────────────────
@@ -536,7 +538,7 @@ describe("<S8ResultView>", () => {
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
     // CTA butonu aktif olmalı (disabled değil)
-    const ctaBtn = screen.getByRole("button", { name: /Listing'e gönder/i });
+    const ctaBtn = screen.getByRole("button", { name: /Create listing draft/i });
     expect(ctaBtn).toBeInTheDocument();
     expect(ctaBtn).not.toHaveAttribute("disabled");
   });
@@ -557,7 +559,7 @@ describe("<S8ResultView>", () => {
 
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
-    const ctaBtn = screen.getByRole("button", { name: /Listing'e gönder/i });
+    const ctaBtn = screen.getByRole("button", { name: /Create listing draft/i });
     fireEvent.click(ctaBtn);
 
     await waitFor(() => {
@@ -584,7 +586,7 @@ describe("<S8ResultView>", () => {
 
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
-    const ctaBtn = screen.getByRole("button", { name: /Listing'e gönder/i });
+    const ctaBtn = screen.getByRole("button", { name: /Create listing draft/i });
     fireEvent.click(ctaBtn);
 
     await waitFor(() => {
@@ -608,7 +610,7 @@ describe("<S8ResultView>", () => {
 
     render(<S8ResultView setId="test-set" jobId="job-1" />, { wrapper });
 
-    const ctaBtn = screen.getByRole("button", { name: /Listing oluşturuluyor/i });
+    const ctaBtn = screen.getByRole("button", { name: /Creating listing draft/i });
     expect(ctaBtn).toHaveAttribute("disabled");
   });
 });

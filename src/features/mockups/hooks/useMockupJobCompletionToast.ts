@@ -50,19 +50,19 @@ export function useMockupJobCompletionToast(
       if (currentStatus === "COMPLETED") {
         push({
           tone: "success",
-          message: `Pack hazır: ${job?.successRenders ?? 0} görsel — Sonucu gör`,
+          message: `Mockup pack ready: ${job?.successRenders ?? 0} renders — see result`,
           source: "mockup-job",
         });
       } else if (currentStatus === "PARTIAL_COMPLETE") {
         push({
           tone: "success",
-          message: `Pack hazır: ${job?.successRenders ?? 0}/${job?.actualPackSize ?? 0} görsel — Sonucu gör`,
+          message: `Mockup pack ready: ${job?.successRenders ?? 0} of ${job?.actualPackSize ?? 0} renders — see result`,
           source: "mockup-job",
         });
       } else if (currentStatus === "FAILED") {
         push({
           tone: "error",
-          message: `Pack hazırlanamadı: ${job?.errorSummary ?? "bilinmeyen hata"}`,
+          message: `Pack failed to render: ${job?.errorSummary ?? "unknown error"}`,
           source: "mockup-job",
         });
       }

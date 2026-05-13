@@ -146,15 +146,15 @@ describe("<S7JobView>", () => {
     // Progress ring var mı?
     expect(screen.getByRole("status")).toBeInTheDocument();
 
-    // "3 render hazır" metni
-    expect(screen.getByText(/3 render hazır/)).toBeInTheDocument();
-    expect(screen.getByText(/10 render toplamında/)).toBeInTheDocument();
+    // "3 of 10" metni
+    expect(screen.getByText(/3 of 10/)).toBeInTheDocument();
+    expect(screen.getByText(/10 render/)).toBeInTheDocument();
 
     // Render timeline
     expect(screen.getByText(/Template A/)).toBeInTheDocument();
   });
 
-  it("shows ETA approximate ('~12 saniye kaldı')", () => {
+  it("shows ETA approximate ('~12s remaining')", () => {
     const futureTime = new Date(Date.now() + 12000);
     const job = createMockJob({
       status: "RUNNING",
@@ -169,8 +169,8 @@ describe("<S7JobView>", () => {
 
     render(<S7JobView setId="test-set" jobId="job-1" />, { wrapper });
 
-    // ~12 saniye kaldı metni
-    const etaText = screen.getByText(/~\d+ saniye kaldı/);
+    // ~12s remaining metni
+    const etaText = screen.getByText(/~\d+s remaining/);
     expect(etaText).toBeInTheDocument();
   });
 
@@ -201,7 +201,7 @@ describe("<S7JobView>", () => {
     expect(screen.getByTestId("success-feedback")).toBeInTheDocument();
   });
 
-  it("FAILED view: hata + S3'e dön butonu", () => {
+  it("FAILED view: hata + Back to Mockup Studio butonu", () => {
     const job = createMockJob({
       status: "FAILED",
       errorSummary: "Provider erişilemez",
@@ -215,16 +215,16 @@ describe("<S7JobView>", () => {
     render(<S7JobView setId="test-set" jobId="job-1" />, { wrapper });
 
     // Hata başlığı
-    expect(screen.getByText(/Pack hazırlanamadı/)).toBeInTheDocument();
+    expect(screen.getByText(/Pack failed to render/)).toBeInTheDocument();
 
     // Hata özeti
     expect(screen.getByText(/Provider erişilemez/)).toBeInTheDocument();
 
-    // S3'e dön butonu
-    expect(screen.getByRole("button", { name: /S3'e dön/ })).toBeInTheDocument();
+    // Back to Mockup Studio butonu
+    expect(screen.getByRole("button", { name: /Back to Mockup Studio/ })).toBeInTheDocument();
   });
 
-  it("CANCELLED view: S3'e dön", () => {
+  it("CANCELLED view: Back to Mockup Studio", () => {
     const job = createMockJob({ status: "CANCELLED" });
     mockUseMockupJobReturn = {
       data: job,
@@ -235,13 +235,13 @@ describe("<S7JobView>", () => {
     render(<S7JobView setId="test-set" jobId="job-1" />, { wrapper });
 
     // İptal metni
-    expect(screen.getByText(/İş iptal edildi/)).toBeInTheDocument();
+    expect(screen.getByText(/Job cancelled/)).toBeInTheDocument();
 
-    // S3'e dön butonu
-    expect(screen.getByRole("button", { name: /S3'e dön/ })).toBeInTheDocument();
+    // Back to Mockup Studio butonu
+    expect(screen.getByRole("button", { name: /Back to Mockup Studio/ })).toBeInTheDocument();
   });
 
-  it("'Sayfayı kapatabilirsin' güvence metni görünür", () => {
+  it("'You can close this pagesin' güvence metni görünür", () => {
     const job = createMockJob({ status: "RUNNING" });
     mockUseMockupJobReturn = {
       data: job,
@@ -253,7 +253,7 @@ describe("<S7JobView>", () => {
 
     // Güvence metni
     expect(
-      screen.getByText(/Bu sayfayı kapatabilirsin/)
+      screen.getByText(/You can close this page/)
     ).toBeInTheDocument();
   });
 
@@ -267,7 +267,7 @@ describe("<S7JobView>", () => {
 
     render(<S7JobView setId="test-set" jobId="job-1" />, { wrapper });
 
-    const cancelButton = screen.getByRole("button", { name: /İş'i iptal et/ });
+    const cancelButton = screen.getByRole("button", { name: /Cancel job/ });
     expect(cancelButton).toBeInTheDocument();
   });
 });

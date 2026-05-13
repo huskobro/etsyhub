@@ -58,25 +58,38 @@ export function PackPreviewCard({
   const hasIncompatibleWarning =
     selectedTemplateIds.length === 0 && !isQuickPack;
 
+  /* Phase 56 — EN parity + Kivasy DS migration:
+   *   - border-border → border-line bg-paper
+   *   - bg-amber-50 text-amber-900 quick-pack badge → bg-k-orange-soft +
+   *     border-k-orange/40 + text-k-orange-ink mono uppercase recipe
+   *     (Phase 51 status badge family parity)
+   *   - bg-blue-100 text-blue-700 Customized chip → bg-k-bg-2 +
+   *     border-line-soft + text-ink-2 mono recipe
+   *   - text-text / text-text-muted → text-ink / text-ink-3
+   *   - "Seçili Şablonlar" → "Selected templates" (mono uppercase)
+   *   - "Şablonları Özelleştir" → "Customize templates"
+   *   - Customize button raw `bg-white border border-border` →
+   *     k-btn k-btn--secondary recipe */
   return (
     <section
       aria-label="Pack preview"
-      className="space-y-4 rounded-md border border-border p-4"
+      data-testid="mockup-pack-preview-card"
+      className="space-y-4 rounded-lg border border-line bg-paper p-4"
     >
       {/* Header: pack type + count */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span
           data-testid="pack-badge"
-          className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900"
+          className="inline-flex items-center rounded-md border border-k-orange/40 bg-k-orange-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-meta text-k-orange-ink shadow-sm"
         >
           {isQuickPack ? "★ Quick pack" : "Custom pack"}
         </span>
-        <span className="text-sm text-text">
-          • {selectedTemplateIds.length} image{selectedTemplateIds.length === 1 ? "" : "s"} to render
+        <span className="text-sm text-ink">
+          · {selectedTemplateIds.length} image{selectedTemplateIds.length === 1 ? "" : "s"} to render
         </span>
         {isDirty && (
           <span
-            className="ml-auto inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700"
+            className="ml-auto inline-flex items-center rounded-md border border-line-soft bg-k-bg-2 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-meta text-ink-2"
             title="Different from the default Quick pack"
           >
             Customized
@@ -84,7 +97,7 @@ export function PackPreviewCard({
         )}
       </div>
 
-      {/* Uyumsuzluk uyarısı */}
+      {/* Incompatible warning */}
       {hasIncompatibleWarning && <IncompatibleSetBand />}
 
       {/* Template grid / empty state */}
@@ -92,8 +105,8 @@ export function PackPreviewCard({
         <EmptyPackState onCustomizeClick={onCustomizeClick} />
       ) : (
         <div className="space-y-3">
-          <p className="text-xs font-medium text-text-muted">
-            Seçili Şablonlar
+          <p className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+            Selected templates
           </p>
           <div className="flex flex-wrap gap-2">
             {selectedTemplates.map((template) => (
@@ -114,9 +127,11 @@ export function PackPreviewCard({
         <button
           type="button"
           onClick={onCustomizeClick}
-          className="mt-4 block w-full rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-text hover:bg-surface"
+          className="k-btn k-btn--secondary w-full"
+          data-size="sm"
+          data-testid="mockup-pack-customize"
         >
-          Şablonları Özelleştir
+          Customize templates
         </button>
       )}
     </section>

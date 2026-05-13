@@ -75,7 +75,7 @@ describe("<CoverSwapModal>", () => {
     );
 
     // Modal title
-    expect(screen.getByText(/Cover Görselini Değiştir/)).toBeInTheDocument();
+    expect(screen.getByText(/Swap cover image/)).toBeInTheDocument();
 
     // 3 alternatif görünsün
     const thumbnails = screen.getAllByRole("img", { name: /thumbnail/ });
@@ -150,8 +150,8 @@ describe("<CoverSwapModal>", () => {
     // İlk alternatif seç
     if (buttons[0]) fireEvent.click(buttons[0]);
 
-    // "Cover Olarak Ayarla" butonu tıkla
-    const submitButton = screen.getByRole("button", { name: /Cover Olarak Ayarla/ });
+    // "Set as cover" butonu tıkla
+    const submitButton = screen.getByRole("button", { name: /Set as cover/ });
     if (submitButton) fireEvent.click(submitButton);
 
     // POST /api/mockup/jobs/job-1/cover çağrısı
@@ -212,7 +212,7 @@ describe("<CoverSwapModal>", () => {
     );
     if (buttons[0]) fireEvent.click(buttons[0]);
 
-    const submitButton = screen.getByRole("button", { name: /Cover Olarak Ayarla/ });
+    const submitButton = screen.getByRole("button", { name: /Set as cover/ });
     if (submitButton) fireEvent.click(submitButton);
 
     // refetchQueries çağrılmalı (mockupJobQueryKey)

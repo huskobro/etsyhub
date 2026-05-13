@@ -109,7 +109,7 @@ describe("<PackPreviewCard>", () => {
         selectedTemplateIds={[]}
       />
     );
-    expect(screen.getByText(/Seçilmiş mockup şablonu yok/)).toBeInTheDocument();
+    expect(screen.getByText(/No mockup template selected/)).toBeInTheDocument();
   });
 
   it("shows customize button for custom pack", () => {
@@ -119,7 +119,7 @@ describe("<PackPreviewCard>", () => {
         isQuickPack={false}
       />
     );
-    expect(screen.getByText(/Şablonları Özelleştir/)).toBeInTheDocument();
+    expect(screen.getByText(/Customize templates/)).toBeInTheDocument();
   });
 
   it("hides customize button for quick pack", () => {
@@ -129,7 +129,7 @@ describe("<PackPreviewCard>", () => {
         isQuickPack={true}
       />
     );
-    expect(queryByText(/Şablonları Özelleştir/)).not.toBeInTheDocument();
+    expect(queryByText(/Customize templates/)).not.toBeInTheDocument();
   });
 
   it("lists selected templates", () => {

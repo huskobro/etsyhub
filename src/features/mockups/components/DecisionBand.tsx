@@ -59,32 +59,49 @@ export function DecisionBand({
       await onSubmit();
     } catch (error) {
       setSubmitError(
-        error instanceof Error ? error.message : "Bilinmeyen bir hata oluştu",
+        error instanceof Error ? error.message : "Unexpected error",
       );
     }
   };
 
   return (
-    <footer className="sticky bottom-0 border-t border-border bg-white px-6 py-3">
+    /* Phase 56 — DS migration + EN parity.
+     *   - border-border bg-white → border-line bg-paper
+     *   - bg-red-50 text-red-700 → border-danger/40 bg-danger/5 text-danger
+     *   - text-text-muted → text-ink-3 (mono cap)
+     *   - text-accent → text-k-orange-ink
+     *   - bg-zinc-900/200 → k-btn k-btn--primary recipe (canonical DS)
+     *   - text-amber-700 → text-warning + warning-soft container
+     *   - "Bilinmeyen bir hata oluştu" → "Unexpected error"
+     *   - "Seçilmiş şablon yok. Lütfen en az bir şablon seçiniz." →
+     *     "No templates selected. Pick at least one template to render."
+     */
+    <footer
+      className="sticky bottom-0 border-t border-line bg-paper px-6 py-3"
+      data-testid="mockup-decision-band"
+    >
       <div className="space-y-3">
         {/* Error message (if any) */}
         {submitError && (
-          <div className="rounded-md bg-red-50 px-3 py-2">
-            <p className="text-xs font-medium text-red-700">{submitError}</p>
+          <div
+            role="alert"
+            className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2"
+          >
+            <p className="text-xs font-medium text-danger">{submitError}</p>
           </div>
         )}
 
         {/* Controls row */}
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-sm text-text-muted">
-              Estimated time: {estimatedLabel}
+            <p className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+              Estimated time · {estimatedLabel}
             </p>
             {isDirty && (
               <button
                 type="button"
                 onClick={onReset}
-                className="text-xs text-accent hover:underline"
+                className="font-mono text-[10.5px] uppercase tracking-meta text-k-orange-ink hover:underline"
               >
                 Reset to Quick pack
               </button>
@@ -95,14 +112,12 @@ export function DecisionBand({
             type="button"
             onClick={handleSubmit}
             disabled={isDisabled}
-            className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              isDisabled
-                ? "cursor-not-allowed bg-zinc-200 text-zinc-500"
-                : "bg-zinc-900 text-white hover:bg-zinc-800"
-            }`}
+            className="k-btn k-btn--primary"
+            data-size="sm"
+            data-testid="mockup-decision-band-render"
           >
             {isSubmitting && (
-              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-r-transparent" />
             )}
             <span>
               Render ({isQuickPack ? "Quick pack" : "Custom pack"})
@@ -112,9 +127,18 @@ export function DecisionBand({
 
         {/* Warning: no selection */}
         {noValidSelection && (
-          <p className="text-xs text-amber-700">
-            Seçilmiş şablon yok. Lütfen en az bir şablon seçiniz.
-          </p>
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning-soft/40 px-3 py-2"
+          >
+            <span
+              className="mt-1 inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning"
+              aria-hidden
+            />
+            <p className="text-xs text-ink-2">
+              No templates selected. Pick at least one template to render.
+            </p>
+          </div>
         )}
       </div>
     </footer>
