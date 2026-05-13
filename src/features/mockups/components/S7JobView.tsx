@@ -10,6 +10,7 @@ import {
 } from "@/features/mockups/hooks/useMockupJob";
 import { useMockupJobCompletionToast } from "@/features/mockups/hooks/useMockupJobCompletionToast";
 import { useSelectionSet } from "@/features/selection/queries";
+import { resolveSourceBatchId } from "@/lib/selection-lineage";
 import { Button } from "@/components/ui/Button";
 import {
   AlertTriangle,
@@ -44,23 +45,7 @@ import { cn } from "@/lib/cn";
 
 const REDIRECT_FEEDBACK_MS = 400; // 250-500ms aralığı (Spec §5.5)
 
-/* Phase 53 lineage helper parity — sourceMetadata'dan canonical
- * source batch id (variation-batch + mjOrigin format). Schema-zero. */
-function resolveSourceBatchId(sourceMetadata: unknown): string | null {
-  if (!sourceMetadata || typeof sourceMetadata !== "object") return null;
-  const md = sourceMetadata as Record<string, unknown>;
-  if (md.kind === "variation-batch" && typeof md.batchId === "string") {
-    return md.batchId;
-  }
-  const mjOrigin = md.mjOrigin;
-  if (mjOrigin && typeof mjOrigin === "object") {
-    const batchIds = (mjOrigin as Record<string, unknown>).batchIds;
-    if (Array.isArray(batchIds) && typeof batchIds[0] === "string") {
-      return batchIds[0] as string;
-    }
-  }
-  return null;
-}
+// Phase 55 — Inline helper @/lib/selection-lineage'a taşındı (DRY).
 
 export function S7JobView({
   setId,

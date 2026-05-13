@@ -10,6 +10,7 @@ import {
 } from "@/features/mockups/hooks/useMockupJob";
 import { useCreateListingDraft } from "@/features/listings/hooks/useCreateListingDraft";
 import { useSelectionSet } from "@/features/selection/queries";
+import { resolveSourceBatchId } from "@/lib/selection-lineage";
 import { Button } from "@/components/ui/Button";
 import {
   AlertTriangle,
@@ -55,24 +56,7 @@ const ERROR_LABELS: Record<string, { label: string; actions: string[] }> = {
   PROVIDER_DOWN: { label: "Provider unreachable", actions: ["retry"] },
 };
 
-/* Phase 52 lineage helper parity — resolve canonical source batch id
- * from SelectionSet.sourceMetadata (two formats: variation-batch or
- * mjOrigin). Schema-zero read. */
-function resolveSourceBatchId(sourceMetadata: unknown): string | null {
-  if (!sourceMetadata || typeof sourceMetadata !== "object") return null;
-  const md = sourceMetadata as Record<string, unknown>;
-  if (md.kind === "variation-batch" && typeof md.batchId === "string") {
-    return md.batchId;
-  }
-  const mjOrigin = md.mjOrigin;
-  if (mjOrigin && typeof mjOrigin === "object") {
-    const batchIds = (mjOrigin as Record<string, unknown>).batchIds;
-    if (Array.isArray(batchIds) && typeof batchIds[0] === "string") {
-      return batchIds[0] as string;
-    }
-  }
-  return null;
-}
+// Phase 55 — Inline helper @/lib/selection-lineage'a taşındı (DRY).
 
 function AllFailedView({
   setId,
@@ -187,8 +171,13 @@ function CoverSlot({
 
   return (
     <>
-      <div className="group relative overflow-hidden rounded-lg border-2 border-accent shadow-lg">
-        <div className="flex aspect-square items-center justify-center bg-gray-100">
+      {/* Phase 55 — Cover tile DS migration.
+       *   - border-accent → border-k-orange (Kivasy primary)
+       *   - bg-gray-100 → bg-k-bg-2 (paper-friendly neutral)
+       *   - text-gray-400 → text-ink-3
+       *   - bg-accent badge → bg-k-orange + uppercase mono tracking-meta */}
+      <div className="group relative overflow-hidden rounded-lg border-2 border-k-orange shadow-lg">
+        <div className="flex aspect-square items-center justify-center bg-k-bg-2">
           {render.outputKey ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -197,13 +186,13 @@ function CoverSlot({
               className="h-full w-full object-cover"
             />
           ) : (
-            <span className="text-gray-400">No image</span>
+            <span className="text-ink-3">No image</span>
           )}
         </div>
 
-        {/* Cover badge */}
-        <div className="absolute left-2 top-2 rounded bg-accent px-2 py-1 text-xs font-bold text-white">
-          ★ COVER
+        {/* Cover badge — Kivasy DS mono recipe (Phase 51 status badge parity) */}
+        <div className="absolute left-2 top-2 rounded-md bg-k-orange px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-meta text-white shadow-sm">
+          ★ Cover
         </div>
 
         {/* Hover actions */}
@@ -248,9 +237,15 @@ function SuccessRenderSlot({
   render: MockupRenderView;
   jobId: string;
 }) {
+  /* Phase 55 — Success render tile DS migration:
+   *   - border → border-line (Kivasy DS line token)
+   *   - shadow → shadow-sm (paper-friendly)
+   *   - bg-gray-100 → bg-k-bg-2
+   *   - text-gray-400 → text-ink-3
+   *   - bottom variant ID overlay bg-black/70 → bg-ink/85 */
   return (
-    <div className="group relative overflow-hidden rounded-lg border shadow">
-      <div className="flex aspect-square items-center justify-center bg-gray-100">
+    <div className="group relative overflow-hidden rounded-lg border border-line shadow-sm">
+      <div className="flex aspect-square items-center justify-center bg-k-bg-2">
         {render.outputKey ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -259,15 +254,15 @@ function SuccessRenderSlot({
             className="h-full w-full object-cover"
           />
         ) : (
-          <span className="text-gray-400">No image</span>
+          <span className="text-ink-3">No image</span>
         )}
       </div>
 
       {/* Hover actions */}
       <PerRenderActions render={render} jobId={jobId} isCover={false} />
 
-      {/* Variant ID */}
-      <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 text-xs text-white">
+      {/* Variant ID — Phase 55 DS overlay: ink/85 + mono uppercase */}
+      <div className="absolute bottom-0 left-0 right-0 bg-ink/85 px-2 py-1.5 font-mono text-[10px] uppercase tracking-meta text-white">
         {render.variantId.substring(0, 12)}
       </div>
     </div>
@@ -297,8 +292,8 @@ function FailedRenderSlot({
       {/* Hover actions */}
       <PerRenderActions render={render} jobId={jobId} isCover={false} />
 
-      {/* Error detail */}
-      <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 text-xs text-white">
+      {/* Error detail — Phase 55 DS overlay (ink/85 + mono) */}
+      <div className="absolute bottom-0 left-0 right-0 bg-ink/85 px-2 py-1.5 font-mono text-[10px] tracking-meta text-white">
         <p className="truncate">{render.errorDetail || "No detail"}</p>
       </div>
     </div>

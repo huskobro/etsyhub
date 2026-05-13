@@ -10892,6 +10892,232 @@ yalnız görsel/parity detay polish.
 
 ---
 
+## Phase 55 — Shipping-quality final sweep (tile DS + sub-components EN + shared helper)
+
+Phase 54 mockup studio'nun hero/state polish'ini yapmıştı. Phase 55
+**shipping-quality consolidation**: tile-level DS migration + alt
+bileşenlerde TR drift cleanup + Phase 50-54 boyunca biriken inline
+lineage helper kopyalarının ortak modüle çekilmesi. Yeni feature yok;
+yalnız son mil parity.
+
+### Phase 54 sonrası shipping kalitesinde kalan boşluklar
+
+1. **S8ResultView tile components legacy**:
+   - `CoverSlot`: `border-2 border-accent` (Tailwind raw) + `bg-gray-100` +
+     `bg-accent px-2 py-1 text-xs font-bold` cover badge (Phase 51 mono
+     uppercase recipe parity dışı)
+   - `SuccessRenderSlot`: `border shadow` + `bg-gray-100` + variant ID
+     overlay `bg-black/70 text-xs`
+   - `FailedRenderSlot`: error overlay `bg-black/70 text-xs`
+   - Tile-level legacy artıkları Phase 53/54 hero polish'ten kalmıştı.
+2. **Mockup sub-components TR drift (Phase 15 EN parity catch-up)**:
+   - `CoverSwapModal`: 6 TR string ("Cover Görselini Değiştir", "İptal",
+     "Cover Olarak Ayarla", "Değiştiriliyor…", "Thumbnail yok",
+     "Başka başarılı render yok") + legacy `bg-text/40 bg-bg
+     border-accent bg-accent/10 border-border-strong text-muted-foreground
+     bg-surface-2`
+   - `PerRenderActions`: 3 TR string ("Cover Yap", "İndir", "Retry başarısız",
+     "Swap başarısız") + raw `bg-black/60 text-red-200 bg-red-900/60`
+   - `IncompatibleSetBand`: tam TR ("Seçili set parametreleriyle
+     uyumlu mockup şablonu bulunamadı", "Lütfen Özel Seçim yaparak
+     manuel olarak şablon seçiniz") + legacy `bg-amber-50 text-amber-900
+     text-amber-800`
+   - `EmptyPackState`: tam TR ("Seçilmiş mockup şablonu yok",
+     "Quickpack veya özel seçim yapınız", "Şablon Seç") + legacy
+     `border-border bg-surface-2 text-text text-text-muted bg-accent
+     hover:bg-accent-dark`
+3. **`resolveSourceBatchId` inline kopya × 3** (Phase 54 candidate'tan
+   devir): SetSummaryCard / S7JobView / S8ResultView aynı helper'ı
+   bağımsız kopya tutuyordu.
+
+### Slice 1 — Shared `@/lib/selection-lineage` helper
+
+Yeni dosya `src/lib/selection-lineage.ts`:
+
+- `SelectionSourceLineage` type (`batchId + referenceId`)
+- `resolveSelectionLineage(sourceMetadata)` — iki canonical format
+  (variation-batch + mjOrigin) parse helper. CLAUDE.md Phase 50 server-
+  side resolver ile davranış parity (UI tarafı için ayrı modül; server
+  modülü kendi inline kopyasını korur — build boundary ayrı).
+- `resolveSourceBatchId(sourceMetadata)` — convenience shorthand (yalnız
+  batchId döner; UI tarafının çoğu kullanım bu)
+
+3 dosyadaki inline kopyalar kaldırıldı:
+- `SetSummaryCard.tsx` — Phase 52 inline → import
+- `S7JobView.tsx` — Phase 54 inline → import
+- `S8ResultView.tsx` — Phase 53 inline → import
+
+Davranış değişmez (3 helper aynı parse logic'iydi); 30 satırlık DRY.
+
+### Slice 2 — S8ResultView tile DS migration
+
+`CoverSlot`:
+- `border-2 border-accent` → `border-2 border-k-orange`
+- `bg-gray-100` → `bg-k-bg-2`
+- `text-gray-400` → `text-ink-3`
+- Cover badge: `bg-accent px-2 py-1 text-xs font-bold text-white` →
+  `bg-k-orange px-2 py-0.5 font-mono text-[10px] font-semibold uppercase
+  tracking-meta text-white shadow-sm` (Phase 51 status badge mono recipe
+  parity)
+- "★ COVER" → "★ Cover" (capitalize)
+
+`SuccessRenderSlot`:
+- `border shadow` → `border border-line shadow-sm`
+- `bg-gray-100` → `bg-k-bg-2`
+- `text-gray-400` → `text-ink-3`
+- Variant ID overlay: `bg-black/70 p-2 text-xs text-white` →
+  `bg-ink/85 px-2 py-1.5 font-mono text-[10px] uppercase tracking-meta
+  text-white`
+
+`FailedRenderSlot`:
+- Error overlay aynı pattern: `bg-black/70 text-xs` → `bg-ink/85
+  font-mono text-[10px] tracking-meta`
+- (Phase 53'te border + bg zaten danger/40 + danger/5'e geçmişti)
+
+### Slice 3 — Mockup sub-components EN parity
+
+**`CoverSwapModal`**:
+- "Cover Görselini Değiştir" → "Swap cover image"
+- "Alternatif görsellerden birini seç" → "Pick an alternative render"
+- "Başka başarılı render yok." → "No other successful renders."
+- "Thumbnail yok" → "No thumbnail"
+- "İptal" → "Cancel"
+- "Cover Olarak Ayarla" / "Değiştiriliyor…" → "Set as cover" / "Swapping…"
+- Backdrop `bg-text/40` → `bg-ink/40 backdrop-blur-sm`
+- Modal `bg-bg rounded-lg shadow-lg` → `border border-line bg-paper
+  rounded-lg shadow-lg`
+- Selected tile `border-accent bg-accent/10` → `border-k-orange
+  bg-k-orange-soft`
+- Border `border-border / border-border-strong` → `border-line /
+  border-line-strong`
+- Caption `text-muted-foreground` → `text-ink-3`
+- Variant ID label `text-xs mt-1 text-center truncate` → `mt-1
+  truncate text-center font-mono text-[10.5px] tracking-meta text-ink-2`
+- Thumbnail empty: `bg-surface-2 text-muted-foreground` → `bg-k-bg-2
+  text-ink-3`
+- `data-testid="cover-swap-modal"` eklendi
+
+**`PerRenderActions`**:
+- "Cover Yap" → "Set as cover"
+- "İndir" → "Download"
+- Error fallback "Retry başarısız" / "Swap başarısız" → "Retry failed"
+  / "Swap failed"
+- Hover overlay `bg-black/60` → `bg-ink/60`
+- Error pill `text-xs text-red-200 bg-red-900/60 px-2 py-1 rounded` →
+  `rounded-md bg-danger/80 px-2 py-1 font-mono text-[10.5px] tracking-meta
+  text-white`
+
+**`IncompatibleSetBand`**:
+- TR copy tamamen EN: "No compatible mockup templates for this set" +
+  "Use Custom Selection to pick a template manually."
+- `bg-amber-50 text-amber-900 text-amber-800` → `border-warning/40
+  bg-warning-soft/40` + `text-warning` icon + `text-ink` body + mono
+  uppercase tracking-meta caption
+- `AlertTriangle` icon eklendi (önceden ⚠ glif)
+- `role="alert"` semantic
+- `data-testid="mockup-incompatible-set-band"` eklendi
+
+**`EmptyPackState`**:
+- TR copy tamamen EN: "No mockup template selected" + "Pick a Quick
+  pack or use Custom Selection" + button "Pick templates"
+- `border-border bg-surface-2 text-text text-text-muted` → `border-line
+  bg-k-bg-2/60` + mono uppercase tracking-meta caption + `text-ink-3`
+- Button raw `bg-accent px-4 py-2 text-sm font-medium text-white
+  hover:bg-accent-dark` → `k-btn k-btn--primary data-size="sm"` recipe
+- `data-testid="mockup-empty-pack-state"` eklendi
+
+### Mockup studio'da kalan TR/legacy izleri kontrol
+
+Phase 55 sonrası mockup tarafında **TR drift kalmadı**, legacy token
+(`bg-gray-*, bg-blue-*, bg-amber-*, bg-text, bg-bg, bg-accent,
+text-text, text-text-muted, text-muted-foreground, var(--color-*)`)
+artıkları **silindi**. Mockup studio (S3/S7/S8 + sub-components +
+modals) tamamen Kivasy DS recipe'lerinde.
+
+### Browser verification (live dev server kanıt)
+
+**S8 tile DS migration** (`mockup/jobs/cmordz8ps000puuvcnorz285w/result`
+mevcut COMPLETED job):
+
+| Test | Sonuç |
+|---|---|
+| 10 tile rendered | ✓ |
+| Cover tile border | `rgb(232, 93, 37)` (k-orange) ✓ |
+| Cover badge bg | `rgb(232, 93, 37)` k-orange + color white ✓ |
+| Cover badge text | "★ Cover" (capitalize) ✓ |
+| 10 inner placeholder `bg-k-bg-2` (legacy `bg-gray-100` gitti) | ✓ |
+| Screenshot | header lineage + orange Create listing draft + Download secondary + k-orange cover border + "★ COVER" mono badge + CMORDZBPM/Q variant ID overlay (mono uppercase tracking-meta + bg-ink/85) |
+
+Sub-component EN parity için canlı render path doğru:
+- `CoverSwapModal`: hover trigger gerektiren modal (DOM açma için
+  custom state); component-level path typecheck temiz + tests temiz
+- `PerRenderActions`: hover overlay reveal pattern; render path doğru
+- `IncompatibleSetBand` / `EmptyPackState`: conditional rendering
+  (set/pack state'e bağlı); component-level path doğru, code-level
+  EN copy doğrulandı
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: 59/59 PASS (canonical paket)
+- Browser: S8 tile DS migration canlı kanıt (cover k-orange + bg-k-bg-2
+  + mono badge + ink/85 overlay'lar)
+
+### Değişmeyenler (Phase 55)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Mockup pipeline + Selection sourceMetadata
+  Phase 8/Phase 50 baseline'ı intakt.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek küçük shared helper (`@/lib/
+  selection-lineage`); behavior değiştirmedi, yalnız DRY temizliği.
+- **References / Batch / Review / Selection / Mockup apply (S3) /
+  Mockup in-progress (S7) / Mockup result hero akışları intakt**
+  (Phase 26-54 baseline).
+- **Listing builder + Product detail + Etsy Draft submit dokunulmadı**
+  (Phase 9/14 baseline'ı EN parity'de).
+- **Kivasy DS dışına çıkılmadı.** k-orange + k-orange-soft + k-bg-2 +
+  line + line-strong + line-soft + ink/ink-2/ink-3 + ink/40/60/85 +
+  paper + warning + warning-soft + danger + danger/5/40/80 recipe'leri
+  kullanıldı.
+
+### Bilinçli scope dışı (Phase 56+ candidate)
+
+- **Other mockup studio components**: `S1BrowseDrawer`, `S2DetailModal`,
+  `DecisionBand`, `PackPreviewCard`, `TemplateChip` — Phase 55 audit'inde
+  S8 tile + 4 sub-component'e odaklandı. Bu kalan 5 component'in TR
+  drift / DS migration kontrol turu Phase 56+ candidate.
+- **Listing builder field-level polish**: `MetadataSection`,
+  `PricingSection`, `AssetSection` — Phase 9 V1 EN parity zaten
+  oturmuş; field-level DS migration ayrı tur.
+- **Product detail Etsy Draft submit operator-friendly polish**
+  (Phase 53/54 candidate'tan devir): SubmitResultPanel mevcut EN +
+  working; "view on Etsy" success expansion + retry flow polish
+  ayrı tur.
+
+### Bundan sonra product olarak tek doğru iş
+
+Canonical omurganın tüm operator-facing halkaları (References → Batch
+→ Review → Selection → Mockup → Product → Etsy Draft) **shipping
+quality**:
+- EN parity tam
+- Kivasy DS recipe'lerinde
+- Lineage chip aile parity
+- State feedback (success / partial / failed / cancelled / pending /
+  selected / undecided)
+- Operator-friendly hierarchy + reassurance copy
+
+**Mockup studio shipping kalitesinde tam** (S3 + S7 + S8 hero +
+tiles + sub-components + modals). Kalan iş **mockup pack-decision
+yardımcı components** (Phase 56+) + **Etsy Draft submit confidence
+last-mile polish** (Phase 56+).
+
+Canonical omurga **production-ready full loop**. Phase 55 ile **ship
+edilebilir kalite seviyesinde**; sonraki turlar yalnız ikincil
+component DS migration + last-mile confidence polish.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

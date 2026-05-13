@@ -54,30 +54,40 @@ export function CoverSwapModal({
 
   if (!open) return null;
 
+  /* Phase 55 — EN parity + Kivasy DS migration:
+   *   - "Cover Görselini Değiştir" → "Swap cover image"
+   *   - "Alternatif görsellerden birini seç" → "Pick an alternative render"
+   *   - "Başka başarılı render yok." → "No other successful renders."
+   *   - "Thumbnail yok" → "No thumbnail"
+   *   - "İptal" → "Cancel"
+   *   - "Cover Olarak Ayarla" / "Değiştiriliyor…" → "Set as cover" / "Swapping…"
+   *   - Legacy tokens: bg-text/40, bg-bg, border-accent, bg-accent/10,
+   *     border-border-strong, text-muted-foreground, bg-surface-2 →
+   *     ink/40 backdrop, paper bg, k-orange + k-orange-soft, line/line-strong,
+   *     ink-3, k-bg-2 */
   return (
-    <div className="fixed inset-0 bg-text/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-bg rounded-lg shadow-lg max-w-sm w-full mx-4 p-6">
-        <h2 className="text-lg font-semibold mb-4">Cover Görselini Değiştir</h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm"
+      data-testid="cover-swap-modal"
+    >
+      <div className="mx-4 w-full max-w-sm rounded-lg border border-line bg-paper p-6 shadow-lg">
+        <h2 className="mb-4 text-lg font-semibold text-ink">Swap cover image</h2>
 
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Alternatif görsellerden birini seç
-          </p>
+          <p className="text-sm text-ink-3">Pick an alternative render</p>
 
           {alternatives.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Başka başarılı render yok.
-            </p>
+            <p className="text-sm text-ink-3">No other successful renders.</p>
           ) : (
-            <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+            <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto">
               {alternatives.map((render) => (
                 <button
                   key={render.id}
                   onClick={() => setSelectedRenderId(render.id)}
-                  className={`relative p-2 rounded border-2 transition ${
+                  className={`relative rounded-md border-2 p-2 transition ${
                     selectedRenderId === render.id
-                      ? "border-accent bg-accent/10"
-                      : "border-border hover:border-border-strong"
+                      ? "border-k-orange bg-k-orange-soft"
+                      : "border-line hover:border-line-strong"
                   }`}
                 >
                   {/* Pass 16 fix — render.thumbnailKey storage path olarak
@@ -88,14 +98,14 @@ export function CoverSwapModal({
                     <img
                       src={`/api/mockup/jobs/${jobId}/renders/${render.id}/download`}
                       alt="thumbnail"
-                      className="w-full aspect-square object-cover rounded"
+                      className="aspect-square w-full rounded object-cover"
                     />
                   ) : (
-                    <div className="w-full aspect-square bg-surface-2 rounded flex items-center justify-center text-xs text-muted-foreground">
-                      Thumbnail yok
+                    <div className="flex aspect-square w-full items-center justify-center rounded bg-k-bg-2 text-xs text-ink-3">
+                      No thumbnail
                     </div>
                   )}
-                  <p className="text-xs mt-1 text-center truncate">
+                  <p className="mt-1 truncate text-center font-mono text-[10.5px] tracking-meta text-ink-2">
                     {render.variantId.substring(0, 8)}
                   </p>
                 </button>
@@ -103,19 +113,19 @@ export function CoverSwapModal({
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-border">
+          <div className="flex justify-end gap-2 border-t border-line pt-4">
             <Button
               variant="secondary"
               onClick={() => onOpenChange(false)}
               disabled={isSubmitting}
             >
-              İptal
+              Cancel
             </Button>
             <Button
               onClick={handleSwap}
               disabled={!selectedRenderId || isSubmitting}
             >
-              {isSubmitting ? "Değiştiriliyor…" : "Cover Olarak Ayarla"}
+              {isSubmitting ? "Swapping…" : "Set as cover"}
             </Button>
           </div>
         </div>

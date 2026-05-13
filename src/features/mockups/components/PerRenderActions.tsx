@@ -57,7 +57,7 @@ export function PerRenderActions({
         queryKey: mockupJobQueryKey(jobId),
       });
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Retry başarısız");
+      setActionError(err instanceof Error ? err.message : "Retry failed");
     } finally {
       setIsRetrying(false);
     }
@@ -81,14 +81,14 @@ export function PerRenderActions({
         queryKey: mockupJobQueryKey(jobId),
       });
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Swap başarısız");
+      setActionError(err instanceof Error ? err.message : "Swap failed");
     } finally {
       setIsSwapping(false);
     }
   };
 
   return (
-    <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 transition-opacity rounded flex flex-col items-stretch justify-end gap-1 p-2">
+    <div className="absolute inset-0 flex flex-col items-stretch justify-end gap-1 rounded bg-ink/60 p-2 opacity-0 transition-opacity hover:opacity-100">
       {isSuccess && !isCover && onCoverSwapClick && (
         <Button
           size="sm"
@@ -97,7 +97,7 @@ export function PerRenderActions({
           className="w-full"
         >
           <ChevronUp className="w-4 h-4 mr-1" />
-          Cover Yap
+          Set as cover
         </Button>
       )}
 
@@ -113,7 +113,7 @@ export function PerRenderActions({
             className="w-full"
           >
             <Download className="w-4 h-4 mr-1" />
-            İndir
+            Download
           </Button>
         </a>
       )}
@@ -148,7 +148,7 @@ export function PerRenderActions({
       {actionError && (
         <p
           role="alert"
-          className="text-xs text-red-200 bg-red-900/60 px-2 py-1 rounded"
+          className="rounded-md bg-danger/80 px-2 py-1 font-mono text-[10.5px] tracking-meta text-white"
         >
           {actionError}
         </p>

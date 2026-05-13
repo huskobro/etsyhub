@@ -22,6 +22,7 @@ import Link from "next/link";
 import { ArrowRight, Layers } from "lucide-react";
 import { type SelectionSetDetailView } from "@/features/selection/queries";
 import { cn } from "@/lib/cn";
+import { resolveSourceBatchId } from "@/lib/selection-lineage";
 
 export interface SetSummaryCardProps {
   set: SelectionSetDetailView;
@@ -30,26 +31,11 @@ export interface SetSummaryCardProps {
 }
 
 /**
- * Phase 52 — sourceMetadata'dan canonical batch lineage çıkar.
- * İki format destekler (CLAUDE.md Phase 50 resolveSourceLineage parity):
- *   1. { kind: "variation-batch", batchId } (Phase 5 quickStart)
- *   2. { mjOrigin: { batchIds: [...] } } (Phase 1 kept-handoff)
+ * Phase 55 — resolveSourceBatchId helper @/lib/selection-lineage'a
+ * taşındı. Önceden inline kopya vardı (Phase 52); Phase 53 S8ResultView
+ * + Phase 54 S7JobView aynı helper'ı tekrar inline kopyalamıştı. Phase
+ * 55 DRY temizliği: 3 dosyada inline kopya yerine tek import.
  */
-function resolveSourceBatchId(sourceMetadata: unknown): string | null {
-  if (!sourceMetadata || typeof sourceMetadata !== "object") return null;
-  const md = sourceMetadata as Record<string, unknown>;
-  if (md.kind === "variation-batch" && typeof md.batchId === "string") {
-    return md.batchId;
-  }
-  const mjOrigin = md.mjOrigin;
-  if (mjOrigin && typeof mjOrigin === "object") {
-    const batchIds = (mjOrigin as Record<string, unknown>).batchIds;
-    if (Array.isArray(batchIds) && typeof batchIds[0] === "string") {
-      return batchIds[0] as string;
-    }
-  }
-  return null;
-}
 
 /**
  * Spec §5.2 Zone 2 — Set özeti kartı.
