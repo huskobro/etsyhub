@@ -179,6 +179,33 @@ export function ReferencesPage({
     },
   });
 
+  /* Phase 45 — Bulk add to draft batch. Selection bar primary action;
+   * single endpoint handles both cases (new draft creation when none
+   * exists, idempotent addition when one is active). After success
+   * the queue panel polls or React Query refetch picks up the new
+   * items count.
+   *
+   * Selection is preserved after success — operator might want to add
+   * the same set to a different batch later, or simply close the
+   * bulk bar manually. Auto-clear would be surprising. */
+  const bulkAddToDraft = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await fetch("/api/batches/add-to-draft", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ referenceIds: ids }),
+      });
+      if (!res.ok)
+        throw new Error(
+          (await res.json()).error ?? "Failed to add to draft",
+        );
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["batches", "current-draft"] });
+    },
+  });
+
   const allItems = useMemo(() => query.data?.items ?? [], [query.data]);
 
   // Client-side filter passes (Source / Type / Date added — UI candy)
@@ -494,6 +521,30 @@ export function ReferencesPage({
       {selectedCount >= 1 ? (
         <div className="k-fab" data-testid="references-bulk-bar">
           <span className="k-fab__count">{selectedCount} selected</span>
+          {/* Phase 45 — Primary bulk action: add selected refs to the
+            * current draft batch (or start a new one). Operatör Pool'da
+            * curating yapar, sonra topluca staging'e atar.
+            * createDraftBatch + addReferencesToBatch zaten N referenceId
+            * destekliyor; bu CTA tek endpoint çağırır (add-to-draft). */}
+          <button
+            type="button"
+            className="k-fab__btn"
+            disabled={bulkAddToDraft.isPending}
+            onClick={() => {
+              const ids = items
+                .filter((i) => selectedIds.has(i.id))
+                .map((i) => i.id);
+              if (ids.length === 0) return;
+              bulkAddToDraft.mutate(ids);
+            }}
+            data-testid="references-bulk-add-to-draft"
+            title="Add the selected references to the current draft batch (creates one if none active)"
+          >
+            <Sparkles className="h-3 w-3" aria-hidden />
+            {bulkAddToDraft.isPending
+              ? "Adding…"
+              : `Add ${selectedCount} to Draft`}
+          </button>
           <button
             type="button"
             className="k-fab__btn"
@@ -664,10 +715,25 @@ function ReferencePoolCard({
    * "New Batch" oldu çünkü batch-first ürün modeli compose adımını
    * batch entity'sinin yaratımı olarak konumlar (v7 d2a/d2b A6
    * modal'ı = batch compose surface). */
-  const router = useRouter();
-  const newBatch = useMutation({
+  /* Phase 45 — Queue/staging mental model.
+   *
+   * Phase 44'te Pool card CTA POST /api/batches → router.push compose
+   * page yapıyordu (operatör direkt launch screen'e atılıyordu, context
+   * loss). Phase 45 queue/staging modeli: Pool card "Add to Draft"
+   * tıklayışı:
+   *   - Mevcut DRAFT yoksa yeni Batch yarat + bu referansı item olarak ekle
+   *   - Mevcut DRAFT varsa o batch'e referansı ekle (idempotent —
+   *     skipDuplicates)
+   * Operatör sayfada kalır, References sağındaki BatchQueuePanel canlı
+   * güncellenir. Compose page (Create Similar) panel'den açılır.
+   *
+   * Naming kararı: "Create Variations" / "New Batch" → "Add to Draft"
+   * (queue mental model) + "Create Similar" (compose CTA). MJ'in vary
+   * subtle/strong ile karışan "variation" dilinden kaçar. */
+  const qc = useQueryClient();
+  const addToDraft = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/batches", {
+      const res = await fetch("/api/batches/add-to-draft", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ referenceIds: [reference.id] }),
@@ -676,12 +742,12 @@ function ReferencePoolCard({
         const payload = (await res.json().catch(() => ({}))) as {
           error?: string;
         };
-        throw new Error(payload.error ?? "Failed to create batch");
+        throw new Error(payload.error ?? "Failed to add to draft");
       }
       return (await res.json()) as { batch: { id: string } };
     },
-    onSuccess: (data) => {
-      router.push(`/batches/${data.batch.id}/compose`);
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["batches", "current-draft"] });
     },
   });
 
@@ -782,29 +848,28 @@ function ReferencePoolCard({
         {/* Phase 43 — Pool card hover CTA "New Batch".
          *
          * v5 B1 line 137 primary affordance korunur (`k-btn
-         * k-btn--primary w-full`). Phase 41'de "Create Variations"
-         * wording'ini DS v7 d2a/d2b endorses olarak kabul etmiştik;
-         * Phase 43 batch-first ürün modeli compose adımını batch
-         * entity'sinin yaratımı olarak konumlar — "New Batch" daha
-         * dürüst dil çünkü bu CTA gerçekten yeni bir Batch row'u
-         * yaratır (createDraftBatch service) ve compose page'ine
-         * yönlenir. v7 A6 modal = batch compose/launch surface;
-         * compose page (Phase 43+) bu modalın page-form factor'ü. */}
+         * Phase 45 — Queue/staging model: "Add to Draft" instead of
+         * direct compose redirect. Operator stays in Pool browsing
+         * context; BatchQueuePanel on the right rail picks up the
+         * addition. "Create Similar" compose CTA lives in the queue
+         * panel (right rail) — operator opens compose AFTER curating
+         * the draft, not on first click. v4 A6 form remains the
+         * compose surface; just the entry point moved. */}
         <div className="absolute bottom-2 left-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             type="button"
             data-size="sm"
             className="k-btn k-btn--primary w-full"
-            disabled={newBatch.isPending}
+            disabled={addToDraft.isPending}
             onClick={(e) => {
               e.stopPropagation();
-              newBatch.mutate();
+              addToDraft.mutate();
             }}
-            title="Create a new draft batch with this reference and open the compose page (count, aspect ratio, prompt template)"
-            data-testid="reference-card-new-batch"
+            title="Add this reference to the current draft batch. Open Create Similar from the queue panel when ready."
+            data-testid="reference-card-add-to-draft"
           >
             <Sparkles className="h-3 w-3" aria-hidden />
-            {newBatch.isPending ? "Creating…" : "New Batch"}
+            {addToDraft.isPending ? "Adding…" : "Add to Draft"}
           </button>
         </div>
       </div>

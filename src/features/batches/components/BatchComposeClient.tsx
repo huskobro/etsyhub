@@ -2,6 +2,11 @@
 
 /**
  * Phase 44 — Batch compose / launch surface.
+ * Phase 45 — Wording shift: "Variations" → "Similar". Operatör Pool'da
+ * queue/staging yapar; compose surface'i buradan açar. CTA artık
+ * "Create Similar (N)" — Midjourney'in `vary subtle / vary strong`
+ * dünyasıyla karışan "variation" dilinden kaçar; doğru anlam: bu
+ * reference'lardan yola çıkarak benzer yeni üretimler.
  *
  * v4 A6 Create Variations spec'inin (docs/design-system/kivasy/ui_kits/
  * kivasy/v4/screens-a6-a7.jsx) page-form factor equivalent'i. v4 A6 daha
@@ -9,19 +14,19 @@
  * management territory'sinden (PromptPreviewSection + edit-as-override)
  * bu turda kaçınılır.
  *
- * Form sections (v4 A6 parity):
+ * Form sections (v4 A6 parity, Phase 45 wording):
  *   1. Aspect ratio  → 3-card grid (Square / Landscape / Portrait)
  *   2. Similarity    → 4-stop segmented (Close / Medium / Loose / Inspired)
  *                      [advisory only — backend henüz consume etmiyor;
- *                       Phase 44+ candidate: brief'e enjekte edilebilir]
- *   3. Variation count → 4/6/8/12 segmented (max 6 — schema constraint)
+ *                       Phase 45+ candidate: brief'e enjekte edilebilir]
+ *   3. Similar generation count → 2/3/4/6 segmented (max 6 — schema cap)
  *   4. Prompt template → placeholder card (Phase 45+ template picker)
  *   5. Reference parameters → sref/oref/cref chips (advisory only)
  *
  * Footer:
  *   - Cancel (ghost) → /batches
  *   - Cost preview "~$N.NN · est. Nm" (k-mono)
- *   - Primary "Launch N Variations" → POST /api/batches/[id]/launch
+ *   - Primary "Create Similar (N)" → POST /api/batches/[id]/launch
  *
  * Launch mutation:
  *   - Triggers createVariationJobs (existing pipeline) with real
@@ -79,7 +84,7 @@ type Quality = "medium" | "high";
 const SIMILARITY_STOPS = ["Close", "Medium", "Loose", "Inspired"] as const;
 const SIMILARITY_HINTS = [
   "New designs will closely match composition + palette",
-  "Variations diverge in detail but keep palette and subject",
+  "Generations diverge in detail but keep palette and subject",
   "Loose interpretation — palette held, composition free",
   "Subject-only inspiration — no compositional ties",
 ] as const;
@@ -373,7 +378,7 @@ export function BatchComposeClient({
               </div>
             </Section>
 
-            <Section label="Variation count">
+            <Section label="Similar generation count">
               <div className="flex">
                 {[2, 3, 4, 6].map((n) => (
                   <button
@@ -533,7 +538,7 @@ export function BatchComposeClient({
             <Sparkles className="h-3 w-3" aria-hidden />
             {launchMutation.isPending
               ? "Launching…"
-              : `Launch ${count} Variation${count === 1 ? "" : "s"}`}
+              : `Create Similar (${count})`}
           </button>
         </div>
       </div>

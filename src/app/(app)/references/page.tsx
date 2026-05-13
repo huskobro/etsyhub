@@ -8,6 +8,7 @@ import { ReferencesShellTabs } from "@/features/references/components/References
 import { ReferencesTopbar } from "@/features/references/components/ReferencesTopbar";
 import { ReferencesAddReferenceMount } from "@/features/references/components/references-add-reference-mount";
 import { getReferencesSubViewCounts } from "@/features/references/server/sub-view-counts";
+import { BatchQueuePanel } from "@/features/batches/components/BatchQueuePanel";
 
 export const metadata = { title: "References · Kivasy" };
 export const dynamic = "force-dynamic";
@@ -70,8 +71,14 @@ export default async function Page() {
        *   inside button, not a separate badge). */}
       <ReferencesShellTabs counts={counts} active="pool" />
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <ReferencesPage productTypes={productTypes} />
+      {/* Phase 45 — Queue/staging surface integrated into References page.
+        * BatchQueuePanel sticky right rail; only renders when operator has
+        * an active DRAFT batch. Pool grid takes full width otherwise. */}
+      <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <ReferencesPage productTypes={productTypes} />
+        </div>
+        <BatchQueuePanel />
       </div>
 
       {/* Phase 26 — canonical intake modal (DS v5 B5). URL-derived

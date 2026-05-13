@@ -8843,6 +8843,239 @@ sonra compose et" hikayesi verir). 3 sonra. 4-5 advanced. 6 en sona.
 
 ---
 
+## Phase 45 — Queue/staging modeli + "Create Similar" dili + legacy hard redirect
+
+Phase 44'te tek-tıkla `New Batch → /batches/[id]/compose` akışı
+operatörü erken launch screen'e atıyordu — context loss + multi-
+reference imkânsız + "variation" dili Midjourney'in `vary subtle/
+strong` ile karışıyor. Phase 45 üç problemi birlikte çözer:
+queue/staging modeline geçiş + dil değişikliği (`Create Similar`) +
+legacy variations route hard redirect.
+
+### Tespit edilen problem (Phase 44 sonrası audit)
+
+| Problem | Sebep |
+|---|---|
+| Erken compose redirect | Pool card click → POST /api/batches → router.push compose. Operatör henüz reference seçimini düşünmemiş, launch screen'e atılıyor |
+| Multi-reference imkânsız | Pool card tek-ref batch yaratıyor; compose page'de "+1 more reference" hint var ama "daha ekle" UI yok |
+| Variation dili karışıyor | Midjourney'in `vary subtle / vary strong` operasyonu mevcut bir görsel üzerinden minor refinement; biz farklı şey yapıyoruz (yeni similar generations) — "variation" yanıltıcı |
+| Legacy /references/[id]/variations | Phase 44'te deprecation banner ile bridge tutulmuştu ama operatör URL'den girince hâlâ çift akış görüyor |
+
+### Karar (kullanıcı yönlendirmesiyle)
+
+1. **Queue/staging modeli aynı sayfa içinde**: sağ side panel (drawer
+   değil — selection context kaybolmamalı). Pool grid normal genişlikte,
+   panel ~320px sticky. Operatör Pool browse + queue staging'i aynı
+   anda görür.
+2. **`Variation` → `Similar` dili**: Pool card "Add to Draft" (queue
+   semantic), Queue panel CTA "Create Similar (N)", Compose footer CTA
+   "Create Similar (N)", section label "Similar generation count".
+3. **Compose page hâlâ ayrı route** (`/batches/[id]/compose`) ama
+   queue panel'den AÇILIR — operatör artık queue'yu doldurduktan
+   sonra compose'a iniyor; "premature compose" sorunu çözüldü.
+   Compose-inline-panel (form'u queue panel'in expanded state'i yapma)
+   Phase 46 candidate.
+4. **Legacy `/references/[id]/variations` hard redirect** to
+   `/references` — operatör eski URL'den girse bile canonical akışa
+   düşer.
+
+### Implemented
+
+**1. Service layer** (`src/features/batches/server/batch-service.ts`):
+
+```ts
+// Phase 45 — "current draft" semantic + add-to-draft helper
+export async function getCurrentDraftBatch({ userId })
+  → DRAFT state + most recent updatedAt; null if none
+
+export async function addReferencesToCurrentDraft({ userId, referenceIds })
+  → mevcut DRAFT'a ekle (idempotent) veya yeni yarat
+```
+
+"Current draft" = en son updatedAt taşıyan DRAFT batch. Operatör
+genellikle tek aktif draft tutar; eski draft'lar Batches hub'ında
+görünür. "0 draft → yeni yarat / 1+ draft → en son'a ekle" kuralı
+"active draft" ambiguity'sini ortadan kaldırır.
+
+**2. API endpoints**:
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/api/batches/current-draft` | — | `{ batch: DraftBatch \| null }` |
+| POST | `/api/batches/add-to-draft` | `{ referenceIds: string[] }` | `{ batch: BatchWithItems }` |
+
+**3. `BatchQueuePanel` component**
+(`src/features/batches/components/BatchQueuePanel.tsx`):
+
+- Sticky right side panel, `w-80`, sadece aktif DRAFT varsa render
+  edilir
+- React Query 5s `refetchInterval` polling; mutations invalidate key
+- Header: "Draft batch · N references · {label}"
+- Items list: thumb (k-thumb !aspect-square !w-12) + title + product type
+- Warning callout: "X references without a public URL"
+- Footer CTA: `<Link href="/batches/[id]/compose">` — "Create Similar (N)"
+  primary k-btn
+
+**4. References page layout**
+(`src/app/(app)/references/page.tsx`):
+
+Pool grid + BatchQueuePanel sibling layout:
+```tsx
+<div className="flex flex-1 overflow-hidden">
+  <div className="flex flex-1 flex-col overflow-hidden">
+    <ReferencesPage productTypes={productTypes} />
+  </div>
+  <BatchQueuePanel />
+</div>
+```
+
+**5. Pool card "Add to Draft"** (references-page.tsx):
+
+Phase 44'te:
+```tsx
+const newBatch = useMutation(POST /api/batches → router.push compose)
+```
+
+Phase 45:
+```tsx
+const addToDraft = useMutation(POST /api/batches/add-to-draft)
+  onSuccess → qc.invalidateQueries(["batches", "current-draft"])
+```
+
+CTA className korundu (`k-btn k-btn--primary w-full`). Text "New Batch"
+→ "Add to Draft". testid `reference-card-new-batch` → `reference-card-
+add-to-draft`. Operatör Pool'da kalır, queue panel'i canlı güncellenir.
+
+**6. Bulk-bar "Add N to Draft"** (references-page.tsx):
+
+Selection bar Phase 43'te yalnız Archive aksiyonu taşıyordu (Phase 43
+ertelemesi). Phase 45'te `bulkAddToDraft` mutation eklendi + primary
+k-fab__btn:
+
+```tsx
+<button data-testid="references-bulk-add-to-draft"
+        onClick={() => bulkAddToDraft.mutate(ids)}>
+  <Sparkles /> Add {selectedCount} to Draft
+</button>
+```
+
+Selection korunur — operatör aynı set'i farklı draft'a da atabilir
+veya manuel bulk-bar X ile kapatabilir.
+
+**7. Compose page rename**:
+
+`BatchComposeClient.tsx` — Phase 45 wording shift:
+- Section label "Variation count" → "Similar generation count"
+- Footer CTA "Launch N Variations" → "Create Similar (N)"
+- Similarity hint copy "Variations diverge..." → "Generations diverge..."
+- Header comment Phase 45 batch-first dilini açıklar
+
+**8. Legacy `/references/[id]/variations` hard redirect**:
+
+Phase 44'te deprecation banner içeren full page'di; Phase 45'te
+server-side hard redirect:
+
+```tsx
+export default async function LegacyVariationsRedirect() {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+  redirect("/references");
+}
+```
+
+`VariationsPage` component ve `AiModePanel` mevcut — Phase 45'te
+silinmedi (potansiyel future reuse + git history için). Sadece route
+entry kaldırıldı; eski URL'den girenler Pool'a düşer + queue akışına
+girerler.
+
+### v4 A6 yeni model yorumu
+
+v4 A6 source-reference rail = compose page'in rail'i, ama Phase 45'te
+**queue panel** aynı semantic'i Pool browsing context'inde taşıyor.
+Yani v4 A6 modal'ının rail kısmı **kalıcı sürface** oldu (operatör
+queue'yu görmek için modal açmak zorunda değil). Compose page'in
+rail'i artık queue panel'in extended view'ı (Phase 46+ candidate:
+compose form'u panel içinde inline expand etmek; bu turda ayrı
+route).
+
+### Browser verification (7 senaryo PASS, real end-to-end)
+
+Live dev server (fresh `.next/` rebuild, viewport 1440×900, real DB):
+
+| # | Scenario | Evidence |
+|---|---|---|
+| 1 | Queue Panel mounts when DRAFT exists | testid + data-batch-id + "N references" count + items + CTA "Create Similar (N)" |
+| 2 | Pool card Add to Draft | POST /api/batches/add-to-draft, queue count grows by 1 |
+| 3 | Bulk-bar Add N to Draft | "3 selected · Add 3 to Draft · Archive" bar, POST add-to-draft, queue grows by 3 |
+| 4 | Open compose from queue panel | Navigation to /batches/[id]/compose, "Create Similar (6)" CTA, "Similar generation count" section label |
+| 5 | Legacy hard redirect | `/references/[id]/variations` → server `redirect()` → `/references` |
+| 6 | Direct image URL regression (Phase 39) | "✓ Direct image URL" hint + multi-row helper intact |
+| 7 | Compose page Phase 45 wording | Header comment "Wording shift: Variations → Similar", launch CTA "Create Similar (N)" |
+
+Screenshots:
+- `/references` with queue panel right rail + 5-item Draft batch +
+  bulk bar "3 selected · Add 3 to Draft" floating
+- `/batches/[id]/compose` with renamed sections + footer "+ Create
+  Similar (6)" button + no-URL warning callout
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **59/59 PASS** (canonical regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 45)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration YAPILMADI** — Batch + BatchItem + BatchState
+  Phase 43'te açılmıştı; Phase 45 yalnız service helper + 2 endpoint
+  + UI component + rename + redirect.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok**: `getCurrentDraftBatch` +
+  `addReferencesToCurrentDraft` küçük helper'lar; `BatchQueuePanel`
+  küçük UI component. Compose page'i yerinde tuttuk; queue panel +
+  rename yeterli vertical slice.
+- **Add Reference / duplicate / local folder / direct image intake
+  akışları intakt** (Phase 26-41 baseline).
+- **Direct image URL canonical yolu intakt** (Phase 39 baseline).
+- **Compose page mevcut Launch endpoint'i değişmedi** — Phase 44'te
+  POST /api/batches/[id]/launch oturmuştu; sadece UI'sındaki wording
+  güncellendi.
+- **Kivasy DS dışına çıkılmadı.** k-btn, k-thumb, k-fab, font-mono
+  tracking-meta, line/line-soft border, k-orange/k-orange-soft
+  recipe'leri. RatioCard Phase 44'te zaten Tailwind arbitrary
+  classes'a geçirilmişti.
+
+### Production tarafında kalan tek doğru iş
+
+Phase 46 candidate'lar — Phase 45 vertical slice'ın doğal devamı:
+
+1. **Compose-inline-panel** — queue panel'in expanded state'i compose
+   formu içerir; ayrı route'a geçmeden launch tek surface'te tamam.
+   Phase 45'te bilinçli olarak ayrı route tutuldu (yarım testli
+   inline expansion riskinden kaçınmak için).
+2. **Multi-reference launch** — `launchBatch` her item için ayrı
+   `createVariationJobs`; "+4 more references · Multi-launch in a
+   later phase" hint'ini gerçekleştir. Tüm jobs aynı `Batch.id`'yi
+   paylaşacak.
+3. **Queue item remove/reorder** — operatör queue panel'den item
+   silebilsin, sırayı değiştirebilsin (DELETE /api/batches/[id]/items/
+   [itemId] + PATCH position). Şu an item ekleme idempotent; silme
+   yok.
+4. **Batches index unification** — job-aggregator service real Batch
+   row'larını da listemeye başlar (DRAFT dahil); state filter bar.
+   Operatör Batches hub'ında DRAFT batch'lerini görür.
+5. **Multiple drafts UX** — operatör birden fazla aktif draft tutmak
+   isterse (rare): "current draft" picker queue panel header'ında.
+   Şu an "en son updatedAt" tek-aktif kuralı; çok-draft kullanıcı
+   senaryosu Phase 47+ candidate.
+
+Öncelik: **1 + 2 birlikte** (compose-inline + multi-ref launch =
+queue'dan tek tıkla tam workflow). 3 + 4 sonra. 5 en sona — büyük
+kullanıcı senaryosu kanıtı yoksa premature.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

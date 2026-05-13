@@ -1,37 +1,27 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/server/auth";
-import { getUserAiModeSettings } from "@/features/settings/ai-mode/service";
-import { VariationsPage } from "@/features/variation-generation/components/variations-page";
 
 /**
- * Batch-first Phase 8 — Variations page artık server-side settings okuyor.
+ * Phase 45 — Legacy route hard redirect.
  *
- * Phase 7'de `defaultImageProvider` field UserSetting'e eklenmişti ama
- * UI consumer'da bağlı değildi (ai-mode-form.tsx hardcoded
- * "kie-gpt-image-1.5" kullanıyordu). Phase 8 fit-and-finish bu wiring'i
- * tamamlar:
+ * Phase 44'te `/references/[id]/variations` deprecation banner ile bridge
+ * olarak tutulmuştu. Phase 45 queue/staging modeli oturduğu için yeni
+ * canonical akış net: References Pool → Add to Draft → BatchQueuePanel →
+ * Create Similar (compose page). Eski tek-reference variation page'i
+ * artık operatör için faydalı değil.
  *
- *   - Page server component → getUserAiModeSettings(userId)
- *   - VariationsPage'e initialProviderId prop pass
- *   - AiModePanel → AiModeForm initial state
+ * Karar: server-side hard redirect → `/references`. Operatör eski deep
+ * link'lerden veya URL geçmişinden gelirse otomatik Pool'a düşer; orada
+ * "Add to Draft" ile yeni akışa girer. Eski URL'lerin hâlâ "var olduğu"
+ * ama yeniden hangi yönde olduğu net (302).
  *
- * Default Midjourney (kullanıcı kararı). Settings'te değiştirilebilir;
- * batch bazında dropdown override edilebilir.
+ * VariationsPage component ve `AiModePanel` mevcut — Phase 45'te
+ * silinmedi (potansiyel future reuse + git history için). Sadece bu
+ * route entry kaldırıldı.
  */
 
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ id: string }> | { id: string };
-}) {
+export default async function LegacyVariationsRedirect() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  const resolved = await Promise.resolve(params);
-  const settings = await getUserAiModeSettings(session.user.id);
-  return (
-    <VariationsPage
-      referenceId={resolved.id}
-      initialProviderId={settings.defaultImageProvider}
-    />
-  );
+  redirect("/references");
 }

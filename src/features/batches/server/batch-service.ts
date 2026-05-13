@@ -370,6 +370,86 @@ export async function launchBatch(
 }
 
 /**
+ * Phase 45 — Current draft batch lookup.
+ *
+ * Returns operatör'ün **en son** dokunduğu DRAFT batch'i — queue/staging
+ * mental model'inin "active cart" eşdeğeri. Operatör Pool'dan "Add to
+ * Draft" tıkladığında bu batch'e item eklenir; null ise yeni draft
+ * yaratılır.
+ *
+ * "Most recently updated" semantics: bir operatör genellikle tek
+ * aktif draft tutar; eski draft'lar Batches hub'ında görünür ama
+ * yeni Pool aksiyonları en son updatedAt'a yazar. Bu basit kural
+ * "active draft" ambiguity'ini ortadan kaldırır:
+ *   - 0 draft → yeni yarat
+ *   - 1 draft → ona ekle
+ *   - N draft → en son updatedAt'a ekle (operatör başka draft'a
+ *     yazmak isterse Batches sayfasından compose'a girip orada ekler)
+ *
+ * Items + first-3 thumbnail preview için reference + asset include.
+ * Queue panel'inin minimal preview ihtiyacına göre küçük tutuldu.
+ */
+export async function getCurrentDraftBatch(args: { userId: string }) {
+  return db.batch.findFirst({
+    where: {
+      userId: args.userId,
+      state: BatchState.DRAFT,
+      deletedAt: null,
+    },
+    orderBy: { updatedAt: "desc" },
+    include: {
+      items: {
+        orderBy: { position: "asc" },
+        include: {
+          reference: {
+            include: {
+              asset: { select: { id: true, sourceUrl: true } },
+              bookmark: { select: { title: true } },
+              productType: { select: { displayName: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Phase 45 — "Add to Draft" semantik helper.
+ *
+ * Operatör Pool'dan tek-ref veya bulk-ref ekleme yapıyor; bu helper
+ * iki davranışı tek API çağrısı olarak sunar:
+ *   - Mevcut DRAFT batch yoksa → yeni yarat + referansları items
+ *     olarak ekle
+ *   - Mevcut DRAFT batch varsa → addReferencesToBatch (idempotent,
+ *     skipDuplicates: true)
+ *
+ * Return: yeni veya updated batch (items dahil). Caller queue
+ * panel'i refresh edebilir.
+ */
+export async function addReferencesToCurrentDraft(args: {
+  userId: string;
+  referenceIds: string[];
+}) {
+  if (args.referenceIds.length === 0) {
+    throw new ValidationError("No references provided");
+  }
+  const existing = await getCurrentDraftBatch({ userId: args.userId });
+  if (existing) {
+    await addReferencesToBatch({
+      userId: args.userId,
+      batchId: existing.id,
+      referenceIds: args.referenceIds,
+    });
+    return getBatch({ userId: args.userId, batchId: existing.id });
+  }
+  return createDraftBatch({
+    userId: args.userId,
+    referenceIds: args.referenceIds,
+  });
+}
+
+/**
  * List batches for a user. DRAFT batches included by default.
  * `state` filter optional. Sorted by updatedAt desc (most recently
  * touched first).
