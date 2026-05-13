@@ -8,6 +8,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -145,22 +146,39 @@ export function TemplatesIndexClient({
         title="Templates"
         subtitle={`${totals} · 4 SUB-TYPES`}
         actions={
-          <button
-            type="button"
-            data-size="sm"
-            className="k-btn k-btn--primary"
-            disabled={!isAdmin}
-            onClick={() => setEditor({ mode: "create" })}
-            title={
-              isAdmin
-                ? "Open prompt template editor"
-                : "Admin scope — only admins can create templates"
-            }
-            data-testid="templates-new-cta"
-          >
-            <Plus className="h-3 w-3" aria-hidden />
-            New Template
-          </button>
+          <>
+            {/* Phase 66 — User-facing mockup template create CTA.
+             *   Templated.io clone first end-to-end UI: any operator can
+             *   create their own mockup template (no admin required).
+             *   Lands at /templates/mockups/new → MockupTemplateCreateForm
+             *   (POST /api/mockup-templates → bind → optional publish). */}
+            <Link
+              href="/templates/mockups/new"
+              data-size="sm"
+              className="k-btn k-btn--secondary"
+              data-testid="templates-new-mockup-cta"
+              title="Create your own mockup template (Phase 66)"
+            >
+              <Plus className="h-3 w-3" aria-hidden />
+              New mockup template
+            </Link>
+            <button
+              type="button"
+              data-size="sm"
+              className="k-btn k-btn--primary"
+              disabled={!isAdmin}
+              onClick={() => setEditor({ mode: "create" })}
+              title={
+                isAdmin
+                  ? "Open prompt template editor"
+                  : "Admin scope — only admins can create prompt templates"
+              }
+              data-testid="templates-new-cta"
+            >
+              <Plus className="h-3 w-3" aria-hidden />
+              New prompt template
+            </button>
+          </>
         }
       />
 

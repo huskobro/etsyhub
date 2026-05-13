@@ -13042,6 +13042,161 @@ Sıradaki gerçek iş **Phase 66 user template editor UI** (write side full UI):
 
 ---
 
+## Phase 66 — First end-to-end user template flow (create → bind → publish → use)
+
+Phase 65 ownership foundation + read API + first write endpoint (POST /api/mockup-templates) + admin/my UI ayrımı kurmuştu. Phase 66 **operator için tam ürün flow'unu açar**: kullanıcı UI üzerinden template yaratır → LOCAL_SHARP binding eklenir → DRAFT → ACTIVE publish → Apply Mockups'ta kendi library'sinde kullanılabilir.
+
+### Audit (Phase 65 → Phase 66)
+
+| Phase 65'te yapılan | Phase 66'da hâlâ eksikti |
+|---|---|
+| `POST /api/mockup-templates` (create) | UI yok — operatör cURL atmak zorunda |
+| `MockupTemplate.userId` ownership | Binding endpoint yok → render edilemez |
+| Apply drawer 3 tab + empty state | empty state Phase 66'a yönlendiriyor; user template render eden path yok |
+| Admin `LocalSharpConfigEditor` | User-facing değil; `requireAdmin` |
+| Status DRAFT default | Publish endpoint yok |
+
+Phase 66 5 ana çıktı:
+1. **Binding create endpoint** (user-scope, ownership-aware, LOCAL_SHARP only)
+2. **Publish endpoint** (DRAFT/ACTIVE/ARCHIVED transitions, publish guard)
+3. **User-facing create page** (`/templates/mockups/new`) + form (3-step API chain)
+4. **Templates page CTA** ("+ New mockup template", admin gerektirmez)
+5. **Apply drawer empty-state CTA** ("+ Create your first template" → create page)
+
+### Endpoint detayları
+
+**`POST /api/mockup-templates/[id]/bindings`** (Phase 66 binding):
+- Auth: `requireUser`
+- Body: `{ providerId: "LOCAL_SHARP", config, estimatedRenderMs }`
+- Ownership invariant: template userId === currentUser; global (NULL) admin scope only → 403
+- Cross-user → 404 (info hiding)
+- Provider config → ProviderConfigSchema parse (LOCAL_SHARP yalnız Phase 66 scope; DYNAMIC_MOCKUPS user için yasak — paid external)
+- Uniqueness: (templateId, providerId) DB constraint → 409 ConflictError
+- **status default ACTIVE** (operator intent: bind = make renderable; template ACTIVE'e geçince hemen apply'da görünür)
+
+**`PATCH /api/mockup-templates/[id]`** (Phase 66 publish):
+- Auth: `requireUser`
+- Body: `{ status: "DRAFT" | "ACTIVE" | "ARCHIVED" }`
+- Ownership invariant aynı (cross-user 404, global 403)
+- **Publish guard**: DRAFT → ACTIVE için en az 1 ACTIVE binding gerek; binding yoksa ValidationError + actionable hint ("Add a LOCAL_SHARP binding before publishing")
+- archivedAt: status === ARCHIVED ise NOW(), aksi halde NULL
+
+### User-facing create UI (`/templates/mockups/new`)
+
+`MockupTemplateCreateForm` minimal but functional:
+- 5 form field: Template name + Category (canvas/wall_art/printable/clipart/sticker) + Aspect ratio (1:1/2:3/3:2/3:4/4:5) + Base asset key (MinIO placeholder) + Publish immediately checkbox (default ON)
+- Submit → 3-step API chain:
+  1. POST /api/mockup-templates → DRAFT template (Phase 65 endpoint)
+  2. POST /api/mockup-templates/[id]/bindings → LOCAL_SHARP binding (Phase 66 endpoint; minimal renderable config: 1024×1024 base + full-canvas rect safe-area + normal blend recipe)
+  3. PATCH /api/mockup-templates/[id] → DRAFT → ACTIVE (Phase 66 endpoint, opsiyonel via checkbox)
+- Status feedback (statusMsg state) per step
+- Error: actionable mesaj
+- Success: router.push("/templates") + refresh
+
+Mevcut admin `LocalSharpConfigEditor` çok kompleks (jsonMode + JSON textarea + detailed safe-area form). Phase 66 V1 user form **5 field + defaults**; Phase 67+ visual safe-area editor + asset upload + recipe shadow config eklenir. Honest disclosure card UI'da: "Phase 66 V1 defaults: base 1024×1024, full-canvas rect, normal blend. Visual editor + asset upload Phase 67."
+
+### Templates page CTA
+
+`TemplatesIndexClient` topbar actions:
+- **+ New mockup template** (secondary, Link to `/templates/mockups/new`) — user-facing, **admin gerektirmez** ✓
+- + New prompt template (primary, prompt template editor — admin-only baseline)
+
+Operatör artık Templates page'inden tek tıkla mockup template create akışına iner.
+
+### Apply drawer empty-state CTA update
+
+Phase 65 empty-state "Phase 66 coming soon" yazıyordu. Phase 66:
+- "+ Create your first template" primary CTA → `/templates/mockups/new`
+- "Or browse admin templates →" secondary fallback
+- Copy update: "Templated.io-style: create your own mockup template and reuse it across selections. Self-hosted (no API calls) — your library, your library limit."
+
+### Apply view consumer integration
+
+`/api/mockup/templates` (Phase 65 ownership-aware) zaten user templates'i `ownership: "own"` ile döner. Apply drawer S1BrowseDrawer 3 tab strip (Phase 65) ile zaten ayrı tab'da render ediyor. Phase 66'da yeni endpoint eklemedi — **mevcut consumer aynı pipeline'dan user template'i alır**:
+- User template publish edilince → `/api/mockup/templates?categoryId=X` döner
+- Drawer "All" + "My templates" tab'larında görünür
+- `hasActiveBinding: true` (Phase 66 binding ACTIVE default)
+- Operatör tıkla, seç, **Apply Mockups** flow'a girer (mevcut canonical pipeline'dan render edilir)
+
+### Browser verification (canlı end-to-end)
+
+**Server-side full chain test** (live preview eval):
+- Step 1 — POST template: 201, ownership="own", status="DRAFT" ✓
+- Step 2 — POST binding: 201, providerId="LOCAL_SHARP", status="ACTIVE" ✓
+- Step 3 — PATCH publish: 200, templateStatus="ACTIVE" ✓
+- Step 4 — Apply visibility: visible=true, ownership="own", hasActiveBinding=true ✓
+
+**UI verification**:
+- Create page: h1 "New mockup template", 5 field render, submit "Create & publish" doğru
+- Apply drawer "My templates" tab → empty-state with "+ Create your first template" CTA → `/templates/mockups/new` (Phase 66 page)
+- `wall_art` category Apply endpoint: 1 global ("Studio Frame Mockup · Wall Art") + 1 own ("Phase 66 Live Test Template") — both `hasActiveBinding: true`
+
+**Screenshot canlı kanıtlar**:
+- Create page: header "New mockup template" + "TEMPLATED.IO-STYLE · SELF-HOSTED (NO API CALLS) · YOUR LIBRARY" + 5 field + Phase 66 V1 defaults info card
+- Apply drawer empty state: "No templates of your own yet" + "+ Create your first template" orange primary CTA + "Or browse admin templates →" secondary
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **674/674 PASS** (Phase 65 baseline; Phase 66 endpoint-only changes — no test fixture impact)
+- `next build`: ✓ Compiled successfully
+
+### Templated.io clone canlı end-to-end
+
+**Phase 8 + 63 + 64 + 65 + 66 birleşince**:
+- Render engine: self-hosted Sharp (rect + perspective)
+- Schema: ownership (userId nullable) + binding (provider config) + status (DRAFT/ACTIVE/ARCHIVED)
+- Read API: user-scope catalog (global + own merge)
+- Write API: create + bind + publish (full operator flow)
+- Create UI: form-driven (3-step API chain)
+- Apply UI: 3-tab strip + empty-state CTA
+- Operator-end-to-end: Templates → "+ New mockup template" → form → publish → "My templates" → Apply Mockups → render
+
+**Eksik (Phase 67+ candidate)**:
+- Visual safe-area editor (rect koordinatlarını sürükle/bırak; 4-corner perspective interactive)
+- Asset upload UI (MinIO file picker; admin endpoint pattern reuse)
+- PSD ETL CLI (`ag-psd` parser)
+- Reusable library mgmt (rename, archive, favorite/default, product type binding)
+- Quota/limits (plan tier-based)
+- dynamic-mockups deprecation karar
+
+### Değişmeyenler (Phase 66)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok** (Phase 64 baseline kullanıldı).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok**: 2 yeni route + 1 yeni page + 1 form component + 2 CTA + empty-state copy update.
+- **Cross-user isolation guarantee korundu** (Phase 64 + 65 baseline; ownership 3 endpoint'te hardline enforced).
+- **Render history korundu** (Phase 65 baseline).
+- **Admin endpoint baseline intakt** (`requireAdmin` GET/POST/PATCH/DELETE değişmedi).
+- **References / Batch / Review / Selection / Mockup / Product / Etsy Draft canonical akışları intakt**.
+- **Mockup pipeline + worker + S7/S8 result view + dynamic-mockups path dokunulmadı**.
+- **Apply view consumer (`useMockupTemplates` + S1BrowseDrawer)** → Phase 65 ownership baseline; Phase 66 yalnız empty-state copy + CTA değişikliği.
+- **Kivasy DS dışına çıkılmadı**.
+
+### Bilinçli scope dışı (Phase 67+ candidate)
+
+- **Visual safe-area editor** — operator drag/drop ile rect koordinatlarını veya 4-corner perspective quad'ı görsel olarak set eder; mevcut admin LocalSharpConfigEditor'un user-facing visual versiyonu
+- **Asset upload UI** — file picker + MinIO upload (`/api/admin/mockup-templates/upload-asset` user-scope açıldığında)
+- **PSD ETL CLI** — `ag-psd ^15` parser + `scripts/import-psd-mockup-template.ts`
+- **Template detail page** (`/templates/mockups/[id]`) — operatör template'ini düzenler (rename, edit binding, archive)
+- **Reusable library mgmt** — rename / categorize / favorite/default / product type binding / archive / share
+- **Quota/limits** plan tier-based
+- **dynamic-mockups consumer audit + deprecation karar**
+- **Multi-binding support** — bir template aynı anda LOCAL_SHARP + DYNAMIC_MOCKUPS binding taşıyabilir mi? (admin baseline destekler, user için scope kararı)
+
+### Bundan sonra production tarafında kalan tek doğru iş
+
+Phase 66 ile **templated.io clone canlı end-to-end vertical slice'ı kapatıldı**:
+- Operatör Templates → CTA → form → publish → kendi library'sinde apply edebilir
+- Server-side 3 endpoint zinciri kanıtlı (create → bind → publish → apply)
+- UI 5-field form çalışıyor (Phase 67 visual editor için temel hazır)
+- Apply drawer'da user template'in görünür akışı tam (empty-state CTA + tab + render)
+
+Sıradaki gerçek iş **Phase 67 visual editor + asset upload UI**: drag/drop safe-area + file picker MinIO upload + recipe shadow config + template detail page (rename/edit/archive). Bu iki adım tamamlanınca operatör **Photoshop'a inmeden** kendi mockup template'ini sıfırdan oluşturabilir → templated.io ürün modelinin **olgun olur ki dynamic-mockups deprecation kararı verilebilir**.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

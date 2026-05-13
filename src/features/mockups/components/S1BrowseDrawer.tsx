@@ -292,22 +292,29 @@ export function S1BrowseDrawer({
                     No templates of your own yet
                   </div>
                   <p className="mt-2 max-w-xs text-xs text-text-muted">
-                    Templated.io-style: upload your own PSD/PNG mockup
-                    template and reuse it across selections. The upload
-                    editor is coming soon (Phase 66); the API endpoint{" "}
-                    <code className="rounded bg-surface-2 px-1 font-mono text-[11px]">
-                      POST /api/mockup-templates
-                    </code>{" "}
-                    is live now.
+                    Templated.io-style: create your own mockup template
+                    and reuse it across selections. Self-hosted (no API
+                    calls) — your library, your library limit.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => setOwnershipFilter("global")}
-                    className="mt-4 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-text hover:bg-surface-2"
-                    data-testid="template-library-empty-switch-admin"
-                  >
-                    Browse admin templates →
-                  </button>
+                  <div className="mt-4 flex flex-col items-center gap-2">
+                    {/* Phase 66 — First create CTA. Lands at user-facing
+                     *   create form (/templates/mockups/new). */}
+                    <a
+                      href="/templates/mockups/new"
+                      className="inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground hover:opacity-90"
+                      data-testid="template-library-empty-create-cta"
+                    >
+                      + Create your first template
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setOwnershipFilter("global")}
+                      className="rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-text hover:bg-surface-2"
+                      data-testid="template-library-empty-switch-admin"
+                    >
+                      Or browse admin templates →
+                    </button>
+                  </div>
                 </>
               ) : (
                 <>
