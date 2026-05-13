@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
+import { useMutation } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  CheckCircle2,
   Copy,
   Image as ImageIconLucide,
   MoreHorizontal,
@@ -111,12 +113,53 @@ export function SelectionDetailClient({ set, items }: Props) {
 
   const editsCount = set.editedItemCount;
 
+  /* Phase 51 — Item-level status counts. Operatör Apply Mockups
+   * disabled olduğunda "kaç item gerçekten finalize'a hazır?" sorusunun
+   * cevabını alır + Finalize CTA gate clarity'si bu sayım üzerinden. */
+  const selectedCount = items.filter((i) => i.status === "selected").length;
+  const pendingCount = items.filter((i) => i.status === "pending").length;
+
+  /* Phase 51 — Finalize mutation. POST /api/selection/sets/[setId]/finalize
+   * (Phase 7 Task 22 endpoint) → status="ready" + finalizedAt. Service
+   * `finalizeSet` selected ≥ 1 gate'i zaten enforce eder; UI bu gate'i
+   * yumuşak ve okunur surface'e bağlar. onSuccess → router.refresh
+   * (server-side detail page yeniden fetch eder, stage badge "Mockup
+   * ready"ye geçer, Apply Mockups CTA enabled olur). */
+  const finalizeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/selection/sets/${set.id}/finalize`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(payload.error ?? "Finalize failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      router.refresh();
+    },
+  });
+  /* finalizeReady: set draft durumunda (stage Curating veya Edits) +
+   * en az 1 selected. Edits stage'i de geçerli — operatör edit yapmış
+   * ama henüz finalize etmemiş olabilir. Mockup ready / Sent / Archived
+   * durumunda zaten finalize'a gerek yok. */
+  const finalizeReady =
+    (stage === "Curating" || stage === "Edits") && selectedCount > 0;
+
   const designs: DesignsTabItem[] = items.map((it) => ({
     id: it.id,
     sourceAssetId: it.sourceAssetId,
     editedAssetId: it.editedAssetId,
     aspectRatio: it.aspectRatio,
     productTypeKey: it.productTypeKey,
+    // Phase 51 — surface item-level decision state to DesignsTab so it
+    // can render status badges + status-aware curation actions.
+    status: it.status,
   }));
 
   // EditsTab needs the heavy lock state on top of the Designs view; we
@@ -204,6 +247,24 @@ export function SelectionDetailClient({ set, items }: Props) {
           <MoreHorizontal className="h-3 w-3" aria-hidden />
           More
         </button>
+        {/* Phase 51 — Mockup handoff stage gate.
+         *
+         * Önceden tek "Apply Mockups" button vardı, disabled durumunda
+         * operatöre "Stage: Curating → finalize to enable" teknik hint'i
+         * gösteriyordu — finalize aksiyonu görünür değildi (operatör
+         * "nereden finalize edeceğim?" sorusuyla kalıyordu).
+         *
+         * Phase 51 stage-aware iki CTA:
+         *   - stage = Mockup ready / Sent uygunsa → "Apply Mockups" primary
+         *   - stage = Curating + selectedCount > 0 → "Finalize selection · N
+         *     selected" primary (Phase 7 finalize endpoint'i wire'lı,
+         *     POST /api/selection/sets/[setId]/finalize). Apply Mockups
+         *     ghost button olarak görünür kalır + gerekçe.
+         *   - selectedCount === 0 → finalize disabled + hint
+         *     "Promote selected items first via the Designs tab"
+         *
+         * stage = Sent → "Already sent · view in Product" mevcut davranış
+         * korunur. */}
         {applyEnabled ? (
           <Link
             href={`/selection/sets/${set.id}/mockup/apply`}
@@ -214,18 +275,14 @@ export function SelectionDetailClient({ set, items }: Props) {
             <ImageIconLucide className="h-3 w-3" aria-hidden />
             Apply Mockups
           </Link>
-        ) : (
+        ) : stage === "Sent" ? (
           <div className="flex flex-col items-end gap-1">
             <button
               type="button"
               data-size="sm"
               className="k-btn k-btn--primary cursor-not-allowed"
               disabled
-              title={
-                stage === "Sent"
-                  ? "Set already sent — view in Product"
-                  : "Finalize the selection (Mockup ready) before applying mockups"
-              }
+              title="Set already sent — view in Product"
               data-testid="selection-detail-apply-mockups"
               data-apply-enabled="false"
             >
@@ -236,10 +293,61 @@ export function SelectionDetailClient({ set, items }: Props) {
               className="font-mono text-xs uppercase tracking-meta text-ink-3"
               data-testid="selection-detail-apply-hint"
             >
-              {stage === "Sent"
-                ? "Already sent · view in Product"
-                : `Stage: ${stage} → finalize to enable`}
+              Already sent · view in Product
             </span>
+          </div>
+        ) : (
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              data-size="sm"
+              className={
+                finalizeReady
+                  ? "k-btn k-btn--primary"
+                  : "k-btn k-btn--primary cursor-not-allowed"
+              }
+              disabled={!finalizeReady || finalizeMutation.isPending}
+              onClick={() => {
+                if (finalizeReady) finalizeMutation.mutate();
+              }}
+              title={
+                finalizeReady
+                  ? `Finalize this set with ${selectedCount} selected item${
+                      selectedCount === 1 ? "" : "s"
+                    } — stage moves to Mockup ready.`
+                  : "Promote at least one design to Selected via the Designs tab to finalize."
+              }
+              data-testid="selection-detail-finalize"
+              data-finalize-ready={finalizeReady || undefined}
+            >
+              <CheckCircle2 className="h-3 w-3" aria-hidden />
+              {finalizeMutation.isPending
+                ? "Finalizing…"
+                : selectedCount > 0
+                  ? `Finalize selection · ${selectedCount}`
+                  : "Finalize selection"}
+            </button>
+            <span
+              className="font-mono text-xs uppercase tracking-meta text-ink-3"
+              data-testid="selection-detail-apply-hint"
+            >
+              {finalizeReady ? (
+                <>Next · Apply Mockups after finalize</>
+              ) : pendingCount > 0 ? (
+                <>{pendingCount} pending · promote in Designs tab</>
+              ) : (
+                <>Promote items via Designs tab to enable</>
+              )}
+            </span>
+            {finalizeMutation.isError ? (
+              <span
+                className="font-mono text-[10.5px] text-danger"
+                data-testid="selection-detail-finalize-error"
+                role="alert"
+              >
+                {(finalizeMutation.error as Error).message}
+              </span>
+            ) : null}
           </div>
         )}
       </header>
@@ -251,7 +359,14 @@ export function SelectionDetailClient({ set, items }: Props) {
 
       {/* Tab content */}
       {tab === "designs" ? (
-        <DesignsTab setId={set.id} items={designs} />
+        <DesignsTab
+          setId={set.id}
+          items={designs}
+          /* Phase 51 — finalize sonrası set kararı dondurulur (status
+           * archived / ready). Operatör kart-level görünümü kaybetmez,
+           * yalnız bulk-bar curation aksiyonları disabled. */
+          readOnly={set.status !== "draft"}
+        />
       ) : null}
       {tab === "edits" ? (
         <EditsTab setId={set.id} items={editsItems} setStatus={set.status} />

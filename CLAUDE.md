@@ -10108,6 +10108,212 @@ omurganın doğal devamı.
 
 ---
 
+## Phase 51 — Selection studio: status badge + bulk curation + Finalize handoff
+
+Phase 50 Review → Selection handoff'unu görünür yaptı. Phase 51 odak
+değişti: **Selection detail yüzeyini gerçek çalışma yüzeyi haline
+getirme**. Pre-Phase 51 durumda `/selections/[setId]` sadece bir
+kayıt ekranıydı — operatör kartların gerçekten "ne durumda" olduğunu
+göremiyor, Apply Mockups disabled olduğunda nereden finalize edeceğini
+bilmiyordu.
+
+### Phase 50 sonrası ürün boşluğu
+
+1. **DesignsTab status agnostic'di**:
+   - `SelectionItem.status` (pending/selected/rejected) kart üzerinde
+     hiç görünmüyordu — operatör hangi item kept/removed bilmiyordu
+   - Bulk-bar tüm aksiyonları `disabled: true` (R5 deferral'ı kalıcılaşmış,
+     yıllar önce yazılmış "coming soon")
+   - Kartlar metadata-fakir ("Design XXXXXX · 1:1 · untyped")
+2. **Selection → Mockup handoff yarım**:
+   - Apply Mockups CTA vardı ama disabled durumunda hint teknik dilde:
+     `Stage: Curating → finalize to enable`. Finalize aksiyonu hiçbir
+     yerden görünür değildi — operatör nereden finalize edeceğini
+     bilmiyordu
+   - Selection → Mockup zinciri operatör için **dead-end** hissi veriyordu
+3. **Decision state dili kafa karıştırıcı**: SelectionItem.status
+   `pending/selected/rejected` Review tarafının `kept/rejected/undecided`'i
+   ile aynı semantic ama farklı kelimeler. Kart-level görünmediği için
+   karışıklık operatöre yansımıyordu — ama action layer'da yansıyordu
+   (operatör tile'a tıklayınca ne olur?).
+
+### Slice 1 — DesignsTab status visibility
+
+`src/features/selections/components/tabs/DesignsTab.tsx`:
+
+- **`DesignsTabItem` type'a `status` field eklendi** (server'dan zaten
+  geliyordu, UI'a kadar yüzeye çıkarıldı)
+- **Per-tile status badge** (Phase 49 References Pool "Draft" chip ile
+  aile parity):
+  - `selected` → `bg-k-orange-soft + text-k-orange-ink + border-k-orange/40`
+    + Check icon + "Selected" mono label
+  - `rejected` → `bg-danger/10 + text-danger + border-danger/30`
+    + CircleSlash icon + "Rejected" mono label
+  - `pending` → `bg-k-bg-2/60 + text-ink-3 + border-line-soft`
+    + CircleDot icon + "Pending" mono label
+- **Visual emphasis** state'e göre:
+  - `status === "selected"` (seçili olmasa bile) → tile'da subtle
+    `ring-1 ring-k-orange-soft` (operatör scan'de "bu kart elenmiş
+    seçilmiş" bilgisini alır)
+  - `status === "rejected"` → `opacity-60` (dimmed; scan'de görünür
+    ama görsel olarak geri planda)
+- **Status filter chip strip** üst barda (review-card kalitesinde):
+  - All / Selected / Pending / Rejected — count badge ile (`Selected 2`)
+  - `aria-pressed` + `data-active` attributes (Phase 20 References
+    toolbar pattern parity)
+  - Filter switch sadece görünüm; backend mutation tetiklemez
+- **Count caption status-aware**: "4 designs · 2 selected · 2 pending"
+  (önceden sadece "4 designs · drag to reorder")
+
+### Slice 2 — Bulk-bar gerçek curation
+
+Phase 7 Task 21'de yazılmış `PATCH /api/selection/sets/[setId]/items/bulk`
+endpoint UI'a bağlanmamıştı. Phase 51:
+
+- `useMutation` inline (yeni mutations dir/abstraction yok)
+- 3 bulk aksiyon (ikisi yeni):
+  - **Promote** (primary, Sparkles) → `status: "selected"`
+  - **Move to pending** (CircleDot) → `status: "pending"`
+  - **Reject** (Trash2) → `status: "rejected"`
+- onSuccess → `router.refresh()` (server-side detail page yeniden
+  fetch → status badge + filter count + finalize gate live update)
+- `readOnly` prop set finalize edildiğinde (status !== "draft") bulk-bar
+  hiç render edilmez — finalize sonrası set kararı dondurulur
+
+### Slice 3 — Apply Mockups handoff: Finalize CTA görünür
+
+`src/features/selections/components/SelectionDetailClient.tsx`:
+
+- **selectedCount + pendingCount** items'tan türetildi
+- **Finalize mutation** (`POST /api/selection/sets/[setId]/finalize`,
+  Phase 7 Task 22 endpoint — UI'a hiç bağlanmamıştı)
+- **Header CTA stage-aware**:
+  - `applyEnabled` (Mockup ready / Sent uygun) → Apply Mockups primary Link
+  - `stage === "Sent"` → mevcut "Already sent · view in Product" davranışı
+  - **Yeni**: `stage === "Curating" || stage === "Edits"` durumunda:
+    - **finalizeReady** (selectedCount > 0) → primary CTA "Finalize
+      selection · N" (CheckCircle2 icon) + subtitle "Next · Apply
+      Mockups after finalize"
+    - selectedCount === 0 → CTA disabled + actionable hint:
+      "Promote items via Designs tab to enable" veya
+      "N pending · promote in Designs tab"
+- **Error handling**: finalizeMutation.isError → inline `text-danger`
+  mono caption header altında
+
+### Decision state dili netliği
+
+Phase 51 yeni isim icat etmedi. Mevcut iki katman korundu:
+
+| Katman | Field | Değerler | Anlam |
+|---|---|---|---|
+| **Operator decision** (downstream gate) | `reviewStatus` + `reviewStatusSource` | APPROVED+USER / REJECTED+USER / PENDING | Batch'in operator-kept zinciri (CLAUDE.md Madde V) |
+| **In-set curation** | `SelectionItem.status` | pending / selected / rejected | Selection içinde mockup'a girer/çıkar kararı |
+
+İkisi farklı katman. Phase 51 Selection katmanında status badge'ler
+görünür yaptı ama Review-tarafı "kept" terminolojisinden ayrı tuttu.
+Operatör Review'de "kept" dilini, Selection'da "selected" dilini görür;
+karışıklık yok.
+
+### Aile benzerliği
+
+Status badge'leri Phase 49 References Pool "Draft" chip ve Phase 50
+Selection card lineage chip ile **aile parity**:
+- Aynı `border + bg + paper shadow` recipe
+- Aynı icon (h-2.5 w-2.5 + strokeWidth 3 selected/check için)
+- Aynı font-size (10px) + font-mono + uppercase + tracking-meta
+- Aynı padding (px-1.5 py-0.5) + border-radius (md)
+
+Filter chip strip'i Phase 20 References toolbar `k-input + k-chip`
+pattern parity (aria-pressed + data-active + segmented chip group).
+
+Bulk-bar Phase 46 unified `FloatingBulkBar` primitive — Library,
+References, Selections aynı görsel aile.
+
+### Browser verification (live dev server kanıt)
+
+Test set: `pass57-mj-29689991` (4 item draft set, stage=Edits).
+
+| Test | Sonuç |
+|---|---|
+| Initial state | 4 tile hepsi "Pending" badge, counts "4 designs · 4 pending", Finalize CTA disabled (`finalizeBtnReady=null`) |
+| Filter chips render | All / Selected / Pending / Rejected — 4 chip + count badge'leri |
+| Bulk PATCH endpoint | API call: `PATCH /items/bulk { itemIds: [...2 ids], status: 'selected' }` → 200 + `{ updatedCount: 2 }` ✓ |
+| Refresh sonrası | 2 tile "Selected" badge (k-orange-soft + Check), 2 tile "Pending" (gray + CircleDot); counts "4 designs · 2 selected · 2 pending"; Finalize CTA enabled `finalizeBtnReady=true`, text "Finalize selection · 2", title "Finalize this set with 2 selected items — stage moves to Mockup ready.", subtitle "Next · Apply Mockups after finalize" |
+| Filter chip toggle | "Selected" chip click → active=selected, visible tiles 4 → 2 (sadece selected); React fiber synthetic events ile doğrulandı |
+| Screenshot | Header'da net Finalize CTA + "NEXT · APPLY MOCKUPS AFTER FINALIZE" subtitle; tiles'da SELECTED/PENDING badge net; filter chip "ALL 4 · SELECTED 2 · PENDING 2 · REJECTED" görünür |
+
+Stage edge case kanıtı:
+- `stage === "Curating"` (henüz edit yok, selected > 0) → finalize aç
+- `stage === "Edits"` (edit yapılmış, selected > 0) → finalize aç
+  (önceden buradan finalize'a giden bir yol yoktu; Phase 51 düzeltti)
+- `stage === "Mockup ready"` / `stage === "Sent"` → finalize CTA hiç
+  görünmez (zaten finalize edilmiş veya gönderilmiş)
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: 59/59 PASS (canonical paket: bookmarks-page, references-page,
+  bookmark-service, collections-page, dashboard-page, bookmarks-confirm-flow)
+- Browser end-to-end: status badge + filter + bulk PATCH + refresh +
+  Finalize gate açılması — tümü canlı dev server üzerinde gerçek
+  mutation + DOM kanıtı
+
+### Değişmeyenler (Phase 51)
+
+- **Review freeze (Madde Z) korunur.** Review modülüne dokunulmadı.
+- **Schema migration yok.** SelectionItem.status + SelectionSet.status
+  alanları zaten yıllar önce yazılıydı; UI'a kadar yüzeye çıkarıldı.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** DesignsTab içinde inline `useMutation`
+  + Phase 7 Task 21/22 endpoint'leri reuse edildi. Yeni mutations dir
+  veya state machine açılmadı.
+- **References / Batch / Review / Add Reference / duplicate / local
+  folder / direct image intake akışları intakt** (Phase 26-50 baseline).
+- **Kivasy DS dışına çıkılmadı.** k-card / k-thumb / k-btn--primary
+  / k-orange-soft / k-orange-ink / k-bg-2 / line-soft / border-danger
+  recipe'leri kullanıldı; yeni recipe family icat edilmedi.
+
+### Bilinçli scope dışı (Phase 52+ candidate)
+
+- **Compare mode (side-by-side / focused compare)**: Phase 51 grid
+  + filter clarity'sine odaklandı. Side-by-side karşılaştırma view'i
+  (örn. 2 selected item'ı yan yana büyük) Phase 52 candidate.
+- **Drag-and-drop reorder**: Drag handle hâlâ disabled placeholder.
+  Position-based reorder PATCH endpoint zaten var; UI wiring ayrı tur.
+- **Source lineage strip in DesignsTab header**: Lineage chip mevcut
+  set-level header'da (`SelectionBatchLineage` Phase 1) ama tile-level
+  source bağlamı (örn. "from batch X · item Y") yok. Tile başına bu
+  bağlamı eklemek için server-side join genişletmesi gerekir; deferred.
+- **Finalize confirm modal**: Phase 7 `FinalizeModal` legacy
+  `/selection/components/FinalizeModal.tsx` mevcut ama yeni
+  `/selections/components/` çağırmıyor. Phase 51 inline button onClick
+  + service-side gate (selected ≥ 1) yeterli; confirm modal eklenebilir
+  ama operatöre extra friction olur.
+- **Apply Mockups → Product handoff'unun ürünleştirilmesi**: Selection
+  finalize sonrası operatör `/selection/sets/{id}/mockup/apply`'a iner;
+  bu surface'in operatör-friendly polish'i Phase 52+ candidate.
+
+### Bundan sonra production tarafında kalan tek doğru iş
+
+Phase 51 ile Selection studio operatör için **çalışma yüzeyi** oldu:
+- Status badge'leri ile decision görünür
+- Bulk-bar ile curation gerçek (Promote / Pending / Reject)
+- Filter chip ile hızlı tarama
+- Finalize CTA stage gate'e bağlı + "Next · Apply Mockups" handoff
+- Apply Mockups → Mockup studio mevcut akış (Phase 7 baseline)
+
+Sıradaki **tek doğru iş** Mockup → Product zincirinin
+operatör-friendly polish'i:
+- `/selection/sets/{id}/mockup/apply` surface'i operatöre teknik
+  hissetmiyor mu?
+- Product detail Listing builder ne durumda?
+- Etsy Draft handoff gerçek bir aksiyon mu yoksa placeholder mı?
+
+References → Batch → Review → Selection → **Mockup → Product → Etsy
+Draft** zincirinin sonu kalıyor.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
