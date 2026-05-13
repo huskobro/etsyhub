@@ -2,31 +2,57 @@
 
 /**
  * Phase 46 — Batch Queue Panel (collapsible + remove items).
+ * Phase 47 — Default collapsed + inline Compose mode.
  *
- * Phase 45 baseline'ında panel her zaman expanded'di — operatör Pool'a
- * baktığında sağda ~320px alan kaybediyordu. Phase 46:
- *   - Default state localStorage-persistent (operatör tercihi hatırlanır)
- *   - Collapsed: 56px rail, sticky right, count badge + click-to-expand
- *   - Expanded: 320px panel, full item list, remove button per item,
- *     close-to-collapse button
- *   - DRAFT yoksa panel hiç render edilmez (Pool full-width)
+ * Phase 46 baseline'ında panel her zaman expanded'di; Phase 47 üç şey
+ * yapar:
+ *   1. Default state collapsed (operatör Pool browse bağlamı tam görünür)
+ *   2. Card-level "Remove from Draft" zaten Phase 47 references-page
+ *      tarafında uygulandı; bu panel hâlâ kendi remove'unu sunar
+ *   3. **Compose-inline**: "Create Similar (N)" CTA artık ayrı route'a
+ *      navigate ETMEZ — panel kendi içinde `mode: "queue"` → `"compose"`
+ *      geçişi yapar, genişler (~520px), inline compose form'unu render
+ *      eder. Launch başarılı olunca → `/batches/[id]` (batch detail).
+ *
+ * Mode kararı UX gerekçesi (CLAUDE.md Madde A "single canonical surface"):
+ *   - Pool'da operatör staging yapıyor → aynı panel'de compose etmesi
+ *     mental model'i kesintisiz tutar
+ *   - Ayrı /batches/[id]/compose page'i hâlâ erişilebilir (deep-link
+ *     bookmark + backward compat); ama Pool'dan inline akış canonical
+ *   - Yeni big abstraction yok: form alanları BatchComposeClient ile
+ *     birebir uyumlu (provider/aspect/similarity/count/quality/brief);
+ *     launch endpoint aynı (POST /api/batches/[id]/launch)
+ *
+ * Provider/aspect defaults Phase 9 baseline ile aynı:
+ *   - aspect: 2:3
+ *   - count: 6
+ *   - similarity: Medium (advisory; brief'e enjekte edilmez)
+ *   - quality: medium (if supported by provider)
  *
  * Remove behavior: queue item × button → DELETE /api/batches/[id]/items/
  * [itemId] → optimistic-feeling refetch invalidation. Service yalnız
- * DRAFT'a izin verir; operatör QUEUED batch'in item'ını silemez.
- *
- * UX kararı: collapsed state'te bile "Create Similar (N)" CTA görünür
- * — operatör panel'i açmadan launch'a iniş yolu kapanmaz. Mobile/dar
- * ekranlar için ileride drawer pattern düşünülebilir; şu an desktop-
- * first.
+ * DRAFT'a izin verir.
  */
 
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, ChevronRight, Sparkles, X, Layers } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronRight,
+  Sparkles,
+  X,
+  Layers,
+} from "lucide-react";
 import { AssetImage } from "@/components/ui/asset-image";
 import { cn } from "@/lib/cn";
+import {
+  PROVIDER_CAPABILITIES,
+  getProviderCapability,
+  type ImageProviderUiId,
+} from "@/features/variation-generation/provider-capabilities";
 
 type DraftBatchItem = {
   id: string;
@@ -49,17 +75,30 @@ type DraftBatch = {
 
 const COLLAPSED_KEY = "kivasy.queuePanel.collapsed";
 
+type PanelMode = "queue" | "compose";
+type AspectRatio = "1:1" | "2:3" | "3:2";
+type Quality = "medium" | "high";
+
+const SIMILARITY_STOPS = ["Close", "Medium", "Loose", "Inspired"] as const;
+const COST_PER_VARIATION_CENTS = 24;
+
 export function BatchQueuePanel() {
   const qc = useQueryClient();
+  const router = useRouter();
 
-  const [collapsed, setCollapsed] = useState<boolean>(false);
-  // localStorage hydration. Default expanded on first visit; on subsequent
-  // visits remember the previous toggle so operator preference sticks.
+  /* Phase 47 — Default collapsed (Phase 46 default expanded'dan kayma).
+   * localStorage truth-table:
+   *   - no value (first visit) → collapsed (rail)
+   *   - "1" → collapsed
+   *   - "0" → expanded */
+  const [collapsed, setCollapsed] = useState<boolean>(true);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const stored = window.localStorage.getItem(COLLAPSED_KEY);
-      if (stored === "1") setCollapsed(true);
+      if (stored === "0") {
+        setCollapsed(false);
+      }
     } catch {
       /* localStorage disabled — silent skip */
     }
@@ -73,6 +112,12 @@ export function BatchQueuePanel() {
       return next;
     });
   };
+
+  /* Phase 47 — Inline compose mode. Default "queue". "Create Similar"
+   * CTA mode'u "compose"'a çevirir; panel genişler, inline form render
+   * eder. Back arrow → mode "queue"'a döner (data kalır, form state
+   * kalır). Launch başarılı olunca → /batches/[id]. */
+  const [mode, setMode] = useState<PanelMode>("queue");
 
   const query = useQuery<{ batch: DraftBatch | null }>({
     queryKey: ["batches", "current-draft"],
@@ -103,7 +148,8 @@ export function BatchQueuePanel() {
   const batch = query.data?.batch;
 
   if (!batch || batch.items.length === 0) {
-    // No active draft → panel hidden entirely.
+    // No active draft → panel hidden entirely. If we were in compose
+    // mode and items get removed externally, fall back gracefully.
     return null;
   }
 
@@ -118,6 +164,7 @@ export function BatchQueuePanel() {
         className="sticky top-0 flex h-screen w-14 flex-shrink-0 flex-col border-l border-line bg-k-bg-2/30"
         data-testid="batch-queue-panel"
         data-collapsed="true"
+        data-mode={mode}
         data-batch-id={batch.id}
       >
         <button
@@ -139,12 +186,30 @@ export function BatchQueuePanel() {
     );
   }
 
-  // Expanded state
+  if (mode === "compose") {
+    return (
+      <ComposePanel
+        batch={batch}
+        referencesWithoutPublicUrl={referencesWithoutPublicUrl}
+        onBack={() => setMode("queue")}
+        onCollapse={toggleCollapsed}
+        onLaunchSuccess={() => {
+          // Operatör batch detail'a düşer; queue mode'a geri sıfırla
+          // ki sıradaki staging yeni mode'la başlasın.
+          setMode("queue");
+          router.push(`/batches/${batch.id}`);
+        }}
+      />
+    );
+  }
+
+  // Expanded queue mode
   return (
     <aside
       className="sticky top-0 flex h-screen w-80 flex-shrink-0 flex-col border-l border-line bg-paper"
       data-testid="batch-queue-panel"
       data-collapsed="false"
+      data-mode="queue"
       data-batch-id={batch.id}
     >
       <div className="flex items-center gap-2 border-b border-line bg-paper px-4 py-3">
@@ -253,18 +318,347 @@ export function BatchQueuePanel() {
       ) : null}
 
       <div className="border-t border-line bg-paper px-3 py-3">
-        <Link
-          href={`/batches/${batch.id}/compose`}
+        <button
+          type="button"
+          onClick={() => setMode("compose")}
           className="k-btn k-btn--primary w-full"
           data-size="sm"
           data-testid="batch-queue-open-compose"
-          title="Open the Create Similar compose page for this draft batch"
+          title="Open the Create Similar compose form inline for this draft batch"
         >
           <Sparkles className="h-3 w-3" aria-hidden />
           Create Similar ({batch.items.length})
           <ArrowRight className="h-3 w-3" aria-hidden />
+        </button>
+        <Link
+          href={`/batches/${batch.id}/compose`}
+          className="mt-1.5 block w-full text-center font-mono text-[10px] uppercase tracking-meta text-ink-3 hover:text-ink-2"
+          data-testid="batch-queue-open-compose-page"
+          title="Open compose in a dedicated page (deep-link)"
+        >
+          Or open full compose page →
         </Link>
       </div>
     </aside>
+  );
+}
+
+/* ---------------- Compose panel (inline) ---------------- */
+
+function ComposePanel({
+  batch,
+  referencesWithoutPublicUrl,
+  onBack,
+  onCollapse,
+  onLaunchSuccess,
+}: {
+  batch: DraftBatch;
+  referencesWithoutPublicUrl: number;
+  onBack: () => void;
+  onCollapse: () => void;
+  onLaunchSuccess: () => void;
+}) {
+  // Provider state — first available default; settings'ten gelmemiş
+  // bağlamda canonical fallback Kie GPT Image 1.5.
+  const defaultProviderId = useMemo<ImageProviderUiId>(() => {
+    const firstAvail = PROVIDER_CAPABILITIES.find((p) => p.available);
+    return firstAvail?.id ?? "kie-gpt-image-1.5";
+  }, []);
+  const [providerId, setProviderId] =
+    useState<ImageProviderUiId>(defaultProviderId);
+  const [aspect, setAspect] = useState<AspectRatio>("2:3");
+  const [similarity, setSimilarity] = useState<number>(1); // Medium
+  const [count, setCount] = useState<number>(6);
+  const [quality, setQuality] = useState<Quality>("medium");
+  const [brief, setBrief] = useState<string>("");
+
+  const providerCap = getProviderCapability(providerId);
+  const supportsQuality = (providerCap?.supportedQualities.length ?? 0) > 0;
+
+  const totalCostCents = COST_PER_VARIATION_CENTS * count;
+  const totalCostUSD = (totalCostCents / 100).toFixed(2);
+  const estMinutes = Math.max(1, Math.round(count * 0.5));
+
+  const launchMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/batches/${batch.id}/launch`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          providerId,
+          aspectRatio: aspect,
+          ...(supportsQuality ? { quality } : {}),
+          count,
+          ...(brief.trim() ? { brief: brief.trim() } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(payload.error ?? "Failed to launch batch");
+      }
+      return (await res.json()) as { batchId: string; state: string };
+    },
+    onSuccess: onLaunchSuccess,
+  });
+
+  const hasItems = batch.items.length > 0;
+  const someReferencesUnreachable = referencesWithoutPublicUrl > 0;
+  const launchDisabled =
+    !hasItems ||
+    someReferencesUnreachable ||
+    !providerCap?.available ||
+    launchMutation.isPending;
+
+  return (
+    <aside
+      className="sticky top-0 flex h-screen w-[520px] flex-shrink-0 flex-col border-l border-line bg-paper"
+      data-testid="batch-queue-panel"
+      data-collapsed="false"
+      data-mode="compose"
+      data-batch-id={batch.id}
+    >
+      <div className="flex items-center gap-2 border-b border-line bg-paper px-4 py-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-k-bg hover:text-ink"
+          aria-label="Back to draft queue"
+          data-testid="batch-compose-inline-back"
+          title="Back to draft queue"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h2
+              className="text-[13.5px] font-semibold text-ink"
+              data-testid="batch-compose-inline-title"
+            >
+              Create Similar
+            </h2>
+            <span
+              className="rounded-full bg-k-orange-soft px-1.5 font-mono text-[10.5px] font-semibold text-k-orange-ink"
+              data-testid="batch-compose-inline-count"
+            >
+              {batch.items.length}
+            </span>
+          </div>
+          <p className="mt-0.5 truncate font-mono text-[10.5px] tracking-wider text-ink-3">
+            From draft · {batch.label ?? "Untitled batch"}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCollapse}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-k-bg hover:text-ink"
+          aria-label="Collapse panel"
+          data-testid="batch-compose-inline-collapse"
+          title="Collapse — keep working in Pool"
+        >
+          <ChevronRight className="h-4 w-4" aria-hidden />
+        </button>
+      </div>
+
+      <div
+        className="flex-1 overflow-y-auto px-4 py-4"
+        data-testid="batch-compose-inline-form"
+      >
+        <div className="space-y-5">
+          <FieldRow label="Provider">
+            <select
+              value={providerId}
+              onChange={(e) =>
+                setProviderId(e.target.value as ImageProviderUiId)
+              }
+              className="h-9 w-full rounded-md border border-line bg-paper px-2.5 text-[12.5px] text-ink"
+              data-testid="batch-compose-inline-provider"
+            >
+              {PROVIDER_CAPABILITIES.map((p) => (
+                <option key={p.id} value={p.id} disabled={!p.available}>
+                  {p.label}
+                  {p.available ? "" : " — unavailable"}
+                </option>
+              ))}
+            </select>
+            {!providerCap?.available && providerCap?.helperText ? (
+              <p className="mt-1 text-[11px] text-ink-3">
+                {providerCap.helperText}
+              </p>
+            ) : null}
+          </FieldRow>
+
+          <FieldRow label="Aspect ratio">
+            <div className="flex gap-2">
+              {(["1:1", "3:2", "2:3"] as const).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setAspect(a)}
+                  className={cn(
+                    "h-9 flex-1 rounded-md border text-[12px] font-medium transition-colors",
+                    aspect === a
+                      ? "border-k-orange bg-k-orange-soft text-k-orange-ink"
+                      : "border-line bg-paper text-ink-2 hover:border-line-strong",
+                  )}
+                  data-testid="batch-compose-inline-aspect"
+                  data-aspect={a}
+                  data-active={aspect === a || undefined}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          </FieldRow>
+
+          <FieldRow label="Similarity" hint={SIMILARITY_STOPS[similarity]}>
+            <div className="flex">
+              {SIMILARITY_STOPS.map((s, i) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSimilarity(i)}
+                  className={cn(
+                    "-ml-px h-9 flex-1 border border-line text-[11.5px] font-medium transition-colors first:ml-0 first:rounded-l-md last:rounded-r-md",
+                    i === similarity
+                      ? "z-10 relative border-k-orange bg-k-orange-soft text-k-orange-ink"
+                      : "bg-paper text-ink-2 hover:border-line-strong",
+                  )}
+                  data-testid="batch-compose-inline-similarity"
+                  data-active={i === similarity || undefined}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </FieldRow>
+
+          <FieldRow label="Count">
+            <div className="flex">
+              {[2, 3, 4, 6].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setCount(n)}
+                  className={cn(
+                    "-ml-px h-9 flex-1 border border-line text-[13px] font-semibold transition-colors first:ml-0 first:rounded-l-md last:rounded-r-md",
+                    n === count
+                      ? "z-10 relative border-k-orange bg-k-orange-soft text-k-orange-ink"
+                      : "bg-paper text-ink-2 hover:border-line-strong",
+                  )}
+                  data-testid="batch-compose-inline-count-stop"
+                  data-active={n === count || undefined}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </FieldRow>
+
+          {supportsQuality ? (
+            <FieldRow label="Quality">
+              <div className="flex">
+                {(["medium", "high"] as const).map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setQuality(q)}
+                    className={cn(
+                      "-ml-px h-9 flex-1 border border-line text-[12.5px] font-medium capitalize transition-colors first:ml-0 first:rounded-l-md last:rounded-r-md",
+                      q === quality
+                        ? "z-10 relative border-k-orange bg-k-orange-soft text-k-orange-ink"
+                        : "bg-paper text-ink-2 hover:border-line-strong",
+                    )}
+                    data-testid="batch-compose-inline-quality"
+                    data-active={q === quality || undefined}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </FieldRow>
+          ) : null}
+
+          <FieldRow label="Brief" hint="Optional · max 500 chars">
+            <textarea
+              value={brief}
+              onChange={(e) => setBrief(e.target.value.slice(0, 500))}
+              rows={3}
+              placeholder="Optional style note — e.g., 'soft pastel palette' or 'add line art accents'"
+              className="w-full resize-none rounded-md border border-line bg-paper px-2.5 py-1.5 text-[12.5px] text-ink placeholder:text-ink-3"
+              data-testid="batch-compose-inline-brief"
+            />
+          </FieldRow>
+
+          {someReferencesUnreachable ? (
+            <div
+              className="rounded-md border border-warning/40 bg-warning-soft/40 px-3 py-2 text-[11.5px] text-ink"
+              data-testid="batch-compose-inline-url-warning"
+            >
+              {referencesWithoutPublicUrl} reference
+              {referencesWithoutPublicUrl === 1 ? "" : "s"} without a public
+              URL — AI launch needs URL-sourced references.
+            </div>
+          ) : null}
+
+          {launchMutation.isError ? (
+            <div
+              role="alert"
+              className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12px] text-danger"
+              data-testid="batch-compose-inline-error"
+            >
+              {(launchMutation.error as Error).message}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 border-t border-line bg-paper px-4 py-3">
+        <span
+          className="font-mono text-[10.5px] text-ink-3"
+          data-testid="batch-compose-inline-cost"
+        >
+          ~${totalCostUSD} · est. {estMinutes}m
+        </span>
+        <button
+          type="button"
+          className="k-btn k-btn--primary"
+          data-size="sm"
+          disabled={launchDisabled}
+          onClick={() => launchMutation.mutate()}
+          data-testid="batch-compose-inline-launch"
+        >
+          <Sparkles className="h-3 w-3" aria-hidden />
+          {launchMutation.isPending
+            ? "Launching…"
+            : `Create Similar (${count})`}
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function FieldRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <label className="text-[12px] font-semibold text-ink">{label}</label>
+        {hint ? (
+          <span className="font-mono text-[10px] uppercase tracking-meta text-ink-3">
+            {hint}
+          </span>
+        ) : null}
+      </div>
+      {children}
+    </div>
   );
 }

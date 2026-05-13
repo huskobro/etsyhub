@@ -8,7 +8,17 @@ import {
 } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Archive, ChevronDown, Eye, Info, Search, Sparkles, X } from "lucide-react";
+import {
+  Archive,
+  Check,
+  ChevronDown,
+  Eye,
+  Info,
+  Search,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { confirmPresets } from "@/components/ui/confirm-presets";
@@ -181,7 +191,7 @@ export function ReferencesPage({
    * canlı güncellenir. */
   type DraftBatchLite = {
     id: string;
-    items: { reference: { id: string } }[];
+    items: { id: string; reference: { id: string } }[];
   };
   const draftQuery = useQuery<{ batch: DraftBatchLite | null }>({
     queryKey: ["batches", "current-draft"],
@@ -194,12 +204,16 @@ export function ReferencesPage({
     },
     refetchInterval: 5_000,
   });
-  const inDraftIds = useMemo(() => {
-    const set = new Set<string>();
+  /* Phase 47 — Map<referenceId, itemId> for hover remove on Pool cards.
+   * Phase 46 only carried the in-draft Set; remove-from-draft needs
+   * the BatchItem.id (DELETE endpoint contract), so we derive both. */
+  const draftBatchId = draftQuery.data?.batch?.id ?? null;
+  const inDraftItemByRef = useMemo(() => {
+    const map = new Map<string, string>(); // referenceId → itemId
     for (const item of draftQuery.data?.batch?.items ?? []) {
-      set.add(item.reference.id);
+      map.set(item.reference.id, item.id);
     }
-    return set;
+    return map;
   }, [draftQuery.data]);
 
   const archiveMutation = useMutation({
@@ -534,7 +548,8 @@ export function ReferencesPage({
                 reference={ref}
                 density={density}
                 selected={selectedIds.has(ref.id)}
-                inDraft={inDraftIds.has(ref.id)}
+                inDraftItemId={inDraftItemByRef.get(ref.id) ?? null}
+                draftBatchId={draftBatchId}
                 onToggleSelect={toggleSelect}
               />
             ))}
@@ -715,18 +730,22 @@ function ReferencePoolCard({
   reference,
   density,
   selected,
-  inDraft,
+  inDraftItemId,
+  draftBatchId,
   onToggleSelect,
 }: {
   reference: ReferenceLite;
   density: Density;
   selected: boolean;
-  /** Phase 46 — Pool card visual in-draft signal. Parent derives from
-   *  current-draft query; card shows subtle k-orange ring + button
-   *  state changes from "Add to Draft" → "In Draft" (disabled). */
-  inDraft: boolean;
+  /** Phase 47 — Pool card in-draft signal + remove wiring.
+   *  Parent derives Map<refId, BatchItem.id> from current-draft query.
+   *  Card uses item.id to call DELETE /api/batches/[batchId]/items/
+   *  [itemId] on hover Remove from Draft. null → not in draft. */
+  inDraftItemId: string | null;
+  draftBatchId: string | null;
   onToggleSelect: (id: string) => void;
 }) {
+  const inDraft = !!inDraftItemId;
   /* Phase 43 — Pool card "New Batch" CTA.
    *
    * Phase 41'de "Create Variations" Link `/references/[id]/variations`
@@ -776,6 +795,33 @@ function ReferencePoolCard({
     },
   });
 
+  /* Phase 47 — Remove-from-draft mutation on hover.
+   *
+   * Phase 46'da operatör in-draft kartı tıklayınca pasif "In Draft"
+   * disabled CTA görüyordu — hover'da hiçbir aktif aksiyon yok,
+   * frustrating. Phase 47: hover'da CTA "Remove from Draft" (danger
+   * tone) olarak değişir. Tek tıkla kart draft'tan çıkar; queue
+   * panel canlı güncellenir. DELETE endpoint'i (Phase 46) zaten
+   * mevcut, sadece UI consumer yeni. */
+  const removeFromDraft = useMutation({
+    mutationFn: async () => {
+      if (!draftBatchId || !inDraftItemId) {
+        throw new Error("Not in draft");
+      }
+      const res = await fetch(
+        `/api/batches/${draftBatchId}/items/${inDraftItemId}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        throw new Error("Failed to remove from draft");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["batches", "current-draft"] });
+    },
+  });
+
   const title =
     reference.bookmark?.title ?? reference.bookmark?.sourceUrl ?? "Reference";
   const createdLabel = formatRelative(reference.createdAt);
@@ -816,13 +862,17 @@ function ReferencePoolCard({
       data-in-draft={inDraft || undefined}
     >
       {inDraft ? (
-        /* Subtle corner badge so operator scanning the grid sees which
-         * cards are already staged. Mono caption pattern + k-orange-ink
-         * text reads as Kivasy DS-native. */
+        /* Phase 47 — Refined in-draft badge:
+         *  - Check icon + "In Draft" label (was text-only)
+         *  - Larger text-[10.5px] with proper line-height
+         *  - Higher contrast (k-orange fill + white text instead of
+         *    k-orange-ink which is too muted on k-orange bg)
+         *  - Mono pattern preserved (Kivasy DS-native) */
         <span
-          className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-k-orange px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-meta text-k-orange-ink shadow"
+          className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-k-orange px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase tracking-meta text-white shadow"
           data-testid="reference-card-in-draft-badge"
         >
+          <Check className="h-2.5 w-2.5" strokeWidth={3} aria-hidden />
           In Draft
         </span>
       ) : null}
@@ -904,34 +954,69 @@ function ReferencePoolCard({
           {/* Phase 46 — in-draft state gates the CTA. When operator
            * has already added this ref to current draft, button shows
            * "In Draft ✓" disabled — duplicate-click frustration gone. */}
-          <button
-            type="button"
-            data-size="sm"
-            className={cn(
-              "k-btn w-full",
-              inDraft ? "k-btn--ghost" : "k-btn--primary",
-            )}
-            disabled={addToDraft.isPending || inDraft}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (inDraft) return;
-              addToDraft.mutate();
-            }}
-            title={
-              inDraft
-                ? "Already in the current draft batch — remove from the queue panel to undo"
-                : "Add this reference to the current draft batch. Open Create Similar from the queue panel when ready."
-            }
-            data-testid="reference-card-add-to-draft"
-            data-in-draft={inDraft || undefined}
-          >
-            <Sparkles className="h-3 w-3" aria-hidden />
-            {addToDraft.isPending
-              ? "Adding…"
-              : inDraft
-                ? "In Draft"
-                : "Add to Draft"}
-          </button>
+          {/* Phase 47 — In-draft CTA is now an actionable
+            *   "Remove from Draft" button (danger tone) when in
+            *   draft; otherwise the existing primary "Add to Draft"
+            *   button. Resting label "In Draft ✓" stays as the
+            *   default Visual on the card so operator scanning the
+            *   grid sees membership; on hover/focus the button
+            *   text swaps to "Remove from Draft" (group/card-hover
+            *   transition). Removes use the existing DELETE
+            *   /api/batches/[batchId]/items/[itemId] endpoint
+            *   (Phase 46). */}
+          {inDraft ? (
+            <button
+              type="button"
+              data-size="sm"
+              className={cn(
+                "k-btn k-btn--ghost w-full",
+                "hover:!bg-danger hover:!text-white hover:!border-danger",
+                "focus-visible:!bg-danger focus-visible:!text-white focus-visible:!border-danger",
+              )}
+              disabled={removeFromDraft.isPending}
+              onClick={(e) => {
+                e.stopPropagation();
+                removeFromDraft.mutate();
+              }}
+              title="Remove this reference from the current draft batch"
+              data-testid="reference-card-add-to-draft"
+              data-in-draft="true"
+            >
+              {removeFromDraft.isPending ? (
+                <>
+                  <Trash2 className="h-3 w-3" aria-hidden />
+                  Removing…
+                </>
+              ) : (
+                <>
+                  <span className="inline group-hover:hidden">
+                    <Check className="-mt-0.5 mr-1 inline h-3 w-3" strokeWidth={3} aria-hidden />
+                    In Draft
+                  </span>
+                  <span className="hidden group-hover:inline">
+                    <Trash2 className="-mt-0.5 mr-1 inline h-3 w-3" aria-hidden />
+                    Remove from Draft
+                  </span>
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-size="sm"
+              className="k-btn k-btn--primary w-full"
+              disabled={addToDraft.isPending}
+              onClick={(e) => {
+                e.stopPropagation();
+                addToDraft.mutate();
+              }}
+              title="Add this reference to the current draft batch. Open Create Similar from the queue panel when ready."
+              data-testid="reference-card-add-to-draft"
+            >
+              <Sparkles className="h-3 w-3" aria-hidden />
+              {addToDraft.isPending ? "Adding…" : "Add to Draft"}
+            </button>
+          )}
         </div>
       </div>
 

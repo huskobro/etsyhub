@@ -9276,6 +9276,170 @@ compose-inline + multi-ref launch end-to-end vertical slice.
 
 ---
 
+## Phase 47 — Compose-inline + default collapsed + hover Remove
+
+Phase 46 queue panel'i kurmuştu ama operatör için üç kalan friction
+vardı:
+
+1. Panel her gelişte expanded açılıyor → Pool browse alanı 320px
+   azalıyordu (operator kart taramayı zorlaşıyordu)
+2. Pool in-draft kartı "In Draft" disabled badge gösteriyordu —
+   operatör draft'tan çıkarmak için panel'i açıp item-level X tuşunu
+   kullanmak zorundaydı (3 click + bağlam değişimi)
+3. "Create Similar" CTA `/batches/[id]/compose` ayrı route'una
+   navigate ediyordu → Pool bağlamı kayboluyordu; compose form'unun
+   v4 A6 page-form-factor'undan vazgeçilmesi gerekiyordu
+
+Phase 47 üç düzeltmeyi tek vertical slice'da bağlar:
+
+### Default collapsed queue panel
+
+`BatchQueuePanel.tsx`:
+
+- Default `useState<boolean>(true)` (Phase 46 default `false`)
+- localStorage truth-table:
+  - no value (first visit) → collapsed (rail mode 56px)
+  - `"1"` → collapsed (explicit operator collapse persisted)
+  - `"0"` → expanded (explicit operator expand persisted)
+- Explicit toggle her iki yönde de persist; first-visit default tek
+  yönde değişti (expanded → collapsed)
+- Operatör tek tıkla rail'i açar, açtığında localStorage `"0"`
+  yazılır → sonraki ziyarette expanded gelir
+
+### Refined draft state visuals + hover Remove
+
+`references-page.tsx` `ReferencePoolCard`:
+
+- Parent state'ten `inDraftIds: Set<string>` →
+  `inDraftItemByRef: Map<referenceId, itemId>` + `draftBatchId` geçişi
+  (per-item DELETE için BatchItem.id gerekli)
+- "In Draft" badge: text-[9.5px] → **text-[10.5px]**, k-orange-ink →
+  **white** (kontrast yükseltimi), Check icon eklendi
+- CTA two-branch:
+  - **inDraft**: `k-btn--ghost` + `hover:!bg-danger hover:!text-white`
+    + `hover:!border-danger`. Resting span "✓ In Draft", hover span
+    "× Remove from Draft" (Tailwind `inline group-hover:hidden` /
+    `hidden group-hover:inline` ile DOM-level swap)
+  - **not-inDraft**: mevcut `k-btn--primary` "Add to Draft"
+- `removeFromDraft` useMutation → DELETE
+  `/api/batches/[batchId]/items/[itemId]` (Phase 46 endpoint reuse)
+- Operatör draft'tan kaldırmak için artık panel'i açmaya gerek yok;
+  kart üzerinde tek hover + click yeterli
+
+### Compose-inline panel mode
+
+`BatchQueuePanel.tsx` `mode: "queue" | "compose"` state'i:
+
+- "Create Similar (N)" CTA artık `<button onClick={setMode("compose")}>`
+  — `<Link>` değil. Mevcut panel **520px'e genişler** ve queue list
+  view yerine **compose form** render eder
+- Yeni `ComposePanel` private component, form alanları
+  `BatchComposeClient` ile birebir uyumlu:
+  - **Provider** (`<select>`, settings'ten default; bilinmeyen
+    seçildiğinde helperText)
+  - **Aspect ratio** (3 chip: 1:1 / 3:2 / 2:3, default 2:3)
+  - **Similarity** (4-stop segmented: Close / Medium / Loose /
+    Inspired; advisory, brief'e enjekte etmiyor)
+  - **Count** (2/3/4/6 segmented, server cap 6)
+  - **Quality** (medium/high, provider quality desteklemiyorsa
+    section hiç render edilmez)
+  - **Brief** (textarea, max 500 chars, opsiyonel)
+- Cost preview "~$N.NN · est. Nm" (`COST_PER_VARIATION_CENTS = 24` *
+  count = 6*24 = 144¢ = $1.44, est. = max(1, round(count*0.5))m)
+- URL warning: `referencesWithoutPublicUrl > 0` ise
+  `bg-warning-soft/40` block — launch disabled
+- **Inline launch**: POST `/api/batches/[id]/launch` body
+  `{ providerId, aspectRatio, quality?, count, brief? }` →
+  onSuccess: mode "queue"'ya sıfırla + `router.push("/batches/[id]")`
+- **Back navigation**: ArrowLeft button → mode "queue"; form state
+  korunur (operator tekrar açtığında aynı seçim)
+- **Collapse**: compose mode'da da rail-collapse her zaman görünür
+  (sağ üst ChevronRight) — operatör compose'tan rail'e direk geçebilir
+
+### Compose page deep-link backward-compat
+
+`/batches/[batchId]/compose` page'i **dokunulmadan korundu**:
+- Bookmarked compose URL'leri çalışmaya devam eder
+- Queue panel'in expanded state'inde "Or open full compose page →"
+  secondary link de mevcut (font-mono, ink-3 muted) — operatör
+  isterse full-page experience'a geçer
+- Phase 47 sonrası canonical akış inline compose; full-page erişim
+  fallback
+
+### Browser verification (live dev server kanıtı, viewport 1440×900)
+
+| Test | Sonuç |
+|---|---|
+| First visit + 6-item draft | panel collapsed, width 56, count badge 6, localStorage null |
+| Pool refined badge | "In Draft" + Check icon, text-10.5px, bg k-orange (232,93,37), color white |
+| inDraft buton sayısı | 6 (= draft items), not-inDraft 3 (toplam 9 card) |
+| Hover swap | resting "In Draft" `display:block`, hover "Remove from Draft" `display:none` (group-hover ile swap) |
+| Expand → queue mode | width 56 → 320, 6 items, "Create Similar (6)" CTA + "Or open full compose page →" deep-link |
+| Click "Create Similar" → compose mode | width 320 → 520, form render, Provider="kie-gpt-image-1.5", Aspect=2:3 active, Similarity=Medium (idx 1), Count=6, Quality=medium, brief textarea present, cost "~$1.44 · est. 3m", launch CTA "Create Similar (6)" |
+| URL warning | "6 references without a public URL — AI launch needs URL-sourced references." → launch disabled (beklenen) |
+| Back button → queue | width 520 → 320, items intact (6) |
+| Collapse from expanded | width 320 → 56, localStorage "1" persisted |
+| Compose page deep-link | `/batches/[id]/compose` HTTP 200 (backward-compat) |
+| Regression | `/batches` 200, console error YOK |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: 59/59 PASS (canonical paket: bookmarks-page, references-page,
+  bookmark-service, collections-page, dashboard-page, bookmarks-confirm-flow)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 47)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Aynı `Job.metadata.batchId` + Phase 43
+  `Batch`/`BatchItem` tabloları kullanılır.
+- **Yeni surface açılmadı.** Compose-inline panel mevcut
+  BatchQueuePanel'in mode varyantı; `/batches/[id]/compose` page
+  backward-compat olarak diskte kalır.
+- **Yeni big abstraction yok.** ComposePanel private component
+  (BatchQueuePanel.tsx içinde), form alanları BatchComposeClient ile
+  birebir; ortak shell extraction Phase 48 candidate (henüz iki
+  consumer ergonomi-justify değil).
+- **WorkflowRun eklenmez** (IA Phase 11 kapsamı).
+- **Kivasy DS dışına çıkılmadı.** k-btn--primary, k-btn--ghost,
+  k-orange / k-orange-soft / k-orange-ink, k-thumb, k-bg-2 recipe'leri
+  korundu.
+- **Direct image URL canonical yolu intakt** (Phase 39+ baseline).
+- **From Bookmark + From Local Library + Upload + URL** 4 intake yolu
+  bozulmadı (Phase 26-40).
+
+### Bilinçli scope dışı (Phase 48+ candidate)
+
+- **Multi-ref launch**: `/api/batches/[id]/launch` body şu an tek
+  reference path canonical (count = single reference için variation
+  sayısı). Multi-reference batch'te her item için ayrı launch
+  job'ları gerekecek — schema-zero ile Phase 43 BatchItem üzerinden
+  iteration mümkün; ayrı tur.
+- **Shared compose shell**: BatchComposeClient (page) ve
+  BatchQueuePanel.ComposePanel (inline) iki ayrı render path. Form
+  state + launch mutation + cost preview pattern duplicate. Eğer
+  birinde davranış sapması gerekirse ortak `ComposeForm` component'i
+  çıkarılır (Phase 48 candidate).
+- **Similarity → brief injection**: Similarity stop şu an pure UI
+  state; backend ne brief'e enjeksiyon ne ayrı parametre kabul ediyor.
+- **In-draft toggle on card**: Phase 47'de inDraft kartında hover
+  "Remove from Draft" var; click davranışı remove. Bu zaten doğru;
+  toggle semantic'i (Add ↔ Remove) kart-level tam — gelecek tur
+  Phase 47'nin doğal devamı değil, başka modüllere geçilebilir.
+
+### Bundan sonra batch/compose tarafında kalan tek doğru iş
+
+Phase 47 ile References → Pool → Queue → Compose → Launch zincirinin
+canonical akışı **kapanmış** durumda. Operatör tek sayfada
+(`/references`) compose decision'ı verebiliyor; ayrı route geçişi
+opsiyonel. Sıradaki gerçek iş **multi-ref launch** veya **shared
+compose shell** veya **diğer modüller** (Selection, Mockup, Listing
+detail'leri). Phase 47 batch-first omurganın **production-ready
+finalize** noktası.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
