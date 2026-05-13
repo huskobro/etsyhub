@@ -210,9 +210,18 @@ export function DesignsTab({ setId, items, readOnly = false }: DesignsTabProps) 
               </>
             ) : null}
           </div>
-          {/* Phase 51 — Status filter chip strip. Compact, scan-friendly. */}
+          {/* Phase 59 — Filter chip strip → k-segment unified bar.
+           *
+           * Pre-Phase 59 her status filter ayrı `<button>` ile bordered
+           * chip (Phase 51 chip strip). Operatör "filter chips yerine
+           * birleşik filter bar" tercihi (Review surface parity) ile
+           * Kivasy DS canonical `.k-segment` recipe'ine geçirildi.
+           * Aynı `aria-pressed` pattern, aynı count badge davranışı,
+           * Review toolbar ile birebir aile parity. */}
           <div
-            className="flex items-center gap-1"
+            className="k-segment"
+            role="group"
+            aria-label="Filter by design status"
             data-testid="selection-designs-status-filters"
           >
             {STATUS_FILTERS.map((f) => {
@@ -231,21 +240,20 @@ export function DesignsTab({ setId, items, readOnly = false }: DesignsTabProps) 
                   type="button"
                   onClick={() => setFilter(f.id)}
                   aria-pressed={active}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-1",
-                    "font-mono text-[10.5px] font-semibold uppercase tracking-meta",
-                    "transition-colors",
-                    active
-                      ? "border-k-orange bg-k-orange-soft text-k-orange-ink"
-                      : "border-line bg-paper text-ink-2 hover:border-line-strong hover:text-ink",
-                  )}
                   data-testid="selection-designs-filter-chip"
                   data-filter={f.id}
                   data-active={active || undefined}
                 >
-                  <span>{f.label}</span>
+                  {f.label}
                   {count > 0 ? (
-                    <span className="text-ink-3">{count}</span>
+                    <span
+                      className={cn(
+                        "ml-1 font-mono text-[10.5px] tabular-nums",
+                        active ? "text-ink-3" : "text-ink-4",
+                      )}
+                    >
+                      {count}
+                    </span>
                   ) : null}
                 </button>
               );

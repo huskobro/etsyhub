@@ -11598,6 +11598,326 @@ Bu üçü **operator-blocking değil**, sadece UX yorum farkı.
 
 ---
 
+## Phase 59 — Filter affordance disipline: misleading "fake dropdown" sıfırlanması + review parity
+
+Phase 58 canonical operator loop'u "tek ürün hissi" seviyesine
+çekmişti. Phase 59 user signoff feedback'i ile odak değişti:
+**filter affordance dürüstlüğü**.
+
+User signal (direct quote):
+> "genelde filter chips yerine birleşik filter bar kullanımı daha çok
+> hoşuma gidiyor bu arada review sayfasında olduğu gibi. Ayrıca
+> dropdown gibi görünen ama dropdown olmayan filtreleri de bence daha
+> güzel bir hale getirmeliyiz."
+
+İki UX preference signal'i tek turda kapatıldı.
+
+### Audit findings — fake dropdown pattern
+
+Pre-Phase 59 üç ana surface'te filter UI:
+
+| Surface | Pattern | Affordance |
+|---|---|---|
+| Review (`/review` queue) | `.k-segment` unified bar | ✓ Honest segmented; canonical |
+| Selection DesignsTab | Individual chips (Phase 51) | Chip group, no caret, no dropdown promise — honest ama review parity yok |
+| References Pool | `FilterChip` + caret + **gerçek popover listbox** | ✓ Honest dropdown — `role="listbox"` + `aria-expanded` + `aria-haspopup` |
+| Bookmarks/Collections/Competitors | `k-chip` segmented group | Honest open chips, cycle yok |
+| **Products** | `FilterChip` + **caret** + **cycle-on-click** | ✗ Caret glyph dropdown vaat ediyor ama tıklayınca bir sonraki değere atlıyor → **misleading** |
+
+Products'taki pattern user'ın "dropdown gibi görünen ama dropdown
+olmayan" complaint'inin direkt karşılığı. Caret affordance dropdown
+promise ediyor; gerçek davranış ise cycle. Operatör tüm seçenekleri
+görmeden tıklıyor, hangi değere düşeceğini bilmiyor.
+
+### Fix 1 — Selection DesignsTab → k-segment unified bar (review parity)
+
+`src/features/selections/components/tabs/DesignsTab.tsx`:
+
+Pre-Phase 59 (Phase 51 baseline):
+```tsx
+<div className="flex items-center gap-1">
+  {STATUS_FILTERS.map(f => (
+    <button
+      aria-pressed={active}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1",
+        "font-mono text-[10.5px] font-semibold uppercase tracking-meta",
+        active
+          ? "border-k-orange bg-k-orange-soft text-k-orange-ink"
+          : "border-line bg-paper text-ink-2 hover:border-line-strong"
+      )}
+    >
+      {f.label}
+      {count > 0 ? <span className="text-ink-3">{count}</span> : null}
+    </button>
+  ))}
+</div>
+```
+
+Phase 59:
+```tsx
+<div
+  className="k-segment"
+  role="group"
+  aria-label="Filter by design status"
+>
+  {STATUS_FILTERS.map(f => (
+    <button aria-pressed={active}>
+      {f.label}
+      {count > 0 ? (
+        <span className={cn(
+          "ml-1 font-mono text-[10.5px] tabular-nums",
+          active ? "text-ink-3" : "text-ink-4",
+        )}>
+          {count}
+        </span>
+      ) : null}
+    </button>
+  ))}
+</div>
+```
+
+Birebir `ReviewQueueToolbar` pattern parity: `.k-segment` container
+recipe (paper inset radius 7 + border-line + bg-k-bg-2), aria-pressed
+canonical, count badge inline tabular-nums. Operatör Review'den
+Selection'a geçerken aynı görsel dili görüyor.
+
+### Fix 2 — References Pool toolbar inspection (already correct)
+
+Audit'te tespit edildi: References `FilterChip` (line 620 references-
+page.tsx) **gerçek popover-driven listbox**. `role="listbox"` +
+`aria-expanded` + `aria-haspopup="listbox"` + tıklayınca tüm options
+expand. **Misleading değil** — caret affordance dropdown promise
+ediyor, dropdown gerçekten açılıyor.
+
+Phase 59 burada dokunulmadı (correct pattern already in place).
+Sibling family yüzeyler (Bookmarks/Collections/Competitors) chip
+group'ları kullanıyor — segmented görünür, cycle yok, dropdown vaadi
+yok → honest. k-segment migration'ı operator preference yönünde olur
+ama Phase 59 acil scope'a alınmadı (chip group → k-segment ayrı
+parity polish turu).
+
+### Fix 3 — Products toolbar fake dropdown sıfırlandı
+
+`src/features/products/components/ProductsIndexClient.tsx`:
+
+Pre-Phase 59:
+```tsx
+<FilterChip active={stageFilter !== "all"} caret onClick={cycleStage}>
+  {stageFilter === "all" ? "Status" : stageFilter}
+</FilterChip>
+<FilterChip active={typeFilter !== "all"} caret onClick={cycleType}>
+  {typeFilter === "all" ? "Type" : typeLabelByKey.get(typeFilter)}
+</FilterChip>
+<FilterChip active={dateFilter !== "all"} caret onClick={cycleDate}>
+  {DATE_BUCKET_LABEL[dateFilter]}
+</FilterChip>
+```
+
+Sorun: 3 chip de `caret` (ChevronDown) glyph taşıyor → dropdown
+affordance promise. `onClick` ise `cycleX()` — bir sonraki değere
+atlıyor (Status → Draft → Mockup ready → ... → Status). Operatör
+"All seçenekleri görmek istiyorum" niyeti ile tıklıyor, **rastgele
+bir sonraki state'e düşüyor**. Filter pool >4 değer için
+kullanılamaz hale geliyordu (Stage 6 değer, operatör hangi sırada
+gideceğini bilmiyor).
+
+Phase 59 fix:
+
+```tsx
+{/* Stage segment (fixed 5-value pool + "All") */}
+<div className="k-segment" role="group" aria-label="Filter by stage">
+  {ALL_STAGES.map(s => (
+    <button
+      aria-pressed={s === stageFilter}
+      onClick={() => setStage(s)}
+      data-testid={`products-stage-${s}`}
+    >
+      {s === "all" ? "All" : s}
+    </button>
+  ))}
+</div>
+
+{/* Type filter — dynamic pool: real <select> */}
+<select
+  value={typeFilter}
+  onChange={(e) => setType(e.target.value)}
+  className="h-8 appearance-none rounded-md border border-line bg-paper pl-3 pr-8 text-sm
+             hover:border-line-strong focus:border-k-orange focus:ring-2 focus:ring-k-orange-soft"
+>
+  <option value="all">All types</option>
+  {typeKeysInUse.map(k => (
+    <option key={k} value={k}>{typeLabelByKey.get(k) ?? k}</option>
+  ))}
+</select>
+<ChevronDown className="pointer-events-none absolute right-2 ... text-ink-3" aria-hidden />
+
+{/* Date segment (fixed 4-bucket pool) */}
+<div className="k-segment" role="group" aria-label="Filter by updated date">
+  {DATE_BUCKETS.map(b => (
+    <button aria-pressed={b === dateFilter} onClick={() => setDate(b)}>
+      {b === "all" ? "Any date" : DATE_BUCKET_LABEL[b]}
+    </button>
+  ))}
+</div>
+```
+
+Karar matrisi:
+
+| Filter | Pool size | Pool type | Decision |
+|---|---|---|---|
+| Stage | 6 fixed | enum + "all" | **k-segment** — Review parity |
+| Type | dinamik (data-driven) | productType keys | **native `<select>`** — dürüst dropdown affordance |
+| Date | 4 fixed | enum bucket | **k-segment** — Review parity |
+
+Native `<select>` seçim sebebi: Type pool veri-tabanlı (1-10 farklı
+key olabilir). Çok değer için k-segment fazla yer kaplar; native
+select operating system menu açar, dropdown promise dürüst. Caret
+glyph eklendi (`ChevronDown` absolute positioned, pointer-events-none)
+— native arrow stil bağımsız ama operator için affordance net.
+
+`cycleStage` / `cycleType` / `cycleDate` helper'ları **silindi**;
+yerine explicit `setStage(value)` / `setType(value)` / `setDate(value)`
+helper'ları geldi. URL pattern aynı (`?stage=X&type=Y&date=Z`),
+backward-compatible.
+
+### Cycle-on-click pattern neden zararlı
+
+User'ın complaint'i yalnız estetik değil, **affordance ihaneti**:
+
+- **Caret glyph dropdown vaat eder**: ChevronDown ikonu Web/UX
+  konvansiyonunda "tıklayınca panel açılır, opsiyonları göster"
+  promise eder.
+- **Cycle-on-click**: tıklayınca panel açılmaz, doğrudan bir sonraki
+  state'e atlar. Operator hangi state'e gideceğini bilmez; "All"
+  seçeneğine ulaşmak için 5 tıklama gerekebilir.
+- **Pool boyutu ölçeklenmez**: 2-3 değer için kabul edilebilir, 5+
+  değer için pratik bir bug haline gelir.
+- **Tooltip / aria yansıması yok**: caret aria-haspopup="listbox"
+  vaat eder, ama gerçekte hiçbir popover açılmaz.
+
+Phase 59 sonrası tüm filter affordance'ları **dürüst**:
+- Caret + popover (References) → gerçek listbox açılır
+- Native `<select>` (Products Type) → OS native dropdown menu
+- k-segment (Review / Selection DesignsTab / Products Stage+Date) →
+  tüm değerler aynı anda görünür, segmented pick
+
+Hiçbir surface artık "tıklayınca öngörülmeyen davranış" üretmiyor.
+
+### Browser verification kanıtları (live preview, viewport 1440×900)
+
+**Selection DesignsTab** (`/selections/cmov0ia370019149ljyu7divh`):
+
+```
+container.className: "k-segment"
+container.role: "group"
+container.aria-label: "Filter by design status"
+container.bg: rgb(241, 238, 229) (k-bg-2)
+container.border: 1px solid rgb(228, 224, 213) (line)
+container.borderRadius: 7px
+
+chips: All 4 / Selected 2 / Pending 2 / Rejected
+aria-pressed: true on "all", false on others
+
+active chip computed style:
+  bg: rgb(255, 255, 255) (paper)
+  color: rgb(22, 19, 15) (ink)
+  shadow: rgba(22,19,15,0.05) 0px 1px 2px 0px
+
+inactive chip:
+  bg: rgba(0, 0, 0, 0) (transparent)
+  color: rgb(139, 133, 124) (ink-3)
+  shadow: none
+
+Click "Selected" → 2 tiles visible, both data-status="selected",
+                   aria-pressed=true switched
+
+Screenshot: Selection detail header'da All 4 / Selected 2 / Pending 2 /
+Rejected k-segment pill container, ReviewQueueToolbar görsel parity tam.
+```
+
+**Products toolbar** (`/products`):
+
+```
+products-filter-stage: k-segment, 6 button (All/Draft/Mockup ready/
+                       Etsy-bound/Sent/Failed), aria-pressed canonical
+products-filter-type: <select> with 4 options (All types / Printable /
+                      Sticker / Wall art) + ChevronDown glyph
+products-filter-date: k-segment, 4 button (Any date / Today /
+                      Last 7 days / Last 30 days)
+
+URL state transitions:
+  Click "Draft" stage → ?stage=Draft, aria-pressed=true
+  Click "Last 7 days" → ?stage=Draft&date=7d, aria-pressed=true
+  Select "sticker" type → ?stage=Draft&date=7d&type=sticker
+
+Screenshot: Toolbar row Stage k-segment + Type <select> + Date k-segment
++ row counter "0 of 3" + DensityToggle. Cycle chip pattern tamamen
+kalktı; tüm filter pool'ları görünür.
+```
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{selection, products, bookmarks-page, references-
+  page, dashboard-page, collections-page, bookmark-service, bookmarks-
+  confirm-flow}`: **435/435 PASS**
+- Browser verification: 3 surface canlı dev server üzerinde gerçek
+  DOM kanıtı + URL transition + computed style + screenshot
+
+### Değişmeyenler (Phase 59)
+
+- **Review freeze (Madde Z) korunur.** Review modülü dokunulmadı —
+  pattern parity Review'den DesignsTab/Products'a yayıldı, ters yöne
+  değil.
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Mevcut `.k-segment` recipe + native
+  `<select>` reuse. `FilterChip` component'i hâlâ References Pool'da
+  kullanılıyor (caret + popover ile dürüst).
+- **References Pool toolbar dokunulmadı** (already correct).
+- **Bookmarks/Collections/Competitors chip group'ları dokunulmadı**
+  (honest open segments; k-segment migration parity polish ayrı tur).
+- **Add Reference / duplicate / local folder / direct image intake /
+  Batch / Mockup / Product / Listing akışları intakt** (Phase 26-58
+  baseline).
+- **Kivasy DS dışına çıkılmadı.** `.k-segment` canonical recipe +
+  native `<select>` standardı.
+
+### Bilinçli scope dışı (Phase 60+ candidate)
+
+- **Bookmarks/Collections/Competitors chip group → k-segment**:
+  operator preference doğrultusunda parity polish. Honest chip
+  group → unified bar. Acil değil; chip'ler dropdown vaat etmiyor.
+- **Stage segment compact mode**: 6 button (All + 5 stage) viewport
+  daraldıkça uzayabilir. Density toggle ile Dense mode'a `flex-wrap`
+  veya kısaltma (Etsy-bound → Etsy) opt-in olabilir.
+- **`FilterChip` legacy component'inin durumu**: References Pool
+  hâlâ kullanıyor (correct), Phase 59'da Products'tan çıkarıldı.
+  Geriye kalan tek consumer; gelecek tur'da References tarafı
+  popover pattern korunur (k-segment'e migrate edilirse 4 chip × N
+  option fazla yer kaplar).
+
+### Bundan sonra production tarafında kalan tek doğru iş
+
+Phase 59 ile **filter affordance dürüstlüğü tam**:
+- Tüm filter chip / segment / dropdown'lar dürüst affordance taşır
+- Misleading cycle-on-click pattern tamamen sıfırlandı
+- Review surface canonical pattern (k-segment) Selection + Products'a
+  yayıldı
+- User signoff preference signal'i karşılandı
+
+Canonical operator loop **ship-ready + filter affordance disciplined**.
+Sonraki turlar yalnız:
+- Sibling family chip group → k-segment migration (operator
+  preference parity polish; honest ama unified-bar değil)
+- Phase 58'den ertelenmiş low-severity items (Product detail h1
+  truncation, Selections/Product Duplicate "Coming soon" button'lar)
+- Yeni feature alanları (multi-store, scheduling, browser companion
+  scraping)
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

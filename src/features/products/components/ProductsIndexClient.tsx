@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
   ArrowRight,
+  ChevronDown,
   ChevronRight,
   ExternalLink,
   ImageOff,
@@ -18,7 +19,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
-import { FilterChip } from "@/components/ui/FilterChip";
 import {
   type Density,
   DensityToggle,
@@ -205,9 +205,16 @@ export function ProductsIndexClient({
     return true;
   });
 
-  function cycleStage() {
-    const idx = ALL_STAGES.indexOf(stageFilter);
-    const next = ALL_STAGES[(idx + 1) % ALL_STAGES.length] ?? "all";
+  /* Phase 59 — Cycle-on-click chips kaldırıldı. Pre-Phase 59 chip'ler
+   * `caret` glyph ile dropdown gibi görünüyor ama tıklayınca bir sonraki
+   * değere "atlayan" (cycle) davranış sergiliyordu — operatör için
+   * misleading affordance. Yeni davranış:
+   *   - Stage / Date → k-segment unified bar (Review parity, aria-pressed,
+   *     fixed value set görünür ve seçilebilir)
+   *   - Type → gerçek `<select>` (dinamik product type pool için doğru
+   *     dürüst affordance)
+   * Helper'lar artık explicit "set value" (cycle değil). */
+  function setStage(next: ProductStage | "all") {
     const sp = new URLSearchParams(params.toString());
     if (next === "all") sp.delete("stage");
     else sp.set("stage", next);
@@ -215,10 +222,7 @@ export function ProductsIndexClient({
     router.push(qs ? `/products?${qs}` : "/products");
   }
 
-  function cycleType() {
-    if (TYPE_FILTER_POOL.length <= 1) return; // hiç type yoksa filtre boş kalır
-    const idx = TYPE_FILTER_POOL.indexOf(typeFilter);
-    const next = TYPE_FILTER_POOL[(idx + 1) % TYPE_FILTER_POOL.length] ?? "all";
+  function setType(next: string) {
     const sp = new URLSearchParams(params.toString());
     if (next === "all") sp.delete("type");
     else sp.set("type", next);
@@ -226,9 +230,7 @@ export function ProductsIndexClient({
     router.push(qs ? `/products?${qs}` : "/products");
   }
 
-  function cycleDate() {
-    const idx = DATE_BUCKETS.indexOf(dateFilter);
-    const next = DATE_BUCKETS[(idx + 1) % DATE_BUCKETS.length] ?? "all";
+  function setDate(next: DateBucket) {
     const sp = new URLSearchParams(params.toString());
     if (next === "all") sp.delete("date");
     else sp.set("date", next);
@@ -311,25 +313,85 @@ export function ProductsIndexClient({
             data-testid="products-search-input"
           />
         </form>
-        <span data-testid="products-filter-stage">
-          <FilterChip active={stageFilter !== "all"} caret onClick={cycleStage}>
-            {stageFilter === "all" ? "Status" : stageFilter}
-          </FilterChip>
-        </span>
+        {/* Phase 59 — Stage segment (fixed 5-value pool + "All"). */}
+        <div
+          className="k-segment"
+          role="group"
+          aria-label="Filter by stage"
+          data-testid="products-filter-stage"
+        >
+          {ALL_STAGES.map((s) => {
+            const isActive = s === stageFilter;
+            return (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => setStage(s)}
+                data-testid={`products-stage-${s}`}
+                data-active={isActive || undefined}
+              >
+                {s === "all" ? "All" : s}
+              </button>
+            );
+          })}
+        </div>
+        {/* Phase 59 — Type filter dinamik pool: gerçek <select>.
+         * Cycle-on-click chip kaldırıldı (misleading "dropdown gibi
+         * görünen ama dropdown olmayan" pattern). Native select
+         * affordance dürüst + tüm değerler tek tıkla görünür. */}
         {typeKeysInUse.length > 0 ? (
-          <span data-testid="products-filter-type">
-            <FilterChip active={typeFilter !== "all"} caret onClick={cycleType}>
-              {typeFilter === "all"
-                ? "Type"
-                : (typeLabelByKey.get(typeFilter) ?? typeFilter)}
-            </FilterChip>
-          </span>
+          <div
+            className="relative"
+            data-testid="products-filter-type"
+          >
+            <select
+              value={typeFilter}
+              onChange={(e) => setType(e.target.value)}
+              aria-label="Filter by product type"
+              className={cn(
+                "h-8 appearance-none rounded-md border border-line bg-paper pl-3 pr-8 text-sm text-ink",
+                "hover:border-line-strong focus:border-k-orange focus:outline-none focus:ring-2 focus:ring-k-orange-soft",
+                typeFilter !== "all" && "border-k-orange bg-k-orange-soft text-k-orange-ink",
+              )}
+              data-testid="products-type-select"
+            >
+              <option value="all">All types</option>
+              {typeKeysInUse.map((k) => (
+                <option key={k} value={k}>
+                  {typeLabelByKey.get(k) ?? k}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3"
+              aria-hidden
+            />
+          </div>
         ) : null}
-        <span data-testid="products-filter-date">
-          <FilterChip active={dateFilter !== "all"} caret onClick={cycleDate}>
-            {DATE_BUCKET_LABEL[dateFilter]}
-          </FilterChip>
-        </span>
+        {/* Phase 59 — Date segment (fixed 4-bucket pool). */}
+        <div
+          className="k-segment"
+          role="group"
+          aria-label="Filter by updated date"
+          data-testid="products-filter-date"
+        >
+          {DATE_BUCKETS.map((b) => {
+            const isActive = b === dateFilter;
+            return (
+              <button
+                key={b}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => setDate(b)}
+                data-testid={`products-date-${b}`}
+                data-active={isActive || undefined}
+              >
+                {b === "all" ? "Any date" : DATE_BUCKET_LABEL[b]}
+              </button>
+            );
+          })}
+        </div>
         <div className="ml-auto flex items-center gap-3">
           <span className="font-mono text-xs uppercase tracking-meta text-ink-3">
             {filtered.length} of {rows.length}
