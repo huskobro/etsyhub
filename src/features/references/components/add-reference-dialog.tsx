@@ -579,12 +579,45 @@ export function AddReferenceDialog({
   /* Multi-line paste support: if user pastes text with newlines into a
    * single URL input, split into multiple entries. Operator pastes 8 URLs
    * from notes app → 8 row instantly. */
+  /**
+   * Phase 39 — paste handler.
+   *
+   * Cleans the pasted text:
+   *   - splits on `\r?\n` (CR/LF agnostic — copy from any OS)
+   *   - trims each line
+   *   - drops blank lines (operator-friendly: paste "url1\n\n\nurl2"
+   *     produces 2 rows, not 5)
+   *
+   * Two behaviors:
+   *   1. 0 valid lines → native paste does nothing useful; we
+   *      preventDefault so the target row stays unchanged.
+   *   2. 1 valid line → write the trimmed URL into the target row,
+   *      preventDefault. This catches "paste `\n\nhttps://...\n\n`"
+   *      cases that previously filled the input with newlines.
+   *   3. N valid lines → fill target + append rest as new rows. Existing
+   *      rows that have URLs or non-idle status are preserved.
+   */
   function urlHandlePaste(targetId: string, text: string) {
     const lines = text
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
-    if (lines.length <= 1) return false;
+    if (lines.length === 0) {
+      // Pure-whitespace paste; preventDefault to avoid filling input
+      // with junk.
+      return true;
+    }
+    if (lines.length === 1) {
+      // Single URL with surrounding whitespace/blank lines — write the
+      // cleaned line into the target row.
+      const onlyUrl = lines[0]!;
+      urlUpdateRow(targetId, {
+        url: onlyUrl,
+        status: "idle",
+        error: undefined,
+      });
+      return true;
+    }
     setUrlEntries((cur) => {
       const target = cur.find((e) => e.id === targetId);
       const others = cur.filter((e) => e.id !== targetId && (e.url.trim() || e.status !== "idle"));
@@ -1319,12 +1352,18 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
             Direct image URL
           </span>
           {entries.length > 1 ? (
-            <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
-              {entries.length} rows · paste multiple URLs into any row to split
+            <span
+              className="font-mono text-[10.5px] tracking-wider text-ink-3"
+              data-testid="add-ref-url-helper"
+            >
+              {entries.length} rows · Enter to advance · paste multiple URLs to split
             </span>
           ) : (
-            <span className="font-mono text-[10.5px] tracking-wider text-ink-3">
-              Paste one or more direct image URLs (one per line)
+            <span
+              className="font-mono text-[10.5px] tracking-wider text-ink-3"
+              data-testid="add-ref-url-helper"
+            >
+              Paste one or more direct image URLs · press Enter for a new row
             </span>
           )}
         </div>
@@ -1340,6 +1379,7 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
                 key={entry.id}
                 className="flex flex-col gap-1.5 rounded-md border border-line-soft bg-paper p-2"
                 data-testid="add-ref-url-row"
+                data-add-ref-url-row-id={entry.id}
               >
                 <div className="flex items-center gap-2">
                   {/* Phase 30 — pre-fetch preview: idle durumunda direct
@@ -1366,6 +1406,48 @@ const UrlTab = forwardRef<HTMLInputElement, UrlTabProps>(
                       if (onPaste(entry.id, text)) {
                         e.preventDefault();
                       }
+                    }}
+                    onKeyDown={(e) => {
+                      /* Phase 39 — Enter advances to the next row
+                       * (queue mode ergonomics). NEVER triggers fetch
+                       * or submit. Behavior:
+                       *   - If a next row exists: focus its input.
+                       *   - If this is the last row: ask parent to
+                       *     append a fresh row, then focus the new
+                       *     input on the next paint (rAF). */
+                      if (e.key !== "Enter") return;
+                      // Don't ever submit a containing form (defensive
+                      // — Add Reference dialog has no form wrapper but
+                      // future split-modal embeddings should not break).
+                      e.preventDefault();
+                      const nextEntry = entries[idx + 1];
+                      const focusByRowId = (rowId: string) => {
+                        const sel = `[data-add-ref-url-row-id="${rowId}"] [data-testid="add-ref-url-input"]`;
+                        const el = document.querySelector<HTMLInputElement>(sel);
+                        el?.focus();
+                        el?.select?.();
+                      };
+                      if (nextEntry) {
+                        focusByRowId(nextEntry.id);
+                        return;
+                      }
+                      // Don't auto-append if the current row is still
+                      // empty — operator is just spamming Enter on a
+                      // blank row, give them nothing.
+                      if (!entry.url.trim()) return;
+                      onAddRow();
+                      // New row id is unknown to us synchronously; the
+                      // parent's setState batches. Focus the last
+                      // input element after React commits the new row
+                      // (microtask + paint). One rAF inside a 0-delay
+                      // timeout gives React time to flush the state
+                      // update before we read the DOM.
+                      setTimeout(() => {
+                        const inputs = document.querySelectorAll<HTMLInputElement>(
+                          '[data-testid="add-ref-url-input"]',
+                        );
+                        inputs[inputs.length - 1]?.focus();
+                      }, 0);
                     }}
                     disabled={entry.status === "fetching" || entry.status === "ready"}
                     className="k-input flex-1"

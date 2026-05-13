@@ -7570,6 +7570,213 @@ Hiçbir bug açık değil.
 
 ---
 
+## Phase 39 — Direct image URL queue UX polish + folder intake honest defer
+
+Phase 38 listing pickers'ı pasifleştirip direct image URL'i canonical
+intake yolu yapmıştı. Phase 39 bu canonical yolun **ergonomi
+friction'ını** temizler. Yeni feature, yeni schema, yeni abstraction
+yok. Folder intake için dürüst audit + defer kararı. Etsy/CF/Pinterest
+gibi scraping-tabanlı kaynaklar future companion backlog'una alındı.
+
+### Audit (Phase 39 öncesi friction noktaları)
+
+`urlHandlePaste` (Phase 29-30): split + trim + filter(non-empty) →
+ama `lines.length <= 1` case'inde `return false` → native paste
+hâlâ tetikleniyordu. Pratik sonuç:
+
+| Senaryo | Phase 38 davranış | Beklenti |
+|---|---|---|
+| `\n\nURL\n\n` paste (1 URL surrounded by blank lines) | input value `"\n\nURL\n\n"` (native paste) | clean URL |
+| Pure whitespace paste `"   \n\n  "` | input fills with whitespace | no-op |
+| 5 URLs separated by extra blank lines | 5 rows ✓ | 5 rows ✓ |
+| Press Enter on row | **Hiçbir şey olmaz** | "advance to next row / new row" |
+| Press Enter on last row with URL | hiçbir şey | "create new row + focus it" |
+| Press Enter on empty row | hiçbir şey | hiçbir şey (defensive — no junk row) |
+
+Queue ergonomi açısından **Enter davranışı** en büyük friction.
+Operator 10 URL eklemek istiyorsa her seferinde "+ Add another URL"
+butonuna mouse ile gitmek zorundaydı.
+
+### Düzeltmeler
+
+**1. Enter → row advance / new row (no fetch)**
+
+`UrlTab` input'una `onKeyDown` handler eklendi:
+
+```ts
+if (e.key !== "Enter") return;
+e.preventDefault();  // defensive: never trigger form submit
+const nextEntry = entries[idx + 1];
+if (nextEntry) {
+  // focus next row's input
+  focusByRowId(nextEntry.id);
+  return;
+}
+if (!entry.url.trim()) return;  // defensive: no junk row on empty
+onAddRow();
+// after React commits, focus the new row
+setTimeout(() => { lastInput.focus(); }, 0);
+```
+
+- Mevcut row için next varsa → focus next
+- Last row + URL var → new row + focus new
+- Empty row + Enter → no-op (defensive)
+- **Asla fetch tetiklenmez** (Enter ≠ submit)
+- Row container'a `data-add-ref-url-row-id={entry.id}` attribute
+  eklendi (focus lookup için stable selector)
+
+**2. Single-URL paste blank-line/whitespace cleanup**
+
+`urlHandlePaste` 3 case'e ayrıldı:
+
+| Input | Davranış |
+|---|---|
+| `lines.length === 0` (pure whitespace) | preventDefault + no-op |
+| `lines.length === 1` | trim'lenmiş URL'i target row'a yaz + preventDefault |
+| `lines.length >= 2` | mevcut multi-row dispatch (Phase 29) |
+
+Eski "single-line → return false → native paste" davranışı
+düzeldi. Test edildi: `"\n\n   https://example.com/single.png   \n\n"`
+→ `"https://example.com/single.png"` (clean, single row).
+
+**3. Helper text discoverability**
+
+Header helper text Phase 38 sonrası:
+- 1 row: "Paste one or more direct image URLs · **press Enter for a
+  new row**"
+- N row (multi-row): "{N} rows · **Enter to advance** · paste
+  multiple URLs to split"
+
+Operator shortcut'ı discover edilebilir — helper text aynı yerden
+söyler. `data-testid="add-ref-url-helper"` selector eklendi
+(regression test için).
+
+### Folder intake — honest defer
+
+Local Library mevcut altyapısı:
+- `LocalLibraryAsset` model: scan worker tarafından doldurulur,
+  review pipeline, selection scope. Operator kendi root klasörü
+  altında folder'larla organize ediyor.
+- `Bookmark.assetId` → `Asset` model (general asset). FK var.
+- `Bookmark` ↔ `LocalLibraryAsset` arasında **hiçbir bağlantı yok**.
+  Codebase grep: 0 referans.
+
+Folder intake "Add Reference → From Local Folder" tab'ı gerçek bir
+backend feature gerektirir:
+1. **Schema decision**: `Bookmark.localLibraryAssetId` FK eklenmesi
+   (migration) **veya** LocalLibraryAsset'i `Asset` row'una clone
+   eden yeni service
+2. **New endpoint** POST `/api/references/from-local-assets` veya
+   benzeri
+3. **New UI tab** (AddReferenceDialog'da 4. sibling tab "From
+   Local Folder")
+4. **User-isolation guards** (root path active filter, soft-delete
+   filter — CLAUDE.md Madde V parity)
+
+Bu turun kullanıcı sözleşmesi: **schema migration yok, yeni
+abstraction yok**. Phase 39 scope'unda folder intake yapmaya çalışmak
+yarım feature + yeni teknik borç yaratırdı. Mevcut canonical Upload
+tab + Bookmark Inbox + Promote zinciri operatör için **hâlâ tam
+fonksiyonel** — local file'lar Upload tab'tan reference pool'a
+girebilir.
+
+**Karar: HONEST DEFER**. Folder intake gerçek bir backend turu;
+Phase 39 scope dışı.
+
+### Future companion backlog — scraping kategorileri
+
+Phase 38'de Etsy + CF listing pickers pasifleştirildi. Phase 39
+diğer scraping-tabanlı intake hayallerini netleştirir:
+
+| Source | Status | Sebep |
+|---|---|---|
+| Etsy listing page (`/listing/{id}/`) | **future companion backlog** | Datadome WAF |
+| Creative Fabrica product page (`/product/{slug}/`) | **future companion backlog** | Cloudflare Turnstile |
+| Pinterest pin page (`pinterest.com/pin/{id}/`) | **future companion backlog** | Cloudflare + login wall |
+| Pinterest board (`pinterest.com/{user}/{board}/`) | **future companion backlog** | aynı |
+| Pinterest profile feed | **future companion backlog** | aynı |
+| Direct image URL (CDN `etsystatic`, `pinimg`, `i.creativefabrica`, etc.) | **AKTIF canonical** | server-side fetch güvenilir |
+| User upload (Upload tab) | **AKTIF canonical** | local file |
+| Bookmark Inbox → Promote | **AKTIF canonical** | mevcut yol |
+| Folder intake (Local Library → Reference) | **deferred** | schema migration gerekli (yukarıda) |
+
+Active scraping (server-side fetch + parse) hiçbir page-level
+kaynak için **bu turda aktif değil**. Detection korunur (operator
+"ben farkındayım bu listing/pin"), ama request atılmaz. Future
+çözüm: **Chrome extension / browser companion** — operatörün kendi
+browser oturumu üzerinden DOM extraction (Midjourney bridge
+pattern). Ayrı altyapı turu (manifest, content script, message
+passing, cross-origin auth).
+
+Pinterest için detection eklemek (passive bullet hint) bu turda
+yapılmadı çünkü Pinterest pin URL'leri `pinterest.com/pin/{id}/`
+formatında geliyor ve mevcut Phase 27 detection bu domain'de
+"✓ Looks like Pinterest" success-tone hint veriyor — operator
+"bu çalışacak" promise'i alıyor. Pinterest detection'ı listing
+benzeri passive marker'a çevirmek için ayrı tur gerekir; bu
+turun scope'u Phase 38 sonrası **direct image URL queue
+ergonomisi**.
+
+### Browser verification (6 senaryo PASS)
+
+Live dev server (PID 70095, viewport 1440×900, fetch network spy,
+React fiber synthetic events):
+
+| Senaryo | Sonuç |
+|---|---|
+| Enter on empty row | rowCount stays 1, **0 fetches** |
+| Type URL + Enter on last row | rowCount → 2, new row focused (focusedInputIndex=1), helper → "2 rows · Enter to advance ...", **0 fetches** |
+| Enter on row 0 (row 1 exists) | rowCount stays 2, focus moves to row 1 (no new row), **0 fetches** |
+| Multi-URL messy paste (3 URLs + 5 blank lines + leading/trailing whitespace) | 3 clean rows (no blanks, trimmed URLs), helper → "3 rows ...", **0 fetches** |
+| Single URL paste with surrounding blanks `"\n\n   URL   \n\n"` | 1 row, clean URL value (no leading/trailing whitespace, no newlines), **0 fetches** |
+| Pure whitespace paste | input stays empty, rowCount stays 1, **0 fetches** |
+
+Screenshot: 3-row queue with Etsy CDN + Pinterest CDN + example.com
+PNG, each with proper Phase 27 source detection tones, CTA shows
+"+ Fetch 3 images".
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **91/91 PASS** (bookmarks-page, references-page,
+  collections-page, dashboard-page, bookmark-service,
+  bookmarks-confirm-flow + etsy-parser, etsy-service, cf-parser,
+  cf-service)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 39)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Hiç DB değişikliği yok.
+- **Yeni surface açılmadı.** Yalnız UrlTab input handler + paste
+  helper. Folder intake explicitly **deferred**.
+- **Yeni büyük abstraction yok.** `onKeyDown` inline handler,
+  `setTimeout(focus, 0)` standart React pattern.
+- **WorkflowRun eklenmez.**
+- **Kivasy DS dışına çıkılmadı.**
+
+### Bundan sonra bulk intake tarafında kalan tek doğru iş
+
+İki yol var, **birinde karar verilmesi gerekir**:
+
+**Yol A — Folder intake (backend feature turu)**: schema'da
+`Bookmark.localLibraryAssetId` ekle veya cross-feature service
+katmanı + endpoint + UI tab. Schema migration + UI tab. Backend
+fokuslu tur.
+
+**Yol B — Browser companion / extension** (Midjourney bridge
+pattern): Chrome extension content script ile listing/pin DOM
+extraction + Kivasy backend ingest endpoint. Yeni proje yapısı
+(extension manifest, message passing). Frontend + backend +
+extension. Daha büyük tur.
+
+Phase 39 tarafından **direct image URL canonical yolu artık
+ergonomik olarak akıcı**. Operatör Enter + paste split + blank
+line ignore + Phase 30 pre-fetch preview kombinasyonu ile hızla
+10+ URL ekleyebilir. Bu yolun başka friction noktası kalmadı.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
