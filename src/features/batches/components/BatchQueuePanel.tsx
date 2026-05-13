@@ -3,16 +3,26 @@
 /**
  * Phase 46 — Batch Queue Panel (collapsible + remove items).
  * Phase 47 — Default collapsed + inline Compose mode.
+ * Phase 60 — Default EXPANDED + provider-aware Compose form (Midjourney
+ *   first-class + mode picker + sref/oref/cref chips + honest backend
+ *   disclosure).
  *
- * Phase 46 baseline'ında panel her zaman expanded'di; Phase 47 üç şey
- * yapar:
- *   1. Default state collapsed (operatör Pool browse bağlamı tam görünür)
- *   2. Card-level "Remove from Draft" zaten Phase 47 references-page
- *      tarafında uygulandı; bu panel hâlâ kendi remove'unu sunar
- *   3. **Compose-inline**: "Create Similar (N)" CTA artık ayrı route'a
- *      navigate ETMEZ — panel kendi içinde `mode: "queue"` → `"compose"`
- *      geçişi yapar, genişler (~520px), inline compose form'unu render
- *      eder. Launch başarılı olunca → `/batches/[id]` (batch detail).
+ * Phase 60 kararları:
+ *   1. **Default expanded** (Phase 47 defaultu collapsed idi; operator
+ *      Pool'da "Add to Draft" yapınca Create Similar formu iki tıklama
+ *      gerisindeydi — Phase 60 düzeltmesi: panel queue mode'da hemen
+ *      açılır, form'un girişi tek tıklamaya iner). Operatör hâlâ
+ *      collapse edebilir; localStorage tercihini hatırlar.
+ *   2. **Provider-aware form fields**: provider seçimine göre alanlar
+ *      farklılaşır (Midjourney → mode picker + sref/oref/cref + prompt;
+ *      Kie GPT → brief + quality). provider-capabilities.formFields
+ *      tek doğruluk kaynağı.
+ *   3. **Midjourney default**: settings'ten override gelmezse Midjourney
+ *      seçili gelir (operator preference: Midjourney-first).
+ *   4. **Honest backend disclosure**: Midjourney `launchBackendReady=false`
+ *      olduğu için launch CTA disabled + actionable hint ("Switch to Kie
+ *      to launch now"). Fake disabled CTA DEĞİL — operatör tıklayınca ne
+ *      olacağını/olmayacağını biliyor, alternative path biliyor.
  *
  * Mode kararı UX gerekçesi (CLAUDE.md Madde A "single canonical surface"):
  *   - Pool'da operatör staging yapıyor → aynı panel'de compose etmesi
@@ -20,14 +30,18 @@
  *   - Ayrı /batches/[id]/compose page'i hâlâ erişilebilir (deep-link
  *     bookmark + backward compat); ama Pool'dan inline akış canonical
  *   - Yeni big abstraction yok: form alanları BatchComposeClient ile
- *     birebir uyumlu (provider/aspect/similarity/count/quality/brief);
- *     launch endpoint aynı (POST /api/batches/[id]/launch)
+ *     uyumlu (provider/aspect/similarity/count/quality/brief +
+ *     Phase 60 Midjourney mode/prompt/refparams); launch endpoint aynı
+ *     (POST /api/batches/[id]/launch)
  *
- * Provider/aspect defaults Phase 9 baseline ile aynı:
+ * Provider/aspect defaults Phase 9 + Phase 60:
+ *   - provider: Midjourney (Phase 60; Kie GPT idi)
  *   - aspect: 2:3
  *   - count: 6
  *   - similarity: Medium (advisory; brief'e enjekte edilmez)
  *   - quality: medium (if supported by provider)
+ *   - midjourney mode: "sref" (Phase 60 — style reference Etsy/Pinterest
+ *     reference workflow için en doğal default)
  *
  * Remove behavior: queue item × button → DELETE /api/batches/[id]/items/
  * [itemId] → optimistic-feeling refetch invalidation. Service yalnız
@@ -51,7 +65,10 @@ import { cn } from "@/lib/cn";
 import {
   PROVIDER_CAPABILITIES,
   getProviderCapability,
+  resolveDefaultProvider,
+  midjourneyModeRequirements,
   type ImageProviderUiId,
+  type MidjourneyMode,
 } from "@/features/variation-generation/provider-capabilities";
 
 type DraftBatchItem = {
@@ -86,18 +103,24 @@ export function BatchQueuePanel() {
   const qc = useQueryClient();
   const router = useRouter();
 
-  /* Phase 47 — Default collapsed (Phase 46 default expanded'dan kayma).
+  /* Phase 60 — Default EXPANDED (Phase 47 defaultu collapsed idi).
+   * Sebep: operator Pool'da "Add to Draft" yapınca Create Similar formu
+   * iki tıklama gerisindeydi (rail + Create Similar). Phase 60'ta panel
+   * Pool'a girer girmez expanded açılır; queue list + Create Similar
+   * CTA hemen görünür. Operatör hâlâ collapse edebilir; localStorage
+   * "1" ile tercihi hatırlanır.
+   *
    * localStorage truth-table:
-   *   - no value (first visit) → collapsed (rail)
-   *   - "1" → collapsed
-   *   - "0" → expanded */
-  const [collapsed, setCollapsed] = useState<boolean>(true);
+   *   - no value (first visit) → expanded (Phase 60 default)
+   *   - "0" → expanded (legacy Phase 47 explicit expand)
+   *   - "1" → collapsed (explicit operator collapse) */
+  const [collapsed, setCollapsed] = useState<boolean>(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const stored = window.localStorage.getItem(COLLAPSED_KEY);
-      if (stored === "0") {
-        setCollapsed(false);
+      if (stored === "1") {
+        setCollapsed(true);
       }
     } catch {
       /* localStorage disabled — silent skip */
@@ -375,7 +398,7 @@ export function BatchQueuePanel() {
             </Link>
           </div>
           <p className="mt-1 text-[11px] leading-tight text-ink-2">
-            Launching this draft creates a batch you'll track in{" "}
+            Launching this draft creates a batch you&apos;ll track in{" "}
             <Link
               href="/batches"
               className="text-ink hover:underline"
@@ -416,22 +439,32 @@ function ComposePanel({
   onCollapse: () => void;
   onLaunchSuccess: () => void;
 }) {
-  // Provider state — first available default; settings'ten gelmemiş
-  // bağlamda canonical fallback Kie GPT Image 1.5.
-  const defaultProviderId = useMemo<ImageProviderUiId>(() => {
-    const firstAvail = PROVIDER_CAPABILITIES.find((p) => p.available);
-    return firstAvail?.id ?? "kie-gpt-image-1.5";
-  }, []);
-  const [providerId, setProviderId] =
-    useState<ImageProviderUiId>(defaultProviderId);
+  /* Phase 60 — Default provider Midjourney (operator preference).
+   * resolveDefaultProvider helper'ı settings override + canonical fallback
+   * mantığını tek yerden okur. Midjourney available=true; launch backend
+   * dispatcher Phase 61 olduğunda launchBackendReady=true olur. */
+  const [providerId, setProviderId] = useState<ImageProviderUiId>(() =>
+    resolveDefaultProvider(),
+  );
   const [aspect, setAspect] = useState<AspectRatio>("2:3");
   const [similarity, setSimilarity] = useState<number>(1); // Medium
   const [count, setCount] = useState<number>(6);
   const [quality, setQuality] = useState<Quality>("medium");
   const [brief, setBrief] = useState<string>("");
 
+  /* Phase 60 — Midjourney-specific state. Diğer provider'larda kullanılmaz.
+   * Default mode "sref" — Etsy/Pinterest reference workflow için en
+   * doğal başlangıç (style reference; operator prompt eklemese de çalışır). */
+  const [mjMode, setMjMode] = useState<MidjourneyMode>("sref");
+  const [mjPrompt, setMjPrompt] = useState<string>("");
+
   const providerCap = getProviderCapability(providerId);
-  const supportsQuality = (providerCap?.supportedQualities.length ?? 0) > 0;
+  const formFields = providerCap?.formFields;
+  const supportsQuality =
+    formFields?.showQuality === true &&
+    (providerCap?.supportedQualities.length ?? 0) > 0;
+  const isMidjourney = providerId === "midjourney";
+  const mjReq = isMidjourney ? midjourneyModeRequirements(mjMode) : null;
 
   // Phase 48 — Multi-reference cost: N refs × M count.
   const refCount = batch.items.length;
@@ -519,10 +552,18 @@ function ComposePanel({
 
   const hasItems = batch.items.length > 0;
   const someReferencesUnreachable = referencesWithoutPublicUrl > 0;
+  /* Phase 60 — Honest backend disclosure.
+   * Midjourney `available: true` ama `launchBackendReady: false` →
+   * launch tetiklenemez; operator alternative path görür. Bu fake
+   * disabled CTA DEĞİL (Phase 58 yasak): operator tıklayamaz, ama
+   * NEDEN tıklayamadığını biliyor (honest hint) + NE YAPMASI gerektiğini
+   * biliyor (switch to Kie). */
+  const backendNotReady = providerCap?.launchBackendReady === false;
   const launchDisabled =
     !hasItems ||
     someReferencesUnreachable ||
     !providerCap?.available ||
+    backendNotReady ||
     launchMutation.isPending;
 
   return (
@@ -580,6 +621,7 @@ function ComposePanel({
         data-testid="batch-compose-inline-form"
       >
         <div className="space-y-5">
+          {/* Provider — provider-aware form root */}
           <FieldRow label="Provider">
             <select
               value={providerId}
@@ -588,20 +630,108 @@ function ComposePanel({
               }
               className="h-9 w-full rounded-md border border-line bg-paper px-2.5 text-[12.5px] text-ink"
               data-testid="batch-compose-inline-provider"
+              data-provider={providerId}
             >
               {PROVIDER_CAPABILITIES.map((p) => (
                 <option key={p.id} value={p.id} disabled={!p.available}>
                   {p.label}
-                  {p.available ? "" : " — unavailable"}
+                  {p.available ? "" : " — coming soon"}
                 </option>
               ))}
             </select>
+            {/* Phase 60 — Honest backend disclosure.
+             * Available + launchBackendReady=false durumda Kie fallback
+             * link gösterilir; operator switch'i tek tıklamada. */}
+            {backendNotReady && providerCap?.helperText ? (
+              <div
+                className="mt-2 rounded-md border border-warning/40 bg-warning-soft/30 px-2.5 py-2 text-[11.5px] text-ink"
+                data-testid="batch-compose-inline-backend-disclosure"
+              >
+                <p className="text-ink-2">{providerCap.helperText}</p>
+                <button
+                  type="button"
+                  onClick={() => setProviderId("kie-gpt-image-1.5")}
+                  className="mt-1.5 inline-flex h-6 items-center gap-1 rounded-md border border-line bg-paper px-2 font-mono text-[10px] uppercase tracking-meta text-ink-2 hover:border-line-strong hover:text-ink"
+                  data-testid="batch-compose-inline-switch-to-kie"
+                >
+                  Switch to Kie · GPT Image 1.5 →
+                </button>
+              </div>
+            ) : null}
             {!providerCap?.available && providerCap?.helperText ? (
               <p className="mt-1 text-[11px] text-ink-3">
                 {providerCap.helperText}
               </p>
             ) : null}
           </FieldRow>
+
+          {/* Phase 60 — Midjourney mode picker (provider-aware) */}
+          {isMidjourney && formFields?.showModeSelector ? (
+            <FieldRow label="Generation mode" hint={mjReq?.hint}>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(
+                  [
+                    { id: "imagine", label: "/imagine" },
+                    { id: "image-prompt", label: "Image prompt" },
+                    { id: "sref", label: "--sref" },
+                    { id: "oref", label: "--oref" },
+                    { id: "cref", label: "--cref" },
+                    { id: "describe", label: "Describe" },
+                  ] as const
+                ).map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setMjMode(m.id)}
+                    className={cn(
+                      "h-8 rounded-md border text-[11px] font-medium transition-colors",
+                      mjMode === m.id
+                        ? "border-k-orange bg-k-orange-soft text-k-orange-ink"
+                        : "border-line bg-paper text-ink-2 hover:border-line-strong",
+                    )}
+                    data-testid="batch-compose-inline-mj-mode"
+                    data-mode={m.id}
+                    data-active={mjMode === m.id || undefined}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </FieldRow>
+          ) : null}
+
+          {/* Phase 60 — Prompt field (Midjourney) */}
+          {isMidjourney && formFields?.showPrompt ? (
+            <FieldRow
+              label="Prompt"
+              hint={
+                mjReq?.promptDisabled
+                  ? "Disabled in describe mode"
+                  : mjReq?.promptRequired
+                    ? "Required"
+                    : "Optional · recommended"
+              }
+            >
+              <textarea
+                value={mjPrompt}
+                onChange={(e) => setMjPrompt(e.target.value.slice(0, 800))}
+                rows={3}
+                disabled={mjReq?.promptDisabled === true}
+                placeholder={
+                  mjMode === "describe"
+                    ? "Describe doesn't take a prompt — only the reference is sent."
+                    : mjMode === "sref" || mjMode === "oref" || mjMode === "cref"
+                      ? "e.g., 'soft floral wreath, nursery wall art, watercolor'"
+                      : "e.g., 'boho line art bundle, beige palette, minimalist composition'"
+                }
+                className={cn(
+                  "w-full resize-none rounded-md border border-line bg-paper px-2.5 py-1.5 text-[12.5px] text-ink placeholder:text-ink-3",
+                  mjReq?.promptDisabled && "opacity-50",
+                )}
+                data-testid="batch-compose-inline-mj-prompt"
+              />
+            </FieldRow>
+          ) : null}
 
           <FieldRow label="Aspect ratio">
             <div className="flex gap-2">
@@ -648,27 +778,29 @@ function ComposePanel({
             </div>
           </FieldRow>
 
-          <FieldRow label="Count">
-            <div className="flex">
-              {[2, 3, 4, 6].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setCount(n)}
-                  className={cn(
-                    "-ml-px h-9 flex-1 border border-line text-[13px] font-semibold transition-colors first:ml-0 first:rounded-l-md last:rounded-r-md",
-                    n === count
-                      ? "z-10 relative border-k-orange bg-k-orange-soft text-k-orange-ink"
-                      : "bg-paper text-ink-2 hover:border-line-strong",
-                  )}
-                  data-testid="batch-compose-inline-count-stop"
-                  data-active={n === count || undefined}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          </FieldRow>
+          {formFields?.showCount ? (
+            <FieldRow label="Count">
+              <div className="flex">
+                {[2, 3, 4, 6].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setCount(n)}
+                    className={cn(
+                      "-ml-px h-9 flex-1 border border-line text-[13px] font-semibold transition-colors first:ml-0 first:rounded-l-md last:rounded-r-md",
+                      n === count
+                        ? "z-10 relative border-k-orange bg-k-orange-soft text-k-orange-ink"
+                        : "bg-paper text-ink-2 hover:border-line-strong",
+                    )}
+                    data-testid="batch-compose-inline-count-stop"
+                    data-active={n === count || undefined}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </FieldRow>
+          ) : null}
 
           {supportsQuality ? (
             <FieldRow label="Quality">
@@ -694,16 +826,20 @@ function ComposePanel({
             </FieldRow>
           ) : null}
 
-          <FieldRow label="Brief" hint="Optional · max 500 chars">
-            <textarea
-              value={brief}
-              onChange={(e) => setBrief(e.target.value.slice(0, 500))}
-              rows={3}
-              placeholder="Optional style note — e.g., 'soft pastel palette' or 'add line art accents'"
-              className="w-full resize-none rounded-md border border-line bg-paper px-2.5 py-1.5 text-[12.5px] text-ink placeholder:text-ink-3"
-              data-testid="batch-compose-inline-brief"
-            />
-          </FieldRow>
+          {/* Brief — Kie pattern (single text field), Midjourney'de gizli
+              çünkü prompt zaten yukarıda */}
+          {formFields?.showBrief ? (
+            <FieldRow label="Brief" hint="Optional · max 500 chars">
+              <textarea
+                value={brief}
+                onChange={(e) => setBrief(e.target.value.slice(0, 500))}
+                rows={3}
+                placeholder="Optional style note — e.g., 'soft pastel palette' or 'add line art accents'"
+                className="w-full resize-none rounded-md border border-line bg-paper px-2.5 py-1.5 text-[12.5px] text-ink placeholder:text-ink-3"
+                data-testid="batch-compose-inline-brief"
+              />
+            </FieldRow>
+          ) : null}
 
           {someReferencesUnreachable ? (
             <div
@@ -744,8 +880,9 @@ function ComposePanel({
           className="font-mono text-[10.5px] text-ink-3"
           data-testid="batch-compose-inline-cost"
         >
-          {refCount > 1 ? `${totalGenerations} gens · ` : ""}~$
-          {totalCostUSD} · est. {estMinutes}m
+          {backendNotReady
+            ? "Backend handoff pending"
+            : `${refCount > 1 ? `${totalGenerations} gens · ` : ""}~$${totalCostUSD} · est. ${estMinutes}m`}
         </span>
         <button
           type="button"
@@ -754,13 +891,20 @@ function ComposePanel({
           disabled={launchDisabled}
           onClick={() => launchMutation.mutate()}
           data-testid="batch-compose-inline-launch"
+          title={
+            backendNotReady
+              ? "Midjourney launch dispatcher arrives in Phase 61. Switch provider to launch now."
+              : undefined
+          }
         >
           <Sparkles className="h-3 w-3" aria-hidden />
           {launchMutation.isPending
             ? "Launching…"
-            : refCount > 1
-              ? `Create Similar · ${refCount} × ${count}`
-              : `Create Similar · ${count}`}
+            : backendNotReady
+              ? "Awaiting backend handoff"
+              : refCount > 1
+                ? `Create Similar · ${refCount} × ${count}`
+                : `Create Similar · ${count}`}
         </button>
       </div>
     </aside>

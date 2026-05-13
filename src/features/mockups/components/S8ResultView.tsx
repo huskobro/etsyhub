@@ -528,7 +528,7 @@ export function S8ResultView({
           />
           <div className="flex-1 text-sm text-ink">
             <div className="font-medium text-danger">
-              Couldn't create listing draft
+              Couldn&apos;t create listing draft
             </div>
             <p className="mt-1 text-ink-2">
               {(createListingMutation.error as Error)?.message ??

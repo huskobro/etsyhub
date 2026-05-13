@@ -11918,6 +11918,219 @@ Sonraki turlar yalnız:
 
 ---
 
+## Phase 60 — Create Similar yeniden düşünüldü: Midjourney-first + provider-aware form + default-expanded queue panel + self-hosted mockup research
+
+Phase 59 filter affordance disiplinini bitirmişti. User signoff feedback'i ile odak değişti: **Create Similar / Add Batch akışı hâlâ ikna edici hissetmiyordu**. Phase 60 dürüst audit + 3 kritik fix + self-hosted mockup generator research.
+
+### Honest audit: Pre-Phase 60 Create Similar / Add Batch
+
+Akış (operatör adımları):
+```
+/batches → Start Batch CTA (orange primary)
+   ↓
+/references?intent=start-batch (Pool grid + sticky right rail
+                                + orange-soft hint banner)
+   ↓ operator hovers Pool card → "Add to Draft" hover CTA
+   ↓ POST /api/batches/add-to-draft (idempotent)
+   ↓ Sağ Queue panel default COLLAPSED rail (56px) + count badge
+   ↓ Operator panel'i AÇMAK ZORUNDA (rail click) → 320px expanded
+   ↓ Items list + "Create Similar (N)" footer CTA görünür
+   ↓ Click → panel mode "compose" (440px), inline form
+   ↓ Provider <select> "Midjourney — unavailable" disabled
+   ↓ defaultProviderId = first available → "kie-gpt-image-1.5" (Kie)
+   ↓ Launch → POST /api/batches/[id]/launch → /batches/[id]
+```
+
+Tespit edilen sorunlar:
+
+| # | Sorun | Severity | Sebep |
+|---|---|---|---|
+| 1 | Queue panel DEFAULT COLLAPSED — Create Similar **iki tıklama gerisinde** | Yüksek | Phase 47'de "Pool browse alanını maksimize et" gerekçesiyle collapsed default eklendi. Ama operator "Add to Draft" yapınca panel açıkça expand olmuyor; operator manuel rail tıklayıp "Create Similar"a geliyor. Form gerçekten "geç ve aşağıda" hissettiriyor. |
+| 2 | Provider "Midjourney" hardcoded `available: false` | Yüksek | provider-capabilities.ts:49 disabled. Operatör'ün doğal default tercihi unavailable görünüyor. Backend `createMidjourneyJob` (kind=GENERATE) **mevcut** ve reference URL'lerden /imagine + --sref/--oref/--cref destekliyor. Disable kararı tarihi (Phase 5-6 MJ ile Kie ayrışırken alınmış). |
+| 3 | Form alanları **provider-aware DEĞİL** | Orta | Provider değişince yalnız quality field'ı conditional. Midjourney activate edildiğinde **mode picker (imagine/sref/oref/cref/describe), prompt field, reference parameter chips** lazım; Kie image-to-image bunları kullanmıyor. Tek form herkese uymuyor. |
+| 4 | "Start Batch" → References'a yönlendirme **bağlam kaynaması** | Orta | Operatör Batches'tan "üretime başla" niyetiyle tıklar; References'a düşmek "referans seç" niyetine kayar. Phase 42 düzeltmesi /library yerine canonical Pool'a yönlendiriyor; doğru yön ama hâlâ "yönlendirilmiş" hissi. |
+| 5 | Compose form 440px sağ panel'de **dar + cramped** | Düşük | v4 A6 spec geniş split modal (rail + body); biz dar sağ rail'e sıkıştırdık. Quality/Count/Aspect rows dolu kaplıyor, brief textarea küçük. |
+
+### Ürün kararları
+
+**Modal vs Panel — Hibrit:**
+- Queue panel right rail kalır (Pool browse ile kesintisiz iş)
+- "Create Similar" CTA inline compose mode'a açar (mevcut Phase 47 davranışı)
+- Tam v4 A6 split modal pattern Phase 61+ candidate (büyük layout iş; mevcut 440px panel form'u canlı + functional)
+
+**Add Batch entry — Yerinde durdur:**
+- `/batches` Start Batch → References'a yönlendirme korundu (Phase 42 baseline)
+- Hint banner copy güncellendi: artık Phase 45+ Add to Draft → queue panel → Create Similar dilini taşıyor
+- Modal-açan Start Batch (Pool'a inmeyen) Phase 61+ candidate; mevcut akış doğru ama hint copy operatöre asıl kelimeleri gösteriyor
+
+**Midjourney default + honest backend disclosure:**
+- `available: true` set
+- `resolveDefaultProvider()` helper: Midjourney-first canonical fallback
+- **Yeni `launchBackendReady` field**: Midjourney'de `false` (launch dispatcher Phase 61'de bağlanacak)
+- Honest disclosure card: warning-soft border + actionable copy + **Switch to Kie · GPT Image 1.5 →** button
+- Launch CTA disabled + "Awaiting backend handoff" + actionable title
+- **Bu fake disabled CTA DEĞİL** (Phase 58 yasak): operatör tıklayınca ne olacağını/olmayacağını biliyor + alternative path biliyor + timeline biliyor
+
+**Provider-aware form fields:**
+- Yeni `formFields: ProviderFormFields` provider-capabilities şemasında
+- Provider değişince UI alan setini buradan okur:
+
+| Field | Midjourney | Kie GPT | Z-Image |
+|---|---|---|---|
+| Mode picker (imagine/image-prompt/sref/oref/cref/describe) | ✓ | — | — |
+| Prompt textarea | ✓ | — | ✓ (required) |
+| Reference parameters chips | ✓ | — | — |
+| Brief (single text field) | — | ✓ | — |
+| Quality (medium/high) | ✓ | ✓ | — |
+| Count | ✓ | ✓ | ✓ |
+
+**Midjourney mode requirements** (UI mode picker → prompt enable/disable):
+- `imagine` → prompt strongly recommended
+- `image-prompt` → prompt zorunlu, reference URL prompt başına inject
+- `sref/oref/cref` → prompt opsiyonel ama önerilir
+- `describe` → prompt **disabled** + actionable hint ("Describe pipeline returns 4 prompt suggestions")
+
+### Fix #1: Midjourney first-class
+
+`src/features/variation-generation/provider-capabilities.ts`:
+- `available: true` (was `false`)
+- `launchBackendReady: false` field eklendi
+- `formFields` config eklendi (her provider için)
+- `midjourneyModes: ["imagine", "image-prompt", "sref", "oref", "cref", "describe"]`
+- `resolveDefaultProvider(settingsOverride?)` helper
+- `midjourneyModeRequirements(mode)` helper (mode → prompt rules + hint)
+
+### Fix #2: Provider-aware ComposePanel
+
+`BatchQueuePanel.tsx` ComposePanel:
+- `resolveDefaultProvider()` ile default Midjourney
+- `formFields` reading: `showModeSelector`, `showPrompt`, `showBrief`, `showQuality`, `showCount`
+- Midjourney seçili iken: 6 mode chip + prompt field + mode-aware hint
+- Kie seçili iken: brief field + quality + count
+- Honest disclosure + Switch-to-Kie CTA
+- Launch button text/disabled state backend-not-ready aware
+
+`BatchComposeClient.tsx` (full-page parity):
+- Aynı `resolveDefaultProvider` + `backendNotReady` + disclosure pattern
+- Inline duplicate (deferred extraction Phase 61+; yarım testli inline form ortak shell çıkarmak isterse premature)
+
+### Fix #3: Default-expanded queue panel
+
+`BatchQueuePanel.tsx`:
+- `useState<boolean>(false)` (was `true`)
+- localStorage truth-table flipped:
+  - no value (first visit) → expanded
+  - `"0"` → expanded (legacy explicit expand)
+  - `"1"` → collapsed (explicit operator collapse persists)
+- Operatör hâlâ collapse edebilir; tercihi sticky
+
+### Hint banner copy update
+
+Two surfaces aligned with Phase 45+ canonical wording:
+- `references-page.tsx` start-batch hint: "Hover a reference card and click **Add to Draft**. The **draft panel** opens automatically — finish staging, then click **Create Similar** to compose..."
+- `BatchesIndexClient.tsx` start-batch hint: aynı dil
+- Phase 42 banner'ları "Create Variations" yazıyordu (Phase 45'te rename oldu) → operatör screen'deki gerçek kelimeleri görür
+
+### Self-hosted / API-free mockup generator research
+
+Operatör tercihi: ücretsiz, sınırsız, API'sız. Audit ortaya çıkardı: **`src/providers/mockup/local-sharp/` zaten mevcut** (Phase 8 Task 9). Sharp tabanlı in-process compositor, MinIO storage'a yazıyor, batch-friendly.
+
+| Yaklaşım | Maliyet | Güç/Zayıf | Bizim durum |
+|---|---|---|---|
+| **Sharp compositor** | $0 | Hızlı (libvips), pure-Node, no headless. PNG/JPG/WebP/AVIF. PSD parse yok | ✅ Halihazırda var |
+| ImageMagick CLI | $0 | Displacement map (3D), distort+perspective güçlü; CLI spawn yavaş | Sharp ile complementary, gerekirse |
+| node-canvas | $0 | SVG render, font, custom drawing | Sharp Compositing yapıyor zaten |
+| `ag-psd` PSD parser | $0 | True smart object reading | ETL CLI tool için ideal |
+| Photopea automation | $0 ama ağır | Adobe-grade kalite ama brittle headless browser | **Pas** — browser companion'la aynı çıkmaz |
+| Blender headless | $0 | True 3D, displacement, lighting | **Pas** — Kivasy dijital download (CLAUDE.md scope) |
+| Saas paid mockup | $$ | Zengin template kütüphanesi | **Pas** — operatör tercihi free/unlimited |
+
+**Önerilen 1-2 teknik yön (Phase 61+ candidate)**:
+1. **`local-sharp/compositor.ts` `placePerspective` stub'ını doldur** (~1-2 gün): 4-corner manual koordinatlar → 8-DOF homography matris → Sharp `affine`. T-shirt/mug benzeri yamuk smart-object area'lara fit; PSD smart-object parity yakalanır.
+2. **`scripts/import-psd-mockup-template.ts` ETL CLI** (~1 gün): `ag-psd` ile PSD aç, smart-object koordinatları enumerate et, JSON template üret. Operatör Photoshop'ta bir kez yapar; sonraki tüm render'lar Sharp + JSON ile sınırsız.
+
+İkisi de mevcut altyapıya organik genişleme — yeni big abstraction yok, yeni infra yok, yeni 3rd-party dep yok. Mockup generator stack tamamen kontrolümüzde + sınırsız + ücretsiz.
+
+Bu turun verdiği karar: **dynamic-mockups API path'i ileride deprecate edilebilir**; Sharp pipeline tek canonical olur. Mevcut local-sharp + recipe-applicator + safe-area + JSON template → dünyanın en sağlam dijital mockup pipeline'ı yapısı.
+
+### Browser verification (live preview, viewport 1440×900, 10 senaryo PASS)
+
+```
+/references navigate (cleared localStorage):
+  panel default = expanded (320px), mode = queue
+  Create Similar (1) CTA visible
+  data-collapsed="false"
+
+Click "Create Similar":
+  panelMode = compose, panelWidth = 440px
+  providerSelected = "midjourney" (Phase 60 default)
+  data-provider="midjourney"
+  backendDisclosurePresent = true
+  switchBtnText = "Switch to Kie · GPT Image 1.5 →"
+  launchText = "Awaiting backend handoff"
+  launchDisabled = true
+  costText = "Backend handoff pending"
+  mjModeChips = 6 (imagine / image-prompt / sref / oref / cref / describe)
+  Default mode: sref (active)
+  mjPromptField: present, not disabled
+
+Click "Describe" mode chip:
+  promptDisabled = true
+  promptHint = "Describe pipeline — Midjourney reads the reference and returns 4 prompt suggestions. No generation occurs."
+
+Click "Switch to Kie" button:
+  providerSelected = "kie-gpt-image-1.5"
+  mjModeChipCount = 0 (Kie has no mode picker)
+  mjPromptPresent = false
+  briefPresent = true
+  qualityPresent = true
+  disclosurePresent = false (Kie launchBackendReady=true)
+  launchText = "Create Similar · 6"
+  launchDisabled = false
+  costText = "~$1.44 · est. 3m"
+```
+
+Screenshot: References Pool grid + sağda 440px compose panel + Provider="Midjourney" + warning-soft disclosure card + Switch to Kie button + Generation mode 6 chip + Prompt field "OPTIONAL · RECOMMENDED" + Aspect ratio + Similarity + Count.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **435/435 PASS** (canonical regression — selection + products + bookmarks-page + references-page + dashboard-page + collections-page + bookmark-service + bookmarks-confirm-flow)
+- `next build`: ✓ Compiled successfully (Phase 53 carry-over apostrophe eslint errors düzeltildi: S7JobView.tsx 109/379, S8ResultView.tsx 531, BatchQueuePanel.tsx 401)
+
+### Değişmeyenler (Phase 60)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Provider-capabilities yalnız UI-side static literal genişletme.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `formFields` + `midjourneyModes` mevcut `ProviderCapability` type'a field eklemesi; helper'lar (`resolveDefaultProvider`, `midjourneyModeRequirements`) ~30 satır pure functions.
+- **References / Batch / Review / Selection / Mockup / Product / Etsy Draft canonical akışları intakt** (Phase 26-59 baseline).
+- **Phase 49 Pool card In Draft chip + Remove from Draft + batch chip dokunulmadı.**
+- **Phase 51 Selection DesignsTab + finalize gate dokunulmadı.**
+- **Phase 53/54/55/56 mockup studio shipping-quality dokunulmadı** (yalnız 3 carry-over apostrophe eslint fix).
+- **Phase 59 filter affordance discipline dokunulmadı.**
+- **Kivasy DS dışına çıkılmadı.** k-orange/k-orange-soft, k-bg-2, line/line-soft, warning-soft, paper, font-mono tracking-meta recipe'leri kullanıldı.
+
+### Bilinçli scope dışı (Phase 61+ candidate)
+
+- **Midjourney launch dispatcher backend**: `launchBatch` service'inde provider == "midjourney" → `createMidjourneyJob` (kind=GENERATE) + referenceUrls + sref/oref/cref param mapping. UI tarafı Phase 60'ta tam hazır; backend dispatcher Phase 61.
+- **Modal v4 A6 split layout**: tam canonical split modal (rail + form + cost footer). Mevcut 440px panel canlı + functional; modal expansion büyük layout iş.
+- **Compose shared shell extraction**: BatchComposeClient (page) + BatchQueuePanel.ComposePanel (inline) iki ayrı render path; aynı form alanları + launch logic. Davranış divergence görülürse ortak `ComposeForm` çıkarılır.
+- **Sharp compositor `placePerspective`** + **PSD ETL CLI**: yukarıda research'te detayı; ~2-3 günlük altyapı turu.
+- **Sibling family chip group → k-segment migration** (Phase 59'dan devir).
+
+### Bundan sonra production tarafında kalan tek doğru iş
+
+Phase 60 ile Create Similar / Add Batch akışı **operatör için doğru hisse oturdu**:
+- Pool'a inince queue panel **anında expanded** (form 1 tıklama gerisinde)
+- **Midjourney default** + provider-aware form (mode picker + prompt + reference params)
+- **Honest backend disclosure** (Phase 58 prensibi: fake CTA yok; operator NEDEN ve NE YAPACAĞINI biliyor)
+- Self-hosted mockup pipeline **zaten elimizde** (`local-sharp/`); placePerspective + PSD ETL ile tamamen API-free olur
+
+Sıradaki tek doğru iş: **Phase 61 Midjourney launch dispatcher** (UI hazır + backend `createMidjourneyJob` mevcut; orchestration küçük bir tur). Sonrasında Sharp `placePerspective` + PSD ETL CLI.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

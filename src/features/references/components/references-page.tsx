@@ -370,10 +370,13 @@ export function ReferencesPage({
 
   return (
     <div className="flex flex-col">
-      {/* Phase 42 — Start-batch intent banner. Mirrors the
-       *   /library?intent=start-batch banner pattern, but here we
-       *   actually have the canonical reference Pool, so the
-       *   instruction lands operator on real picker context. */}
+      {/* Phase 42 → Phase 60 — Start-batch intent banner.
+       *   Phase 42 mirrored the /library?intent=start-batch banner;
+       *   Phase 60 updates the operator copy to match Phase 45+ flow
+       *   (Add to Draft → queue panel → Create Similar). Old text
+       *   referenced "Create Variations" hover CTA which was renamed
+       *   to "Add to Draft" in Phase 45. Operator now sees the actual
+       *   path words on screen. */}
       {startBatchIntent ? (
         <div
           className="flex items-start gap-3 border-b border-line bg-k-orange-soft/40 px-6 py-3"
@@ -386,13 +389,15 @@ export function ReferencesPage({
           />
           <div className="flex-1">
             <div className="text-[13px] font-medium text-ink">
-              Pick a reference to start a batch
+              Pick references and stage them in the draft batch
             </div>
             <p className="mt-0.5 text-[12.5px] text-ink-2">
               Hover a reference card and click{" "}
-              <span className="font-medium text-ink">Create Variations</span>{" "}
-              to configure and launch the batch (count, aspect ratio,
-              prompt template).
+              <span className="font-medium text-ink">Add to Draft</span>. The{" "}
+              <span className="font-medium text-ink">draft panel</span> on the
+              right opens automatically — finish staging, then click{" "}
+              <span className="font-medium text-ink">Create Similar</span> to
+              compose the batch (provider, mode, count, aspect ratio).
             </p>
           </div>
           <button

@@ -201,13 +201,16 @@ export function BatchesIndexClient({
           <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-k-orange-ink" aria-hidden />
           <div className="flex-1">
             <div className="text-[13px] font-medium text-ink">
-              Pick a reference to start a batch
+              Pick references and stage them in the draft batch
             </div>
             <p className="mt-0.5 text-[12.5px] text-ink-2">
-              Variation batches anchor on a reference. Open References,
-              pick a card, then use{" "}
-              <span className="font-medium text-ink">Create Variations</span>{" "}
-              to configure and launch the batch.
+              Variation batches anchor on references. Open References, hover
+              a card, click{" "}
+              <span className="font-medium text-ink">Add to Draft</span>. The
+              draft panel on the right opens automatically — finish staging,
+              then click{" "}
+              <span className="font-medium text-ink">Create Similar</span> to
+              compose the batch (provider, mode, count, aspect ratio).
             </p>
             <Link
               href="/references?intent=start-batch"

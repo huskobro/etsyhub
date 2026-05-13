@@ -106,7 +106,7 @@ export function S7JobView({
   if (error)
     return (
       <div role="alert" className="p-8 text-sm text-danger">
-        Couldn't load job
+        Couldn&apos;t load job
       </div>
     );
   if (!job) return null;
@@ -376,7 +376,7 @@ export function S7JobView({
           />
           <p>
             You can close this page — the job continues in the background.
-            We'll keep your renders ready when you come back.
+            We&apos;ll keep your renders ready when you come back.
           </p>
         </div>
       ) : null}

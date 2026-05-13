@@ -55,6 +55,8 @@ import { cn } from "@/lib/cn";
 import {
   PROVIDER_CAPABILITIES,
   getProviderCapability,
+  resolveDefaultProvider,
+  type ImageProviderUiId,
 } from "@/features/variation-generation/provider-capabilities";
 
 type BatchComposeData = {
@@ -102,15 +104,13 @@ export function BatchComposeClient({
 }) {
   const router = useRouter();
 
-  // Provider state — default from settings; fall back to first available.
-  const defaultProviderId = useMemo(() => {
-    if (initialProviderId) {
-      const cap = getProviderCapability(initialProviderId);
-      if (cap?.available) return initialProviderId;
-    }
-    const firstAvail = PROVIDER_CAPABILITIES.find((p) => p.available);
-    return firstAvail?.id ?? "kie-gpt-image-1.5";
-  }, [initialProviderId]);
+  /* Phase 60 — resolveDefaultProvider helper kullanılır (settings override
+   * + Midjourney-first canonical fallback). Inline copy yerine shared
+   * helper. */
+  const defaultProviderId = useMemo(
+    () => resolveDefaultProvider(initialProviderId),
+    [initialProviderId],
+  );
   const [providerId, setProviderId] = useState(defaultProviderId);
 
   const [aspect, setAspect] = useState<AspectRatio>("2:3");
@@ -125,6 +125,11 @@ export function BatchComposeClient({
 
   const providerCap = getProviderCapability(providerId);
   const supportsQuality = (providerCap?.supportedQualities.length ?? 0) > 0;
+  /* Phase 60 — Honest backend disclosure for full-page compose.
+   * Same logic as BatchQueuePanel ComposePanel: Midjourney `available:
+   * true` ama `launchBackendReady: false` durumunda launch disabled
+   * + actionable hint. Inline duplicate (deferred extraction Phase 61+). */
+  const backendNotReady = providerCap?.launchBackendReady === false;
 
   // Cost + time preview (v4 A6 footer parity)
   const totalCostCents = COST_PER_VARIATION_CENTS * count;
@@ -180,6 +185,7 @@ export function BatchComposeClient({
     !hasItems ||
     !referenceHasPublicUrl ||
     !providerCap?.available ||
+    backendNotReady ||
     launchMutation.isPending;
 
   return (
@@ -309,17 +315,38 @@ export function BatchComposeClient({
             <Section label="Provider">
               <select
                 value={providerId}
-                onChange={(e) => setProviderId(e.target.value)}
+                onChange={(e) =>
+                  setProviderId(e.target.value as ImageProviderUiId)
+                }
                 className="h-control-md w-full rounded-md border border-line bg-paper px-3 text-[13px] text-ink"
                 data-testid="batch-compose-provider"
+                data-provider={providerId}
               >
                 {PROVIDER_CAPABILITIES.map((p) => (
                   <option key={p.id} value={p.id} disabled={!p.available}>
                     {p.label}
-                    {p.available ? "" : " — unavailable"}
+                    {p.available ? "" : " — coming soon"}
                   </option>
                 ))}
               </select>
+              {/* Phase 60 — Honest backend disclosure (full-page parity).
+               * BatchQueuePanel ComposePanel ile aynı mesaj. */}
+              {backendNotReady && providerCap?.helperText ? (
+                <div
+                  className="mt-2 rounded-md border border-warning/40 bg-warning-soft/30 px-3 py-2 text-[12px] text-ink"
+                  data-testid="batch-compose-backend-disclosure"
+                >
+                  <p className="text-ink-2">{providerCap.helperText}</p>
+                  <button
+                    type="button"
+                    onClick={() => setProviderId("kie-gpt-image-1.5")}
+                    className="mt-1.5 inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-2 hover:border-line-strong hover:text-ink"
+                    data-testid="batch-compose-switch-to-kie"
+                  >
+                    Switch to Kie · GPT Image 1.5 →
+                  </button>
+                </div>
+              ) : null}
               {!providerCap?.available && providerCap?.helperText ? (
                 <p className="mt-1.5 text-[11.5px] text-ink-3">
                   {providerCap.helperText}
@@ -525,7 +552,9 @@ export function BatchComposeClient({
             className="font-mono text-[11px] text-ink-3"
             data-testid="batch-compose-cost"
           >
-            ~${totalCostUSD} · est. {estMinutes}m
+            {backendNotReady
+              ? "Backend handoff pending"
+              : `~$${totalCostUSD} · est. ${estMinutes}m`}
           </span>
           <button
             type="button"
@@ -534,11 +563,18 @@ export function BatchComposeClient({
             disabled={launchDisabled}
             onClick={() => launchMutation.mutate()}
             data-testid="batch-compose-launch"
+            title={
+              backendNotReady
+                ? "Midjourney launch dispatcher arrives in Phase 61. Switch provider to launch now."
+                : undefined
+            }
           >
             <Sparkles className="h-3 w-3" aria-hidden />
             {launchMutation.isPending
               ? "Launching…"
-              : `Create Similar (${count})`}
+              : backendNotReady
+                ? "Awaiting backend handoff"
+                : `Create Similar (${count})`}
           </button>
         </div>
       </div>
