@@ -415,6 +415,50 @@ export async function getCurrentDraftBatch(args: { userId: string }) {
 }
 
 /**
+ * Phase 46 — Remove a single BatchItem from a DRAFT batch.
+ *
+ * Operatör queue panel'den yanlış eklediği reference'ı tek tıkla
+ * çıkarabilsin. Only DRAFT state'inde izin verilir; QUEUED/RUNNING/
+ * vs. batch'lerde item silme audit problem yaratır. Cross-user / non-
+ * existent → NotFoundError.
+ *
+ * Idempotency: item zaten yoksa (operatör double-click) NotFoundError
+ * vs. silent OK kararı: operator UX için silent OK daha iyi olur ama
+ * server-side audit için "yoktu" sinyali daha doğru — kullanıcıya
+ * 404 değil 204 dönmek için caller-side handle.
+ */
+export async function removeBatchItem(args: {
+  userId: string;
+  batchId: string;
+  itemId: string;
+}) {
+  const { userId, batchId, itemId } = args;
+  const batch = await db.batch.findFirst({
+    where: { id: batchId, userId, deletedAt: null },
+    select: { state: true },
+  });
+  if (!batch) throw new NotFoundError("Batch not found");
+  if (batch.state !== BatchState.DRAFT) {
+    throw new ValidationError(
+      `Cannot remove items from a ${batch.state} batch — only DRAFT batches accept changes`,
+    );
+  }
+  // Verify item exists under this batch (cross-batch sızıntı koruması)
+  const item = await db.batchItem.findFirst({
+    where: { id: itemId, batchId },
+    select: { id: true },
+  });
+  if (!item) throw new NotFoundError("Batch item not found");
+  await db.batchItem.delete({ where: { id: itemId } });
+  // Touch batch updatedAt so the queue panel polling picks it up
+  await db.batch.update({
+    where: { id: batchId },
+    data: { updatedAt: new Date() },
+  });
+  return { removed: itemId };
+}
+
+/**
  * Phase 45 — "Add to Draft" semantik helper.
  *
  * Operatör Pool'dan tek-ref veya bulk-ref ekleme yapıyor; bu helper

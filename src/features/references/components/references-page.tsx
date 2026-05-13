@@ -8,11 +8,12 @@ import {
 } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, Eye, Info, Search, Sparkles, X } from "lucide-react";
+import { Archive, ChevronDown, Eye, Info, Search, Sparkles, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useConfirm } from "@/components/ui/use-confirm";
 import { confirmPresets } from "@/components/ui/confirm-presets";
 import { AssetImage } from "@/components/ui/asset-image";
+import { FloatingBulkBar } from "@/components/ui/FloatingBulkBar";
 import { cn } from "@/lib/cn";
 
 /**
@@ -165,6 +166,41 @@ export function ReferencesPage({
       return res.json();
     },
   });
+
+  /* Phase 46 — Current draft batch query, shared with BatchQueuePanel.
+   *
+   * Pool card "in-draft" state derive eder: hangi reference id'leri
+   * şu an DRAFT batch'inde? Bu bilgi olmadan operatör aynı kartı
+   * tekrar tekrar Add to Draft yapabilir; service idempotent
+   * (skipDuplicates) ama operatör görsel olarak hiçbir şey
+   * değişmediğini görür. Phase 46 fix: kart üzerinde "In Draft"
+   * subtle ring + button state.
+   *
+   * Same queryKey as BatchQueuePanel — React Query single source of
+   * truth; bir mutation invalidate ettiğinde her iki consumer da
+   * canlı güncellenir. */
+  type DraftBatchLite = {
+    id: string;
+    items: { reference: { id: string } }[];
+  };
+  const draftQuery = useQuery<{ batch: DraftBatchLite | null }>({
+    queryKey: ["batches", "current-draft"],
+    queryFn: async () => {
+      const res = await fetch("/api/batches/current-draft", {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("Failed to load draft");
+      return res.json();
+    },
+    refetchInterval: 5_000,
+  });
+  const inDraftIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of draftQuery.data?.batch?.items ?? []) {
+      set.add(item.reference.id);
+    }
+    return set;
+  }, [draftQuery.data]);
 
   const archiveMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -498,6 +534,7 @@ export function ReferencesPage({
                 reference={ref}
                 density={density}
                 selected={selectedIds.has(ref.id)}
+                inDraft={inDraftIds.has(ref.id)}
                 onToggleSelect={toggleSelect}
               />
             ))}
@@ -505,63 +542,46 @@ export function ReferencesPage({
         )}
       </div>
 
-      {/* Floating bulk bar — k-fab recipe.
+      {/* Phase 46 — Bulk bar uses shared FloatingBulkBar primitive
+       * (src/components/ui/FloatingBulkBar.tsx). Library + Selections
+       * + Review surface'leri aynı primitive'i kullanır; sistem geneli
+       * tek görsel aile. References'ta inline k-fab markup'ı vardı
+       * (Phase 43-45); Phase 46'da unified primitive'e çekildi.
        *
-       * Phase 43 scope kararı: bulk staging (multi-select N references
-       * → batch'e topluca ekleme) Phase 44 candidate. Bu turda kart
-       * üzeri "New Batch" tek-reference yolu canonical; bulk bar şu
-       * an yalnız Archive aksiyonunu taşır + tek-selection caption
-       * "Use card 'New Batch' to create batch" hint ile operatör
-       * doğru yola yönlendirilir. Multi-select N reference için
-       * "New Batch from N References" Phase 44'te eklenir
-       * (createDraftBatch zaten N referenceId kabul ediyor, sadece
-       * UI wiring kaldı).
-       *
-       * R11.14.9 — k-fab recipe inline style yerine pure className. */}
+       * Primary action: "Add N to Draft" (k-fab__btn--primary, k-orange
+       * fill). Secondary: Archive (ghost). Selection korunur (clearSelection
+       * yalnız X butonuyla tetiklenir). */}
       {selectedCount >= 1 ? (
-        <div className="k-fab" data-testid="references-bulk-bar">
-          <span className="k-fab__count">{selectedCount} selected</span>
-          {/* Phase 45 — Primary bulk action: add selected refs to the
-            * current draft batch (or start a new one). Operatör Pool'da
-            * curating yapar, sonra topluca staging'e atar.
-            * createDraftBatch + addReferencesToBatch zaten N referenceId
-            * destekliyor; bu CTA tek endpoint çağırır (add-to-draft). */}
-          <button
-            type="button"
-            className="k-fab__btn"
-            disabled={bulkAddToDraft.isPending}
-            onClick={() => {
-              const ids = items
-                .filter((i) => selectedIds.has(i.id))
-                .map((i) => i.id);
-              if (ids.length === 0) return;
-              bulkAddToDraft.mutate(ids);
-            }}
-            data-testid="references-bulk-add-to-draft"
-            title="Add the selected references to the current draft batch (creates one if none active)"
-          >
-            <Sparkles className="h-3 w-3" aria-hidden />
-            {bulkAddToDraft.isPending
-              ? "Adding…"
-              : `Add ${selectedCount} to Draft`}
-          </button>
-          <button
-            type="button"
-            className="k-fab__btn"
-            onClick={bulkArchive}
-            disabled={archiveMutation.isPending}
-          >
-            Archive
-          </button>
-          <button
-            type="button"
-            className="k-fab__close"
-            onClick={clearSelection}
-            aria-label="Clear selection"
-          >
-            <X className="h-3.5 w-3.5" aria-hidden />
-          </button>
-        </div>
+        <FloatingBulkBar
+          count={selectedCount}
+          onClear={clearSelection}
+          testId="references-bulk-bar"
+          actions={[
+            {
+              label: bulkAddToDraft.isPending
+                ? "Adding…"
+                : `Add ${selectedCount} to Draft`,
+              icon: <Sparkles className="h-3.5 w-3.5" aria-hidden />,
+              primary: true,
+              disabled: bulkAddToDraft.isPending,
+              testId: "references-bulk-add-to-draft",
+              onClick: () => {
+                const ids = items
+                  .filter((i) => selectedIds.has(i.id))
+                  .map((i) => i.id);
+                if (ids.length === 0) return;
+                bulkAddToDraft.mutate(ids);
+              },
+            },
+            {
+              label: "Archive",
+              icon: <Archive className="h-3.5 w-3.5" aria-hidden />,
+              disabled: archiveMutation.isPending,
+              testId: "references-bulk-archive",
+              onClick: bulkArchive,
+            },
+          ]}
+        />
       ) : null}
 
       {state.preset ? (
@@ -695,11 +715,16 @@ function ReferencePoolCard({
   reference,
   density,
   selected,
+  inDraft,
   onToggleSelect,
 }: {
   reference: ReferenceLite;
   density: Density;
   selected: boolean;
+  /** Phase 46 — Pool card visual in-draft signal. Parent derives from
+   *  current-draft query; card shows subtle k-orange ring + button
+   *  state changes from "Add to Draft" → "In Draft" (disabled). */
+  inDraft: boolean;
   onToggleSelect: (id: string) => void;
 }) {
   /* Phase 43 — Pool card "New Batch" CTA.
@@ -777,10 +802,30 @@ function ReferencePoolCard({
 
   return (
     <div
-      className={cn("k-card overflow-hidden group", selected && "k-ring-selected")}
+      className={cn(
+        "k-card overflow-hidden group relative",
+        selected && "k-ring-selected",
+        /* Phase 46 — in-draft visual state. k-orange-soft ring distinct
+         * from selection's k-orange ring (selected = transient bulk-mode
+         * state; in-draft = persisted membership of the active DRAFT
+         * batch). Both layers can coexist visually. */
+        inDraft && !selected && "ring-2 ring-k-orange-soft ring-offset-1 ring-offset-paper",
+      )}
       data-interactive="true"
       data-testid="reference-card"
+      data-in-draft={inDraft || undefined}
     >
+      {inDraft ? (
+        /* Subtle corner badge so operator scanning the grid sees which
+         * cards are already staged. Mono caption pattern + k-orange-ink
+         * text reads as Kivasy DS-native. */
+        <span
+          className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-k-orange px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-meta text-k-orange-ink shadow"
+          data-testid="reference-card-in-draft-badge"
+        >
+          In Draft
+        </span>
+      ) : null}
       <div className="relative">
         <div className="p-2 pb-0">
           <div className="k-thumb" data-aspect="square">
@@ -856,20 +901,36 @@ function ReferencePoolCard({
          * the draft, not on first click. v4 A6 form remains the
          * compose surface; just the entry point moved. */}
         <div className="absolute bottom-2 left-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
+          {/* Phase 46 — in-draft state gates the CTA. When operator
+           * has already added this ref to current draft, button shows
+           * "In Draft ✓" disabled — duplicate-click frustration gone. */}
           <button
             type="button"
             data-size="sm"
-            className="k-btn k-btn--primary w-full"
-            disabled={addToDraft.isPending}
+            className={cn(
+              "k-btn w-full",
+              inDraft ? "k-btn--ghost" : "k-btn--primary",
+            )}
+            disabled={addToDraft.isPending || inDraft}
             onClick={(e) => {
               e.stopPropagation();
+              if (inDraft) return;
               addToDraft.mutate();
             }}
-            title="Add this reference to the current draft batch. Open Create Similar from the queue panel when ready."
+            title={
+              inDraft
+                ? "Already in the current draft batch — remove from the queue panel to undo"
+                : "Add this reference to the current draft batch. Open Create Similar from the queue panel when ready."
+            }
             data-testid="reference-card-add-to-draft"
+            data-in-draft={inDraft || undefined}
           >
             <Sparkles className="h-3 w-3" aria-hidden />
-            {addToDraft.isPending ? "Adding…" : "Add to Draft"}
+            {addToDraft.isPending
+              ? "Adding…"
+              : inDraft
+                ? "In Draft"
+                : "Add to Draft"}
           </button>
         </div>
       </div>

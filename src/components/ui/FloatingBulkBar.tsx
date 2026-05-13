@@ -22,6 +22,9 @@ export interface BulkAction {
   /** Primary action gets the orange fill. Only one allowed per bar. */
   primary?: boolean;
   disabled?: boolean;
+  /** Phase 46 — optional per-action data-testid for surface-specific
+   *  selectors (e.g. references-bulk-add-to-draft). */
+  testId?: string;
 }
 
 interface FloatingBulkBarProps {
@@ -31,6 +34,10 @@ interface FloatingBulkBarProps {
   actions: BulkAction[];
   onClear: () => void;
   className?: string;
+  /** Phase 46 — optional data-testid on the toolbar root. Useful when
+   *  several FloatingBulkBar consumers coexist (References + Library
+   *  + Selections) and tests need to scope by surface. */
+  testId?: string;
 }
 
 export function FloatingBulkBar({
@@ -38,11 +45,13 @@ export function FloatingBulkBar({
   actions,
   onClear,
   className,
+  testId,
 }: FloatingBulkBarProps) {
   return (
     <div
       role="toolbar"
       aria-label={`${count} selected — bulk actions`}
+      data-testid={testId}
       className={cn(
         "k-fab fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-xl px-4 py-1.5",
         className,
@@ -57,6 +66,7 @@ export function FloatingBulkBar({
           type="button"
           onClick={action.onClick}
           disabled={action.disabled}
+          data-testid={action.testId}
           className={cn(
             "k-fab__btn inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50",
             action.primary && "k-fab__btn--primary",

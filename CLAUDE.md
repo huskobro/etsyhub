@@ -9076,6 +9076,206 @@ kullanıcı senaryosu kanıtı yoksa premature.
 
 ---
 
+## Phase 46 — Queue UX olgunlaştırma: collapsible panel + Pool in-draft state + item remove + unified bulk bar
+
+Phase 45 ile queue/staging modeli açılmıştı, ama hâlâ tam final ürün
+hissi yoktu: sağ panel sürekli baskın, Pool'da staged kartlar
+görünür değil, queue içinden remove şart, bulk bar Library
+sayfasıyla görsel olarak farklı. Phase 46 bu UX eksiklerini birlikte
+çözer.
+
+### Tespit edilen UX eksikleri
+
+| Eksik | Sebep |
+|---|---|
+| Sağ panel sürekli ~320px alan kaplıyor | Phase 45'te collapse mekanizması yoktu — yalnız "items boş" durumda render dışı kalıyordu |
+| Pool'da staged kartlar görünmüyor | Operatör hangi reference'ı zaten eklediğini bilmiyor; aynı kartı tekrar tekrar Add to Draft yapabilir; service idempotent ama görsel feedback yok |
+| Queue panel'den remove yoktu | Items read-only; yanlış eklenen referans silinmiyor (yeni draft başlat hack'i tek çare) |
+| Bulk bar Library bulk bar'ından farklı | References inline `<div className="k-fab">` markup'ı kullanıyor; sistem geneli shared `<FloatingBulkBar>` primitive var (Library kullanıyor) ama References ondan ayrı yazılmıştı |
+| Card CTA "Add to Draft" zaten ekli olsa bile değişmiyor | Operatör tıklar, hiçbir görünür değişiklik olmaz (sessizce skipDuplicates), tekrar tıklar, frustration |
+
+### Implemented
+
+**1. `removeBatchItem` service + `DELETE /api/batches/[id]/items/[itemId]`**
+
+Service: yalnız DRAFT state'inde izin; cross-batch sızıntı koruması
+(item'ın bu batch'e ait olduğu doğrulanır); başarılı silme sonrası
+Batch.updatedAt touch (queue polling pickup için).
+
+Endpoint: `requireUser` + `withErrorHandling`. Cross-user / non-
+existent → 404, non-DRAFT batch → 400.
+
+**2. `BatchQueuePanel` rewrite — collapsible**
+
+Phase 45 baseline: hep expanded. Phase 46 iki state:
+
+| State | Width | Render |
+|---|---|---|
+| Collapsed | 56px | Layers icon + orange count badge + click-to-expand |
+| Expanded | 320px | Header (label + count) · Items list (thumb + meta + remove ×) · No-URL warning · Footer CTA "Create Similar (N)" |
+
+LocalStorage key `kivasy.queuePanel.collapsed` operatör tercihi
+hatırlanır (true → collapsed; false → expanded). İlk visit default
+expanded.
+
+DRAFT yoksa panel hiç render edilmez (Pool full-width — Phase 45
+baseline korunur).
+
+**3. Item remove button**
+
+Each queue item: hover/focus-visible'da kırmızı tonlu × buton.
+`removeItem` useMutation → DELETE endpoint → query invalidate.
+Pending state'te opacity-40 ile görsel feedback. Tüm items aynı
+mutation key'i paylaşır (`removeItem.variables?.itemId === item.id`
+ile per-item loading durumu izolasyonu).
+
+**4. Pool card in-draft state**
+
+Parent `ReferencesPage` `draftQuery` (current-draft endpoint) +
+`inDraftIds: Set<string>` derive eder. Set, BatchQueuePanel ile
+**aynı queryKey** paylaşır (`["batches", "current-draft"]`) →
+React Query single source of truth; bir mutation invalidate
+ettiğinde her iki consumer canlı güncellenir.
+
+Card render üç görsel sinyali ekler:
+
+| State | Visual |
+|---|---|
+| In draft | `ring-2 ring-k-orange-soft ring-offset-1` (subtle, not screaming) |
+| In draft + selected | Selection ring (k-ring-selected) dominant; ring-offset birlikte yaşar |
+| In draft corner badge | `inline-flex bg-k-orange px-2 py-0.5 font-mono text-[9.5px] text-k-orange-ink` (top-right) |
+
+CTA disabled state:
+
+```tsx
+<button
+  className={cn("k-btn w-full", inDraft ? "k-btn--ghost" : "k-btn--primary")}
+  disabled={addToDraft.isPending || inDraft}
+  title={inDraft ? "Already in the current draft batch — remove..." : "..."}>
+  {inDraft ? "In Draft" : "Add to Draft"}
+</button>
+```
+
+Operatör aynı kartı tekrar tıklamaya çalışırsa: disabled, title ile
+"remove from the queue panel to undo" yönergesi.
+
+**5. References bulk bar → shared FloatingBulkBar primitive**
+
+Phase 45'te inline k-fab markup:
+
+```tsx
+<div className="k-fab">
+  <span className="k-fab__count">...</span>
+  <button className="k-fab__btn">...</button>
+  ...
+</div>
+```
+
+Phase 46 shared primitive (`src/components/ui/FloatingBulkBar.tsx` —
+Library, Selections, Review aynısı):
+
+```tsx
+<FloatingBulkBar
+  count={selectedCount}
+  onClear={clearSelection}
+  testId="references-bulk-bar"
+  actions={[
+    {
+      label: `Add ${selectedCount} to Draft`,
+      icon: <Sparkles />,
+      primary: true,
+      testId: "references-bulk-add-to-draft",
+      onClick: () => bulkAddToDraft.mutate(ids),
+    },
+    {
+      label: "Archive",
+      icon: <Archive />,
+      testId: "references-bulk-archive",
+      onClick: bulkArchive,
+    },
+  ]}
+/>
+```
+
+Phase 46'da `FloatingBulkBar` primitive'e optional `testId` prop +
+per-action `testId` eklendi (mevcut test fixture'ları kırılmasın
+diye). Library + References + Selections artık aynı primitive →
+hover state, primary fill (k-fab__btn--primary), aria-label "N
+selected — bulk actions", X close button — tek görsel aile.
+
+### Browser verification (9 senaryo PASS, real end-to-end)
+
+Live dev server (fresh `.next/` rebuild, viewport 1440×900 → 1600×900
+screenshot, real DB):
+
+| # | Scenario | Evidence |
+|---|---|---|
+| 1 | Pool card In Draft badge | 6 cards `data-in-draft`, 6 `reference-card-in-draft-badge` elements, k-orange chip top-right |
+| 2 | In-draft CTA disabled | Class `k-btn k-btn--ghost`, disabled, text "In Draft" + title "Already in the current draft batch" |
+| 3 | Collapse panel | data-collapsed="true", w-14 rail, count badge "7", localStorage `kivasy.queuePanel.collapsed = 1` |
+| 4 | Re-expand panel | data-collapsed="false", w-80, Create Similar (7), localStorage `0` |
+| 5 | Remove queue item | DELETE `/api/batches/[id]/items/[itemId]`, DB itemCount 7 → 6, queue refetch picks up |
+| 6 | Shared FloatingBulkBar | role="toolbar", aria-label "2 selected — bulk actions", primary button class `k-fab__btn--primary`, testIds preserved |
+| 7 | Bulk bar Add to Draft | POST add-to-draft for 2 ids, queue grows |
+| 8 | Direct image URL regression (Phase 39) | "✓ Direct image URL" hint intact |
+| 9 | Legacy variations redirect (Phase 45) | `/references/[id]/variations` → /references |
+
+Visual screenshot 1600×900: Pool grid + right rail with **6 In Draft
+badge'lı kartlar** + **collapsed/expanded panel transitions** + **bulk
+bar "2 selected · Add 2 to Draft · Archive"** unified visual aile.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **59/59 PASS** (canonical regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 46)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration YAPILMADI** — yalnız service helper +
+  endpoint + UI değişiklikleri.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok**: `removeBatchItem` küçük servis;
+  `BatchQueuePanel` collapse state localStorage-only (yeni global
+  store yok); FloatingBulkBar mevcut primitive'e küçük testId prop
+  eklendi.
+- **Add Reference / duplicate / local folder / direct image intake
+  akışları intakt** (Phase 26-41 baseline).
+- **Compose page Phase 44/45 baseline'ı intakt** — yalnız bulk bar
+  unification UI seviyesinde, compose form aynı.
+- **Kivasy DS dışına çıkılmadı.** k-btn, k-thumb, k-orange,
+  k-orange-soft, k-fab, font-mono tracking-meta, line/line-soft
+  recipe'leri korundu. Yeni recipe icat edilmedi.
+- **Vertical writing rotated text** (Layers collapsed rail) inline
+  style yasağına takılacağı için kaldırıldı; icon + count badge
+  yeterli sinyal.
+
+### Production tarafında kalan tek doğru iş
+
+Phase 47 candidate'lar — kalan üretim olgunluğu:
+
+1. **Compose-inline-panel** (Phase 45'ten ertelenen) — queue panel
+   expanded state'i compose formu içersin; ayrı route'a geçmeden
+   tek surface'te launch. Hâlâ en doğru sonraki adım çünkü Phase
+   46 queue UX'ini olgunlaştırdı; compose'a geçiş artık daha doğal
+   ama yine de route değişiyor.
+2. **Multi-reference launch** (Phase 45'ten ertelenen) — `launchBatch`
+   her item için ayrı `createVariationJobs`; "+N more references"
+   hint'ini gerçekleştir.
+3. **Queue reorder** — Phase 46 item remove eklendi ama reorder yok.
+   Drag-and-drop position update veya basit ↑↓ buttons.
+4. **Batches index unification** — job-aggregator real Batch
+   row'larını listemeye başlar; state filter bar Review pattern'ı.
+5. **In-draft toggle** — şu an kartta "In Draft" disabled; gelecek
+   adım: click → bu draft'tan çıkar (queue panel'den remove ile aynı).
+
+Öncelik: **1 + 2 birlikte** hâlâ kalan en doğru iş — Phase 46 queue
+olgunlaştı, compose tarafı yarım kalmış hissediyor. Phase 47'de
+compose-inline + multi-ref launch end-to-end vertical slice.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
