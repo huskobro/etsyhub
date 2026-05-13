@@ -5,7 +5,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ImageIcon, MoreHorizontal } from "lucide-react";
+import { ArrowRight, ImageIcon, Layers, MoreHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
 import {
@@ -37,6 +37,12 @@ interface SelectionCardProps {
   stage: SelectionStage;
   sourceLabel: string;
   thumbs: (string | null)[];
+  /**
+   * Phase 50 — canonical source batch lineage. SelectionsIndex serverdan
+   * gelen sourceMetadata'dan resolve edilir (mjOrigin.batchIds[0] veya
+   * variation-batch.batchId). null ise lineage chip render edilmez.
+   */
+  sourceBatchId?: string | null;
 }
 
 export function SelectionCard({
@@ -46,6 +52,7 @@ export function SelectionCard({
   stage,
   sourceLabel,
   thumbs,
+  sourceBatchId = null,
 }: SelectionCardProps) {
   const cta = stageCta(stage);
   // 3 slot daima — eksikler boş thumb cell'i bırakır (consistent layout).
@@ -107,6 +114,38 @@ export function SelectionCard({
             </button>
           </div>
         </div>
+
+        {sourceBatchId ? (
+          /* Phase 50 — Source batch lineage chip.
+           *
+           * Operatör "bu set hangi batch'ten doğdu?" sorusunun cevabını
+           * burada görür. Phase 49 References Pool batch chip ile aile
+           * parity: border + bg-k-bg-2/60 + Layers icon + mono + arrow.
+           * Tıklanır → /batches/[batchId]. Card-içi nested Link guard
+           * (event stopPropagation) gerekmez çünkü kart altındaki primary
+           * CTA da Link; ikisi sibling. Lineage chip rendering boş
+           * sourceBatchId'de tamamen gizli (gürültü değil sinyal).
+           */
+          <div className="mt-2.5">
+            <Link
+              href={`/batches/${sourceBatchId}`}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border border-line-soft bg-k-bg-2/60 px-2 py-1",
+                "font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2",
+                "transition-colors hover:border-k-orange/50 hover:bg-k-orange-soft hover:text-k-orange-ink",
+              )}
+              data-testid="selection-card-source-batch"
+              data-batch-id={sourceBatchId}
+              title="Open the source batch this selection came from"
+            >
+              <Layers className="h-3 w-3" aria-hidden />
+              <span>From batch</span>
+              <span className="text-ink-3">·</span>
+              <span>{sourceBatchId.slice(0, 8)}</span>
+              <ArrowRight className="ml-0.5 h-3 w-3" aria-hidden />
+            </Link>
+          </div>
+        ) : null}
 
         <div className="mt-3.5">
           {/* R11.14.9 — CTA recipe parity. Önceden secondary variant

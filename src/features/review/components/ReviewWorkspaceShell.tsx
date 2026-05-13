@@ -34,9 +34,11 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  CheckCircle2,
   ChevronDown,
   HelpCircle,
   RotateCcw,
+  Sparkles,
   X as XIcon,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -85,6 +87,22 @@ export interface ReviewWorkspaceShellProps<TItem> {
     /** "batch" / "folder" / "queue" — drives the icon hint on the
      *  CTA. */
     kind: "batch" | "folder" | "queue";
+  } | null;
+  /**
+   * Phase 50 — Selection handoff at batch scope completion.
+   *
+   * Resolved by the page loader for batch-scoped review sessions
+   * (e.g. `/review?batch=<id>`). When `undecided = 0` and `keptCount > 0`,
+   * the scope-complete card surfaces a "Continue in Selection" or
+   * "Create selection from N kept" CTA — the natural product next-step.
+   *
+   * null for non-batch scopes (folder / queue) — they don't have a
+   * canonical Selection handoff yet.
+   */
+  selectionHandoff?: {
+    existingSetId: string | null;
+    existingSetName?: string | null;
+    batchId: string;
   } | null;
 
   // ── Items + cursor ──────────────────────────────────────────────────
@@ -207,6 +225,7 @@ export function ReviewWorkspaceShell<TItem>({
   totalReviewPending,
   sourcePendingLabel,
   nextScope,
+  selectionHandoff,
   items,
   cursor,
   onJumpToCursor,
@@ -619,6 +638,7 @@ export function ReviewWorkspaceShell<TItem>({
                 discardedCount={discardedCount}
                 scopeLabel={scopeLabel}
                 nextScope={nextScope ?? null}
+                selectionHandoff={selectionHandoff ?? null}
               />
             ) : (
               <div className="relative max-h-full">
@@ -1173,6 +1193,7 @@ function ScopeCompletionCard({
   discardedCount,
   scopeLabel,
   nextScope,
+  selectionHandoff,
 }: {
   keptCount: number;
   discardedCount: number;
@@ -1181,6 +1202,29 @@ function ScopeCompletionCard({
     href: string;
     label: string;
     kind: "batch" | "folder" | "queue";
+  } | null;
+  /**
+   * Phase 50 — Batch → Selection handoff at review scope completion.
+   *
+   * When the operator finishes reviewing a batch (`undecided = 0`) and
+   * `keptCount > 0`, the natural next product step is **Selection**:
+   *   - existingSetId set → "Continue in Selection" (selection-ready)
+   *   - existingSetId null → "Create selection from N kept" (kept-no-selection)
+   *
+   * Mirrors BatchDetailClient stage CTA logic (CLAUDE.md Madde AA),
+   * but rendered inside the review surface so operators don't have
+   * to exit + navigate back to batch detail to find the next step.
+   *
+   * Folder / queue scopes pass `null` — they don't yet have a canonical
+   * Selection handoff (folder is local intake, queue is cross-scope).
+   */
+  selectionHandoff: {
+    /** Existing SelectionSet id for "Continue" CTA, or null for "Create". */
+    existingSetId: string | null;
+    /** Optional name for caption ("Continuing in <name>"). */
+    existingSetName?: string | null;
+    /** Batch id needed for create endpoint. */
+    batchId: string;
   } | null;
 }) {
   return (
@@ -1201,7 +1245,73 @@ function ScopeCompletionCard({
           {discardedCount} discarded
         </span>
       </p>
-      {nextScope ? (
+      {/* Phase 50 — Selection handoff comes first when kept > 0.
+       *
+       * The operator just finished reviewing a batch. The dominant next
+       * step is **selection**, not "next scope" — kept items want to be
+       * curated into a set. Layout:
+       *   - primary CTA: Continue in Selection (or Create selection)
+       *   - secondary: nextScope link (smaller, below primary)
+       *   - tertiary: "All caught up" message when nothing else
+       *
+       * When kept === 0, skip selection handoff entirely (no kept items
+       * to promote); fall back to nextScope-or-all-caught-up.
+       */}
+      {selectionHandoff && keptCount > 0 ? (
+        <div className="flex w-full flex-col items-center gap-2.5">
+          <Link
+            href={
+              selectionHandoff.existingSetId
+                ? `/selections/${selectionHandoff.existingSetId}`
+                : `/batches/${selectionHandoff.batchId}`
+            }
+            data-testid="scope-completion-selection-handoff"
+            data-handoff-mode={
+              selectionHandoff.existingSetId ? "continue" : "create"
+            }
+            className="inline-flex items-center gap-2 rounded-md border border-k-orange bg-k-orange/15 px-4 py-2 text-sm font-medium text-white hover:bg-k-orange/25"
+          >
+            {selectionHandoff.existingSetId ? (
+              <>
+                <CheckCircle2 className="h-4 w-4" aria-hidden />
+                Continue in Selection
+                <ArrowRight className="h-4 w-4" aria-hidden />
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" aria-hidden />
+                Create selection from {keptCount} kept
+                <ArrowRight className="h-4 w-4" aria-hidden />
+              </>
+            )}
+          </Link>
+          {selectionHandoff.existingSetName ? (
+            <span
+              className="max-w-[320px] truncate font-mono text-xs uppercase tracking-meta text-white/70"
+              data-testid="scope-completion-selection-name"
+              title={selectionHandoff.existingSetName}
+            >
+              ↗ {selectionHandoff.existingSetName}
+            </span>
+          ) : null}
+          {nextScope ? (
+            <Link
+              href={nextScope.href}
+              data-testid="scope-completion-next"
+              className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-meta text-white/60 hover:text-white/85"
+            >
+              <ArrowRight className="h-3 w-3" aria-hidden />
+              {nextScope.kind === "batch"
+                ? "or next batch"
+                : nextScope.kind === "folder"
+                  ? "or next folder"
+                  : "or review queue"}
+              <span className="text-white/40">·</span>
+              <span>{nextScope.label}</span>
+            </Link>
+          ) : null}
+        </div>
+      ) : nextScope ? (
         <Link
           href={nextScope.href}
           data-testid="scope-completion-next"

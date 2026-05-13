@@ -31,7 +31,52 @@ export type SelectionSetIndexView = SelectionSetListView & {
   thumbsComposite: (string | null)[];
   /** editedAssetId not null olan item sayısı (stage derivation için). */
   editedItemCount: number;
+  /**
+   * Phase 50 — canonical source batch/reference lineage.
+   * SelectionSet.sourceMetadata iki format taşır (CLAUDE.md Phase 1
+   * lineage + sets.service quickStartFromBatch):
+   *   1. MJ kept handoff: { mjOrigin: { batchIds: [batchId, ...], referenceId? } }
+   *   2. variation-batch quickStart: { kind: "variation-batch", batchId, referenceId }
+   * Her iki path'tan ilk geçerli değer çıkarılır; UI chip surface'i bu
+   * alanları (batch id + reference id) tıklanabilir lineage göstermek
+   * için tüketir. Yoksa null kalır — Library/Pool'dan ad-hoc oluşturulmuş
+   * legacy set'ler için chip görünmez (gürültü değil sinyal).
+   */
+  sourceBatchId: string | null;
+  sourceReferenceId: string | null;
 };
+
+/** Phase 50 — minimal source lineage resolver (read-only, schema-zero). */
+function resolveSourceLineage(
+  sourceMetadata: unknown,
+): { batchId: string | null; referenceId: string | null } {
+  if (!sourceMetadata || typeof sourceMetadata !== "object") {
+    return { batchId: null, referenceId: null };
+  }
+  const md = sourceMetadata as Record<string, unknown>;
+  // Path 1: variation-batch quickStart (Phase 5 GENERATE_VARIATIONS)
+  if (md.kind === "variation-batch") {
+    return {
+      batchId: typeof md.batchId === "string" ? md.batchId : null,
+      referenceId:
+        typeof md.referenceId === "string" ? md.referenceId : null,
+    };
+  }
+  // Path 2: MJ kept handoff (handoffKeptAssetsToSelectionSet)
+  const mjOrigin = md.mjOrigin;
+  if (mjOrigin && typeof mjOrigin === "object") {
+    const mo = mjOrigin as Record<string, unknown>;
+    const batchIds = Array.isArray(mo.batchIds) ? mo.batchIds : [];
+    const firstBatchId =
+      typeof batchIds[0] === "string" ? (batchIds[0] as string) : null;
+    return {
+      batchId: firstBatchId,
+      referenceId:
+        typeof mo.referenceId === "string" ? mo.referenceId : null,
+    };
+  }
+  return { batchId: null, referenceId: null };
+}
 
 export async function listSelectionsForIndex(input: {
   userId: string;
@@ -117,10 +162,15 @@ export async function listSelectionsForIndex(input: {
         return id ? (urlByAssetId.get(id) ?? null) : null;
       },
     );
+    const lineage = resolveSourceLineage(
+      (set as { sourceMetadata?: unknown }).sourceMetadata,
+    );
     return {
       ...set,
       thumbsComposite,
       editedItemCount: editedCountBySet.get(set.id) ?? 0,
+      sourceBatchId: lineage.batchId,
+      sourceReferenceId: lineage.referenceId,
     };
   });
 }

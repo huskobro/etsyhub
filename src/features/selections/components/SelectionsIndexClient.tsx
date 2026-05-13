@@ -41,6 +41,11 @@ export interface SelectionRow {
   updatedAt: string;
   finalizedAt: string | null;
   lastExportedAt: string | null;
+  /** Phase 50 — Source batch lineage (resolved server-side from
+   *  SelectionSet.sourceMetadata). null for legacy sets without
+   *  variation-batch / mjOrigin metadata. */
+  sourceBatchId?: string | null;
+  sourceReferenceId?: string | null;
 }
 
 export interface RecipeBanner {
@@ -249,6 +254,7 @@ export function SelectionsIndexClient({
                 stage={r.stage}
                 sourceLabel={`${r.itemCount} items · ${relativeTime(r.updatedAt)}`}
                 thumbs={r.thumbsComposite}
+                sourceBatchId={r.sourceBatchId ?? null}
               />
             ))}
           </div>

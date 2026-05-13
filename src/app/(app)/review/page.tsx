@@ -48,6 +48,7 @@ import {
   getMidjourneyAssetBatchId,
   listBatchReviewItems,
 } from "@/server/services/midjourney/review";
+import { findSelectionSetForBatch } from "@/server/services/midjourney/batches";
 import {
   getAdjacentPendingFolders,
   getAdjacentPendingReferences,
@@ -465,6 +466,30 @@ export default async function ReviewPage({
       !referenceForcedExplicit;
     const resolvedBatchId = batchDominant ? currentBatchId : null;
     const resolvedReferenceId = batchDominant ? null : currentReferenceId;
+
+    /* Phase 50 — Selection handoff for batch-scoped review.
+     *
+     * When operator's review session is batch-scoped (resolvedBatchId
+     * set), resolve the existing SelectionSet for the batch (if any).
+     * ScopeCompletionCard uses this to show:
+     *   existingSetId !== null → "Continue in Selection"
+     *   existingSetId === null → "Create selection from N kept"
+     *     (handoff CTA points at /batches/[batchId] where the kept-no-
+     *      selection stage CTA already exists — Batch-first Phase 3).
+     * non-batch scopes (reference / folder / queue) → null. Schema-zero. */
+    const selectionHandoff = resolvedBatchId
+      ? await (async () => {
+          const existing = await findSelectionSetForBatch(
+            userId,
+            resolvedBatchId,
+          );
+          return {
+            existingSetId: existing?.id ?? null,
+            existingSetName: existing?.name ?? null,
+            batchId: resolvedBatchId,
+          };
+        })()
+      : null;
     return (
       <QueueReviewWorkspace
         scope={focusScope}
@@ -477,6 +502,8 @@ export default async function ReviewPage({
           focusScope === "design" ? "ai pending" : "local pending"
         }
         nextScope={nextScope}
+        // Phase 50 — Selection handoff (batch scope only).
+        selectionHandoff={selectionHandoff}
         // IA Phase 16 — scope identity ZOOM (folder for local).
         focusFolderName={currentFolderName}
         // IA Phase 19 + IA-34 — scope identity ZOOM (batch dominant

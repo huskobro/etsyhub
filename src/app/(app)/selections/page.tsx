@@ -70,6 +70,9 @@ export default async function SelectionsPage({
       lastExportedAt: s.lastExportedAt
         ? s.lastExportedAt.toISOString()
         : null,
+      // Phase 50 — source batch lineage (resolved server-side)
+      sourceBatchId: s.sourceBatchId ?? null,
+      sourceReferenceId: s.sourceReferenceId ?? null,
     }));
 
   return (

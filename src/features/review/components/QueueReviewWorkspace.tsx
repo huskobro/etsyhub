@@ -65,6 +65,17 @@ interface QueueReviewWorkspaceProps {
     label: string;
     kind: "batch" | "folder" | "queue";
   } | null;
+  /**
+   * Phase 50 — Selection handoff at batch scope completion.
+   * Page loader resolves for batch-scoped sessions; null for folder/queue.
+   * Shell ScopeCompletionCard renders "Continue in Selection" or
+   * "Create selection from N kept" CTA when undecided=0 + kept>0.
+   */
+  selectionHandoff?: {
+    existingSetId: string | null;
+    existingSetName?: string | null;
+    batchId: string;
+  } | null;
   /** IA Phase 16 — scope identity ZOOM (local-only). Page resolves
    *  current item'ın folderName'ini server-side ve buradan geçirir.
    *  Queue hook'una `folder=` parametresi olarak iletilir; queue
@@ -156,6 +167,7 @@ export function QueueReviewWorkspace({
   totalReviewPending,
   sourcePendingLabel,
   nextScope,
+  selectionHandoff,
   focusFolderName,
   focusReferenceId,
   focusBatchId,
@@ -495,6 +507,7 @@ export function QueueReviewWorkspace({
       totalReviewPending={totalReviewPending}
       sourcePendingLabel={sourcePendingLabel}
       nextScope={nextScope ?? null}
+      selectionHandoff={selectionHandoff ?? null}
       items={items}
       cursor={idx}
       onJumpToCursor={(targetIdx) => {

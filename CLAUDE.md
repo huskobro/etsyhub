@@ -9909,6 +9909,205 @@ Review → **Selection** → **Product** → Etsy Draft zincirinin sonu).
 
 ---
 
+## Phase 50 — Review → Selection handoff + Selections lineage chip
+
+Phase 49 References/Batches üretim girişini production-ready hale
+getirdi. Phase 50 odak değişti: **launch sonrası karar verme akışını
+ürünleştirme**. Operatör batch'ini review ettikten sonra Selection'a
+nasıl iniyor? Selection set'leri hangi batch'ten doğdu? Bu turun
+gerçek slice'ı bu iki cevabı **görünür** yapmak.
+
+### Phase 49 sonrası ürün boşluğu
+
+1. **Review focus mode scope-complete handoff'u Selection'ı tanımıyordu**:
+   `ScopeCompletionCard` `undecided = 0` durumunda yalnız "next scope"
+   veya "All caught up" gösteriyordu. Operatör batch'i review etti,
+   kept > 0, ama "şimdi seçim yap" yönlendirmesi review yüzeyinde
+   yoktu — batch detail'e çıkıp `kept-no-selection` stage CTA'sını
+   bulmak zorundaydı.
+2. **Selections index batch lineage'i tutmuyordu**: Server'da
+   `sourceMetadata.kind: "variation-batch" + batchId` veya
+   `mjOrigin.batchIds[]` zaten yazılıydı, ama UI bu zenginliği drop
+   ediyordu (`sourceLabel: "${itemCount} items · 2h ago"` — lineage
+   yok). Operatör "bu set hangi batch'ten doğdu?" sorusuna cevap
+   alamıyordu.
+3. **Selection detail tarafında lineage strip** Phase 1'de zaten vardı
+   (`SelectionBatchLineage` component); ama index tarafına yansımamıştı.
+
+### Slice 1 — Selections index batch lineage chip
+
+`src/server/services/selection/index-view.ts`:
+
+- Yeni `resolveSourceLineage(sourceMetadata)` helper. Her iki
+  canonical format'ı destekler:
+  - `{ kind: "variation-batch", batchId, referenceId }` (Phase 5
+    GENERATE_VARIATIONS quickStart)
+  - `{ mjOrigin: { batchIds: [...], referenceId? } }` (Phase 1
+    handoffKeptAssetsToSelectionSet)
+- `SelectionSetIndexView` shape genişletildi: `sourceBatchId` +
+  `sourceReferenceId` (her ikisi nullable, legacy set'lerde null)
+- Schema-zero: yalnız okuma; mevcut Prisma JSON path'lerinden
+  parsing yapar.
+
+`src/features/selections/components/SelectionCard.tsx`:
+
+- Yeni `sourceBatchId?: string | null` prop
+- Chip render (sourceBatchId varsa): `<Link href="/batches/{id}">`
+  + `Layers icon + "From batch · " + slice(0,8) + ArrowRight`
+- Phase 49 References Pool batch chip ile **aile parity**:
+  `border-line-soft + bg-k-bg-2/60` → hover `border-k-orange/50 +
+  bg-k-orange-soft + text-k-orange-ink`. Mono caption tracking-meta
+  uppercase.
+- Boş sourceBatchId'de chip render edilmez (gürültü değil sinyal —
+  legacy/ad-hoc setler temiz kalır).
+
+`/selections/page.tsx` row mapping güncellendi: sourceBatchId +
+sourceReferenceId field'larını client'a yansıtır.
+
+### Slice 2 — Review scope-complete Selection handoff
+
+`src/features/review/components/ReviewWorkspaceShell.tsx`:
+
+- `ScopeCompletionCard` yeni optional prop: `selectionHandoff`.
+  - `{ existingSetId: string | null, existingSetName?: string | null,
+       batchId: string } | null`
+- Render davranışı (kept > 0 + selectionHandoff !== null ise):
+  - **existingSetId varsa** → primary CTA "Continue in Selection"
+    (CheckCircle2 icon) → `/selections/{setId}`. Caption "↗ {setName}"
+    altında.
+  - **existingSetId null ise** → primary CTA "Create selection from
+    N kept" (Sparkles icon) → `/batches/{batchId}` (kept-no-selection
+    stage CTA Phase 3'ten bu yana orada).
+- Secondary "next scope" link primary'nin altında küçük mono caption
+  olarak kalır (kept > 0 odağı Selection'a geçtiği için).
+- Folder/queue scope veya `kept === 0` → mevcut "next scope" / "All
+  caught up" davranışı aynen korunur (geriye uyum tam).
+
+`src/features/review/components/QueueReviewWorkspace.tsx`:
+
+- Yeni `selectionHandoff` prop adapter'dan shell'e iletilir.
+
+`src/app/(app)/review/page.tsx`:
+
+- AI batch-scoped review session'da `resolvedBatchId` resolve
+  edildikten sonra `findSelectionSetForBatch(userId, batchId)` ile
+  existing SelectionSet aranır.
+- `selectionHandoff = { existingSetId, existingSetName, batchId }`
+  prop'a yazılır.
+- Non-batch scope (reference / folder / queue) → null (handoff
+  surface'ü görünmez).
+
+### Decision dili netlik
+
+Mevcut sözleşme korundu (CLAUDE.md Madde V baseline):
+- `reviewStatus = APPROVED + reviewStatusSource = USER` → **operator
+  kept** (batch.reviewCounts.kept)
+- `reviewStatus = REJECTED + reviewStatusSource = USER` → **operator
+  rejected**
+- `reviewStatusSource != USER` → **undecided**
+
+Selection tarafında item-level:
+- `SelectionItem.status` → `pending` (defaultta) / `selected` /
+  `removed` — Selection'a alınan asset'lerin mockup'a girer/çıkar
+  kararı
+
+İkisi farklı katmandır (operator-kept downstream gate vs in-set
+curation status). Phase 50'de bu ayrım kod-level dürüst kaldı.
+**Hiç yeni state ismi icat edilmedi** — "kept/selected/shortlisted"
+karışıklığını önleyen mevcut sözleşme korundu.
+
+### Aile benzerliği
+
+Selection card lineage chip Phase 49 References Pool batch chip ile
+**görsel olarak aynı recipe family'sinde**:
+- Aynı `border-line-soft + bg-k-bg-2/60` resting
+- Aynı `border-k-orange/50 + bg-k-orange-soft + text-k-orange-ink` hover
+- Aynı `Layers icon + mono tracking-meta + ArrowRight` kompozisyonu
+- Aynı font-size (10.5px), padding (px-2 py-1), border-radius (md)
+
+Operatör References → Selections geçerken yeni bir görsel dil
+öğrenmez; aynı production-lineage chip'i her iki yüzeyde de görür.
+
+### Browser verification (live dev server kanıt)
+
+- **Selections index lineage chip**:
+  - Patched set ("Junk Journal Set") chip render: text "From batch ·
+    cmp3whhm →", href `/batches/cmp3whhmx00015cc3bv2lzs9s`,
+    data-batch-id resolve doğru
+  - 4 lineage-less set'te chip render edilmez (qa-fixture markdown'lı
+    test setleri) — sinyal değil gürültü davranışı doğrulandı
+  - Screenshot: "FROM BATCH · CMP3WHHM →" chip "Junk Journal Set"
+    kart altında net görünür; diğer setler temiz
+- **Selection detail lineage** (Phase 1 mevcut):
+  `SelectionBatchLineage` header'da "↗ BATCH XXXXXXXX" link — Phase
+  50'de değişmedi, Phase 1 baseline intakt.
+- **Review handoff DOM presence**: shell ScopeCompletionCard yeni
+  `selectionHandoff` prop ile çağrılıyor; AI batch scope page'i
+  `findSelectionSetForBatch` resolve sonucunu yansıtıyor.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: 59/59 PASS (canonical paket: bookmarks-page,
+  references-page, bookmark-service, collections-page, dashboard-page,
+  bookmarks-confirm-flow)
+- Live browser:
+  - `/selections` → lineage chip patched set'te görünür, lineage-siz
+    setlerde gizli, href + batch id resolve doğru
+  - Pool card chip stili (Phase 49) intakt — regresyon yok
+
+### Değişmeyenler (Phase 50)
+
+- **Review freeze (Madde Z) korunur.** Review modülünün scoring,
+  threshold, automation, decision state alanlarına dokunulmadı.
+  Yalnız scope-complete kart'a optional Selection handoff CTA
+  eklendi (mevcut "next scope" davranışı korunur).
+- **Schema migration yok.** SelectionSet.sourceMetadata zaten
+  variation-batch / mjOrigin format'larını taşıyordu; Phase 50
+  yalnız read-only resolve helper ekledi.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `resolveSourceLineage` 30 satırlık
+  static helper; `ScopeCompletionCard`'a yeni optional prop ekledi.
+- **Add Reference / duplicate / local folder / direct image intake
+  akışları intakt** (Phase 26-41 baseline).
+- **References / Batches / Compose / Multi-Launch akışları intakt**
+  (Phase 42-49 baseline).
+- **Kivasy DS dışına çıkılmadı.** Selection card lineage chip
+  Phase 49 References Pool batch chip ile birebir aile parity.
+
+### Bilinçli scope dışı (Phase 51+ candidate)
+
+- **MJ batch-scoped review path** (`BatchReviewWorkspace`, line 211):
+  AI workspace Phase 50'de handoff aldı; MJ workspace ayrı render
+  yolu (`features/batches/components/BatchReviewWorkspace.tsx`).
+  Phase 51 candidate: MJ workspace'a aynı selectionHandoff prop'u
+  bağla.
+- **Selection studio compare / group / prepare-for-mockup UX**:
+  Selections detail içinde Designs / Edits / Mockups / History
+  tab'ları mevcut; "studio" hissi için karşılaştırma + grup +
+  next-step UX henüz açılmadı (deferred).
+- **Reference lineage chip Selections index'te**: Phase 50 yalnız
+  source batch'i gösteriyor; gelecek tur Reference back-link de
+  eklenebilir (`sourceReferenceId` server'dan zaten geliyor).
+- **Decision dictionary doc**: bu turda explicit doc yazılmadı;
+  mevcut CLAUDE.md Madde V (operator decision canonical) + bu
+  Phase 50 entry sözleşmeyi tutuyor.
+
+### Bundan sonra production tarafında kalan tek doğru iş
+
+Phase 50 ile Review → Selection handoff ilk anlamlı slice'ı açıldı,
+Selections index lineage çıktısı görünür oldu. Sıradaki **tek doğru
+iş** Selection studio'nun gerçekten "studio gibi" hissetmesi:
+- Selection detail Designs tab'ında karşılaştırma + grup UX
+- "Prepare for Mockup" handoff'unun netleşmesi
+- Selection finalize → Mockup apply zincirinin daha az teknik kalması
+
+References → Batch → Review → **Selection** stage'i hâlâ açık; bir
+sonraki tur'da Selection studio detail'in olgunlaştırılması canonical
+omurganın doğal devamı.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
