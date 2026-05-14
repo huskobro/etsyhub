@@ -18483,6 +18483,177 @@ sidebar controls aktif.
 
 ---
 
+## Phase 92 — Plate visual readability + right rail parity güçlendirme
+
+Phase 91 plate'i mantıksal olarak doğru yere oturttu (bounded
+canvas, mode-aware aspect, sceneOverride-driven bg, ambient
+scene plate'in arkasında subtle vignette). Ama kullanıcının
+**ısrarla işaret ettiği** gerçek-browser screenshot karşılaştırması
+sonrası net oldu: **plate ↔ stage ayrımı görsel olarak zayıftı**.
+
+### Gerçek browser comparison (Shots.so vs Kivasy Phase 91)
+
+Aynı viewport (1316×919) iki Chrome tab'ında yan yana:
+
+| Element | Shots.so | Kivasy Phase 91 (önce) |
+|---|---|---|
+| Plate boyutu | ~%75 width × %70 height (stage padding belirgin) | ~%92 × %88 (stage padding neredeyse yok) |
+| Border | Belirgin rounded edge | 1px rgba(.07) — neredeyse görünmez |
+| Shadow | Multi-layer, plate stage'den net "kalkar" | Tek katman 50px soft — yumuşak edge |
+| Plate ↔ stage ayrımı | **Yüksek kontrast** | Plate kenarları stage padding'e harmanlanıyor |
+| Sağ rail thumb plate | Plate + dark padding birebir reflekt | SVG full kart kaplıyor, dark padding yok |
+
+**En kritik tek görsel zayıflık**: plate stage'in neredeyse
+tamamını kaplıyordu ve border/shadow yumuşaktı; operator için
+"plate var mı, yok mu" sorusu hâlâ tereddütte kalıyordu. Sağ
+rail thumb'larındaki SVG full kartı kaplıyordu, plate-aware
+visual parity zayıftı.
+
+### Phase 92 ürün kararı (Kivasy-superior rafine, agresif değil)
+
+Plate readability **belirgin** olmalı ama Shots vibrant-aggressive
+tone'una inilmemeli — Kivasy asset-driven color discipline
+korunur. Üç eksen birlikte yükseltildi:
+
+1. **Plate boyutu küçültüldü** — Phase 91 baseline `max-width: 92% /
+   max-height: 88%` ve helper `780×560 max` → Phase 92 `82% / 78%`
+   ve `700×500 max`. Stage padding alanı genişler, plate net sınırlı.
+   Shots gerçekten ~%75/%70; Kivasy %82/%78 Kivasy-superior rafine
+   (plate ana subject ama agresif değil).
+2. **Plate border belirgin** — 1px rgba(.07) → **2px rgba(.18)**.
+   Edge sertliği belirgin, plate'in geometric kimliği net.
+3. **Plate shadow multi-layer drop chain** — tek katmanlı soft
+   50px shadow yerine 4-katmanlı chain:
+   - `0 2px 6px rgba(0,0,0,0.35)` — close edge
+   - `0 12px 28px -4px rgba(0,0,0,0.45)` — medium body
+   - `0 36px 80px -16px rgba(0,0,0,0.55)` — ambient mid
+   - `0 60px 120px -32px rgba(0,0,0,0.5)` — depth fade
+   - `inset 0 1px 0 rgba(255,255,255,0.08)` — top highlight
+
+### Right rail thumb plate parity güçlendirildi
+
+Phase 91 preset thumb SVG **full kart bg'sini** kaplıyordu — operator
+sağ rail'e bakınca "thumb içinde plate-aware bounded surface" hissini
+alamıyordu. Phase 92'de:
+
+- `.k-studio__preset-card` (preset thumb container) `padding: 6px`
+  + SVG `border-radius: 5px` + SVG box-shadow chain. SVG plate
+  thumb içinde inset; çevresinde kart bg (dark stage tone)
+  görünür → **bounded plate on dark padding** hissini thumb-level
+  yansıtır.
+- `.k-studio__live-thumb` (rail head live) aynı pattern: `padding:
+  7px` + SVG inset radius + box-shadow chain.
+
+Stage plate ile rail thumb plate'i **görsel olarak birebir aile** —
+operator sağ rail'e bakınca stage'de ne göreceğini kolayca tahmin
+edebilir.
+
+### Implementation
+
+**`src/features/mockups/studio/studio.css`** (3 recipe edit):
+- `.k-studio__stage-plate` — max-width 92%→82%, max-height 88%→78%,
+  border 1px rgba(.07)→2px rgba(.18), box-shadow 1 layer → 4 layers
+- `.k-studio__preset-card` — padding 0→6px; yeni `.k-studio__preset-card
+  svg` recipe (radius + shadow + inset border)
+- `.k-studio__live-thumb` — padding 0→7px; yeni `.k-studio__live-thumb
+  svg` recipe (radius + shadow + inset border)
+
+**`src/features/mockups/studio/MockupStudioStage.tsx`** (`plateDimensionsFor`):
+- `maxW` 780 → 700
+- `maxH` 560 → 500
+
+Yeni component / hook / service / schema / endpoint yok. Sadece
+CSS recipe ve sabit ayarlamaları.
+
+### Visual proof (live Chrome browser, viewport 1331×919)
+
+**Mockup mode (Phase 92)**:
+- Stage'in ortasında **belirgin warm cream→tan plate** (~%72 stage
+  içinde, %18 stage padding tüm kenarlarda)
+- Plate stage'den net **2px border + 4-katmanlı drop shadow** ile
+  ayrılır
+- 3 sticker cascade plate'in üstünde merkezi, "01 Front View" badge
+- Sağ rail preset thumbs (Cascade/Centered/Mirror/Landscape/Fan/
+  Stack) **hepsi plate-aware** — her thumb içinde bounded plate +
+  dark stage padding
+
+**Frame mode + Gradient `#2A2420 → #1A1410`**:
+- Plate 16:9 aspect + **dramatic dark gradient bg**
+- Plate stage'den net ayrılır (border + shadow)
+- Cascade plate üstünde, cream sticker'lar dark plate bg'sinde pop
+- Sağ rail Frame preset thumbs (Centered/Offset/Bleed/Angled/Duo/
+  Story) **hepsi plate-aware** — dark gradient ile yeniden render
+
+**Mockup mode'a geri dönüş (continuity)**:
+- Plate **dramatic dark gradient bg korundu** (mode-AGNOSTIC scene
+  state)
+- Plate 4:3 Mockup default aspect
+- Cascade plate üstünde, Mockup body controls sol panelde
+- Sağ rail Mockup family preset thumbs **dark gradient ile yansıyor**
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products}`:
+  **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: Chrome live tab Mockup + Frame + Solid/Gradient
+  override + Mockup'a geri dönüş + screenshot proof — hepsi canlı
+
+### Değişmeyenler (Phase 92)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Sadece CSS recipe + plate dimensions
+  helper sabit ayarı.
+- **Plate component model (Phase 91) korundu** — sceneOverride-driven
+  bg, mode-aware aspect, ambient scene plate'in arkasında subtle
+  vignette katmanı, cascade plate-inner içinde merkezi.
+- **Mockup ↔ Frame continuity tam** — plate visibility güçlendi,
+  state korundu (Mockup → Frame → scene override → Mockup geçişlerinde
+  plate bg yansır).
+- **Slot assignment + render dispatch (Phase 80) zinciri intakt.**
+- **References / Batch / Review / Selection / Mockup Studio / Product
+  / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 93+ candidate)
+
+- **Glass + BG Effects davranış tüketimi** (Phase 89/90/91 öngörüsü):
+  Glass swatch'lar plate üstüne `backdrop-filter` overlay, Lens Blur
+  plate bg'ye bg-blur. Phase 93 candidate.
+- **Plate aspect explicit Mockup mode chip'i** — Mockup mode'da
+  operator plate aspect'ini 3:2 / 1:1 vb. değiştirmek isterse.
+- **Plate frame/border style presets** — operator plate chrome'unu
+  (frame style: paper / canvas / shadow box / clean) değiştirebilir.
+- **Plate animated bg transition** — şu an 320ms ease, daha rich
+  keyframe animation.
+- **Plate scene save to template binding** (Phase 70 recipe baseline).
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 92 ile plate **görsel readability + right rail visual parity**
+tam:
+- Stage container mode-AGNOSTIC (Phase 87)
+- Cascade composition mode-AGNOSTIC (Phase 85+87)
+- Visible bounded plate behind object + **belirgin border/shadow**
+  (Phase 91 + Phase 92 visibility lift ✓)
+- Ambient scene plate'in dışında padding alanı için subtle vignette
+- Frame swatch controls plate bg'sini kontrol eder (Phase 89→plate
+  via Phase 91)
+- Sağ rail preset thumbs plate-aware **+ plate visual parity güçlü**
+  (Phase 92 ✓ — thumb içinde plate + dark padding)
+
+Sıradaki en yüksek-impact adım **Phase 93 — Glass + BG Effects
+davranış tüketimi**: Glass swatch'lar plate üstüne backdrop-filter
+overlay; Lens Blur plate bg-blur. Phase 93 sonrası Frame mode'un
+tüm sidebar controls operator-driven aktif — Frame mode "presentation
+surface" rolünün tam ürünleştirilmesi.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

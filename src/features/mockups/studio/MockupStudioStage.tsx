@@ -100,12 +100,21 @@ function plateDimensionsFor(
   mode: StudioMode,
   frameAspect: FrameAspectKey,
 ): { w: number; h: number } {
-  const maxW = 780;
-  const maxH = 560;
+  /* Phase 92 — Visual parity correction:
+   * Phase 91 baseline 780×560 max ile plate stage'in neredeyse
+   * tamamını kaplıyordu (CSS max-width 92% / max-height 88%
+   * birlikte). Stage padding alanı çok dar kalıyor, plate↔stage
+   * ayrımı yetersiz görünüyordu. Phase 92'de plate base dimensions
+   * 700×500'e küçültüldü + CSS max %82/%78. Stage padding genişler,
+   * plate net sınırlı. Shots gerçekten ~%75/%70 — Kivasy %82/%78
+   * Kivasy-superior rafine (plate ana subject ama operator için
+   * agresif değil). */
+  const maxW = 700;
+  const maxH = 500;
   if (mode === "mockup") {
     // Mockup default 4:3 — Shots Frame default + Kivasy canonical
     // mockup plate (cascade horizontal landscape).
-    return { w: maxW, h: Math.round(maxW * 0.75) }; // 780 × 585 → clamp
+    return { w: maxW, h: Math.round(maxW * 0.75) }; // 700 × 525
   }
   // Frame mode: aspect-aware bbox fit
   const cfg = FRAME_ASPECT_CONFIG[frameAspect];

@@ -669,21 +669,37 @@
   position: absolute;
   /* Stage'in ortasında, bounded surface. Boyut Stage-script
    * tarafından inline style ile geçirilir (mode-aware: mockup
-   * default 4:3, frame frameAspect). max-width / max-height
-   * ile küçük viewport'larda stage'i taşmaz. */
+   * default 4:3, frame frameAspect).
+   *
+   * Phase 92 — Visual parity correction (Shots.so canonical):
+   * Phase 91 baseline `max-width: 92% / max-height: 88%` plate'i
+   * stage'in neredeyse tamamını kaplattırıyordu — stage padding
+   * alanı çok dar kalıyor, plate↔stage ayrımı yetersiz görünüyordu.
+   * Phase 92'de plate %82/%78'e küçültüldü; stage padding genişledi,
+   * plate net sınırlı. Shots gerçekten ~%75/%70 — Kivasy %82/%78
+   * Kivasy-superior rafine (plate ana subject ama operator için
+   * agresif değil). */
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  max-width: 92%;
-  max-height: 88%;
+  max-width: 82%;
+  max-height: 78%;
   border-radius: 26px;
-  /* Plate'in kendi subtle border'ı — stage'den ayırır */
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  /* Plate drop shadow — stage'in dark padding alanı ile kontrast */
+  /* Plate'in kendi subtle border'ı — stage'den ayırır.
+   * Phase 92: 1px rgba(.07) neredeyse görünmezdi; 2px rgba(.18)
+   * edge sertliği belirgin (Shots'un belirgin plate border'ına
+   * paralel ama daha rafine). */
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  /* Plate drop shadow — stage'in dark padding alanı ile kontrast.
+   * Phase 92: tek-katmanlı soft 50px shadow yetersizdi; multi-
+   * layer chain ile plate stage'den net "kalkar" (close edge
+   * + medium body + ambient depth). */
   box-shadow:
-    0 50px 100px -20px rgba(0, 0, 0, 0.55),
-    0 24px 48px -12px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 12px 28px -4px rgba(0, 0, 0, 0.45),
+    0 36px 80px -16px rgba(0, 0, 0, 0.55),
+    0 60px 120px -32px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   /* Default bg fallback (palette/scene undefined) — neutral warm cream */
   background: linear-gradient(135deg, #f0e9d8 0%, #c8c0b4 100%);
   transition: background 320ms ease, width 220ms ease, height 220ms ease;
@@ -1027,6 +1043,17 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  /* Phase 92 — Rail head live thumb plate parity (preset card
+   * paritesi). Live thumb da inset padding ile plate'in stage'den
+   * ayrımını yansıtır. */
+  padding: 7px;
+}
+.k-studio__live-thumb svg {
+  border-radius: 6px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 4px 8px -2px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .k-studio__preset-card {
@@ -1043,6 +1070,24 @@
   overflow: hidden;
   flex-shrink: 0;
   margin-bottom: 4px;
+  /* Phase 92 — Right rail thumb plate parity:
+   * Stage'deki plate behavior'a thumb-level parity ver. Mevcut
+   * SVG bg full kart kaplıyordu; Phase 92'de kart shell dark
+   * stage tone kalır, SVG plate-aware bg etrafında dark padding
+   * görünür. SVG inset radius ve thumb içi soft shadow ile plate
+   * stage'den ayrılır.
+   *
+   * SVG element thumb içinde inset margin ile dark padding
+   * çevresinde görünür yapılır — bu thumb'larda da "bounded plate
+   * on dark stage" hissini güçlendirir. */
+  padding: 6px;
+}
+.k-studio__preset-card svg {
+  border-radius: 5px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 4px 8px -2px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 .k-studio__preset-card:hover { border-color: rgba(255, 255, 255, 0.20); }
 .k-studio__preset-card[aria-pressed="true"] {
