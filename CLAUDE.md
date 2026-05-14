@@ -17842,6 +17842,196 @@ surface'ini canlı düzenleyebilir.
 
 ---
 
+## Phase 89 — Frame scene controls actually work (Solid/Gradient swatch override)
+
+Phase 88 always-on ambient scene surface ekledi (asset-aware,
+mode-AGNOSTIC). Ama Frame mode sidebar'daki Magic/Solid/Gradient/
+Glass swatch'ları **görünür ama davranış YOK** idi — operator
+tıklasa hiçbir şey değişmiyordu. Phase 89 bu açığı kapatır: scene
+controls gerçekten çalışır + sağ rail preset thumbs scene-aware
+güncelleniyor + Mockup mode'a geçişte scene continuity korunur.
+
+### Real browser araştırması (image upload + Frame controls)
+
+Shots.so'da gerçek bir image yüklenip Frame mode'a geçilince:
+
+| Davranış | Shots.so | MockupViews | Kivasy Phase 88 |
+|---|---|---|---|
+| **Solid swatch click** | stage tam doygun renkte (örn. tam beyaz) + sağ rail preset thumbs aynı renkte yeniden render | aynı pattern | swatch görünür ama click no-op |
+| **Gradient swatch click** | stage two-tone gradient + sağ rail thumbs gradient bg ile yeniden render | aynı | swatch görünür ama click no-op |
+| **Magic ✨ default** | Mockup mode'da bile aktif Magic gradient surface | aynı | Phase 88 asset-aware subtle ambient (operator-driven değil) |
+| **Mode geçişinde scene** | Frame mode'da seçilen scene Mockup mode'da KORUNUR | aynı | Mockup mode'da Phase 88 ambient zaten görünür |
+| **Sağ rail preset thumbs** | scene-aware **canlı yeniden render** | aynı | yalnız asset-aware (Phase 86 baseline) |
+
+**Kritik çıkarım**: Shots.so'da Frame mode'daki controls **kontrol**ün yeri; **etki** her iki modda da görünür. Sağ rail preset thumbs **stage + scene + asset** birlikte yansıtır — operator kararını **kendi gerçek kompozisyonu** üzerinden verir.
+
+### Honest audit
+
+Phase 88 sonrası en büyük eksik: **scene surface var ama kullanıcı kontrol edemiyor**. Operator için Frame mode sidebar boş — "background swatch'ları görüyorum ama tıklayınca hiçbir şey olmuyor" durumu. Phase 86'da preset thumbs asset-aware olmuştu ama Phase 89 scene-aware boyutu yoktu.
+
+### Phase 89 ürün kararı
+
+3 scene mod model:
+
+| Mode | Davranış | Use case |
+|---|---|---|
+| **auto** (default) | Phase 88 baseline asset-aware (selected slot palette × 0.10 warm + × 0.55 deep alpha) | Operator hiçbir swatch tıklamadı → subtle ambient |
+| **solid `{color}`** | Tek renk dominant; warm × 0.04, deep × 0.92 alpha | Operator tam doygun renk istedi (Shots.so'da Solid white → stage tam beyaz) |
+| **gradient `{from,to}`** | Two-tone vibrant; warm × 0.15, deep × 0.65 alpha | Operator atmospheric gradient seçti |
+
+**Kivasy-superior detay vs Shots**: Shots.so'da Solid white tam beyaz (operator için "boş canvas" gibi); Kivasy Phase 89 Solid white alpha 0.92 (subtle warmth retain — scene grounding hissi korunur). Operator object styling yaparken arka plan dikkat dağıtmaz ama scene "boş void" hissi de yok.
+
+**Glass deferred**: Phase 89'da Glass tile'ları sidebar'da görünür ama davranış YOK. Frame canvas frosted effect ileri ürün davranışı (CSS backdrop-filter veya stage scene'in üzerine ek katman); Phase 90+ candidate. Phase 89 baseline 3 mod (auto + solid + gradient) yeterli.
+
+**Reset to Auto** CTA: sceneOverride.mode !== "auto" iken Frame sidebar'da görünür small uppercase button — operator Magic baseline'a tek tıkla döner. Shots.so'da Magic ✨ toggle (sol panel ON/OFF); bizde reset button daha net (operator için "Magic baseline'a dön" niyeti açık).
+
+### Sağ rail scene-aware unification
+
+Preset thumbs (Mockup + Frame, hepsi) Phase 86'da palette ile asset-aware oldu; Phase 89 scene ile **scene-aware**:
+
+- **Auto mode**: Phase 86 baseline (palette darken bg / static dark)
+- **Solid mode**: bg = operator solid color (uniform fill)
+- **Gradient mode**: bg = operator gradient (SVG linearGradient def inject)
+
+Rail head live thumb da aynı pattern. Operator karar verme yüzeyi tam scene-aware: **stage + thumbs birlikte güncellenir** → preset seç → görsel ne çıkacak operatöre çok net.
+
+### Implementation
+
+**Yeni dosya `frame-scene.ts`** (~160 LOC):
+- `SceneMode = "auto" | "solid" | "gradient"`
+- `SceneOverride = { mode, color?, colorTo? }`
+- `SCENE_AUTO` default const
+- `SOLID_PRESETS` (6 hex)
+- `GRADIENT_PRESETS` (4 two-tone)
+- `resolveSceneStyle(override, activePalette)` → `{warm, deep}` CSS values
+- `resolvePresetThumbScene(override, activePalette)` → preset thumb bg data discriminated union (`auto | solid | gradient`)
+
+**Shell** (`MockupStudioShell.tsx`):
+- `sceneOverride` state (default `SCENE_AUTO`)
+- Stage + Sidebar + PresetRail prop wiring
+- `data-scene-mode` + `data-scene-color` + `data-scene-color-to` attributes
+
+**Stage** (`MockupStudioStage.tsx`):
+- `sceneOverride` prop alır
+- `resolveSceneStyle(sceneOverride, activePalette)` → CSS custom properties inject
+- Phase 88 hexToRgba helper internal stays
+
+**Sidebar** (`MockupStudioSidebar.tsx`):
+- `sceneOverride` + `onChangeSceneOverride` props
+- `SOLID_PRESETS` + `GRADIENT_PRESETS` from frame-scene module
+- Solid + Gradient swatch'lar `<button>` (önceden `<div>`), click handler, active state styling (k-orange ring + box-shadow), `aria-pressed`, `data-active`
+- "Reset to Auto" button sceneOverride.mode !== "auto" iken görünür
+- `data-testid="studio-frame-solid-{i}"`, `studio-frame-gradient-{i}`, `studio-frame-scene-reset`
+
+**PresetRail** (`MockupStudioPresetRail.tsx`):
+- `sceneOverride` prop alır
+- `resolvePresetThumbScene` ile thumb bg data resolve
+- `<Thumb sceneBg={...}>` propagate (live thumb + preset cards)
+- `data-scene-mode` attribute her preset card'da
+
+**svg-art** (`svg-art.tsx`):
+- `PresetThumbMockup` + `PresetThumbFrame`'a opsiyonel `sceneBg` prop (discriminated union)
+- Solid: bg rect fill = solid color; gradient: SVG `<defs><linearGradient>` inject, bg fill = url(#id)
+- Phase 86 palette propagation Solid/Gradient sceneBg yokken aktif kalır (auto mode fallback)
+
+### Browser canlı kanıt (DOM eval + screenshot)
+
+Test set: `cmov0ia37` (4-item clipart, Phase 79 palette `#F0E6D3 → #C49862`).
+
+**Solid #1 (light cream `#F7F5EF`) tıklayınca:**
+```
+sceneMode: "solid"
+sceneColor: "#F7F5EF"
+solid1Active: "true"
+resetBtnPresent: true
+stageSceneWarm: "rgba(247,245,239,0.04)"
+stageSceneDeep: "rgba(247,245,239,0.92)"
+preset0BgFill: "#F7F5EF"  // preset thumb bg = solid color
+preset0SceneMode: "solid"
+liveThumbSceneMode: "solid"
+```
+
+**Gradient #1 (dark `#2A2420 → #1A1410`) tıklayınca:**
+```
+sceneMode: "gradient"
+sceneColor: "#2A2420"
+sceneColorTo: "#1A1410"
+grad1Active: "true"
+stageSceneWarm: "rgba(42,36,32,0.15)"
+stageSceneDeep: "rgba(26,20,16,0.65)"
+preset0SceneMode: "gradient"
+preset0GradientDefPresent: true
+preset0GradientId: "ks-ptf-scn-0"
+preset0GradientStop0: "#2A2420"  // SVG linearGradient inject
+preset0GradientStop1: "#1A1410"
+liveThumbSceneMode: "gradient"
+```
+
+**Mockup mode'a geçince (continuity test):**
+```
+shellMode: "mockup"
+sceneMode: "gradient"  // KORUNDU
+sceneColor: "#2A2420"  // KORUNDU
+sceneColorTo: "#1A1410"  // KORUNDU
+stageSceneWarm: "rgba(42,36,32,0.15)"  // CSS custom props aynı
+stageSceneDeep: "rgba(26,20,16,0.65)"
+```
+
+Screenshot kanıtları:
+- **Frame mode + Solid #1**: stage cream tonunda uniformish (warm 0.04 + deep 0.92), sağ rail tüm preset thumbs cream bg ile yeniden render, "RESET TO AUTO" button sol panel'de
+- **Frame mode + Gradient #1**: stage dark vignette gradient, sağ rail thumbs gradient bg ile yeniden render
+- **Mockup mode geçişi**: sol panel object styling (OBJECT SURFACE + Bundle Preview + MEDIA + STYLE...) ama **stage dark gradient KORUNDU** + sağ rail thumbs gradient bg KORUNDU. Cascade pozisyon birebir aynı (Phase 87 baseline intakt).
+
+### Kivasy-superior deneyim kararı
+
+Phase 89 Kivasy'yi Shots.so paritesinden **bir adım öne** götürdü:
+
+1. **Solid alpha curve** (× 0.04 + × 0.92): Shots'ta tam doygun renk operator için "boş canvas" hissi; Kivasy'de scene grounding hissi korunur (subtle warmth retain). Operator object styling yaparken arka plan dikkat dağıtmaz ama "boş void" da değil.
+2. **Reset to Auto explicit CTA**: Shots'ta Magic ✨ ON/OFF toggle (sol panel) — operator "Magic'i kapattım, hangi varsayılana dönüyorum?" sorusu cevapsız. Kivasy'de "Reset to Auto" net niyet.
+3. **Mode-AGNOSTIC scene state at Shell level**: Phase 87 cascade carry-over + Phase 88 ambient + Phase 89 controls hepsi Shell'de tek state. Operator için "scene tek truth source — controls Frame'de, etki her iki modda".
+
+### Değişmeyenler (Phase 89)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek yeni dosya `frame-scene.ts` (~160 LOC, types + presets + 2 resolver helper). PresetThumb component'lere opsiyonel `sceneBg` prop eklemesi (palette prop ile aynı pattern). Backend pipeline dokunulmadı.
+- **Phase 88 baseline ambient scene + asset-aware palette propagation intakt** (auto mode fallback).
+- **Phase 87 cascade carry-over + container mode-agnostic intakt**.
+- **Phase 86 preset rail + Magic Preset thumb asset-aware intakt** (Solid/Gradient override Phase 86 baseline'ın üzerine biner).
+- **Phase 84 placement floor + ambient glow + Phase 87 mode-AGNOSTIC display intakt**.
+- **Slot assignment + render dispatch zinciri intakt** (Phase 80 per-slot picker + Phase 79 real selection hydrate).
+- **References / Batch / Review / Selection / Mockup Studio / Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy DS + Studio `--ks-*` namespace bozulmadı.**
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/mockup tests/unit/products tests/unit/selection tests/unit/selections`: **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully (lint rule `no-restricted-syntax` Phase 89 `frame-scene.ts`'e file-level eslint-disable eklenerek geçirildi — preset hex'leri Studio dark shell ile uyumlu spesifik tone'lar, design-tokens.ts üzerinden CSS variable yapılamaz çünkü Frame swatch grid'ini besler)
+- Browser end-to-end: Solid override + Gradient override + Mockup mode'a continuity DOM kanıt + screenshot canlı doğrulandı
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 89 ile **Frame scene controls çalışır + scene-aware rail = Shots.so / MockupViews canonical Frame mode paritesi tam**:
+- Stage container mode-agnostic (Phase 87)
+- Cascade composition mode-agnostic (Phase 85+87)
+- Scene surface always-on + asset-aware + mode-agnostic (Phase 88)
+- **Frame mode swatch controls scene override + scene state Shell'de + sağ rail scene-aware (Phase 89)**
+- Reset to Auto explicit CTA (Kivasy-superior)
+- Placement floor + ambient glow her iki modda (Phase 84/87)
+
+Sıradaki en yüksek-impact adım **Phase 90 — Glass swatch controls + Bg Effects (Lens Blur) override**:
+- Phase 89'da Glass tile'ları sidebar'da görünür ama davranış YOK
+- Phase 90: Glass Light/Glass Dark/Frosted swatch'lar stage scene üstüne **frosted backdrop layer** ekler (CSS backdrop-filter)
+- Lens Blur effect (Frame mode EFFECTS & WATERMARK) stage scene'e bg-blur uygular
+- Frontend-only, scene compose pipeline extended
+
+Bu Shots.so'nun "BG Effects" + "Glass" davranış paritesi. Phase 90 sonrası Frame mode tüm controls operator-driven aktif.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

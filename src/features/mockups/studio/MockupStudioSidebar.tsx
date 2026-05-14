@@ -31,6 +31,12 @@ import {
   type FrameAspectKey,
 } from "./frame-aspects";
 import {
+  GRADIENT_PRESETS,
+  SCENE_AUTO,
+  SOLID_PRESETS,
+  type SceneOverride,
+} from "./frame-scene";
+import {
   MagicPresetThumb,
   STUDIO_SAMPLE_DESIGNS,
   TinyPhone,
@@ -897,9 +903,14 @@ function SlotFooter({
 function FrameBody({
   frameAspect,
   onChangeFrameAspect,
+  sceneOverride,
+  onChangeSceneOverride,
 }: {
   frameAspect?: FrameAspectKey;
   onChangeFrameAspect?: (next: FrameAspectKey) => void;
+  /** Phase 89 — Frame scene control state (Shell). */
+  sceneOverride?: SceneOverride;
+  onChangeSceneOverride?: (next: SceneOverride) => void;
 }) {
   const [effect, setEffect] = useState<"lens" | "portrait" | "watermark" | "bgfx">(
     "lens",
@@ -912,6 +923,9 @@ function FrameBody({
   // prop durumunda "16:9" fallback (operator dağılmasın).
   const activeAspect: FrameAspectKey = frameAspect ?? "16:9";
   const activeAspectCfg = FRAME_ASPECT_CONFIG[activeAspect];
+
+  /* Phase 89 — Active scene state (Shell-controlled, default auto). */
+  const activeScene: SceneOverride = sceneOverride ?? SCENE_AUTO;
 
   const efx = [
     { k: "lens" as const, l: "Lens Blur", n: "blur" as const },
@@ -930,20 +944,14 @@ function FrameBody({
     { k: "image" as const, l: "Image", n: "image" as const },
     { k: "upload" as const, l: "Upload", n: "upload" as const },
   ];
-  const solids = [
-    "#111009",
-    "#F7F5EF",
-    "#F0E9D8",
-    "#D4CCC0",
-    "#C8C0B4",
-    "#B0A898",
-  ];
-  const grads = [
-    "linear-gradient(145deg,#E8E0D4,#C8BFB4)",
-    "linear-gradient(135deg,#2A2420,#1A1410)",
-    "linear-gradient(145deg,#F0EAE0,#D8D0C4)",
-    "linear-gradient(160deg,#DDD5C8,#B8B0A4)",
-  ];
+  /* Phase 89 — Frame mode scene preset palettes.
+   *
+   * frame-scene.ts SOLID_PRESETS + GRADIENT_PRESETS canonical kaynak.
+   * Operator swatch tıklayınca Shell sceneOverride state'i güncellenir;
+   * Stage'in CSS custom properties hesabı resolveSceneStyle ile mode'a
+   * göre warm/deep tone alpha ayarlanır. */
+  const solids = SOLID_PRESETS;
+  const grads = GRADIENT_PRESETS;
 
   return (
     <div className="k-studio__sb-scroll">
@@ -1246,27 +1254,51 @@ function FrameBody({
         </div>
       </div>
 
-      {/* SOLID */}
-      <div style={{ padding: "0 10px", marginTop: 11 }}>
+      {/* SOLID — Phase 89 clickable + active state */}
+      <div
+        style={{ padding: "0 10px", marginTop: 11 }}
+        data-testid="studio-frame-solid-section"
+      >
         <div className="k-studio__lbl" style={{ marginBottom: 6 }}>
           Solid
           <span className="k-studio__lbl-line" />
         </div>
         <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-          {solids.map((c, i) => (
-            <div
-              key={i}
-              style={{
-                width: 28,
-                height: 20,
-                borderRadius: 4,
-                background: c,
-                border: "1px solid rgba(255,255,255,0.08)",
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
-            />
-          ))}
+          {solids.map((c, i) => {
+            const isActive =
+              activeScene.mode === "solid" &&
+              activeScene.color?.toLowerCase() === c.toLowerCase();
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  if (onChangeSceneOverride) {
+                    onChangeSceneOverride({ mode: "solid", color: c });
+                  }
+                }}
+                aria-pressed={isActive}
+                aria-label={`Solid scene ${c}`}
+                data-testid={`studio-frame-solid-${i}`}
+                data-active={isActive ? "true" : "false"}
+                style={{
+                  width: 28,
+                  height: 20,
+                  borderRadius: 4,
+                  background: c,
+                  border: isActive
+                    ? "1.5px solid rgba(232,93,37,0.85)"
+                    : "1px solid rgba(255,255,255,0.08)",
+                  boxShadow: isActive
+                    ? "0 0 0 2px rgba(232,93,37,0.25)"
+                    : "none",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                  padding: 0,
+                }}
+              />
+            );
+          })}
           <StudioIcon
             name="chevD"
             size={10}
@@ -1275,33 +1307,87 @@ function FrameBody({
         </div>
       </div>
 
-      {/* GRADIENT */}
-      <div style={{ padding: "0 10px", marginTop: 8 }}>
+      {/* GRADIENT — Phase 89 clickable + active state */}
+      <div
+        style={{ padding: "0 10px", marginTop: 8 }}
+        data-testid="studio-frame-gradient-section"
+      >
         <div className="k-studio__lbl" style={{ marginBottom: 6 }}>
           Gradient
           <span className="k-studio__lbl-line" />
         </div>
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          {grads.map((g, i) => (
-            <div
-              key={i}
-              style={{
-                width: 38,
-                height: 26,
-                borderRadius: 5,
-                background: g,
-                border: "1px solid rgba(255,255,255,0.07)",
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
-            />
-          ))}
+          {grads.map((g, i) => {
+            const isActive =
+              activeScene.mode === "gradient" &&
+              activeScene.color?.toLowerCase() === g.from.toLowerCase() &&
+              activeScene.colorTo?.toLowerCase() === g.to.toLowerCase();
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  if (onChangeSceneOverride) {
+                    onChangeSceneOverride({
+                      mode: "gradient",
+                      color: g.from,
+                      colorTo: g.to,
+                    });
+                  }
+                }}
+                aria-pressed={isActive}
+                aria-label={`Gradient scene ${g.from} → ${g.to}`}
+                data-testid={`studio-frame-gradient-${i}`}
+                data-active={isActive ? "true" : "false"}
+                style={{
+                  width: 38,
+                  height: 26,
+                  borderRadius: 5,
+                  background: `linear-gradient(145deg,${g.from},${g.to})`,
+                  border: isActive
+                    ? "1.5px solid rgba(232,93,37,0.85)"
+                    : "1px solid rgba(255,255,255,0.07)",
+                  boxShadow: isActive
+                    ? "0 0 0 2px rgba(232,93,37,0.25)"
+                    : "none",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                  padding: 0,
+                }}
+              />
+            );
+          })}
           <StudioIcon
             name="chevD"
             size={10}
             color="rgba(255,255,255,0.22)"
           />
         </div>
+        {/* Phase 89 — Reset to Auto when operator wants Magic baseline back */}
+        {activeScene.mode !== "auto" ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (onChangeSceneOverride) onChangeSceneOverride(SCENE_AUTO);
+            }}
+            data-testid="studio-frame-scene-reset"
+            style={{
+              marginTop: 8,
+              padding: "4px 8px",
+              fontSize: 10,
+              fontFamily: "var(--ks-fm)",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.55)",
+              background: "transparent",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: 4,
+              cursor: "pointer",
+            }}
+          >
+            Reset to Auto
+          </button>
+        ) : null}
       </div>
 
       {/* GLASS */}
@@ -1372,6 +1458,15 @@ export interface MockupStudioSidebarProps {
    * Magic Preset row thumb operator asset'inin renklerini gösterir
    * (Shots.so Magic Preset parity). Undefined → k-orange fallback. */
   activePalette?: readonly [string, string];
+  /** Phase 89 — Frame mode scene override state.
+   *
+   * Shots.so real-image-upload: Frame mode'da operator Magic/Solid/
+   * Gradient swatch tıklayınca stage scene değişiyor. Shell state'i
+   * tutar; Frame sidebar'a current sceneOverride iletilir (active
+   * swatch highlight için) + onChangeSceneOverride callback ile
+   * swatch click handler'ı Shell state'i günceller. */
+  sceneOverride?: SceneOverride;
+  onChangeSceneOverride?: (next: SceneOverride) => void;
 }
 
 export function MockupStudioSidebar({
@@ -1388,6 +1483,8 @@ export function MockupStudioSidebar({
   frameAspect,
   onChangeFrameAspect,
   activePalette,
+  sceneOverride,
+  onChangeSceneOverride,
 }: MockupStudioSidebarProps) {
   void STUDIO_SAMPLE_DESIGNS; // imported for slot defaults usage in tests
   return (
@@ -1430,6 +1527,8 @@ export function MockupStudioSidebar({
         <FrameBody
           frameAspect={frameAspect}
           onChangeFrameAspect={onChangeFrameAspect}
+          sceneOverride={sceneOverride}
+          onChangeSceneOverride={onChangeSceneOverride}
         />
       )}
       {mode === "mockup" ? (

@@ -22,6 +22,10 @@ import {
   type FrameAspectKey,
 } from "./frame-aspects";
 import {
+  resolveSceneStyle,
+  type SceneOverride,
+} from "./frame-scene";
+import {
   PhoneSVG,
   StageDeviceSVG,
   STUDIO_SAMPLE_DESIGNS,
@@ -416,6 +420,18 @@ export interface MockupStudioStageProps {
    * activePalette zaten resolve ediliyor; Phase 88 aynı palette'i
    * stage scene'e taşır. */
   activePalette?: readonly [string, string];
+  /** Phase 89 — Frame mode scene control override.
+   *
+   * Shell sceneOverride state'i Stage'e iletir; resolveSceneStyle
+   * mode'a göre warm/deep CSS custom properties hesaplar:
+   *   - auto: Phase 88 baseline (activePalette × 0.10 / 0.55)
+   *   - solid: operator tek renk (× 0.04 / 0.92, dominant)
+   *   - gradient: operator two-tone (× 0.15 / 0.65, vibrant subtle)
+   *
+   * Mode-AGNOSTIC: hem Mockup hem Frame modunda scene aynı şekilde
+   * render edilir; Frame mode controls Shell state'i değiştirir,
+   * Mockup mode'da değişim görünür kalır. */
+  sceneOverride?: SceneOverride;
 }
 
 export function MockupStudioStage({
@@ -429,26 +445,36 @@ export function MockupStudioStage({
   deviceKind,
   frameAspect,
   activePalette,
+  sceneOverride,
 }: MockupStudioStageProps) {
   const isPreview = appState === "preview" || appState === "renderDone";
   const isRender = appState === "render";
   const isEmpty = appState === "empty";
 
-  /* Phase 88 — Scene surface CSS custom property inject.
+  /* Phase 88 + Phase 89 — Scene surface CSS custom property inject.
    *
-   * Operator selected slot palette'ten warm + deep tones, asset-
-   * aware scene için radial gradient layer'ı besler. Palette
-   * undefined ise CSS fallback default'lar devreye girer (subtle
-   * neutral warm).
+   * Phase 88 baseline'da yalnız selected slot palette'ten asset-aware
+   * subtle ambient gradient (warm × 0.10 + deep × 0.55) hesaplanıyordu.
    *
-   * Tone shifting: warm tone alpha 0.10 (subtle warmth hint),
-   * deep tone alpha 0.55 (vignette anchor for "scene grounding").
-   * Operator için "asset bir sahnede yaşıyor" sinyali; agresif
-   * preset değil — object styling yaparken dikkat dağıtmaz. */
-  const sceneStyle = activePalette
+   * Phase 89: Frame mode swatch controls (Magic/Solid/Gradient)
+   * scene'i override edebilir. Shell sceneOverride state'i Stage'e
+   * iletilir; resolveSceneStyle mode'a göre warm/deep değerleri
+   * hesaplar:
+   *   - auto: Phase 88 baseline (activePalette × 0.10 / 0.55)
+   *   - solid: operator tek renk (× 0.04 / 0.92, dominant)
+   *   - gradient: operator two-tone (× 0.15 / 0.65, vibrant subtle)
+   *
+   * Mode-AGNOSTIC: scene Mockup mode'da da görünür; Frame mode'da
+   * operator değiştirdikten sonra Mockup'a geri dönerse scene
+   * korunur — Shots.so canonical continuity. */
+  const sceneTones = resolveSceneStyle(
+    sceneOverride ?? { mode: "auto" },
+    activePalette,
+  );
+  const sceneStyle = sceneTones
     ? ({
-        "--ks-stage-scene-warm": hexToRgba(activePalette[0], 0.10),
-        "--ks-stage-scene-deep": hexToRgba(activePalette[1], 0.55),
+        "--ks-stage-scene-warm": sceneTones.warm,
+        "--ks-stage-scene-deep": sceneTones.deep,
       } as React.CSSProperties)
     : undefined;
 

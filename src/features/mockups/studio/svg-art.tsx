@@ -385,9 +385,16 @@ function MockupPhWithPalette({
 export function PresetThumbMockup({
   idx,
   palette,
+  sceneBg,
 }: {
   idx: number;
   palette?: readonly [string, string];
+  /** Phase 89 — Scene-aware bg override (Frame Solid/Gradient
+   *  swatch tıklamasıyla shell sceneOverride). undefined → Phase 86
+   *  baseline (palette darken veya statik dark). */
+  sceneBg?:
+    | { kind: "solid"; color: string }
+    | { kind: "gradient"; from: string; to: string };
 }) {
   const c = MOCKUP_PRESETS[idx] ?? MOCKUP_PRESETS[0]!;
   const isGradient = idx === 1;
@@ -397,9 +404,25 @@ export function PresetThumbMockup({
   const hasPalette = !!palette;
   // Subtle bg: %92 darken of palette[1] (warm shadow tone).
   const bgFromPalette = palette ? darkenForPresetBg(palette[1]) : null;
+  // Phase 89 — Scene-aware bg override
+  const sceneGradientId = sceneBg?.kind === "gradient" ? `ks-ptm-scn-${idx}` : null;
+  const sceneFill =
+    sceneBg?.kind === "solid"
+      ? sceneBg.color
+      : sceneGradientId
+        ? `url(#${sceneGradientId})`
+        : null;
   return (
     <svg viewBox="0 0 184 88" style={{ width: "100%", height: "100%", display: "block" }} aria-hidden>
-      {isGradient && !hasPalette ? (
+      {sceneBg?.kind === "gradient" ? (
+        <defs>
+          <linearGradient id={sceneGradientId!} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={sceneBg.from} />
+            <stop offset="100%" stopColor={sceneBg.to} />
+          </linearGradient>
+        </defs>
+      ) : null}
+      {isGradient && !hasPalette && !sceneBg ? (
         <defs>
           <linearGradient id="ks-ptmg1" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#181513" />
@@ -407,7 +430,7 @@ export function PresetThumbMockup({
           </linearGradient>
         </defs>
       ) : null}
-      {isGradient && hasPalette ? (
+      {isGradient && hasPalette && !sceneBg ? (
         <defs>
           <linearGradient id={`ks-ptmg1-p${idx}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={palette![0]} stopOpacity="0.18" />
@@ -419,11 +442,12 @@ export function PresetThumbMockup({
         width="184"
         height="88"
         fill={
-          isGradient
+          sceneFill ??
+          (isGradient
             ? hasPalette
               ? `url(#ks-ptmg1-p${idx})`
               : "url(#ks-ptmg1)"
-            : (bgFromPalette ?? c.bg)
+            : (bgFromPalette ?? c.bg))
         }
       />
       {c.ph.map((p, i) =>
@@ -562,9 +586,16 @@ function FramePhWithPalette({
 export function PresetThumbFrame({
   idx,
   palette,
+  sceneBg,
 }: {
   idx: number;
   palette?: readonly [string, string];
+  /** Phase 89 — Scene-aware bg override (Frame Solid/Gradient
+   *  swatch tıklamasıyla shell sceneOverride). undefined → Phase 86
+   *  baseline (sabit Frame thumb bg). */
+  sceneBg?:
+    | { kind: "solid"; color: string }
+    | { kind: "gradient"; from: string; to: string };
 }) {
   const c = FRAME_PRESETS[idx] ?? FRAME_PRESETS[0]!;
   const hasPalette = !!palette;
@@ -572,9 +603,26 @@ export function PresetThumbFrame({
   // (presentation surface kimliği) ama device fill operator
   // paletini alır. Frame canvas: bizim Frame mode'un cream tonunda
   // kalır (operator için "bounded canvas içinde aynı kompozisyon").
+  // Phase 89 — Scene-aware bg override: operator Frame Solid/Gradient
+  // swatch tıklayınca thumb bg de scene'i yansıtır.
+  const sceneGradientId = sceneBg?.kind === "gradient" ? `ks-ptf-scn-${idx}` : null;
+  const sceneFill =
+    sceneBg?.kind === "solid"
+      ? sceneBg.color
+      : sceneGradientId
+        ? `url(#${sceneGradientId})`
+        : null;
   return (
     <svg viewBox="0 0 184 88" style={{ width: "100%", height: "100%", display: "block" }} aria-hidden>
-      <rect width="184" height="88" fill={c.bg} />
+      {sceneBg?.kind === "gradient" ? (
+        <defs>
+          <linearGradient id={sceneGradientId!} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={sceneBg.from} />
+            <stop offset="100%" stopColor={sceneBg.to} />
+          </linearGradient>
+        </defs>
+      ) : null}
+      <rect width="184" height="88" fill={sceneFill ?? c.bg} />
       <Fr {...c.f} />
       {c.split ? (
         <>

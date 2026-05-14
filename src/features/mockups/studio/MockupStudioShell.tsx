@@ -39,6 +39,7 @@ import {
   FRAME_ASPECT_CONFIG,
   type FrameAspectKey,
 } from "./frame-aspects";
+import { SCENE_AUTO, type SceneOverride } from "./frame-scene";
 import {
   stageDeviceForProductType,
   studioDeviceLabel,
@@ -76,6 +77,22 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
    * chip click → aspect değişir → Stage canvas dims + caption live
    * update + Toolbar status badge gerçek dims gösterir. */
   const [frameAspect, setFrameAspect] = useState<FrameAspectKey>("16:9");
+
+  /* Phase 89 — Frame mode scene control override state.
+   *
+   * Shots.so real browser araştırması: Frame mode'da operator
+   * Solid/Gradient swatch tıklayınca stage scene surface override
+   * oluyor; Mockup mode'a geçince scene KORUNUYOR ama controls
+   * görünmüyor. State'i Shell'de tutmak iki gereksinimi karşılar:
+   *   - Mode geçişinde scene continuity (state preserved)
+   *   - Sağ rail preset thumbs scene-aware bg (Stage'le aynı state)
+   *
+   * Default "auto" mode Phase 88 baseline'a düşer (asset-aware
+   * subtle ambient). Operator Solid/Gradient swatch tıklayınca
+   * override aktif olur. */
+  const [sceneOverride, setSceneOverride] = useState<SceneOverride>(
+    SCENE_AUTO,
+  );
 
   // Phase 79 — Real selection set hydrate.
   const { data: set, isLoading: setLoading } = useSelectionSet(setId);
@@ -324,6 +341,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       }
       data-kept-item-count={keptItems.length}
       data-active-palette={activePalette ? activePalette.join(",") : ""}
+      data-scene-mode={sceneOverride.mode}
+      data-scene-color={sceneOverride.color ?? ""}
+      data-scene-color-to={sceneOverride.colorTo ?? ""}
     >
       <MockupStudioToolbar
         mode={mode}
@@ -353,6 +373,8 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           frameAspect={frameAspect}
           onChangeFrameAspect={setFrameAspect}
           activePalette={activePalette}
+          sceneOverride={sceneOverride}
+          onChangeSceneOverride={setSceneOverride}
         />
         <MockupStudioStage
           mode={mode}
@@ -365,11 +387,13 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           deviceKind={deviceKind}
           frameAspect={frameAspect}
           activePalette={activePalette}
+          sceneOverride={sceneOverride}
         />
         <MockupStudioPresetRail
           mode={mode}
           appState={appState}
           activePalette={activePalette}
+          sceneOverride={sceneOverride}
         />
       </div>
       {/* Phase 77 dev/demo switcher — Phase 79'da hâlâ mevcut: operatör

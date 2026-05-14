@@ -14,6 +14,10 @@
 
 import { useState } from "react";
 import { StudioIcon } from "./icons";
+import {
+  resolvePresetThumbScene,
+  type SceneOverride,
+} from "./frame-scene";
 import { PresetThumbFrame, PresetThumbMockup } from "./svg-art";
 import type { StudioAppState, StudioMode } from "./types";
 
@@ -65,12 +69,23 @@ export interface MockupStudioPresetRailProps {
    * Phase 77 baseline statik karanlık preset thumbs gösterilir
    * (operator hiç slot atamamışsa veya assigned=false). */
   activePalette?: readonly [string, string];
+  /** Phase 89 — Scene-aware preset thumbnails.
+   *
+   * Shots.so real-image-upload: operator Frame mode'da Magic/Solid/
+   * Gradient swatch tıklayınca **sağ rail preset thumbnails da
+   * scene-aware yeniden render oluyor**. Phase 89 fix: shell
+   * sceneOverride prop'u ile rail'e iletir; preset thumb
+   * `sceneOverride` prop'unu alır ve scene-aware bg gösterir
+   * (auto: Phase 86 baseline palette darken; solid: tek renk;
+   * gradient: two-tone). */
+  sceneOverride?: SceneOverride;
 }
 
 export function MockupStudioPresetRail({
   mode,
   appState,
   activePalette,
+  sceneOverride,
 }: MockupStudioPresetRailProps) {
   const [layout, setLayout] = useState<1 | 2 | 3>(1);
   const [viewTab, setViewTab] = useState<"zoom" | "tilt" | "precision">("zoom");
@@ -78,6 +93,11 @@ export function MockupStudioPresetRail({
   const isPreview = appState === "preview" || appState === "renderDone";
   const presets = mode === "mockup" ? MOCKUP_PRESETS : FRAME_PRESETS;
   const Thumb = mode === "mockup" ? PresetThumbMockup : PresetThumbFrame;
+  /* Phase 89 — Resolve preset thumb scene (auto/solid/gradient). */
+  const thumbScene = resolvePresetThumbScene(
+    sceneOverride ?? { mode: "auto" },
+    activePalette,
+  );
   return (
     <aside className="k-studio__rail" data-testid="studio-rail">
       <div className="k-studio__rail-head">
@@ -127,11 +147,23 @@ export function MockupStudioPresetRail({
           className="k-studio__live-thumb"
           data-testid="studio-rail-live-thumb"
           data-asset-aware={activePalette ? "true" : "false"}
+          data-scene-mode={sceneOverride?.mode ?? "auto"}
         >
           {/* Phase 86 — Rail head live thumb operator asset paletini
               taşır (selected slot palette). Operator için "şu anki
-              seçtiğin kompozisyon" preview. */}
-          <Thumb idx={active} palette={activePalette} />
+              seçtiğin kompozisyon" preview.
+              Phase 89 — Scene-aware bg (operator Frame mode Solid/
+              Gradient swatch'larıyla scene override etti ise live
+              thumb da bunu yansıtır). */}
+          <Thumb
+            idx={active}
+            palette={activePalette}
+            sceneBg={
+              thumbScene.kind === "solid" || thumbScene.kind === "gradient"
+                ? thumbScene
+                : undefined
+            }
+          />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <span className="k-studio__range-cap">Zoom</span>
@@ -189,12 +221,24 @@ export function MockupStudioPresetRail({
               onClick={() => setActive(i)}
               data-testid={`studio-rail-preset-${i}`}
               data-asset-aware={activePalette ? "true" : "false"}
+              data-scene-mode={sceneOverride?.mode ?? "auto"}
             >
               {/* Phase 86 — Asset-aware preset thumb. Operator selected
                   slot palette'i preset card'a yansır; rail artık statik
                   decoration değil, gerçek karar destek yüzeyi
-                  (Shots.so parity). */}
-              <Thumb idx={i} palette={activePalette} />
+                  (Shots.so parity).
+                  Phase 89 — Scene-aware preset thumb bg. Operator Frame
+                  mode Solid/Gradient swatch tıklayınca thumb bg'leri
+                  scene'i yansıtır (mod-AGNOSTIC rail davranışı). */}
+              <Thumb
+                idx={i}
+                palette={activePalette}
+                sceneBg={
+                  thumbScene.kind === "solid" || thumbScene.kind === "gradient"
+                    ? thumbScene
+                    : undefined
+                }
+              />
             </button>
             <div
               className="k-studio__preset-cap"
