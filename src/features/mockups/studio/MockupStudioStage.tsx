@@ -17,6 +17,11 @@
 
 import { StudioIcon } from "./icons";
 import {
+  FRAME_ASPECT_CONFIG,
+  computeFrameCanvasDims,
+  type FrameAspectKey,
+} from "./frame-aspects";
+import {
   PhoneSVG,
   StageDeviceSVG,
   STUDIO_SAMPLE_DESIGNS,
@@ -187,12 +192,24 @@ function FrameComposition({
   isEmpty,
   isPreview,
   deviceKind,
-}: FrameCompositionProps & { deviceKind: StudioStageDeviceKind }) {
+  frameAspect,
+}: FrameCompositionProps & {
+  deviceKind: StudioStageDeviceKind;
+  frameAspect: FrameAspectKey;
+}) {
   const design = isEmpty ? null : STUDIO_SAMPLE_DESIGNS.d1;
-  // Phase 82 — Frame inner device dims per kind. Frame canvas
-  // 580×326 (16:9); inner device aspect korunur (wall_art portrait,
-  // sticker square, bookmark tall, tshirt body). Bilinmeyen → phone.
-  const innerSize =
+  /* Phase 83 — Bounded canvas dims artık aspect chip seçimine
+   * göre live hesaplanıyor (Phase 82 baseline 580×326 hardcoded
+   * idi). computeFrameCanvasDims max bbox içinde aspect ratio'yu
+   * korur — operator 1:1 seçince kare canvas, 9:16 seçince tall
+   * portrait, 16:9 seçince landscape görür. */
+  const canvasDims = computeFrameCanvasDims(frameAspect);
+  const aspectCfg = FRAME_ASPECT_CONFIG[frameAspect];
+  // Phase 82 — Frame inner device dims per kind. Phase 83'te
+  // canvas küçüldükçe iç device de oransal olarak küçülür
+  // (canvas height < 326 ise inner h çarpanıyla orantılı).
+  const canvasScale = canvasDims.h / 326;
+  const innerBase =
     deviceKind === "wall_art" || deviceKind === "canvas" || deviceKind === "printable"
       ? { w: 152, h: 220 }
       : deviceKind === "sticker" || deviceKind === "clipart"
@@ -202,6 +219,10 @@ function FrameComposition({
           : deviceKind === "tshirt" || deviceKind === "hoodie" || deviceKind === "dtf"
             ? { w: 200, h: 240 }
             : { w: 128, h: 260 }; // phone fallback
+  const innerSize = {
+    w: Math.max(40, Math.round(innerBase.w * Math.min(canvasScale, 1))),
+    h: Math.max(60, Math.round(innerBase.h * Math.min(canvasScale, 1))),
+  };
   return (
     <div
       className="k-studio__stage-inner"
@@ -211,11 +232,14 @@ function FrameComposition({
         alignItems: "center",
       }}
       data-testid="studio-stage-frame-comp"
+      data-frame-aspect={frameAspect}
+      data-canvas-w={canvasDims.w}
+      data-canvas-h={canvasDims.h}
     >
       <div
         style={{
-          width: 580,
-          height: 326,
+          width: canvasDims.w,
+          height: canvasDims.h,
           background:
             "linear-gradient(145deg,#E4DDD1 0%,#C8C0B4 60%,#D4CCC0 100%)",
           border: isPreview ? "none" : "1px solid rgba(255,255,255,0.06)",
@@ -226,7 +250,9 @@ function FrameComposition({
           justifyContent: "center",
           overflow: "hidden",
           position: "relative",
+          transition: "width 220ms ease, height 220ms ease",
         }}
+        data-testid="studio-stage-frame-canvas"
       >
         <div
           style={{
@@ -256,7 +282,19 @@ function FrameComposition({
         </div>
       </div>
       {!isPreview ? (
-        <div className="k-studio__frame-cap">1920 × 1080 · 16:9</div>
+        <div className="k-studio__frame-cap" data-testid="studio-stage-frame-cap">
+          {aspectCfg.outputW} × {aspectCfg.outputH} · {aspectCfg.label}
+          <span
+            style={{
+              marginLeft: 8,
+              opacity: 0.6,
+              fontStyle: "normal",
+            }}
+            data-testid="studio-stage-frame-deliverable"
+          >
+            · {aspectCfg.deliverable}
+          </span>
+        </div>
       ) : null}
     </div>
   );
@@ -277,6 +315,11 @@ export interface MockupStudioStageProps {
    *  vertical strip, wall art frame, sticker die-cut, tshirt
    *  silhouette vb. Bilinmeyen → phone fallback. */
   deviceKind: StudioStageDeviceKind;
+  /** Phase 83 — Frame mode bounded canvas aspect ratio. Shell
+   *  state taşır (1:1 / 4:5 / 9:16 / 16:9 / 3:4). Mockup mode'da
+   *  görmezden gelinir; Frame mode'da bounded canvas dims + caption
+   *  + deliverable type label aspect'e göre live update edilir. */
+  frameAspect: FrameAspectKey;
 }
 
 export function MockupStudioStage({
@@ -288,6 +331,7 @@ export function MockupStudioStage({
   setAppState,
   onCreateMockup,
   deviceKind,
+  frameAspect,
 }: MockupStudioStageProps) {
   const isPreview = appState === "preview" || appState === "renderDone";
   const isRender = appState === "render";
@@ -300,6 +344,7 @@ export function MockupStudioStage({
       data-mode={mode}
       data-state={appState}
       data-device-kind={deviceKind}
+      data-frame-aspect={frameAspect}
     >
       {!isRender && mode === "mockup" ? (
         <div className="k-studio__stage-amb" />
@@ -318,6 +363,7 @@ export function MockupStudioStage({
           isEmpty={isEmpty}
           isPreview={isPreview}
           deviceKind={deviceKind}
+          frameAspect={frameAspect}
         />
       )}
 

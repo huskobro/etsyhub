@@ -36,6 +36,10 @@ import { MockupStudioSidebar } from "./MockupStudioSidebar";
 import { MockupStudioStage } from "./MockupStudioStage";
 import { MockupStudioToolbar } from "./MockupStudioToolbar";
 import {
+  FRAME_ASPECT_CONFIG,
+  type FrameAspectKey,
+} from "./frame-aspects";
+import {
   stageDeviceForProductType,
   studioDeviceLabel,
   studioPaletteForItem,
@@ -67,6 +71,11 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
   const [appState, setAppState] = useState<StudioAppState>("working");
   const [selectedSlot, setSelectedSlot] = useState(0);
   const [renderError, setRenderError] = useState<string | null>(null);
+  /* Phase 83 — Frame mode aspect ratio (presentation surface).
+   * Default 16:9 (Phase 82 baseline canvas dims paritesi). Operator
+   * chip click → aspect değişir → Stage canvas dims + caption live
+   * update + Toolbar status badge gerçek dims gösterir. */
+  const [frameAspect, setFrameAspect] = useState<FrameAspectKey>("16:9");
 
   // Phase 79 — Real selection set hydrate.
   const { data: set, isLoading: setLoading } = useSelectionSet(setId);
@@ -259,14 +268,20 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
    * silhouette vb.). Bilinmeyen key → phone fallback. */
   const deviceKind = stageDeviceForProductType(categoryId);
   const deviceLabel = studioDeviceLabel(deviceKind);
+  /* Phase 83 — Frame mode template pill ve status badge artık
+   * aspect ratio config'inden besleniyor. Operator hangi aspect'i
+   * seçtiyse template pill ona göre etiketleniyor; status badge
+   * gerçek output dims taşıyor (1080×1080 vb.) — Phase 82'deki
+   * stale "Export Phase 82+" placeholder yerine. */
+  const frameAspectCfg = FRAME_ASPECT_CONFIG[frameAspect];
   const templateLabel =
     mode === "frame"
-      ? "Frame · presentation surface"
+      ? `Frame · ${frameAspectCfg.deliverable}`
       : (activeTemplate?.name ||
           (setLoading || templatesLoading ? "Loading…" : "No template"));
   const statusLabel =
     mode === "frame"
-      ? "Export Phase 82+"
+      ? `${frameAspectCfg.outputW}×${frameAspectCfg.outputH}`
       : deviceKind !== "phone"
         ? deviceLabel
         : (set?.name?.trim() || setName?.trim() || "Set");
@@ -281,6 +296,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       data-item-count={items.length}
       data-device-kind={deviceKind}
       data-category-id={categoryId}
+      data-frame-aspect={frameAspect}
       data-slot-assignment-count={
         Object.values(slotAssignments).filter(Boolean).length
       }
@@ -311,6 +327,8 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           keptItems={keptItems}
           slotAssignments={slotAssignments}
           onChangeSlotAssignments={setSlotAssignments}
+          frameAspect={frameAspect}
+          onChangeFrameAspect={setFrameAspect}
         />
         <MockupStudioStage
           mode={mode}
@@ -321,6 +339,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           setAppState={setAppState}
           onCreateMockup={handleRender}
           deviceKind={deviceKind}
+          frameAspect={frameAspect}
         />
         <MockupStudioPresetRail mode={mode} appState={appState} />
       </div>

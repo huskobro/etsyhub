@@ -26,6 +26,11 @@
 import { useState } from "react";
 import { StudioIcon } from "./icons";
 import {
+  FRAME_ASPECT_CONFIG,
+  FRAME_ASPECT_KEYS,
+  type FrameAspectKey,
+} from "./frame-aspects";
+import {
   STUDIO_SAMPLE_DESIGNS,
   TinyPhone,
   type TinyPhoneStyle,
@@ -870,7 +875,13 @@ function SlotFooter({
  * (listing hero / social / storefront deliverable) Phase 80+ candidate.
  * Operatöre dürüst sinyal: top banner + disabled state'leri title
  * tooltip ile (Phase 80+ adayları). */
-function FrameBody() {
+function FrameBody({
+  frameAspect,
+  onChangeFrameAspect,
+}: {
+  frameAspect?: FrameAspectKey;
+  onChangeFrameAspect?: (next: FrameAspectKey) => void;
+}) {
   const [effect, setEffect] = useState<"lens" | "portrait" | "watermark" | "bgfx">(
     "lens",
   );
@@ -878,6 +889,10 @@ function FrameBody() {
   const [bgVal, setBgVal] = useState<"trans" | "color" | "image" | "upload">(
     "color",
   );
+  // Phase 83 — Frame aspect (controlled by Shell). Bilinmeyen
+  // prop durumunda "16:9" fallback (operator dağılmasın).
+  const activeAspect: FrameAspectKey = frameAspect ?? "16:9";
+  const activeAspectCfg = FRAME_ASPECT_CONFIG[activeAspect];
 
   const efx = [
     { k: "lens" as const, l: "Lens Blur", n: "blur" as const },
@@ -1037,8 +1052,9 @@ function FrameBody() {
             <div style={{ flex: 1 }}>
               <div
                 style={{ fontSize: 12, fontWeight: 540, color: "var(--ks-t1)" }}
+                data-testid="studio-sidebar-frame-selector-name"
               >
-                Default 16:9
+                Frame · {activeAspect}
               </div>
               <div
                 style={{
@@ -1047,8 +1063,9 @@ function FrameBody() {
                   fontFamily: "var(--ks-fm)",
                   marginTop: 1,
                 }}
+                data-testid="studio-sidebar-frame-selector-dims"
               >
-                1920 × 1080
+                {activeAspectCfg.outputW} × {activeAspectCfg.outputH}
               </div>
             </div>
             <StudioIcon
@@ -1057,29 +1074,57 @@ function FrameBody() {
               color="rgba(255,255,255,0.28)"
             />
           </div>
-          <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-            {["1:1", "4:5", "9:16", "Story", "···"].map((r, i) => (
-              <button
-                key={r}
-                type="button"
-                style={{
-                  height: 18,
-                  padding: "0 6px",
-                  borderRadius: 4,
-                  background:
-                    i === 0
+          {/* Phase 83 — Aspect chips state-controlled. Operator chip
+              click → Shell state update → Stage canvas dims + caption
+              + Toolbar status badge live update. */}
+          <div
+            style={{ display: "flex", gap: 3, flexWrap: "wrap" }}
+            data-testid="studio-sidebar-frame-aspects"
+          >
+            {FRAME_ASPECT_KEYS.map((key) => {
+              const on = key === activeAspect;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onChangeFrameAspect?.(key)}
+                  aria-pressed={on}
+                  data-testid={`studio-sidebar-frame-aspect-${key}`}
+                  style={{
+                    height: 18,
+                    padding: "0 6px",
+                    borderRadius: 4,
+                    background: on
                       ? "rgba(232,93,37,0.12)"
                       : "rgba(255,255,255,0.055)",
-                  border: `1px solid ${i === 0 ? "rgba(232,93,37,0.35)" : "rgba(255,255,255,0.08)"}`,
-                  fontSize: 9.5,
-                  color: i === 0 ? "var(--ks-or)" : "var(--ks-t2)",
-                  cursor: "pointer",
-                  fontFamily: "var(--ks-fm)",
-                }}
-              >
-                {r}
-              </button>
-            ))}
+                    border: `1px solid ${on ? "rgba(232,93,37,0.35)" : "rgba(255,255,255,0.08)"}`,
+                    fontSize: 9.5,
+                    color: on ? "var(--ks-or)" : "var(--ks-t2)",
+                    cursor: "pointer",
+                    fontFamily: "var(--ks-fm)",
+                  }}
+                  title={FRAME_ASPECT_CONFIG[key].deliverable}
+                >
+                  {key}
+                </button>
+              );
+            })}
+          </div>
+          {/* Phase 83 — Live deliverable caption + output dims. */}
+          <div
+            style={{
+              marginTop: 6,
+              fontFamily: "var(--ks-fm)",
+              fontSize: 9.5,
+              color: "var(--ks-t3)",
+              letterSpacing: "0.04em",
+            }}
+            data-testid="studio-sidebar-frame-deliverable"
+          >
+            {activeAspectCfg.deliverable} ·{" "}
+            <span style={{ color: "var(--ks-t2)" }}>
+              {activeAspectCfg.outputW}×{activeAspectCfg.outputH}
+            </span>
           </div>
         </div>
       </div>
@@ -1298,6 +1343,10 @@ export interface MockupStudioSidebarProps {
   slotAssignments?: StudioSlotAssignmentMap;
   /** Phase 80 — assignment change callback (Shell state taşır). */
   onChangeSlotAssignments?: (next: StudioSlotAssignmentMap) => void;
+  /** Phase 83 — Frame mode bounded canvas aspect ratio (Shell state). */
+  frameAspect?: FrameAspectKey;
+  /** Phase 83 — Frame aspect change callback (Shell state taşır). */
+  onChangeFrameAspect?: (next: FrameAspectKey) => void;
 }
 
 export function MockupStudioSidebar({
@@ -1311,6 +1360,8 @@ export function MockupStudioSidebar({
   keptItems,
   slotAssignments,
   onChangeSlotAssignments,
+  frameAspect,
+  onChangeFrameAspect,
 }: MockupStudioSidebarProps) {
   void STUDIO_SAMPLE_DESIGNS; // imported for slot defaults usage in tests
   return (
@@ -1349,7 +1400,10 @@ export function MockupStudioSidebar({
           templateSlotCount={templateSlotCount}
         />
       ) : (
-        <FrameBody />
+        <FrameBody
+          frameAspect={frameAspect}
+          onChangeFrameAspect={onChangeFrameAspect}
+        />
       )}
       {mode === "mockup" ? (
         <SlotFooter

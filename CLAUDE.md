@@ -16559,6 +16559,232 @@ sonrası Canva-like composition evrimi (Phase 84+) doğal devam.
 
 ---
 
+## Phase 83 — Frame mode aspect-aware presentation surface (shell continuity korundu)
+
+Phase 82 Mockup mode'u productType-aware yaptı (placeholder telefon'un
+fiilen sonu). Phase 83 odak: **Frame mode'u "yalnız görsel shell"den
+gerçek presentation/output yüzeyine çıkarmak**. Phase 81 role clarity
+chip'i Frame'i "Presentation surface · Export Phase 82+" diye
+konumlamıştı ama davranışsal olarak hâlâ statik 580×326 canvas + tek
+caption ("1920 × 1080 · 16:9") gösteriyordu — aspect chips passive,
+operatöre hangi listing/social/storefront output için çalıştığı
+sözel olarak söylenmemişti.
+
+### Audit (Shots öncelikli okuma)
+
+Shots.so'da mode değişimi **"yeni ekran" değil** — aynı shell içinde
+**içerik swap'i**:
+
+- **Toolbar**: outer chrome aynı (back / brand / breadcrumb /
+  template pill / render / export). Yalnız content mode-aware
+  (template pill caption + status badge dims).
+- **Sidebar**: outer scroll container + mode tabs aynı; **içerik**
+  swap (Mockup body ↔ Frame body).
+- **Stage**: outer dark canvas + ambient + zoom pill aynı; inner
+  composition mode-aware (Mockup cascade ↔ Frame bounded canvas).
+- **Right rail**: outer chrome + layout toggle + view tabs + zoom
+  slider + preset list başlığı aynı; **içerik** mode-aware (Mockup
+  presets ↔ Frame presets).
+
+Bizim Studio Phase 77 baseline'ı **bu pattern'i zaten doğru kuruyor**
+(shell continuity korunuyor). **Tek gerçek operatör-facing davranış
+boşluğu**: Frame sidebar aspect chips (1:1 / 4:5 / 9:16 / Story / ···)
+**passive** — operator tıklasa bile canvas değişmiyor, caption hep
+"1920 × 1080 · 16:9". Phase 83 bunu bağlar.
+
+### Kesin ürün kararı (Shots-first sabit)
+
+| Mode | Rol (Phase 81 baseline) | Davranış |
+|---|---|---|
+| **Mockup** | Object-first authoring | Template + slot assignment + style + shadow + render dispatch. ProductType-aware device shape (Phase 82). Slot-aware (Phase 80). Real backend (Phase 79). |
+| **Frame** | Presentation-first authoring | **Aspect-aware bounded canvas** (Phase 83) → live canvas dims + deliverable type. Background / scene / effects controls visual-only (Phase 84+ export pipeline backend turu). |
+
+**Mockup = how it looks · Frame = how it sells.** Phase 81 baseline
+sabit; Phase 83 davranışsal yarısını çözer.
+
+### Shell continuity vs mode-specific
+
+- ✓ Toolbar same shell (Phase 77+); template pill caption + status
+  badge mode-aware (Phase 81 + 83 hydrate)
+- ✓ Sidebar tab strip + outer scroll container aynı (Phase 77+);
+  içerik MockupBody ↔ FrameBody swap
+- ✓ Stage outer dark canvas + zoom pill aynı (Phase 77+); inner
+  composition MockupComposition ↔ FrameComposition swap (Phase 82
+  productType-aware + Phase 83 aspect-aware)
+- ✓ Right rail outer chrome aynı; preset list mode-aware (Phase 77+)
+- **Mode = same shell + content swap** (Shots-first sözleşme sabit;
+  refactor gerekmedi).
+
+### Lifestyle vs Listing/Output (Phase 81 baseline'a sabit)
+
+- **Lifestyle** (wall art on wall, desk scene, garment product
+  photo, sticker die-cut, bookmark on book) → **Mockup mode**
+  template ailesi (Phase 82 baseline)
+- **Listing/output** (Etsy hero card, Instagram square/Story,
+  Pinterest pin, storefront banner) → **Frame mode** presentation
+  ailesi (Phase 83 baseline — aspect chip'ler artık gerçek
+  deliverable seçer)
+
+### Phase 83 aspect ratio + deliverable mapping
+
+| Aspect | Output dims | Deliverable | Canonical use |
+|---|---|---|---|
+| **1:1** | 1080 × 1080 | Instagram square · bundle card | Social square, bundle preview |
+| **4:5** | 1080 × 1350 | Etsy listing portrait | Etsy listing hero (default Etsy aspect) |
+| **9:16** | 1080 × 1920 | Instagram Story | Story / Reels cover |
+| **16:9** | 1920 × 1080 | Storefront banner · hero landscape | Storefront banner, landscape hero |
+| **3:4** | 1500 × 2000 | Pinterest pin | Pinterest pin |
+
+### Phase 83 tek yüksek-impact ürün adımı — aspect-aware bounded canvas
+
+**Yeni dosya** `studio/frame-aspects.ts` (~95 LOC pure helpers):
+- `FrameAspectKey` union (1:1 / 4:5 / 9:16 / 16:9 / 3:4)
+- `FRAME_ASPECT_CONFIG` 5 aspect için label + ratio + outputW + outputH +
+  deliverable label
+- `FRAME_ASPECT_KEYS` ordered list (sidebar render için)
+- `computeFrameCanvasDims(aspect, maxW=580, maxH=326)` — bounded canvas
+  dims hesap (max bbox içinde aspect ratio korunur; wide → width-fit,
+  tall → height-fit, orta → ikisini dengeler)
+
+**Shell** (`MockupStudioShell.tsx`):
+- `useState<FrameAspectKey>("16:9")` — default Phase 82 baseline
+  paritesi
+- `frameAspectCfg = FRAME_ASPECT_CONFIG[frameAspect]` resolve
+- Toolbar `templateLabel` (Frame mode): "Frame · presentation
+  surface" → **"Frame · {deliverable}"** (örn. "Frame · Storefront
+  banner · hero landscape")
+- Toolbar `statusLabel` (Frame mode): "Export Phase 82+" stale →
+  **gerçek output dims** ("1920×1080" / "1080×1080" / vb.)
+- Shell wrapper `data-frame-aspect` attribute
+- Sidebar + Stage'e `frameAspect` + `onChangeFrameAspect` props
+
+**Stage** (`MockupStudioStage.tsx`):
+- `FrameCompositionProps`'a `frameAspect: FrameAspectKey` eklendi
+- `computeFrameCanvasDims(frameAspect)` ile **dinamik canvas dims**
+  (style.width + style.height aspect'e göre live update; 220ms
+  ease transition)
+- Inner device dims `canvasScale = canvasDims.h / 326` ile oransal
+  küçülür (canvas tall portrait → inner device proportionally fit)
+- Caption: hardcoded "1920 × 1080 · 16:9" → **dinamik**
+  "{outputW} × {outputH} · {label} · {deliverable}"
+- `data-testid="studio-stage-frame-canvas"`, `data-frame-aspect`,
+  `data-canvas-w`, `data-canvas-h` attribute'ları
+
+**Sidebar** (`MockupStudioSidebar.tsx`):
+- FrameBody'e `frameAspect?: FrameAspectKey` + `onChangeFrameAspect?`
+  props
+- Aspect chip array hardcoded `["1:1", "4:5", "9:16", "Story", "···"]`
+  → **`FRAME_ASPECT_KEYS.map(...)` state-controlled** (5 canonical
+  aspect: 1:1 / 4:5 / 9:16 / 16:9 / 3:4)
+- Active chip → orange highlight + `aria-pressed="true"` + title
+  tooltip (deliverable label)
+- Frame selector caption "Default 16:9" → **"Frame · {aspect}"**;
+  dims "1920 × 1080" → **`{outputW} × {outputH}`** (live)
+- Deliverable label inline caption (chip strip altında): "{deliverable}
+  · {outputW}×{outputH}" — operator hangi listing/social output için
+  çalıştığını net görür
+
+### Browser end-to-end kanıt (live preview, viewport 1440×900)
+
+Test set: `cmov0ia370019149ljyu7divh` (4-item clipart, Phase 82
+productType-aware sticker card render eden set).
+
+| Aspect chip click | Canvas dims | Frame caption | Status badge | Shell attr |
+|---|---|---|---|---|
+| Default mount (16:9) | 580 × 326 (width-fit, landscape) | "1920 × 1080 · 16:9 · Storefront banner · hero landscape" | "1920×1080" | `data-frame-aspect="16:9"` |
+| 1:1 | 326 × 326 (square) | "1080 × 1080 · 1:1 · Instagram square · bundle card" | "1080×1080" | "1:1" |
+| 4:5 | 261 × 326 (Etsy portrait) | "1080 × 1350 · 4:5 · Etsy listing portrait" | "1080×1350" | "4:5" |
+| 9:16 | 183 × 326 (tall Story) | "1080 × 1920 · 9:16 · Instagram Story" | "1080×1920" | "9:16" |
+| 3:4 | 245 × 326 (Pinterest pin) | "1500 × 2000 · 3:4 · Pinterest pin" | "1500×2000" | "3:4" |
+| 16:9 (geri dön) | 580 × 326 | "1920 × 1080 · 16:9 · Storefront banner..." | "1920×1080" | "16:9" |
+
+**Mockup mode intaktlığı**:
+- Mode mockup, deviceKind "clipart", status "Clipart bundle" (Phase
+  82 device label)
+- Phase 80 slot picker + Fill all + render enabled ✓
+- Phase 81 mockup role chip "Object surface" ✓
+- 3 sticker card gradient (Phase 82) ✓
+- `frameAspect=16:9` shell state mode değişiminde **korunur**
+  (operator Frame'e geri döndüğünde son seçimi görür) ✓
+
+Screenshot: Frame mode 16:9 final state — bounded landscape canvas
+(580×326 cream gradient) + iç sticker card composition (Phase 82
+productType-aware) + Frame caption + 5 aspect chip (16:9 orange
+active) + sidebar deliverable label + toolbar live dims badge.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, products, selection, selections}`:
+  **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 83)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** 1 yeni helper file (5 aspect config +
+  `computeFrameCanvasDims` pure math) + Shell state + Stage/Sidebar
+  props.
+- **Shell continuity korundu** — toolbar/stage/rail outer chrome
+  aynı; sadece içerik mode-aware (Shots-first sözleşme).
+- **Mockup mode + Phase 80 slot picker + Phase 81 role chips +
+  Phase 82 productType-aware shape + Phase 79 real hydrate + Phase
+  76 multi-design panel + Phase 74-75 multi-slot backend + admin
+  authoring** hepsi intakt.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → Mockup Studio → Product → Etsy Draft).
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 84+ candidate)
+
+- **Frame mode real export pipeline** — Sharp composite (bounded
+  canvas + bg + Mockup mode render output veya kept asset) → MinIO
+  export → Product / Etsy Draft listing hero hattı. En büyük slice;
+  backend tur. **Phase 83 davranışsal yarısını çözdü** — aspect
+  seçilir, canvas live update; Phase 84+ export'u tetikler.
+- **Frame background controls real wiring** — solid / gradient /
+  glass / scene chips currently visual-only. Phase 84+ canvas
+  background composite layer.
+- **Canva-like composition evrimi** — text/heading layer +
+  multi-layer + alignment guides. Frame mode'un doğal devamı
+  (Phase 85+).
+- **Pack-selection override** — handoff service `slotAssignments`'i
+  `buildPackSelection`'a `preferredVariantOrder` (Phase 80 log
+  baseline'a bağlı backend tüketim).
+- **Frame mode → Mockup output composition** — Frame canvas içinde
+  Mockup mode'dan üretilen render output'unu (S7/S8 result asset)
+  yerleştirme. Şu an Frame canvas içinde Phase 82 device shape
+  preview gösterir; Phase 84+ kept asset / render output yerleştirme.
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 83 ile Frame mode **davranışsal olarak gerçek** — operatör
+aspect seçer, canvas live update, deliverable type net (Etsy listing
+portrait / Instagram square / Story / Storefront banner / Pinterest
+pin). Phase 82 ile Mockup mode görsel olarak gerçek (productType-aware
+shape). İkili artık **gerçek shell + gerçek mode davranışları**.
+
+Sıradaki en yüksek etkili adım **Phase 84 — Frame mode real export
+pipeline**:
+- Operator Frame mode'da aspect seçer + background config eder
+- "Export · 1× · PNG" button tıkla → Sharp composite (bounded canvas
+  bg + Mockup mode render output veya kept asset) → MinIO export
+- Export key → Product / Etsy Draft listing hero alanı + S8 result
+  view'a benzer Frame result view (download / send to listing)
+- Backend slice: yeni `/api/frame/jobs` route + Sharp Frame compositor
+  + MinIO upload (mockup-render.worker pattern paritesi)
+
+Phase 84 backend-heavy ama Phase 8/63/70 Sharp pipeline reuse —
+yeni big abstraction değil. Phase 84 tamamlanınca canonical loop
+gerçek Studio: Mockup mode render + Frame mode export = end-to-end
+listing hero pipeline. Phase 85+ Canva-like composition evrimi
+(text/heading layer + multi-layer) doğal devam.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
