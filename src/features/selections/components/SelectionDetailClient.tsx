@@ -317,14 +317,23 @@ export function SelectionDetailClient({ set, items }: Props) {
          * stage = Sent → "Already sent · view in Product" mevcut davranış
          * korunur. */}
         {applyEnabled ? (
+          /* Phase 78 — Mockup Studio canonical entry.
+           *
+           * Final ürün kararı: Mockup Studio
+           * (`/selection/sets/[id]/mockup/studio`) Kivasy'nin nihai
+           * mockup çalışma yüzeyidir. Selection detail "Apply Mockups"
+           * primary CTA artık doğrudan Studio'ya yönlendirir; Apply
+           * orchestrator route'u Studio'ya çıkış sağlayan banner ile
+           * canonical fallback olarak yaşar (Phase 8 baseline render
+           * pipeline + S7/S8 result view'a Apply'dan da erişilebilir). */
           <Link
-            href={`/selection/sets/${set.id}/mockup/apply`}
+            href={`/selection/sets/${set.id}/mockup/studio`}
             data-size="sm"
             className="k-btn k-btn--primary"
             data-testid="selection-detail-apply-mockups"
           >
             <ImageIconLucide className="h-3 w-3" aria-hidden />
-            Apply Mockups
+            Open in Studio
           </Link>
         ) : stage === "Sent" ? (
           <div className="flex flex-col items-end gap-1">
@@ -435,14 +444,17 @@ export function SelectionDetailClient({ set, items }: Props) {
                 set ready for mockups
               </span>
             </div>
+            {/* Phase 78 — finalize success banner Studio'ya yönlenir
+                (Phase 52 baseline'da Apply'a gidiyordu; final ürün
+                kararıyla Studio canonical entry). */}
             <Link
-              href={`/selection/sets/${set.id}/mockup/apply`}
+              href={`/selection/sets/${set.id}/mockup/studio`}
               data-size="sm"
               className="k-btn k-btn--primary"
               data-testid="selection-finalize-banner-apply"
             >
               <ImageIconLucide className="h-3 w-3" aria-hidden />
-              Apply Mockups
+              Open in Studio
               <ArrowRight className="h-3 w-3" aria-hidden />
             </Link>
           </div>

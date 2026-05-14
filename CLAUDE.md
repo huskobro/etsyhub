@@ -15287,6 +15287,411 @@ sürükler → sistem otomatik N-slot template oluşturur.
 
 ---
 
+## Phase 77 — Mockup Studio dark shell first implementation
+
+Phase 60-76 boyunca Mockup Studio için yapı taşları (multi-slot
+schema, multi-design assignment UI, recipe editor, validity guard,
+sample preview, slot ghosting, 3×3 preset, backend execution, PSD
+PoC) tek tek yerleştirildi. Phase 77 final unified design'ı
+(`Kivasy Design System/Kivasy Mockup Studio Final.html` — 900 satır
+React/Babel reference HTML) gerçek ürün yüzeyine taşımanın **ilk
+implementasyonudur**.
+
+### Stratejik karar
+
+**Ayrı route group**: `src/app/(studio)/` Next.js route group açıldı.
+`(app)` route group'undan tamamen ayrı kendi `layout.tsx`'i taşır:
+sidebar + ActiveTasks + max-width içerik shell'i Studio için
+anlamsız — Studio kendi 100vh dark canvas'ını + kendi toolbar +
+sidebar + stage + rail zincirini kurar.
+
+**Auth + ownership gate** mevcut pattern paritesinde:
+- `src/app/(studio)/layout.tsx`: `auth()` → session yoksa
+  `redirect("/login")`.
+- `src/app/(studio)/selection/sets/[setId]/mockup/studio/page.tsx`:
+  SSR ownership check (cross-user / yok → `notFound()`) → setId +
+  setName ile `<MockupStudioShell>` render.
+
+**Coexists with Apply route**: `(app)/selection/sets/[setId]/mockup/
+apply` (Phase 8 light apply view) ve `/jobs/[jobId]` (Phase 8 S7)
+Phase 77'de bozulmadan kalır. Apply view'a operatöre keşfedilebilir
+"Try the new Studio →" entry eklendi (Phase 78'de canonical CTA'ya
+yükseltildi).
+
+### Slice 1 — Studio shell composer
+
+`src/features/mockups/studio/MockupStudioShell.tsx` (~158 LOC):
+
+- `mode: "mockup" | "frame"` state (sidebar tabs + dev sw)
+- `appState: "working" | "empty" | "preview" | "render" | "renderDone"`
+  state (toolbar Edit/Preview + stage state surfaces + dev sw)
+- `selectedSlot: number` state (mockup mode device cascade selection)
+- WORKING_SLOTS + EMPTY_SLOTS sample data (Phase 78+ gerçek selection
+  set items + template binding hydrate)
+- `data-testid="studio-shell"` + `data-mode` (canonical test selector)
+- Dev/demo switcher: `data-testid="studio-state-switcher"` final HTML
+  "sw" overlay parity — Phase 78 gerçek render pipeline bağlanınca
+  admin-only ops yardımcısına dönüşür veya kaldırılır
+
+### Slice 2 — Dark stylesheet
+
+`src/features/mockups/studio/studio.css` (~875 LOC) final HTML'in
+recipe + token bütününü `.k-studio-*` namespace altında taşır:
+- Stage tones: `--ks-sh: #1C1916`, `--ks-st: #111009`, `--ks-sb`
+- Text tones: `--ks-t1/t2/t3` (88/52/28% alpha)
+- Surface tones: `--ks-b1/b2`
+- Accent (Kivasy orange): `--ks-or/ors/orb`
+- Font families: Plus Jakarta Sans + Geist Mono (final HTML parity)
+- Mevcut Kivasy v4 tokens (`--k-*`) bozulmaz — bu dosya yalnız
+  `.k-studio-*` namespace altında dark stage variables ekler.
+- Tüm component recipes: toolbar, tb-icon/pill/cluster, sidebar,
+  stab/tile/pill, sty-tile/tri-tile/sh-tile, k-range, stage,
+  slot-ring/badge, zoom-pill, render-overlay/banner, edit-pill,
+  rail, layout-tog, view-tabs, live-thumb, preset-card, sw
+
+### Slice 3 — Toolbar component
+
+`src/features/mockups/studio/MockupStudioToolbar.tsx` (~148 LOC):
+
+- Back arrow → selection detail
+- Kivasy mark (gradient SVG)
+- Templates breadcrumb + template pill (mode-aware: "Hero Phone
+  Bundle" vs "Default 16:9")
+- Active status badge (mode-aware: "Active" vs "1920×1080")
+- Undo/Redo/Start Over/Expand tb-icon cluster
+- Edit/Preview pill toggle (`isEdit = appState ∈ {working, empty}`)
+- Saved status + Render button (→ render state)
+- Export · 1× · PNG primary capsule
+
+### Slice 4 — Sidebar (mode-aware, 933 LOC)
+
+**Mockup mode** (final HTML MockupSidebar parity):
+- Template card (Hero Phone Bundle · 3 slots · Active)
+- Magic Preset row
+- MEDIA section (assigned thumb or drop placeholder)
+- STYLE 3×3 grid (Default/Glass Lt/Glass Dk/Liquid/Inset Lt/Inset
+  Dk/Outline/Border/More…) + TinyPhone preview per tile
+- BORDER 3-tile (Sharp/Curved/Round) + radius slider
+- SHADOW 4-tile (None/Spread/Hug/Adapt.) + opacity slider
+- Adjust Light row
+- Slot footer (pills with assigned indicator)
+
+**Frame mode** (final HTML FrameSidebar parity):
+- Frame selector (Default 16:9 + 1920×1080 + aspect chips)
+- EFFECTS & WATERMARK 2×2 (Lens Blur/Portrait/Watermark/BG Effects)
+- SCENE 3-tile (None/Shadow/Shapes)
+- BACKGROUND 4-tile (Trans./Color/Image/Upload)
+- MAGIC 4-row swatch grid + chevron picker
+- SOLID 6-swatch row
+- GRADIENT 4-tile row
+- GLASS NEW badge + 3-tile (Glass Light/Glass Dark/Frosted)
+
+Mode switch instant — `mode === "mockup"` ? `<MockupSidebar/>` :
+`<FrameSidebar/>`. SlotFooter sadece Mockup mode'da render edilir.
+
+### Slice 5 — Center stage (307 LOC)
+
+**Mockup composition**: 3 device cascade (Front/Side/Back View) +
+selected slot ring + ambient glow + slot badge + drop shadow chain.
+PhoneSVG (424 LOC svg-art.tsx, final HTML PhoneSVG + design colors
+parity).
+
+**Frame composition**: bounded 580×326 cream frame + iPhone
+composition + dimensions caption "1920 × 1080 · 16:9".
+
+**State surfaces** (görsel düzeyinde, backend dispatch yok):
+- Working: cascade veya frame normal render
+- Empty: ghost slots + "Drop media in the panel to begin" mockup'ta
+  / "Select a background to start your frame" frame'de
+- Preview: badges + ring kaldırılır + "Back to Edit" pill
+- Render: full-screen overlay + spinner + "Rendering…" + "4096 ×
+  4096 · 3 variants" + Cancel
+- RenderDone: top banner "Render ready · 4096×4096 · 3 variants ·
+  1.4s" + Download + "Create Mockup/Frame" CTA
+
+Zoom pill (50%, +/-, Fit) bottom-center sticky.
+
+### Slice 6 — Right preset rail (201 LOC)
+
+- Export · 1× · PNG primary capsule (sticky top)
+- Layout toggle 3-button (1/2/3 column variants)
+- View tabs (Zoom/Tilt/Precision)
+- Live thumb (mode-aware: PresetThumbMockup veya PresetThumbFrame)
+- Zoom slider 25-200% (default 100%)
+- LAYOUT PRESETS section + preset cards list:
+  - Mockup mode: Cascade/Centered/Mirror/Landscape/Fan/Stack
+  - Frame mode: Centered/Offset/Bleed/Angled/Duo/Story/Comparison/
+    Flat Lay
+- isPreview state'inde footer'a "Export Mockup/Frame" CTA eklenir
+
+### Slice 7 — Icons + sample art
+
+- `icons.tsx` (107 LOC): final HTML P_KMS path tablosu + KMSIcon +
+  KivasyMark + 21 inline SVG path
+- `svg-art.tsx` (424 LOC): PhoneSVG (with design colors) +
+  TinyPhone (8 style variants) + PresetThumbMockup (6 layouts) +
+  PresetThumbFrame (8 layouts)
+- `types.ts` (31 LOC): StudioMode + StudioAppState + StudioSlotMeta
+  + StudioDesignMeta
+
+### Coexistence with existing surfaces
+
+Phase 8 baseline tamamen korunur:
+- `/selection/sets/[id]/mockup/apply` (Phase 8 light apply view) ✓
+- `/selection/sets/[id]/mockup/jobs/[jobId]` (S7 in-progress) ✓
+- `/selection/sets/[id]/mockup/jobs/[jobId]/result` (S8 result) ✓
+- Mockup job pipeline + worker + render execution (Phase 74-75) ✓
+- Admin template authoring (Phase 67-73) ✓
+- SlotAssignmentPanel (Phase 76) ✓
+
+### Soft/dummy kalan parçalar (Phase 78+ candidate)
+
+- Selection set items hydrate (sample WORKING_SLOTS hardcoded; gerçek
+  set.items + design assets bağlanmadı)
+- Template binding hydrate (Hero Phone Bundle hardcoded; user'ın
+  Phase 76 SlotAssignmentPanel'den seçtiği template bağlanmadı)
+- Render dispatch (Render button state geçişi UI-only; backend
+  Phase 74 multi-slot pipeline'a dispatch yok)
+- Export action (capsule click → no-op)
+- Edit/Preview state'inde gerçek render preview (sadece görsel
+  state'ler)
+- Frame mode bounded canvas'a gerçek device + background composite
+  (sample static phone)
+- Dev/demo state switcher → admin-only ops yardımcısı veya kaldırma
+
+### Değişmeyenler (Phase 77)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok** — Phase 77 yalnız final HTML
+  pattern'ini repo'daki mevcut Kivasy DS + auth + route group
+  pattern'leriyle native şekilde implement eder.
+- **Apply route bozulmadan kalır** (operator için keşfedilebilir
+  yan entry; Phase 78'de canonical handoff'a yükseltildi).
+- **Mockup pipeline + worker + S7/S8 result view + admin authoring
+  dokunulmadı.**
+- **Kivasy v4 tokens (`--k-*`) bozulmaz** — `.k-studio-*` namespace
+  ayrı dark token seti.
+
+---
+
+## Phase 78 — Mockup Studio canonical entry: final ürün entegrasyonu
+
+Phase 77 Mockup Studio dark shell'i ayağa kaldırmıştı, ama tek başına
+çalışıyordu: hiçbir CTA Studio'ya gitmiyordu, Apply route 7+ surface
+tarafından primary handoff olarak referans veriliyordu. **İki paralel
+mockup yüzey, sıfır canonical karar**. Phase 78 final ürün
+entegrasyon kararını verir ve Studio'yu canonical merkez yapar.
+
+### Audit — Phase 77 sonrası ürün boşluğu
+
+| Surface | Pre-Phase 78 davranış |
+|---|---|
+| Selection detail header (`Apply Mockups` CTA) | → `/mockup/apply` |
+| Selection detail finalize banner | → `/mockup/apply` |
+| Overview Mockup ready row | → `/mockup/apply` |
+| Products `MockupsTab` "Apply more mockups" | → `/selections/[id]` (set detail) |
+| Legacy `StudioShell` finalized banner | → `/mockup/apply` |
+| S7 job view "Back to Mockup Studio" | → `/mockup/apply` |
+| S8 result "Back to Mockup Studio" | → `/mockup/apply` |
+| **Apply view topbar "Try the new Studio"** | Geçici entry (operatöre `/mockup/studio`) |
+| **Apply view'da Studio canonical handoff** | YOK |
+
+Operator çakışması: hangi yüzey ne için? Studio mı, Apply mı? Final
+HTML tüm authoring'i Studio'da topluyor; mevcut routing 1 sürface
+canonical değil — operatör tereddüt ediyor.
+
+### Final ürün kararı
+
+**Mockup Studio (`/selection/sets/[id]/mockup/studio`) Kivasy'nin
+nihai mockup çalışma yüzeyidir.** Apply route **canonical Quick pack
+render orchestrator** olarak yaşar — Phase 8 baseline fan-out pipeline
++ S7/S8 result view'a girişi sürdürür ama yön operatöre net şekilde
+Studio'ya verilir.
+
+Rol matrisi:
+
+| Yüzey | Final rol |
+|---|---|
+| **`/mockup/studio` (Phase 77 canonical)** | Ana mockup + frame authoring — slot assignment, template binding, mode switch, preset rail, export, render |
+| `/mockup/apply` (Phase 78 orchestrator) | Quick pack render trigger (1-click default fan-out + S7/S8 sonuç görüntüleme). Studio'ya handoff banner + primary "Open in Studio" CTA + breadcrumb "Quick pack render" |
+| `/mockup/jobs/[jobId]` (S7) | Render in-progress (her iki yoldan tetiklenmiş job'ları takip) |
+| `/mockup/jobs/[jobId]/result` (S8) | Render result + listing creation handoff (retry yolu Studio'ya geri döner) |
+| Templates / Mockup tab | Library/management (Phase 67-73) — authoring değil; sadece template create/edit |
+| Product detail / MockupsTab | "Open in Studio" canonical entry (önceden "Apply more mockups") |
+
+### Slice 1 — Selection detail canonical CTA
+
+`SelectionDetailClient.tsx`:
+- **Header primary** Apply Mockups → "Open in Studio" → `/mockup/studio`
+- **Finalize success banner** Apply Mockups → "Open in Studio" → `/mockup/studio`
+- testid'ler korundu (`selection-detail-apply-mockups`,
+  `selection-finalize-banner-apply`) — regression safe.
+
+### Slice 2 — Overview row direct handoff
+
+`server/services/overview/index.ts:233`:
+- Mockup ready row `href` → `/mockup/studio` (Phase 58 direct
+  handoff path Phase 78'de Studio canonical'ına yükseltildi).
+
+### Slice 3 — Apply view orchestrator dilini sahiplenir
+
+`S3ApplyView.tsx` + apply page:
+
+- **Title** "Mockup Studio · Kivasy" → "Quick pack render · Kivasy"
+- **Breadcrumb son segment** "Mockup Studio" → "Quick pack render"
+  + testid `apply-view-role-label`
+- **Topbar "Try the new Studio"** geçici entry → **kalıcı orange
+  primary** "Open in Studio →" CTA (k-btn--primary)
+- **Studio handoff banner** (k-orange-soft) header altında:
+  - "Open in Studio for the full authoring experience"
+  - "Mockup + Frame modes · slot assignment · preset rail · export"
+  - "This view stays for Quick pack render" (sağ caption)
+  - testid `apply-view-studio-banner`
+- Page-level comment Phase 78 rolünü açıkça yazıyor.
+
+### Slice 4 — Products MockupsTab Studio entry
+
+`features/products/components/tabs/MockupsTab.tsx`:
+- `sourceSelection` varsa "Apply more mockups" → "Open in Studio"
+  link → `/selection/sets/[id]/mockup/studio`
+- `sourceSelection` null durumunda "Apply more mockups" → "Pick a
+  Selection" → `/selections` (entry dürüst)
+- Empty state copy + helper text "Studio is the canonical authoring
+  surface — Phase 78"
+- Boundary discipline comment Phase 78 rol netliği ile güncellendi.
+
+### Slice 5 — Legacy + S7/S8 retry path
+
+- `features/selection/components/StudioShell.tsx` (legacy Phase 7
+  selection studio) finalize handoff banner "Apply mockups" →
+  "Open in Studio"
+- `features/mockups/components/S7JobView.tsx` (FAILED/CANCELLED)
+  "Back to Mockup Studio" retry path → `/mockup/studio`
+- `features/mockups/components/S8ResultView.tsx` (all-failed)
+  retry path → `/mockup/studio`
+
+### Stale (app) route cleanup
+
+`src/app/(app)/selection/sets/[setId]/mockup/studio/` (Phase 77
+öncesi deneme) boş klasörü kaldırıldı — Next type cache stale
+"Cannot find module ... studio/page.js" hatalarına yol açıyordu.
+`(studio)` route group canonical olarak kalır.
+
+### Operator akışı — Phase 78 sonrası nihai model
+
+```
+Selection ready / finalized
+  └── "Open in Studio" → /mockup/studio
+        ├── Mockup mode → slot assignment + template binding +
+        │   render (Phase 74 backend) → /mockup/jobs/[jobId] → S8
+        └── Frame mode → presentation/hero/listing/social output
+              authoring → export
+
+Hızlı yol (Apply orchestrator)
+  └── Selection → Apply route (Quick pack render orchestrator)
+        ├── Top banner "Open in Studio" (kalıcı)
+        └── Render (Quick pack) → /mockup/jobs/[jobId] → S8
+
+Product / Etsy Draft
+  └── Source Selection lineage → MockupsTab "Open in Studio"
+        (Phase 78 final ürün entry'si)
+```
+
+### Browser end-to-end kanıt (live preview, viewport 1440×900)
+
+| Test | Sonuç |
+|---|---|
+| Studio dark shell mount | shellMode "mockup", sidebar bg `rgb(28,25,22)`, stage bg `rgb(17,16,9)`, toolbar 38px, rail 202px, sidebar 214px |
+| Mockup mode UI | Hero Phone Bundle template card, Magic Preset, MEDIA assigned thumb, 9-tile STYLE grid, BORDER 3-tile (Curved active), SHADOW 4-tile (Spread active), Opacity 40, slot footer pills, cascade stage with selected slot ring + ambient orange glow, Layout Presets Cascade active |
+| Frame mode UI | Default 16:9 + aspect chips, EFFECTS & WATERMARK (Lens Blur active), SCENE (None active), BACKGROUND (Color active), SOLID/GRADIENT/GLASS NEW, bounded cream frame canvas + iPhone composition + dimensions caption, Frame Layout Presets (Centered active + Offset/Bleed/Angled/Duo/Story...) |
+| Apply view Phase 78 | Title "Quick pack render · Kivasy", breadcrumb son "Quick pack render", topbar orange "Open in Studio →" primary CTA, header altı handoff banner (Mockup + Frame modes · slot assignment · preset rail · export), CTA href `/mockup/studio` |
+| Selection detail CTA | "Open in Studio" → href `/mockup/studio` (önceden "Apply Mockups" → `/mockup/apply`) |
+| Overview Mockup ready | 3 row, hepsinin href'i `/mockup/studio` (Phase 78 canonical handoff) |
+
+Screenshot kanıtları:
+- Studio Mockup mode tam dark shell: toolbar + sidebar + cascade
+  stage + preset rail (final HTML referansıyla %95+ parity)
+- Studio Frame mode: aspect chips + effects + scene + background +
+  cream frame canvas + Frame-specific preset rail
+- Apply view: orange "Open in Studio →" primary + Studio handoff
+  banner + "Quick pack render" breadcrumb
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **820/821 PASS** (Phase 76 baseline + Phase 78 S3ApplyView
+  test update; 1 pre-existing Phase 65/71 ownership fail Phase 78 ile
+  ilgisiz, Phase 76 entry'sinde belgelendi)
+- `next build`: ✓ Compiled successfully (Studio route 9.36 kB; Apply
+  route 24.4 kB)
+- Browser end-to-end: 6 surface canlı doğrulandı
+
+### Değişmeyenler (Phase 78)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Apply pipeline, render execution, render
+  history, mockup job schema'sı dokunulmadı.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Yalnız 7 dosya CTA href/copy update'i
+  + Apply view banner + Studio route group cleanup.
+- **Apply pipeline + S7/S8 result view + worker + Phase 74-75 multi-
+  slot backend + Phase 76 SlotAssignmentPanel + admin authoring**
+  hepsi bozulmadan kalır.
+- **3. taraf mockup API path** ana akışa girmedi (DynamicMockups stub
+  Phase 8'den beri operator-opt-in; Phase 78 değişmedi).
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → Mockup → Product → Etsy Draft).
+- **Kivasy v4 tokens (`--k-*`) bozulmaz.** Phase 77 dark studio
+  tokens (`--ks-*`) ayrı namespace.
+
+### Bilinçli scope dışı (Phase 79+ candidate)
+
+- **Studio shell data hydrate**: WORKING_SLOTS sample → gerçek
+  selection set items + variant assets bağlanması (Phase 75 backend
+  RenderInput.designUrls[] zaten kabul ediyor)
+- **Template binding** Studio'da: Phase 76 SlotAssignmentPanel'in
+  template seçimi Studio sidebar'a taşınması (Studio multi-slot
+  template hydrate)
+- **Render dispatch wire**: Render button → POST `/api/mockup/jobs`
+  + Studio appState `render` overlay'i gerçek job lifecycle'a bağlanır
+- **Export action**: capsule click → real export pipeline (PNG / ZIP
+  download)
+- **Frame mode output**: bounded canvas → gerçek background +
+  composite + export → Product / Etsy Draft listing hero hattı
+- **Dev/demo state switcher** kaldırma veya admin-only ops yardımcısına
+  taşıma
+- **Apply view sadeleştirme**: Phase 76 SlotAssignmentPanel + Pack
+  preview hâlâ Apply'da; Phase 79+ Studio'ya tam taşındıkça Apply
+  küçülür (yalnız Quick pack tek-tıkla render).
+- **Templates → Studio "Try in Studio" entry**: template management
+  yüzeyinden direkt Studio'da test
+- **Overview row CTA label** "Apply Mockups" → "Open in Studio" (şu
+  an href Studio'ya gidiyor ama label generic; Phase 79 polish)
+
+### Final ürün yol haritası
+
+Phase 77 + Phase 78 ile **Mockup Studio Kivasy'nin ana mockup
+çalışma yüzeyi** olarak canonical hale geldi. Apply route dürüst bir
+"Quick pack render orchestrator" rolüne çekildi; operatör artık
+tereddüt etmiyor — her primary CTA Studio'ya çıkar.
+
+Sıradaki sıkı sıralama:
+1. **Phase 79 Studio data hydrate** (sample → gerçek selection + template + asset)
+2. **Phase 80 Render dispatch wire** (Studio Render button → Phase 74 backend pipeline)
+3. **Phase 81 Frame mode output** (presentation/hero/listing/social deliverable üretim)
+4. **Phase 82 Templates entry** (template management → Studio test entry)
+5. **Phase 83 Apply view sadeleşme** (Studio tam taşındığında Apply yalnız Quick pack tek-tıkla render)
+
+Bu zincir tamamlandığında Studio "tam ürün yüzeyi" olur; Apply
+canonical Quick pack pipeline + S7/S8 result view aynı backend
+hattını paylaşır. **dynamic-mockups deprecation** ayrı tur (self-
+hosted multi-slot + multi-design pipeline Phase 74-75 + Phase 77
+authoring tamamen yerli — paid 3rd-party API ihtiyacı kalmadı).
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

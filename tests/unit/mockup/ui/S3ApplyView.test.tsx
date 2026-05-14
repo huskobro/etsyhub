@@ -171,9 +171,26 @@ describe("<S3ApplyView>", () => {
   it("shows header breadcrumb navigation", () => {
     render(<S3ApplyView setId="test-set" />, { wrapper });
 
-    expect(screen.getByText("Mockup Studio")).toBeInTheDocument();
+    // Phase 78 — Apply view role label changed from "Mockup Studio"
+    // to "Quick pack render" (Studio is now the canonical authoring
+    // surface; Apply is the quick-pack render orchestrator).
+    expect(screen.getByTestId("apply-view-role-label")).toHaveTextContent(
+      "Quick pack render",
+    );
     // "Test Set" appears multiple times (header + SetSummaryCard),
     // so use getByRole instead
     expect(screen.getByRole("navigation")).toBeInTheDocument();
+  });
+
+  it("shows Phase 78 Studio handoff CTA + banner", () => {
+    render(<S3ApplyView setId="test-set" />, { wrapper });
+
+    const cta = screen.getByTestId("apply-view-studio-link");
+    expect(cta).toHaveAttribute("href", "/selection/sets/test-set/mockup/studio");
+    expect(cta).toHaveTextContent(/Open in Studio/i);
+
+    const banner = screen.getByTestId("apply-view-studio-banner");
+    expect(banner).toBeInTheDocument();
+    expect(banner).toHaveTextContent(/Mockup \+ Frame modes/);
   });
 });

@@ -226,11 +226,12 @@ export async function getPendingActions(userId: string): Promise<PendingActionsD
         id: s.id,
         name: s.name,
         meta: `${s._count.items} designs`,
-        // Phase 58 — Direct handoff: Overview "Apply Mockups" CTA artık
-        // doğrudan mockup studio'ya iniyor (Selection detail ara
-        // durakta değil). Operatör Overview'dan tek tıkla mockup'ları
-        // uygular; label ↔ destination tutarlı.
-        href: `/selection/sets/${s.id}/mockup/apply`,
+        // Phase 78 — Studio canonical handoff: Overview "Mockup ready"
+        // row'u operatörü doğrudan Mockup Studio'ya çıkarır. Phase 58
+        // direct-handoff (Apply route) Phase 78 final ürün kararıyla
+        // Studio'ya bağlandı — operatör Overview'dan tek tıkla nihai
+        // çalışma yüzeyinde başlar.
+        href: `/selection/sets/${s.id}/mockup/studio`,
       })),
     },
     draftsToSend: {

@@ -402,7 +402,7 @@ export function S7JobView({
           <Button
             variant="secondary"
             onClick={() =>
-              router.push(`/selection/sets/${setId}/mockup/apply`)
+              router.push(`/selection/sets/${setId}/mockup/studio`)
             }
           >
             Back to Mockup Studio
@@ -423,7 +423,7 @@ export function S7JobView({
           <Button
             variant="secondary"
             onClick={() =>
-              router.push(`/selection/sets/${setId}/mockup/apply`)
+              router.push(`/selection/sets/${setId}/mockup/studio`)
             }
           >
             Back to Mockup Studio

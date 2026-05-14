@@ -188,12 +188,16 @@ export function StudioShell({ setId }: StudioShellProps) {
             product listing.
           </span>
           {set.status === "ready" && (
+            /* Phase 78 — legacy /selection/sets/[id] StudioShell
+                (Phase 7 baseline selection studio, ayrı route ailesi)
+                handoff banner artık mockup studio'ya çıkar (canonical
+                final ürün entry). */
             <Link
-              href={`/selection/sets/${setId}/mockup/apply`}
+              href={`/selection/sets/${setId}/mockup/studio`}
               data-testid="selection-handoff-apply-mockups"
               className="shrink-0 rounded-md bg-text px-3 py-1.5 text-xs font-medium text-bg hover:opacity-90"
             >
-              Apply mockups →
+              Open in Studio →
             </Link>
           )}
         </div>

@@ -34,11 +34,11 @@ import type {
  *     cover.service zaten var; UI burada sadece "Open cover swap"
  *     bağlantısı gösterir — A6 R5'te modal bağlanmaz, deferred).
  *
- * Boundary discipline:
- *   Mockup üretimi (apply) burada DEĞİL — Selection detail'da Apply
- *   Mockups CTA → /selection/sets/[setId]/mockup/apply (Phase 8 V1
- *   pipeline) → Listing draft → /products/[id]. Burası ürünün hâlâ
- *   yöneteceği render bant'ı.
+ * Boundary discipline (Phase 78 final ürün kararıyla netleşti):
+ *   Mockup/frame authoring burada DEĞİL — canonical surface
+ *   /selection/sets/[id]/mockup/studio (Phase 77 dark Studio shell).
+ *   Apply route quick pack render orchestrator olarak kalır. Bu tab
+ *   ürünün hâlâ yöneteceği render bant'ı + Studio'ya geri-link.
  */
 
 interface MockupsTabProps {
@@ -116,25 +116,29 @@ export function MockupsTab({ listing }: MockupsTabProps) {
               >
                 {sourceSelection.setName}
               </Link>
-              . Use Apply more mockups to add lifestyle / preview / template
-              renders to this product.
+              . Open the Studio to add more mockup / frame renders to this
+              product (Phase 78 — Studio is the canonical authoring surface).
             </p>
           ) : (
             <p className="mt-1 text-sm text-text-muted">
-              Mockups are produced from a Selection&apos;s &ldquo;Apply
-              Mockups&rdquo; CTA. Open a Selection set, finalize it, then
-              run Apply Mockups to package this product.
+              Mockups are produced from a Selection&apos;s Mockup Studio.
+              Open a Selection set, finalize it, then open the Studio to
+              package this product.
             </p>
           )}
         </div>
         {sourceSelection ? (
+          /* Phase 78 — Studio canonical entry from Product detail.
+             Önceden "Apply more mockups" → /selections/[id] (set
+             detail'a iniyordu). Final ürün kararıyla operatör doğrudan
+             Studio'ya çıkar (mockup + frame authoring tek yerde). */
           <Link
-            href={`/selections/${sourceSelection.setId}`}
+            href={`/selection/sets/${sourceSelection.setId}/mockup/studio`}
             className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink-2 hover:border-line-strong hover:text-ink"
             data-testid="product-mockups-back-to-selection"
           >
             <Plus className="h-3 w-3" aria-hidden />
-            Apply more mockups
+            Open in Studio
           </Link>
         ) : (
           <Link
@@ -143,7 +147,7 @@ export function MockupsTab({ listing }: MockupsTabProps) {
             data-testid="product-mockups-back-to-selection"
           >
             <Plus className="h-3 w-3" aria-hidden />
-            Apply more mockups
+            Pick a Selection
           </Link>
         )}
       </div>
@@ -158,7 +162,8 @@ export function MockupsTab({ listing }: MockupsTabProps) {
             No mockups applied yet
           </h3>
           <p className="mt-1 text-sm text-text-muted">
-            Open a Selection and use Apply Mockups to package this product.
+            Open a Selection in Mockup Studio to package this product
+            (Studio is the canonical authoring surface — Phase 78).
           </p>
         </div>
       ) : (

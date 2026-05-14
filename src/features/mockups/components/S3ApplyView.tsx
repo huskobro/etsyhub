@@ -131,7 +131,7 @@ export function S3ApplyView({ setId }: { setId: string }) {
   return (
     <main className="flex min-h-screen flex-col bg-white">
       {/* Zone 1: Sticky üst bar */}
-      <header className="sticky top-0 z-10 border-b border-border bg-white px-6 py-3">
+      <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-border bg-white px-6 py-3">
         <nav className="text-sm text-text-muted">
           <span>← </span>
           <a href="/selections" className="hover:text-text">
@@ -142,9 +142,53 @@ export function S3ApplyView({ setId }: { setId: string }) {
             {set.name}
           </a>
           <span className="mx-1.5">/</span>
-          <span className="font-medium text-text">Mockup Studio</span>
+          <span
+            className="font-medium text-text"
+            data-testid="apply-view-role-label"
+          >
+            Quick pack render
+          </span>
         </nav>
+        {/* Phase 78 — Final ürün kararı: Mockup Studio Kivasy'nin nihai
+            mockup çalışma yüzeyidir. Apply route artık "Quick pack render
+            orchestrator" olarak konumlanır (mevcut Phase 8 fan-out pipeline
+            + S7/S8 result view'a verir). Operatör mockup/frame authoring
+            için Studio'ya çıkar — primary CTA topbar'da kalıcı entry. */}
+        <a
+          href={`/selection/sets/${setId}/mockup/studio`}
+          className="k-btn k-btn--primary"
+          data-size="sm"
+          data-testid="apply-view-studio-link"
+        >
+          Open in Studio →
+        </a>
       </header>
+
+      {/* Phase 78 — Studio canonical handoff banner. Apply view'a düşen
+          operatöre net ürün dili: tam authoring (slot map, mode switch,
+          frame output, preset rail) Studio'da; Apply Quick pack hızlı
+          render orchestrator olarak yaşar. */}
+      <div
+        className="flex items-start gap-3 border-b border-k-orange/40 bg-k-orange-soft/40 px-6 py-3 text-[12.5px] text-ink"
+        data-testid="apply-view-studio-banner"
+        role="status"
+      >
+        <span
+          className="mt-0.5 inline-flex h-2 w-2 flex-shrink-0 rounded-full bg-k-orange"
+          aria-hidden
+        />
+        <div className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-1.5">
+          <div className="font-medium leading-tight text-ink">
+            Open in Studio for the full authoring experience
+            <span className="ml-1 font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+              Mockup + Frame modes · slot assignment · preset rail · export
+            </span>
+          </div>
+          <span className="ml-auto font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+            This view stays for Quick pack render
+          </span>
+        </div>
+      </div>
 
       {/* Body: scrollable */}
       <div className="flex-1 space-y-6 px-6 py-6">
