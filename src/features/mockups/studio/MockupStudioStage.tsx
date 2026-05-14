@@ -221,7 +221,12 @@ function centerCascade(
  *
  * Sözleşme #8 (Layout count behavior) — single-item cascade plate
  * ORTASINDA. */
-function cascadeLayoutFor(
+/* Phase 99 — Exported for Frame export pipeline (preview ↔ export aynı
+ * kompozisyon kaynak). Shell handleExportFrame bu helper'ı çağırıp
+ * slot positions'ı backend'e gönderir; backend Sharp pipeline aynı
+ * koordinatları output canvas'a scale eder. Sözleşme #11 + #13.C
+ * preview ↔ export divergence sıfır. */
+export function cascadeLayoutFor(
   kind: StudioStageDeviceKind,
   layoutCount: 1 | 2 | 3 = 3,
 ): { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[] {

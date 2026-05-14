@@ -19661,22 +19661,46 @@ surface" rolünün tam ürünleştirilmesi.
   default; ileride productType-specific aspect chip'leri eklenebilir
   — Phase 98+ candidate).
 
-### 11. Mockup vs Frame handoff (gelecek davranış)
+### 11. Mockup vs Frame handoff (Phase 99 fulfilled)
 
-- Phase 97 baseline'da Frame mode export pipeline henüz aktif değil
-  (Phase 83+ candidate). Mockup mode render → S7/S8 result → Frame
-  mode'a yerleştirme handoff'u **future product evrimi**.
-- Frame mode "preview only" — sidebar control'leri (Magic Preset,
-  Solid, Gradient, Glass swatch'ları, **Lens Blur**) plate bg'sini
-  değiştirir. Phase 89 Solid+Gradient + **Phase 98 Glass+Lens Blur
-  fulfilled**; Render button Mockup mode'a ait, Export capsule
-  (Frame mode) Phase 99+ candidate.
-- **Phase 98 ek**: Glass (light/dark/frosted) + Lens Blur (Frame
-  Effects tile) Shell sceneOverride'a wire edildi. Plate üstüne
-  `backdrop-filter` glass overlay + plate bg'ye `filter: blur(8px)`.
-  Mode-AGNOSTIC continuity (sözleşme #2) ile Mockup mode'a taşınır.
-  Portrait / Watermark / BG Effects hâlâ honest disclosure
-  preview-only (Phase 99+ candidate; `data-wired="false"`).
+- **Phase 99 fulfilled — Frame mode export pipeline çekirdeği aktif.**
+  Operator Frame mode'da Glass / Lens Blur / Solid / Gradient / aspect
+  ayarlarıyla bir sahne kurar; toolbar Export · 1× · PNG capsule
+  tıklayınca POST `/api/frame/export` çağrılır → Sharp pipeline
+  aspect-aware canvas + plate bg + cascade real asset compose eder
+  → MinIO'ya PNG yükler → signed download URL döner. Operator inline
+  result banner'dan **Open** / **Download** ile çıktıyı kullanır.
+  Stateless render (schema migration yok). Sözleşme #13.C fulfilled.
+- Preview ↔ export aynı kaynak: Shell state (sceneOverride +
+  frameAspect + slots + layoutCount + deviceKind + activePalette)
+  client request body'sine serialize edilir; backend Sharp pipeline
+  aynı parameter setiyle kompoze eder. **Divergence sıfır** (sözleşme
+  #1 + #11 fulfilled).
+- Frame controls'ün **gerçek output'a yansıması** Phase 99'da
+  netleşti:
+  - aspect ratio → output dims (1080×1080 / 1080×1350 / 1080×1920 /
+    1920×1080 / 1500×2000)
+  - sceneOverride.mode auto/solid/gradient/glass → plate background
+    layer
+  - Glass variant → variant-tinted overlay rect (subtle border +
+    semi-transparent fill)
+  - Lens Blur → Sharp `.blur(6)` cascade üzerine
+  - Real asset → MinIO storageKey buffer fetch + Sharp resize +
+    rotate + composite per slot pozisyonu
+- Mockup mode render dispatch (Render button → S7/S8 result) ile
+  **iki ayrı pipeline** korunur (sözleşme #1 baseline): Mockup pack
+  pipeline mevcut Phase 8 baseline; Frame export Phase 99 ayrı çekirdek.
+- **Portrait / Watermark / BG Effects** hâlâ honest disclosure
+  preview-only (`data-wired="false"`); Phase 100+ candidate
+  (sözleşme #13.D).
+- **Result banner stale indicator**: operator export sonrası
+  scene state değiştirirse banner "Preview changed · re-export?"
+  caption + Re-export button gösterir (sözleşme #12 no silent magic
+  uyumu — operator için "bu PNG güncel mi?" sinyali açık).
+- **Persistence (FrameExport history) Phase 100+ candidate** —
+  şu an stateless render; storageKey signed URL 5 dakika TTL,
+  operator hemen indirir. History/audit (Product/Etsy handoff için)
+  ayrı backend turu (sözleşme #13.F yeni roadmap).
 
 ### 12. No silent magic
 
@@ -19726,18 +19750,17 @@ arrangement on stage)**:
   preview** (canonical multi-slot template'in stage'de görünür
   olması).
 
-**Future direction C — Frame mode export pipeline**:
-- Frame mode "preview only" baseline'dan **gerçek output** seviyesine
-  geçiş (sözleşme #11 ileri evrim)
+**Future direction C — Frame mode export pipeline (Phase 99 fulfilled)**:
+- **STATUS: fulfilled (Phase 99)** — POST `/api/frame/export` +
+  Sharp pipeline + MinIO upload + signed download URL.
 - Operator Frame mode'da listing hero compose eder + Export · 1× ·
-  PNG capsule **gerçek MinIO export** üretir
-- Mockup mode render → S7/S8 result + Frame mode export → Product
-  listing hero handoff sözleşmesi
-- **Hangi ürün aşamasında**: Phase 99+. Mockup render pipeline
-  zaten olgun (Phase 8 + 63 + 70 + 74 + 75); Frame export Sharp
-  composite pipeline'a benzer ama scene/aspect aware. Glass/Blur
-  effects'lerin **gerçek output'a yansıması** burada netleşir
-  (şu an CSS-only preview).
+  PNG capsule gerçek MinIO PNG üretir (1920×1080 / 1080×1080 /
+  1080×1920 / 1080×1350 / 1500×2000).
+- aspect + plate bg + scene mode (auto/solid/gradient/glass) +
+  glass variant + lens blur + real asset cascade hepsi output'a
+  yansır. Preview ↔ export aynı state kaynağı (sözleşme #1 + #11).
+- Persistence (FrameExport history + Product handoff) sözleşme #13.F
+  altında roadmap'te.
 
 **Future direction D — BG Effects (noise / grain / vignette)**:
 - Phase 98'de görünür ama no-op (preview only). Glass / Lens Blur
@@ -19752,12 +19775,32 @@ arrangement on stage)**:
 "Image" / "Upload" tile):
 - Frame BACKGROUND satırında Trans. / Color / Image / Upload tile'ları
   var; Color Phase 89 Solid swatch'larıyla wire'lı. Image + Upload
-  Phase 99+ candidate — operator kendi background image'ini plate
+  Phase 100+ candidate — operator kendi background image'ini plate
   arka planına yerleştirebilir
-- **Hangi ürün aşamasında**: Phase 99+. Asset upload pipeline
+- **Hangi ürün aşamasında**: Phase 100+. Asset upload pipeline
   (Phase 67 mockup template upload + Phase 30 asset-url endpoint)
-  reuse edilebilir. Real export pipeline (C) ile birlikte gerçek
-  değer üretir.
+  reuse edilebilir. Phase 99 export pipeline + bu birlikte gerçek
+  değer üretir (operator kendi background + Frame composition export).
+
+**Future direction F — Frame export → Product / Etsy Draft handoff**
+(Phase 99 sonrası doğal devam):
+- Phase 99 stateless render üretti (signed URL 5 dakika TTL).
+  Persistence (FrameExport history table) Product detail page'den
+  "Listing hero olarak ekle" CTA'sı için gerekli.
+- **Akış (Phase 100+)**:
+  - FrameExport row (id, userId, setId, storageKey, dims, sceneSnapshot)
+    Prisma model — schema migration **bu evrede gerek olur**
+  - POST `/api/frame/export` artık FrameExport row da yazar (audit + retry)
+  - Product detail page → "Add Frame export as listing hero" CTA
+    → FrameExport.storageKey'i Listing.images dizisine ekler
+  - Etsy draft submit pipeline (Phase 9 baseline) bu image'i hero
+    olarak gönderir
+- **Hangi ürün aşamasında**: Phase 100+. Schema migration için ayrı
+  bir backend turu (Madde V Review freeze + canonical zincir bozulmaz).
+- **Şu anki dengeli karar**: Phase 99 stateless render operator için
+  yeterli (Open / Download CTA + signed URL). Persistence olmadan
+  Product handoff manuel — operator PNG'yi indirir + Product detail'a
+  manuel upload yapar. Phase 100+ bu manuel adımı kaldırır.
 
 ---
 
@@ -20225,6 +20268,184 @@ social card / storefront banner export'unun MinIO'ya yazılması
 Phase 99'un işi. Sharp pipeline (Phase 8 + 63 + 70) parity. Sonra
 sözleşme #13.B Grid-like presentation (template-level 9-up
 Bundle Preview Studio'da görünür) doğal devam.
+
+---
+
+## Phase 99 — Frame mode export pipeline fulfilled
+
+Phase 98 ile sözleşme #11 Glass + Lens Blur Frame controls fulfilled
+olmuştu (preview-only CSS); ama bunların **gerçek output'a yansıması**
+yoktu. Operator Frame mode'da yaptığı sahneyi indirebileceği bir
+PNG'ye dönüştüremiyordu. Phase 99 bu eşiği geçer: **POST /api/frame/
+export → Sharp pipeline → MinIO PNG → signed download URL**, stateless
+render çekirdeği. Sözleşme #11 + #13.C fulfilled.
+
+### Bu turdaki en büyük açık (sözleşmeye göre)
+
+Sözleşme #11 + #13.C:
+
+> **#11**: "Frame mode 'preview only' — sidebar control'leri plate
+> bg'sini değiştirir... Render button Mockup mode'a ait, Export
+> capsule (Frame mode) Phase 99+ candidate."
+> **#13.C**: "Frame mode export pipeline — preview only baseline'dan
+> gerçek output seviyesine geçiş. Glass/Blur effects'lerin gerçek
+> output'a yansıması burada netleşir (şu an CSS-only preview)."
+
+Frame mode preview canlıydı (aspect-aware plate + Glass + Lens Blur +
+scene swatches + real asset hydrate), ama **export hattı yoktu**.
+Operator için "sahneyi kurdum ama indiremiyorum" hayal kırıklığı.
+
+### Net ürün kararı
+
+**Output**: Aspect-aware PNG via Sharp composite (stateless).
+
+**Pipeline (schema-zero)**:
+1. POST `/api/frame/export` — body Shell state serialize:
+   `{ setId, frameAspect, scene: {mode, glassVariant, lensBlur, color,
+   colorTo, palette}, slots: [{slotIndex, assigned, itemId, x, y, w, h,
+   r, z}] }`
+2. Service ownership: SelectionSet + Asset cross-user defense
+3. Asset buffer fetch (assigned slot'lar için MinIO download)
+4. composeFrameOutput (Sharp pipeline):
+   - aspect → output dims
+   - plate bg layer (auto palette / solid / gradient / glass undertone)
+   - cascade slot composites (resize + rotate + alpha-aware)
+   - Lens Blur → Sharp `.blur(6)` cascade üzerine
+   - Glass overlay → variant-tinted rect (light/dark/frosted)
+   - PNG encode
+5. MinIO upload `u/{userId}/frame-exports/{exportId}.png`
+6. Signed URL (5 dakika TTL)
+7. Response: `{ downloadUrl, storageKey, width, height, sizeBytes,
+   exportId, durationMs }`
+
+**Preview ↔ Export aynı kaynak**: Shell sceneOverride + frameAspect +
+layoutCount + slots + slotAssignments **client request body'sine
+serialize**. Backend Sharp pipeline aynı parameter setiyle kompoze.
+**Divergence sıfır** (sözleşme #1 + #11).
+
+**Schema-zero**: Yeni DB row/migration yok. FrameExport history /
+retry / Product handoff Phase 100+ (sözleşme #13.F).
+
+### Implementation (3 yeni dosya + 4 mevcut dosya genişletme)
+
+**Yeni dosyalar**:
+1. `src/providers/mockup/local-sharp/frame-compositor.ts` — Pure Sharp
+   pipeline (parameter alır, Buffer döner). File-level eslint-disable
+   (UI design-tokens.ts backend'de yok; frame-scene.ts pattern parity).
+2. `src/server/services/frame/frame-export.service.ts` — Ownership
+   verify + asset fetch + compositor + upload + signed URL
+   orchestration.
+3. `src/app/api/frame/export/route.ts` — POST endpoint, Zod body
+   parse, `requireUser` auth gate, `withErrorHandling`.
+
+**Mevcut dosya genişletmeleri**:
+- `MockupStudioToolbar.tsx`: Export capsule artık Frame mode'da aktif
+  (`onExportFrame` + `exportDisabled` + `isExporting` + `exportError`
+  props); Mockup mode'da hâlâ disabled (mockup pack pipeline Render
+  button kullanır).
+- `MockupStudioShell.tsx`: 3 yeni state (`isExportingFrame`,
+  `exportError`, `frameExportResult`); `handleExportFrame` callback
+  (cascade layout + scene serialize + POST dispatch + result panel);
+  `frameExportDisabled` gate (set loading veya assigned slot yok).
+- `MockupStudioStage.tsx`: `cascadeLayoutFor` **export edildi** (Shell
+  preview ↔ export aynı slot positions kaynağı).
+- `FrameExportResultBanner.tsx` (yeni): Inline floating banner —
+  thumbnail (real PNG signed URL) + dims + size + duration +
+  Open / Download / Re-export / Close + stale indicator (operator
+  scene değiştirirse "Preview changed · re-export?" caption).
+
+### Browser end-to-end canlı kanıt (Chrome live, viewport 1600×1100)
+
+| Adım | Kanıt |
+|---|---|
+| Studio mount (real asset hydrate) | 4 item set + 3 stage slot real MinIO `<image>` href |
+| Frame mode + Glass Light click | sceneMode "glass", glassVariant "light", plate-glass overlay rendered, `backdrop-filter: blur(10px) saturate(1.05)` |
+| Lens Blur click | lensBlur true, plate `filter: blur(8px)` |
+| Toolbar Export capsule | enabled, title "Export Frame · PNG", state "ready" |
+| Export click → POST /api/frame/export | Real MinIO PNG üretildi: 1920×1080, 735.2 KB, 242 ms |
+| Result banner | "FRAME EXPORTED · READY · 1920×1080 · 735.2 KB · 242 ms" + real PNG thumbnail (renkli MinIO image visible) + Open + Download buttons |
+| Download href + filename | `http://localhost:9000/etsyhub/u/.../frame-exports/nmc1hueo`, `kivasy-frame-nmc1hueo-1920x1080.png` |
+| PNG fetch verify | status 200, content-type "image/png", **752877 bytes** (~735.2 KB) — gerçek MinIO PNG indirilebilir |
+| Glass Dark switch (stale test) | Banner `data-stale="true"`, statusText **"Preview changed · re-export?"**, Re-export button visible |
+| Re-export click | Glass Dark state ile 684.8 KB PNG (227 ms), banner artık fresh ("Frame exported · ready") |
+| Screenshot 1 (Glass Light export ready) | Stage'de blur'lı plate + 3 real MinIO image + bottom-center banner gerçek PNG thumb + Download CTA |
+| Screenshot 2 (Glass Dark stale) | k-orange "PREVIEW CHANGED · RE-EXPORT?" + RE-EXPORT button banner'da görünür |
+
+### Değişmeyenler (Phase 99)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Stateless render. FrameExport persistence
+  Phase 100+ (sözleşme #13.F).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Mevcut pattern reuse: storage provider
+  (Phase 8), Sharp pipeline (Phase 8 / 63 / 70), withErrorHandling
+  (mevcut), requireUser (mevcut), Zod schema (mevcut).
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Slot assignment + render dispatch (Phase 80) zinciri intakt.**
+- **Mockup mode render dispatch (POST /api/mockup/jobs) dokunulmadı**
+  — Frame export ayrı route, ayrı pipeline (sözleşme #1 baseline).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Apply pipeline + Phase 76 SlotAssignmentPanel + Phase 74-75
+  multi-slot backend + admin authoring** hepsi intakt.
+- **Phase 98 Glass + Lens Blur preview baseline'ı intakt** —
+  Phase 99 export pipeline bu preview'ın **gerçek output'a yansıması**.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 100+ candidate)
+
+- **FrameExport persistence** (sözleşme #13.F): Schema migration
+  ayrı backend turu. Frame export history, Product detail "Add as
+  listing hero" CTA, retry/audit zinciri.
+- **Portrait / Watermark / BG Effects wire** (sözleşme #13.D):
+  Phase 98'den devir; `sceneOverride.bgEffect` field genişletmesi.
+- **Operator-uploaded BG image** (sözleşme #13.E): Phase 100+,
+  asset upload pipeline reuse.
+- **Layout builder** (sözleşme #13.A): drag/resize/tilt manual
+  arrangement; Phase 100+.
+- **Grid-like presentation** (sözleşme #13.B): template-level
+  9-up Bundle Preview Studio'da görünür; Phase 100+.
+- **JPG output format** + **scale 2×/3× export**: Phase 100+
+  küçük polish.
+- **Frame export Re-export from history**: Phase 100+
+  (FrameExport persistence ile birlikte).
+
+### Bug ledger (Phase 67-99 cumulative)
+
+**Phase 98 baseline'a Phase 99 eklendi**:
+- Phase 99: Frame mode export pipeline çekirdeği (sözleşme #11 +
+  #13.C fulfilled). POST /api/frame/export + Sharp compositor +
+  MinIO upload + signed URL. Preview ↔ export aynı kaynak (Shell
+  state). Real asset MinIO buffer cascade. Glass + Lens Blur gerçek
+  output'a yansır. Inline result banner + stale indicator + re-export.
+
+**Hâlâ açık (Phase 100+ candidate)**:
+- FrameExport persistence + Product handoff (sözleşme #13.F)
+- Portrait / Watermark / BG Effects wire (sözleşme #13.D)
+- Operator-uploaded BG image (sözleşme #13.E)
+- Layout builder (sözleşme #13.A)
+- Grid-like presentation (sözleşme #13.B)
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 99 ile Frame mode operator için **gerçek çalışma yüzeyi**:
+- Preview canlı (Phase 98)
+- Real asset hydrate (Phase 98)
+- Glass + Lens Blur preview (Phase 98)
+- **Gerçek PNG export** (Phase 99)
+- Stale indicator + re-export (Phase 99)
+- Mode-AGNOSTIC continuity (sözleşme #2)
+
+Sıradaki en yüksek-impact adım **Phase 100 — FrameExport persistence
++ Product handoff** (sözleşme #13.F). Şu an signed URL 5 dakika TTL,
+operator hemen indirir; Product detail'a manuel upload yapar. Phase
+100 FrameExport row + Product "Add as listing hero" CTA bu manuel
+adımı otomatikleştirir. Schema migration ayrı backend turu (Madde V
+Review freeze + canonical zincir bozulmaz).
+
+Bu turdan sonra ya backend turu (Phase 100 persistence) ya Studio
+authoring polish (Phase 100+ layout builder / grid presentation /
+BG effects wire) — ikisi de sözleşme #13'te roadmap'li.
 
 ---
 

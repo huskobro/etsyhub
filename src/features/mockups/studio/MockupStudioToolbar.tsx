@@ -33,6 +33,17 @@ export interface MockupStudioToolbarProps {
   renderDisabled?: boolean;
   /** Phase 79 — inline error message (last render dispatch failure). */
   renderError?: string | null;
+  /** Phase 99 — Frame mode export dispatch callback (POST
+   *  /api/frame/export). Yalnız Frame mode'da aktif; Mockup mode
+   *  export capsule disabled (Render button mockup pack pipeline'ı
+   *  kullanır). */
+  onExportFrame?: () => void;
+  /** Phase 99 — Frame export disabled (no assigned slot / loading). */
+  exportDisabled?: boolean;
+  /** Phase 99 — Frame export in progress. */
+  isExporting?: boolean;
+  /** Phase 99 — Frame export error (last dispatch failure). */
+  exportError?: string | null;
 }
 
 export function MockupStudioToolbar({
@@ -45,6 +56,10 @@ export function MockupStudioToolbar({
   onRender,
   renderDisabled,
   renderError,
+  onExportFrame,
+  exportDisabled,
+  isExporting,
+  exportError,
 }: MockupStudioToolbarProps) {
   const isEdit = appState === "working" || appState === "empty";
   const isRendering = appState === "render";
@@ -172,20 +187,62 @@ export function MockupStudioToolbar({
           {renderError}
         </span>
       ) : null}
+      {/* Phase 99 — Export capsule.
+       *
+       * Mockup mode: disabled (mockup pack pipeline Render button
+       *   üzerinden; mockup result S7/S8 result view download'u
+       *   sunar). Frame mode'a özel export çekirdeği Phase 99'da
+       *   açıldı.
+       * Frame mode: aktif (Sözleşme #11 + #13.C fulfilled).
+       *   onExportFrame Shell tarafından POST /api/frame/export'a
+       *   dispatch eder; result panel sidebar/stage altında signed
+       *   download URL gösterir. */}
       <button
         type="button"
         className="k-studio__export-cap"
         data-testid="studio-toolbar-export"
-        disabled={mode === "frame"}
+        disabled={
+          mode === "frame"
+            ? (exportDisabled ?? false) || (isExporting ?? false)
+            : true
+        }
+        onClick={() => {
+          if (mode !== "frame") return;
+          if (exportDisabled || isExporting) return;
+          onExportFrame?.();
+        }}
         title={
           mode === "frame"
-            ? "Frame export pipeline — coming Phase 82+ (presentation surface real export)"
-            : "Export · 1× · PNG"
+            ? exportError
+              ? `Last export failed: ${exportError}`
+              : exportDisabled
+                ? "No assigned slots yet — pick at least one kept item to export"
+                : isExporting
+                  ? "Exporting…"
+                  : "Export Frame · PNG"
+            : "Frame export lives in Frame mode (Render button on Mockup mode runs the mockup pack)"
+        }
+        data-mode={mode}
+        data-state={
+          isExporting ? "exporting" : exportError ? "error" : "ready"
         }
       >
         <StudioIcon name="upload" size={11} />
-        Export · 1× · PNG
+        {mode === "frame"
+          ? isExporting
+            ? "Exporting…"
+            : "Export · 1× · PNG"
+          : "Export · 1× · PNG"}
       </button>
+      {mode === "frame" && exportError ? (
+        <span
+          className="k-studio__tb-error"
+          data-testid="studio-toolbar-export-error"
+          role="alert"
+        >
+          {exportError}
+        </span>
+      ) : null}
     </div>
   );
 }

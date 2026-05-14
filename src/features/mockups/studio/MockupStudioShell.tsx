@@ -33,7 +33,8 @@ import { useSelectionSet } from "@/features/selection/queries";
 import { useMockupTemplates } from "@/features/mockups/hooks/useMockupTemplates";
 import { MockupStudioPresetRail } from "./MockupStudioPresetRail";
 import { MockupStudioSidebar } from "./MockupStudioSidebar";
-import { MockupStudioStage } from "./MockupStudioStage";
+import { MockupStudioStage, cascadeLayoutFor } from "./MockupStudioStage";
+import { FrameExportResultBanner } from "./FrameExportResultBanner";
 import { MockupStudioToolbar } from "./MockupStudioToolbar";
 import {
   FRAME_ASPECT_CONFIG,
@@ -72,6 +73,38 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
   const [appState, setAppState] = useState<StudioAppState>("working");
   const [selectedSlot, setSelectedSlot] = useState(0);
   const [renderError, setRenderError] = useState<string | null>(null);
+
+  /* Phase 99 — Frame export state (sözleşme #11 + #13.C fulfilled).
+   *
+   * Operator Frame mode'da Export · 1× · PNG capsule tıklayınca POST
+   * /api/frame/export'a Shell state (sceneOverride + frameAspect +
+   * slots + layoutCount + deviceKind) ile dispatch eder. Preview ↔
+   * export aynı kaynak — operator preview'da gördüğü kompozisyonu
+   * birebir export'ta görür (Sözleşme #1 + #11).
+   *
+   * Result panel inline: signed download URL + sizeBytes + dims +
+   * "Open" + "Download" CTA'ları. Persistence (FrameExport history)
+   * Phase 100+ candidate; bu turun çekirdeği stateless render. */
+  const [isExportingFrame, setIsExportingFrame] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [frameExportResult, setFrameExportResult] = useState<{
+    downloadUrl: string;
+    storageKey: string;
+    width: number;
+    height: number;
+    sizeBytes: number;
+    exportId: string;
+    durationMs: number;
+    /** Hangi sceneMode + glassVariant + lensBlur ile üretildi —
+     *  operator için "şu an gördüğüm preview bu PNG mi?" sinyali
+     *  (state değişirse banner stale işareti gösterir). */
+    sceneSnapshot: {
+      mode: string;
+      glassVariant?: string;
+      lensBlur?: boolean;
+      frameAspect: string;
+    };
+  } | null>(null);
   /* Phase 83 — Frame mode aspect ratio (presentation surface).
    * Default 16:9 (Phase 82 baseline canvas dims paritesi). Operator
    * chip click → aspect değişir → Stage canvas dims + caption live
@@ -432,6 +465,130 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     return firstAssigned?.design?.colors;
   })();
 
+  /* Phase 99 — Frame export dispatcher.
+   *
+   * Operator Frame mode'da Export capsule tıklayınca:
+   *   1. cascadeLayoutFor ile preview ile aynı slot pozisyonlarını
+   *      hesapla (deviceKind + layoutCount).
+   *   2. Her slot için itemId resolve et (slotAssignments override
+   *      varsa onu kullan, yoksa fanout fallback = primary item).
+   *   3. POST /api/frame/export — Shell state + slot positions body.
+   *   4. Result panel inline gösterir (signed download URL + dims).
+   *
+   * Preview ↔ export aynı kaynak (sözleşme #1 + #11):
+   *   - frameAspect (Shell SHARED state)
+   *   - sceneOverride (Shell state)
+   *   - layoutCount (Shell state)
+   *   - deviceKind (productType-aware)
+   *   - slotAssignments (Phase 80 operator override)
+   *   - activePalette (selection set hydrate)
+   *
+   * Backend Sharp pipeline output dims (aspect-aware) + plate bg +
+   * real asset MinIO buffer'larını compose eder; signed download
+   * URL ile operator-facing PNG döner. */
+  const handleExportFrame = useCallback(async () => {
+    if (mode !== "frame") return;
+    if (isExportingFrame) return;
+    setExportError(null);
+    setIsExportingFrame(true);
+    try {
+      const cascade = cascadeLayoutFor(deviceKind, layoutCount);
+      const firstAssignedItemId = items[0]
+        ? (items[0] as { id: string }).id
+        : null;
+      const slotsPayload = cascade.map((c) => {
+        const slotIdx = c.si;
+        const override = slotAssignments[slotIdx] ?? null;
+        const slot = slots[slotIdx];
+        const itemId = override ?? firstAssignedItemId ?? null;
+        const assigned = !!slot?.assigned && !!itemId;
+        return {
+          slotIndex: slotIdx,
+          assigned,
+          itemId,
+          x: c.x,
+          y: c.y,
+          w: c.w,
+          h: c.h,
+          r: c.r,
+          z: c.z,
+        };
+      });
+
+      const sceneBody = {
+        mode: sceneOverride.mode,
+        color: sceneOverride.color,
+        colorTo: sceneOverride.colorTo,
+        glassVariant: sceneOverride.glassVariant,
+        lensBlur: sceneOverride.lensBlur,
+        palette: activePalette ?? null,
+      };
+
+      const res = await fetch("/api/frame/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          setId,
+          frameAspect,
+          scene: sceneBody,
+          slots: slotsPayload,
+          stageInnerW: 572,
+          stageInnerH: 504,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const message =
+          (body as { error?: string; message?: string }).error ??
+          (body as { error?: string; message?: string }).message ??
+          `HTTP ${res.status}`;
+        throw new Error(message);
+      }
+      const result = (await res.json()) as {
+        downloadUrl: string;
+        storageKey: string;
+        width: number;
+        height: number;
+        sizeBytes: number;
+        exportId: string;
+        durationMs: number;
+      };
+      setFrameExportResult({
+        ...result,
+        sceneSnapshot: {
+          mode: sceneOverride.mode,
+          glassVariant: sceneOverride.glassVariant,
+          lensBlur: sceneOverride.lensBlur,
+          frameAspect,
+        },
+      });
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setIsExportingFrame(false);
+    }
+  }, [
+    mode,
+    isExportingFrame,
+    deviceKind,
+    layoutCount,
+    slots,
+    slotAssignments,
+    items,
+    setId,
+    frameAspect,
+    sceneOverride,
+    activePalette,
+  ]);
+
+  /* Phase 99 — Export disabled gate. Frame mode'da bile assigned
+   * slot yoksa export render edilmesinin anlamı yok. Set loading
+   * durumunda da disabled. */
+  const frameExportDisabled =
+    setLoading ||
+    !slots.some((s) => s.assigned) ||
+    items.length === 0;
+
   return (
     <div
       className="k-studio"
@@ -465,6 +622,10 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           !activeTemplateId || setLoading || templatesLoading || mode === "frame"
         }
         renderError={renderError}
+        onExportFrame={handleExportFrame}
+        exportDisabled={frameExportDisabled}
+        isExporting={isExportingFrame}
+        exportError={exportError}
       />
       <div className="k-studio__body">
         <MockupStudioSidebar
@@ -507,14 +668,36 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           onChangeLayoutCount={setLayoutCount}
         />
       </div>
-      {/* Phase 94 — Dev/demo state switcher kaldırıldı (bug #19).
-       *  Phase 77 baseline'da operatör görsel state'leri test etmek
-       *  için sağ alt overlay vardı (MODE + STATE chip'leri); Phase 79
-       *  gerçek render dispatch bağlandığında dev-only oldu. Shots.so'da
-       *  bu yok ve operator-facing surface'i kirletiyordu — kaldırıldı.
-       *  Mode switch artık sadece sidebar tab'ları (k-studio__sb-tabs)
-       *  üzerinden yapılır; state switch gerçek render lifecycle'a
-       *  bağlı (toolbar Render → POST /api/mockup/jobs → S7/S8). */}
+      {/* Phase 94 — Dev/demo state switcher kaldırıldı (bug #19). */}
+      {/* Phase 99 — Frame export result panel (inline, bottom-center).
+       *
+       * Sözleşme #11 + #13.C fulfilled: operator Frame mode'da Export
+       * tıkladıktan sonra gerçek MinIO PNG signed download URL'i bu
+       * banner'da görür. Mode-aware: yalnız Frame mode'da görünür (Mockup
+       * mode'da Render dispatch S7/S8 result view'a iner, ayrı surface).
+       *
+       * Result panel:
+       *   - Dims + size + duration (operator visibility)
+       *   - Preview thumbnail (signed URL ile real PNG)
+       *   - "Open" (new tab) + "Download" (download attribute) + "Close"
+       *   - Scene snapshot drift indicator: snapshot ile şu anki state
+       *     farklıysa "Preview changed — re-export?" caption (operator
+       *     için "bu PNG güncel mi?" sinyali; sözleşme #12 silent magic
+       *     yasağı uyumu). */}
+      {mode === "frame" && frameExportResult ? (
+        <FrameExportResultBanner
+          result={frameExportResult}
+          currentSceneSnapshot={{
+            mode: sceneOverride.mode,
+            glassVariant: sceneOverride.glassVariant,
+            lensBlur: sceneOverride.lensBlur,
+            frameAspect,
+          }}
+          onClose={() => setFrameExportResult(null)}
+          onReexport={handleExportFrame}
+          isExporting={isExportingFrame}
+        />
+      ) : null}
     </div>
   );
 }
