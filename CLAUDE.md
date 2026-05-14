@@ -13832,6 +13832,212 @@ verilebilir hale gelir**.
 
 ---
 
+## Phase 70 — Authoring studio: recipe editor + edit nav + base asset karar + status badge
+
+Phase 69 ile authoring güvenle kullanılabilirdi (validity, sample
+preview, edit page). Phase 70 son ürün halkalarını kapatır — operatör
+artık **gerçek render davranışını** ayarlayabiliyor, edit page'e
+**doğal** giriyor, base asset lifecycle hakkında **net cevap** alıyor.
+
+### Phase 69 sonrası kalan studio gaps
+
+| Boşluk | Operatör etkisi |
+|---|---|
+| **Edit page sadece direct URL ile erişilebilir** | "Şimdi nasıl düzenlerim?" sorusu cevapsız. Templates listing/Apply drawer'da edit linki yoktu. |
+| **Recipe ayarları locked** | binding `{ blendMode: "normal" }` hardcoded. Operatör shadow ekleyemez, blend değiştiremez. Mockup'ı "stüdyom" değil "tek ayarlı renderer" gibi hissediyordu. |
+| **Base asset replace path muğlak** | Operatör template yarattıktan sonra base image değiştirmek isterse: yeni template mi, replace mi? UI'da hiç söz yoktu. Sessiz boşluk. |
+| **Status badge bütünlük zayıf** | Edit page header'ı yalnız caption text; lifecycle (Draft/Active/Archived) görsel ağırlığı yoktu. |
+
+### Slice 1 — Edit navigation entry
+
+`S1BrowseDrawer` template card'larına ownership-aware Edit link eklendi:
+
+- Sadece `template.ownership === "own"` kart için
+- Top-left `<a>` overlay (nested button semantics önlemi için card
+  wrapper `<div>` yapıldı)
+- Click → `/templates/mockups/{id}/edit` + `onOpenChange(false)`
+  (drawer kapanır, edit page'e iner)
+- Visible default + hover orange-ink emphasis (Phase 51 status badge
+  recipe parity)
+- `data-testid="template-card-edit-link"` + `data-ownership` attribute
+
+Operatör Apply drawer "My templates" tab'ında kendi template'inin
+sol-üst köşesinde "Edit" chip görür. Direct URL bookmark'a bağımlı
+değil artık.
+
+Bundle string verification: `template-card-edit-link` testid'i build
+chunk'ında 1 occurrence.
+
+### Slice 2 — Recipe editor first slice
+
+`src/features/mockups/components/RecipeEditor.tsx` — yeni component
+(~250 LOC):
+
+- **blendMode k-segment toggle**: normal / multiply / screen
+  - Mode-aware tooltip (operator hangi blend ne işe yarar bilir):
+    "Design overlays as-is" / "Printed-on-fabric look (darker pixels
+    show through)" / "Light overlay (lighter pixels boost the base)"
+- **Shadow on/off toggle** (k-btn--ghost + Sun icon)
+- **Shadow intensity controls** (shadow enabled olunca reveal):
+  - Opacity (0-1, step 0.05)
+  - Blur (px, min 0, step 1)
+  - Offset X (px, step 1)
+  - Offset Y (px, step 1)
+- **Default shadow preset** (operator hızlı başlangıç): `{ offsetX:4,
+  offsetY:4, blur:8, opacity:0.4 }` — subtle drop shadow
+- Schema parity: `MockupRecipeSchema` (Phase 8) ile birebir
+  (`blendMode` enum + opsiyonel `ShadowSpec`)
+
+### Slice 3 — Wire recipe to binding config
+
+**Backend zaten hazır** — `recipe-applicator.ts` (Phase 8) blendMode
++ shadow'u Sharp composite + buildShadowBuffer ile render'a uyguluyor.
+Phase 70'de UI **sadece exposure**:
+
+- `MockupTemplateCreateForm`: yeni `recipe` state, asset upload sonrası
+  RecipeEditor mount, submit'te binding config `recipe` field operator
+  değerlerini taşır (eski hardcoded `{blendMode:"normal"}` kalktı)
+- `MockupTemplateEditForm`: aynı pattern, mevcut binding'in recipe'inden
+  init, "Recipe (coming soon)" placeholder kaldırıldı, RecipeEditor
+  mount, save'de PATCH bindingConfig recipe'i günceller
+- Yeni big abstraction yok — backend dokunulmadı, schema değişmedi,
+  yalnızca UI consumer wiring
+
+### Slice 4 — Base asset lifecycle karar
+
+**Karar: REPLACE YAPILMAYACAK; new template path operator'a net.**
+
+Gerekçe:
+- Replace ederse safeArea normalize gerek (yeni boyutlar);
+  authoring confidence kaybı
+- Mevcut render history bozulmaz (templateSnapshot Phase 8 self-contained)
+- "New template + archive old" path mevcut akışın doğal devamı
+
+Edit page'de explicit UI hint:
+```
+Base asset
+Asset is locked after creation. To use a different base image,
+create a new template — that keeps the existing template + its
+render history intact, and avoids breaking apply jobs that already
+reference this template.
+[+ New template with different base]
+```
+
+Operator artık sessiz boşlukla karşılaşmaz; karar dürüst söylenir.
+
+### Slice 5 — Authoring studio polish
+
+Edit page header'a **status badge** chip eklendi (Phase 51 status
+badge family parity):
+- ACTIVE → success-soft + success text
+- DRAFT → k-orange-soft + k-orange-ink
+- ARCHIVED → k-bg-2/60 + ink-3
+
+Subtitle güncellendi: "Safe-area + name editable" → "Safe-area + name
++ recipe editable · base asset locked" (recipe artık reflected).
+
+Operator template lifecycle'ı header'da görsel olarak okur — caption
+arasında saklı değil.
+
+### Browser end-to-end full proof
+
+Live dev server (fresh `.next/` rebuild, viewport 1440×900, real DB):
+
+| Test | Sonuç |
+|---|---|
+| Edit page header | h1 "Edit mockup template" + status badge "ACTIVE" success-soft chip + subtitle "SAFE-AREA + NAME + RECIPE EDITABLE · BASE ASSET LOCKED" |
+| Recipe editor mount | blendMode normal active default + shadow disabled + 3 chip toggle + Sun icon + Enable button |
+| Click multiply | data-active=true on multiply, data-active=false on normal |
+| Toggle shadow on | shadowEnabled=true + 4 input controls visible (opacity 0.4, blur 8, offset 4/4 default preset) |
+| Tweak opacity 0.65 + blur 12 | inputs reflect values, recipe state updated |
+| Save → /templates redirect | mutation success |
+| DB verify recipe persist | `recipe: { blendMode: "multiply", shadow: { blur:12, offsetX:4, offsetY:4, opacity:0.65 } }` (Phase 69 baseline'da {blendMode:"normal"} idi) |
+| Re-open edit page | blendActive "multiply", shadowEnabled true, opacity 0.65, blur 12 — round-trip persist canlı |
+| Base asset hint mount | "Asset is locked after creation..." + "+ New template with different base" link → /templates/mockups/new |
+| Bundle verify edit link | template-card-edit-link 1 occurrence in S1BrowseDrawer chunk |
+| Visual screenshot | edit page + status badge chip + name input + Safe-area card + Rect/Perspective toggle + perspective quad with TL/TR/BR/BL labels + sample preview striped pattern available |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **267/267 PASS** (Phase 69 baseline; Phase 70 yeni component'ler
+  type-only — fixture genişletmesi gerekmedi)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: edit nav (bundle string) + recipe state changes
+  + DB-verified persist + round-trip load + base asset hint + status
+  badge — hepsi canlı
+
+### Değişmeyenler (Phase 70)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** MockupRecipeSchema (Phase 8) zaten blendMode
+  enum + opsiyonel shadow taşıyor. Phase 70 yalnız UI exposure +
+  navigation polish.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** RecipeEditor küçük standalone component
+  (~250 LOC); MockupTemplateCreateForm + EditForm aynı RecipeEditor
+  consume eder; backend recipe-applicator (Phase 8) hiç değişmedi.
+- **Phase 67 testid'ler intakt** (regression safe).
+- **Phase 68 mode toggle + 4-corner authoring intakt.**
+- **Phase 69 validity/sample/reset/edit page intakt.**
+- **Apply drawer + Mockup studio + Render pipeline + placePerspective
+  backend dokunulmadı.**
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → Mockup → Product → Etsy Draft).
+- **Kivasy DS dışına çıkılmadı.** k-segment (Phase 59), k-btn--ghost
+  (Phase 53/54), success-soft + k-orange-soft + k-bg-2/60 status
+  badges (Phase 51 family), font-mono tracking-meta, line/line-soft.
+- **Cross-user isolation hard-enforced** (Phase 67 4-katmanlı + Phase
+  69 PATCH ownership invariant + Phase 70 yalnız UI değişikliği).
+
+### Bilinçli scope dışı (Phase 71+ candidate)
+
+- **Recipe live preview** (sample design overlay'a recipe efektini
+  uygulamak): Editor'de blendMode/shadow seçildiğinde sample preview'in
+  gerçek render davranışını taklit etmesi. Şu an sample yalnız geometric
+  overlay; recipe etkisi save sonrası real render'da görünür. Phase 71
+  candidate.
+- **Multi-shadow stack** + **color shadow** (sadece siyah var).
+- **Inner shadow / glow / cornerRadius**: V2 schema reserve.
+- **Base asset replace** (operator change asset isterse): Phase 70'te
+  "yeni template oluştur" path'i kabul edildi; replace flow Phase 71+
+  ürün kararı.
+- **Soft-restore (ARCHIVED → ACTIVE)**: PATCH backend hazır; UI
+  reverse path açık değil. Phase 70'te direct URL ile geri dönen
+  operatör status değiştirebilir.
+- **Templates listing'e edit link** (Phase 70'te sadece S1BrowseDrawer
+  user template card'ında). Templates page Mockup tab'ındaki MockupTile
+  yine "Activate" CTA gösterir; edit link Phase 71+ candidate (admin
+  scope ayrı, user scope filter gerekir).
+- **Inline render preview (Sharp pipeline tetikleme)**: Phase 8 mockup
+  job pipeline reuse mümkün; lightweight authoring preview. Phase 71+.
+
+### Bundan sonra templated.io clone tarafında kalan tek doğru iş
+
+Phase 70 ile **template authoring studio'sun ana halkaları kapandı**:
+- Edit page direct URL **+ Apply drawer entry** (discoverability tam)
+- **Recipe editor first slice** (blendMode + shadow gerçekten
+  ediable + render path otomatik kullanır)
+- **Base asset lifecycle dürüst karar** + UI hint
+- **Status badge** lifecycle visibility
+
+Templated.io clone "**dynamic-mockups deprecation kararına gerçekten
+hazır**" durumda:
+- Self-hosted Sharp pipeline (Phase 63 placePerspective + Phase 8
+  rect + Phase 70 recipe)
+- Operator kendi asset upload + visual safe-area + recipe + lifecycle
+  yönetebilir
+- Cross-user isolation hard-enforced
+- Render history korunur
+
+Sıradaki gerçek iş **Phase 71 recipe live preview** (sample overlay'a
+gerçek shadow/blend efekti uygulamak — authoring confidence en üst
+seviyeye) + **inline render preview** (lightweight Sharp tetikleme)
++ **soft-restore UI** + **templates listing edit link**. Bu dört
+adımdan sonra ürün modeli tamamen olgun olur.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

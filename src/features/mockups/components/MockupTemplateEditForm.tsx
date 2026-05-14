@@ -40,6 +40,7 @@ import {
   perspectiveToRect,
 } from "./SafeAreaEditor";
 import { validateSafeArea } from "./safe-area-validity";
+import { RecipeEditor, type Recipe } from "./RecipeEditor";
 
 type LocalSharpConfig = {
   baseAssetKey: string;
@@ -55,7 +56,15 @@ type LocalSharpConfig = {
           [number, number],
         ];
       };
-  recipe: { blendMode: string };
+  recipe: {
+    blendMode: "normal" | "multiply" | "screen";
+    shadow?: {
+      offsetX: number;
+      offsetY: number;
+      blur: number;
+      opacity: number;
+    };
+  };
   coverPriority: number;
 };
 
@@ -113,6 +122,11 @@ export function MockupTemplateEditForm({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  // Phase 70 — Recipe state init from existing binding config
+  const [recipe, setRecipe] = useState<Recipe>(() => ({
+    blendMode: cfg.recipe.blendMode,
+    ...(cfg.recipe.shadow ? { shadow: cfg.recipe.shadow } : {}),
+  }));
 
   const validity = validateSafeArea(safeArea);
 
@@ -192,7 +206,10 @@ export function MockupTemplateEditForm({
                 type: "perspective",
                 corners: safeArea.perspective.corners,
               },
-        recipe: cfg.recipe,
+        // Phase 70 — Recipe is now operator-editable (was passed through unchanged).
+        recipe: recipe.shadow
+          ? { blendMode: recipe.blendMode, shadow: recipe.shadow }
+          : { blendMode: recipe.blendMode },
         coverPriority: cfg.coverPriority,
       };
 
@@ -263,14 +280,31 @@ export function MockupTemplateEditForm({
           <ArrowLeft className="h-4 w-4" aria-hidden />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-[16px] font-semibold text-ink">
-            Edit mockup template
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-[16px] font-semibold text-ink">
+              Edit mockup template
+            </h1>
+            {/* Phase 70 — Status badge (Phase 51 status badge family parity).
+                Operator sees lifecycle at a glance, not buried in subtitle. */}
+            <span
+              data-testid="mockup-template-edit-status-badge"
+              data-status={initialStatus}
+              className={
+                initialStatus === "ACTIVE"
+                  ? "inline-flex items-center rounded-md border border-success/30 bg-success-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-meta text-success"
+                  : initialStatus === "ARCHIVED"
+                    ? "inline-flex items-center rounded-md border border-line-soft bg-k-bg-2/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-meta text-ink-3"
+                    : "inline-flex items-center rounded-md border border-k-orange/40 bg-k-orange-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-meta text-k-orange-ink"
+              }
+            >
+              {initialStatus}
+            </span>
+          </div>
           <p
             className="mt-0.5 font-mono text-[10.5px] uppercase tracking-meta text-ink-3"
             data-testid="mockup-template-edit-status"
           >
-            {initialStatus} · safe-area + name editable · base asset locked
+            Safe-area + name + recipe editable · base asset locked
           </p>
         </div>
       </header>
@@ -395,20 +429,36 @@ export function MockupTemplateEditForm({
             ) : null}
           </div>
 
-          {/* Phase 70+ recipe editor will live here.
-              Placeholder hint so operator knows where future blendMode /
-              shadow controls will appear. */}
+          {/* Phase 70 — Recipe editor (blendMode + optional shadow). */}
+          <RecipeEditor
+            value={recipe}
+            onChange={setRecipe}
+            disabled={pending}
+          />
+
+          {/* Phase 70 — Base asset lifecycle decision (UI hint).
+              Replace flow not implemented; clear product decision so
+              operator doesn't sit silently. */}
           <div
             className="rounded-md border border-line-soft bg-k-bg-2/40 p-3 text-[12px] text-ink-2"
-            data-testid="recipe-editor-placeholder"
+            data-testid="base-asset-lifecycle-hint"
           >
             <span className="font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
-              Recipe (blend mode / shadow) · coming soon
+              Base asset
             </span>
             <p className="mt-1">
-              Currently locked to <code className="rounded bg-paper px-1 font-mono text-[11px]">{`{ blendMode: "${cfg.recipe.blendMode}" }`}</code>.
-              Shadow + blend controls will land in a later phase.
+              Asset is <strong>locked</strong> after creation. To use a
+              different base image, create a new template — that keeps the
+              existing template + its render history intact, and avoids
+              breaking apply jobs that already reference this template.
             </p>
+            <a
+              href="/templates/mockups/new"
+              className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2 hover:border-k-orange hover:text-k-orange-ink"
+              data-testid="base-asset-new-template-link"
+            >
+              + New template with different base
+            </a>
           </div>
 
           {saveMutation.isError ? (

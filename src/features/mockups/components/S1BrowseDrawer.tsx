@@ -332,32 +332,56 @@ export function S1BrowseDrawer({
           {/* Grid (Spec §5.3 satır 1193-1201: 8 template grid) */}
           <div className="grid grid-cols-2 gap-4 overflow-auto px-6 py-4 sm:grid-cols-3">
             {filteredTemplates.map((template) => (
-              <button
-                key={template.id}
-                type="button"
-                onClick={() => onOpenTemplateModal(template.id)}
-                className="relative rounded-md border border-border p-2 hover:bg-surface-2 text-left transition-colors"
-                aria-label={`${template.name} detayını aç`}
-              >
-                {/* Thumbnail placeholder (V1: gerçek render YOK, Spec §5.4 satır 1247) */}
-                <div
-                  className="h-24 w-full rounded bg-zinc-100"
-                  aria-hidden
-                />
+              /* Phase 70 — Card is a relative wrapper so we can layer an
+                 absolute "Edit" link for own templates without nesting buttons. */
+              <div key={template.id} className="relative">
+                <button
+                  type="button"
+                  onClick={() => onOpenTemplateModal(template.id)}
+                  className="relative w-full rounded-md border border-border p-2 hover:bg-surface-2 text-left transition-colors"
+                  aria-label={`${template.name} detayını aç`}
+                  data-testid="template-card"
+                  data-ownership={template.ownership}
+                >
+                  {/* Thumbnail placeholder (V1: gerçek render YOK, Spec §5.4 satır 1247) */}
+                  <div
+                    className="h-24 w-full rounded bg-zinc-100"
+                    aria-hidden
+                  />
 
-                {/* Template adı */}
-                <div className="mt-2 text-sm font-medium">{template.name}</div>
+                  {/* Template adı */}
+                  <div className="mt-2 text-sm font-medium">{template.name}</div>
 
-                {/* Seçili badge (Spec §5.3 satır 1205) */}
-                {selectedTemplateIds.includes(template.id) && (
-                  <span
-                    className="absolute right-2 top-2 rounded-full bg-amber-50 px-1.5 py-0.5 text-xs text-amber-900"
-                    aria-label="Pakette"
+                  {/* Seçili badge (Spec §5.3 satır 1205) */}
+                  {selectedTemplateIds.includes(template.id) && (
+                    <span
+                      className="absolute right-2 top-2 rounded-full bg-amber-50 px-1.5 py-0.5 text-xs text-amber-900"
+                      aria-label="Pakette"
+                    >
+                      ✓
+                    </span>
+                  )}
+                </button>
+
+                {/* Phase 70 — Edit entry for user-owned templates only.
+                    Layered as overlay link to avoid nested button semantics.
+                    Discoverable: visible by default, hover emphasizes. */}
+                {template.ownership === "own" ? (
+                  <a
+                    href={`/templates/mockups/${template.id}/edit`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenChange(false);
+                    }}
+                    className="absolute left-2 top-2 z-10 inline-flex h-6 items-center gap-1 rounded-md border border-line bg-paper px-2 font-mono text-[10px] font-semibold uppercase tracking-meta text-ink-2 shadow-sm hover:border-k-orange hover:text-k-orange-ink"
+                    title="Edit this template"
+                    aria-label={`Edit ${template.name}`}
+                    data-testid="template-card-edit-link"
                   >
-                    ✓
-                  </span>
-                )}
-              </button>
+                    Edit
+                  </a>
+                ) : null}
+              </div>
             ))}
           </div>
         </Dialog.Content>

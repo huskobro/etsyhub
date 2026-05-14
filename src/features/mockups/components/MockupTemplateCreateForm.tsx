@@ -43,6 +43,7 @@ import {
   perspectiveToRect,
 } from "./SafeAreaEditor";
 import { validateSafeArea } from "./safe-area-validity";
+import { RecipeEditor, type Recipe } from "./RecipeEditor";
 import { AlertTriangle, AlertCircle } from "lucide-react";
 
 const CATEGORY_OPTIONS = [
@@ -125,6 +126,10 @@ export function MockupTemplateCreateForm() {
     rect: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 },
   });
   const [showSamplePreview, setShowSamplePreview] = useState(false);
+
+  // Phase 70 — Recipe state (blendMode + optional shadow). Backend
+  // recipe-applicator.ts (Phase 8) consumes this directly.
+  const [recipe, setRecipe] = useState<Recipe>({ blendMode: "normal" });
 
   // Phase 69 — Live validity (recomputed on every safeArea change)
   const validity = validateSafeArea(safeArea);
@@ -267,7 +272,16 @@ export function MockupTemplateCreateForm() {
                       type: "perspective",
                       corners: safeArea.perspective.corners,
                     },
-              recipe: { blendMode: "normal" },
+              // Phase 70 — Recipe is operator-authored (was hardcoded
+              // {blendMode:"normal"}). MockupRecipeSchema accepts blendMode
+              // + optional shadow; backend recipe-applicator already wires
+              // both into Sharp composite.
+              recipe: recipe.shadow
+                ? {
+                    blendMode: recipe.blendMode,
+                    shadow: recipe.shadow,
+                  }
+                : { blendMode: recipe.blendMode },
               coverPriority: 0,
             },
           }),
@@ -576,6 +590,15 @@ export function MockupTemplateCreateForm() {
               </p>
             ) : null}
           </div>
+
+          {/* Phase 70 — Recipe editor (only meaningful once asset is uploaded) */}
+          {asset ? (
+            <RecipeEditor
+              value={recipe}
+              onChange={setRecipe}
+              disabled={createMutation.isPending}
+            />
+          ) : null}
 
           {/* Publish toggle */}
           <div className="rounded-md border border-line-soft bg-k-bg-2/40 p-3">
