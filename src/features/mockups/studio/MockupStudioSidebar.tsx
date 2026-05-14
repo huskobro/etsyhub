@@ -1156,7 +1156,21 @@ function FrameBody({
         </div>
       </div>
 
-      {/* EFFECTS */}
+      {/* EFFECTS — Phase 98 Lens Blur wired to plate.
+       *
+       * Sözleşme #11 + #1 ("Frame = scene + effects ile composition").
+       * Phase 89'a kadar Effects tile'ları local `useState` ile sadece
+       * active state'i tutuyor, plate'e hiç bağlanmıyordu. Phase 98:
+       *   - Lens Blur tile → sceneOverride.lensBlur toggle (plate
+       *     CSS filter blur applied; mode-AGNOSTIC continuity).
+       *   - Portrait / Watermark / BG Effects: honest disclosure —
+       *     görünür ama Phase 99+ candidate (operator için "var ama
+       *     henüz aktif değil" şeffaflık; sözleşme #12 silent magic
+       *     yasağına uyum).
+       *
+       * BG Effects ileride noise/grain/vignette pattern overlay
+       * eklendiğinde sceneOverride'a `bgEffect` field ile bağlanır
+       * (Phase 99 candidate; sözleşmede roadmap notu var). */}
       <div style={{ padding: "0 10px", marginTop: 10 }}>
         <SectionLabel>Effects &amp; Watermark</SectionLabel>
         <div
@@ -1167,15 +1181,40 @@ function FrameBody({
           }}
         >
           {efx.map(({ k, l, n }) => {
-            const on = effect === k;
+            const isLens = k === "lens";
+            const isWired = isLens;
+            const lensActive = isLens && (activeScene.lensBlur ?? false);
+            const on = isLens ? lensActive : effect === k;
             return (
               <button
                 key={k}
                 type="button"
                 className="k-studio__tile"
                 aria-pressed={on}
-                onClick={() => setEffect(k)}
-                style={{ minHeight: 56 }}
+                onClick={() => {
+                  if (isLens) {
+                    if (onChangeSceneOverride) {
+                      onChangeSceneOverride({
+                        ...activeScene,
+                        lensBlur: !lensActive,
+                      });
+                    }
+                    return;
+                  }
+                  setEffect(k);
+                }}
+                title={
+                  isWired
+                    ? l
+                    : `${l} — preview only (Phase 99+ candidate)`
+                }
+                style={{
+                  minHeight: 56,
+                  opacity: isWired ? 1 : 0.78,
+                }}
+                data-testid={`studio-frame-effect-${k}`}
+                data-active={on ? "true" : "false"}
+                data-wired={isWired ? "true" : "false"}
               >
                 <StudioIcon
                   name={n}
@@ -1390,39 +1429,70 @@ function FrameBody({
         ) : null}
       </div>
 
-      {/* GLASS */}
-      <div style={{ padding: "0 10px", marginTop: 8, marginBottom: 4 }}>
+      {/* GLASS — Phase 98 clickable + active state.
+       *
+       * Sözleşme #11 baseline: "Frame mode sidebar controls (Magic
+       * Preset, Solid, Gradient, **Glass swatch'ları**) plate
+       * bg'sini değiştirir". Phase 89'a kadar yalnız solid + gradient
+       * wire edilmişti; Glass swatch'lar no-op idi (silent drift
+       * sözleşme #12 ihlali).
+       *
+       * Phase 98: 3 variant (light / dark / frosted) → Shell
+       * setSceneOverride({ mode: "glass", glassVariant }). Plate
+       * üstüne `backdrop-filter` + tone overlay uygular. Aktif
+       * variant orange ring + active state highlight. */}
+      <div
+        style={{ padding: "0 10px", marginTop: 8, marginBottom: 4 }}
+        data-testid="studio-frame-glass-section"
+      >
         <SectionLabel badge>Glass</SectionLabel>
         <div style={{ display: "flex", gap: 4 }}>
-          {["Glass Light", "Glass Dark", "Frosted"].map((l, i) => (
-            <button
-              key={l}
-              type="button"
-              className="k-studio__tile"
-              data-mode="tri"
-            >
-              <div
-                style={{
-                  width: 28,
-                  height: 20,
-                  borderRadius: 3,
-                  background: [
-                    "rgba(255,255,255,0.15)",
-                    "rgba(0,0,0,0.6)",
-                    "rgba(255,255,255,0.08)",
-                  ][i],
-                  border: `1px solid ${
-                    [
-                      "rgba(255,255,255,0.25)",
-                      "rgba(255,255,255,0.1)",
-                      "rgba(255,255,255,0.15)",
-                    ][i]
-                  }`,
+          {(
+            [
+              { variant: "light" as const, label: "Glass Light", swatchBg: "rgba(255,255,255,0.18)", swatchBorder: "rgba(255,255,255,0.28)" },
+              { variant: "dark" as const, label: "Glass Dark", swatchBg: "rgba(0,0,0,0.55)", swatchBorder: "rgba(255,255,255,0.12)" },
+              { variant: "frosted" as const, label: "Frosted", swatchBg: "rgba(255,255,255,0.10)", swatchBorder: "rgba(255,255,255,0.18)" },
+            ]
+          ).map((opt) => {
+            const isActive =
+              activeScene.mode === "glass" &&
+              (activeScene.glassVariant ?? "light") === opt.variant;
+            return (
+              <button
+                key={opt.variant}
+                type="button"
+                className="k-studio__tile"
+                data-mode="tri"
+                aria-pressed={isActive}
+                onClick={() => {
+                  if (onChangeSceneOverride) {
+                    onChangeSceneOverride({
+                      mode: "glass",
+                      glassVariant: opt.variant,
+                      lensBlur: activeScene.lensBlur ?? false,
+                    });
+                  }
                 }}
-              />
-              <span className="k-studio__tile-label">{l}</span>
-            </button>
-          ))}
+                data-testid={`studio-frame-glass-${opt.variant}`}
+                data-active={isActive ? "true" : "false"}
+              >
+                <div
+                  style={{
+                    width: 28,
+                    height: 20,
+                    borderRadius: 3,
+                    background: opt.swatchBg,
+                    border: `1px solid ${isActive ? "rgba(232,93,37,0.85)" : opt.swatchBorder}`,
+                    boxShadow: isActive
+                      ? "0 0 0 2px rgba(232,93,37,0.25)"
+                      : "none",
+                    backdropFilter: "blur(2px)",
+                  }}
+                />
+                <span className="k-studio__tile-label">{opt.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

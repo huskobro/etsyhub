@@ -19667,9 +19667,16 @@ surface" rolünün tam ürünleştirilmesi.
   (Phase 83+ candidate). Mockup mode render → S7/S8 result → Frame
   mode'a yerleştirme handoff'u **future product evrimi**.
 - Frame mode "preview only" — sidebar control'leri (Magic Preset,
-  Solid, Gradient, Glass swatch'ları) plate bg'sini değiştirir
-  (Phase 89 baseline); ama Render button Mockup mode'a ait,
-  Export capsule (Frame mode) Phase 98+ candidate.
+  Solid, Gradient, Glass swatch'ları, **Lens Blur**) plate bg'sini
+  değiştirir. Phase 89 Solid+Gradient + **Phase 98 Glass+Lens Blur
+  fulfilled**; Render button Mockup mode'a ait, Export capsule
+  (Frame mode) Phase 99+ candidate.
+- **Phase 98 ek**: Glass (light/dark/frosted) + Lens Blur (Frame
+  Effects tile) Shell sceneOverride'a wire edildi. Plate üstüne
+  `backdrop-filter` glass overlay + plate bg'ye `filter: blur(8px)`.
+  Mode-AGNOSTIC continuity (sözleşme #2) ile Mockup mode'a taşınır.
+  Portrait / Watermark / BG Effects hâlâ honest disclosure
+  preview-only (Phase 99+ candidate; `data-wired="false"`).
 
 ### 12. No silent magic
 
@@ -19680,6 +19687,77 @@ surface" rolünün tam ürünleştirilmesi.
 - Bu sözleşmeye aykırı bir davranış görülürse: ya sözleşme + Phase
   entry'si açıkça güncellenir, ya da davranış düzeltilir. **Sessiz
   drift kabul edilmez.**
+
+### 13. Future direction roadmap (design notes, not bugs)
+
+Bu bölüm bug listesi DEĞİL — Studio'nun gelecek evriminde sözleşmeye
+**aday** olabilecek davranışlardır. Şu an implement edilmez; hangi
+ürün aşamasında mantıklı olacağı not edilir. Sözleşme'ye eklenmeden
+implementasyon **YASAK** (sessiz drift).
+
+**Future direction A — Layout builder (drag/resize/tilt/manual
+arrangement on stage)**:
+- Operator stage'deki cascade item'larını **drag** ile yeniden
+  konumlandırsın
+- **Resize** handle ile her item'ın boyutunu ayarlasın
+- **Tilt slider** ile rotation versin
+- Mevcut hardcoded preset'lerden (Cascade / Centered / Tilted /
+  Stacked / Fan / Offset) operator-driven serbest düzene geçiş
+- **Hangi ürün aşamasında**: Frame mode export pipeline (Phase 99+)
+  ve real Render dispatch'in tam olgunlaştığı an. Önce **export
+  pipeline gerçekten çalışsın**, sonra operator manual arrangement
+  ile preset'ten ayrılabilsin. Layout builder export'tan önce
+  açılırsa "ben düzenledim ama çıktıya yansımıyor" hayal kırıklığı
+  doğurur.
+
+**Future direction B — Grid-like presentation for digital products
+(clipart / bookmark / bundle showcase)**:
+- 9-up sticker sheet, 4-up bookmark set, 12-clipart-bundle preview
+  gibi **digital download listing hero**'ları için grid composition
+- Template-level multi-slot (Phase 72-76) zaten **render pipeline**
+  düzeyinde N-slot fanout çözüyor; eksik olan **stage-level grid
+  preview** ve operator-driven N×M layout
+- **Hangi ürün aşamasında**: Frame mode export + Mockup mode multi-
+  template binding birleştikten sonra. Bundle Preview 9-up template
+  zaten admin authoring tarafında mevcut (Phase 67-73); operator
+  Studio'da bunu seçince stage'de **9-grid composition** preview
+  + export edilebilmeli. Phase 97 self-critique'inde reddedilen
+  "1..5×1..5 grid stage-level" değil — **template-level grid
+  preview** (canonical multi-slot template'in stage'de görünür
+  olması).
+
+**Future direction C — Frame mode export pipeline**:
+- Frame mode "preview only" baseline'dan **gerçek output** seviyesine
+  geçiş (sözleşme #11 ileri evrim)
+- Operator Frame mode'da listing hero compose eder + Export · 1× ·
+  PNG capsule **gerçek MinIO export** üretir
+- Mockup mode render → S7/S8 result + Frame mode export → Product
+  listing hero handoff sözleşmesi
+- **Hangi ürün aşamasında**: Phase 99+. Mockup render pipeline
+  zaten olgun (Phase 8 + 63 + 70 + 74 + 75); Frame export Sharp
+  composite pipeline'a benzer ama scene/aspect aware. Glass/Blur
+  effects'lerin **gerçek output'a yansıması** burada netleşir
+  (şu an CSS-only preview).
+
+**Future direction D — BG Effects (noise / grain / vignette)**:
+- Phase 98'de görünür ama no-op (preview only). Glass / Lens Blur
+  Phase 98'de aktif edildi; BG Effects (noise grain / paper texture
+  / vignette overlay) `sceneOverride.bgEffect` field genişletmesi
+  ile aynı pattern'le wire edilebilir
+- **Hangi ürün aşamasında**: Phase 99+ minor polish. Glass/Blur
+  baseline operator için yeterince zengin sahne kontrolü sunuyor;
+  BG Effects ek seviyedir.
+
+**Future direction E — Operator-uploaded BG image** (Background
+"Image" / "Upload" tile):
+- Frame BACKGROUND satırında Trans. / Color / Image / Upload tile'ları
+  var; Color Phase 89 Solid swatch'larıyla wire'lı. Image + Upload
+  Phase 99+ candidate — operator kendi background image'ini plate
+  arka planına yerleştirebilir
+- **Hangi ürün aşamasında**: Phase 99+. Asset upload pipeline
+  (Phase 67 mockup template upload + Phase 30 asset-url endpoint)
+  reuse edilebilir. Real export pipeline (C) ile birlikte gerçek
+  değer üretir.
 
 ---
 
@@ -19917,6 +19995,236 @@ sözleşme #11 ile uyumlu). Glass Light/Glass Dark/Frosted swatch'lar
 plate'e `backdrop-filter`, Lens Blur plate bg-blur. Sözleşme #11 Frame
 mode export pipeline ile birleşince Frame mode "presentation surface"
 rolünün tam ürünleştirilmesi.
+
+---
+
+## Phase 98 — Frame mode BG/Glass/Effects fulfilled + real asset hydrate
+
+Phase 97 ile Kivasy Mockup Studio Desired Behavior Contract eklenmişti
+ve single-item center / aspect SHARED / plate viewport-aware artış
+düzelmişti. Phase 98 iki ana çıktı sunar: (1) **Glass + Lens Blur Frame
+controls gerçek davranışa bağlandı** — sözleşme #11 fulfilled; (2)
+**real asset signed URL hydrate** — sözleşme #9 fulfilled (operator
+artık gerçek MinIO image'leriyle çalışıyor).
+
+### Bu turdaki en büyük açık (sözleşmeye göre)
+
+Sözleşme okumasında #11 + #9 birlikte:
+
+> **#11**: "Frame mode sidebar control'leri (Magic Preset, Solid,
+> Gradient, **Glass swatch'ları**) plate bg'sini değiştirir (Phase 89
+> baseline)..." — ama Phase 89'da yalnız Solid + Gradient wire edildi.
+> Glass Light / Dark / Frosted + Lens Blur sidebar'da görünüyordu ama
+> tıklamak no-op. **Silent drift, sözleşme #12 ihlali.**
+
+> **#9 Real asset expectation**: "Selection set hydrate gerçek MinIO
+> asset URL ile çalışır" — Phase 79 baseline `studioPaletteForItem`
+> deterministic palette + dimensions taşıyordu ama `<image>` SVG element
+> hiç render edilmiyordu. Operator gerçek görseliyle değil **placeholder
+> palette gradient** ile çalışıyordu.
+
+### Shots.so araştırması (Glass / Effects bağlamı)
+
+Shots.so canlı incelemesi:
+- Shots'ta "Glass Light / Dark / Liquid Glass / Inset" **device chrome
+  stilleri** (Mockup mode style satırı). **Plate scene değil**.
+- Plate scene için ayrı "Bg effects" + "Magic" presetleri (Cosmic /
+  Mystic / Earth / Radiant / Texture / By Paper).
+- Effects & Watermark: Portrait / Watermark / Bg effects / VFX (rich
+  effect kümeleri).
+
+**Kivasy karar**: Glass = **plate scene effect** (Kivasy-superior
+divergence, Shots-paritesinden bilinçli ayrı — sözleşme #11'de
+zaten "Glass swatch'lar plate bg'sini değiştirir" diye yazıyor).
+Lens Blur = plate bg üzerinde CSS filter blur (atmospheric scene).
+Portrait / Watermark / BG Effects honest disclosure preview-only
+(`data-wired="false"`, sözleşme #12 silent magic yasağı uyumu).
+
+### Real asset audit (DB seed)
+
+`tmp-audit-assets.mjs` (one-shot Prisma query) ile dev DB'de gerçek
+asset taşıyan SelectionSet'ler bulundu:
+- `cmov0ia37...` (test seed): 4 item, hepsinde sourceAsset + storageKey
+  (`midjourney/cmoqwkfls0000147ioz4hmbd7/cmov06na50016...`). Real PNG
+  asset'leri MinIO'da.
+- Phase8 cover-swap fixture'ları: 1-4 item set'ler, hepsi gerçek
+  MinIO storageKey'le.
+
+Phase 98 hydrate'i mevcut `/api/assets/[id]/signed-url` endpoint
+üzerinden çalışıyor — yeni endpoint açılmadı.
+
+### Phase 98 fix set
+
+#### Fix 1 — `SceneOverride` schema genişletmesi
+
+`frame-scene.ts`:
+- `SceneMode` union'a `"glass"` eklendi
+- Yeni `GlassVariant = "light" | "dark" | "frosted"`
+- Yeni opsiyonel fields: `glassVariant?`, `lensBlur?`
+- `resolveSceneStyle` glass mode'a 3 variant tone (warm/deep alpha)
+- Yeni `resolvePlateEffects(override)` → `{filterBlurPx, glassOverlay}`
+  Plate'in CSS filter + glass overlay sözleşmesini hesaplar
+- `resolvePresetThumbScene` glass branch eklendi (rail thumb scene-
+  aware glass visualization için)
+
+#### Fix 2 — Frame sidebar Glass swatch'ları wire edildi
+
+`MockupStudioSidebar.tsx`:
+- Glass section 3 swatch'a `onClick={() => onChangeSceneOverride({
+  mode: "glass", glassVariant, lensBlur: activeScene.lensBlur ?? false
+})}` + `aria-pressed` + active state highlight (k-orange ring + box-
+shadow)
+- Swatch dataset: `data-testid="studio-frame-glass-{variant}"`,
+  `data-active`
+- Effects & Watermark Lens Blur tile → `onClick={() =>
+  onChangeSceneOverride({ ...activeScene, lensBlur: !lensActive })}`
+  + `data-wired="true"`. Portrait / Watermark / BG Effects
+  `data-wired="false"` + title attribute honest disclosure
+  ("preview only · Phase 99+ candidate")
+
+#### Fix 3 — Plate JSX + CSS effects
+
+`MockupStudioStage.tsx`:
+- `resolvePlateEffects` çağrısı + plate `style.filter = blur(8px)`
+  (Lens Blur active iken)
+- Plate iç-üst katmana glass overlay layer:
+  ```tsx
+  <div className="k-studio__plate-glass"
+       style={{
+         position: "absolute", inset: 0,
+         background: glassOverlay.background,
+         backdropFilter: "blur(10px) saturate(1.05)",
+         WebkitBackdropFilter: "blur(10px) saturate(1.05)",
+         border: glassOverlay.borderTone,
+         pointerEvents: "none", zIndex: 3,
+         boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), ..."
+       }} />
+  ```
+- Plate dataset attributes: `data-glass-variant`, `data-lens-blur`
+- Mode-AGNOSTIC: glass + blur Frame'de seçilince Mockup mode'a da
+  taşınır (sözleşme #2 stage continuity)
+
+#### Fix 4 — Right rail thumb scene-aware glass + blur
+
+`svg-art.tsx` `PresetThumbMockup`:
+- `sceneBg` prop union'a `glass` variant eklendi
+- Glass thumb bg: palette gradient (`<linearGradient>`) + üstüne
+  variant-tinted overlay rect (white/dark/frosted)
+- Lens Blur active: `<filter id="ks-ptm-lens-N">` `<feGaussianBlur
+  stdDeviation="2.2">` + cascade `<g filter="url(#...)">` wrap
+- Rail thumb operator için stage glass effect'ini canlı yansıtır
+
+`MockupStudioPresetRail.tsx`:
+- `thumbScene.kind === "glass"` da `sceneBg` prop'una geçirilir
+  (Phase 89 baseline solid/gradient filter genişledi)
+
+#### Fix 5 — Real asset signed URL hydrate
+
+`types.ts`:
+- `StudioSlotMeta.design.imageUrl` opsiyonel field
+- `StudioKeptItem.sourceAssetId` + `imageUrl` opsiyonel fields
+
+`MockupStudioShell.tsx`:
+- Yeni state `assetSignedUrls: Record<assetId, url | null>`
+- `useEffect([items])` selection set items'tan sourceAsset.id'leri
+  topla → `Promise.all` ile `/api/assets/[id]/signed-url` fetch →
+  state'e doldur
+- `keptItems` + `realSlots` useMemo'ları `assetSignedUrls`'i
+  dependency olarak izler + `design.imageUrl` propagate
+
+`svg-art.tsx`:
+- `StudioDesign.imageUrl` opsiyonel field
+- 4 stage device shape (Wall Art / Sticker / Bookmark / T-shirt)
+  interior asset surface rect'inin altında `design.imageUrl` varsa
+  `<image href={url} preserveAspectRatio="xMidYMid slice"
+  clipPath={..}>` render edilir (gradient fallback altında kalır)
+
+### Browser end-to-end real image kanıt (Chrome live, viewport
+1600×1100)
+
+| Adım | Kanıt |
+|---|---|
+| Selection set hydrate | 4 item, hepsi `sourceAsset.id` taşıyor, 3 slot real MinIO `<image>` href ile render (`http://localhost:9000/etsyhub/midjourney/...cmov06na50016...`) ✓ |
+| Frame mode'a geç + Glass Light click | `sceneMode=glass`, `glassVariant=light`, plate-glass overlay rendered, `background: rgba(255,255,255,0.22)`, `backdropFilter: blur(10px) saturate(1.05)` ✓ |
+| Lens Blur tile click | `lensBlur=true`, plate `filter: blur(8px)` ✓ |
+| Glass Dark switch | variant=dark, overlay bg `rgba(15,12,8,0.30)` ✓ |
+| Mockup mode'a continuity | `mode=mockup, sceneMode=glass, glassVariant=dark, lensBlur=true, plateFilter=blur(8px), overlay=true` ✓ (mode-AGNOSTIC sözleşme #2) |
+| Right rail thumb scene-aware | `thumbSceneMode=glass`, rail thumb'lar gerçek glass overlay variant'ı yansıtıyor ✓ |
+| Reset to Auto | sceneMode → "auto", overlay kaldırıldı, blur kaldırıldı ✓ |
+| Screenshot 1 (Frame Glass Light + Lens Blur active) | Plate'in tüm içeriği blur'lu, üstünde subtle white glass overlay, sol panelde Glass Light + Lens Blur tile'ları k-orange active state, Reset to Auto button visible |
+| Screenshot 2 (Mockup mode continuity) | Frame'de seçilen Glass Light + Lens Blur Mockup mode'a aynen taşındı, OBJECT SURFACE chip + STYLE/BORDER/SLOTS body görünür, cascade pozisyonu birebir korundu |
+| Screenshot 3 (Frame mode reset to auto) | Plate cream/warm auto gradient, 3 real MinIO image cascade görünür (renkli AI thumbnails: "PAS5", neon city) |
+
+### Değişmeyenler (Phase 98)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `SceneOverride` TypeScript interface +
+  CSS recipe ekleri; runtime schema dokunulmadı.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `resolvePlateEffects` küçük helper;
+  Glass + Lens Blur mevcut `SceneOverride` shape'ine 2 opsiyonel
+  field ekleyerek wire edildi. Sidebar + plate + thumb pattern'leri
+  Phase 89 baseline'a aile parity.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Slot assignment + render dispatch (Phase 80) zinciri intakt.**
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Apply pipeline + Phase 76 SlotAssignmentPanel + Phase 74-75
+  multi-slot backend + admin authoring** hepsi intakt.
+- **Phase 97 single-item center + label rationalization + plate
+  maxW/maxH baseline'ları intakt** (Cascade/Centered/Tilted/Stacked/
+  Fan/Offset).
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 99+ candidate)
+
+- **Frame mode export pipeline** — sözleşme #11 "preview only"
+  baseline'dan gerçek output'a geçiş (sözleşme #13.C Future direction)
+- **Portrait / Watermark / BG Effects** — Phase 98'de görünür ama
+  no-op (`data-wired="false"`). Pattern aynı; `sceneOverride` field
+  genişletmesiyle Phase 99+ wire edilir (sözleşme #13.D)
+- **Operator-uploaded BG image** — Frame BACKGROUND Image / Upload
+  tile'ları Phase 99+ (sözleşme #13.E)
+- **Layout builder** (drag/resize/tilt manual arrangement) — Phase
+  100+ candidate (sözleşme #13.A; Frame mode export tamamlandıktan
+  sonra anlam kazanır)
+- **Grid-like presentation** (template-level grid stage preview) —
+  Phase 100+ candidate (sözleşme #13.B; Bundle Preview 9-up template
+  Studio'da görünür yapılması)
+
+### Bug ledger (Phase 67-98 cumulative)
+
+**Phase 97 baseline'a Phase 98 eklendi**:
+- Phase 98: Glass swatch'lar plate-bg'sini değiştirir (sözleşme #11
+  fulfilled — Phase 89'dan bu yana açık idi); Lens Blur Frame Effects
+  plate filter'ına wire edildi; real asset signed URL hydrate (sözleşme
+  #9 fulfilled — Phase 79'dan bu yana placeholder palette idi);
+  right rail thumb scene-aware glass + blur visualization; sözleşme
+  #13 Future direction roadmap (A-E) eklendi.
+
+**Hâlâ açık (Phase 99+ candidate)**:
+- Frame mode export pipeline (sözleşme #11 future + #13.C)
+- Portrait / Watermark / BG Effects wire (sözleşme #13.D)
+- Operator-uploaded BG image (sözleşme #13.E)
+- Layout builder (sözleşme #13.A)
+- Grid-like presentation (sözleşme #13.B)
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 98 ile Mockup Studio operator için **gerçek davranışa ulaştı**:
+- Glass / Lens Blur sözleşme #11 fulfilled
+- Real asset signed URL hydrate sözleşme #9 fulfilled
+- Mode-AGNOSTIC continuity (sözleşme #2) Glass + Blur'da da çalışıyor
+- Right rail thumb glass + blur scene-aware
+- Future direction roadmap (sözleşme #13) yazılı
+
+Sıradaki en yüksek-impact adım **Phase 99 — Frame mode export
+pipeline** (sözleşme #11 future + #13.C). Glass / Lens Blur şu an
+CSS-only preview; **gerçek output'a yansıması** ve listing hero /
+social card / storefront banner export'unun MinIO'ya yazılması
+Phase 99'un işi. Sharp pipeline (Phase 8 + 63 + 70) parity. Sonra
+sözleşme #13.B Grid-like presentation (template-level 9-up
+Bundle Preview Studio'da görünür) doğal devam.
 
 ---
 

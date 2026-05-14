@@ -26,7 +26,7 @@
  * Apply route ve admin yüzeyleri intakt.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import "./studio.css";
 import { useSelectionSet } from "@/features/selection/queries";
@@ -147,6 +147,17 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
   /* Phase 80 — Kept items (selection set'in items[]'inden türev) Studio
    * sidebar slot picker dropdown'una verilir. Phase 76 panel
    * `SlotAssignmentKeptItem` parity. */
+  /* Phase 98 — Real asset signed URL hydrate state (Sözleşme #9).
+   *
+   * Selection set hydrate sourceAsset.id verir; Shell bunu
+   * /api/assets/[id]/signed-url üzerinden lazy fetch eder ve
+   * mevcut placeholder palette üstüne gerçek image URL'i ekler.
+   * Operator için Studio artık gerçek görseliyle çalışıyor —
+   * placeholder fallback yalnız fetch failed durumunda. */
+  const [assetSignedUrls, setAssetSignedUrls] = useState<
+    Record<string, string | null>
+  >({});
+
   const keptItems: StudioKeptItem[] = useMemo(() => {
     if (!items.length) return [];
     return items
@@ -159,20 +170,83 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       .map((item, idx) => {
         const itemId = (item as { id: string }).id;
         const sourceAsset = (
-          item as { sourceAsset?: { width?: number | null; height?: number | null } | null }
+          item as {
+            sourceAsset?: {
+              id?: string | null;
+              width?: number | null;
+              height?: number | null;
+            } | null;
+          }
         ).sourceAsset;
         const dims =
           sourceAsset?.width && sourceAsset?.height
             ? `${sourceAsset.width}×${sourceAsset.height}`
             : "—";
+        const sourceAssetId = sourceAsset?.id ?? null;
+        const imageUrl = sourceAssetId
+          ? (assetSignedUrls[sourceAssetId] ?? undefined)
+          : undefined;
         return {
           id: itemId,
           label: `Item ${idx + 1} · ${itemId.slice(0, 8)}`,
           colors: studioPaletteForItem(itemId),
           dims,
+          sourceAssetId,
+          imageUrl,
         };
       });
-  }, [items]);
+  }, [items, assetSignedUrls]);
+
+  /* Phase 98 — Lazy signed URL fetch for selection set assets.
+   *
+   * Operator Studio'ya girer girmez set.items[].sourceAsset.id'leri
+   * /api/assets/[id]/signed-url ile çevirir, state'e doldurur.
+   * useMemo bu state'i izleyerek keptItems + slots'a imageUrl yansıtır.
+   * Fetch hata verirse null kaydedilir (operator için "asset yüklenemedi"
+   * sinyali — placeholder palette korunur). */
+  useEffect(() => {
+    if (!items.length) return;
+    const assetIds = items
+      .map(
+        (item) =>
+          (
+            item as {
+              sourceAsset?: { id?: string | null } | null;
+            }
+          ).sourceAsset?.id ?? null,
+      )
+      .filter((x): x is string => typeof x === "string" && x.length > 0);
+    const toFetch = assetIds.filter((id) => !(id in assetSignedUrls));
+    if (toFetch.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, string | null> = {};
+      await Promise.all(
+        toFetch.map(async (id) => {
+          try {
+            const res = await fetch(`/api/assets/${id}/signed-url`, {
+              method: "GET",
+              credentials: "include",
+            });
+            if (!res.ok) {
+              next[id] = null;
+              return;
+            }
+            const json = (await res.json()) as { url?: string };
+            next[id] = json.url ?? null;
+          } catch {
+            next[id] = null;
+          }
+        }),
+      );
+      if (!cancelled && Object.keys(next).length > 0) {
+        setAssetSignedUrls((prev) => ({ ...prev, ...next }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [items, assetSignedUrls]);
 
   // Phase 79 — Slot meta'yı items'tan türet. Final HTML 3-slot cascade
   // (Front/Side/Back View) baseline'ını koruyoruz; gerçek item sayısı
@@ -210,12 +284,28 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       const itemId = (item as { id: string }).id;
       const colors = studioPaletteForItem(itemId);
       const sourceAsset = (
-        item as { sourceAsset?: { width?: number | null; height?: number | null } | null }
+        item as {
+          sourceAsset?: {
+            id?: string | null;
+            width?: number | null;
+            height?: number | null;
+          } | null;
+        }
       ).sourceAsset;
       const dims =
         sourceAsset?.width && sourceAsset?.height
           ? `${sourceAsset.width}×${sourceAsset.height}`
           : "—";
+      /* Phase 98 — Real asset signed URL hydrate (Sözleşme #9).
+       *
+       * `sourceAsset.id` Shell signed URL fetch'iyle resolve edilir
+       * (yukarıdaki useEffect). Mevcut placeholder palette korunur
+       * (fetch failed veya henüz yüklenmedi durumunda fallback).
+       * StageDeviceSVG bu imageUrl'i alınca gerçek `<image>` SVG
+       * element olarak render eder (Phase 98 svg-art.tsx). */
+      const imageUrl = sourceAsset?.id
+        ? (assetSignedUrls[sourceAsset.id] ?? undefined)
+        : undefined;
       return {
         id: i + 1,
         name: SLOT_NAMES[i]!,
@@ -224,10 +314,11 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           name: `Item ${i + 1} · ${itemId.slice(0, 8)}`,
           dims,
           colors,
+          imageUrl,
         },
       };
     });
-  }, [set, items]);
+  }, [set, items, assetSignedUrls]);
 
   // appState === "empty" zorunlu boş — operatör state switcher'dan açıkça
   // istemiş demek; gerçek items varsa yine empty davranışı korunur (Phase

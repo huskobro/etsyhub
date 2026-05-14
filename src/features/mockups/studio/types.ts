@@ -27,6 +27,12 @@ export interface StudioSlotMeta {
     name: string;
     dims: string;
     colors: readonly [string, string];
+    /** Phase 98 — Real asset signed URL (Sözleşme #9 real asset
+     *  expectation). Shell hydrate sourceAsset.id → /api/assets/[id]/
+     *  signed-url ile çözer; StageDeviceSVG'ye geçirilir, gerçek
+     *  `<image>` SVG element olarak render edilir. undefined →
+     *  Phase 79 baseline (placeholder palette fallback). */
+    imageUrl?: string | null;
   } | null;
 }
 
@@ -42,6 +48,14 @@ export interface StudioKeptItem {
   colors: readonly [string, string];
   /** Asset dims (sourceAsset width×height) — operator orientation. */
   dims: string;
+  /** Phase 98 — Source asset id (signed URL fetch için). undefined ise
+   *  asset yok / placeholder fallback. */
+  sourceAssetId?: string | null;
+  /** Phase 98 — Lazy-loaded signed image URL (after Shell hydrate
+   *  signed-url fetch). undefined → henüz fetch edilmedi veya asset
+   *  yok; null → fetch failed. Live URL operator için real image
+   *  görüntülemenin canonical kaynağı. */
+  imageUrl?: string | null;
 }
 
 /* Phase 80 — Slot index → kept-item id. `null` = fanout fallback

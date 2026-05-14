@@ -211,7 +211,9 @@ export function MockupStudioPresetRail({
             idx={active}
             palette={activePalette}
             sceneBg={
-              thumbScene.kind === "solid" || thumbScene.kind === "gradient"
+              thumbScene.kind === "solid" ||
+              thumbScene.kind === "gradient" ||
+              thumbScene.kind === "glass"
                 ? thumbScene
                 : undefined
             }

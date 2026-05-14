@@ -33,7 +33,10 @@
  *     ürün davranışı; Phase 89 baseline 3 mod yeterli)
  */
 
-export type SceneMode = "auto" | "solid" | "gradient";
+export type SceneMode = "auto" | "solid" | "gradient" | "glass";
+
+/** Phase 98 — Glass scene variants. */
+export type GlassVariant = "light" | "dark" | "frosted";
 
 export interface SceneOverride {
   mode: SceneMode;
@@ -41,12 +44,34 @@ export interface SceneOverride {
    *
    *  Auto mode: undefined (Phase 88 baseline activePalette'den
    *  türetir).
-   *  Gradient mode: from color (gradient first stop). */
+   *  Gradient mode: from color (gradient first stop).
+   *  Glass mode: undefined (variant taşır, tek renk değil). */
   color?: string;
   /** Gradient mode: second stop color (#RRGGBB).
    *
-   *  Auto + Solid mode: undefined. */
+   *  Auto + Solid + Glass mode: undefined. */
   colorTo?: string;
+  /** Phase 98 — Glass mode variant (light / dark / frosted).
+   *
+   *  Sözleşme #11: "Frame mode sidebar controls (Magic Preset,
+   *  Solid, Gradient, **Glass swatch'ları**) plate bg'sini
+   *  değiştirir". Phase 89'da yalnız solid + gradient wire
+   *  edilmişti — Glass swatch'lar görünür ama no-op idi
+   *  (silent drift, sözleşme #12 ihlali).
+   *
+   *  Phase 98 fix: glass mode + 3 variant. Plate üstüne
+   *  `backdrop-filter: blur()` + tone overlay uygular
+   *  (Mockup mode'a da continuity ile taşınır). */
+  glassVariant?: GlassVariant;
+  /** Phase 98 — Lens Blur (Frame Effects).
+   *
+   *  Frame mode "Effects & Watermark" satırındaki "Lens Blur"
+   *  butonu Phase 89'a kadar local state'ti, plate'e
+   *  bağlanmamıştı. Phase 98'de plate bg'ye CSS filter blur
+   *  uygulanır. Lens Blur Glass'tan farklı: Glass plate'i
+   *  cam-effect ile kaplar; Lens Blur plate bg'sini bulanıklaştırır
+   *  (sahnede yumuşak/atmospheric hissi). */
+  lensBlur?: boolean;
 }
 
 /** Phase 89 — Auto mode default (Phase 88 baseline parity). */
@@ -133,12 +158,95 @@ export function resolveSceneStyle(
       deep: hexToRgba(override.color, 0.06),
     };
   }
-  // gradient
-  if (!override.color || !override.colorTo) return undefined;
-  return {
-    warm: hexToRgba(override.color, 0.04),
-    deep: hexToRgba(override.colorTo, 0.10),
-  };
+  if (override.mode === "gradient") {
+    if (!override.color || !override.colorTo) return undefined;
+    return {
+      warm: hexToRgba(override.color, 0.04),
+      deep: hexToRgba(override.colorTo, 0.10),
+    };
+  }
+  /* Phase 98 — Glass mode scene tone.
+   *
+   * Glass plate'in **üzerinde** backdrop-filter overlay uygular
+   * (CSS katmanı); ama stage'in dışındaki padding alanı için
+   * subtle scene tone hâlâ activePalette'e yaslı kalır
+   * (mode-AGNOSTIC ambient hissi korunur).
+   *
+   * Glass variant tone:
+   *   - light: cream/warm subtle vignette (parlak ortam hissi)
+   *   - dark: derin charcoal vignette (sahne loş)
+   *   - frosted: nötr gri (cam-üstü hissi) */
+  if (override.mode === "glass") {
+    const variant = override.glassVariant ?? "light";
+    if (variant === "dark") {
+      return {
+        warm: "rgba(40,36,30,0.04)",
+        deep: "rgba(20,16,12,0.12)",
+      };
+    }
+    if (variant === "frosted") {
+      return {
+        warm: "rgba(220,215,210,0.03)",
+        deep: "rgba(160,154,148,0.08)",
+      };
+    }
+    // light
+    return {
+      warm: "rgba(247,245,239,0.04)",
+      deep: "rgba(220,212,196,0.10)",
+    };
+  }
+  return undefined;
+}
+
+/** Phase 98 — Plate CSS filter chain resolver.
+ *
+ * Sözleşme #3 (Plate behavior) + #11 (Frame controls plate bg'sini
+ * değiştirir): Glass/Lens Blur effect'leri **plate üzerinde** yaşar
+ * (mod-AGNOSTIC continuity). Bu helper plate'in CSS `filter` +
+ * `backdrop-filter` + `box-shadow` overlay'ini hesaplar.
+ *
+ * Plate'in mevcut bg'si (gradient/solid/auto palette) Phase 91 baseline
+ * `resolvePlateBackground` ile aynen korunur; Phase 98 ek olarak:
+ *   - Lens Blur: plate bg üzerinde CSS `filter: blur(Npx)` (içerideki
+ *     gradient/asset yumuşar — atmospheric hissi)
+ *   - Glass: plate'in IÇ alt katmanına frosted overlay (rgba beyaz
+ *     veya siyah + subtle white border). Glass operator için
+ *     "cam üstü gibi" presentation hissi.
+ */
+export interface PlateEffectStyle {
+  /** Plate-içi blur (Lens Blur Frame effect). */
+  filterBlurPx: number;
+  /** Glass overlay sözleşmesi (variant + alpha). undefined = no glass. */
+  glassOverlay: { background: string; borderTone: string } | undefined;
+}
+
+export function resolvePlateEffects(
+  override: SceneOverride,
+): PlateEffectStyle {
+  const filterBlurPx = override.lensBlur ? 8 : 0;
+  let glassOverlay: PlateEffectStyle["glassOverlay"];
+  if (override.mode === "glass") {
+    const variant = override.glassVariant ?? "light";
+    if (variant === "light") {
+      glassOverlay = {
+        background: "rgba(255,255,255,0.22)",
+        borderTone: "rgba(255,255,255,0.30)",
+      };
+    } else if (variant === "dark") {
+      glassOverlay = {
+        background: "rgba(15,12,8,0.30)",
+        borderTone: "rgba(255,255,255,0.10)",
+      };
+    } else {
+      // frosted
+      glassOverlay = {
+        background: "rgba(255,255,255,0.12)",
+        borderTone: "rgba(255,255,255,0.22)",
+      };
+    }
+  }
+  return { filterBlurPx, glassOverlay };
 }
 
 /** Phase 89 — Right rail preset thumb scene-aware bg resolver.
@@ -156,9 +264,16 @@ export function resolveSceneStyle(
 export function resolvePresetThumbScene(
   override: SceneOverride,
   activePalette: readonly [string, string] | undefined,
-): { kind: "auto"; palette: readonly [string, string] | undefined }
+):
+  | { kind: "auto"; palette: readonly [string, string] | undefined }
   | { kind: "solid"; color: string }
-  | { kind: "gradient"; from: string; to: string } {
+  | { kind: "gradient"; from: string; to: string }
+  | {
+      kind: "glass";
+      variant: GlassVariant;
+      palette: readonly [string, string] | undefined;
+      lensBlur: boolean;
+    } {
   if (override.mode === "auto") {
     return { kind: "auto", palette: activePalette };
   }
@@ -167,6 +282,22 @@ export function resolvePresetThumbScene(
   }
   if (override.mode === "gradient" && override.color && override.colorTo) {
     return { kind: "gradient", from: override.color, to: override.colorTo };
+  }
+  /* Phase 98 — Glass thumb visualization.
+   *
+   * Sözleşme #6 (Right rail behavior): rail thumb asset-aware
+   * + scene-aware + count-aware. Glass mode'da thumb bg
+   * underlying palette gradient (Phase 86 baseline) + üstüne
+   * variant-tone overlay yansıtır. Lens Blur ayrıca palette
+   * gradient'i SVG `<filter>` ile blur'lar — operator rail'e
+   * bakınca stage'le aynı atmospheric hissi okur. */
+  if (override.mode === "glass") {
+    return {
+      kind: "glass",
+      variant: override.glassVariant ?? "light",
+      palette: activePalette,
+      lensBlur: override.lensBlur ?? false,
+    };
   }
   return { kind: "auto", palette: activePalette };
 }

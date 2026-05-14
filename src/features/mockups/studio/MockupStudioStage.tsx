@@ -23,6 +23,7 @@ import {
 } from "./frame-aspects";
 import {
   resolveSceneStyle,
+  resolvePlateEffects,
   type SceneOverride,
 } from "./frame-scene";
 import {
@@ -721,10 +722,27 @@ export function MockupStudioStage({
     activePalette,
   );
   const plateDims = plateDimensionsFor(mode, frameAspect);
+  /* Phase 98 — Plate effects (Glass + Lens Blur) resolved from
+   * sceneOverride. Sözleşme #11: Frame controls plate bg'sini
+   * değiştirir; #3: plate mode-AGNOSTIC görünür. Glass overlay
+   * plate'in İÇ üst katmanı (backdrop-filter); Lens Blur plate
+   * bg'sine CSS filter blur uygular. */
+  const plateEffects = resolvePlateEffects(sceneOverride ?? { mode: "auto" });
   const plateStyle: React.CSSProperties = {
     width: plateDims.w,
     height: plateDims.h,
     ...(plateBgRaw ? { background: plateBgRaw } : {}),
+    /* Phase 98 — Lens Blur (Frame Effects "Lens Blur" tile).
+     *
+     * Plate bg + cascade içeriği üzerine CSS filter blur uygular.
+     * Cascade visibility kaybolmasın diye `cascadeScale 1.0` ve
+     * scaled inner stage'te zaten transform vardı; filter blur
+     * tüm plate-child'larını yumuşatır (operator için "out-of-focus
+     * atmospheric scene" hissi). Mockup mode'a continuity ile
+     * taşınır (sözleşme #2 stage continuity). */
+    ...(plateEffects.filterBlurPx > 0
+      ? { filter: `blur(${plateEffects.filterBlurPx}px)` }
+      : {}),
   };
 
   return (
@@ -799,6 +817,14 @@ export function MockupStudioStage({
           data-mode={mode}
           data-frame-aspect={frameAspect}
           data-scene-mode={sceneOverride?.mode ?? "auto"}
+          data-glass-variant={
+            sceneOverride?.mode === "glass"
+              ? (sceneOverride.glassVariant ?? "light")
+              : ""
+          }
+          data-lens-blur={
+            (sceneOverride?.lensBlur ?? false) ? "true" : "false"
+          }
           style={plateStyle}
         >
           {mode === "mockup" ? (
@@ -823,6 +849,47 @@ export function MockupStudioStage({
               layoutCount={layoutCount ?? 3}
             />
           )}
+          {/* Phase 98 — Glass overlay (Frame Glass swatch).
+           *
+           * Sözleşme #11: Frame Glass swatch'ları plate bg'sini
+           * değiştirir. Phase 98 düzeltmesi: glass overlay plate'in
+           * IÇ üst katmanı, `backdrop-filter: blur()` ile altta
+           * yatan plate bg + cascade'i frosted-glass-effect olarak
+           * gösterir; ayrıca variant tone + subtle border ile cam-üstü
+           * hissi.
+           *
+           * Mode-AGNOSTIC: glass override Frame mode'da seçilir
+           * ama overlay Mockup mode'a da continuity ile taşınır
+           * (sözleşme #2 stage continuity). Plate'in cascade
+           * pozisyonunu/ölçeğini bozmaz — yalnız üstüne overlay
+           * katmanı koyar.
+           *
+           * pointer-events: none — operator slot click davranışı
+           * bozulmaz; selection chrome cascade'in altında yaşadığı
+           * için glass overlay yine de görünebilir. */}
+          {plateEffects.glassOverlay ? (
+            <div
+              className="k-studio__plate-glass"
+              data-testid="studio-stage-plate-glass"
+              data-glass-variant={
+                sceneOverride?.glassVariant ?? "light"
+              }
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: plateEffects.glassOverlay.background,
+                backdropFilter: "blur(10px) saturate(1.05)",
+                WebkitBackdropFilter: "blur(10px) saturate(1.05)",
+                borderRadius: "inherit",
+                border: `1px solid ${plateEffects.glassOverlay.borderTone}`,
+                pointerEvents: "none",
+                zIndex: 3,
+                boxShadow:
+                  "inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.12)",
+              }}
+            />
+          ) : null}
         </div>
       ) : null}
 

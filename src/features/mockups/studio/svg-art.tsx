@@ -23,6 +23,14 @@ export interface StudioDesign {
   name: string;
   dims: string;
   colors: StudioDesignColors;
+  /** Phase 98 — Real asset signed URL (Sözleşme #9).
+   *
+   *  Stage device SVG shapes interior asset surface'inde gerçek
+   *  `<image>` element olarak render edilir; placeholder palette
+   *  gradient'i alt katmanda fallback olarak kalır (image yüklenene
+   *  kadar; veya image broken durumunda). undefined → palette-only
+   *  baseline (Phase 79 baseline). */
+  imageUrl?: string | null;
 }
 
 export const STUDIO_SAMPLE_DESIGNS = {
@@ -390,38 +398,57 @@ export function PresetThumbMockup({
 }: {
   idx: number;
   palette?: readonly [string, string];
-  /** Phase 89 — Scene-aware bg override (Frame Solid/Gradient
-   *  swatch tıklamasıyla shell sceneOverride). undefined → Phase 86
-   *  baseline (palette darken veya statik dark). */
+  /** Phase 89 + Phase 98 — Scene-aware bg override. */
   sceneBg?:
     | { kind: "solid"; color: string }
-    | { kind: "gradient"; from: string; to: string };
-  /** Phase 96 — Layout count Shell state (bug #13).
-   *
-   *  Shots.so rail head 1/2/3 buttons rail thumb içindeki cascade
-   *  item count'unu sınırlar. Phase 96'da displayCount geçilirse
-   *  thumb yalnız ilk N phone gösterir; undefined ise tüm preset
-   *  phones (Phase 77 baseline). */
+    | { kind: "gradient"; from: string; to: string }
+    | {
+        kind: "glass";
+        variant: "light" | "dark" | "frosted";
+        palette: readonly [string, string] | undefined;
+        lensBlur: boolean;
+      };
+  /** Phase 96 — Layout count Shell state. */
   displayCount?: 1 | 2 | 3;
 }) {
   const c = MOCKUP_PRESETS[idx] ?? MOCKUP_PRESETS[0]!;
   const phones =
     displayCount !== undefined ? c.ph.slice(0, displayCount) : c.ph;
   const isGradient = idx === 1;
-  // Phase 86 — Asset-aware mode. palette geldiğinde bg + device fill
-  // selected slot paletinden türetilir. Bg: subtle dark tint of
-  // palette[1] (warmth ipucu, ama içeriği dominate etmez).
   const hasPalette = !!palette;
-  // Subtle bg: %92 darken of palette[1] (warm shadow tone).
   const bgFromPalette = palette ? darkenForPresetBg(palette[1]) : null;
-  // Phase 89 — Scene-aware bg override
-  const sceneGradientId = sceneBg?.kind === "gradient" ? `ks-ptm-scn-${idx}` : null;
+  // Phase 89 + 98 — Scene-aware bg override (solid / gradient / glass)
+  const sceneGradientId =
+    sceneBg?.kind === "gradient"
+      ? `ks-ptm-scn-${idx}`
+      : sceneBg?.kind === "glass" && sceneBg.palette
+        ? `ks-ptm-glass-${idx}`
+        : null;
   const sceneFill =
     sceneBg?.kind === "solid"
       ? sceneBg.color
-      : sceneGradientId
-        ? `url(#${sceneGradientId})`
-        : null;
+      : sceneBg?.kind === "gradient"
+        ? `url(#${sceneGradientId!})`
+        : sceneBg?.kind === "glass" && sceneBg.palette
+          ? `url(#${sceneGradientId!})`
+          : sceneBg?.kind === "glass" && !sceneBg.palette
+            ? "#1f1c18"
+            : null;
+  /* Phase 98 — Glass overlay color for thumb (variant-aware).
+   * Operator rail'e bakınca stage glass effect'ini görür: alt katmanda
+   * palette gradient, üstünde variant-tinted semi-transparent overlay. */
+  const glassOverlayColor =
+    sceneBg?.kind === "glass"
+      ? sceneBg.variant === "dark"
+        ? "rgba(15,12,8,0.42)"
+        : sceneBg.variant === "frosted"
+          ? "rgba(255,255,255,0.18)"
+          : "rgba(255,255,255,0.28)" // light
+      : null;
+  const lensBlurFilterId =
+    sceneBg?.kind === "glass" && sceneBg.lensBlur
+      ? `ks-ptm-lens-${idx}`
+      : null;
   return (
     <svg viewBox="0 0 184 88" style={{ width: "100%", height: "100%", display: "block" }} aria-hidden>
       {sceneBg?.kind === "gradient" ? (
@@ -430,6 +457,21 @@ export function PresetThumbMockup({
             <stop offset="0%" stopColor={sceneBg.from} />
             <stop offset="100%" stopColor={sceneBg.to} />
           </linearGradient>
+        </defs>
+      ) : null}
+      {sceneBg?.kind === "glass" && sceneBg.palette ? (
+        <defs>
+          <linearGradient id={sceneGradientId!} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={sceneBg.palette[0]} />
+            <stop offset="100%" stopColor={sceneBg.palette[1]} />
+          </linearGradient>
+        </defs>
+      ) : null}
+      {lensBlurFilterId ? (
+        <defs>
+          <filter id={lensBlurFilterId} x="-10%" y="-10%" width="120%" height="120%">
+            <feGaussianBlur stdDeviation="2.2" />
+          </filter>
         </defs>
       ) : null}
       {isGradient && !hasPalette && !sceneBg ? (
@@ -460,13 +502,28 @@ export function PresetThumbMockup({
             : (bgFromPalette ?? c.bg))
         }
       />
-      {phones.map((p, i) =>
-        hasPalette ? (
-          <MockupPhWithPalette key={i} {...p} palette={palette!} />
-        ) : (
-          <MockupPh key={i} {...p} />
-        ),
-      )}
+      <g filter={lensBlurFilterId ? `url(#${lensBlurFilterId})` : undefined}>
+        {phones.map((p, i) =>
+          hasPalette ? (
+            <MockupPhWithPalette key={i} {...p} palette={palette!} />
+          ) : (
+            <MockupPh key={i} {...p} />
+          ),
+        )}
+      </g>
+      {/* Phase 98 — Glass overlay rect (variant-tinted). Operator rail'e
+       *  bakınca stage'in glass effect'ini görür: alt katmandaki
+       *  palette/gradient + üstüne variant-tone semi-transparent overlay
+       *  (cam-üstü hissi). */}
+      {glassOverlayColor ? (
+        <rect
+          x="0"
+          y="0"
+          width="184"
+          height="88"
+          fill={glassOverlayColor}
+        />
+      ) : null}
     </svg>
   );
 }
@@ -846,7 +903,17 @@ function WallArtFrameSVG({
       <rect x={frameW} y={frameW} width={w - 2 * frameW} height={h - 2 * frameW} fill="#F5F1E9" />
       {/* Interior — asset surface */}
       <rect x={innerX} y={innerY} width={innerW} height={innerH} fill={`url(#${gid})`} />
-      {dc ? (
+      {/* Phase 98 — Real asset image overlay (Sözleşme #9). */}
+      {design?.imageUrl ? (
+        <image
+          href={design.imageUrl}
+          x={innerX}
+          y={innerY}
+          width={innerW}
+          height={innerH}
+          preserveAspectRatio="xMidYMid slice"
+        />
+      ) : dc ? (
         <>
           <rect x={innerX + 8} y={innerY + 12} width={innerW * 0.7} height={3} rx={1} fill="rgba(22,19,15,0.18)" />
           <rect x={innerX + 8} y={innerY + 20} width={innerW * 0.5} height={3} rx={1} fill="rgba(22,19,15,0.12)" />
@@ -885,7 +952,25 @@ function StickerCardSVG({
       <rect x={0} y={0} width={w} height={h} rx={r} fill="#FFFFFF" />
       {/* Asset surface */}
       <rect x={pad} y={pad} width={w - 2 * pad} height={h - 2 * pad} rx={r - 4} fill={`url(#${gid})`} />
-      {dc ? (
+      {/* Phase 98 — Real asset image overlay (Sözleşme #9). */}
+      {design?.imageUrl ? (
+        <>
+          <defs>
+            <clipPath id={`stg${idx}clip`}>
+              <rect x={pad} y={pad} width={w - 2 * pad} height={h - 2 * pad} rx={r - 4} />
+            </clipPath>
+          </defs>
+          <image
+            href={design.imageUrl}
+            x={pad}
+            y={pad}
+            width={w - 2 * pad}
+            height={h - 2 * pad}
+            preserveAspectRatio="xMidYMid slice"
+            clipPath={`url(#stg${idx}clip)`}
+          />
+        </>
+      ) : dc ? (
         <>
           <circle cx={w / 2} cy={h / 2 - 8} r={Math.min(w, h) * 0.18} fill="rgba(22,19,15,0.12)" />
           <rect x={pad + 16} y={h - pad - 22} width={w - 2 * pad - 32} height={3} rx={1} fill="rgba(22,19,15,0.16)" />
@@ -923,7 +1008,25 @@ function BookmarkStripSVG({
       <line x1={w / 2} y1={knotR * 2 + 1} x2={w / 2} y2={20} stroke="#3A3532" strokeWidth={1.2} />
       {/* Bookmark body */}
       <rect x={4} y={20} width={w - 8} height={h - 28} rx={3} fill={`url(#${gid})`} />
-      {dc ? (
+      {/* Phase 98 — Real asset image overlay (Sözleşme #9). */}
+      {design?.imageUrl ? (
+        <>
+          <defs>
+            <clipPath id={`bmg${idx}clip`}>
+              <rect x={4} y={20} width={w - 8} height={h - 28} rx={3} />
+            </clipPath>
+          </defs>
+          <image
+            href={design.imageUrl}
+            x={4}
+            y={20}
+            width={w - 8}
+            height={h - 28}
+            preserveAspectRatio="xMidYMid slice"
+            clipPath={`url(#bmg${idx}clip)`}
+          />
+        </>
+      ) : dc ? (
         <>
           <circle cx={w / 2} cy={h * 0.32} r={(w - 8) * 0.22} fill="rgba(22,19,15,0.14)" />
           <rect x={12} y={h * 0.6} width={w - 24} height={2} rx={1} fill="rgba(22,19,15,0.16)" />
@@ -996,7 +1099,25 @@ function TshirtSilhouetteSVG({
       <ellipse cx={cx} cy={shoulderY + 4} rx={w * 0.12} ry={h * 0.05} fill="#161412" />
       {/* Chest area — asset */}
       <rect x={chestX} y={chestY} width={chestW} height={chestH} rx={4} fill={`url(#${gid})`} />
-      {dc ? (
+      {/* Phase 98 — Real asset image overlay (Sözleşme #9). */}
+      {design?.imageUrl ? (
+        <>
+          <defs>
+            <clipPath id={`tsg${idx}clip`}>
+              <rect x={chestX} y={chestY} width={chestW} height={chestH} rx={4} />
+            </clipPath>
+          </defs>
+          <image
+            href={design.imageUrl}
+            x={chestX}
+            y={chestY}
+            width={chestW}
+            height={chestH}
+            preserveAspectRatio="xMidYMid slice"
+            clipPath={`url(#tsg${idx}clip)`}
+          />
+        </>
+      ) : dc ? (
         <>
           <circle cx={chestX + chestW / 2} cy={chestY + chestH * 0.4} r={chestW * 0.22} fill="rgba(22,19,15,0.14)" />
           <rect x={chestX + 8} y={chestY + chestH - 16} width={chestW - 16} height={2} rx={1} fill="rgba(22,19,15,0.18)" />
