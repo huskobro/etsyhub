@@ -16785,6 +16785,204 @@ listing hero pipeline. Phase 85+ Canva-like composition evrimi
 
 ---
 
+## Phase 84 — Mockup mode placement floor (Shots-first refinement)
+
+Phase 83 Frame mode'u aspect-aware presentation surface'ine çevirdi.
+Phase 84 Shots.so research'inde net olan eksiği kapatır: **Mockup
+mode'da placement clarity**. Mockup device boş void içinde "floating"
+gibi duruyordu (Phase 77 baseline + Phase 82 productType-aware
+shape'ler + Phase 80 slot picker hep doğru kuruldu ama operatör
+"mockup nereye oturuyor?" sorusunu UI seviyesinde okuyamıyordu).
+
+### Shots.so araştırması (öncelikli) + MockupViews (secondary)
+
+**Shots.so model**:
+- Sol üstte **Mockup / Frame mode tab strip** (kullanıcı önceki
+  Phase 81-83 entry'lerinde belirtti; Web research markası
+  ürünleştirme yönüyle uyumlu)
+- Aynı shell + mode-specific content swap (toolbar + left panel
+  shell + right rail shell + stage outer aynı; içerik mode'a göre
+  değişir)
+- Mockup mode'da stage device **boş void'da değil** — ambient soft
+  glow + drop shadow chain + **subtle floor reference** ile yumuşak
+  bir zemin hissi verir (operatör nesnenin "yere değdiğini" görür)
+- Frame mode'da bounded canvas zaten kendi composition surface'ini
+  taşır — floor reference gerekmez
+
+**MockupViews (secondary)**:
+- Daha minimal interface (free device mockup generator)
+- Tek-tip studio, mode switch yok; preset-driven preview
+- Kivasy için ders: deliverable type chip'leri (Phase 83 baseline)
+  Shots'un right rail Scene/Background semantic'iyle uyumlu;
+  MockupViews preset-only yönü Kivasy'nin admin/user template
+  ownership modeliyle (Phase 64-66) zaten karşılanıyor
+
+**Neden Shots öncelikli**: Etsy seller persona = mockup + listing
+output yapan kullanıcı. Shots'un object styling + scene + background
+ayrımı **iki net mode**'a (Phase 81 baseline) doğal map oluyor.
+MockupViews tek-tip yaklaşımı Etsy hero / Story / Pinterest pin
+gibi deliverable type seçim ihtiyacını karşılamıyor.
+
+### Audit (Phase 83 sonrası kalan placement clarity boşluğu)
+
+Studio Mockup mode stage'i:
+- ✓ Ambient glow (Phase 77 baseline — soft orange radial)
+- ✓ Drop shadow filter chain (Phase 77 baseline — device cascade
+  altında derin gölgeler)
+- ✗ **Soft floor reference** — operator device'ın "neye oturduğunu"
+  okuyamıyor; pure dark void hissi baskın
+- ✗ **Contact shadow** — device'ın altında "yere değme" işareti yok
+
+Sonuç: stage Shots'un placement clarity'sinden iki katman daha
+zayıf. Phase 84 bu iki katmanı ekler.
+
+### Net karar (Phase 84)
+
+**Mockup mode stage'ine subtle placement floor** (`.k-studio__stage-floor`):
+
+1. **Soft horizontal floor gradient** — stage alt %38'inde, yumuşak
+   beyaz tonlar (`transparent → rgba(255,255,255,0.018) →
+   0.035 → 0.045`). Operator için: "yatay zemin var" hissi.
+   Dramatic değil; Shots-uyumlu sakin.
+2. **Contact shadow ellipse** (`::before` pseudo) — stage alt %6
+   bant'ında soft yatay radial ellipse + 10px blur. Device cascade'in
+   alt kısmıyla **doğal hizalı**. Operator için: "mockup nesnesi
+   yere değiyor".
+
+**Mockup mode'a özel**: CSS `.k-studio__stage[data-mode="frame"]
+.k-studio__stage-floor { display: none }` + JSX conditional render
+(double defense). Frame mode'da bounded canvas zaten kendi composition
+surface'ini taşır — floor görünürse composition çakışır.
+
+**Render overlay sırasında gizlenir**: `!isRender` guard JSX'te;
+spinner overlay yoğun katmanlarla yarışmaz.
+
+### Tek yüksek-impact ürün adımı
+
+**`studio.css` + `MockupStudioStage.tsx` minimal değişiklik**:
+
+`studio.css` (~32 LOC eklendi):
+- `.k-studio__stage-floor` — absolute alt 0, height 38%,
+  pointer-events: none, z-index 0, soft 4-stop linear gradient
+- `.k-studio__stage-floor::before` — contact shadow ellipse (left/
+  right %8, bottom %6, height 12px, radial gradient + blur 10px)
+- `.k-studio__stage[data-mode="frame"] .k-studio__stage-floor` —
+  display: none (Frame mode'da gizli)
+
+`MockupStudioStage.tsx` (~10 LOC eklendi):
+- Ambient glow JSX altında `{!isRender && mode === "mockup" ? <div
+  className="k-studio__stage-floor" data-testid="studio-stage-floor"
+  aria-hidden /> : null}` (defensive conditional + CSS guard
+  birlikte)
+
+**Pointer-events: none** garantili — slot click davranışı bozulmaz.
+**z-index: 0** — slot wrap (z-index 1) altında, görsel arka plan
+katmanı. **`aria-hidden`** — screen reader gürültüsü yok.
+
+### Browser end-to-end kanıt (live preview, viewport 1440×900)
+
+Test set: `cmov0ia370019149ljyu7divh` (Phase 82 clipart productType
+sticker card render).
+
+**Mockup mode mount**:
+- `floorPresent=true`, `display="block"`, `height=451.758px`
+  (stage'in %38'i)
+- Floor background: `linear-gradient(rgba(0,0,0,0) 0%,
+  rgba(255,255,255,0.018) 35%, rgba(255,255,255,0.035) 65%, ...)`
+- Ambient glow korunmuş (`ambientPresent=true`)
+- 3 sticker card slot (Phase 82 productType-aware)
+
+**Frame mode toggle**:
+- `floorPresent=false` (JSX conditional + CSS data-mode="frame"
+  guard birlikte aktif)
+- Frame canvas present (Phase 83 aspect-aware bounded canvas)
+- Frame role chip present (Phase 81)
+- 5 aspect chip render edildi (Phase 83)
+
+**Mockup mode geri dön**:
+- `floorPresent=true` (live re-mount)
+- Phase 80 slot picker + Fill all utility intakt
+- Phase 81 mockup role chip "Object surface" intakt
+- Phase 82 3 sticker card gradient intakt
+- Render dispatch enabled (Phase 79) — title "Render mockup pack"
+
+Screenshot: Studio Mockup mode'da 3 sticker die-cut card cascade
+(Phase 82) + Slot 1 active orange ring + "01 FRONT VIEW" badge +
+ambient orange glow (Phase 77) + Phase 84 placement floor stage
+alt %38'inde subtle gradient (yumuşak beyaz tonlar + device
+cascade altında soft contact shadow yumuşak).
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, products, selection, selections}`:
+  **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 84)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** ~32 LOC CSS + ~10 LOC JSX
+  conditional. Yeni component / state / service / dep yok.
+- **Shell continuity korundu** — Shots-first sözleşme sabit
+  (Phase 83 baseline). Toolbar/stage outer/sidebar/rail dış
+  chrome aynı.
+- **Mockup mode + Phase 80 slot picker + Phase 81 role chips +
+  Phase 82 productType-aware shape + Phase 83 frame aspect-aware
+  + Phase 79 real hydrate + Phase 76 multi-design panel + Phase
+  74-75 multi-slot backend + admin authoring** hepsi intakt.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Canonical operator loop intakt** (References → Batch → Review
+  → Selection → Mockup Studio → Product → Etsy Draft).
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 85+ candidate)
+
+- **Frame mode real export pipeline** — Sharp composite (bounded
+  canvas + bg + Mockup render output) → MinIO export → Product /
+  Etsy Draft listing hero hattı. **En büyük slice; backend tur**.
+  Phase 83 davranışsal yarısını çözdü, Phase 84 placement
+  clarity'yi kapattı, Phase 85+ export'u tetikler.
+- **Frame background controls real wiring** — solid / gradient /
+  glass / scene chips currently visual-only.
+- **Canva-like composition evrimi** — text/heading layer + multi-
+  layer + alignment guides. Frame mode'un doğal devamı.
+- **Mockup mode floor texture variants** — operator için presets
+  (desk wood / studio gray / outdoor concrete) yine Shots'taki
+  Scene chip ailesiyle uyumlu olabilir; Phase 85+ candidate.
+- **Pack-selection override** (Phase 80 log baseline'a bağlı
+  backend tüketim).
+- **Frame canvas içinde Mockup mode render output yerleştirme**
+  (S7/S8 result asset compose).
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 84 ile Mockup mode'un **görsel olarak gerçek studio hissi**
+tam: object surface + slot-aware authoring (Phase 80) + productType-
+aware shape (Phase 82) + role chip (Phase 81) + **placement floor +
+contact shadow** (Phase 84). Frame mode'un **davranışsal olarak
+gerçek presentation surface'i** Phase 83'te oturdu (aspect-aware
+bounded canvas + deliverable type).
+
+Sıradaki en yüksek etkili adım **Phase 85 — Frame mode real export
+pipeline**:
+- Frame mode "Export · 1× · PNG" CTA disabled (Phase 81+ stale)
+  → gerçek output üretsin
+- Backend: yeni `/api/frame/jobs` route + Sharp Frame compositor
+  (bounded canvas bg + Mockup render output veya kept asset
+  composite) + MinIO upload (mockup-render.worker pattern parity)
+- Frame result view (S8 parity): download / send to Etsy listing
+  hero alanı
+
+Phase 85 tamamlanınca canonical loop **gerçek Studio**: Mockup
+mode render + Frame mode export = end-to-end Etsy hero / Instagram
+square / Story / Pinterest pin / Storefront banner pipeline.
+Phase 86+ Canva-like composition evrimi doğal devam.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

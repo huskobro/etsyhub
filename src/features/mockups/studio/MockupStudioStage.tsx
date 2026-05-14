@@ -349,6 +349,21 @@ export function MockupStudioStage({
       {!isRender && mode === "mockup" ? (
         <div className="k-studio__stage-amb" />
       ) : null}
+      {/* Phase 84 — Placement floor (Mockup mode only).
+       *
+       * Shots.so-uyumlu: device cascade boş void'de değil, yumuşak
+       * zemin + contact shadow üzerinde. Operator placement'ı
+       * (mockup'ın "nereye oturduğu") daha net okur. Frame mode'da
+       * CSS data-mode="frame" altında display:none ile saklanır;
+       * defensive olarak burada da mode guard. Render overlay
+       * sırasında gizlenir. */}
+      {!isRender && mode === "mockup" ? (
+        <div
+          className="k-studio__stage-floor"
+          data-testid="studio-stage-floor"
+          aria-hidden
+        />
+      ) : null}
 
       {mode === "mockup" ? (
         <MockupComposition
