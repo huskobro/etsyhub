@@ -746,8 +746,25 @@
   background: linear-gradient(135deg, #f5b27d 0%, #d97842 100%);
   transition: background 320ms ease, width 220ms ease, height 220ms ease;
   overflow: hidden;
-  /* Plate kendi içinde cascade taşır; cascade plate'in merkezinde */
+  /* Plate kendi içinde cascade taşır; cascade plate'in merkezinde.
+   *
+   * Phase 97 — flex-direction: column.
+   *
+   * Phase 91 baseline'da `display: flex` + `align-items: center` +
+   * `justify-content: center` plate-inner cascade'i merkezliyordu.
+   * Mockup mode'da tek child (stage-inner 572×504) → row default
+   * shrink etmiyordu. Frame mode'da iki child (stage-inner + frame-cap)
+   * → row flex iki sibling'i yan yana sığdırmak için stage-inner
+   * inline width:572'yi shrink ediyordu (413'e indi); slot 0 plate
+   * merkezinde değil sola kayık görünüyordu.
+   *
+   * Phase 97 düzeltmesi: flex-direction column. Stage-inner üstte
+   * (cascade host), frame-cap altında (caption). İkisi de full width
+   * alabilir, shrink etmez. Mockup mode'da tek child column'da da
+   * merkezi (justify-content center). Sözleşme #2 stage continuity +
+   * #8 single-item center fix Frame mode'da da geçerli olur. */
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
 }
@@ -984,12 +1001,28 @@
 
 /* Frame canvas caption */
 .k-studio__frame-cap {
-  margin-top: 6px;
+  /* Phase 97 — caption plate'in alt kenarında absolute pozisyon.
+   *
+   * Phase 91 baseline'da plate flex container'ında stage-inner'ın
+   * kardeşi olarak yer alıyordu; flex-direction column geçişinde
+   * (Phase 97) caption stage-inner'ın altında ek dikey alan kaplıyor,
+   * cascade host'u dikeyde sıkıştırıyordu. Phase 97 düzeltme: caption
+   * plate'in IÇ alt kenarına absolute positioned — cascade tam plate
+   * yüksekliğini kullanır. Sözleşme #3 plate boyut ifadesi (export
+   * dims + deliverable type) bilgi katmanı olarak korunur.
+   *
+   * z-index: 2 → cascade slot'larının üstünde okunabilir kalır. */
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
   font-family: var(--ks-fm);
   font-size: 9.5px;
-  color: rgba(255, 255, 255, 0.20);
+  color: rgba(255, 255, 255, 0.45);
   letter-spacing: 0.06em;
   text-align: center;
+  z-index: 2;
+  pointer-events: none;
 }
 
 /* ─── Rail ─────────────────────────────────────────── */

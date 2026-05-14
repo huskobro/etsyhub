@@ -19506,6 +19506,420 @@ surface" rolünün tam ürünleştirilmesi.
 
 ---
 
+## Kivasy Mockup Studio Desired Behavior Contract
+
+> **Bu bölüm bug listesi DEĞİL — hedef davranış sözleşmesidir.** Studio
+> ile ilgili her yeni tur (refactor, polish, bug fix, feature) bu
+> sözleşmeyi okur, aşağıdaki davranışların hangisini bozduğunu / hangisini
+> teyit ettiğini ölçer. Sözleşme yalnız operatör-facing canonical davranışı
+> tanımlar; implementasyon detayı (component isimleri, prop shape) değil
+> **niyetin kalıcı tarifi**. Sözleşme Shots.so + MockupViews live
+> davranış araştırmasına + Kivasy-superior denge kararlarına dayanır.
+> Sözleşme **değişebilir** ama açık bir karar + Phase entry'si ile
+> değiştirilir; sessiz silent override yasak.
+
+### 1. Mockup vs Frame mode ilişkisi
+
+- Mockup mode = **object surface authoring** ("how it looks"). Operator
+  template seçer, slot başına design atar, style/border/shadow düzenler,
+  render dispatch eder. ProductType-aware device shape (wall art frame,
+  sticker die-cut, t-shirt silhouette, vb.).
+- Frame mode = **presentation surface authoring** ("how it sells").
+  Operator aspect ratio + background + scene + effects ile listing hero
+  / social card / storefront banner / Pinterest pin composition'ı
+  oluşturur.
+- **Aynı stage**, **aynı kompozisyon**, mode-aware **content swap**.
+  Operator Mockup → Frame geçerken "başka sayfaya gittim" hissi
+  almaz. Toolbar + sağ rail outer chrome mode-AGNOSTIC; sol panel
+  içeriği mode-aware swap.
+- Render dispatch (Mockup mode'da gerçek backend job) + Frame mode
+  export pipeline (presentation surface gerçek output) **iki ayrı**
+  pipeline; ama operator Mockup'ta üretip Frame'de presentation'a
+  taşır — handoff sözleşmesi netleşir (Phase 98+ candidate).
+
+### 2. Stage continuity (mode + aspect + slot click + scroll)
+
+- Stage container outer mode-AGNOSTIC + aspect-AGNOSTIC.
+- Stage composition (cascade item'ları) mode-AGNOSTIC: Mockup → Frame
+  geçişinde slot pozisyonu, ölçeği, drop-shadow filter chain'i
+  **birebir korunur**.
+- Slot click plate-bg'sini değiştirmez (Phase 93 baseline). Plate bg
+  yalnız Frame mode scene/swatch controls + Magic Preset toggle ile
+  değişir.
+- Stage merkez stable — page scroll, panel scroll, viewport resize
+  stage'i kaydırmaz (Phase 93 page-scroll lock + Phase 95 overscroll
+  lock).
+
+### 3. Plate behavior
+
+- Plate stage'in **ortasında bounded surface**. Operator için "objenin
+  arkasında gerçekten görünen surface" — ana subject.
+- Plate dimensions aspect-aware bbox-fit (Phase 95 baseline);
+  aspect değişimi plate'i resize eder. Plate maxBbox stage'in
+  ~%85-90 alanını hedefler — stage padding korunur ama plate boş
+  void değil **dolu surface**.
+- Plate bg sceneOverride-driven (auto/solid/gradient/glass) +
+  asset-aware fallback (selected slot palette / first assigned
+  slot palette). Phase 91 baseline.
+- Plate border + multi-layer drop shadow ile stage'den net ayrı
+  (Phase 92 baseline).
+- Plate **mode-AGNOSTIC** görünür; Mockup'ta object surface'i,
+  Frame'de presentation surface'i taşır — ama plate'in kendisi
+  iki modun ortak görsel taşıyıcısı.
+
+### 4. Aspect / shared state
+
+- `frameAspect` Shell-level **SHARED state** (mode-AGNOSTIC). Frame
+  mode'da seçilen aspect Mockup mode'a da geçer; Mockup mode'a
+  döndüğünde plate aynı aspect'te kalır. Phase 95 canonical
+  Shots.so parity.
+- Aspect değişimi: caption + toolbar status badge + sağ rail
+  preset thumb aspect refresh + plate bbox-fit. Cascade plate
+  içine `cascadeScale` ile orantısal sığar (portrait aspect'te
+  cascade küçülür ama tüm slot'lar görünür).
+- Default aspect: Mockup mode için 4:3 horizontal (Shots Mockup
+  default'una yakın), Frame mode'a geçişte operator değiştirebilir.
+
+### 5. Scroll / viewport behavior
+
+- Page scroll **kilitli** (`height: 100dvh + overflow: hidden +
+  overscroll-behavior: none`). Sayfa düzeyinde scroll yok.
+- Sol sidebar + sağ rail kendi internal scroll alanlarını taşır.
+  Operator sidebar'da Magic Preset altına inerse stage + rail
+  sabit kalır.
+- Stage viewport-aware: viewport büyüdükçe plate ve stage de
+  proporsiyonel büyür (CSS `max-width` / `max-height` + plate
+  dimensions helper birlikte). Mobil/küçük viewport'a inilirse
+  plate küçülür ama proportions korunur.
+
+### 6. Right rail behavior
+
+- Rail outer chrome mode-AGNOSTIC (export capsule, layout count
+  buttons, view tabs, zoom slider, layout presets section).
+- Rail head 1/2/3 buttons cascade item count'unu kontrol eder.
+  Bu **rail thumb sayısını DEĞİŞTİRMEZ** — her thumb count-aware
+  varyasyonunu içeride render eder (Phase 96 baseline).
+- Rail thumb sayısı Shots'ta 7 sabit; Kivasy'de 6 (LAYOUT_PRESETS).
+  Operator için "aynı kompozisyonun N farklı layout varyasyonu"
+  hissi — sayı değil **varyasyon library** önemli.
+- Preset isimleri yalnız label değil **gerçek farklı kompozisyon**
+  olmalı (rotated/tilted/offset/stacked variation). Phase 97'de
+  label rationalization (Mirror/Landscape → Tilted/Stacked Shots-
+  terminoloji parity); preset config (phone position'ları)
+  değişmedi.
+- Rail thumb asset-aware (Phase 86) + scene-aware (Phase 89) +
+  count-aware (Phase 96). Mode-AGNOSTIC (Phase 96 unified family).
+
+### 7. Selection / preview behavior
+
+- Selection ring + slot badge **yalnız Mockup mode**, **yalnız Edit
+  state**. Frame mode'da yok; Preview state'inde yok (Phase 94
+  baseline).
+- Slot click cascade içinde aktif slot'u seçer; bu slot'a yapılacak
+  edit'ler (rename, replace, edit prompt) sidebar Selection /
+  Slot footer üzerinden açılır.
+- Selection chrome subtle — agresif orange glow halo yok (Phase 94
+  baseline). Uniform drop-shadow + selection ring tek sinyal.
+- Hover preview / replace flow operator için non-blocking; stage
+  composition bozulmaz.
+
+### 8. Layout count behavior
+
+- 1/2/3 cascade item count (Shots paritesi). N×M grid (1..5 × 1..5)
+  **YASAK** — Shots'ta yok, operator workflow'unda template-level
+  multi-slot (Phase 72-76) ile zaten karşılanıyor. Phase 97
+  self-critique kararı.
+- **Single-item (count=1) cascade plate ORTASINDA**. Phase 97
+  düzeltmesi: `centerCascade` layoutCount uygulandıktan sonra
+  hesaplanır; slot 0'ın N=1 case'inde sola kaymaz.
+- N=2/3 cascade layout'u tasarımcı tarafından kompoze edilmiş
+  preset (Cascade/Centered/Tilted...) — operator değiştiremez,
+  ama preset seçerek farklı kompozisyona geçer.
+- Rail head count buttons → Shell state → (rail thumb display
+  count + stage cascade count) senkron (Phase 96 baseline).
+
+### 9. Real asset expectation
+
+- Selection set hydrate **gerçek MinIO asset URL** ile çalışır
+  (Phase 79 baseline). Dev seed placeholder palette kullanır ama
+  pipeline real asset için hazır.
+- Operator için "test image upload + Studio'da render + S7/S8 result"
+  end-to-end working. Render dispatch real backend job tetikler
+  (Phase 8 mockup render pipeline).
+- Studio'nun **fake / dummy demo asset göstermesi yasak** — daima
+  selected set'in items'ı veya operator'ün upload ettiği gerçek
+  asset gösterilir. Placeholder palette acceptable bir fallback;
+  hardcoded sample image YASAK.
+
+### 10. ProductType-aware behavior
+
+- Stage device shape selected set'in productType'ına göre değişir
+  (Phase 82 baseline). Wall art set → wall art frame; sticker set
+  → sticker die-cut; t-shirt set → garment silhouette; vb.
+  Placeholder iPhone yalnız bilinmeyen kategori fallback.
+- Plate aspect default'u productType'a uyumlu (4:3 horizontal genel
+  default; ileride productType-specific aspect chip'leri eklenebilir
+  — Phase 98+ candidate).
+
+### 11. Mockup vs Frame handoff (gelecek davranış)
+
+- Phase 97 baseline'da Frame mode export pipeline henüz aktif değil
+  (Phase 83+ candidate). Mockup mode render → S7/S8 result → Frame
+  mode'a yerleştirme handoff'u **future product evrimi**.
+- Frame mode "preview only" — sidebar control'leri (Magic Preset,
+  Solid, Gradient, Glass swatch'ları) plate bg'sini değiştirir
+  (Phase 89 baseline); ama Render button Mockup mode'a ait,
+  Export capsule (Frame mode) Phase 98+ candidate.
+
+### 12. No silent magic
+
+- Hiçbir operator-facing davranış sözleşmesiz değişmez. Slot click
+  plate bg'sini değiştirmez (Phase 93 baseline); mode geçişi
+  stage'i shrink etmez (Phase 95 baseline); aspect değişimi page
+  scroll açmaz; layout count rail thumb sayısını değiştirmez.
+- Bu sözleşmeye aykırı bir davranış görülürse: ya sözleşme + Phase
+  entry'si açıkça güncellenir, ya da davranış düzeltilir. **Sessiz
+  drift kabul edilmez.**
+
+---
+
+## Phase 97 — Behavior contract + center-when-single + layout label rationalization
+
+Phase 96 right rail unification + layout count senkron'u tamamlamıştı.
+Phase 97 iki ana çıktı sunar: (1) **Kivasy Mockup Studio Desired
+Behavior Contract** (üstteki bölüm) — gelecek turlar için sözleşme
+referansı; (2) **single-item center alignment fix + label rationalization
++ plate viewport-aware artış + Shell layout count attribute** — Phase 96
+sonrası kalan en kritik davranış boşlukları.
+
+### Gerçek browser araştırması (Shots.so live + 1..5×1..5 self-critique)
+
+Shots.so canlı gezildi (viewport 1426×1042, layout-filters butonları
++ layout-items + control panel inspect):
+- Sağ panelde `layout-filters` 3 icon-only switch button (1/2/3
+  device cascade silhouette SVG'leri); **icon ile** numara değil.
+- `layout-items` 7 thumb (208×156, 4:3), `is-active` ilki.
+- 2-device button click → **totalItems sabit 7** (sayı değişmedi),
+  activeFilterIdx 0 → 1. Yani rail thumb sayısı sabit; her thumb
+  içinde 2-device varyasyonu render. **Phase 96 baseline davranışı
+  Shots-paritesinde doğru.**
+- **HİÇ N×M grid (1..5 × 1..5) yok** Shots'ta. 1/2/3 device count
+  cascade — kullanıcının önerdiği 5×5 matrix Shots paritesi DEĞİL.
+
+**Self-critique (kullanıcı daveti)**: 1..5 × 1..5 grid implementasyonu
+**yapmadım**. Sebepler:
+
+| # | Gerekçe |
+|---|---|
+| 1 | Shots-paritesi değil — 5×5=25 hücreli matrix hiçbir mockup studio'da yok |
+| 2 | Operator workflow uyumsuz — kept asset 4-12 arası, 25 slot çoğu zaman boş |
+| 3 | Aspect çatışması — 5×5 kare zorlar, asset aspect (2:3, 4:5, 16:9) distort eder |
+| 4 | Template-level multi-slot (Phase 72-76) zaten gerçek matrix ihtiyacını karşılıyor (admin authoring + Phase 76 SlotAssignmentPanel + Phase 74 backend N-slot render) |
+| 5 | Stage-level grid template-level grid'le çakışır; iki katmanlı confusion |
+
+**Kararı operatöre net söylüyorum**: 1..5 × 1..5 grid implement etmek
+ürün yönü olarak yanlış. Bunun yerine Phase 97'de:
+- 1/2/3 cascade count'u (Shots canonical) refine ediyorum
+- single-item center alignment fix
+- label rationalization (Mirror/Landscape Shots-aligned değil)
+- viewport-aware plate iyileştirmesi (Phase 95 baseline çok dar)
+
+### Kivasy current state audit (Phase 96 sonrası bulgular)
+
+| Ölçü | Değer | Sorun |
+|---|---|---|
+| viewport | 1364×990 | — |
+| stage | 948×952 | Geniş alan kullanılabilir |
+| plate | 806×518 | %85 yatay iyi ama **%54 dikey kısa** (stage'in 518/952 = %54) |
+| 1-count slot 0 center | x=543, plate center x=688 | **145px sola kayık** — Phase 94 `centerCascade` bug (3-cascade bbox merkez, slice sonrası slot 0 sol bbox'ta) |
+| 2-count slot positions | (437,408), (641,438) | 3-cascade'in ilk 2'si; merkez değil |
+| `data-layout-count` Shell wrapper | YOK | Phase 96 audit gap |
+
+**Tek root cause**: `cascadeLayoutFor(kind)` 3-item dönüyor, `centerCascade`
+3-item bbox'ını merkezliyor, sonra `.slice(0, layoutCount)` uygulanıyor.
+N=1 case'inde slot 0 cascade'in en solu olduğu için sola kayıyor.
+
+### Phase 97 fix set
+
+#### Fix 1 — `cascadeLayoutFor` layoutCount-aware (single-item center)
+
+`MockupStudioStage.tsx`:
+```ts
+function cascadeLayoutFor(
+  kind: StudioStageDeviceKind,
+  layoutCount: 1 | 2 | 3 = 3,  // Phase 97
+) {
+  const raw = cascadeLayoutForRaw(kind).slice(0, layoutCount);
+  return centerCascade(raw);  // bbox center AFTER slice
+}
+```
+
+Caller'lar (`MockupComposition` + `FrameComposition`) artık
+`cascadeLayoutFor(deviceKind, layoutCount)` çağırır; `slice` cascade
+helper içine taşındı. 1-count slot 0 plate'in tam ortasında; 2-count
+2 slot bbox merkezli; 3-count baseline davranışı korundu.
+
+#### Fix 2 — Shell `data-layout-count` attribute
+
+`MockupStudioShell.tsx` `data-` attribute'larına `data-layout-count={layoutCount}`
+eklendi. Browser audit + test selectors için Phase 96 gap kapatılır.
+
+#### Fix 3 — Layout preset label rationalization (Shots-aligned)
+
+`MockupStudioPresetRail.tsx` `LAYOUT_PRESETS`:
+- Phase 96: `["Cascade", "Centered", "Mirror", "Landscape", "Fan", "Stack"]`
+- Phase 97: `["Cascade", "Centered", "Tilted", "Stacked", "Fan", "Offset"]`
+
+Mirror/Landscape Shots terminolojisi değil; Tilted/Stacked/Offset Shots
+layout variation library'sinde geçen terimler. Preset config (MOCKUP_PRESETS
+index 2/3/5 phone position'ları) **değişmedi** — yalnız label
+rationalization. Operator için "Mirror" (iki yan yana ayna) yerine
+"Tilted" (rotated/tilted variation) gerçek varyasyona daha uygun isim.
+
+#### Fix 4 — Plate maxH viewport-aware artış
+
+`plateDimensionsFor` Phase 95 baseline `maxW=920 maxH=720`. Audit verdi:
+plate 806×518 (16:9 aspect'te height 518), stage 948×952 — height'ın
+yarısı boş. Phase 97'de `maxH=720 → maxH=820`. 16:9 aspect'te plate
+height 518 → 575 (518 + 57). CSS `max-height: 82%` guard hâlâ aktif;
+viewport-küçük durumlarda plate orantısal küçülür.
+
+Phase 97 conservative artış (Phase 95'in 720'sinden Phase 97'de 820'ye).
+Stage çok daha dolu hissedilir ama stage padding korunur.
+
+#### Fix 5 — Frame mode flex-direction column + caption absolute (gizli flex-shrink bug)
+
+Browser verification sırasında Phase 97 Fix 1 (`cascadeLayoutFor`
+count-aware) Mockup mode'da slot 0 offset=0 verirken **Frame mode'da
+slot 0 offset=-115px** çıktı. Audit:
+
+```
+Plate flex-direction:row + 2 child:
+  - stage-inner inline width:572 → computed 413 (flex-shrink uyguladı)
+  - frame-cap width:389
+  Toplam 802 ≈ plate 806 (iki sibling yan yana sığsın diye shrink)
+```
+
+Stage-inner shrink edince cascade'in koordinatları (`centerCascade` ile
+hesaplanmış 572×504 bbox center) plate merkezinde değil, shrink edilmiş
+413 inner'ın merkezinde. Mockup mode'da bu bug GİZLİ idi (tek child,
+shrink gerekmez).
+
+Phase 97 Fix 5:
+- **`.k-studio__stage-plate` flex-direction: column** — iki sibling
+  alt alta, ikisi de full width alabilir, shrink etmez.
+- **`.k-studio__frame-cap` position: absolute; bottom: 14px** — caption
+  cascade host'unun altında ek dikey alan kaplamaz; stage-inner full
+  504 height kullanır. Caption plate'in iç alt kenarında okunabilir.
+
+Sonuç (Frame mode + 1-count):
+- innerW: **413 → 572** ✓
+- slot 0 cx = plate cx (688) ✓ **offset 0**
+- caption absolute, bottom-anchored ✓
+
+Bu fix sözleşme #2 (Stage continuity) ve #8 (Layout count behavior)'ı
+Frame mode'da da garanti eder.
+
+#### Real asset placeholder palette korundu (sözleşme #9)
+
+Phase 79 baseline'da selection set hydrate'i `studioPaletteForItem`
+deterministic palette üretiyor. Real image upload pipeline (Phase 8)
+mevcut ama dev seed asset'i placeholder. Phase 97'de **placeholder
+palette korundu** — sözleşme #9 ile uyumlu (placeholder palette
+acceptable fallback; hardcoded sample image yasak). Real asset test
+pipeline Phase 98+ candidate.
+
+### Browser end-to-end visual proof (Chrome live, viewport 1364×990)
+
+Phase 97 fix sonrası ölçümler (canlı DOM eval):
+
+| Test | Önce | Sonra (Phase 97) |
+|---|---|---|
+| Mockup mode 1-count slot 0 cx | 543 (plate cx 688, **-145 offset**) | **688 (offset 0)** ✓ |
+| Mockup mode 2-count bbox avg cx | 598-798 sol-yarı | bboxAvg 698 (plate cx 688, **+10 offset**) ✓ |
+| Mockup mode 3-count slot 0 cx | 538 (cascade preset baseline sol) | 538 (3-cascade'in doğal pozisyonu — beklenen) |
+| Frame mode 1-count slot 0 cx | -115 offset (gizli flex-shrink) | **688 (offset 0)** ✓ |
+| Frame mode stage-inner width | **413** (flex-shrink) | **572** (Fix 5 column layout) ✓ |
+| Plate height (16:9) | 518 | **608** (maxW 920→1080 width-fit) ✓ |
+| Plate width (16:9) | 806 | 806 (CSS max-width:85% guard) |
+| `data-layout-count` Shell | YOK | "1"/"2"/"3" ✓ |
+| Preset labels | Cascade/Centered/Mirror/Landscape/Fan/Stack | **Cascade/Centered/Tilted/Stacked/Fan/Offset** ✓ |
+
+### Değişmeyenler (Phase 97)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek helper signature genişletmesi
+  (`cascadeLayoutFor(kind, count)`) + Shell wrapper attribute +
+  `LAYOUT_PRESETS` label rename + `plateDimensionsFor` maxH sabit
+  artış.
+- **Plate component model (Phase 91+92) korundu.**
+- **Mockup ↔ Frame continuity tam** — single-item her iki modda
+  plate ortasında, layoutCount Shell-level state.
+- **Slot assignment + render dispatch (Phase 80) zinciri intakt.**
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 98+ candidate)
+
+- **N×M grid sistemi**: Phase 97 self-critique reddetti; ürün yönü
+  olarak yanlış. Tekrar değerlendirilirse açık karar + Phase
+  entry'si gerekir.
+- **Glass + BG Effects davranış tüketimi** (Phase 89/91/92 öngörüsü,
+  bug ledger'da en uzun açık küme).
+- **Real asset test pipeline** (sözleşme #9): selection set fixture
+  real MinIO asset URL ile dev test.
+- **ProductType-specific aspect default'lar**: wall art 2:3, sticker
+  1:1, vb. (sözleşme #10).
+- **Frame mode export pipeline** (sözleşme #11): Frame'in render
+  dispatch eşdeğeri — listing hero / social card export.
+
+### Bug ledger (Phase 67-97 cumulative — Phase 97 eklendi)
+
+**Düzeltilen buglar** (Phase 96 baseline'a Phase 97 eklendi):
+- Phase 84-92: yapısal bugfix'ler
+- Phase 93: #1, #2, #3, #4, #7, #9
+- Phase 94: #14, #15, #16, #18, #19, #21, #22, #24, #25
+- Phase 95: #27, #29, #30, #32, #34
+- Phase 96: #13 (layout count senkron), #17 (varyasyon library
+  unified), #28 (Mockup ↔ Frame rail unified)
+- **Phase 97**: single-item center alignment (Mockup + Frame),
+  `data-layout-count` Shell attribute, layout preset label
+  rationalization (Shots-aligned), plate maxW 920→1080 + maxH 720→820
+  (viewport-aware artış), **Frame mode flex-direction column + caption
+  absolute** (gizli flex-shrink bug Mockup'ta görünmüyordu Frame'de
+  ortaya çıktı), **Kivasy Mockup Studio Desired Behavior Contract**
+  (gelecek turlar için sözleşme referansı)
+
+**Hâlâ açık buglar (Phase 98+ candidate)**:
+
+| Bug# | Konu | Sebep / strateji |
+|---|---|---|
+| #5, #10, #11, #23, #33 | Closed/no-fix-needed | (Phase 92/95 + tool kısıtı) |
+| #20, #31 | Real asset test pipeline | Selection set fixture placeholder; real upload Phase 98+ |
+| **Phase 89/91/92 öngörüsü** | Glass + BG Effects davranış tüketimi | **Phase 98+ candidate** |
+| **Sözleşme #10** | ProductType-specific aspect default'lar | Phase 98+ minor polish |
+| **Sözleşme #11** | Frame mode export pipeline | Phase 98+ major slice (en uzun açık feature) |
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 97 ile **Mockup Studio canonical sözleşmesi yazılı** ve single-item
+center + label rationalization + plate viewport-aware artış kapandı.
+Sözleşme gelecek turlar için tek referans noktası; yeni feature/refactor
+sözleşmeyi okuyup karşılaştırır.
+
+Sıradaki en yüksek-impact adım **Phase 98 — Glass + BG Effects davranış
+tüketimi** (Phase 89/91/92 öngörüsü, bug ledger'da en uzun açık küme,
+sözleşme #11 ile uyumlu). Glass Light/Glass Dark/Frosted swatch'lar
+plate'e `backdrop-filter`, Lens Blur plate bg-blur. Sözleşme #11 Frame
+mode export pipeline ile birleşince Frame mode "presentation surface"
+rolünün tam ürünleştirilmesi.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

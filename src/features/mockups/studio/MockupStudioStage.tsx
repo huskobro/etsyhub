@@ -127,9 +127,31 @@ function plateDimensionsFor(
    *   - 3:2 → width-fit (920×613)
    *
    * CSS `.k-studio__stage-plate` max-width:85% / max-height:82% +
-   * bu helper birlikte viewport-küçük responsive guard. */
-  const maxW = 920;
-  const maxH = 720;
+   * bu helper birlikte viewport-küçük responsive guard.
+   *
+   * Phase 97 — maxW 920 → 1080, maxH 720 → 820 (viewport-aware artış).
+   *
+   * Phase 95 baseline maxW=920 / maxH=720 idi. Audit (Phase 96 sonrası,
+   * viewport 1364×990): plate 806×518 (CSS max-width:85%×948=805 cap),
+   * stage 948×952 — dikey alanın %46'sı boş; 16:9 default'ta plate
+   * height/stage = 518/952 = %54. Root cause: 16:9 width-fit'te
+   * height = width/1.777; maxW=920 → max possible height 518. Yalnız
+   * maxH artırmak 16:9'da plate height'ı değiştirmez — width-bounded.
+   *
+   * Phase 97 düzeltmesi:
+   *   - maxW 920 → 1080: CSS max-width:85% guard hâlâ aktif; geniş
+   *     viewport'ta plate width artar → 16:9 height de ~608'e çıkar
+   *     (1080/1.777). Küçük viewport'ta CSS guard daraltır
+   *     (responsive korunur).
+   *   - maxH 720 → 820: portrait aspect'lerde (9:16, 4:5) plate
+   *     height artar.
+   *
+   * Stage padding korunur (CSS %85 width + %82 height guard); viewport
+   * küçüldüğünde orantısal küçülme aynı pattern. Stage çok daha
+   * dolu hissedilir. Sözleşme #3 (Plate behavior — stage ~%85-90
+   * hedef) ile uyumlu. */
+  const maxW = 1080;
+  const maxH = 820;
   const cfg = FRAME_ASPECT_CONFIG[frameAspect];
   const ratio = cfg.ratio; // w/h
   const fitByWidth = { w: maxW, h: Math.round(maxW / ratio) };
@@ -185,10 +207,25 @@ function centerCascade(
   return items.map((it) => ({ ...it, x: it.x + offsetX, y: it.y + offsetY }));
 }
 
+/* Phase 97 — layoutCount-aware center.
+ *
+ * Phase 94'te `centerCascade` 3-cascade'in bbox'ını merkezliyor,
+ * caller `.slice(0, layoutCount)` uyguluyordu. Sonuç: N=1 case'inde
+ * slot 0 cascade'in en sol pozisyonu olduğu için plate'in sol-
+ * yarısına kayık (audit: x=543 plate-center=688, 145px sapma).
+ *
+ * Phase 97 düzeltmesi: slice helper içine taşındı; center slice
+ * sonrası uygulanır. N=1 slot 0 plate ortasında; N=2 cascade
+ * bbox center; N=3 baseline davranışı korundu.
+ *
+ * Sözleşme #8 (Layout count behavior) — single-item cascade plate
+ * ORTASINDA. */
 function cascadeLayoutFor(
   kind: StudioStageDeviceKind,
+  layoutCount: 1 | 2 | 3 = 3,
 ): { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[] {
-  return centerCascade(cascadeLayoutForRaw(kind));
+  const raw = cascadeLayoutForRaw(kind).slice(0, layoutCount);
+  return centerCascade(raw);
 }
 
 function cascadeLayoutForRaw(
@@ -254,8 +291,12 @@ function MockupComposition({
   /* Phase 96 — Layout count Shell state ile cascade item count
    * sınırlandı (bug #13). Rail head 1/2/3 buttons → Shell setter →
    * layoutCount → Stage MockupComposition + FrameComposition + rail
-   * thumb hepsi aynı limit'i uygular. */
-  const phones = cascadeLayoutFor(deviceKind).slice(0, layoutCount);
+   * thumb hepsi aynı limit'i uygular.
+   *
+   * Phase 97 — slice helper içine taşındı (single-item center fix).
+   * cascadeLayoutFor artık (kind, layoutCount) signature; center
+   * slice sonrası uygulanır. */
+  const phones = cascadeLayoutFor(deviceKind, layoutCount);
   /* Phase 95 — Cascade portrait scale-down (bug #32):
    * Cascade 572×504 sabit bbox; plate aspect değişince (örn. 9:16
    * portrait 405×720) cascade plate dışına taşıyordu — bazı items
@@ -432,8 +473,11 @@ function FrameComposition({
 
   /* Cascade layout: Mockup mode ile birebir aynı (cascadeLayoutFor
    * + 572×504 inner stage). Phase 87'de scale = 1 (Mockup mode ile
-   * aynı boyut). Phase 96 — layoutCount ile slice (bug #13). */
-  const phones = cascadeLayoutFor(deviceKind).slice(0, layoutCount);
+   * aynı boyut). Phase 96 — layoutCount ile slice (bug #13).
+   * Phase 97 — slice helper içine taşındı (single-item center fix);
+   * cascadeLayoutFor (kind, layoutCount) signature, center slice
+   * sonrası. */
+  const phones = cascadeLayoutFor(deviceKind, layoutCount);
 
   const activeSlot = slots[selectedSlot] ?? null;
   const hasAnyAssignedSlot = slots.some((s) => s.assigned);

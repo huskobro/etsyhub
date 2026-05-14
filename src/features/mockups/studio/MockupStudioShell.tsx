@@ -352,6 +352,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       data-device-kind={deviceKind}
       data-category-id={categoryId}
       data-frame-aspect={frameAspect}
+      data-layout-count={layoutCount}
       data-slot-assignment-count={
         Object.values(slotAssignments).filter(Boolean).length
       }

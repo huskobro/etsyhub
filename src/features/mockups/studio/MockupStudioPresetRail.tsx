@@ -44,8 +44,23 @@ import type { StudioAppState, StudioMode } from "./types";
  * Frame mode'a özel preset isimleri (Offset/Bleed/Angled/Duo/
  * Story/Comparison/Flat Lay) kaldırıldı — Mockup label'ları
  * canonical (Phase 77 baseline + svg-art MOCKUP_PRESETS config'i
- * ile uyumlu). */
-const LAYOUT_PRESETS = ["Cascade", "Centered", "Mirror", "Landscape", "Fan", "Stack"];
+ * ile uyumlu).
+ *
+ * Phase 97 — Label rationalization (Shots-aligned).
+ *
+ * Phase 96 label'ları: "Cascade / Centered / Mirror / Landscape /
+ * Fan / Stack". "Mirror" + "Landscape" Shots terminolojisi DEĞİL
+ * (Shots'ta layout variation library "Tilted / Stacked / Offset"
+ * vb. semantic'ler kullanır). Operator için "Mirror" → iki yan
+ * yana ayna gibi yanıltıcı; aslında MOCKUP_PRESETS index=2 phone
+ * positions tilted/mirrored variation taşır.
+ *
+ * Phase 97 rename (preset config DEĞİŞMEDİ — sadece label):
+ *   - "Mirror"     → "Tilted"    (idx 2: -4°/+4° rotated phones)
+ *   - "Landscape"  → "Stacked"   (idx 3: single wide phone variant)
+ *   - "Stack"      → "Offset"    (idx 5: rotated-offset stacked variant)
+ * Cascade / Centered / Fan korundu (Shots-aligned). */
+const LAYOUT_PRESETS = ["Cascade", "Centered", "Tilted", "Stacked", "Fan", "Offset"];
 
 function LayoutIcon({ n }: { n: 1 | 2 | 3 }) {
   if (n === 1) {
