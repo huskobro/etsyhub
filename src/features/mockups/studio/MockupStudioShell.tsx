@@ -77,6 +77,16 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
    * chip click → aspect değişir → Stage canvas dims + caption live
    * update + Toolbar status badge gerçek dims gösterir. */
   const [frameAspect, setFrameAspect] = useState<FrameAspectKey>("16:9");
+  /* Phase 96 — Layout count Shell state (Shots.so canonical 1/2/3
+   * count layout parity). Phase 77 baseline'da count rail head'de
+   * LOCAL state'ti — stage'e veya thumb'lara yansımıyordu (kullanıcı
+   * bug #13). Shots.so'da rail head 1/2/3 buttons rail thumb'ları
+   * gerçekten değiştirir (1-device variations / 2-device variations
+   * / 3-device variations); stage cascade item count'unu sınırlar.
+   * Phase 96'da Shell-level state; rail head buttons → Shell setter;
+   * rail thumb'larda displayCount prop ile cascade item N ile sınırlı;
+   * stage MockupComposition/FrameComposition aynı limit'i uygular. */
+  const [layoutCount, setLayoutCount] = useState<1 | 2 | 3>(3);
 
   /* Phase 89 — Frame mode scene control override state.
    *
@@ -394,12 +404,15 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           frameAspect={frameAspect}
           activePalette={activePalette}
           sceneOverride={sceneOverride}
+          layoutCount={layoutCount}
         />
         <MockupStudioPresetRail
           mode={mode}
           appState={appState}
           activePalette={activePalette}
           sceneOverride={sceneOverride}
+          layoutCount={layoutCount}
+          onChangeLayoutCount={setLayoutCount}
         />
       </div>
       {/* Phase 94 — Dev/demo state switcher kaldırıldı (bug #19).

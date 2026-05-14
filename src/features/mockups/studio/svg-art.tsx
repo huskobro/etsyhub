@@ -386,6 +386,7 @@ export function PresetThumbMockup({
   idx,
   palette,
   sceneBg,
+  displayCount,
 }: {
   idx: number;
   palette?: readonly [string, string];
@@ -395,8 +396,17 @@ export function PresetThumbMockup({
   sceneBg?:
     | { kind: "solid"; color: string }
     | { kind: "gradient"; from: string; to: string };
+  /** Phase 96 — Layout count Shell state (bug #13).
+   *
+   *  Shots.so rail head 1/2/3 buttons rail thumb içindeki cascade
+   *  item count'unu sınırlar. Phase 96'da displayCount geçilirse
+   *  thumb yalnız ilk N phone gösterir; undefined ise tüm preset
+   *  phones (Phase 77 baseline). */
+  displayCount?: 1 | 2 | 3;
 }) {
   const c = MOCKUP_PRESETS[idx] ?? MOCKUP_PRESETS[0]!;
+  const phones =
+    displayCount !== undefined ? c.ph.slice(0, displayCount) : c.ph;
   const isGradient = idx === 1;
   // Phase 86 — Asset-aware mode. palette geldiğinde bg + device fill
   // selected slot paletinden türetilir. Bg: subtle dark tint of
@@ -450,7 +460,7 @@ export function PresetThumbMockup({
             : (bgFromPalette ?? c.bg))
         }
       />
-      {c.ph.map((p, i) =>
+      {phones.map((p, i) =>
         hasPalette ? (
           <MockupPhWithPalette key={i} {...p} palette={palette!} />
         ) : (

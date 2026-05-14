@@ -246,8 +246,16 @@ function MockupComposition({
   isPreview,
   deviceKind,
   plateDims,
-}: MockupCompositionProps & { plateDims: { w: number; h: number } }) {
-  const phones = cascadeLayoutFor(deviceKind);
+  layoutCount,
+}: MockupCompositionProps & {
+  plateDims: { w: number; h: number };
+  layoutCount: 1 | 2 | 3;
+}) {
+  /* Phase 96 — Layout count Shell state ile cascade item count
+   * sınırlandı (bug #13). Rail head 1/2/3 buttons → Shell setter →
+   * layoutCount → Stage MockupComposition + FrameComposition + rail
+   * thumb hepsi aynı limit'i uygular. */
+  const phones = cascadeLayoutFor(deviceKind).slice(0, layoutCount);
   /* Phase 95 — Cascade portrait scale-down (bug #32):
    * Cascade 572×504 sabit bbox; plate aspect değişince (örn. 9:16
    * portrait 405×720) cascade plate dışına taşıyordu — bazı items
@@ -372,10 +380,12 @@ function FrameComposition({
   slots,
   selectedSlot,
   plateDims,
+  layoutCount,
 }: FrameCompositionProps & {
   deviceKind: StudioStageDeviceKind;
   frameAspect: FrameAspectKey;
   plateDims: { w: number; h: number };
+  layoutCount: 1 | 2 | 3;
 }) {
   /* Phase 87 — True stage continuity (bounded canvas removed).
    *
@@ -422,8 +432,8 @@ function FrameComposition({
 
   /* Cascade layout: Mockup mode ile birebir aynı (cascadeLayoutFor
    * + 572×504 inner stage). Phase 87'de scale = 1 (Mockup mode ile
-   * aynı boyut). */
-  const phones = cascadeLayoutFor(deviceKind);
+   * aynı boyut). Phase 96 — layoutCount ile slice (bug #13). */
+  const phones = cascadeLayoutFor(deviceKind).slice(0, layoutCount);
 
   const activeSlot = slots[selectedSlot] ?? null;
   const hasAnyAssignedSlot = slots.some((s) => s.assigned);
@@ -601,6 +611,10 @@ export interface MockupStudioStageProps {
    * render edilir; Frame mode controls Shell state'i değiştirir,
    * Mockup mode'da değişim görünür kalır. */
   sceneOverride?: SceneOverride;
+  /** Phase 96 — Layout count Shell state (bug #13).
+   *  Stage cascade item count'unu sınırlar. Rail head 1/2/3 buttons
+   *  ile aynı Shell state'i paylaşır. */
+  layoutCount?: 1 | 2 | 3;
 }
 
 export function MockupStudioStage({
@@ -615,6 +629,7 @@ export function MockupStudioStage({
   frameAspect,
   activePalette,
   sceneOverride,
+  layoutCount,
 }: MockupStudioStageProps) {
   const isPreview = appState === "preview" || appState === "renderDone";
   const isRender = appState === "render";
@@ -750,6 +765,7 @@ export function MockupStudioStage({
               isPreview={isPreview}
               deviceKind={deviceKind}
               plateDims={plateDims}
+              layoutCount={layoutCount ?? 3}
             />
           ) : (
             <FrameComposition
@@ -760,6 +776,7 @@ export function MockupStudioStage({
               slots={slots}
               selectedSlot={selectedSlot}
               plateDims={plateDims}
+              layoutCount={layoutCount ?? 3}
             />
           )}
         </div>

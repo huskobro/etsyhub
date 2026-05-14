@@ -18,20 +18,34 @@ import {
   resolvePresetThumbScene,
   type SceneOverride,
 } from "./frame-scene";
-import { PresetThumbFrame, PresetThumbMockup } from "./svg-art";
+/* Phase 96 — Unified Mockup+Frame rail: tek PresetThumbMockup
+ * kullanılır. PresetThumbFrame Phase 86-95 baseline'da Frame mode
+ * için ayrı bounded cream canvas içeren thumb idi; Phase 96'da rail
+ * mode-AGNOSTIC olduğu için sadece Mockup thumb kullanılır
+ * (svg-art.tsx'te PresetThumbFrame export hâlâ var — gelecek
+ * kullanım için kalır). */
+import { PresetThumbMockup } from "./svg-art";
 import type { StudioAppState, StudioMode } from "./types";
 
-const MOCKUP_PRESETS = ["Cascade", "Centered", "Mirror", "Landscape", "Fan", "Stack"];
-const FRAME_PRESETS = [
-  "Centered",
-  "Offset",
-  "Bleed",
-  "Angled",
-  "Duo",
-  "Story",
-  "Comparison",
-  "Flat Lay",
-];
+/* Phase 96 — Unified LAYOUT_PRESETS family (Shots.so canonical
+ * parity). Phase 77 baseline Mockup için 6 isim + Frame için 8
+ * isim ayrı listeler taşıyordu — kullanıcı bug #28 "Mockup ve
+ * Frame modunda right rail hâlâ fazla farklı hissettiriyor".
+ *
+ * Shots.so gerçek browser araştırması (real image yüklü, Mockup ↔
+ * Frame mode geçiş + layout count buttons): rail Mockup + Frame'de
+ * aynı 6 layout varyasyonu içerir — `Centered`, `Cascade`, `Mirror`,
+ * `Landscape`, `Fan`, `Stack`. Her preset gerçek rotated/tilted/
+ * offset/stacked composition; sadece label değil **gerçek layout
+ * variation library**. Mockup mode = Frame mode rail (sol panel
+ * swap, rail aynı kompozisyon varyasyonları).
+ *
+ * Phase 96 her iki mod için tek LAYOUT_PRESETS family kullanır;
+ * Frame mode'a özel preset isimleri (Offset/Bleed/Angled/Duo/
+ * Story/Comparison/Flat Lay) kaldırıldı — Mockup label'ları
+ * canonical (Phase 77 baseline + svg-art MOCKUP_PRESETS config'i
+ * ile uyumlu). */
+const LAYOUT_PRESETS = ["Cascade", "Centered", "Mirror", "Landscape", "Fan", "Stack"];
 
 function LayoutIcon({ n }: { n: 1 | 2 | 3 }) {
   if (n === 1) {
@@ -79,6 +93,13 @@ export interface MockupStudioPresetRailProps {
    * (auto: Phase 86 baseline palette darken; solid: tek renk;
    * gradient: two-tone). */
   sceneOverride?: SceneOverride;
+  /** Phase 96 — Layout count Shell state (bug #13).
+   *
+   *  Shots.so rail head 1/2/3 buttons rail thumb'ları + stage cascade
+   *  item count'unu birlikte değiştirir. Phase 96'da Shell-level state;
+   *  buttons → setter; thumb + stage aynı limit'i uygular. */
+  layoutCount?: 1 | 2 | 3;
+  onChangeLayoutCount?: (next: 1 | 2 | 3) => void;
 }
 
 export function MockupStudioPresetRail({
@@ -86,13 +107,29 @@ export function MockupStudioPresetRail({
   appState,
   activePalette,
   sceneOverride,
+  layoutCount,
+  onChangeLayoutCount,
 }: MockupStudioPresetRailProps) {
-  const [layout, setLayout] = useState<1 | 2 | 3>(1);
+  /* Phase 96 — Layout count Shell state'ten geliyor; fallback local
+   * state (legacy). Operator buttons → onChangeLayoutCount → Shell
+   * setter → tüm rail thumb + stage senkron. */
+  const [localLayout, setLocalLayout] = useState<1 | 2 | 3>(3);
+  const layout = layoutCount ?? localLayout;
+  const setLayout = (n: 1 | 2 | 3) => {
+    if (onChangeLayoutCount) onChangeLayoutCount(n);
+    else setLocalLayout(n);
+  };
   const [viewTab, setViewTab] = useState<"zoom" | "tilt" | "precision">("zoom");
   const [active, setActive] = useState(0);
   const isPreview = appState === "preview" || appState === "renderDone";
-  const presets = mode === "mockup" ? MOCKUP_PRESETS : FRAME_PRESETS;
-  const Thumb = mode === "mockup" ? PresetThumbMockup : PresetThumbFrame;
+  /* Phase 96 — Unified rail: Mockup ve Frame için tek preset family
+   * + tek thumb component. Phase 95 aspect SHARED state ile Mockup ↔
+   * Frame plate aynı aspect taşıyor; Phase 96 rail thumb da aynı
+   * layout variation library'sinden render olur. Operator için
+   * "tek kompozisyon, mode-aware sol panel" parity (Shots.so
+   * canonical: rail mode-AGNOSTIC). */
+  const presets = LAYOUT_PRESETS;
+  const Thumb = PresetThumbMockup;
   /* Phase 89 — Resolve preset thumb scene (auto/solid/gradient). */
   const thumbScene = resolvePresetThumbScene(
     sceneOverride ?? { mode: "auto" },
@@ -163,6 +200,7 @@ export function MockupStudioPresetRail({
                 ? thumbScene
                 : undefined
             }
+            displayCount={layout}
           />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -238,6 +276,7 @@ export function MockupStudioPresetRail({
                     ? thumbScene
                     : undefined
                 }
+                displayCount={layout}
               />
             </button>
             <div

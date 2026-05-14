@@ -19317,6 +19317,195 @@ tam.
 
 ---
 
+## Phase 96 — Layout variation library + unified rail (bug 13/17/28)
+
+Phase 95'te aspect SHARED state + plate stage fill + portrait
+cascade scale-down + overscroll lock + scene auto alpha minimal
+düzeldi. Phase 96'da kalan en büyük tek-küme: **right rail
+behavior parity** (kullanıcı bug listesi 13/17/28).
+
+Phase 96 feature turu değil — parity bugfix turu + bug ledger
+yazımı; mevcut LAYOUT preset config'lerini (Phase 77 baseline)
+gerçek rail variation library davranışına bağlar.
+
+### Gerçek browser araştırması (Shots.so live + real image)
+
+Kullanıcı Shots'a image upload etti; Phase 96 testleri:
+
+1. **Mockup mode 9:16 portrait + real cage image**: plate dikey
+   doldurdu, image içeride merkezi rect, rail head 1/2/3 layout
+   count buttons mevcut.
+2. **2-count button click**: rail head'de orta segment active
+   oldu, **rail thumb'lar 2-device varyasyonları olarak yeniden
+   render edildi** (sol cage + sağ siyah "drop or paste" placeholder).
+3. **3-count button click**: rail thumb'lar 3-device varyasyonları;
+   ilk thumb'ta cage + sağında 2 placeholder slot.
+4. **Scroll'da rail thumb gallery**: 4-5 farklı preset varyasyonu —
+   her biri gerçek rotated/tilted/offset kompozisyon (sabit isim
+   değil **gerçek varyasyon library**).
+5. **Mode swap (Mockup → Frame)**: rail thumb içerikleri **birebir
+   aynı** (operator için "aynı kompozisyonun farklı layout/
+   presentation varyasyonları" hissi); sadece sol panel swap'lendi.
+
+### Honest audit — rail parity root cluster
+
+| # | Bug | Shots davranışı | Kivasy current (Phase 95) | Phase 96 fix |
+|---|---|---|---|---|
+| 13 | Stage layout değişimi rail thumb'a yansımıyor | Layout count Shots'ta rail thumb cascade item count'unu değiştirir | Rail head 1/2/3 buttons LOCAL state, stage'e + thumb'a yansımıyor | **EVET** — Shell state, stage cascade + thumb count-aware |
+| 17 | Rail rotated/tilted/offset varyasyon zayıf | Her preset gerçek farklı composition | `MOCKUP_PRESETS` config'i zaten gerçek varyasyon taşıyor; `FRAME_PRESETS` ayrı liste | **EVET** — Mockup config'i unified (FRAME_PRESETS deprecate) |
+| 28 | Mockup/Frame rail çok farklı | Shots'ta rail mode-AGNOSTIC; mode swap rail'i değiştirmez | Mockup 6 + Frame 8 ayrı isim listesi, ayrı thumb component | **EVET** — tek LAYOUT_PRESETS family + tek PresetThumbMockup |
+
+### Phase 96 fix set
+
+#### Fix 1 — Unified LAYOUT_PRESETS family (bug #28)
+
+`MockupStudioPresetRail.tsx`:
+- `MOCKUP_PRESETS` + `FRAME_PRESETS` ayrı listeleri **kaldırıldı**
+- Tek `LAYOUT_PRESETS = ["Cascade", "Centered", "Mirror", "Landscape",
+  "Fan", "Stack"]` (6 isim, Mockup canonical labels)
+- `const presets = LAYOUT_PRESETS` (mode-AGNOSTIC)
+
+#### Fix 2 — Unified PresetThumbMockup component (bug #17, #28)
+
+`MockupStudioPresetRail.tsx`:
+- `Thumb = mode === "mockup" ? PresetThumbMockup : PresetThumbFrame`
+  → **`const Thumb = PresetThumbMockup`**
+- Frame mode için ayrı thumb component (bounded cream canvas içeren
+  Phase 86-95 baseline) kullanılmıyor — operator için "aynı
+  kompozisyonun varyasyonları" hissi
+- `PresetThumbFrame` svg-art.tsx'te export hâlâ var (gelecek
+  kullanım için kalır)
+
+#### Fix 3 — layoutCount Shell state + thumb count-aware + stage limit (bug #13)
+
+**Shell** (`MockupStudioShell.tsx`):
+```typescript
+const [layoutCount, setLayoutCount] = useState<1 | 2 | 3>(3);
+```
+
+**PresetRail** prop:
+- `layoutCount?` + `onChangeLayoutCount?` Shell'den iletilir
+- Rail head 1/2/3 buttons artık Shell setter'ı çağırır (fallback
+  local state legacy için kalır)
+
+**PresetThumbMockup** prop:
+- Yeni `displayCount?: 1 | 2 | 3`
+- `c.ph.slice(0, displayCount)` ile thumb içinde sadece N phone
+
+**Stage** prop:
+- `layoutCount?` + `MockupComposition` + `FrameComposition` aynı
+  `slice(0, layoutCount)` uygular cascade `phones` üzerinde
+
+Sonuç: rail head count button → Shell state → (rail thumb display
++ stage cascade items) **senkron**. Operator için: stage'de ne
+değişirse rail'de aynı değişim.
+
+### Browser end-to-end visual proof (Chrome live, viewport 1600×1100)
+
+**Phase 96 Mockup mode default**:
+- Plate Mockup 16:9 aspect (Phase 95 SHARED baseline)
+- Cascade 3-slot (Front + Side + Back)
+- Sağ rail **unified LAYOUT_PRESETS** 6 thumb (Cascade orange-active,
+  Centered, Mirror, Landscape, Fan, Stack) — hepsi 3-device varyasyonu
+- Rail head 3-count active
+
+**1-count click**:
+- **Stage SADECE Front View** — Side + Back gizlendi
+- **Rail tüm 6 thumb'da 1-device varyasyonları** (her thumb tek
+  phone içeriyor)
+
+**2-count click**:
+- **Stage 2 sticker** (Front + Side)
+- **Rail tüm 6 thumb'da 2-device varyasyonları**: Cascade 2-tilt,
+  Centered 2 side-by-side, Mirror 2 mirror, Landscape 2-side,
+  Fan 2-rotated, Stack 2-overlap — **gerçek farklı kompozisyonlar**
+
+**Frame mode geçiş (mode unified rail)**:
+- Sol panel Frame body (PRESENTATION SURFACE + EFFECTS + SCENE +
+  BACKGROUND + Solid + Gradient + Glass)
+- **Sağ rail BİREBİR AYNI 2-device variation library** — Mockup'tan
+  Frame'e geçişte rail thumb içerikleri **DEĞİŞMEDİ**
+- Stage 2-count korundu (layoutCount Shell state mode-AGNOSTIC)
+- Plate Frame 16:9 aspect (aspect SHARED state Phase 95)
+- Selection chrome yok (Phase 94)
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products}`:
+  **643/643 PASS** (zero regression)
+- `next build`: clean
+
+### Değişmeyenler (Phase 96)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Phase 96'da:
+  - `MockupStudioPresetRail` LAYOUT_PRESETS family + PresetThumbMockup
+    unified + layoutCount prop wiring
+  - `PresetThumbMockup` displayCount prop + phones.slice
+  - `MockupStudioShell` layoutCount state
+  - `MockupStudioStage` + `MockupComposition` + `FrameComposition`
+    layoutCount prop + cascade slice
+- **Phase 91-95 plate model + scene state + cascade carry-over +
+  selection chrome + aspect SHARED + overscroll lock baseline'ları
+  intakt.**
+- **Slot assignment + render dispatch (Phase 80) zinciri intakt.**
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+
+### Bug ledger (Phase 67-96 cumulative)
+
+**Düzeltilen buglar** (Phase 84-95 baseline'a Phase 96 eklendi):
+- Phase 84-92: yapısal bugfix'ler (plate, scene, continuity, parity)
+- Phase 93: #1, #2, #3, #4, #7, #9
+- Phase 94: #14, #15, #16, #18, #19, #21, #22, #24, #25
+- Phase 95: #27, #29, #30, #32, #34
+- **Phase 96**: #13 (layout count senkron), #17 (varyasyon library
+  unified), #28 (Mockup ↔ Frame rail unified)
+
+**Hâlâ açık buglar (Phase 97+ candidate)**:
+
+| Bug# | Konu | Sebep / strateji |
+|---|---|---|
+| #5, #10 | Phase 92'de OK | (Closed) |
+| #11 | Tool kısıtı (Claude Preview küçük screenshot) | Chrome browser kullanılıyor — workaround |
+| #20, #31 | Real asset test pipeline | Selection set fixture placeholder; real upload Phase 97+ |
+| #23, #33 | Zoom Fit default | Kivasy zaten Fit button; OK — no fix needed |
+| **Phase 89/91/92 öngörüsü** | Glass + BG Effects davranış tüketimi | Glass swatch'lar plate'e `backdrop-filter`, Lens Blur plate bg-blur. **Phase 97+** |
+| **Phase 95'ten** | Plate aspect explicit Mockup mode chip'i | Operator Mockup mode'da aspect override (şu an aspect Frame chip'inden değişiyor). **Phase 97+ minor polish** |
+
+### Bilinçli scope dışı (Phase 97+ candidate)
+
+- **Glass + BG Effects davranış tüketimi** (Phase 89/91/92 öngörüsü).
+- **Real asset test pipeline** (bug #20, #31): selection set fixture
+  placeholder yerine real MinIO asset URL ile test.
+- **Mockup mode'da explicit aspect chip**: Phase 95 SHARED state
+  baseline'da Mockup operator aspect'i değiştiremez, sadece Frame
+  mode chip'inden. Mockup chip eklemek ufak ergonomi polish.
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 96 ile **Shots.so right rail parity tam**:
+- Unified LAYOUT_PRESETS family (Mockup ↔ Frame aynı 6 preset)
+- Tek PresetThumbMockup component (Frame mode için ayrı thumb yok)
+- Layout count Shell state (rail head 1/2/3 buttons stage cascade +
+  rail thumb count-aware senkron)
+- Mode-AGNOSTIC rail (mode swap rail'i değiştirmez)
+- Phase 95 aspect SHARED state baseline ile uyumlu
+
+Sıradaki en yüksek-impact adım **Phase 97 — Glass + BG Effects
+davranış tüketimi** (Phase 89/91/92 öngörüsü, bug ledger'da en
+uzun açık kümmülatif). Glass Light/Glass Dark/Frosted swatch'lar
+plate üstüne `backdrop-filter` overlay, Lens Blur effect (Frame
+mode EFFECTS & WATERMARK) plate bg-blur. Phase 97 sonrası Frame
+mode'un **tüm sidebar controls operator-driven aktif** — "presentation
+surface" rolünün tam ürünleştirilmesi.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
