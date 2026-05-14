@@ -364,6 +364,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           onCreateMockup={handleRender}
           deviceKind={deviceKind}
           frameAspect={frameAspect}
+          activePalette={activePalette}
         />
         <MockupStudioPresetRail
           mode={mode}

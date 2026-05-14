@@ -548,6 +548,68 @@
   display: block;
 }
 
+/* Phase 88 — Ambient scene surface (always-on, asset-aware).
+ *
+ * Shots.so + MockupViews real-image-upload araştırması (Phase 88):
+ * her iki üründe de stage'in arkasında **default Magic background**
+ * aktif — asset yüklenince surface asset paletinden auto-generated
+ * gradient'le canlanır. Operator için "asset bir sahnede yaşıyor"
+ * hissi; **boş dark void hissi YOK**.
+ *
+ * Phase 87 baseline'da bizde stage tek dark void (--ks-st). Phase 88
+ * scene surface ekler: subtle **radial vignette + warm/cool tint
+ * blend** asset paletinden türetilir. Dikkat dağıtmaz (Shots'taki
+ * agresif Magic preset gibi değil — operator object styling
+ * yaparken arka plan rahatsız etmesin) ama operatöre "sahne
+ * içindeyim" sinyalini verir.
+ *
+ * Asset palette propagation: Shell `activePalette` (selected slot
+ * design.colors → Phase 86 baseline) CSS custom property olarak
+ * inject edilir:
+ *   --ks-stage-scene-warm  → palette[0] (warm/light tone)
+ *   --ks-stage-scene-deep  → palette[1] (deep/shadow tone)
+ *
+ * Fallback (palette undefined → hiç slot atanmamış): subtle warm
+ * neutral (Studio --ks-st base tone'undan ufak warm shift).
+ *
+ * Render layout:
+ *   - Stage tam viewport kaplar
+ *   - Scene surface stage'in arka katmanı (z-index: -1)
+ *   - Ambient glow (Phase 84) + placement floor (Phase 84+87)
+ *     scene'in ÜSTÜNDE devam eder (z-index 0)
+ *   - Slot wrap (z-index 1) en üstte
+ *
+ * Mode-AGNOSTIC: hem Mockup hem Frame modunda görünür. Frame mode
+ * controls (BACKGROUND / Solid / Gradient / Magic ✨ swatches) bu
+ * surface'i Phase 89+'da override edebilir; Phase 88'de baseline
+ * scene varsayılan olarak yaşar. */
+.k-studio__stage-scene {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  /* Asset paletinden türetilen scene tinting. Default fallback:
+   * neutral warm (palette undefined durumu). */
+  background:
+    radial-gradient(
+      ellipse at 30% 25%,
+      var(--ks-stage-scene-warm, rgba(232, 93, 37, 0.04)) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 75% 78%,
+      var(--ks-stage-scene-deep, rgba(38, 26, 18, 0.6)) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 50% 50%,
+      rgba(255, 255, 255, 0.02) 0%,
+      transparent 70%
+    ),
+    var(--ks-st);
+  transition: background 320ms ease;
+}
+
 .k-studio__stage-inner {
   position: relative;
   z-index: 1;

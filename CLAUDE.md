@@ -17603,6 +17603,245 @@ Phase 88+ candidate'lar (ertelenen yüksek-impact UX iyileştirmeler):
 
 ---
 
+## Phase 88 — Ambient scene surface (always-on, asset-aware)
+
+Phase 87 stage continuity'yi (bounded canvas kaldırıldı, cascade
+mode-agnostic, floor + ambient her iki modda) Shots.so canonical
+seviyesine çıkarttı. Ama gerçek browser araştırmasını **bu sefer
+gerçek image upload ile** yapınca çok kritik bir bulgu daha çıktı:
+
+### Real browser araştırması (image upload odaklı)
+
+Shots.so + MockupViews'te gerçek bir image yüklenince:
+
+| Davranış | Shots.so | MockupViews | Kivasy Phase 87 |
+|---|---|---|---|
+| **Boş state'te stage bg** | renkli gradient surface (default Magic bg aktif) | renkli gradient surface | dark void |
+| **Image upload sonrası** | asset-aware Magic bg **otomatik aktif** — asset paletinden auto-generated gradient | aynı | dark void hâlâ |
+| **Stage surface Mockup mode'da görünür mü?** | **EVET** (Magic bg her zaman aktif) | **EVET** | HAYIR |
+| **Frame mode controls** (Magic/Solid/Gradient swatches) | bu surface'i kontrol eder, kapatılabilir | aynı | YOK |
+| **Operator için sahne hissi** | "asset bir sahnede yaşıyor" | aynı | "asset boş void'de yüzüyor" |
+
+**Kritik anlam**: Shots.so'da default davranış **"Magic background her zaman aktif"** — operator boş state'te bile stage'in arkasında colorful gradient surface görüyor. Image yüklenince asset paletinden auto-generated tints. Operator için **dark void hissi YOK**.
+
+Bizde Phase 87 baseline: stage tek dark void (`--ks-st` `#111009`).
+Phase 84 placement floor + Phase 87 ambient glow var ama operatöre
+"asset'in arkasında ne var?" sorusu cevapsız. Operator hâlâ
+"studio sahne" değil "demo void" hissi alıyor.
+
+### Honest audit
+
+**En büyük continuity eksikliği**: Stage'in arkasında visible
+surface/scene yok. Mockup mode'da bile background görünmüyor.
+Shots.so + MockupViews'in canonical contract'ı **always-on
+ambient scene** içermiyor. Operator için karar verme yüzeyi
+(stage) hâlâ "boş void" gibi hissediyor — Phase 85+86+87
+continuity fixleri **stage'i hareketsiz** ettirdi ama **stage'in
+boş olmasını** çözmedi.
+
+### Stage surface ürün kararı (Phase 88)
+
+**ALWAYS-ON ambient scene surface**:
+- Her iki modda görünür (mode-AGNOSTIC)
+- Phase 86'da kurulan `activePalette` (selected slot palette)
+  ile auto-generate
+- Subtle ama görünür: dark studio shell ile uyumlu; **agresif
+  renk değil**, **gradient hint** (radial vignette + warm/deep
+  tinting), operator için "bir sahnedesin" sinyali
+- Kivasy-superior detay: Magic bg agresif değil — operator
+  object styling yaparken **arka plan dikkat dağıtmaz**, ama
+  "sahne içindeyim" hissi verir
+- Render layering:
+  - Stage tam viewport
+  - Scene surface stage'in arka katmanı (z-index: -1)
+  - Ambient glow (Phase 84/87) + placement floor (Phase 84/87)
+    scene'in ÜSTÜNDE (z-index 0)
+  - Slot wrap (z-index 1) en üstte
+- **Frame mode'da kontrol edilebilir** (Phase 89+ candidate —
+  Magic/Solid/Gradient swatch'larla operator surface'i override
+  edebilir); Phase 88 baseline ambient scene varsayılan olarak
+  yaşar
+
+### Right rail unification kararı
+
+Phase 86'da preset thumbs + Magic Preset thumb asset-aware oldu.
+Sağ rail head zoom thumb (live preview) + 3-density button +
+Zoom/Tilt/Precision tabs + Export capsule — hepsi mode-agnostic.
+Phase 88'de sağ rail davranışı **doğru çalışıyor** (Phase 86
+baseline yeterli). Daha ileri unification (preset thumb'larında
+da scene background gösterimi — Shots.so'da yapılıyor) Phase 89+
+candidate.
+
+### Phase 88 davranış düzeltmesi
+
+**`MockupStudioStage.tsx`** + **`studio.css`** + **`MockupStudioShell.tsx`**:
+
+`studio.css` yeni `.k-studio__stage-scene` recipe:
+```css
+.k-studio__stage-scene {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse at 30% 25%, var(--ks-stage-scene-warm) 0%, transparent 55%),
+    radial-gradient(ellipse at 75% 78%, var(--ks-stage-scene-deep) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.02) 0%, transparent 70%),
+    var(--ks-st);
+  transition: background 320ms ease;
+}
+```
+
+`MockupStudioStage.tsx`:
+- Yeni `hexToRgba(hex, alpha)` helper (3 line pure math)
+- `MockupStudioStageProps.activePalette?: readonly [string, string]`
+- `sceneStyle` resolver: palette varsa CSS custom properties inject:
+  - `--ks-stage-scene-warm = hexToRgba(palette[0], 0.10)` — subtle
+    warmth hint
+  - `--ks-stage-scene-deep = hexToRgba(palette[1], 0.55)` —
+    vignette anchor for grounding
+- Stage `<div>`'ine `style={sceneStyle}` + `data-scene-asset-aware`
+- Scene element ekleme: `<div className="k-studio__stage-scene"
+  data-testid="studio-stage-scene" aria-hidden />` ambient glow'un
+  ÜSTÜNDE değil ALTINDA (z-index: -1)
+
+`MockupStudioShell.tsx`:
+- `<MockupStudioStage activePalette={activePalette} ... />` —
+  Phase 86 baseline'da hesaplanan palette Stage'e iletilir
+
+### MockupViews secondary ders
+
+MockupViews aynı **always-on ambient scene** pattern'i taşıyor:
+boş state'te bile pink→cyan gradient surface aktif; image upload
+sonrası asset-aware surface. **Shots.so'nun aynası**. İki ürün de
+canonical contract'ı paylaşıyor; Phase 88 fix iki ürünün de
+davranışıyla paralel.
+
+### Browser canlı kanıt (DOM eval + screenshot)
+
+Test set: `cmov0ia370019149ljyu7divh` (4-item clipart, Phase 79
+palette `#F0E6D3 → #C49862`).
+
+**Mockup mode DOM eval:**
+```
+shellMode: "mockup"
+scenePresent: true               // Phase 88 yeni testid
+stageSceneAssetAware: "true"
+sceneZIndex: "-1"                // stage arka katmanı
+sceneWarmCustomProp: "rgba(240,230,211,0.1)"   // palette[0]
+sceneDeepCustomProp: "rgba(196,152,98,0.55)"   // palette[1]
+sceneBackground: "radial-gradient(at 30% 25%, ...
+                  radial-gradient(at 75% 78%, ...
+                  radial-gradient(...white center...
+                  var(--ks-st)"
+floorPresent: true               // Phase 84 intakt
+ambientPresent: true             // Phase 87 intakt
+activePaletteAttr: "#F0E6D3,#C49862"  // Phase 86 baseline
+```
+
+**Frame mode (toggle) DOM eval:**
+```
+shellMode: "frame"
+scenePresent: true               // mode-AGNOSTIC ✓
+stageSceneAssetAware: "true"
+sceneWarmCustomProp: "rgba(240,230,211,0.1)"   // korundu
+sceneDeepCustomProp: "rgba(196,152,98,0.55)"   // korundu
+cascadeContinuity: 3 slot        // Phase 87 cascade carry-over intakt
+frameSlot0Active: "true"         // active ring korundu
+floorVisible: "block"            // Phase 87 floor every mode
+```
+
+Screenshot kanıtları:
+- **Mockup mode (Phase 88 scene)**: stage'in arkasında subtle warm
+  vignette (sol üst) + deep warm tone (sağ alt) + soft center
+  highlight. Cascade (3 sticker card, Front View active) sahne
+  içinde yaşıyor. **Dark void hissi gitti**, "asset bir sahnede"
+  hissi var.
+- **Frame mode (mode-agnostic scene)**: AYNI scene surface, AYNI
+  warm/deep tinting, AYNI cascade pozisyon. Sol panel mode-aware
+  swap (PRESENTATION SURFACE + EFFECTS + SCENE + BACKGROUND
+  controls).
+- **Mode toggle**: stage scene **birebir korunur**, sadece sol
+  panel content değişir.
+
+### Değişmeyenler (Phase 88)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek CSS recipe (`.k-studio__stage-
+  scene`) + tek JSX element + tek helper function (`hexToRgba`,
+  10 LOC). Mevcut Phase 86 activePalette resolver reuse.
+- **Phase 87 cascade carry-over + container mode-agnostic intakt**.
+- **Phase 86 asset-aware preset rail + Magic Preset thumb intakt**.
+- **Phase 84 placement floor + Phase 87 ambient glow her iki modda
+  intakt**.
+- **Slot assignment + render dispatch zinciri intakt** (Phase 80
+  per-slot picker + Phase 79 real selection hydrate).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy DS + Studio `--ks-*` namespace bozulmadı** (yeni
+  custom properties `--ks-stage-scene-warm` + `--ks-stage-scene-
+  deep` namespace altında).
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/mockup tests/unit/products tests/unit/selection
+  tests/unit/selections`: **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: dev server (`.next` cache temizlendi + fresh
+  start) → Studio Mockup mode + Frame mode scene surface canlı +
+  asset-aware palette injection + mode toggle continuity DOM
+  kanıtlanmış
+
+### Neden Kivasy için superior deneyim?
+
+Shots.so'nun **always-on Magic bg** davranışı operator için sahne
+hissi veriyor ama bazen agresif (vibrant pink/purple). Kivasy
+Phase 88 yaklaşımı:
+- **Asset-aware** ama **subtle** (alpha 0.10 + 0.55, agresif
+  değil)
+- **Operator object styling yaparken arka plan dikkat dağıtmaz**
+- **Vignette anchor + warm tint** ile "sahne grounding" hissi
+  korunur ama renk dominant değil
+- **Frame mode controls** (Phase 89+) operator istiyorsa Magic /
+  Solid / Gradient swatch'larla override edebilir — varsayılan
+  baseline subtle scene
+
+Bu Kivasy'nin operator workflow'una uyumlu: e-ticaret operator'ı
+asset'ini yüksek dikkatle inceler; arka plan **scene grounding
+sağlar ama dikkat dağıtmaz**. Shots.so'nun agresif Magic'i bizim
+için optional, default değil.
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 88 ile **stage continuity + scene surface = Shots.so/
+MockupViews canonical seviyesinde**:
+- Stage container mode-agnostic (Phase 87)
+- Cascade composition mode-agnostic (Phase 85+87)
+- Scene surface always-on + asset-aware + mode-agnostic (Phase 88)
+- Placement floor + ambient glow her iki modda (Phase 84/87)
+- Sol panel mode-aware swap
+- Sağ rail mode-aware preset set + asset-aware fill (Phase 86)
+
+Sıradaki en yüksek-impact adım **Phase 89 — Frame mode Magic/
+Solid/Gradient/Glass swatch controls scene surface override**:
+- Frame mode sol panel BACKGROUND + Magic ✨ + Solid + Gradient +
+  Glass swatch'ları artık görünür ama davranış YOK
+- Phase 89'da bunlar Phase 88 stage scene surface'i **override**
+  edebilir — operator Magic preset seçer, scene asset-aware
+  default'tan kullanıcı-driven palette'e geçer
+- Frontend-only, backend pipeline değişmez, state'i Shell'de
+  `frameSurface` olarak taşı
+
+Bu Shots.so'nun Frame mode tam paritesi: scene mode-agnostic ama
+**control'ü Frame mode'da**. Phase 89 sonrası operator stage
+surface'ini canlı düzenleyebilir.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

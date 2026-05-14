@@ -29,6 +29,20 @@ import {
 } from "./svg-art";
 import type { StudioAppState, StudioMode, StudioSlotMeta } from "./types";
 
+/* Phase 88 — Hex → rgba conversion for asset-aware scene CSS
+ * custom property injection. Stage scene'in radial gradient
+ * layer'ları operator palette tone'larını subtle alpha ile
+ * uygular. Geçersiz hex → neutral fallback. */
+function hexToRgba(hex: string, alpha: number): string {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!match) return `rgba(0,0,0,${alpha})`;
+  const h = match[1]!;
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 interface MockupCompositionProps {
   slots: ReadonlyArray<StudioSlotMeta>;
   selectedSlot: number;
@@ -389,6 +403,19 @@ export interface MockupStudioStageProps {
    *  görmezden gelinir; Frame mode'da bounded canvas dims + caption
    *  + deliverable type label aspect'e göre live update edilir. */
   frameAspect: FrameAspectKey;
+  /** Phase 88 — Ambient scene surface palette propagation.
+   *
+   * Shots.so/MockupViews real-image-upload: stage'in arkasında
+   * always-on scene surface var, operator asset paletinden
+   * auto-generated. Selected slot palette `--ks-stage-scene-warm`
+   * + `--ks-stage-scene-deep` CSS custom properties olarak inject
+   * edilir; Phase 88 stage-scene radial-gradient layer'ı bu
+   * tone'ları kullanır.
+   *
+   * Phase 86 baseline'da preset rail + Magic Preset thumb için
+   * activePalette zaten resolve ediliyor; Phase 88 aynı palette'i
+   * stage scene'e taşır. */
+  activePalette?: readonly [string, string];
 }
 
 export function MockupStudioStage({
@@ -401,10 +428,29 @@ export function MockupStudioStage({
   onCreateMockup,
   deviceKind,
   frameAspect,
+  activePalette,
 }: MockupStudioStageProps) {
   const isPreview = appState === "preview" || appState === "renderDone";
   const isRender = appState === "render";
   const isEmpty = appState === "empty";
+
+  /* Phase 88 — Scene surface CSS custom property inject.
+   *
+   * Operator selected slot palette'ten warm + deep tones, asset-
+   * aware scene için radial gradient layer'ı besler. Palette
+   * undefined ise CSS fallback default'lar devreye girer (subtle
+   * neutral warm).
+   *
+   * Tone shifting: warm tone alpha 0.10 (subtle warmth hint),
+   * deep tone alpha 0.55 (vignette anchor for "scene grounding").
+   * Operator için "asset bir sahnede yaşıyor" sinyali; agresif
+   * preset değil — object styling yaparken dikkat dağıtmaz. */
+  const sceneStyle = activePalette
+    ? ({
+        "--ks-stage-scene-warm": hexToRgba(activePalette[0], 0.10),
+        "--ks-stage-scene-deep": hexToRgba(activePalette[1], 0.55),
+      } as React.CSSProperties)
+    : undefined;
 
   return (
     <div
@@ -414,7 +460,31 @@ export function MockupStudioStage({
       data-state={appState}
       data-device-kind={deviceKind}
       data-frame-aspect={frameAspect}
+      data-scene-asset-aware={activePalette ? "true" : "false"}
+      style={sceneStyle}
     >
+      {/* Phase 88 — Always-on ambient scene surface.
+       *
+       * Shots.so + MockupViews real-upload research kanıtı: her iki
+       * üründe boş state'te bile stage'de gradient surface aktif;
+       * asset upload sonrası asset-aware Magic bg auto-generate.
+       * Operator için "asset bir sahnede yaşıyor" hissi.
+       *
+       * Bizde Phase 87 baseline tek dark void idi. Phase 88 ambient
+       * scene ekledi: Shell activePalette CSS custom properties
+       * olarak inject eder, scene layer subtle warm/deep radial
+       * vignette ile asset-aware tinting yapar. Mode-AGNOSTIC.
+       *
+       * z-index: -1 stage'in arka katmanı; ambient glow + placement
+       * floor + slot wrap üstte yaşar. Pointer-events: none —
+       * operator slot click davranışı bozulmaz. */}
+      {!isRender ? (
+        <div
+          className="k-studio__stage-scene"
+          data-testid="studio-stage-scene"
+          aria-hidden
+        />
+      ) : null}
       {/* Phase 87 — Ambient glow (her iki modda görünür).
        *
        * Phase 84 baseline'da yalnız Mockup mode'da görünüyordu çünkü
