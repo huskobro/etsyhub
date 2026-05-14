@@ -65,6 +65,36 @@ export const SafeAreaSchema = z.discriminatedUnion("type", [
 
 // ── Provider configs ────────────────────────────────────────────────────
 
+/**
+ * Phase 72 — Multi-slot capability.
+ *
+ * Mockup template şu güne kadar tek `safeArea` field'ı taşıyordu —
+ * single design slot. "9-up sticker sheet", "bundle preview", "front +
+ * back garment" gibi yüzeyler hep tek render output'a sıkışıyordu.
+ *
+ * Phase 72 modeli:
+ *   - `safeArea` field'ı KORUNUR (legacy single-slot template'ler bozulmaz;
+ *     backend Phase 8 render path'i hiç değişmez)
+ *   - YENİ opsiyonel `slots[]` field — multi-slot author edilen template'ler
+ *     için
+ *   - Her slot kendi safeArea (rect veya perspective) + opsiyonel name
+ *   - Min 1, max 12 slot
+ *
+ * Render execution backward-compat:
+ *   - `slots` yoksa → backend `safeArea`'yı kullanır (Phase 8 baseline)
+ *   - `slots` varsa → Phase 73+ candidate (multi-design assignment +
+ *     composite layer order). Phase 72 yalnız authoring + persist + UI
+ *     preview seviyesinde duruyor; render execution değişmedi.
+ */
+export const SlotConfigSchema = z.object({
+  /** Stable slot id (cuid generated client/server). */
+  id: z.string().min(1),
+  /** Optional operator-facing label (e.g., "Cover", "Back", "Slot 1"). */
+  name: z.string().max(40).optional(),
+  /** Slot geometry — rect or perspective, schema parity with safeArea. */
+  safeArea: SafeAreaSchema,
+});
+
 export const LocalSharpConfigSchema = z.object({
   providerId: z.literal("local-sharp"),
   baseAssetKey: z.string().min(1),
@@ -73,6 +103,10 @@ export const LocalSharpConfigSchema = z.object({
     h: z.number().int().positive(),
   }),
   safeArea: SafeAreaSchema,
+  /** Phase 72 — Optional multi-slot list. Backward-compat: legacy templates
+   *  use `safeArea` only. New templates can opt-in to multi-slot authoring;
+   *  render execution honors `slots` once Phase 73+ pipeline lands. */
+  slots: z.array(SlotConfigSchema).min(1).max(12).optional(),
   recipe: MockupRecipeSchema,
   coverPriority: z.number().min(0).max(100),
 });

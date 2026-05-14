@@ -14199,6 +14199,218 @@ halkalarını UI üzerinde end-to-end yapabilir.
 
 ---
 
+## Phase 72 — Multi-slot mockup template authoring (sticker sheet / bundle preview / multi-area capability)
+
+Phase 67-71 ile single-slot mockup authoring çok güçlendi (visual
+editor + perspective + validity + sample + recipe + edit nav). Ama
+hep **tek design slot** modelinde sıkışıktı: "9-up sticker sheet",
+"bundle preview cover + 3 inset", "front + back garment" gibi
+profesyonel mockup'lar tek render output'a daralıyordu. Phase 72
+**multi-slot capability** açar.
+
+### Phase 71 sonrası audit
+
+Schema:
+- `LocalSharpConfigSchema.safeArea: SafeAreaSchema` (tek field)
+- `MockupTemplateBinding.config` JSON → tek slot
+- Backend `compositor.ts` config.safeArea üzerinden tek placement +
+  composite
+
+Operator etkisi:
+- "9 designs included" kart yüzeyleri statik thumbnail; gerçek 9
+  design slot author edilemez
+- Sticker sheet 9-up grid: yalnız bir tasarımı 9 kez aynı yere basar
+  veya boş alana basar (yarım deneyim)
+- Bundle preview cover + 3 inset: yapısal olarak desteklenmez
+
+### Ürün modeli kararı
+
+| Soru | Karar |
+|---|---|
+| Single vs multi-slot? | **Multi-slot capable, opt-in** — `slots[]` opsiyonel field |
+| Legacy backward-compat? | `safeArea` korunur (tek alan) + yeni opsiyonel `slots[]` (1-12 slot) |
+| Slot config | Her slot kendi safeArea (rect veya perspective) + opsiyonel name |
+| Render execution (Phase 8 backend) | **Phase 72'de DOKUNULMAZ** — UI authoring + persist seviyesinde; multi-design render execution Phase 73+ candidate (her slot için ayrı kept asset assignment + composite layer order) |
+| Recipe scope | Template-genelinde (Phase 70 baseline); slot-bazlı recipe Phase 73+ |
+| Schema migration | YOK — JSON field zaten esnek; ProviderConfigSchema discriminated union genişletildi (Zod) |
+
+**Phase 72 hedefi**: authoring tarafı gerçek olsun (operator multi-slot
+template'leri editor'da author + persist + reload edebilsin). Render
+execution Phase 73+ — backend pipeline genişletmesi (every slot → kept
+asset mapping → composite layer order) ayrı tur.
+
+### Slice 1 — Schema: opsiyonel `slots[]` field
+
+`src/features/mockups/schemas.ts`:
+- `SlotConfigSchema` yeni Zod object: `id` (cuid string) + opsiyonel
+  `name` (max 40) + `safeArea` (SafeAreaSchema parity)
+- `LocalSharpConfigSchema.slots`: `z.array(SlotConfigSchema).min(1).max(12).optional()`
+- `safeArea` field **DEĞİŞMEDİ** — legacy template'ler bozulmaz
+- Backend compositor.ts hiç dokunulmadı — `slots` yoksa `safeArea`
+  okur (Phase 8 baseline); `slots` varsa Phase 73+ pipeline okur
+  (ileride implement edilir)
+
+### Slice 2 — `SlotsEditor` wrapper component
+
+`src/features/mockups/components/SlotsEditor.tsx` (~250 LOC):
+
+- Pure wrapper around SafeAreaEditor — single-slot SafeAreaEditor'ı
+  dokunmaz, multi-slot tarafı için yeni UI katmanı
+- Slot list panel: k-segment-style chip tabs + active slot highlight
+  (k-orange-soft active state, Phase 51 status badge family parity)
+- Add slot button (max 12)
+- Remove slot button (per-tab X icon, danger tone)
+- Rename slot inline input (max 40 chars)
+- Active slot mode toggle (Rect / Perspective, slot başına bağımsız)
+- SafeAreaEditor mounted with active slot's `safeArea` value;
+  operator drag/resize → updateActiveSlot helper updates slots[idx]
+
+Client-side stable slot id generation (lightweight Math.random + Date —
+backend storage'a config-internal; Phase 67 user assets server cuid
+ile karışmaz).
+
+### Slice 3 — Form integration (create + edit)
+
+`MockupTemplateCreateForm` + `MockupTemplateEditForm` her ikisi de:
+- Yeni `slots: SlotEditValue[]` state (`[]` = single-slot mode)
+- "Multi-slot" entry button (Layers icon) safe-area mode toggle satırının
+  sağında, **yalnız single-slot mode'da** görünür
+- Click → seed with 2 slots (current safeArea as Slot 1 + 10%-inset Slot
+  2). İlk etkileşim multi-slot mode'da meaningful başlar.
+- Render gate: `slots.length === 0` → SafeAreaEditor (legacy);
+  `slots.length > 0` → SlotsEditor (Phase 72 yeni)
+- Submit/save'de binding config opsiyonel `slots[]` projection
+  (schema parity), legacy `safeArea` her zaman yazılır (backward-compat)
+- `formValid` extend: multi-slot mode'da tüm slot'ların validity.ok
+  (Phase 69 validity helper reuse per-slot)
+
+EditForm `configSlotsToValue(cfg)` helper:
+- Persisted config'te `slots[]` varsa hydrate
+- Yoksa boş array → single-slot mode'da kalır (legacy template'ler
+  bozulmaz)
+
+### Multi-slot sample preview tarafı
+
+Phase 71 recipe-aware sample preview slot-aware değil; aktif slot için
+preview gösterir. Diğer slot'lar ghost outline olarak preview'da
+görünmez (Phase 73+ candidate: per-slot ghost ring + numbered badge
+overlay). Bu turun scope'unda **authoring confidence** yeterli —
+operator hangi slot'ta olduğunu tab strip + active highlight + active
+name input ile zaten görür.
+
+### PSD-backed lifecycle decision
+
+Operator template authoring'i PSD'den import edebilir mi? **Phase 72'de
+açılmadı.** Sebep:
+- `ag-psd` dep eklemek + sharp PSD decode + base asset extract + smart
+  object layer parse → büyük scope (yeni dep + worker)
+- Phase 72 hedefi authoring **UI** seviyesinde multi-slot capable yapmak;
+  PSD import ayrı altyapı turu
+- Mevcut PNG/JPEG/WebP upload (Phase 67) + manuel safe-area authoring
+  yeterli MVP coverage
+
+**Phase 73+ candidate**: `ag-psd` parser + PSD smart object layer →
+slot[] auto-extract + base asset extract. Operator Photoshop'tan PSD
+sürükler → sistem otomatik 9-up grid template oluşturur. Bu **gerçek
+bir altyapı slice'ı**, Phase 72 yalnız temelini attı (multi-slot schema
++ UI hazır → PSD'den hydrate edilebilir).
+
+### Browser end-to-end full proof
+
+Live dev server (fresh `.next/` rebuild, viewport 1440×900, real DB,
+authenticated):
+
+| Test | Sonuç |
+|---|---|
+| Edit page header + multi-slot entry | h1 "Edit mockup template" + "MULTI-SLOT" button (Layers icon) safe-area mode toggle yanında |
+| Click Multi-slot entry | Entry button hides, SlotsEditor mount, 2 tabs (Slot 1 active + Slot 2), Add slot button, hint "2 SLOTS · CLICK A TAB TO EDIT..." |
+| Switch to slot 2 | tab1 active=true, active name "Slot 2" |
+| Rename slot 2 → "Cover" | Input updated |
+| Add 3rd slot | tabsCount 3, tab2 active=true, active name "Slot 3", hint "3 SLOTS" |
+| Slot 2 (Cover) → perspective mode | mode-perspective active, 4 corner handles render (TL/TR/BR/BL) |
+| Save → /templates redirect | mutation success |
+| DB verify | hasSlots true, slotCount 3, slots: [{name:"Slot 1", type:"perspective"}, {name:"Cover", type:"perspective"}, {name:"Slot 3", type:"rect"}], legacy safeArea preserved |
+| Reload edit page | Multi-slot entry GİZLİ, SlotsEditor mounted, 3 tabs "SLOT 1 / COVER / SLOT 3" (rename persisted ve hydrated) |
+| Visual screenshot | Edit page + ACTIVE badge + 3 slot tab strip + ADD SLOT button + active name input + per-slot mode toggle + perspective quad with TL/TR/BR/BL labels |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **267/267 PASS** (Phase 71 baseline; type-only changes)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: multi-slot entry + 2-slot seed + add 3rd + slot
+  switching + rename "Cover" + per-slot mode switching + save →
+  DB-verified 3 slots + reload hydrate → "SLOT 1 / COVER / SLOT 3"
+  tabs canlı
+
+### Değişmeyenler (Phase 72)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `MockupTemplateBinding.config` JSON zaten
+  esnek; Zod ProviderConfigSchema discriminated union genişletildi
+  (opsiyonel slots[]).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** SlotsEditor küçük standalone wrapper
+  (~250 LOC); SafeAreaEditor + recipe-aware sample preview + validity
+  + reset / sample toggle hepsi reuse.
+- **Backend compositor.ts dokunulmadı.** Legacy single-slot render
+  path'i tamamen korunur; multi-slot render execution Phase 73+
+  pipeline genişletmesi (her slot için ayrı kept asset assignment +
+  composite layer order).
+- **Phase 67/68/69/70/71 testid'ler intakt** (regression safe).
+- **Single-slot mode default** — legacy templates ve operator
+  workflow'u (rect/perspective single-slot) tamamen aynı.
+- **Apply drawer + Mockup studio + Render pipeline + placePerspective
+  + recipe-applicator + Phase 71 recipe-aware sample preview
+  dokunulmadı.**
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → Mockup → Product → Etsy Draft).
+- **Kivasy DS dışına çıkılmadı.** Slot tab chip (k-orange-soft active,
+  Phase 51 status badge family parity), Add slot + remove (X) buttons
+  (k-btn--ghost pattern), font-mono tracking-meta caption.
+- **Cross-user isolation hard-enforced** (Phase 67 4-katmanlı + Phase
+  69 PATCH ownership invariant + Phase 70/71 + Phase 72 yalnız UI/
+  schema değişikliği — server-side ownership policy intakt).
+
+### Bilinçli scope dışı (Phase 73+ candidate)
+
+- **Multi-slot render execution** (compositor + worker genişletmesi):
+  Her slot için ayrı kept asset assignment + composite layer order.
+  Backend pipeline genişler; en büyük slice — Phase 73+ ayrı tur.
+- **PSD ETL pipeline**: `ag-psd` parser + smart object layer →
+  slots[] auto-extract + base asset extract. Operator Photoshop'tan
+  PSD import + sistem otomatik template oluşturur. Phase 73+.
+- **Slot-bazlı recipe override** (her slot kendi blendMode/shadow):
+  Şu an template-genelinde. Phase 73+.
+- **Slot drag reorder** (composite layer order ile bağlı): Phase 73+.
+- **Per-slot ghost outline preview** (aktif olmayan slot'ları sample
+  preview'da ghost ring + numbered badge): authoring orientation
+  artar. Phase 73+ polish.
+- **Slot duplicate** (sticker sheet 9-up için tek slot yapısını
+  9 kez clone): Phase 73+ workflow.
+- **Slot rotation** (her slot için ayrı rotation field): SafeAreaRect
+  schema rotation optional zaten; UI handle Phase 73+.
+
+### Bundan sonra templated.io clone tarafında kalan tek doğru iş
+
+Phase 72 ile **multi-slot mockup template authoring capability açıldı**:
+- Operator artık Photoshop'a inmeden 9-up sticker sheet / bundle
+  preview / multi-area garment template'lerini UI'da author edebilir
+- Slot list + add/remove/rename + per-slot mode + persist + hydrate
+  hepsi end-to-end çalışıyor
+- Backend Phase 8 baseline ile tam backward-compat (legacy
+  single-slot template'ler bozulmaz)
+
+Sıradaki gerçek iş **Phase 73 multi-slot render execution** (her slot
+için ayrı kept asset assignment + composite layer order — backend
+pipeline genişler) + **PSD ETL** (`ag-psd` parser; operator
+Photoshop'tan PSD import + auto template) + **per-slot ghost preview**
+(authoring confidence final seviye). Phase 73 backend tur; Phase 74
+PSD tur. Bu iki tur'dan sonra templated.io clone **gerçekten olgun**
+seviyesine ulaşır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

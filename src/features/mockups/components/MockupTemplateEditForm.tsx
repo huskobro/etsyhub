@@ -41,21 +41,34 @@ import {
 } from "./SafeAreaEditor";
 import { validateSafeArea } from "./safe-area-validity";
 import { RecipeEditor, type Recipe } from "./RecipeEditor";
+import { SlotsEditor, type SlotEditValue } from "./SlotsEditor";
+import { Layers } from "lucide-react";
+
+type SafeAreaPersistShape =
+  | { type: "rect"; x: number; y: number; w: number; h: number }
+  | {
+      type: "perspective";
+      corners: [
+        [number, number],
+        [number, number],
+        [number, number],
+        [number, number],
+      ];
+    };
+
+type SlotPersistShape = {
+  id: string;
+  name?: string;
+  safeArea: SafeAreaPersistShape;
+};
 
 type LocalSharpConfig = {
   baseAssetKey: string;
   baseDimensions: { w: number; h: number };
-  safeArea:
-    | { type: "rect"; x: number; y: number; w: number; h: number }
-    | {
-        type: "perspective";
-        corners: [
-          [number, number],
-          [number, number],
-          [number, number],
-          [number, number],
-        ];
-      };
+  safeArea: SafeAreaPersistShape;
+  // Phase 72 — Optional multi-slot list (backward-compat with legacy
+  // single-slot templates that only have safeArea).
+  slots?: SlotPersistShape[];
   recipe: {
     blendMode: "normal" | "multiply" | "screen";
     shadow?: {
@@ -80,22 +93,31 @@ async function fetchSignedUrl(key: string): Promise<string> {
   return data.url;
 }
 
-function configSafeAreaToValue(cfg: LocalSharpConfig): SafeAreaValue {
-  if (cfg.safeArea.type === "rect") {
+function persistShapeToValue(sa: SafeAreaPersistShape): SafeAreaValue {
+  if (sa.type === "rect") {
     return {
       mode: "rect",
-      rect: {
-        x: cfg.safeArea.x,
-        y: cfg.safeArea.y,
-        w: cfg.safeArea.w,
-        h: cfg.safeArea.h,
-      },
+      rect: { x: sa.x, y: sa.y, w: sa.w, h: sa.h },
     };
   }
   return {
     mode: "perspective",
-    perspective: { corners: cfg.safeArea.corners },
+    perspective: { corners: sa.corners },
   };
+}
+
+function configSafeAreaToValue(cfg: LocalSharpConfig): SafeAreaValue {
+  return persistShapeToValue(cfg.safeArea);
+}
+
+/** Phase 72 — Hydrate slots[] from persisted binding config. */
+function configSlotsToValue(cfg: LocalSharpConfig): SlotEditValue[] {
+  if (!cfg.slots) return [];
+  return cfg.slots.map((s) => ({
+    id: s.id,
+    ...(s.name ? { name: s.name } : {}),
+    safeArea: persistShapeToValue(s.safeArea),
+  }));
 }
 
 export type MockupTemplateEditFormProps = {
@@ -122,6 +144,10 @@ export function MockupTemplateEditForm({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  // Phase 72 — Multi-slot state hydrated from persisted config
+  const [slots, setSlots] = useState<SlotEditValue[]>(() =>
+    configSlotsToValue(cfg),
+  );
   // Phase 70 — Recipe state init from existing binding config
   const [recipe, setRecipe] = useState<Recipe>(() => ({
     blendMode: cfg.recipe.blendMode,
@@ -129,6 +155,9 @@ export function MockupTemplateEditForm({
   }));
 
   const validity = validateSafeArea(safeArea);
+  const allSlotsValid =
+    slots.length === 0 ||
+    slots.every((s) => validateSafeArea(s.safeArea).ok);
 
   const resetSafeArea = () => {
     if (safeArea.mode === "rect") {
@@ -206,6 +235,29 @@ export function MockupTemplateEditForm({
                 type: "perspective",
                 corners: safeArea.perspective.corners,
               },
+        // Phase 72 — Multi-slot opt-in. If operator added slots, persist
+        // them; otherwise omit and rely on safeArea single-slot fallback.
+        ...(slots.length > 0
+          ? {
+              slots: slots.map((s) => ({
+                id: s.id,
+                ...(s.name ? { name: s.name } : {}),
+                safeArea:
+                  s.safeArea.mode === "rect"
+                    ? {
+                        type: "rect" as const,
+                        x: s.safeArea.rect.x,
+                        y: s.safeArea.rect.y,
+                        w: s.safeArea.rect.w,
+                        h: s.safeArea.rect.h,
+                      }
+                    : {
+                        type: "perspective" as const,
+                        corners: s.safeArea.perspective.corners,
+                      },
+              })),
+            }
+          : {}),
         // Phase 70 — Recipe is now operator-editable (was passed through unchanged).
         recipe: recipe.shadow
           ? { blendMode: recipe.blendMode, shadow: recipe.shadow }
@@ -261,7 +313,9 @@ export function MockupTemplateEditForm({
     },
   });
 
-  const formValid = name.trim().length > 0 && validity.ok;
+  const formValid =
+    name.trim().length > 0 &&
+    (slots.length === 0 ? validity.ok : allSlotsValid);
   const pending = saveMutation.isPending || archiveMutation.isPending;
 
   return (
@@ -375,10 +429,43 @@ export function MockupTemplateEditForm({
                   ? "Rect · simple flat surfaces"
                   : "Perspective · yamuk smart areas"}
               </span>
+              {/* Phase 72 — Multi-slot opt-in (edit form parity) */}
+              {slots.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSlots([
+                      {
+                        id: "slot_" + Math.random().toString(36).slice(2, 10),
+                        name: "Slot 1",
+                        safeArea,
+                      },
+                      {
+                        id: "slot_" + Math.random().toString(36).slice(2, 10),
+                        name: "Slot 2",
+                        safeArea: {
+                          mode: "rect",
+                          rect: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 },
+                        },
+                      },
+                    ]);
+                  }}
+                  disabled={pending}
+                  className="ml-auto inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2 hover:border-k-orange hover:text-k-orange-ink"
+                  data-testid="enter-multi-slot-mode"
+                  title="Add a second design slot — for sticker sheets, bundle previews, or multi-area templates"
+                >
+                  <Layers className="h-3 w-3" aria-hidden /> Multi-slot
+                </button>
+              ) : null}
             </div>
 
             <div className="mt-3">
-              {previewUrl ? (
+              {!previewUrl ? (
+                <div className="flex items-center justify-center rounded-md border border-line bg-k-bg-2/40 px-6 py-12 text-[13px] text-ink-3">
+                  {previewError ?? "Loading preview…"}
+                </div>
+              ) : slots.length === 0 ? (
                 <SafeAreaEditor
                   imageUrl={previewUrl}
                   imageWidth={cfg.baseDimensions.w}
@@ -394,9 +481,19 @@ export function MockupTemplateEditForm({
                   recipe={recipe}
                 />
               ) : (
-                <div className="flex items-center justify-center rounded-md border border-line bg-k-bg-2/40 px-6 py-12 text-[13px] text-ink-3">
-                  {previewError ?? "Loading preview…"}
-                </div>
+                <SlotsEditor
+                  imageUrl={previewUrl}
+                  imageWidth={cfg.baseDimensions.w}
+                  imageHeight={cfg.baseDimensions.h}
+                  slots={slots}
+                  onChange={setSlots}
+                  disabled={pending}
+                  showSamplePreview={showSamplePreview}
+                  onToggleSamplePreview={() =>
+                    setShowSamplePreview((v) => !v)
+                  }
+                  recipe={recipe}
+                />
               )}
             </div>
 

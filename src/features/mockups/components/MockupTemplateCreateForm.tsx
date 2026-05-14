@@ -44,7 +44,8 @@ import {
 } from "./SafeAreaEditor";
 import { validateSafeArea } from "./safe-area-validity";
 import { RecipeEditor, type Recipe } from "./RecipeEditor";
-import { AlertTriangle, AlertCircle } from "lucide-react";
+import { SlotsEditor, type SlotEditValue } from "./SlotsEditor";
+import { AlertTriangle, AlertCircle, Layers, Plus } from "lucide-react";
 
 const CATEGORY_OPTIONS = [
   { value: "canvas", label: "Canvas (digital wall art)" },
@@ -131,8 +132,22 @@ export function MockupTemplateCreateForm() {
   // recipe-applicator.ts (Phase 8) consumes this directly.
   const [recipe, setRecipe] = useState<Recipe>({ blendMode: "normal" });
 
-  // Phase 69 — Live validity (recomputed on every safeArea change)
+  // Phase 72 — Multi-slot opt-in. Empty array = single-slot mode (Phase 67/68
+  // baseline; legacy backend render path). Operator clicks "Add design slot"
+  // to enter multi-slot mode. First click seeds with 2 slots (current single
+  // safeArea + a second 10%-inset rect) so multi-slot mode is meaningful from
+  // the first interaction.
+  const [slots, setSlots] = useState<SlotEditValue[]>([]);
+
+  // Phase 69 — Live validity (recomputed on every safeArea change).
+  // Multi-slot mode: validate active slot's safeArea; parent SlotsEditor
+  // operates on slots[].safeArea; we keep validity check against the
+  // single-slot field for the simple case; for multi-slot, all slots' validity
+  // is checked.
   const validity = validateSafeArea(safeArea);
+  const allSlotsValid =
+    slots.length === 0 ||
+    slots.every((s) => validateSafeArea(s.safeArea).ok);
 
   // Phase 69 — Reset to a sane default for current mode
   const resetSafeArea = () => {
@@ -283,6 +298,30 @@ export function MockupTemplateCreateForm() {
                   }
                 : { blendMode: recipe.blendMode },
               coverPriority: 0,
+              // Phase 72 — Multi-slot opt-in. Send slots[] only when operator
+              // entered multi-slot mode; backward-compat keeps safeArea field
+              // as the canonical single-slot reference.
+              ...(slots.length > 0
+                ? {
+                    slots: slots.map((s) => ({
+                      id: s.id,
+                      ...(s.name ? { name: s.name } : {}),
+                      safeArea:
+                        s.safeArea.mode === "rect"
+                          ? {
+                              type: "rect",
+                              x: s.safeArea.rect.x,
+                              y: s.safeArea.rect.y,
+                              w: s.safeArea.rect.w,
+                              h: s.safeArea.rect.h,
+                            }
+                          : {
+                              type: "perspective",
+                              corners: s.safeArea.perspective.corners,
+                            },
+                    })),
+                  }
+                : {}),
             },
           }),
         },
@@ -318,8 +357,11 @@ export function MockupTemplateCreateForm() {
   });
 
   // Phase 69 — formValid now also requires safe-area validity (no blocking errors)
+  // Phase 72 — Multi-slot mode also validates each slot
   const formValid =
-    name.trim().length > 0 && asset !== null && validity.ok;
+    name.trim().length > 0 &&
+    asset !== null &&
+    (slots.length === 0 ? validity.ok : allSlotsValid);
 
   return (
     <div
@@ -531,21 +573,69 @@ export function MockupTemplateCreateForm() {
                       ? "Rect · simple flat surfaces"
                       : "Perspective · yamuk smart areas (t-shirt / mug / tilted frame)"}
                   </span>
+                  {/* Phase 72 — Opt into multi-slot mode (sticker sheets,
+                      bundle previews, multi-design layouts).
+                      Only shown when in single-slot mode. */}
+                  {slots.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Seed with current safeArea + a second 10%-inset rect.
+                        setSlots([
+                          {
+                            id: "slot_" + Math.random().toString(36).slice(2, 10),
+                            name: "Slot 1",
+                            safeArea,
+                          },
+                          {
+                            id: "slot_" + Math.random().toString(36).slice(2, 10),
+                            name: "Slot 2",
+                            safeArea: {
+                              mode: "rect",
+                              rect: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 },
+                            },
+                          },
+                        ]);
+                      }}
+                      disabled={createMutation.isPending}
+                      className="ml-auto inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2 hover:border-k-orange hover:text-k-orange-ink"
+                      data-testid="enter-multi-slot-mode"
+                      title="Add a second design slot — for sticker sheets, bundle previews, or multi-area templates"
+                    >
+                      <Layers className="h-3 w-3" aria-hidden /> Multi-slot
+                    </button>
+                  ) : null}
                 </div>
-                <SafeAreaEditor
-                  imageUrl={previewUrl}
-                  imageWidth={asset.width}
-                  imageHeight={asset.height}
-                  value={safeArea}
-                  onChange={setSafeArea}
-                  disabled={createMutation.isPending}
-                  showSamplePreview={showSamplePreview}
-                  onToggleSamplePreview={() =>
-                    setShowSamplePreview((v) => !v)
-                  }
-                  onReset={resetSafeArea}
-                  recipe={recipe}
-                />
+                {slots.length === 0 ? (
+                  <SafeAreaEditor
+                    imageUrl={previewUrl}
+                    imageWidth={asset.width}
+                    imageHeight={asset.height}
+                    value={safeArea}
+                    onChange={setSafeArea}
+                    disabled={createMutation.isPending}
+                    showSamplePreview={showSamplePreview}
+                    onToggleSamplePreview={() =>
+                      setShowSamplePreview((v) => !v)
+                    }
+                    onReset={resetSafeArea}
+                    recipe={recipe}
+                  />
+                ) : (
+                  <SlotsEditor
+                    imageUrl={previewUrl}
+                    imageWidth={asset.width}
+                    imageHeight={asset.height}
+                    slots={slots}
+                    onChange={setSlots}
+                    disabled={createMutation.isPending}
+                    showSamplePreview={showSamplePreview}
+                    onToggleSamplePreview={() =>
+                      setShowSamplePreview((v) => !v)
+                    }
+                    recipe={recipe}
+                  />
+                )}
                 {/* Phase 69 — Live validity feedback */}
                 {validity.issues.length > 0 ? (
                   <div
