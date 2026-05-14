@@ -97,52 +97,39 @@ function resolvePlateBackground(
  * stage'i shrink/grow yapmaz, sadece export hint). Plate bu kontratı
  * korur. */
 function plateDimensionsFor(
-  mode: StudioMode,
+  _mode: StudioMode,
   frameAspect: FrameAspectKey,
 ): { w: number; h: number } {
-  /* Phase 94 — Plate aspect-aware bbox-fit (Shots.so live davranış
-   * doğrulaması ile düzeltme):
+  /* Phase 95 — Aspect SHARED state (Mockup ↔ Frame) + larger bbox
+   * (Shots.so live davranış doğrulaması):
    *
-   * Phase 93'te plate mode-AGNOSTIC + aspect-AGNOSTIC sabit 700×525
-   * yapılmıştı; ama yeniden gerçek browser ile Shots.so test edilince
-   * net oldu — Shots'ta Frame mode aspect chip plate'i GERÇEKTEN
-   * resize ediyor:
-   *   - 9:16 seç → plate dikey doldurur, yatay daralır (~450×800
-   *     portrait)
-   *   - 16:9 seç → plate yatay doldurur, dikey daralır
-   *   - 4:3 → plate Mockup default ölçüsünde (Shots Frame "Default
-   *     4:3" eşdeğer)
+   * Phase 94'te Mockup mode'da plate 4:3 zorla yapıyordu. Shots.so
+   * gerçek browser testi (image upload + Frame'de 9:16 seç + Mockup'a
+   * dön) kanıtladı: **aspect SHARED state** — Frame mode'da seçilen
+   * aspect Mockup'a da geçer; Mockup'ta plate Frame'den miras aspect
+   * gösterir. Kullanıcı bug #27 ("Frame'de aspect ayarlanınca
+   * Mockup'ta farklı görünüyor") gerçek davranışı tarif ediyor.
    *
-   * Bu kullanıcı bug #25 ("Shots.so'da stage bir eksende orta paneli
-   * dolduruyor. 16:9'da yatay ekseni doldurup dikey buna göre,
-   * 9:16'da dikeyi doldurup yatayı buna göre ayarlıyor") doğru
-   * davranışı tarif ediyor. Phase 93 kararım yanlıştı.
+   * Phase 95 düzeltme:
+   *   - Mockup ve Frame her ikisi de aynı frameAspect'i takip eder
+   *   - mode argümanı kabul edilir ama dimensions'a etkisi yok
+   *     (mode-AGNOSTIC aspect inheritance)
+   *   - maxW/maxH 720/640 → **920/720** (Shots-paritesi plate
+   *     stage'in ~%85'ini kaplar; Kivasy %85 max ile uyumlu)
    *
-   * Phase 94 düzeltme:
-   *   - Mockup mode: plate 4:3 default (cascade horizontal landscape;
-   *     Shots Mockup default 5:4-ish ama 4:3 Kivasy canonical)
-   *   - Frame mode: bbox-fit içinde aspect-driven resize. Max bbox
-   *     720×640 (büyük viewport için generous; CSS max-%85/%82 ile
-   *     viewport-küçük responsive guard).
-   *     - 16:9 → width-fit (720×405)
-   *     - 4:5 → height-fit (~512×640)
-   *     - 9:16 → height-fit (~360×640)
-   *     - 1:1 → square fit (640×640)
-   *     - 3:4 → height-fit (~480×640)
+   * Aspect-driven bbox-fit:
+   *   - 16:9 → width-fit (920×518)
+   *   - 4:5 → height-fit (~576×720)
+   *   - 9:16 → height-fit (~405×720)
+   *   - 1:1 → square fit (720×720)
+   *   - 3:4 → height-fit (~540×720)
+   *   - 2:3 → height-fit (~480×720)
+   *   - 3:2 → width-fit (920×613)
    *
-   * Kullanıcı bug #6/#12'nin Phase 93'teki çözümü "plate sabit"
-   * değildi — gerçek çözüm bbox max + responsive max-% (içerik
-   * taşmaz, ama aspect değişir). CSS `.k-studio__stage-plate`
-   * `max-width: 85% / max-height: 82%` + bu helper birlikte. */
-  const maxW = 720;
-  const maxH = 640;
-  if (mode === "mockup") {
-    // Mockup default 4:3 — cascade horizontal landscape canonical.
-    const fitByWidth = { w: maxW, h: Math.round(maxW * 0.75) };
-    if (fitByWidth.h <= maxH) return fitByWidth;
-    return { w: Math.round(maxH * (4 / 3)), h: maxH };
-  }
-  // Frame mode: aspect-driven bbox-fit
+   * CSS `.k-studio__stage-plate` max-width:85% / max-height:82% +
+   * bu helper birlikte viewport-küçük responsive guard. */
+  const maxW = 920;
+  const maxH = 720;
   const cfg = FRAME_ASPECT_CONFIG[frameAspect];
   const ratio = cfg.ratio; // w/h
   const fitByWidth = { w: maxW, h: Math.round(maxW / ratio) };
@@ -258,13 +245,29 @@ function MockupComposition({
   onSelect,
   isPreview,
   deviceKind,
-}: MockupCompositionProps) {
+  plateDims,
+}: MockupCompositionProps & { plateDims: { w: number; h: number } }) {
   const phones = cascadeLayoutFor(deviceKind);
+  /* Phase 95 — Cascade portrait scale-down (bug #32):
+   * Cascade 572×504 sabit bbox; plate aspect değişince (örn. 9:16
+   * portrait 405×720) cascade plate dışına taşıyordu — bazı items
+   * clip ediliyordu. Phase 95'te plate'in iç boyutu (minus border +
+   * padding) cascade'in 572×504'üne göre scale faktörü hesaplanır;
+   * cascade orantısal küçülür, plate içine sığar. */
+  const innerW = Math.max(0, plateDims.w - 32); // border + breathing
+  const innerH = Math.max(0, plateDims.h - 32);
+  const cascadeScale = Math.min(innerW / 572, innerH / 504, 1.0);
   return (
     <div
       className="k-studio__stage-inner"
-      style={{ width: 572, height: 504 }}
+      style={{
+        width: 572,
+        height: 504,
+        transform: cascadeScale < 1 ? `scale(${cascadeScale})` : undefined,
+        transformOrigin: "center center",
+      }}
       data-testid="studio-stage-mockup-comp"
+      data-cascade-scale={cascadeScale.toFixed(3)}
     >
       {phones.map(({ si, x, y, w, h, r, z }) => {
         const slot = slots[si];
@@ -368,9 +371,11 @@ function FrameComposition({
   frameAspect,
   slots,
   selectedSlot,
+  plateDims,
 }: FrameCompositionProps & {
   deviceKind: StudioStageDeviceKind;
   frameAspect: FrameAspectKey;
+  plateDims: { w: number; h: number };
 }) {
   /* Phase 87 — True stage continuity (bounded canvas removed).
    *
@@ -428,15 +433,30 @@ function FrameComposition({
       ? "slot"
       : "sample";
 
+  /* Phase 95 — Cascade portrait scale-down (bug #32 Frame side):
+   * Aynı pattern MockupComposition'la — plate dimensions değişince
+   * cascade orantısal küçülür, plate içine sığar. 9:16 portrait
+   * plate 405×720 → cascade 572×504 sığmaz; scale uygulanmadan items
+   * clip ediliyordu (Side yarım, Back tamamen kaybolmuştu). */
+  const innerW = Math.max(0, plateDims.w - 32);
+  const innerH = Math.max(0, plateDims.h - 32);
+  const cascadeScale = Math.min(innerW / 572, innerH / 504, 1.0);
+
   return (
     <>
       <div
         className="k-studio__stage-inner"
-        style={{ width: 572, height: 504 }}
+        style={{
+          width: 572,
+          height: 504,
+          transform: cascadeScale < 1 ? `scale(${cascadeScale})` : undefined,
+          transformOrigin: "center center",
+        }}
         data-testid="studio-stage-frame-comp"
         data-frame-aspect={frameAspect}
         data-design-source={designSource}
         data-active-slot={selectedSlot}
+        data-cascade-scale={cascadeScale.toFixed(3)}
       >
         {/* Phase 87 — Frame mode cascade carry-over (no bounded canvas).
             Mockup mode'daki cascade buraya BİREBİR taşınır, AYNI
@@ -729,6 +749,7 @@ export function MockupStudioStage({
               onSelect={setSelectedSlot}
               isPreview={isPreview}
               deviceKind={deviceKind}
+              plateDims={plateDims}
             />
           ) : (
             <FrameComposition
@@ -738,6 +759,7 @@ export function MockupStudioStage({
               frameAspect={frameAspect}
               slots={slots}
               selectedSlot={selectedSlot}
+              plateDims={plateDims}
             />
           )}
         </div>

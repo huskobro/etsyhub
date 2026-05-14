@@ -49,10 +49,19 @@
    * yalnız sol panel kendi içinde olur; toolbar + stage + rail
    * sabit kalır. Phase 93'te root height: 100dvh + overflow: hidden
    * → sayfa scroll'u kilitlenir; iç katmanlar (sidebar scroll, rail
-   * scroll) zaten kendi scroll alanlarını taşıyor. */
+   * scroll) zaten kendi scroll alanlarını taşıyor.
+   *
+   * Phase 95 — Overscroll lock (bug #34):
+   * Phase 93 page scroll lock vardı ama hızlı scroll boundary'sinde
+   * browser native bounce/rubber-band edge artifact üretebiliyordu.
+   * `overscroll-behavior: none` — scroll edge'inde page bounce
+   * kalkar; iç scroll alanları (sidebar/rail) kendi içinde sınırlı.
+   * Phase 93 baseline body lock + Phase 95 overscroll-behavior
+   * kombinasyonu Shots.so canonical parity. */
   height: 100dvh;
   max-height: 100dvh;
   overflow: hidden;
+  overscroll-behavior: none;
   background: var(--ks-sh);
   color: var(--ks-t1);
   font-family: var(--ks-fn);

@@ -111,10 +111,9 @@ function hexToRgba(hex: string, alpha: number): string {
  * yalnız kendi bg'sini taşır.
  *
  * Alpha curve mode'a göre:
- *   - auto: 0.06 / 0.18 (plate dışı padding pure dark; subtle hint)
- *   - solid: 0.04 / 0.10 (operator tek renk istedi ama plate çoktan
- *     bu rengi taşıyor; padding minimal echo)
- *   - gradient: 0.06 / 0.16 (two-tone padding echo, çok sakin)
+ *   - Phase 95: auto 0.03/0.08, solid 0.03/0.06, gradient 0.04/0.10
+ *     (plate dışı padding pure dark; sadece çok subtle vignette
+ *     hint; Shots.so canonical parity bug #30 son rezidüe temizliği)
  */
 export function resolveSceneStyle(
   override: SceneOverride,
@@ -123,22 +122,22 @@ export function resolveSceneStyle(
   if (override.mode === "auto") {
     if (!activePalette) return undefined; // Phase 88 CSS fallback
     return {
-      warm: hexToRgba(activePalette[0], 0.06),
-      deep: hexToRgba(activePalette[1], 0.18),
+      warm: hexToRgba(activePalette[0], 0.03),
+      deep: hexToRgba(activePalette[1], 0.08),
     };
   }
   if (override.mode === "solid") {
     if (!override.color) return undefined;
     return {
-      warm: hexToRgba(override.color, 0.04),
-      deep: hexToRgba(override.color, 0.10),
+      warm: hexToRgba(override.color, 0.03),
+      deep: hexToRgba(override.color, 0.06),
     };
   }
   // gradient
   if (!override.color || !override.colorTo) return undefined;
   return {
-    warm: hexToRgba(override.color, 0.06),
-    deep: hexToRgba(override.colorTo, 0.16),
+    warm: hexToRgba(override.color, 0.04),
+    deep: hexToRgba(override.colorTo, 0.10),
   };
 }
 

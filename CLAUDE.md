@@ -19102,6 +19102,221 @@ offset/stacked varyasyon library. Phase 95 sonrası rail Shots.so
 
 ---
 
+## Phase 95 — Shots.so parity bugfix + bug ledger (5 root cause fix, bug 27-34)
+
+Phase 93/94 gibi feature turu değil, **parity bugfix + bug ledger
+yazımı**. Kullanıcının 27-34 bug listesi gerçek-browser Shots.so live
+walk ile doğrulandı (Frame mode aspect picker + 9:16 portrait + real
+image upload + Mockup'a geri dönüş + overscroll test). 8 bug → 5 fix
+set (3 defer/already-OK).
+
+### Gerçek browser araştırması (Shots.so live + real image upload)
+
+Kullanıcı Shots.so'da bir image yükledi; Phase 95 testleri:
+
+1. **Frame mode default**: aspect Default 16:9 (1920×1080), plate
+   stage'in ~%82'sini kaplar
+2. **Aspect picker 9:16 seç**: plate **portrait olarak resize edildi**
+   (~450×800, dimensions 1080×1920), image plate'in içinde merkezi
+   olarak küçük rect kalır (plate dikeyleşince content fixed-size
+   stays, clipping yok)
+3. **Right rail thumb'lar 9:16 portrait olarak yeniden render** —
+   rail thumb aspect Frame plate aspect'ini takip eder
+4. **Mockup'a geri dön**: **plate AYNI 9:16 portrait KALDI** — aspect
+   SHARED state, Frame'de seçilen aspect Mockup'a da geçer
+5. **Stage padding pure dark**: plate dışı renkli glow YOK
+6. **Real image davranışı**: image plate'in içinde merkezi rect; plate
+   aspect değişince image plate'in büyük çoğunluğunu kaplamaz —
+   gradient veya scene plate dolduruyor + image üstte
+
+### Honest audit — bug 27-34 root cause cluster
+
+| # | Bug | Shots ile doğrulandı | Kök neden (Kivasy) | Phase 95 fix |
+|---|---|---|---|---|
+| 27 | Aspect Frame↔Mockup'a yayılıyor | ✅ Shots'ta aspect SHARED state | `plateDimensionsFor` Mockup 4:3 zorla yapıyordu | **EVET** — mode-AGNOSTIC, ikisi de frameAspect takip eder |
+| 28 | Mockup/Frame rail preset farkı | Shots'ta image yüklüyken aynı; boş state'te farklı | `MOCKUP_PRESETS` 6 + `FRAME_PRESETS` 8 ayrı | Defer — Phase 96+ varyasyon library |
+| 29 | Sahne orta paneli doldurmuyor | ✅ Shots plate ~%82; Kivasy %56 | `plateDimensionsFor` maxW/H 720/640 + CSS %85/%82 birlikte küçük plate çıkıyordu | **EVET** — maxW/H 920/720 |
+| 30 | Edge parlama | ✅ Shots'ta yok | scene auto warm 0.06 + deep 0.18 padding alpha hâlâ subtle echo | **EVET** — auto 0.03/0.08, solid 0.03/0.06, gradient 0.04/0.10 |
+| 31 | Real image test | Shots tarafında doğrulandı | Kivasy selection set fixture'ı placeholder | Test step — no fix |
+| 32 | Portrait cascade clip | ✅ Shots'ta image fixed; clip yok | Cascade 572×504 sabit → plate 405×720 portrait içine sığmıyor | **EVET** — `cascadeScale` plate-aware orantısal küçülme |
+| 33 | Zoom default Fit | ⚠ Shots zoom default %100 + slider; Kivasy %50 + Fit button zaten var | OK | Defer — Phase 95'te dokunma |
+| 34 | Overscroll boundary | ⚠ Phase 93 page lock var ama browser native bounce edge artifact | `overscroll-behavior` set değildi | **EVET** — overscroll-behavior:none |
+
+**8 bug → 5 root cause cluster → 5 fix; 3 defer/already-OK.**
+
+### Phase 95 5 fix set
+
+#### Fix 1+3 — Aspect SHARED state + larger bbox (bug #27, #29)
+
+`plateDimensionsFor` Phase 94'te Mockup 4:3 zorlanıyordu. Phase 95'te:
+- Mode argümanı kabul edilir ama dimensions'a etkisi yok
+  (`_mode` underscore prefix)
+- Her iki mod aynı `frameAspect`'i takip eder (Mockup mode'da aspect
+  Frame mode'dan miras — Shots.so SHARED state parity)
+- maxW/maxH 720/640 → **920/720** (Shots plate ~%82-85 paritesi)
+
+Frame aspect değişimi sadece sidebar'dan (Frame mode aspect chip)
+yapılır; ama state Shell-level `frameAspect` her iki modda aktif.
+
+#### Fix 2 — Portrait cascade scale-down (bug #32)
+
+`MockupComposition` + `FrameComposition` her ikisinde `plateDims`
+prop alındı; `cascadeScale = Math.min((plateW-32)/572, (plateH-32)/504,
+1.0)` hesabı ile stage-inner CSS `transform: scale()` uygulanır.
+
+- Mockup 16:9 (920×518): cascade ~1.0 (sığar)
+- 9:16 portrait (405×720): cascade ~0.66 (orantısal küçülür, 3 slot
+  da plate içinde görünür)
+- 1:1 (720×720): cascade ~0.86
+
+`data-cascade-scale` attribute audit + test selector için.
+
+#### Fix 4 — Overscroll lock (bug #34)
+
+`.k-studio` root recipe'ye `overscroll-behavior: none` eklendi. Phase
+93 baseline `height: 100dvh + overflow: hidden` zaten page scroll'u
+kilitliyordu; Phase 95 edge bounce/rubber-band artifact'lerini de
+keser (Shots.so canonical no-bounce parity).
+
+#### Fix 5 — Scene auto alpha minimal (bug #30)
+
+`resolveSceneStyle` alpha curve Phase 94'te 0.06/0.18 (auto), 0.04/0.10
+(solid), 0.06/0.16 (gradient). Phase 91'de plate eklendiğinden beri
+plate ana subject; scene plate **dışında** padding alanı için subtle
+echo. Phase 95'te:
+- auto: 0.03/0.08
+- solid: 0.03/0.06
+- gradient: 0.04/0.10
+
+Operator için padding pure dark + sadece çok subtle vignette hint
+(Shots.so canonical "stage padding pure dark" parity).
+
+### Browser end-to-end visual proof (Chrome live, viewport 1288×941)
+
+**Mockup mode after-fix**:
+- Plate stage'in ~%78×%75'ini kaplar (Phase 94'te %56) — Shots
+  paritesi yaklaştı
+- Cascade plate'in tam ortasında, selection chrome sade
+- Edge pure dark, glow yok
+- Sağ rail thumb'lar plate-aware
+
+**Frame mode 9:16 portrait**:
+- **Plate 9:16 portrait** (~340×605), dikey doldurdu
+- **Cascade üç slot da görünür** — Front + Side + Back View hepsi
+  scale-down ile plate içinde sığdı (Phase 94'te Back kaybolmuştu)
+- Stage padding sol+sağ belirgin
+- Toolbar caption "Frame · Instagram Story · 1080×1920"
+- Sağ rail Frame preset family görünür
+
+**Mockup mode'a geri dönüş — aspect SHARED state**:
+- **Plate AYNI 9:16 portrait KALDI** ✓ (Frame'de seçilen aspect
+  Mockup'a yansıdı — Shots.so canonical SHARED state parity)
+- Sol panel Mockup body controls
+- Cascade plate'in ortasında üç slot
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products}`:
+  **643/643 PASS** (zero regression)
+- `next build`: clean
+
+### Değişmeyenler (Phase 95)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Phase 95'te:
+  - `plateDimensionsFor` mode argümanı ignore edildi + maxBbox büyüdü
+  - `MockupComposition` + `FrameComposition` `plateDims` prop +
+    `cascadeScale` transform
+  - `studio.css` `.k-studio` `overscroll-behavior: none`
+  - `frame-scene.ts` alpha curve düşürüldü
+- **Mockup ↔ Frame continuity tam** — aspect SHARED state, cascade
+  scale-down ile portrait fit.
+- **Slot assignment + render dispatch (Phase 80) zinciri intakt.**
+- **References / Batch / Review / Selection / Mockup Studio / Product
+  / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+
+### Bug ledger (Phase 67-95)
+
+**Düzeltilen buglar (kronolojik)**:
+
+| Phase | Bug# | Konu | Status |
+|---|---|---|---|
+| 84 | — | Placement floor (Shots-uyumlu) | ✓ |
+| 85 | — | Cascade carry-over (Shots-uyumlu) | ✓ |
+| 86 | — | Asset-aware preset rail | ✓ |
+| 87 | — | True stage continuity (bounded canvas removed) | ✓ |
+| 88 | — | Ambient scene surface (asset-aware) | ✓ |
+| 89 | — | Frame scene swatch controls | ✓ |
+| 90 | — | Visual scene parity correction | ✓ |
+| 91 | — | Visible bounded plate behind object | ✓ |
+| 92 | — | Plate readability + right rail parity | ✓ |
+| 93 | #1,#2,#7 | Page scroll lock + stage center stable | ✓ |
+| 93 | #3 | Slot click plate-bg stable | ✓ |
+| 93 | #4 | Ambient gereksizdi | ✓ |
+| 93 | #6,#12 | Mode geçişinde plate shrink yok (Phase 94'te düzeltildi) | ⚠ |
+| 93 | #9 | Stage sağ/alt unwanted glow | ✓ |
+| 94 | #14,#25 | Plate aspect-aware resize | ✓ |
+| 94 | #16,#21 | Cascade center alignment | ✓ |
+| 94 | #18,#22 | Selection chrome cleanup + Frame no carry | ✓ |
+| 94 | #19 | Dev state switcher kaldırıldı | ✓ |
+| 94 | #15,#24 | Canlı gradient fallback + glow temizlik | ✓ |
+| **95** | **#27** | **Aspect SHARED state (Frame→Mockup)** | **✓** |
+| **95** | **#29** | **Plate stage fill larger** | **✓** |
+| **95** | **#32** | **Portrait cascade scale-down** | **✓** |
+| **95** | **#34** | **Overscroll lock** | **✓** |
+| **95** | **#30** | **Edge scene alpha minimal** | **✓** |
+
+**Hâlâ açık buglar (Phase 96+ candidate)**:
+
+| Bug# | Konu | Sebep / strateji |
+|---|---|---|
+| #5 | Phase 92'de OK | (Closed by Phase 92) |
+| #8 | Mockup/Frame preset list label farkı | Operator için önemsiz parity drift; rename minor — Phase 96+ |
+| #10 | Phase 92'de OK | (Closed by Phase 92) |
+| #11 | Tool kısıtı | Chrome browser kullanıldı — workaround |
+| #13 | Stage layout count → rail thumb varyasyon | Shots'ta 2-device layout butonu rail'i değiştiriyor; Kivasy'de static preset list. **Phase 96+ — varyasyon library** |
+| #17 | Sağ rail rotated/tilted/offset zengin varyasyon | (#13 ile aynı kök) |
+| #20 | Real image testi Kivasy tarafında | Selection set fixture placeholder; real upload pipeline mevcut ama dev test set'i placeholder. **Phase 96+ — real asset test path** |
+| #23 | Zoom Fit default | Kivasy'de zaten Fit button mevcut; Shots davranış zaten OK. **No fix needed** |
+| #28 | Mockup ↔ Frame rail preset aynı içerik | Shots'ta image yüklüyken aynı; boş state'te farklı. Kivasy boş state pattern. **Phase 96+ candidate** |
+| #33 | Zoom default Fit | Kivasy zaten %50 default + Fit button; OK. **No fix needed** |
+| **Phase 91/92 öngörüsü** | Glass + BG Effects davranış tüketimi | Glass swatch'lar plate'e `backdrop-filter`, Lens Blur plate bg-blur. **Phase 96+** |
+
+### Bilinçli scope dışı (Phase 96+ candidate)
+
+- **Glass + BG Effects davranış tüketimi** (Phase 89/91/92 öngörüsü):
+  Glass swatch'lar plate'e `backdrop-filter`, Lens Blur plate bg-blur.
+- **Layout count senkron rail varyasyon library** (bug #13, #17, #28):
+  Mockup'ta layout 1/2/3 device count butonu rail thumb'larını
+  değiştirsin + preset isimleri (Cascade/Centered/Mirror/...) gerçek
+  rotated/tilted/offset varyasyon library.
+- **Real asset test pipeline** (bug #20, #31): selection set fixture
+  placeholder yerine real MinIO asset URL ile test.
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 95 ile **Shots.so parity büyük ölçüde tam**:
+- Aspect SHARED state (Mockup ↔ Frame) ✓
+- Plate stage fill larger ✓
+- Portrait cascade scale-down (3 slot da görünür) ✓
+- Overscroll lock ✓
+- Edge glow minimal ✓
+- Phase 91-94 plate model + scene state + selection chrome cleanup
+  + dev sw kaldırıldı baseline'ları intakt
+
+Sıradaki yüksek-impact adım **Phase 96 — Layout count senkron rail
+varyasyon library** (bug #13, #17, #28 — Phase 94'ten taşınan):
+Mockup'ta layout 1/2/3 device butonu rail thumb'larını değiştirsin +
+preset isimleri gerçek rotated/tilted/offset/stacked varyasyon
+library. Phase 96 sonrası rail Shots.so "layout variations" paritesi
+tam.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
