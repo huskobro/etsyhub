@@ -625,6 +625,83 @@
   transition: background 320ms ease;
 }
 
+/* Phase 91 — Visible background plate behind object (Shots.so parity).
+ *
+ * Phase 88-90'da yaptığımız stage scene ambient tint katmanıydı:
+ * stage'in tamamına yayılan subtle radial gradient, asset paletinden
+ * türetilen warm/deep tint. Ama Shots.so gerçek browser araştırması
+ * (boş state + Frame mode) net bir kanıt verdi:
+ *
+ *   Shots.so'da stage'in ortasında BOUNDED CANVAS PLATE var.
+ *   Stage'in tamamı boyanmıyor; plate stage genişliğinin ~%75,
+ *   yüksekliğinin ~%70'ini kaplıyor. Plate kenarında stage'in
+ *   kendi dark padding alanı kalıyor. Plate rounded corners +
+ *   drop shadow + border ile stage'den net ayrılıyor; içinde
+ *   asset/mockup cascade yaşıyor. Plate her iki modda görünür;
+ *   Frame mode'un SCENE/BACKGROUND/Solid/Gradient/Glass controls
+ *   bu plate'in bg'sini kontrol ediyor (stage geneli değil).
+ *
+ * Operator için: "bu mockup şu yüzeyin üstünde duruyor" hissi
+ * kart/objenin arkasında GERÇEKTEN GÖRÜNEN surface sağlar.
+ * Ambient tint tek başına bu hissi vermiyordu — plate'in
+ * görünür sınırı + dolu bg'si yeterli.
+ *
+ * Continuity contract (Phase 91):
+ *   - plate her iki modda görünür (mode-AGNOSTIC)
+ *   - aspect: Mockup mode → 4:3 default; Frame mode → frameAspect
+ *   - bg = scene resolver alpha 1.0 ile (ambient tint değil, solid
+ *     veya gradient surface)
+ *   - cascade plate'in İÇİNDE merkezi; stage-inner pozisyonu plate'e
+ *     relative kalır
+ *   - ambient scene (Phase 88-90) plate'in DIŞINDA padding alanı için
+ *     subtle vignette olarak yaşar
+ *   - placement floor (Phase 84) plate'in altında contact shadow
+ *
+ * z-stack:
+ *   - stage-scene (z -1) en arkada
+ *   - stage-amb (z 0) ambient glow
+ *   - stage-floor (z 0) placement floor / contact shadow
+ *   - stage-plate (z 0) plate surface (subject of stage)
+ *     → stage-plate-inner (cascade host) plate içinde
+ *   - slot-wrap (z 1+) plate içinde cascade slot'ları
+ */
+.k-studio__stage-plate {
+  position: absolute;
+  /* Stage'in ortasında, bounded surface. Boyut Stage-script
+   * tarafından inline style ile geçirilir (mode-aware: mockup
+   * default 4:3, frame frameAspect). max-width / max-height
+   * ile küçük viewport'larda stage'i taşmaz. */
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 92%;
+  max-height: 88%;
+  border-radius: 26px;
+  /* Plate'in kendi subtle border'ı — stage'den ayırır */
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  /* Plate drop shadow — stage'in dark padding alanı ile kontrast */
+  box-shadow:
+    0 50px 100px -20px rgba(0, 0, 0, 0.55),
+    0 24px 48px -12px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  /* Default bg fallback (palette/scene undefined) — neutral warm cream */
+  background: linear-gradient(135deg, #f0e9d8 0%, #c8c0b4 100%);
+  transition: background 320ms ease, width 220ms ease, height 220ms ease;
+  overflow: hidden;
+  /* Plate kendi içinde cascade taşır; cascade plate'in merkezinde */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Plate inner — cascade host (mode-AGNOSTIC). Plate'in içinde
+ * cascade'in 572×504 inner stage'i merkezi olarak yaşar. */
+.k-studio__stage-plate-inner {
+  position: relative;
+  width: 572px;
+  height: 504px;
+}
+
 .k-studio__stage-inner {
   position: relative;
   z-index: 1;

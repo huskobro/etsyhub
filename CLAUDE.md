@@ -18238,6 +18238,251 @@ Phase 91 sonrası Frame mode tüm sidebar controls aktif.
 
 ---
 
+## Phase 91 — Visible background plate behind object (Shots.so canonical parity)
+
+Phase 88-90 turları stage'in geneli için ambient scene tint katmanı
+ekledi (radial gradient + warm/deep alpha + Phase 90 visibility lift).
+Mekanik olarak çalışıyordu ama kullanıcının ısrarla işaret ettiği
+temel görsel boşluk hâlâ kapatılmamıştı: **objelerin arkasında
+gerçekten görünen bir surface/canvas plate yok**. Phase 91 bu açığı
+ambient tint yerine bounded canvas plate ile çözer.
+
+### Gerçek browser araştırması (Shots.so primary)
+
+Shots.so canlı kullanıcı gibi gezildi (boş state + Frame mode + Mockup
+mode geçiş). Canlı kanıtlanan canonical pattern:
+
+| Element | Davranış |
+|---|---|
+| Stage container | Dark padding alan tutar (~%12 padding tüm kenarlarda) |
+| **Plate** | Stage'in ortasında bounded surface (~%75 width × %70 height), rounded corners, drop shadow, border |
+| Plate bg | Vibrant Magic gradient (boş state'te pink→purple→orange default; asset upload sonrası palette-driven) |
+| Plate içerik | Asset/mockup cascade plate'in İÇİNDE merkezi |
+| **Mockup mode** | Plate görünür, sol panel object styling (style/border/shadow) kontrol eder |
+| **Frame mode** | Plate görünür, sol panel SCENE/BACKGROUND/Solid/Gradient/Glass plate'in BG'sini kontrol eder |
+| Sağ rail preset thumbs | Plate behavior'ı birebir yansıtır (her thumb plate gradient + dark padding ile) |
+| Mode geçişi | Plate korunur, sadece sol panel content swap |
+
+Operator için **ana okunan şey plate, dark stage padding ikinci plan**.
+Ambient stage tint Shots'ta da yok — Shots'un kendisi de bounded
+plate + dark padding modelinde çalışıyor.
+
+MockupViews secondary: aynı yapısal model (PWA dev mode loading
+sorunu nedeniyle full canlı confirm yapılamadı, ama Phase 73 audit
+notlarından Single/Dual/Triple layout + bottom status bar pattern'i
+biliniyor; plate behavior Shots ile paralel).
+
+### Honest audit — Kivasy Phase 88-90 sonrası
+
+Phase 88-90 boyunca stage scene Phase 90'da:
+- `resolveSceneStyle` auto warm 0.22 + deep 0.82 alpha
+- `.k-studio__stage-scene` ellipse 75%/80% + 90%/95% + 92%/95% stops
+- `darkenForPresetBg` lerp 0.55/0.45
+
+Bu **stage geneli için subtle radial gradient** üretiyor — kart/objenin
+arkasında **belirgin bir surface görünmüyor**. Operator için "stage'in
+arka planında ton var" hissi var ama "objenin arkasında plate var"
+hissi yok. **Kavram yanlışı**: stage scene = stage-wide tint katmanı;
+plate = bounded canvas surface. İkisi farklı şeyler; Phase 88-90
+yanlış kavramı ürünleştirdi.
+
+Sağ rail preset thumb'larında ise **plate ipucu vardı** (cream rounded
+rectangle + dark padding etrafında, Phase 86+89 sayesinde) — **bu
+çelişki başlı başına bir kanıt**: rail "plate beklenir" sinyali
+veriyor, stage onu vermiyor.
+
+### Phase 91 ürün kararı
+
+`StagePlate` bounded surface stage'in ortasında, aspect-aware, cascade
+plate'in İÇİNDE yaşar:
+
+- **Plate her iki modda görünür** (mode-AGNOSTIC)
+- **Mockup mode aspect**: default 4:3 landscape (cascade horizontal)
+- **Frame mode aspect**: frameAspect'ten hesaplanır (Phase 83 baseline
+  parity — 1:1 / 4:5 / 9:16 / 16:9 / 3:4)
+- **Plate dimensions**: 780×585 max (4:3) Mockup; Frame mode aspect
+  bbox-fit (e.g. 16:9 → 780×439). `max-width: 92%; max-height: 88%`
+  ile küçük viewport'ta stage'i taşmaz
+- **Plate bg**: sceneOverride-driven, alpha 1.0 (ambient tint değil,
+  solid/gradient surface):
+  - auto + activePalette → `linear-gradient(135deg, palette[0],
+    palette[1])` (Magic Preset parity — vivid asset-driven)
+  - auto + no palette → CSS fallback `linear-gradient(135deg, #f0e9d8,
+    #c8c0b4)` (neutral cream/warm — Shots boş state parity)
+  - solid {color} → solid color
+  - gradient {from, to} → `linear-gradient(135deg, from, to)`
+- **Plate chrome**: rounded corners 26px, subtle border
+  `rgba(255,255,255,0.07)`, drop shadow chain
+  (`0 50px 100px -20px rgba(0,0,0,0.55)` + `0 24px 48px -12px
+  rgba(0,0,0,0.4)` + `inset 0 1px 0 rgba(255,255,255,0.04)`)
+- **Cascade plate içinde merkezi**: 572×504 inner stage plate'in
+  flexbox-centered child'ı
+- **Ambient scene (Phase 88-90) korunur**: plate'in arkasında stage
+  padding alanı için subtle vignette katmanı yaşamaya devam eder
+  (`z-index: -1`); plate (`z-index: 0`) onun üstünde ana subject
+- **Render state'inde plate gizli**: spinner overlay yoğun katmanlarla
+  yarışmaz (`!isRender` guard)
+
+### Implementation
+
+3 dosyada toplam ~110 LOC:
+
+**`src/features/mockups/studio/studio.css`** — yeni recipe:
+- `.k-studio__stage-plate` — absolute centered, rounded, drop shadow,
+  CSS default fallback bg gradient
+- `.k-studio__stage-plate-inner` — flex-centered cascade host
+
+**`src/features/mockups/studio/MockupStudioStage.tsx`** — yeni helpers
++ render:
+- `resolvePlateBackground(override, activePalette)` — sceneOverride
+  + palette'ten plate bg gradient/solid string'i hesaplar (mode-
+  aware solid/gradient/auto fallback)
+- `plateDimensionsFor(mode, frameAspect)` — mode-aware boyut
+  (Mockup 4:3 / Frame aspect bbox)
+- Plate JSX stage'in scene + ambient + floor katmanlarından sonra,
+  composition'lar plate'in İÇİNDE
+- `data-testid="studio-stage-plate"` + `data-mode` + `data-frame-aspect`
+  + `data-scene-mode` test selectors
+
+**Sağ rail preset thumbs** Phase 86 (asset-aware) + Phase 89
+(scene-aware) sayesinde otomatik plate-aware — gradient ID inject
+`ks-ptm-scn-X` pattern plate'in gradient bg'siyle birebir paritede.
+Yeni dokunma gerekmedi.
+
+### Mode geçişinde continuity (Shots.so canonical)
+
+Test set `cmov0ia37` (4-item clipart, Phase 79 palette `#F0E6D3 →
+#C49862`):
+
+| Adım | Plate state | Kanıt |
+|---|---|---|
+| Mockup default | 4:3 (780×585), bg cream→tan auto (palette) | DOM eval doğrulandı |
+| Frame mode geçişi | 16:9 (780×439), bg cream→tan **korundu** | mode swap, bg state preserved |
+| Frame Gradient #2A2420→#1A1410 click | 16:9, bg `linear-gradient(135deg, #2A2420 0%, #1A1410 100%)` | dramatic dark plate canlı |
+| Mockup mode geri dönüş | 4:3 (780×585), bg **dramatic dark gradient korundu** | mode-AGNOSTIC scene continuity tam |
+
+Operator için: **plate state ile birlikte mode geçişi** — Mockup'ta
+operator object styling yapar, Frame'e geçer plate bg'sini değiştirir,
+Mockup'a döner plate'in yeni bg'sini görür. Tek sahne, tek plate,
+mode-aware controls.
+
+### Browser end-to-end visual proof
+
+Live preview (viewport 1600×1100, real DB, authenticated):
+
+**Mockup mode auto (Phase 91)**:
+- Stage'in ortasında **belirgin warm cream→tan plate**
+- Plate kenarda dark stage padding (~%14 üst+alt, ~%10 sol+sağ)
+- 3 sticker cascade plate'in üstünde merkezi
+- Sağ rail preset thumb'lar plate gradient'ini yansıtıyor (Phase 86 +
+  Phase 89 baseline)
+
+**Frame mode + Gradient dramatic dark**:
+- Plate **dark gradient bg** ile dolu (16:9 oran)
+- 3 sticker plate'in üstünde pop ediyor (dark bg cream cascade'i
+  vurguluyor)
+- Plate kenarda dark padding korundu
+- Sağ rail thumb'ları dark gradient ile yeniden render
+
+**Mockup mode geri dönüş + gradient preserved**:
+- Plate dark gradient korundu (Frame'den geçti)
+- Mockup body controls (Object surface + Bundle Preview + MEDIA + STYLE
+  + BORDER + SHADOW + SLOTS)
+- Cascade plate'in üstünde (Front View orange active ring)
+
+### Kivasy-superior denge
+
+Shots.so default Magic preset vibrant pink/purple — bazı operatörler
+için agresif. Kivasy Phase 91:
+- Auto-mode default **asset palette'ten türetilir** (operator'ın
+  gerçek asset rengini reflekt eder, dış renk değil)
+- Operator nötr asset uploadlasa nötr cream plate
+- Operator vibrant asset uploadlasa vibrant plate
+- Operator Frame swatch override istediğinde explicit kontrol (auto/
+  solid/gradient Phase 89 baseline)
+- **Reset to Auto** explicit CTA (Phase 89 baseline) — operator default'a
+  döner
+
+Bu **asset-driven + operator-controlled** karışımı Shots'un default-
+vibrant agresifliğinden farklı; operator için "kendi asset'inin
+plate'i" hissi.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products}`:
+  **643/643 PASS** (zero regression — plate prop ek; component
+  signature'ları değişmedi)
+- `next build`: ✓ Compiled successfully (Studio route 16.6 kB —
+  Phase 90 16.4 kB → +0.2 kB plate logic)
+- Browser end-to-end: Mockup auto + Frame mode geçiş + Solid override
+  + Gradient override + Mockup'a geri dönüş + continuity DOM kanıt +
+  screenshot — hepsi canlı dev server'da
+
+### Değişmeyenler (Phase 91)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** 1 yeni CSS recipe (`.k-studio__stage-
+  plate`) + 1 inner host (`.k-studio__stage-plate-inner`) + 2 helper
+  (`resolvePlateBackground`, `plateDimensionsFor`) + 1 JSX block.
+  Yeni component / hook / service / schema / endpoint yok.
+- **Stage continuity (Phase 87) korunur** — stage container mode-
+  AGNOSTIC + aspect-AGNOSTIC; plate stage'in içinde yaşar.
+- **Scene state (Phase 89) Shell'de tek truth source** — plate bg'sini
+  kontrol eder; ambient scene de aynı state'i okur (continuity).
+- **Cascade composition (Phase 85) korunur** — slot pozisyonları
+  plate-inner 572×504 host'ta aynı (Mockup mode + Frame mode cascade
+  carry-over).
+- **Slot assignment + render dispatch (Phase 80) zinciri intakt** —
+  per-slot picker / Fill all / POST `/api/mockup/jobs` slotAssignments
+  body dokunulmadı.
+- **References / Batch / Review / Selection / Mockup Studio / Product
+  / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 92+ candidate)
+
+- **Glass + BG Effects davranış tüketimi** (Phase 89 author'un
+  öngördüğü "Phase 90/91 candidate"): Glass Light/Glass Dark/Frosted
+  swatch'lara `backdrop-filter` ekleyerek plate üstüne frosted
+  overlay layer; Lens Blur effect (Frame mode EFFECTS & WATERMARK)
+  plate bg'ye bg-blur uygulasın. Phase 92 candidate.
+- **Plate aspect explicit Mockup mode chip'i**: Mockup mode'da
+  operator plate aspect'ini değiştirmek isterse (3:2, 1:1, vb.) —
+  şu an Mockup default 4:3, Frame aspect-chip-driven. Mockup chip
+  eklenebilir.
+- **Plate frame border / inner shadow / glow** preset family:
+  operator plate'in chrome'unu değiştirebilir (Shots'taki Glass
+  swatch'lara benzer ama plate-level — frame style).
+- **Plate animated transition**: aspect/bg change keyframe (şu an
+  CSS transition 220ms ease) — daha rich animation.
+- **Plate scene save**: operator'ün yaptığı plate bg + aspect'i
+  template recipe'a yaz (Phase 70 recipe baseline'a bağlı).
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 91 ile **görsel scene parity Shots.so canonical seviyesinde**:
+- Stage container mode-AGNOSTIC + aspect-AGNOSTIC (Phase 87)
+- Cascade composition mode-AGNOSTIC (Phase 85+87)
+- **Visible bounded plate behind object** (Phase 91 ✓ — operator için
+  kart/objenin arkasında okunabilen surface)
+- Ambient scene plate'in dışında padding alanı için subtle vignette
+  (Phase 88-90 katmanı korundu)
+- Frame swatch controls plate bg'sini kontrol eder (Phase 89 baseline
+  → plate via Phase 91)
+- Sağ rail preset thumbs plate-aware (Phase 86 + Phase 89 baseline)
+
+Sıradaki en yüksek-impact adım **Phase 92 — Glass + BG Effects
+davranış tüketimi**: Glass swatch'lar plate üstüne `backdrop-filter`
+overlay, Lens Blur plate bg-blur. Frame mode EFFECTS & WATERMARK
+satırı operator-driven hale gelir. Phase 92 sonrası Frame mode tüm
+sidebar controls aktif.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
