@@ -50,6 +50,7 @@ const mockTemplates: MockupTemplateView[] = [
     estimatedRenderMs: 3000,
     hasActiveBinding: true,
   ownership: "global" as const,
+    slotCount: 1,
   },
   {
     id: "t2",
@@ -60,6 +61,7 @@ const mockTemplates: MockupTemplateView[] = [
     estimatedRenderMs: 3000,
     hasActiveBinding: true,
   ownership: "global" as const,
+    slotCount: 1,
   },
 ];
 

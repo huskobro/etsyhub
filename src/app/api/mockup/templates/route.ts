@@ -62,7 +62,11 @@ export const GET = withErrorHandling(async (req: Request) => {
     include: {
       bindings: {
         where: { status: "ACTIVE" },
-        select: { id: true }, // sadece varlık kontrolü; internal alan SIZMAZ
+        // Phase 76 — `config` JSON select edildi (sadece slot count
+        // derive etmek için). Tüm config UI'a sızmaz; aşağıda sadece
+        // slotCount projekte edilir (number — operator multi-slot vs
+        // single-slot template'i ayırt etsin).
+        select: { id: true, config: true },
       },
     },
     orderBy: [
@@ -72,17 +76,35 @@ export const GET = withErrorHandling(async (req: Request) => {
     ],
   });
 
-  const templates = rows.map((t) => ({
-    id: t.id,
-    name: t.name,
-    thumbKey: t.thumbKey,
-    aspectRatios: t.aspectRatios,
-    tags: t.tags,
-    estimatedRenderMs: t.estimatedRenderMs,
-    hasActiveBinding: t.bindings.length > 0,
-    // Phase 65 — Ownership signal for UI tabs/badge
-    ownership: (t.userId === null ? "global" : "own") as "global" | "own",
-  }));
+  const templates = rows.map((t) => {
+    // Phase 76 — Slot count from active binding config (multi-slot detection).
+    // Operator UI apply view'da multi-slot template seçince slot assignment
+    // panel açar. Tek-slot template'lerde panel render edilmez.
+    // Internal binding.config UI'a SIZMAZ — sadece slotCount projekte edilir.
+    let slotCount = 1;
+    const firstBinding = t.bindings[0];
+    if (firstBinding && firstBinding.config) {
+      const cfg = firstBinding.config as { slots?: unknown[] };
+      if (Array.isArray(cfg.slots) && cfg.slots.length > 0) {
+        slotCount = cfg.slots.length;
+      }
+    }
+
+    return {
+      id: t.id,
+      name: t.name,
+      thumbKey: t.thumbKey,
+      aspectRatios: t.aspectRatios,
+      tags: t.tags,
+      estimatedRenderMs: t.estimatedRenderMs,
+      hasActiveBinding: t.bindings.length > 0,
+      // Phase 65 — Ownership signal for UI tabs/badge
+      ownership: (t.userId === null ? "global" : "own") as "global" | "own",
+      // Phase 76 — Slot count (1 for legacy single-slot; >1 for multi-slot
+      // sticker sheet / bundle preview / multi-area templates)
+      slotCount,
+    };
+  });
 
   return NextResponse.json({ templates });
 });

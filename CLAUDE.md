@@ -15060,6 +15060,233 @@ fallback Phase 76+.
 
 ---
 
+## Phase 76 — Operator-facing multi-design assignment UI
+
+Phase 74-75 backend tarafında multi-slot + multi-design render
+execution canlıydı (`compositor.ts` slot fanout + `designUrls[]`
+slot-mapped). Ama operator için **UI yoktu**: hangi slot'a hangi
+design gidiyor görsel olarak seçilemiyordu. Authoring/render
+arasında hâlâ "operatör-bilinç eksikliği" boşluğu vardı. Phase 76
+bu gap'i kapatır.
+
+### Strateji (3. taraf API'siz devam)
+
+Phase 74-75 research bulgularına dayanarak **kendi sistemimizi
+büyütmek** kalıcı strateji:
+
+- **Self-hosted Sharp pipeline** = ana çizgi (~$0/render vs
+  DynamicMockups $0.05/render)
+- **3. taraf mockup API'leri** opsiyonel/operator-opt-in fallback
+  (Phase 76 scope dışı; DynamicMockups schema stub Phase 8'den
+  beri var)
+- **PSD/Canva/Photopea** = dersler kalıcı, embed/import gerek değil:
+  - Canva: kendi editor + kendi PSD/PNG upload = doğru yol
+  - Photopea: smart object → JSON config pattern bizim `slots[]`
+    ile birebir uyumlu, doğrulandı
+  - MockCity Photopea embed gerek değil (advanced PSD edit Phase 76+
+    candidate)
+
+Phase 76 odak: **operator-facing UI** + **PSD import giriş zemini**
+hazırlığı.
+
+### Slice 1 — Backend `slotCount` field expose
+
+`/api/mockup/templates` route'una `slotCount` field eklendi:
+
+```ts
+let slotCount = 1;
+const firstBinding = t.bindings[0];
+if (firstBinding && firstBinding.config) {
+  const cfg = firstBinding.config as { slots?: unknown[] };
+  if (Array.isArray(cfg.slots) && cfg.slots.length > 0) {
+    slotCount = cfg.slots.length;
+  }
+}
+```
+
+- Tek-slot template (Phase 8 baseline): `slotCount: 1`
+- Multi-slot template (Phase 72+ slots[]): `slotCount: N`
+- Internal binding.config UI'a sızmıyor — sadece slotCount projekte
+  edilir (operator multi-slot vs single-slot ayırt etsin)
+- `MockupTemplateView` Zod schema'sına `slotCount` field eklendi
+
+### Slice 2 — `SlotAssignmentPanel` component
+
+`src/features/mockups/components/SlotAssignmentPanel.tsx` (yeni dosya,
+~280 LOC):
+
+- **Multi-slot detection**: `slotCount > 1` ise panel render edilir;
+  tek-slot template'lerde hiç render edilmez (mevcut Phase 8 fanout
+  akışı intakt)
+- **Per-slot picker**: operator slot başına farklı kept item seçer
+  (dropdown listesi tüm kept items)
+- **Empty state**: atanmamış slot'lar **FANOUT** badge gösterir +
+  caption "Default · {primary item label}" (operator anlıyor:
+  primary'ye düşecek = Phase 75 fanout fallback)
+- **Assigned state**: per-slot kept item thumbnail (signed URL —
+  şimdilik null fallback "—") + label + item id
+- **Helper actions**:
+  - **Fill all with primary**: tüm slot'ları primary kept item'a atar
+  - **Clear all**: tüm slot'ları boşaltır (hepsi fanout'a düşer)
+  - **From PSD →** entry button (Phase 77+ PSDImportDialog'a giden
+    placeholder; Phase 76 scope'unda `onOpenPsdImport` opsiyonel
+    callback, ileride wire edilecek)
+- **Layout mode**: slotCount ≤ 3 → list, 4+ → grid (3-col responsive)
+- **a11y**: aria-expanded picker dropdown, role/label, data-testid'ler
+
+### Slice 3 — `S3ApplyView` wiring
+
+Apply view'da multi-slot template detection + panel render:
+
+```ts
+const multiSlotTemplate = useMemo(() => {
+  if (packState.selectedTemplateIds.length === 0) return null;
+  let best = null;
+  for (const t of templates) {
+    if (!packState.selectedTemplateIds.includes(t.id)) continue;
+    if (t.slotCount > 1 && (!best || t.slotCount > best.slotCount)) {
+      best = t;
+    }
+  }
+  return best;
+}, [packState.selectedTemplateIds, templates]);
+```
+
+Birden fazla seçili template varsa en yüksek slot count'lu olan panel
+başlığında gösterilir. Operator hangi template'in multi-slot
+edited'tığını tek bakışta görür.
+
+Panel state (client-side): `slotAssignments: { [slotIdx]: itemId | null }`.
+
+### Slice 4 — Render execution wiring (Phase 77+ candidate)
+
+Phase 76 scope'unda **assignment state UI level**. Operator hangi
+slot'a hangi item atadığını UI'da görür ve plan'ı oluşturur. Job
+submit'e (POST /api/mockup/jobs) henüz iletilmiyor; mevcut
+`createMockupJob` shape `setId + categoryId + templateIds` alır,
+slot assignment map almıyor.
+
+**Phase 77+ candidate**:
+- `MockupRender.slotDesigns` JSON field (slot index → variant id)
+- `createMockupJob` shape genişletmesi (opsiyonel slotAssignments)
+- Worker chain: `MOCKUP_RENDER` worker render başına `slotDesigns`
+  varsa `RenderInput.designUrls[]` populate eder (backend Phase 75
+  hazır)
+- Backend hâlâ Phase 74-75 baseline: slots[] varsa fanout, designUrls[]
+  varsa slot-mapped; bu turun job submit yolu **Phase 8 baseline**
+  ile uyumlu (operator UI plan'ı çiziyor, persist Phase 77'de wire
+  edilir)
+
+### Slice 5 — Test fixtures (slotCount field)
+
+`MockupTemplateView` schema genişletmesi nedeniyle 5 test fixture
+güncellendi (perl bulk replace `ownership: "global" as const,` → +
+`slotCount: 1,`):
+
+- tests/unit/mockup/url-state.test.tsx
+- tests/unit/mockup/ui/S3ApplyView.test.tsx
+- tests/unit/mockup/ui/PackPreviewCard.test.tsx
+- tests/unit/mockup/ui/S1BrowseDrawer.test.tsx
+- tests/unit/mockup/ui/S2DetailModal.test.tsx
+
+Bazı fixture'lar zaten farklı pattern (sentinel ownership) kullanıyor;
+typecheck temiz, vitest regression yok.
+
+### Browser end-to-end full proof
+
+Live dev server (1440×900, real DB, authenticated):
+
+| Test | Sonuç |
+|---|---|
+| API slotCount canlı | Phase 73 9-slot template `cmp4pdhlv...` `slotCount: 9`, Phase 67/68 single-slot `slotCount: 1` |
+| Operator-facing patch | Clipart "Bundle Preview · 9-up Grid" template bindings.config.slots eklendi (admin seed multi-slot upgrade); API `slotCount: 9` döner |
+| Apply view multi-slot detection | `/selection/sets/cmov0ia37.../mockup/apply` → SlotAssignmentPanel mounted, `data-slot-count="9"`, `data-layout="grid"` |
+| Count badge | "9 SLOTS" k-orange-soft chip |
+| 9 slot elements | slot 0-8 her biri kendi durum caption'ı (status testid'leri) |
+| Fill all with primary | Tüm slot'lar primary item'a (`CMOV0IAC`) atandı (9 slot status "ITEM · CMOV0IAC") |
+| Per-slot pick | Slot 0 picker açıldı, 4 kept item option, 2. item seçildi → status "ITEM · CMOV0IAD" |
+| Slot 1 farklı item | 3rd item seçildi → status "ITEM · CMOV0IAD2..." (slot 0'dan farklı) |
+| Clear slot 2 | Caption "DEFAULT · ITEM 1" + FANOUT empty-thumb badge (operator anlıyor: primary'ye düşecek) |
+| Visual screenshot | Apply view + SetSummaryCard + PackPreviewCard + **9-slot grid Phase 76 panel** + Fill all + Clear all action buttons |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/mockup tests/integration/mockup`: 443/444 PASS
+  (1 pre-existing Phase 65/71 ownership fail — Phase 74-75 entry'lerinde
+  belgelendi, Phase 76 ile ilgisiz)
+- `next build`: ✓ Compiled successfully (PICKER_MAX_HEIGHT_CLASS
+  Tailwind arbitrary; inline style yasak rule complied)
+- Browser end-to-end: panel mount + multi-slot detection + per-slot
+  pick + fill all + clear + fanout fallback caption + visual
+  screenshot
+
+### Değişmeyenler (Phase 76)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız `MockupTemplate.binding.config.slots`
+  (Phase 72'den beri optional Zod field) consume edildi + UI type
+  `slotCount` field eklendi (response-only projection).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** SlotAssignmentPanel küçük standalone
+  component (~280 LOC); S3ApplyView'a 1 mount + 2 helper memo +
+  state hook. Service / worker / DB layer dokunulmadı.
+- **Yeni 3rd-party dep yok.**
+- **3. taraf mockup API path dokunulmadı** (DynamicMockups stub
+  Phase 8; operator-opt-in Phase 77+).
+- **Phase 8/63/70/72/73/74/75 backend baseline tam korundu** —
+  job submit shape (`setId + categoryId + templateIds`) hiç
+  değişmedi.
+- **Phase 67-73 authoring testid'ler intakt.**
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → Mockup → Product → Etsy Draft).
+- **Kivasy DS dışına çıkılmadı.** k-orange-soft + k-orange-ink badge
+  (Phase 51 status badge family), k-btn--ghost pattern, font-mono
+  tracking-meta, dashed border empty-thumb.
+- **Cross-user isolation hard-enforced.**
+
+### Bilinçli scope dışı (Phase 77+ candidate)
+
+- **MockupJob.slotDesigns persistence**: render execution wiring —
+  `createMockupJob` shape genişletmesi + MockupRender JSON field +
+  worker chain `RenderInput.designUrls[]` populate
+- **PSDImportDialog UI**: panel'deki "From PSD →" button'u açar; PSD
+  upload + parse preview + slot mapping confirm
+- **`ag-psd` npm dep + parser implementation**: Phase 75 contract
+  body'sini doldurur
+- **Per-slot kept item thumbnail**: signed URL (selection asset
+  meta'ya thumbnailUrl field eklenince)
+- **Multi-template per-slot assignment**: birden fazla multi-slot
+  template seçildiğinde her template için ayrı assignment panel
+  (şu an en yüksek slot count olan tek panel)
+- **Render preview multi-slot**: real Sharp render preview button +
+  slot-mapped pixel-level result inline gösterim
+- **Slot drag reorder**: composite z-order ile bağlı (Phase 74'te
+  sequential)
+
+### Bundan sonra templated.io clone tarafında kalan tek doğru iş
+
+Phase 76 ile **operator-facing multi-design assignment akışı canlı**:
+- Multi-slot template detection
+- Per-slot kept item picker
+- Fill all + clear all + per-slot clear (fanout fallback)
+- Empty state operator-friendly ("FANOUT" badge + "Default · primary")
+- PSD import entry hazırlığı (panel header button slot)
+
+Kalan halka **Phase 77 render execution wiring**: slotAssignments
+state → job submit → MockupRender persistence → worker → backend
+Phase 75 designUrls[] çağrısı. Backend zincirinin tüm halkaları
+hazır; operator UI plan'ı şu an client-side persist + render-time
+fanout fallback ile çalışıyor. Phase 77'de pixel-level slot-mapped
+render output'unda operator'ın çizdiği plan canlı yansıyacak.
+
+Ek olarak **Phase 77+ PSDImportDialog**: panel'deki "From PSD →"
+giriş button'una operator-facing PSD upload + ag-psd parser +
+template auto-creation akışı bağlanır. Operator Photoshop'tan PSD
+sürükler → sistem otomatik N-slot template oluşturur.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

@@ -24,6 +24,14 @@ const MockupTemplateViewSchema = z.object({
   hasActiveBinding: z.boolean(),
   /** Phase 65 — "global" (admin catalog) | "own" (operator's library). */
   ownership: z.enum(["global", "own"]).default("global"),
+  /** Phase 76 — Multi-slot template slot count.
+   *  - 1: legacy single-slot (Phase 8 baseline)
+   *  - >1: multi-slot template (sticker sheet 9-up, bundle preview, etc.)
+   *  Apply view bu sayıyı multi-design assignment panel'i göstermek için
+   *  kullanır. Backend Phase 74-75 multi-slot render execution + slot-
+   *  mapped designUrls hazır; operator slot başına farklı kept asset
+   *  atayabilir. */
+  slotCount: z.number().int().min(1).default(1),
 });
 
 const ResponseSchema = z.object({

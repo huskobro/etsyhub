@@ -11,7 +11,7 @@
 //   - useMockupPackState (Task 14) — selected templates + dirty state
 //   - useMockupOverlayState (Task 15) — drawer/modal URL state
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSelectionSet } from "@/features/selection/queries";
 import { useMockupTemplates } from "@/features/mockups/hooks/useMockupTemplates";
@@ -22,6 +22,11 @@ import { PackPreviewCard } from "./PackPreviewCard";
 import { DecisionBand } from "./DecisionBand";
 import { S1BrowseDrawer } from "./S1BrowseDrawer";
 import { S2DetailModal } from "./S2DetailModal";
+import {
+  SlotAssignmentPanel,
+  type SlotAssignmentKeptItem,
+  type SlotAssignmentMap,
+} from "./SlotAssignmentPanel";
 
 export function S3ApplyView({ setId }: { setId: string }) {
   const router = useRouter();
@@ -38,6 +43,53 @@ export function S3ApplyView({ setId }: { setId: string }) {
     useMockupTemplates({ categoryId });
   const packState = useMockupPackState(setId);
   const overlayState = useMockupOverlayState();
+
+  /* Phase 76 — Multi-slot template detection + slot assignment state.
+   * Multi-slot template seçildiğinde panel açılır; operator slot başına
+   * farklı kept item atayabilir. Tek-slot template'lerde panel render
+   * edilmez (mevcut Phase 8 fanout akışı intakt).
+   *
+   * State client-side; Phase 77 render execution wiring sırası bu
+   * mapping job submit body'sine slotDesigns olarak iletilebilir
+   * (mevcut createMockupJob shape genişletilirse). Phase 76 scope:
+   * UI + persistence client memory + preview confidence.
+   */
+  const multiSlotTemplate = useMemo(() => {
+    if (packState.selectedTemplateIds.length === 0) return null;
+    // Birden fazla seçili template varsa: en yüksek slotCount'lu olanı
+    // panel başlığında göster (operator hangi template'i multi-slot
+    // edited tek bakışta görmeli). Operator UI ileride per-template
+    // slot mapping yapabilir; Phase 76 scope = yalnız ilk multi-slot
+    // template.
+    let best: (typeof templates)[number] | null = null;
+    for (const t of templates) {
+      if (!packState.selectedTemplateIds.includes(t.id)) continue;
+      if (t.slotCount > 1 && (!best || t.slotCount > best.slotCount)) {
+        best = t;
+      }
+    }
+    return best;
+  }, [packState.selectedTemplateIds, templates]);
+
+  const keptItemsForPanel: SlotAssignmentKeptItem[] = useMemo(() => {
+    const items =
+      (set as { items?: Array<{ id: string; position: number }> } | undefined)
+        ?.items ?? [];
+    return items
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map((it, idx) => ({
+        id: it.id,
+        label: `Item ${idx + 1}`,
+        // Phase 76 scope — full thumbnail wiring Phase 77 ile birlikte
+        // (selection asset meta'ya thumbnail URL eklenince). Şu an
+        // operator slot'ları label ile ayırt ediyor; thumbnail null fallback
+        // panel'de "—" placeholder gösteriyor.
+        thumbnailUrl: null,
+      }));
+  }, [set]);
+
+  const [slotAssignments, setSlotAssignments] = useState<SlotAssignmentMap>({});
 
   const handleSubmit = useCallback(async () => {
     setIsSubmitting(true);
@@ -113,6 +165,21 @@ export function S3ApplyView({ setId }: { setId: string }) {
           onCustomizeClick={overlayState.openCustomizeDrawer}
           onToggleTemplate={packState.toggleTemplate}
         />
+
+        {/* Phase 76 — Multi-slot template seçildiğinde slot assignment panel
+            açılır. Operator slot başına farklı kept item atar. Single-slot
+            template'lerde hiç render edilmez. PSD import giriş Phase 77+
+            (PSDImportDialog). */}
+        {multiSlotTemplate ? (
+          <SlotAssignmentPanel
+            slotCount={multiSlotTemplate.slotCount}
+            templateName={multiSlotTemplate.name}
+            keptItems={keptItemsForPanel}
+            assignments={slotAssignments}
+            onChange={setSlotAssignments}
+            onOpenPsdImport={undefined /* Phase 77 — PSDImportDialog wire */}
+          />
+        ) : null}
       </div>
 
       {/* Zone 4: Sticky karar bandı (Task 25) */}

@@ -19,6 +19,7 @@ describe("<S1BrowseDrawer>", () => {
       estimatedRenderMs: 2000,
       hasActiveBinding: true,
     ownership: "global" as const,
+    slotCount: 1,
     },
     {
       id: "t2",
@@ -29,6 +30,7 @@ describe("<S1BrowseDrawer>", () => {
       estimatedRenderMs: 2100,
       hasActiveBinding: true,
     ownership: "global" as const,
+    slotCount: 1,
     },
     {
       id: "t3",
@@ -39,6 +41,7 @@ describe("<S1BrowseDrawer>", () => {
       estimatedRenderMs: 2200,
       hasActiveBinding: true,
     ownership: "global" as const,
+    slotCount: 1,
     },
     {
       id: "t4",
@@ -49,6 +52,7 @@ describe("<S1BrowseDrawer>", () => {
       estimatedRenderMs: 2000,
       hasActiveBinding: true,
     ownership: "global" as const,
+    slotCount: 1,
     },
     {
       id: "t5",
@@ -59,6 +63,7 @@ describe("<S1BrowseDrawer>", () => {
       estimatedRenderMs: 2150,
       hasActiveBinding: true,
     ownership: "global" as const,
+    slotCount: 1,
     },
     {
       id: "t6",
@@ -69,6 +74,7 @@ describe("<S1BrowseDrawer>", () => {
       estimatedRenderMs: 2050,
       hasActiveBinding: true,
     ownership: "global" as const,
+    slotCount: 1,
     },
     {
       id: "t7",
@@ -79,6 +85,7 @@ describe("<S1BrowseDrawer>", () => {
       estimatedRenderMs: 2100,
       hasActiveBinding: true,
     ownership: "global" as const,
+    slotCount: 1,
     },
     {
       id: "t8",
@@ -89,6 +96,7 @@ describe("<S1BrowseDrawer>", () => {
       estimatedRenderMs: 2200,
       hasActiveBinding: true,
     ownership: "global" as const,
+    slotCount: 1,
     },
   ];
 

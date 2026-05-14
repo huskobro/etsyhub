@@ -18,6 +18,7 @@ describe("<S2DetailModal>", () => {
     estimatedRenderMs: 2000,
     hasActiveBinding: true,
     ownership: "global" as const,
+    slotCount: 1,
   };
 
   const defaultProps = {
@@ -227,6 +228,7 @@ describe("<S2DetailModal>", () => {
       estimatedRenderMs: 2200,
       hasActiveBinding: true,
     ownership: "global" as const,
+    slotCount: 1,
     };
 
     const { rerender } = render(
