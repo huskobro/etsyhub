@@ -536,8 +536,16 @@
   );
   filter: blur(10px);
 }
+/* Phase 87 — Frame mode placement floor is NOW visible (continuity).
+ *
+ * Phase 84 baseline'da Frame mode'da floor display:none idi çünkü
+ * stage içinde bounded cream canvas vardı (kendi placement surface'i).
+ * Phase 87'de bounded canvas kaldırıldı: cascade Frame mode'da da
+ * Mockup mode'la aynı stage üzerinde yaşar; dolayısıyla placement
+ * floor + contact shadow her iki modda da görünür. Operator için
+ * "tek sahne, mode-aware chrome" Shots.so davranışı. */
 .k-studio__stage[data-mode="frame"] .k-studio__stage-floor {
-  display: none;
+  display: block;
 }
 
 .k-studio__stage-inner {

@@ -17415,6 +17415,194 @@ göre karar.
 
 ---
 
+## Phase 87 — True stage continuity (bounded canvas removed)
+
+Phase 85 mode geçişinde cascade carry-over getirdi; Phase 86 preset
+rail + Magic Preset'i asset-aware yaptı. Ama gerçek browser
+araştırmasını yeniden, **continuity-odaklı** yapınca kritik bir
+yanlış varsayım ortaya çıktı: Shots.so'da Frame mode'a geçince
+**bounded cream canvas DEĞIL** — stage container TAM aynı kalıyor,
+sadece sol panel content swap'leniyor.
+
+### Gerçek browser araştırması (Shots.so + MockupViews yeniden gez)
+
+Yeni gözlemler (Phase 85/86 araştırmasının kaçırdığı detaylar):
+
+| Davranış | Shots.so canonical | MockupViews canonical | Kivasy Phase 85+86 |
+|---|---|---|---|
+| Mode geçişinde stage container | **AYNI cream/dark gradient bg** | **AYNI orange→dark gradient bg** | ❌ Frame mode'da bounded cream canvas oluşuyordu |
+| Mode geçişinde composition | birebir aynı pozisyon | birebir aynı pozisyon | ⚠ scale ediliyordu (Phase 85 cascadeScale 0.5-0.94) |
+| Aspect ratio değişimi | sağ rail preset thumb aspect refresh + caption hint; **stage shrink etmez** | aynı | ❌ stage canvas live W×H shrink ediyordu (Phase 83 computeFrameCanvasDims) |
+| Mode geçişinde sağ rail | mode-aware preset set, aynı asset-aware fill | aynı | ✓ Phase 86'da düzeldi |
+| Mode geçişinde toolbar | mode-agnostic | mode-agnostic | ✓ |
+
+**Honest audit**: Bizim mental model'imiz yanlıştı — Frame mode'u
+"bounded canvas mode" olarak konumlandırmışız. Doğru model: **Frame
+mode = stage'in CHROME katmanı** (bg/scene/effects/aspect hint),
+**Mockup mode = stage'in CONTENT katmanı** (object/style/shadow/slot).
+İkisi de aynı stage'i paylaşır — sadece sol panel hangi katmanı
+kontrol ettiğine göre swap'lenir.
+
+### Phase 87 davranış düzeltmesi (en yüksek-impact continuity fix)
+
+`MockupStudioStage.tsx` `FrameComposition` rewrite — bounded cream
+canvas wrap **tamamen kaldırıldı**:
+
+- **Stage container**: Frame mode'da artık aynı 572×504 inner stage
+  (Mockup mode ile birebir aynı boyut + pozisyon)
+- **Cascade scale = 1.0** (Phase 85'in `cascadeScale 0.5-0.94`'i
+  kaldırıldı) — cascade Mockup mode'la AYNI ölçekte render
+- **Slot wrap class = `k-studio__slot-wrap`** (Mockup mode ile aynı
+  class; eski custom Frame slot wrapper kaldırıldı)
+- **Per-slot filter drop-shadow chain** = Mockup mode pattern
+  (active/ghost/normal varyantlar)
+- **Placement floor** her iki modda görünür (CSS
+  `[data-mode="frame"] .k-studio__stage-floor { display: block }`)
+- **Ambient glow** her iki modda görünür (JSX'te `mode === "mockup"`
+  guard kaldırıldı)
+- **Caption korundu**: "1920 × 1080 · 16:9 · Storefront banner ·
+  hero landscape · Cascade · active Front View" — aspect ratio
+  bilgisi text hint olarak yaşar
+- **Aspect chip select** stage'i shrink ETMEZ artık — caption +
+  toolbar status badge (Phase 83 mevcut) hint olarak görünür;
+  ileride sağ rail preset thumb aspect refresh eklenebilir
+
+Continuity contract (Phase 87 final):
+```
+stage container   = mode-AGNOSTIC + aspect-AGNOSTIC
+stage composition = mode-AGNOSTIC (cascade her iki modda birebir
+                      aynı pozisyon + ölçek + filter)
+placement floor   = mode-AGNOSTIC (her iki modda görünür)
+ambient glow      = mode-AGNOSTIC (her iki modda görünür)
+sidebar           = mode-aware swap (Mockup: object styling;
+                      Frame: presentation chrome)
+right rail        = mode-aware preset set + asset-aware fill
+                      (Phase 86 baseline)
+toolbar           = mode-AGNOSTIC
+aspect ratio      = caption + toolbar status badge hint
+                      (stage'i shrink/grow YAPMAZ)
+```
+
+### MockupViews secondary ders (continuity)
+
+MockupViews Shots'la aynı continuity contract: Mockup ↔ Frame
+geçişinde stage'in dark→orange gradient bg AYNI kaldı; sağ rail
+LAYOUT (Single/Dual/Triple) thumbnails aynı; status bar bottom
+sabit. Bizim Phase 87 fix'imiz iki ürünün de canonical davranışıyla
+paralel.
+
+### Browser canlı kanıt (DOM eval + screenshot)
+
+Test set: `cmov0ia370019149ljyu7divh` (4-item clipart, Phase 79
+deterministic palette).
+
+**Frame mode (toggle):**
+```
+shellMode: "frame"
+boundedCanvasGone: true   // Phase 85 studio-stage-frame-canvas YOK
+boundedCascadeWrapperGone: true  // Phase 85 wrapper YOK
+frameSlot0Class: "k-studio__slot-wrap"  // Mockup mode parity
+frameSlotCount: 3  // cascade carry-over Phase 85 intakt
+frameSlot0Active: "true"  // Front View active ring
+floorVisible: "block"  // Phase 87: Frame mode'da da floor görünür
+ambientPresent: true  // Phase 87: her iki modda
+captionText: "1920 × 1080 · 16:9 · Storefront banner ·
+              hero landscape · Cascade · active Front View"
+designSource: "slot"  // Phase 85 baseline intakt
+```
+
+**Mockup → Frame → Mockup roundtrip**: cascade pozisyon
+**birebir korundu** (slot 0 left=20 top=14 her iki modda aynı yer),
+mode toggle stage'i hareket ettirmiyor.
+
+Screenshot kanıtları:
+- **Mockup mode baseline**: 3-slot sticker card cascade (Front
+  active orange ring + 01 badge, Side ghost, Back ghost), dark stage
+  + ambient glow + placement floor, sticker card warm palette
+- **Frame mode (Phase 87 sonrası)**: **TAM AYNI** cascade, AYNI
+  pozisyon, AYNI dark stage bg, AYNI ambient glow, AYNI placement
+  floor, AYNI sticker card warm palette. Caption alt satırda
+  aspect hint olarak yaşıyor. Sağ rail mode-aware preset set
+  (Centered/Offset/Bleed/Angled/Duo/Story) Phase 86 asset-aware
+  fill ile
+- **Mockup → Frame → Mockup**: cascade pozisyon BIREBIR KORUNDU
+  — operator için "tek sahne, mode-aware chrome" hissi
+
+### Değişmeyenler (Phase 87)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `FrameComposition` JSX yapısı
+  basitleşti (bounded canvas wrapper kaldırıldı, cascade Mockup mode
+  ile aynı pattern); CSS tek bir `display: block` override.
+- **Phase 85 cascade carry-over slot palette + active ring + ghost
+  davranışı intakt** — sadece bounded canvas wrap çıktı, cascade
+  içeriği aynen korunur.
+- **Phase 86 asset-aware preset rail + Magic Preset thumb intakt** —
+  sağ rail mode-aware preset set + asset-aware fill çalışmaya devam
+  ediyor.
+- **Phase 83 aspect ratio caption + toolbar status badge intakt** —
+  aspect bilgisi artık caption + status badge hint olarak yaşıyor,
+  stage'i shrink etmiyor.
+- **Slot assignment + render dispatch zinciri intakt** (Phase 80
+  per-slot picker + POST /api/mockup/jobs slotAssignments body +
+  Phase 79 real selection hydrate).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy DS + Studio `--ks-*` namespace bozulmadı.**
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/mockup tests/unit/products tests/unit/selection
+  tests/unit/selections`: **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: dev server (`.next` cache temizlendi + fresh
+  start) → Mockup → Frame → Mockup roundtrip; Phase 87 stage
+  container mode-agnostic + cascade birebir aynı pozisyon + floor/
+  ambient her iki modda + caption aspect hint korundu canlı
+  doğrulandı
+
+### Neden bu en yüksek-impact adım?
+
+Phase 85 cascade carry-over getirmişti ama bounded canvas wrap
+sebebiyle operator için "iki ayrı sahne" hissi devam ediyordu —
+stage'in **boyutu** ve **arka planı** Frame mode'da değişiyordu.
+Phase 87 bu son **görsel kopuşu** ortadan kaldırdı: artık operatöre
+mod geçişinde "başka sayfaya geçtim" hissi vermeyen, tek stage
+üzerinde mode-aware chrome'la yaşayan bir Studio var. Bu Shots.so'nun
+canonical continuity contract'ı, **kullanıcı için en kritik karar
+yüzeyinin** (stage) hareketsiz kalması demek.
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 87 ile **continuity = Shots.so canonical seviyesinde**:
+- Stage container mode-agnostic + aspect-agnostic
+- Cascade composition mode-agnostic
+- Placement floor + ambient glow her iki modda
+- Sol panel mode-aware swap
+- Sağ rail mode-aware preset set + asset-aware fill
+- Toolbar mode-agnostic
+- Aspect ratio caption hint
+
+Phase 88+ candidate'lar (ertelenen yüksek-impact UX iyileştirmeler):
+
+- **Aspect-aware preset rail thumbnails refresh**: Shots.so'da aspect
+  değişince sağ rail preset thumbnails da o aspect'te yeniden render
+  oluyor (16:9 → kare aspect → preset thumbs kare). Frontend SVG
+  re-render ile çözülebilir.
+- **Top-center floating media picker**: Shots MEDIA hover behavior —
+  Phase 80 SlotAssignmentPanel sidebar'dan floating overlay'e taşıma.
+- **Templates picker overlay**: Shots toolbar Templates butonu →
+  slide-in curated catalog. Phase 64-66 admin authoring reuse.
+- **Precision rail content**: Phase 84'te tab var, content boş —
+  Shots.so'da Tilt → Rotation slider canlı, Precision → "Hold Shift
+  for precision" hint.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
