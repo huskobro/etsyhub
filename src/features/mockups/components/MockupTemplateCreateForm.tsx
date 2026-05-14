@@ -544,6 +544,7 @@ export function MockupTemplateCreateForm() {
                     setShowSamplePreview((v) => !v)
                   }
                   onReset={resetSafeArea}
+                  recipe={recipe}
                 />
                 {/* Phase 69 — Live validity feedback */}
                 {validity.issues.length > 0 ? (

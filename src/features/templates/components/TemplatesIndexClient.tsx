@@ -555,6 +555,17 @@ function MockupTile({
         {template.tags.includes("smart-obj") ? (
           <Badge tone="info">SMART-OBJ</Badge>
         ) : null}
+        {/* Phase 71 — Ownership badge (My templates discoverability) */}
+        {template.ownership === "own" ? (
+          <span
+            className="inline-flex items-center rounded-md border border-k-orange/40 bg-k-orange-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-meta text-k-orange-ink"
+            data-testid="mockup-tile-ownership-badge"
+            data-ownership="own"
+            title="This template is yours — open Edit to update"
+          >
+            MY
+          </span>
+        ) : null}
       </div>
       {canActivate ? (
         <button
@@ -571,6 +582,17 @@ function MockupTile({
           )}
           Activate template
         </button>
+      ) : null}
+      {/* Phase 71 — Edit link for user-owned templates (templates listing
+          discoverability — Phase 70 Apply drawer entry parity). */}
+      {template.ownership === "own" ? (
+        <a
+          href={`/templates/mockups/${template.id}/edit`}
+          className="mt-2 inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border border-line bg-paper px-2 font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2 hover:border-k-orange hover:text-k-orange-ink"
+          data-testid="mockup-tile-edit-link"
+        >
+          Edit template
+        </a>
       ) : null}
       {activate.isError ? (
         <p className="mt-1 font-mono text-[10.5px] text-danger">

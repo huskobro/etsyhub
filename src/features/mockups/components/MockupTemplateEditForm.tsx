@@ -391,6 +391,7 @@ export function MockupTemplateEditForm({
                     setShowSamplePreview((v) => !v)
                   }
                   onReset={resetSafeArea}
+                  recipe={recipe}
                 />
               ) : (
                 <div className="flex items-center justify-center rounded-md border border-line bg-k-bg-2/40 px-6 py-12 text-[13px] text-ink-3">

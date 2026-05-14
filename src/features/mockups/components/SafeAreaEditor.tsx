@@ -161,6 +161,19 @@ export type SafeAreaEditorProps = {
   onToggleSamplePreview?: () => void;
   /** Phase 69 — Reset safe-area to a sane default for current mode. */
   onReset?: () => void;
+  /** Phase 71 — Sample preview reflects recipe (blendMode + shadow).
+   *  Backend Sharp recipe-applicator (Phase 8) renders the real
+   *  composite; SVG mix-blend-mode + filter approximates the visual
+   *  effect for fast authoring iteration. Not pixel-perfect. */
+  recipe?: {
+    blendMode: "normal" | "multiply" | "screen";
+    shadow?: {
+      offsetX: number;
+      offsetY: number;
+      blur: number;
+      opacity: number;
+    };
+  };
 };
 
 export function SafeAreaEditor({
@@ -173,6 +186,7 @@ export function SafeAreaEditor({
   showSamplePreview = false,
   onToggleSamplePreview,
   onReset,
+  recipe,
 }: SafeAreaEditorProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragMode, setDragMode] = useState<DragMode>({ kind: "none" });
@@ -319,9 +333,25 @@ export function SafeAreaEditor({
         <rect x={0} y={pxY} width={pxX} height={pxH} fill="rgba(22,19,15,0.45)" pointerEvents="none" />
         <rect x={pxX + pxW} y={pxY} width={imageWidth - pxX - pxW} height={pxH} fill="rgba(22,19,15,0.45)" pointerEvents="none" />
 
-        {/* Phase 69 — Sample design preview placeholder (toggle) */}
+        {/* Phase 69 — Sample design preview placeholder (toggle).
+            Phase 71 — Recipe-aware: blendMode via mix-blend-mode CSS,
+            shadow via SVG <filter> (drop-shadow approximation). */}
         {showSamplePreview ? (
-          <g pointerEvents="none" data-testid="safe-area-editor-sample-rect">
+          <g
+            pointerEvents="none"
+            data-testid="safe-area-editor-sample-rect"
+            data-blend={recipe?.blendMode ?? "normal"}
+            data-shadow={recipe?.shadow ? "on" : "off"}
+            style={{
+              mixBlendMode:
+                recipe?.blendMode === "multiply"
+                  ? "multiply"
+                  : recipe?.blendMode === "screen"
+                    ? "screen"
+                    : "normal",
+            }}
+            filter={recipe?.shadow ? "url(#sample-shadow-filter)" : undefined}
+          >
             <defs>
               <pattern
                 id="sample-stripes-rect"
@@ -333,6 +363,31 @@ export function SafeAreaEditor({
                 <rect width="20" height="20" fill="#fbeadf" />
                 <rect width="10" height="20" fill="#e85d25" opacity="0.55" />
               </pattern>
+              {recipe?.shadow ? (
+                <filter
+                  id="sample-shadow-filter"
+                  x="-50%"
+                  y="-50%"
+                  width="200%"
+                  height="200%"
+                >
+                  <feGaussianBlur
+                    in="SourceAlpha"
+                    stdDeviation={recipe.shadow.blur}
+                  />
+                  <feOffset
+                    dx={recipe.shadow.offsetX}
+                    dy={recipe.shadow.offsetY}
+                    result="offsetblur"
+                  />
+                  <feFlood floodColor="#000000" floodOpacity={recipe.shadow.opacity} />
+                  <feComposite in2="offsetblur" operator="in" />
+                  <feMerge>
+                    <feMergeNode />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              ) : null}
             </defs>
             <rect
               x={pxX}
@@ -449,9 +504,23 @@ export function SafeAreaEditor({
         />
 
         {/* Phase 69 — Sample design preview placeholder (toggle).
-            Striped pattern fills the quad to show "design will land here". */}
+            Phase 71 — Recipe-aware: blendMode mix-blend-mode + shadow filter. */}
         {showSamplePreview ? (
-          <g pointerEvents="none" data-testid="safe-area-editor-sample-quad">
+          <g
+            pointerEvents="none"
+            data-testid="safe-area-editor-sample-quad"
+            data-blend={recipe?.blendMode ?? "normal"}
+            data-shadow={recipe?.shadow ? "on" : "off"}
+            style={{
+              mixBlendMode:
+                recipe?.blendMode === "multiply"
+                  ? "multiply"
+                  : recipe?.blendMode === "screen"
+                    ? "screen"
+                    : "normal",
+            }}
+            filter={recipe?.shadow ? "url(#sample-shadow-filter-quad)" : undefined}
+          >
             <defs>
               <pattern
                 id="sample-stripes-quad"
@@ -463,6 +532,31 @@ export function SafeAreaEditor({
                 <rect width="20" height="20" fill="#fbeadf" />
                 <rect width="10" height="20" fill="#e85d25" opacity="0.55" />
               </pattern>
+              {recipe?.shadow ? (
+                <filter
+                  id="sample-shadow-filter-quad"
+                  x="-50%"
+                  y="-50%"
+                  width="200%"
+                  height="200%"
+                >
+                  <feGaussianBlur
+                    in="SourceAlpha"
+                    stdDeviation={recipe.shadow.blur}
+                  />
+                  <feOffset
+                    dx={recipe.shadow.offsetX}
+                    dy={recipe.shadow.offsetY}
+                    result="offsetblur"
+                  />
+                  <feFlood floodColor="#000000" floodOpacity={recipe.shadow.opacity} />
+                  <feComposite in2="offsetblur" operator="in" />
+                  <feMerge>
+                    <feMergeNode />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              ) : null}
             </defs>
             <polygon
               points={polygonPoints}

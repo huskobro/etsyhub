@@ -14038,6 +14038,167 @@ adımdan sonra ürün modeli tamamen olgun olur.
 
 ---
 
+## Phase 71 — Preview fidelity: recipe-aware sample + Templates listing edit discoverability
+
+Phase 70 ile recipe editor + edit nav (Apply drawer'dan) + base asset
+karar + status badge eklendi; authoring studio bütünlük seviyeye
+ulaştı. Phase 71 preview confidence + lifecycle discoverability'i
+artırır.
+
+### Phase 70 sonrası gaps
+
+| Boşluk | Operatör tereddüdü |
+|---|---|
+| **Recipe değişimi sample preview'da görünmez** | Operatör multiply seçer, opacity 0.65 yapar, shadow ekler — sample overlay hep aynı striped pattern. "Bu ayarlar gerçekten bir şeye yarıyor mu?" sorusu cevapsız. |
+| **Tam render preview yok** | Phase 8 mockup job pipeline mevcut ama trigger UI yok. Sharp tetiklemek için worker dispatch + polling — pahalı, scope dışı tutuldu. |
+| **Templates listing user template lifecycle visibility zayıf** | Mockup tab admin-scope manager (tüm row'lar, ownership ayrımı yok); user "benim kütüphanem nerede?" sorusunu cevapsız. |
+| **Edit entry yalnız Apply drawer'da** (Phase 70) | Templates page'inden user template edit'e direct yol yok; extra hop. |
+
+Önceliklendirme:
+1. **Recipe-aware sample preview** (en yüksek etki — anlık iterasyon, Sharp tetiklemeden gerçek render davranışı taklit)
+2. **Templates listing My templates section + edit link** (lifecycle visibility + edit discoverability tek slice)
+3. **Lightweight inline render preview**: bilinçli olarak ertelendi — Sharp worker dispatch + polling Phase 72+ candidate; recipe-aware sample preview yapısal etkiyi karşılıyor
+
+### Slice 1 — Recipe-aware sample preview
+
+`SafeAreaEditor` yeni opsiyonel `recipe?: { blendMode, shadow? }` prop:
+
+- **blendMode**: SVG sample group'a `style={{ mixBlendMode }}` —
+  CSS mix-blend-mode tarayıcı-native blend (multiply/screen). Yarı
+  Sharp render parity (multiply/screen pixel formülü ile birebir;
+  normal default).
+- **shadow**: SVG `<filter>` (`feGaussianBlur` + `feOffset` + `feFlood`
+  + `feComposite` + `feMerge`) — drop shadow approximation. opacity/
+  blur/offset operatörün live değerleri.
+- Hem rect hem perspective sample branch'lerinde aynı yapı.
+- `data-blend` + `data-shadow` attributes (test selector + state
+  inspection).
+
+Backend Sharp `recipe-applicator.ts` (Phase 8) gerçek pixel render'ı
+hâlâ yapıyor; SVG preview **lightweight non-destructive overlay**.
+Pixel-perfect parity yok ama operatöre "multiply seçince ne oldu?"
+sorusuna **anlık görsel cevap** veriyor — iterasyon hızı ciddi
+artıyor.
+
+`MockupTemplateCreateForm` + `MockupTemplateEditForm` her ikisi de
+SafeAreaEditor'a `recipe` prop geçiriyor. Operator RecipeEditor'da
+blend değiştirir → sample anında reflect; shadow toggle → filter
+anında apply.
+
+### Slice 2 — Templates listing My templates section + edit link
+
+`MockupTemplateRow` shape genişletildi:
+- Yeni `ownership: "global" | "own" | "other"` field
+- Server `listMockupTemplatesForView(currentUserId?)` opsiyonel param
+- Caller (`/templates` page) `session.user.id` geçirir
+- Cross-user templates "other" olarak project edilir (gelecek admin
+  audit yüzeyleri için; UI'da görünmez)
+
+`MockupTile` component'inde:
+- **MY badge** (k-orange-soft chip + tooltip) → ownership === "own"
+  için
+- **Edit template** action button (k-btn--ghost mono uppercase) →
+  `/templates/mockups/[id]/edit` link, ownership === "own" için
+- Global (admin) tile'larda badge + edit YOK (cross-user policy)
+
+Operatör Templates → Mockup Templates tab'ında kendi 7 template'ini
+"MY" badge ile anında ayırt eder; "Edit template" button ile direct
+edit page'e iner. Phase 70 Apply drawer entry'si + Phase 71 Templates
+listing entry — iki canonical yol.
+
+### Browser end-to-end full proof
+
+Live dev server (fresh `.next/` rebuild, viewport 1440×900, real DB,
+authenticated):
+
+| Test | Sonuç |
+|---|---|
+| Templates → Mockup tab mount | 10 tile, 7 ownership badge, 7 edit link, 3 global no-badge |
+| Edit hrefs | `/templates/mockups/cmp4pdhlv.../edit`, `/templates/mockups/cmp4pfzm.../edit`, ... (own templates) |
+| Recipe-aware sample (initial multiply + shadow on, persisted Phase 70) | sampleQuad data-blend="multiply", data-shadow="on", **computed CSS mixBlendMode="multiply"**, filter="url(#sample-shadow-filter-quad)" |
+| Recipe blend → normal | data-blend "normal", computed mixBlendMode "normal" — anlık tepki |
+| Recipe shadow off | data-shadow "off", filter null — anlık tepki |
+| Recipe re-enable shadow + multiply | data-blend "multiply", data-shadow "on" |
+| Visual screenshot edit page | Sample design striped pattern arkadaki frame mockup ile multiply blend (renkler karışıyor) + drop shadow soft underneath + TL/TR/BR/BL labels |
+| Visual screenshot Templates listing | 7 user template tile with "MY" k-orange-soft chip + EDIT TEMPLATE primary button |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/mockup tests/integration/api-mockup-templates-user-scope`: **267/267 PASS** (Phase 70 baseline; Phase 71 type-only changes)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: recipe-aware blend live + shadow filter live +
+  Templates listing 7 own template + edit link href + 2 visual
+  screenshot
+
+### Değişmeyenler (Phase 71)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** MockupRecipeSchema (Phase 8) zaten mevcut;
+  Phase 71 yalnız `MockupTemplateRow.ownership` field projection
+  (storage layer dokunulmadı).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** SafeAreaEditor'a opsiyonel `recipe`
+  prop + 2 SVG sample branch'inde `mixBlendMode` + `<filter>`
+  conditional render. MockupTile'a 2 conditional UI element
+  (badge + edit link). Service'a 1 opsiyonel param + 1 field
+  projection.
+- **Phase 67/68/69/70 testid'ler intakt** (regression safe).
+- **Phase 67/68 mode toggle + 4-corner authoring intakt.**
+- **Phase 69 validity/sample/reset/edit page intakt.**
+- **Phase 70 recipe editor + base asset hint + status badge intakt.**
+- **Apply drawer + Mockup studio + Render pipeline + placePerspective
+  + recipe-applicator backend dokunulmadı.**
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → Mockup → Product → Etsy Draft).
+- **Kivasy DS dışına çıkılmadı.** k-orange-soft + k-orange-ink chip
+  (Phase 51 status badge family parity), k-btn--ghost (Phase 53/54
+  toolbar parity), font-mono tracking-meta. SVG mix-blend-mode +
+  filter (file-level eslint suppress Phase 67 paritesi).
+- **Cross-user isolation hard-enforced** (Phase 67 4-katmanlı + Phase
+  69 PATCH ownership invariant + Phase 70 + Phase 71 ownership
+  projection — UI'da global/own/other ayrımı net).
+
+### Bilinçli scope dışı (Phase 72+ candidate)
+
+- **Lightweight inline render preview** (Sharp pipeline tetikleme):
+  Operator "preview render" button → mockup job dispatch (lightweight
+  worker) → polling → result view. Phase 8 pipeline reuse mümkün ama
+  worker setup + UI state machine + cache strategy büyük scope. Phase
+  71 recipe-aware sample preview structural rendering effect'i
+  karşılıyor; tam pixel parity için Phase 72.
+- **Soft-restore (ARCHIVED → ACTIVE) UI**: PATCH backend hazır; UI
+  reverse path Phase 72+.
+- **Multi-shadow stack + color shadow**: V2 schema reserve.
+- **Inner shadow / glow / cornerRadius**: V2 schema reserve.
+- **Base asset replace flow**: Phase 70'te "yeni template" path
+  kabul; replace flow kararı tersine çevrilirse Phase 72+.
+- **Sample preview render parity tuning**: SVG `mix-blend-mode`
+  multiply/screen tarayıcı pixel formülü ile birebir uyumlu; ama
+  Sharp libvips farklı color space normalize edebilir. Tam parity
+  için inline render preview gerek (Phase 72).
+
+### Bundan sonra templated.io clone tarafında kalan tek doğru iş
+
+Phase 71 ile **template authoring preview confidence ve lifecycle
+discoverability tam**:
+- Operator recipe ayarlarının anlık görsel etkisini sample preview'da
+  görür (multiply blend + drop shadow live)
+- Templates listing'de kendi template'lerini "MY" badge ile ayırt
+  eder
+- Templates listing'den + Apply drawer'dan iki canonical edit yolu
+- Backend Sharp pipeline + UI editor + recipe + lifecycle hepsi
+  birleşik
+
+Sıradaki gerçek iş **Phase 72 lightweight inline render preview**
+(Sharp tetikleyen real preview button + result inline display) +
+**soft-restore UI** + **multi-shadow / color shadow** schema
+genişletmesi (V2). Phase 72+ ile templated.io clone "tamamen olgun"
+olur — operator authoring + render + iterasyon zincirinin tüm
+halkalarını UI üzerinde end-to-end yapabilir.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

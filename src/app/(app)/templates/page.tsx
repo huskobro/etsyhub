@@ -42,7 +42,7 @@ export default async function TemplatesPage() {
   const [counts, prompts, mockups, recipes] = await Promise.all([
     getTemplatesCounts(),
     listPromptTemplatesForView(),
-    listMockupTemplatesForView(),
+    listMockupTemplatesForView(session.user.id),
     listRecipesForView(),
   ]);
 

@@ -75,11 +75,15 @@ export type MockupTemplateRow = {
   tags: string[];
   estimatedRenderMs: number;
   updatedAt: string;
+  /** Phase 71 — Ownership annotate. "own" = caller's user-id matches
+   *  template.userId; "global" = template.userId is NULL (admin catalog).
+   *  Caller passes currentUserId; service projects without leaking userId. */
+  ownership: "global" | "own" | "other";
 };
 
-export async function listMockupTemplatesForView(): Promise<
-  MockupTemplateRow[]
-> {
+export async function listMockupTemplatesForView(
+  currentUserId?: string | null,
+): Promise<MockupTemplateRow[]> {
   const templates = await db.mockupTemplate.findMany({
     orderBy: { updatedAt: "desc" },
   });
@@ -118,6 +122,12 @@ export async function listMockupTemplatesForView(): Promise<
     tags: t.tags,
     estimatedRenderMs: t.estimatedRenderMs,
     updatedAt: t.updatedAt.toISOString(),
+    ownership:
+      t.userId === null
+        ? "global"
+        : currentUserId && t.userId === currentUserId
+          ? "own"
+          : "other",
   }));
 }
 
