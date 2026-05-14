@@ -286,6 +286,28 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
         ? deviceLabel
         : (set?.name?.trim() || setName?.trim() || "Set");
 
+  /* Phase 86 — Active palette for asset-aware decision surfaces.
+   *
+   * Shots.so canlı browser araştırması: operator yüklediği asset'i
+   * değiştirdiğinde sağ rail preset thumbnails + Magic Preset thumb
+   * + rail head live thumb hepsi o asset'in renkleriyle yeniden
+   * render oluyor. Rail artık statik decoration değil, gerçek
+   * karar destek yüzeyi.
+   *
+   * Bizde: selected slot assigned ise onun design.colors palette'i
+   * Sidebar (Magic Preset) + PresetRail (Mockup/Frame preset
+   * thumbnails) + Rail head live thumb'a iner. Selected slot
+   * assigned değilse → ilk assigned slot'un palette'i (operator
+   * yine de gerçek asset paletini görür). Hiç assigned slot yoksa
+   * undefined (preset thumbs Phase 77 baseline statik dark rendering
+   * + Magic Preset thumb k-orange fallback). */
+  const activePalette = (() => {
+    const sel = slots[selectedSlot];
+    if (sel?.assigned && sel.design) return sel.design.colors;
+    const firstAssigned = slots.find((s) => s.assigned && s.design);
+    return firstAssigned?.design?.colors;
+  })();
+
   return (
     <div
       className="k-studio"
@@ -301,6 +323,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
         Object.values(slotAssignments).filter(Boolean).length
       }
       data-kept-item-count={keptItems.length}
+      data-active-palette={activePalette ? activePalette.join(",") : ""}
     >
       <MockupStudioToolbar
         mode={mode}
@@ -329,6 +352,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           onChangeSlotAssignments={setSlotAssignments}
           frameAspect={frameAspect}
           onChangeFrameAspect={setFrameAspect}
+          activePalette={activePalette}
         />
         <MockupStudioStage
           mode={mode}
@@ -341,7 +365,11 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           deviceKind={deviceKind}
           frameAspect={frameAspect}
         />
-        <MockupStudioPresetRail mode={mode} appState={appState} />
+        <MockupStudioPresetRail
+          mode={mode}
+          appState={appState}
+          activePalette={activePalette}
+        />
       </div>
       {/* Phase 77 dev/demo switcher — Phase 79'da hâlâ mevcut: operatör
           empty/preview/render UI'larını test edebilir. Gerçek render

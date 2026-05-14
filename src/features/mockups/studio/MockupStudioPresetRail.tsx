@@ -57,11 +57,20 @@ function LayoutIcon({ n }: { n: 1 | 2 | 3 }) {
 export interface MockupStudioPresetRailProps {
   mode: StudioMode;
   appState: StudioAppState;
+  /** Phase 86 — Asset-aware preset thumbnails.
+   *
+   * Shots.so'daki "operator asset'i değişince preset thumbnails da
+   * yeniden render olur" davranışına ulaşmak için, shell selected
+   * slot'un palette'ini buraya geçirir. Palette undefined ise
+   * Phase 77 baseline statik karanlık preset thumbs gösterilir
+   * (operator hiç slot atamamışsa veya assigned=false). */
+  activePalette?: readonly [string, string];
 }
 
 export function MockupStudioPresetRail({
   mode,
   appState,
+  activePalette,
 }: MockupStudioPresetRailProps) {
   const [layout, setLayout] = useState<1 | 2 | 3>(1);
   const [viewTab, setViewTab] = useState<"zoom" | "tilt" | "precision">("zoom");
@@ -114,8 +123,15 @@ export function MockupStudioPresetRail({
             </button>
           ))}
         </div>
-        <div className="k-studio__live-thumb" data-testid="studio-rail-live-thumb">
-          <Thumb idx={active} />
+        <div
+          className="k-studio__live-thumb"
+          data-testid="studio-rail-live-thumb"
+          data-asset-aware={activePalette ? "true" : "false"}
+        >
+          {/* Phase 86 — Rail head live thumb operator asset paletini
+              taşır (selected slot palette). Operator için "şu anki
+              seçtiğin kompozisyon" preview. */}
+          <Thumb idx={active} palette={activePalette} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <span className="k-studio__range-cap">Zoom</span>
@@ -172,8 +188,13 @@ export function MockupStudioPresetRail({
               aria-pressed={active === i}
               onClick={() => setActive(i)}
               data-testid={`studio-rail-preset-${i}`}
+              data-asset-aware={activePalette ? "true" : "false"}
             >
-              <Thumb idx={i} />
+              {/* Phase 86 — Asset-aware preset thumb. Operator selected
+                  slot palette'i preset card'a yansır; rail artık statik
+                  decoration değil, gerçek karar destek yüzeyi
+                  (Shots.so parity). */}
+              <Thumb idx={i} palette={activePalette} />
             </button>
             <div
               className="k-studio__preset-cap"

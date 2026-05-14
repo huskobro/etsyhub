@@ -338,12 +338,68 @@ const MOCKUP_PRESETS: ReadonlyArray<{
   { bg: "#0C0B09", ph: [{ x: 20, y: 10, w: 44, h: 68 }, { x: 76, y: 14, w: 38, h: 60, r: -5, o: 0.8 }, { x: 128, y: 10, w: 28, h: 44, r: 16, o: 0.6 }] },
 ];
 
-export function PresetThumbMockup({ idx }: { idx: number }) {
+/* Phase 86 — Asset-aware preset thumb (Mockup mode).
+ *
+ * Shots.so'da operator yüklediği asset'i değiştirdiğinde sağ rail
+ * preset thumbnails da o asset paletiyle yeniden render oluyor —
+ * statik decoration değil, **canlı karar destek yüzeyi**. Phase 86
+ * fix: opsiyonel `palette` prop ile preset thumb'lar selected slot
+ * paletini taşır. Yoksa Phase 77 baseline statik karanlık deko.
+ *
+ * Palette geldiğinde: device fill = palette[0] (warm tone), gölge
+ * tarafı = palette[1] (deep tone), thumb arka planı = palette[0]
+ * + soft warm tint. Operator için "kendi asset'i ile yan yana 6
+ * layout varyasyonu" karar verme yüzeyi. */
+function MockupPhWithPalette({
+  x,
+  y,
+  w,
+  h,
+  r = 0,
+  o = 1,
+  palette,
+}: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  r?: number;
+  o?: number;
+  palette: readonly [string, string];
+}) {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  // palette[0] = warm/light, palette[1] = deep/shadow.
+  // Device frame: deep palette tone; screen area: light palette tone.
+  // Operator için renkler aynı asset'in iki tonu olarak okunur.
+  return (
+    <g transform={`rotate(${r} ${cx} ${cy})`} opacity={o}>
+      <rect x={x} y={y} width={w} height={h} rx={3.5} fill={palette[1]} />
+      <rect x={x + 2.5} y={y + 5} width={w - 5} height={h - 9} rx={2.5} fill={palette[0]} />
+      <rect x={cx - 5} y={y + 2} width={10} height={3} rx={1.5} fill="rgba(0,0,0,0.32)" />
+      <rect x={x + 0.75} y={y + 0.75} width={w - 1.5} height={h * 0.45} rx={3} fill="rgba(255,255,255,0.08)" />
+    </g>
+  );
+}
+
+export function PresetThumbMockup({
+  idx,
+  palette,
+}: {
+  idx: number;
+  palette?: readonly [string, string];
+}) {
   const c = MOCKUP_PRESETS[idx] ?? MOCKUP_PRESETS[0]!;
   const isGradient = idx === 1;
+  // Phase 86 — Asset-aware mode. palette geldiğinde bg + device fill
+  // selected slot paletinden türetilir. Bg: subtle dark tint of
+  // palette[1] (warmth ipucu, ama içeriği dominate etmez).
+  const hasPalette = !!palette;
+  // Subtle bg: %92 darken of palette[1] (warm shadow tone).
+  const bgFromPalette = palette ? darkenForPresetBg(palette[1]) : null;
   return (
     <svg viewBox="0 0 184 88" style={{ width: "100%", height: "100%", display: "block" }} aria-hidden>
-      {isGradient ? (
+      {isGradient && !hasPalette ? (
         <defs>
           <linearGradient id="ks-ptmg1" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#181513" />
@@ -351,12 +407,55 @@ export function PresetThumbMockup({ idx }: { idx: number }) {
           </linearGradient>
         </defs>
       ) : null}
-      <rect width="184" height="88" fill={isGradient ? "url(#ks-ptmg1)" : c.bg} />
-      {c.ph.map((p, i) => (
-        <MockupPh key={i} {...p} />
-      ))}
+      {isGradient && hasPalette ? (
+        <defs>
+          <linearGradient id={`ks-ptmg1-p${idx}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={palette![0]} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={palette![1]} stopOpacity="0.32" />
+          </linearGradient>
+        </defs>
+      ) : null}
+      <rect
+        width="184"
+        height="88"
+        fill={
+          isGradient
+            ? hasPalette
+              ? `url(#ks-ptmg1-p${idx})`
+              : "url(#ks-ptmg1)"
+            : (bgFromPalette ?? c.bg)
+        }
+      />
+      {c.ph.map((p, i) =>
+        hasPalette ? (
+          <MockupPhWithPalette key={i} {...p} palette={palette!} />
+        ) : (
+          <MockupPh key={i} {...p} />
+        ),
+      )}
     </svg>
   );
+}
+
+/* Phase 86 — Helper: palette[1] (deep tone) → preset bg için subtle
+ * dark tint. Hex tone'u doğrudan göstermek yerine %18 alpha üzerinden
+ * dark surface'le karıştırırız (dark Studio shell ile uyumlu). */
+function darkenForPresetBg(hex: string): string {
+  // Simple darkening: lerp toward #0C0B09 at 0.82 (yani palette tone'u
+  // %18 görünür kalır, %82 dark Studio bg). Operator için "rengi var
+  // ama ezici değil" tonu.
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return "#0E0C0A";
+  const hexStr = m[1]!;
+  const r = parseInt(hexStr.substring(0, 2), 16);
+  const g = parseInt(hexStr.substring(2, 4), 16);
+  const b = parseInt(hexStr.substring(4, 6), 16);
+  const lerp = (c: number, target: number) =>
+    Math.round(c * 0.18 + target * 0.82);
+  const rr = lerp(r, 0x0c);
+  const gg = lerp(g, 0x0b);
+  const bb = lerp(b, 0x09);
+  return `#${rr.toString(16).padStart(2, "0")}${gg.toString(16).padStart(2, "0")}${bb.toString(16).padStart(2, "0")}`;
 }
 
 /* ─── Preset thumbs — Frame mode ────────────────────────── */
@@ -425,15 +524,65 @@ const FRAME_PRESETS: ReadonlyArray<{
   { bg: "#0E0C0A", f: { x: 26, y: 5, w: 132, h: 78, fill: "#EAE0D5" }, ph: [{ x: 60, y: 9, w: 64, h: 68, r: -5 }] },
 ];
 
-export function PresetThumbFrame({ idx }: { idx: number }) {
+/* Phase 86 — Asset-aware FramePh.
+ *
+ * Frame preset thumb içindeki device fill, palette geldiğinde
+ * selected slot asset'inin renklerine geçer. Operator için "aynı
+ * kompozisyonun farklı presentation varyasyonları" hissi —
+ * Shots.so'nun preset thumb davranışı. */
+function FramePhWithPalette({
+  x,
+  y,
+  w,
+  h,
+  r = 0,
+  o = 1,
+  palette,
+}: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  r?: number;
+  o?: number;
+  palette: readonly [string, string];
+}) {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  return (
+    <g transform={`rotate(${r} ${cx} ${cy})`} opacity={o}>
+      <rect x={x} y={y} width={w} height={h} rx={3} fill={palette[1]} />
+      <rect x={x + 2} y={y + 4} width={w - 4} height={h - 8} rx={2} fill={palette[0]} />
+      <rect x={cx - 4.5} y={y + 1.5} width={9} height={2.5} rx={1.3} fill="rgba(0,0,0,0.28)" />
+      <rect x={x + 0.5} y={y + 0.5} width={w - 1} height={h * 0.42} rx={3} fill="rgba(255,255,255,0.08)" />
+    </g>
+  );
+}
+
+export function PresetThumbFrame({
+  idx,
+  palette,
+}: {
+  idx: number;
+  palette?: readonly [string, string];
+}) {
   const c = FRAME_PRESETS[idx] ?? FRAME_PRESETS[0]!;
+  const hasPalette = !!palette;
+  // Phase 86 — Frame bg + canvas (Fr) renkleri sabit kalır
+  // (presentation surface kimliği) ama device fill operator
+  // paletini alır. Frame canvas: bizim Frame mode'un cream tonunda
+  // kalır (operator için "bounded canvas içinde aynı kompozisyon").
   return (
     <svg viewBox="0 0 184 88" style={{ width: "100%", height: "100%", display: "block" }} aria-hidden>
       <rect width="184" height="88" fill={c.bg} />
       <Fr {...c.f} />
       {c.split ? (
         <>
-          <FramePh x={c.f.x + 4} y={c.f.y + 6} w={(c.f.w - 12) / 2} h={c.f.h - 12} />
+          {hasPalette ? (
+            <FramePhWithPalette x={c.f.x + 4} y={c.f.y + 6} w={(c.f.w - 12) / 2} h={c.f.h - 12} palette={palette!} />
+          ) : (
+            <FramePh x={c.f.x + 4} y={c.f.y + 6} w={(c.f.w - 12) / 2} h={c.f.h - 12} />
+          )}
           <line
             x1={c.f.x + c.f.w / 2}
             y1={c.f.y + 2}
@@ -442,11 +591,61 @@ export function PresetThumbFrame({ idx }: { idx: number }) {
             stroke="rgba(0,0,0,0.14)"
             strokeWidth={1}
           />
-          <FramePh x={c.f.x + c.f.w / 2 + 2} y={c.f.y + 6} w={(c.f.w - 12) / 2} h={c.f.h - 12} o={0.65} />
+          {hasPalette ? (
+            <FramePhWithPalette x={c.f.x + c.f.w / 2 + 2} y={c.f.y + 6} w={(c.f.w - 12) / 2} h={c.f.h - 12} o={0.65} palette={palette!} />
+          ) : (
+            <FramePh x={c.f.x + c.f.w / 2 + 2} y={c.f.y + 6} w={(c.f.w - 12) / 2} h={c.f.h - 12} o={0.65} />
+          )}
         </>
       ) : (
-        (c.ph ?? []).map((p, i) => <FramePh key={i} {...p} />)
+        (c.ph ?? []).map((p, i) =>
+          hasPalette ? (
+            <FramePhWithPalette key={i} {...p} palette={palette!} />
+          ) : (
+            <FramePh key={i} {...p} />
+          ),
+        )
       )}
+    </svg>
+  );
+}
+
+/* Phase 86 — Magic Preset thumb (sidebar Magic Preset row).
+ *
+ * Shots.so'da Magic Preset operator'ın yüklediği asset'in
+ * renklerinden auto-generated thumb gösteriyor — operator için
+ * "asset'imden ne çıkacak" sinyali. Bizde palette[0]→palette[1]
+ * gradient mini swatch ile aynı role oturuyor. Palette yoksa
+ * (hiç slot atanmamış) k-orange fallback gradient (Studio
+ * accent ile tutarlı).
+ *
+ * Operator için: sidebar Magic Preset row artık statik label
+ * değil, "kendi asset'iyle Magic ne üretir" preview'u. */
+export function MagicPresetThumb({
+  palette,
+  size = 22,
+}: {
+  palette?: readonly [string, string];
+  size?: number;
+}) {
+  const colors: readonly [string, string] = palette ?? ["#E85D25", "#8E3A12"];
+  const id = `ks-magicpresetthumb-${colors[0].slice(1)}-${colors[1].slice(1)}`;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 22 22"
+      aria-hidden
+      style={{ display: "block", borderRadius: 5 }}
+    >
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={colors[0]} />
+          <stop offset="100%" stopColor={colors[1]} />
+        </linearGradient>
+      </defs>
+      <rect width="22" height="22" rx={4.5} fill={`url(#${id})`} />
+      <rect width="22" height="22" rx={4.5} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth={0.5} />
     </svg>
   );
 }

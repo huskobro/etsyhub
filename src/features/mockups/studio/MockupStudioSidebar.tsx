@@ -31,6 +31,7 @@ import {
   type FrameAspectKey,
 } from "./frame-aspects";
 import {
+  MagicPresetThumb,
   STUDIO_SAMPLE_DESIGNS,
   TinyPhone,
   type TinyPhoneStyle,
@@ -82,6 +83,13 @@ interface MockupBodyProps {
   templateName?: string | null;
   /** Phase 79 — real template slot count (multi-slot detection). */
   templateSlotCount?: number;
+  /** Phase 86 — Asset-aware Magic Preset thumb.
+   *
+   * Shots.so'da Magic Preset operator'ın yüklediği asset'in
+   * renklerinden auto-generated thumb gösteriyor. Bizde selected
+   * slot palette'i Magic Preset row'una thumb olarak iner.
+   * Palette undefined ise k-orange fallback (Studio accent). */
+  activePalette?: readonly [string, string];
 }
 
 function MockupBody({
@@ -89,6 +97,7 @@ function MockupBody({
   selectedSlot,
   templateName,
   templateSlotCount,
+  activePalette,
 }: MockupBodyProps) {
   const [shadow, setShadow] = useState<"none" | "spread" | "hug" | "adapt">(
     "spread",
@@ -240,7 +249,7 @@ function MockupBody({
         </div>
       </div>
 
-      {/* Magic preset */}
+      {/* Magic preset (Phase 86 asset-aware thumb) */}
       <div
         style={{
           display: "flex",
@@ -250,8 +259,18 @@ function MockupBody({
           margin: "4px 7px",
           borderRadius: 7,
         }}
+        data-testid="studio-sidebar-magic-preset"
+        data-asset-aware={activePalette ? "true" : "false"}
       >
         <StudioIcon name="sparkle" size={12} color="rgba(232,93,37,0.65)" />
+        {/* Phase 86 — Asset-aware Magic Preset thumb. Shots.so'da
+            Magic Preset operator asset paletinden auto-generated thumb;
+            bizde selected slot palette'i mini gradient swatch olarak
+            iner. Operator için "kendi asset'imden Magic ne üretir"
+            sinyali. Palette undefined ise k-orange fallback. */}
+        <div data-testid="studio-sidebar-magic-preset-thumb">
+          <MagicPresetThumb palette={activePalette} size={20} />
+        </div>
         <span style={{ flex: 1, fontSize: 12, color: "var(--ks-t2)" }}>
           Magic Preset
         </span>
@@ -1347,6 +1366,12 @@ export interface MockupStudioSidebarProps {
   frameAspect?: FrameAspectKey;
   /** Phase 83 — Frame aspect change callback (Shell state taşır). */
   onChangeFrameAspect?: (next: FrameAspectKey) => void;
+  /** Phase 86 — Selected slot palette (asset-aware Magic Preset thumb).
+   *
+   * Shell selected slot'tan palette türetir ve sidebar'a geçer.
+   * Magic Preset row thumb operator asset'inin renklerini gösterir
+   * (Shots.so Magic Preset parity). Undefined → k-orange fallback. */
+  activePalette?: readonly [string, string];
 }
 
 export function MockupStudioSidebar({
@@ -1362,6 +1387,7 @@ export function MockupStudioSidebar({
   onChangeSlotAssignments,
   frameAspect,
   onChangeFrameAspect,
+  activePalette,
 }: MockupStudioSidebarProps) {
   void STUDIO_SAMPLE_DESIGNS; // imported for slot defaults usage in tests
   return (
@@ -1398,6 +1424,7 @@ export function MockupStudioSidebar({
           selectedSlot={selectedSlot}
           templateName={templateName}
           templateSlotCount={templateSlotCount}
+          activePalette={activePalette}
         />
       ) : (
         <FrameBody

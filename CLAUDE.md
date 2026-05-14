@@ -17189,6 +17189,232 @@ Templates picker overlay + Precision rail wiring + bottom status bar.
 
 ---
 
+## Phase 86 — Asset-aware decision surfaces (preset rail + Magic Preset)
+
+Phase 85 stage composition continuity'yi Shots.so seviyesine çekti —
+Mockup ↔ Frame artık "aynı çalışmanın iki bağlamı". Ama gerçek
+browser araştırmasından çıkan ikinci kritik bulgu kaldı: Shots.so'da
+operator yüklediği asset'i değiştirdiğinde **sağ rail preset
+thumbnails + Magic Preset thumb + rail head live thumb** hepsi o
+asset'in renkleriyle yeniden render oluyor — rail statik decoration
+değil, **gerçek karar destek yüzeyi**.
+
+Bizde Phase 85'e kadar: `PresetThumbMockup` + `PresetThumbFrame`
+hardcoded `MOCKUP_PRESETS` config (bg `#0E0C0A`, fill `#3E3A37`).
+6 mockup + 8 frame preset, hepsi sabit dark palette. Operator
+"kendi asset'iyle 6 farklı layout varyasyonu" değil "siyah/gri
+demo thumb'lar" görüyordu — karar verme yüzeyi statik.
+
+Phase 86 bu açığı kapatır: **frontend-only**, mevcut `studioPaletteForItem`
+(Phase 79) deterministic 2-color palette helper'ı + opsiyonel
+`palette` prop ile preset thumbnails artık operator paletinde
+render olur.
+
+### Asset-aware decision surface modeli
+
+Operator için karar destek yüzeylerinin **selected slot palette'i**
+ile beslenmesi:
+
+| Yüzey | Pre-Phase 86 | Phase 86 |
+|---|---|---|
+| **Mockup preset rail (6 thumb)** | static `#0E0C0A` bg + `#3E3A37` device fill | Operator palette: bg = darken(palette[1]) %18 visible, device frame = palette[1], device screen = palette[0] |
+| **Frame preset rail (8 thumb)** | static `#0C0B09` bg + cream Frame canvas (`#E4DDD1`) + `#3A3735` inner device | bg + Frame canvas (sabit cream — **presentation surface kimliği**) + inner device fill operator paletinde |
+| **Rail head live thumb** | static device | mode-aware: Mockup ailesi cascade preview / Frame bounded canvas preview, hepsi operator paletinde |
+| **Magic Preset row thumb (sidebar)** | yok (sadece label + chevrons) | **Yeni `MagicPresetThumb`**: palette[0] → palette[1] gradient mini swatch (20×20). Operator asset palette'i undefined ise k-orange fallback (Studio accent) |
+
+Palette resolution (Shell):
+```ts
+const activePalette = (() => {
+  const sel = slots[selectedSlot];
+  if (sel?.assigned && sel.design) return sel.design.colors;
+  const firstAssigned = slots.find((s) => s.assigned && s.design);
+  return firstAssigned?.design?.colors;
+})();
+```
+Selected slot assigned ise onun palette'i; değilse ilk assigned
+slot'un palette'i (operator yine gerçek asset paletini görür); hiç
+assigned slot yoksa undefined → Phase 77 baseline statik preset
+thumbs + k-orange Magic fallback.
+
+### Frontend-only mantığı (backend dokunulmadı)
+
+- `svg-art.tsx`'a iki yeni helper component: `MockupPhWithPalette`
+  + `FramePhWithPalette` (mevcut `MockupPh` + `FramePh` + palette
+  prop varyantı). Mevcut prop'ları ile aynı, fill rengi palette
+  parametresinden alır. Operator palette geldiğinde: device frame
+  = palette[1] (deep/shadow tone), device screen = palette[0]
+  (warm/light tone). Screen üstündeki notch/glare overlay yerleri
+  korunur (rgba pattern'ler).
+- `darkenForPresetBg(hex)`: palette[1] (deep tone) → preset bg için
+  subtle dark tint. `lerp(palette tone × 0.18, #0C0B09 × 0.82)` —
+  warmth ipucu var ama dark Studio shell ile uyumlu (operator için
+  "rengi var ama ezici değil").
+- `PresetThumbMockup({ idx, palette })` + `PresetThumbFrame({ idx,
+  palette })`: opsiyonel `palette` prop. Yoksa Phase 77 baseline.
+  Varsa asset-aware bg + device fill.
+- Yeni `MagicPresetThumb({ palette, size })`: 22×22 SVG, palette[0]→
+  palette[1] linear gradient + subtle white border. Palette undefined
+  ise k-orange (`#E85D25 → #8E3A12`) — Studio accent fallback,
+  operator için "Magic Preset" sinyali korunur.
+
+### Prop wiring (frontend pipeline)
+
+- `MockupStudioShell`: `activePalette` resolver memoized inline
+  (`useMemo` gerek değil — primitive readonly tuple). `Sidebar` +
+  `PresetRail`'a prop olarak iletilir. Shell data-attribute:
+  `data-active-palette="#F0E6D3,#C49862"` (audit + test selector).
+- `MockupStudioPresetRail`: `activePalette` prop alır, rail head
+  live thumb + altı preset thumbnails hepsine propagate eder.
+  `data-asset-aware="true|false"` per preset card (Phase 86 toggle
+  audit signal).
+- `MockupStudioSidebar`: `activePalette` prop alır, `MockupBody`'e
+  iletir. `MockupBody` Magic Preset row'una `MagicPresetThumb`
+  mount eder. `data-testid="studio-sidebar-magic-preset-thumb"`.
+- `MockupBody` props: `activePalette` opsiyonel (Mockup mode'da
+  görünür, Frame mode `FrameBody` activePalette almaz — Frame
+  preset rail Phase 86'da asset-aware ama Frame sidebar Magic
+  yok).
+
+### Mockup ↔ Frame continuity korundu
+
+Phase 85 cascade carry-over (`studio-stage-frame-cascade` + 3-slot
+ghost/active pattern + Phase 83 aspect-aware) **dokunulmadı**.
+Phase 86 sadece preset rail + Magic Preset thumb katmanını
+asset-aware yaptı. Operator için iki katman birarada:
+- Stage composition mode-agnostic (cascade her iki modda korunur)
+- Decision surfaces mode-aware preset set + asset-aware fill
+
+### Browser canlı kanıt (DOM eval)
+
+Test set: `cmov0ia370019149ljyu7divh` (4-item clipart, Phase 79
+deterministic palette `#F0E6D3 → #C49862` — Item 1 cmov0iac).
+
+**Mockup mode:**
+```
+shellMode: "mockup"
+activePaletteAttr: "#F0E6D3,#C49862"
+liveThumbAssetAware: "true"
+preset0AssetAware: "true"
+preset1AssetAware: "true"
+preset0BgFill: "#2d2419"
+  // darkenForPresetBg(palette[1]) = lerp(#C49862, #0C0B09) →
+  // r:45 g:36 b:25 — warm shadow tint, operator için subtle
+  // signal "kendi rengin burada"
+magicRowAssetAware: "true"
+magicThumbSvg: "url(#ks-magicpresetthumb-F0E6D3-C49862)"
+  // MagicPresetThumb gradient ID operator palette'inden türetildi
+```
+
+**Frame mode (toggle):**
+```
+shellMode: "frame"
+activePaletteAttr: "#F0E6D3,#C49862" (Mockup'tan korunur)
+cascadeExists: true  // Phase 85 carry-over intakt
+cascadeFrameSlotCount: 3
+frameDesignSource: "slot"
+framePreset0AssetAware: "true"
+framePreset0InnerDeviceFill (rect 4): "#C49862" = palette[1]
+framePreset0InnerScreenFill (rect 5): "#F0E6D3" = palette[0]
+  // Frame canvas (rect 1) sabit "#E4DDD1" cream KALIR —
+  // presentation surface kimliği; içine yerleşen device
+  // fill operator paletinden gelir. Shots.so'nun
+  // "presentation surface aynı, içerik asset-aware"
+  // davranışı tam paralel.
+```
+
+Screenshot kanıtları:
+- **Mockup mode (live thumb + 6 preset)**: hepsi warm peach cascade
+  (Cascade / Centered / Mirror / Landscape / Fan / Stack) — operator
+  artık "kendi asset'inin 6 layout varyasyonunu" karar verirken
+  görüyor.
+- **Magic Preset row sidebar**: cream→peach gradient swatch (asset-
+  aware MagicPresetThumb).
+- **Frame mode (live thumb + 8 preset)**: Frame canvas cream
+  (presentation surface), device asset paletinde
+  (Centered/Offset/Bleed/Angled/Duo/Story). Stage cascade
+  bounded canvas içinde + caption "Cascade · active Front View"
+  (Phase 85 continuity).
+- **Mockup → Frame → Mockup roundtrip**: cascade pozisyon korundu,
+  preset thumbs palette korundu, slot assignment intakt.
+
+### Değişmeyenler (Phase 86)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Mevcut `PresetThumbMockup` +
+  `PresetThumbFrame` API'sine opsiyonel `palette` prop + iki yeni
+  inline helper component (`MockupPhWithPalette` + `FramePhWithPalette`)
+  + tek yeni standalone component (`MagicPresetThumb`, 22×22 SVG).
+  Backend pipeline / schema / endpoint / service hiç dokunulmadı.
+- **Phase 85 cascade carry-over intakt** (FrameComposition `slots`
+  + `selectedSlot` prop, `cascadeLayoutFor`, scale-aware bounded
+  canvas).
+- **Phase 80 slot picker + Phase 79 real selection hydrate +
+  Phase 74 multi-slot backend + Phase 8 mockup render dispatch**
+  hepsi intakt.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy DS + Studio `--ks-*` namespace bozulmadı.**
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/mockup tests/unit/products tests/unit/selection
+  tests/unit/selections`: **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: dev server üzerinde Mockup mode preset rail +
+  Magic Preset thumb + Frame mode preset rail asset-aware DOM
+  kanıtlanmış; Phase 85 continuity intakt (cascade + caption); Phase
+  80 slot picker + Phase 79 real hydrate intakt
+
+### Media/template picker kararı (Phase 87+ defer)
+
+Shots.so'da görünen iki ek decision surface davranışı **bu turda
+ertelendi** — odak preset rail + Magic asset-awareness'tı:
+
+- **Top-center floating media picker**: Shots'ta MEDIA hover →
+  stage'in üstünde sticky thumbnail strip + "Add media" tile +
+  non-blocking medya değişimi. Bizde Phase 80 SlotAssignmentPanel
+  sidebar'da. Floating top picker Phase 87+ candidate. Sebep:
+  Mevcut Phase 80 panel canlı + functional; floating overlay
+  ek pozisyon state machine + Stage clip layer + click-outside
+  dismiss gerektirir — Phase 86 frontend-only scope dışı.
+- **Templates picker overlay**: Shots'ta toolbar Templates butonu →
+  slide-in catalog (Image/Animated tabs + Product promotion /
+  Realistic Desktop / Shadow Overlays / iPhone Lineup kategorileri).
+  Bizde template card click → picker drawer yok. Phase 87+ candidate.
+  Sebep: gerçek implementasyon için curated category content
+  source'a ihtiyaç var (admin authoring + kategori grouping +
+  preview asset hosting) — Phase 86 yeni big abstraction yok kuralı
+  ile çelişir.
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 86 ile **decision surfaces canlı + asset-aware**:
+- Preset rail "siyah/gri demo" değil "operator'ın kendi asset'iyle 6
+  layout varyasyonu"
+- Magic Preset row asset-aware thumb
+- Phase 85 stage continuity + Phase 86 rail continuity = **Shots.so
+  parity** asset-aware level
+
+Sıradaki en yüksek-impact adım iki yol:
+- **Phase 87a — Top-center floating media picker**: SlotAssignmentPanel
+  Studio sidebar'dan floating top strip'e taşıma. Operator stage'i
+  bozmadan medya değiştirir. Mevcut Phase 80 logic reuse (frontend-
+  only positioning + click-outside).
+- **Phase 87b — Templates picker overlay**: toolbar Templates butonu
+  → slide-in catalog. Phase 64-66 admin authoring + Phase 65 user
+  template ownership reuse, sadece operator-facing overlay UI.
+
+Phase 87a daha düşük scope (mevcut backend hazır, sadece UI
+positioning), Phase 87b daha büyük (kategori grouping + curated
+display logic). Hangisi öncelikli — operator workflow gözlemine
+göre karar.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
