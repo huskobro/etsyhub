@@ -402,59 +402,14 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           sceneOverride={sceneOverride}
         />
       </div>
-      {/* Phase 77 dev/demo switcher — Phase 79'da hâlâ mevcut: operatör
-          empty/preview/render UI'larını test edebilir. Gerçek render
-          (toolbar Render butonu) lifecycle Phase 79'da bağlandı; sw
-          burada yalnız görsel state'lere geçişi sağlar.
-          Phase 80+ adaylığında admin-only ops yardımcısına dönüştürülebilir
-          veya kaldırılabilir. */}
-      <div className="k-studio__sw" data-testid="studio-state-switcher">
-        <span className="k-studio__sw-lbl">MODE</span>
-        <button
-          type="button"
-          className="k-studio__sw-btn"
-          aria-pressed={mode === "mockup"}
-          onClick={() => setMode("mockup")}
-          data-testid="studio-sw-mode-mockup"
-        >
-          Mockup
-        </button>
-        <button
-          type="button"
-          className="k-studio__sw-btn"
-          aria-pressed={mode === "frame"}
-          onClick={() => setMode("frame")}
-          data-testid="studio-sw-mode-frame"
-        >
-          Frame
-        </button>
-        <span className="k-studio__sw-sep" aria-hidden />
-        <span className="k-studio__sw-lbl">STATE</span>
-        {(
-          [
-            { id: "working", l: "Working" },
-            { id: "empty", l: "Empty" },
-            { id: "preview", l: "Preview" },
-            { id: "render", l: "Render" },
-          ] as const
-        ).map((s) => {
-          const on =
-            appState === s.id ||
-            (s.id === "render" && appState === "renderDone");
-          return (
-            <button
-              key={s.id}
-              type="button"
-              className="k-studio__sw-btn"
-              aria-pressed={on}
-              onClick={() => setAppState(s.id)}
-              data-testid={`studio-sw-state-${s.id}`}
-            >
-              {s.l}
-            </button>
-          );
-        })}
-      </div>
+      {/* Phase 94 — Dev/demo state switcher kaldırıldı (bug #19).
+       *  Phase 77 baseline'da operatör görsel state'leri test etmek
+       *  için sağ alt overlay vardı (MODE + STATE chip'leri); Phase 79
+       *  gerçek render dispatch bağlandığında dev-only oldu. Shots.so'da
+       *  bu yok ve operator-facing surface'i kirletiyordu — kaldırıldı.
+       *  Mode switch artık sadece sidebar tab'ları (k-studio__sb-tabs)
+       *  üzerinden yapılır; state switch gerçek render lifecycle'a
+       *  bağlı (toolbar Render → POST /api/mockup/jobs → S7/S8). */}
     </div>
   );
 }

@@ -488,6 +488,13 @@
   z-index: 0;
 }
 .k-studio__stage-amb {
+  /* Phase 94 — Ambient glow tamamen kaldırıldı (bug #24).
+   * Phase 93'te alpha düşürülmüş subtle warm core'a indirilmişti,
+   * ama hâlâ stage dış kenarlarında subtle parlama bırakıyordu.
+   * Shots.so'da stage padding tamamen pure dark; renkli core/halo
+   * YOK. Phase 94'te display: none — element JSX'te kaldı
+   * (regression test selector korunur), CSS gizli. */
+  display: none;
   position: absolute;
   pointer-events: none;
   z-index: 0;
@@ -700,8 +707,11 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  max-width: 82%;
-  max-height: 78%;
+  /* Phase 94 — Plate %85/%82 (Phase 93 %82/%78 → aspect-aware
+   * Frame mode'da 9:16 portrait yüksek yer kaplar, biraz daha
+   * generous bbox-fit). Stage padding hâlâ belirgin. */
+  max-width: 85%;
+  max-height: 82%;
   border-radius: 26px;
   /* Plate'in kendi subtle border'ı — stage'den ayırır.
    * Phase 92: 1px rgba(.07) neredeyse görünmezdi; 2px rgba(.18)
@@ -719,7 +729,12 @@
     0 60px 120px -32px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
   /* Default bg fallback (palette/scene undefined) — neutral warm cream */
-  background: linear-gradient(135deg, #f0e9d8 0%, #c8c0b4 100%);
+  /* Phase 94 — Canlı default fallback gradient (bug #15):
+   * Phase 91 baseline soluk cream/khaki ile ilk açılışta plate
+   * "var ama yarı görünür" hissi veriyordu. Phase 94'te warmer
+   * peach→amber gradient (Shots Magic Preset default canlılık
+   * paritesi ama Kivasy-rafine — agresif değil). */
+  background: linear-gradient(135deg, #f5b27d 0%, #d97842 100%);
   transition: background 320ms ease, width 220ms ease, height 220ms ease;
   overflow: hidden;
   /* Plate kendi içinde cascade taşır; cascade plate'in merkezinde */

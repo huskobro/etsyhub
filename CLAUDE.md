@@ -18875,6 +18875,233 @@ Frame mode "presentation surface" rolünün tam ürünleştirilmesi.
 
 ---
 
+## Phase 94 — Shots.so parity bugfix turu (6 root cause fix, bug 13-26)
+
+Phase 93 feature turu değildi; Phase 94 da değil — **parity bugfix
+turu**. Kullanıcının 13-26 numaralı bug listesi gerçek-browser Shots.so
+live walk ile doğrulandı (Mockup + Frame mode + aspect chip + scroll
++ selection chrome + dev panel), 6 root cause cluster'a indirildi
+ve tek turda uygulandı. Bu turda Phase 93'teki **bir karar
+düzeltildi**: "plate dimensions mode-AGNOSTIC sabit" yanlıştı —
+Shots'ta Frame mode aspect plate'i gerçekten resize ediyor; Phase 94
+aspect-aware bbox-fit'i geri getirdi.
+
+### Gerçek browser araştırması (Shots.so live, viewport 1331×924)
+
+Shots.so canlı kullanıcı gibi gezildi (Frame mode aspect picker +
+9:16 seç + Mockup mode + 2-device layout butonu):
+
+1. **Mode geçişi (Mockup → Frame Default 4:3)**: plate aynı boyutta
+   (Shots Frame "Default 4:3" = 1920×1440 — Mockup default ile aynı
+   stage-fit oranı).
+2. **Aspect chip 9:16**: plate **portrait olarak resize edildi** —
+   dikey doldurdu, yatay daraldı (~450×800), dimensions 1080×1920.
+   Right rail thumb'lar **9:16 portrait olarak yeniden render**
+   edildi (preset thumb aspect-aware mirror).
+3. **Aspect chip 16:9**: plate **landscape olarak resize edildi** —
+   yatay doldurdu, dikey daraldı (1920×1080).
+4. **Mockup mode 2-device layout butonu**: rail thumb'larda preset
+   layout varyasyonları **2-device versiyonlarına dönüştü**
+   (Cascade-2 + Mirror-2 + Stack-2 vs tek-device versiyonları) —
+   stage'deki composition değişimi rail'e canlı yansır.
+5. **Stage padding pure dark**: plate dışında renkli glow YOK.
+6. **Selection chrome Mockup-only**: Frame mode'da slot ring/active
+   border görünmez.
+7. **Dev panel yok**.
+
+### Honest audit — bug 13-26 root cause cluster
+
+| # | Bug | Shots ile doğrulandı? | Kök neden | Phase 94 fix |
+|---|---|---|---|---|
+| 13 | Stage değişimi rail thumb'a yansımıyor | ✅ Shots'ta layout butonu rail varyasyonlarını değiştirir | Phase 86+89 rail thumb yalnız scene/palette aware; aspect-aware değil | Aspect-aware Phase 94'te kapandı; layout count senkron Phase 95+ |
+| 14 | Thumb yanları siyah | ✅ Aspect mismatch | thumb viewBox sabit | Aspect-aware viewBox dolaylı Fix 1 ile |
+| 15 | Canlı gradient | ✅ Shots vivid | CSS fallback soluk cream | Default fallback peach→amber |
+| 16 | Mockup center | ✅ Shots merkezi | Cascade sol-üst pivot | `centerCascade()` helper |
+| 17 | Rail layout varyasyon zayıf | Shots rotated/tilted/offset zengin | MOCKUP/FRAME_PRESETS 6/8 generic name | Phase 95+ (kompleks varyasyon library) |
+| 18 | Frame mode selection chrome | ✅ Shots'ta yok | `selectedSlot` Frame'e taşıyordu | Frame composition'da slot ring + active filter gizlendi |
+| 19 | Dev panel | ✅ Shots'ta yok | `MockupStudioShell` k-studio__sw overlay | Tamamen kaldırıldı |
+| 20 | Real image testi | Yapıldı | — | Live test Shots tarafında doğrulandı |
+| 21 | Cascade center | ✅ aynı kök | (Fix 16 ile) | (Fix 16 ile) |
+| 22 | Selected item gölge agresif | ✅ Shots subtle | active filter 32px black + 36px orange glow | Filter uniform 16px sade |
+| 23 | Zoom çıktıyı değiştiriyor | ⚠ Shots yalnız preview zoom | Kivasy zoom dispatch'e geçmez | Zaten OK (render dispatch zoom kullanmaz) |
+| 24 | Stage glow | ✅ Shots'ta yok | Phase 84 ambient + Phase 90 scene padding | Ambient `display:none` + scene alpha minimal |
+| 25 | Axis-fit aspect-aware | ✅ Shots Frame plate resize ediyor | Phase 93'te plate sabit yapmıştım — yanlış karar | **Plate aspect-aware bbox-fit geri getirildi** |
+| 26 | Scroll lock | ✅ Phase 93'te OK | (Phase 93) | Re-verify ✓ |
+
+**12 bug → 6 root cause cluster → 6 fix set**.
+
+### Phase 94 6 root cause fix
+
+#### Fix 1 — Plate aspect-aware bbox-fit geri getir (bug #14, #25)
+
+`plateDimensionsFor(mode, frameAspect)` Phase 93'te `return { w: 700,
+h: 525 }` sabit yapmıştım — Shots.so live davranışı ile çelişti.
+Phase 94'te bbox-fit math geri geldi:
+- Mockup mode: 720×540 (4:3 horizontal)
+- Frame mode: aspect-driven bbox-fit within 720×640 maxBbox
+  - 16:9 → 720×405 (landscape, width-fit)
+  - 4:5 → 512×640 (portrait, height-fit)
+  - 9:16 → 360×640 (tall portrait, height-fit)
+  - 1:1 → 640×640 (square, height-fit)
+  - 3:4 → 480×640 (portrait, height-fit)
+
+CSS `.k-studio__stage-plate` `max-width: 85% / max-height: 82%`
+(Phase 93 %82/%78'den biraz daha generous) → responsive viewport-küçük
+guard. Operator artık 16:9 vs 9:16 vs Default arasında plate'in
+gerçek boyut değişimini görüyor.
+
+#### Fix 2 — Cascade center alignment (bug #16, #21)
+
+`MockupStudioStage.tsx` yeni `centerCascade(items)` helper:
+- Items bbox'ı hesapla (minX/Y, maxX/Y)
+- Stage-inner 572×504 alanı içinde bbox'ı merkeze offset et
+- `cascadeLayoutFor()` artık `centerCascade(cascadeLayoutForRaw(kind))`
+  döndürür — per-device sabit layout'lar değişmez ama plate-inner
+  merkezine hizalanır
+
+Operator için cascade artık plate-inner'ın **tam merkezinde** (önceden
+sol-üste yapışıktı).
+
+#### Fix 3 — Selection chrome cleanup + Frame no carry (bug #18, #22)
+
+`MockupComposition`:
+- Active drop-shadow filter `0 0 36px rgba(232,93,37,0.13)` orange
+  glow + `0 32px 64px rgba(0,0,0,0.82)` agresif black halo →
+  uniform sade `0 16px 32px rgba(0,0,0,0.5) + 0 4px 10px rgba(0,0,0,0.35)`
+- Active/ghost/normal arasında shadow ailesi aynı; selection ring
+  (slot-ring) tek sinyal
+
+`FrameComposition`:
+- `isActive` filter + `slot-ring` Frame mode'da tamamen gizlendi
+- Frame mode "presentation surface" → selection chrome yok; Phase 85
+  baseline'da Frame'e taşınıyordu — Phase 94 düzeltti
+
+#### Fix 4 — Dev state switcher kaldırıldı (bug #19)
+
+`MockupStudioShell.tsx` `k-studio__sw` overlay (sağ alt MODE +
+Working/Empty/Preview/Render chip cluster) silindi. Mode switch artık
+sadece sidebar tab'ları üzerinden; state switch gerçek render
+dispatch'e bağlı (toolbar Render → POST /api/mockup/jobs → S7/S8).
+JSX'te yalnız Phase 94 comment kaldı.
+
+#### Fix 5 — Ambient glow + canlı gradient (bug #15, #24)
+
+- `.k-studio__stage-amb` → `display: none` (tamamen gizli). Phase 93'te
+  alpha azaltılmıştı ama subtle parlama kalmıştı; Phase 94 tamamen
+  kapattı.
+- CSS default fallback gradient (`.k-studio__stage-plate` no-palette
+  case): `#f0e9d8 → #c8c0b4` (soluk cream) → `#f5b27d → #d97842`
+  (peach→amber). Operator için ilk açılışta plate canlılığı net.
+
+#### Fix 6 — Re-verify Phase 93 baseline (bug #26)
+
+Phase 93 page-scroll lock (`height: 100dvh + overflow: hidden`) +
+internal sidebar/rail scroll — Phase 94 browser test ile yeniden
+doğrulandı. 10 tick aşağı scroll → toolbar + stage + rail tamamen
+sabit. Sorun yok.
+
+### Browser end-to-end visual proof (Chrome live, viewport 1288×941)
+
+**Phase 94 Mockup mode after-fix**:
+- Plate cream/warm bg, **stage merkezde**, cascade **plate'in tam
+  merkezinde** (Front + Side + Back View)
+- Plate kenarda dark stage padding belirgin
+- **Selection chrome temizlendi** — Front View slot orange ring var
+  ama agresif glow/halo YOK
+- **Dev panel YOK** ✓
+- Sağ rail Mockup preset family (Cascade/Centered/Mirror/Landscape/
+  Fan/Stack) hepsi plate-aware
+
+**Phase 94 Frame mode 16:9**:
+- Plate landscape resize edildi (~650×400)
+- Cascade plate içinde merkezi
+- Selection chrome YOK (Mockup'tan Frame'e geçildi → kalktı)
+- Sağ rail Frame preset family (Centered/Offset/Bleed/Angled/Duo/
+  Story) hepsi 16:9 oranında
+
+**Phase 94 Frame mode 9:16 (Instagram Story)**:
+- **Plate PORTRAIT olarak resize edildi** (~320×570) — dikey doldurdu,
+  yatay daraldı
+- Toolbar caption "Frame · Instagram Story · 1080×1920"
+- Cascade plate içinde merkezi (Front + Side görünür; Back View
+  plate kenarından çıkar — beklenen behavior 9:16 dar yatay)
+- Stage padding sol+sağ belirgin
+- Bug #25 birebir Shots.so paritesinde
+
+**Phase 94 page scroll re-verify**:
+- 10 tick aşağı scroll → toolbar + stage + rail tamamen sabit ✓
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products}`:
+  **643/643 PASS** (zero regression)
+- `next build`: clean
+
+### Değişmeyenler (Phase 94)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Yalnız:
+  - `plateDimensionsFor` body geri getirildi (Phase 91/92 baseline'ından)
+  - `centerCascade()` 12 LOC helper
+  - `MockupComposition` active filter uniform shadow
+  - `FrameComposition` selection chrome conditional kaldırıldı
+  - `MockupStudioShell` dev sw JSX block silindi
+  - `.k-studio__stage-amb` display:none + plate fallback gradient
+- **Plate component model (Phase 91+92) korundu** — sceneOverride-
+  driven bg, plate stage center, border + multi-layer shadow.
+- **Mockup ↔ Frame continuity tam** — plate aspect-aware aspect mode
+  bilgisini taşır; scene state Shell'de tek truth source.
+- **Slot assignment + render dispatch (Phase 80) zinciri intakt.**
+- **References / Batch / Review / Selection / Mockup Studio / Product
+  / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 95+ candidate)
+
+- **Bug #13/#17 — Rail layout count senkron + rotated/tilted/offset
+  varyasyon library**: Shots.so'da 2-device layout butonu rail
+  thumb'ları değiştiriyor + preset isimleri layout varyasyonu;
+  Kivasy'de Mockup `MOCKUP_PRESETS` ve Frame `FRAME_PRESETS` static
+  6/8 isimle. Phase 95+'da preset varyasyon library açılması gerekir
+  (count-aware + rotation-aware + offset-aware varyasyonlar).
+- **Bug #23 — Zoom slider Shots behavior**: Shots'ta zoom yalnız
+  preview scaling (export resolution değişmez); Kivasy zoom slider
+  sadece görsel hint, render dispatch'e geçmez. Operator için zaten
+  doğru ama Phase 95+ explicit zoom toolbar polish.
+- **Right rail preset thumb aspect mirror**: Frame mode 9:16'da rail
+  thumb'lar hâlâ landscape kalıyor (Shots'ta thumb'lar mode aspect'i
+  yansıtıyor). Phase 95+ candidate.
+- **Glass + BG Effects davranış tüketimi** (Phase 89/91/92 öngörüsü):
+  Glass swatch'lar plate üstüne `backdrop-filter`, Lens Blur plate
+  bg-blur. Phase 95+ candidate.
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 94 ile **Shots.so parity bug listesi neredeyse tam** (12 bug'dan
+8'i Phase 94'te çözüldü, 2'si Phase 93'te zaten OK, 2'si Phase 95+
+candidate). Studio operatör için:
+- Mockup mode'da plate 4:3 default, cascade merkezde, selection chrome
+  sade
+- Frame mode aspect chip plate'i gerçekten resize ediyor (16:9 yatay,
+  9:16 dikey)
+- Selection chrome Frame'de yok
+- Dev panel yok
+- Stage padding pure dark + canlı plate
+- Page scroll lock'lı, internal panel scroll'da
+
+Sıradaki en yüksek-impact adım **Phase 95 — Right rail aspect mirror
++ layout varyasyon library** (Phase 94'te scope dışı kalan bug
+#13/#17): Frame mode aspect değişince rail thumb'lar da aynı
+oranda; preset isimleri sadece label değil, gerçek rotated/tilted/
+offset/stacked varyasyon library. Phase 95 sonrası rail Shots.so
+"layout variations" paritesinde tam.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

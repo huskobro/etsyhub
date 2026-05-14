@@ -97,27 +97,57 @@ function resolvePlateBackground(
  * stage'i shrink/grow yapmaz, sadece export hint). Plate bu kontratı
  * korur. */
 function plateDimensionsFor(
-  _mode: StudioMode,
-  _frameAspect: FrameAspectKey,
+  mode: StudioMode,
+  frameAspect: FrameAspectKey,
 ): { w: number; h: number } {
-  /* Phase 92 — Plate dimensions 700×525 (4:3) max + CSS %82/%78.
+  /* Phase 94 — Plate aspect-aware bbox-fit (Shots.so live davranış
+   * doğrulaması ile düzeltme):
    *
-   * Phase 93 — Mode-AGNOSTIC + aspect-AGNOSTIC plate (Shots.so
-   * parity bugfix):
-   * Phase 83/91/92 baseline aspect-aware bbox-fit ile Frame mode'a
-   * geçince plate dimensions değişiyordu (örn. 16:9 → 700×440).
-   * Kullanıcı bug #6 + #12: "Mockup ↔ Frame geçişlerinde sahnenin
-   * boyutu küçülüyor", "Frame stage küçülünce elementler kaybolabiliyor".
-   * Shots.so gerçek browser araştırması: Frame mode'a geçince plate
-   * dimensions DEĞİŞMEZ — aspect bilgisi yalnız caption + export
-   * dimensions hint olarak yaşar; plate stage-fit container olarak
-   * stable kalır.
+   * Phase 93'te plate mode-AGNOSTIC + aspect-AGNOSTIC sabit 700×525
+   * yapılmıştı; ama yeniden gerçek browser ile Shots.so test edilince
+   * net oldu — Shots'ta Frame mode aspect chip plate'i GERÇEKTEN
+   * resize ediyor:
+   *   - 9:16 seç → plate dikey doldurur, yatay daralır (~450×800
+   *     portrait)
+   *   - 16:9 seç → plate yatay doldurur, dikey daralır
+   *   - 4:3 → plate Mockup default ölçüsünde (Shots Frame "Default
+   *     4:3" eşdeğer)
    *
-   * Phase 93'te plate her zaman 700×525 (4:3) — mode ve aspect
-   * argümanları kabul edilir ama dimensions'a etkisi yok. Frame
-   * aspect caption (Phase 83) ve toolbar status badge (Phase 83)
-   * hâlâ aspect bilgisini taşır; cascade ve plate sabit. */
-  return { w: 700, h: 525 };
+   * Bu kullanıcı bug #25 ("Shots.so'da stage bir eksende orta paneli
+   * dolduruyor. 16:9'da yatay ekseni doldurup dikey buna göre,
+   * 9:16'da dikeyi doldurup yatayı buna göre ayarlıyor") doğru
+   * davranışı tarif ediyor. Phase 93 kararım yanlıştı.
+   *
+   * Phase 94 düzeltme:
+   *   - Mockup mode: plate 4:3 default (cascade horizontal landscape;
+   *     Shots Mockup default 5:4-ish ama 4:3 Kivasy canonical)
+   *   - Frame mode: bbox-fit içinde aspect-driven resize. Max bbox
+   *     720×640 (büyük viewport için generous; CSS max-%85/%82 ile
+   *     viewport-küçük responsive guard).
+   *     - 16:9 → width-fit (720×405)
+   *     - 4:5 → height-fit (~512×640)
+   *     - 9:16 → height-fit (~360×640)
+   *     - 1:1 → square fit (640×640)
+   *     - 3:4 → height-fit (~480×640)
+   *
+   * Kullanıcı bug #6/#12'nin Phase 93'teki çözümü "plate sabit"
+   * değildi — gerçek çözüm bbox max + responsive max-% (içerik
+   * taşmaz, ama aspect değişir). CSS `.k-studio__stage-plate`
+   * `max-width: 85% / max-height: 82%` + bu helper birlikte. */
+  const maxW = 720;
+  const maxH = 640;
+  if (mode === "mockup") {
+    // Mockup default 4:3 — cascade horizontal landscape canonical.
+    const fitByWidth = { w: maxW, h: Math.round(maxW * 0.75) };
+    if (fitByWidth.h <= maxH) return fitByWidth;
+    return { w: Math.round(maxH * (4 / 3)), h: maxH };
+  }
+  // Frame mode: aspect-driven bbox-fit
+  const cfg = FRAME_ASPECT_CONFIG[frameAspect];
+  const ratio = cfg.ratio; // w/h
+  const fitByWidth = { w: maxW, h: Math.round(maxW / ratio) };
+  if (fitByWidth.h <= maxH) return fitByWidth;
+  return { w: Math.round(maxH * ratio), h: maxH };
 }
 
 interface MockupCompositionProps {
@@ -140,8 +170,41 @@ interface MockupCompositionProps {
  * 2:3 portrait, sticker square, bookmark tall-narrow, tshirt body
  * yatay genişlik. Layout sabitleri stage canvas 572×504 boundary
  * içine sığacak şekilde planlandı (mevcut studio.css stage-inner
- * geometrisini bozmaz). */
+ * geometrisini bozmaz).
+ *
+ * Phase 94 — Cascade center alignment (bug #16/#21):
+ * Phase 82'de cascade koordinatları sol-üst pivot kullanıyordu —
+ * stage-inner 572×504 içinde cascade'in bbox'ı sol-üste yapışıktı.
+ * Phase 94'te `centerCascade()` helper bbox hesabı + offset
+ * uygulayarak cascade'i stage-inner ortasına çeker. Layout
+ * sabitleri değişmiyor; yalnız visual merkez netleşiyor. */
+function centerCascade(
+  items: { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[],
+): { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[] {
+  if (items.length === 0) return items;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const it of items) {
+    minX = Math.min(minX, it.x);
+    minY = Math.min(minY, it.y);
+    maxX = Math.max(maxX, it.x + it.w);
+    maxY = Math.max(maxY, it.y + it.h);
+  }
+  const bboxW = maxX - minX;
+  const bboxH = maxY - minY;
+  const stageW = 572;
+  const stageH = 504;
+  const offsetX = Math.round((stageW - bboxW) / 2 - minX);
+  const offsetY = Math.round((stageH - bboxH) / 2 - minY);
+  return items.map((it) => ({ ...it, x: it.x + offsetX, y: it.y + offsetY }));
+}
+
 function cascadeLayoutFor(
+  kind: StudioStageDeviceKind,
+): { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[] {
+  return centerCascade(cascadeLayoutForRaw(kind));
+}
+
+function cascadeLayoutForRaw(
   kind: StudioStageDeviceKind,
 ): { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[] {
   switch (kind) {
@@ -208,11 +271,20 @@ function MockupComposition({
         if (!slot) return null;
         const isActive = selectedSlot === si && !isPreview;
         const isGhost = !slot.assigned && !isActive;
-        const filter = isActive
-          ? "drop-shadow(0 32px 64px rgba(0,0,0,0.82)) drop-shadow(0 10px 24px rgba(0,0,0,0.55)) drop-shadow(0 0 36px rgba(232,93,37,0.13))"
-          : isGhost
-            ? "none"
-            : "drop-shadow(0 24px 44px rgba(0,0,0,0.7)) drop-shadow(0 8px 18px rgba(0,0,0,0.45))";
+        /* Phase 94 — Selection chrome cleanup (bug #22):
+         * Phase 78+ baseline active filter'ında orange glow halo
+         * (`drop-shadow(0 0 36px rgba(232,93,37,0.13))`) + agresif
+         * 32px black shadow cascade'in dışına geniş gölge bırakıyordu
+         * — operator için "preview/final ürün ile çalışma görünümü
+         * arasında dramatic fark" sebebi. Shots.so selection chrome
+         * yalnız subtle outline; cascade gölgesi tek-katmanlı ve
+         * uniform. Phase 94'te active/inactive aynı sade shadow
+         * pattern; selection ring (slot-ring) sinyali tek başına
+         * yeterli. Preview state'inde ring + badge zaten gizli
+         * (Phase 77 baseline). */
+        const filter = isGhost
+          ? "none"
+          : "drop-shadow(0 16px 32px rgba(0,0,0,0.5)) drop-shadow(0 4px 10px rgba(0,0,0,0.35))";
         return (
           <div
             key={si}
@@ -376,18 +448,25 @@ function FrameComposition({
           ? phones.map(({ si, x, y, w, h, r, z }) => {
               const slot = slots[si];
               if (!slot) return null;
-              const isActive = selectedSlot === si && !isPreview;
-              const isGhost = !slot.assigned && !isActive;
+              const isGhost = !slot.assigned;
               const designForSlot = slot.assigned
                 ? slot.design
                 : hasAnyAssignedSlot
                   ? null
                   : STUDIO_SAMPLE_DESIGNS.d1;
-              const filter = isActive
-                ? "drop-shadow(0 32px 64px rgba(0,0,0,0.82)) drop-shadow(0 10px 24px rgba(0,0,0,0.55)) drop-shadow(0 0 36px rgba(232,93,37,0.13))"
-                : isGhost
-                  ? "none"
-                  : "drop-shadow(0 24px 44px rgba(0,0,0,0.7)) drop-shadow(0 8px 18px rgba(0,0,0,0.45))";
+              /* Phase 94 — Frame mode selection chrome cleanup (bug #18):
+               * Phase 85+87 baseline Frame mode'a geçince Mockup mode
+               * selection chrome (slot-ring + active orange glow filter)
+               * cascade'le birlikte Frame'e taşınıyordu. Shots.so Frame
+               * mode'da selection chrome yok — Frame "presentation
+               * surface" rolünde operator'ın final output'unu önizler;
+               * selection sinyali yalnız Mockup mode (object styling
+               * sahnesi) için anlamlı. Phase 94 Frame mode'da active
+               * outline + orange shadow halo tamamen gizli. Filter
+               * sadece uniform shadow (Mockup Phase 94 cleanup parity). */
+              const filter = isGhost
+                ? "none"
+                : "drop-shadow(0 16px 32px rgba(0,0,0,0.5)) drop-shadow(0 4px 10px rgba(0,0,0,0.35))";
               return (
                 <div
                   key={si}
@@ -401,12 +480,9 @@ function FrameComposition({
                     opacity: isGhost ? 0.26 : 1,
                   }}
                   data-testid={`studio-stage-frame-slot-${si}`}
-                  data-active={isActive ? "true" : "false"}
+                  data-active="false"
                   data-ghost={isGhost ? "true" : "false"}
                 >
-                  {isActive ? (
-                    <div className="k-studio__slot-ring" data-on="true" />
-                  ) : null}
                   <StageDeviceSVG
                     kind={deviceKind}
                     w={w}
