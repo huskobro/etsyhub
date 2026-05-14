@@ -250,12 +250,12 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
   const backHref = `/selections/${setId}`;
   const templateLabel =
     mode === "frame"
-      ? "Frame · coming soon"
+      ? "Frame · presentation surface"
       : (activeTemplate?.name ||
           (setLoading || templatesLoading ? "Loading…" : "No template"));
   const statusLabel =
     mode === "frame"
-      ? "Phase 80+"
+      ? "Export Phase 82+"
       : (set?.name?.trim() || setName?.trim() || "Set");
 
   return (

@@ -155,7 +155,7 @@ export function MockupStudioToolbar({
             ? `Last render failed: ${renderError}`
             : renderDisabled
               ? mode === "frame"
-                ? "Frame mode render — coming Phase 80+"
+                ? "Frame mode is a presentation surface — render lives in Mockup mode. Export pipeline Phase 82+"
                 : "Loading or no template selected"
               : "Render mockup pack"
         }
@@ -179,7 +179,7 @@ export function MockupStudioToolbar({
         disabled={mode === "frame"}
         title={
           mode === "frame"
-            ? "Frame export pipeline — coming Phase 80+"
+            ? "Frame export pipeline — coming Phase 82+ (presentation surface real export)"
             : "Export · 1× · PNG"
         }
       >

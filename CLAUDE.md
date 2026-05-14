@@ -16167,6 +16167,227 @@ log + dispatch baseline bu adımın temelini hazırladı.
 
 ---
 
+## Phase 81 — Mockup vs Frame role clarity (Object surface ↔ Presentation surface)
+
+Phase 80 Studio'yu gerçek slot-aware authoring yüzeyi yapmıştı (per-
+slot picker + slot-mapped dispatch + Apply demote). Phase 81 ürün
+modeli tarafında **Mockup mode ile Frame mode'un rol netliğini**
+kesinleştirir. Phase 77-80 boyunca her iki mod shell + sidebar olarak
+çalışıyordu ama operator için **hangi mod hangi işi çözüyor?** sorusu
+UI'da yazılı değildi: operator placeholder telefon görüp "demo gibi"
+sanıyordu, Frame mode'da "Phase 80+ coming soon" stale copy vardı,
+Mockup mode'un kendi rolünün ne olduğu sözlü değildi.
+
+### Audit (Phase 80 sonrası kalan gerçek dünya eksikleri)
+
+1. **Mockup/Frame rol clarity yok** — sidebar mode tab'ı vardı, ama
+   hangi modun hangi gerçek işi çözdüğü UI'da konumlanmamıştı.
+2. **Frame disclosure stale** — Phase 79'dan kalma "Coming Phase 80+"
+   copy artık Phase 80 sonrası anlamsız. Operator "ne zaman" sorusuna
+   yanlış cevap görüyor.
+3. **Mockup mode controls dili dağınık** — "Template / Magic Preset /
+   Media / Style / Border / Shadow / Slots" alanlar var ama bunların
+   bir bütün olarak "object surface authoring" demek olduğu hiçbir
+   yerde söylenmiyor.
+4. **Telefon placeholder hâlâ baskın** — productType wall_art / sticker
+   / bookmark seçilse de stage iPhone gösteriyor. Bu **bilinçli olarak
+   Phase 81 scope'unun dışında** tutuldu: device shape ailesi (wall art
+   frame / sticker die-cut / tshirt silhouette) büyük SVG iş — Phase
+   82+ candidate. Phase 81 tek küçük ürün adımı ilkesi: rol netliğini
+   önce UI'da kapatmak.
+
+### Net ürün kararları (Phase 81)
+
+**Mockup mode = Object-first authoring**:
+- Renderable mockup template + per-slot design assignment + object
+  styling (style / border / shadow / radius)
+- Real backend pipeline: `POST /api/mockup/jobs` → MOCKUP_RENDER
+  worker → S7/S8 result view (Phase 79 wire)
+- Slot-aware (Phase 80 per-slot picker + slot-mapped dispatch body)
+- ProductType-aware (wall_art = frame, sticker = die-cut, tshirt =
+  garment; Phase 82+ wire — stage shape ailesi)
+
+**Frame mode = Presentation-first authoring**:
+- Canvas size / aspect ratio (16:9, 4:5, 1:1, 9:16, Story)
+- Background / scene / blur / color / gradient / glass
+- Mockup mode çıktısını veya kept asset'i listing hero / sosyal medya
+  card / storefront banner composition'a yerleştirir
+- Real export pipeline **Phase 82+ candidate** — bounded canvas +
+  background + composition + export → Product / Etsy Draft listing
+  hero hattı
+
+**Mockup = how it looks. Frame = how it sells.**
+
+### Lifestyle vs Listing/Output
+
+- **Lifestyle mockup** (duvardaki poster, masadaki ürün, garment
+  product photo) → **Mockup mode** template ailesi. Operator object
+  surface'i (poster frame / garment / device) author eder. ProductType:
+  wall_art, canvas, printable, sticker, clipart, tshirt, hoodie, dtf.
+- **Listing/output mockup** (Etsy hero card, social card, comparison
+  frame, storefront banner) → **Frame mode** presentation ailesi.
+  Operator Mockup mode çıktısını veya kept asset'i Etsy-spec aspect
+  ratio + background ile composition'a yerleştirir.
+- **Aynı template sistemi**: `MockupTemplate.categoryId` zaten 8-value
+  enum (Phase 64 baseline). Gelecekte yeni "presentation" kategorisi
+  schema-zero eklenebilir; Phase 81 scope'unda **karar veriyorum,
+  şu an açmıyorum** (premature).
+
+### Sourcing strategy (telif güvenli)
+
+| Tier | Yaklaşım | Status |
+|---|---|---|
+| **Kısa vade test** | Kendi minimal SVG-based template'ler (admin curated catalog) + local-sharp pipeline (Phase 8 + 63 + 70 baseline) | ✓ Yerinde |
+| **Orta vade** | Operator kendi PSD/PNG upload + Phase 67-73 visual safe-area editor | ✓ Yerinde (Phase 67-73) |
+| **PSD ETL** | `ag-psd` parser + smart-object → slot[] auto-extract; Phase 75 PoC hazır | Phase 84+ wire |
+| **3rd-party PSD/Canva indirme** | Telif/lisans riski | **YASAK** |
+| **Stock photo / Photopea embed** | Browser companion + Cloudflare/Datadome WAF | Phase 38'de pasifleştirildi; future companion backlog |
+
+Operator için ürün modeli: **kendi PSD/PNG yükle + Kivasy editor'de
+safe-area çiz + Studio'da kullan**. Canva'ya gidip JPG export edip
+yüklemek hâlâ destekleniyor (Upload tab Phase 67), ama operatöre
+"Kivasy içinde tam composition" Phase 82+ Frame mode evrimiyle gelir.
+
+### Canva-like composition kararı
+
+**Frame mode'un doğal evrimi**. Şimdi açılmaz (operator dağılır), ama
+roadmap'te Frame mode → Composition mode evrimi açıktır:
+
+- Phase 82+: Frame canvas + asset placement + background scene
+  (mevcut sidebar controls real export'a bağlanır)
+- Phase 83+: Text/heading layer (Canva benzeri composition)
+- Phase 84+: Multi-layer + alignment guides + snap
+
+**Ayrı surface AÇILMAZ** — Studio içinde Frame mode bu rolü zaten
+taşır. Operator "Canva'ya gitmek zorunda" hissi Phase 82+'da kalkar.
+
+### Real mockup classes — priorite listesi
+
+| Class | Priorite | Mode | Phase |
+|---|---|---|---|
+| Phone / app screenshot mockup | ✓ Baseline | Mockup | 77 (mevcut) |
+| Bundle Preview 9-up grid | ✓ Baseline | Mockup | 72 multi-slot |
+| **Wall art / poster frame** | **Yüksek** | Mockup | 82+ stage shape |
+| **Sticker / clipart die-cut** | **Yüksek** | Mockup | 82+ stage shape |
+| **Etsy hero listing card** | **Yüksek** | Frame | 82+ export pipeline |
+| Apparel front/back (tshirt) | Orta | Mockup | 82+ stage shape |
+| Instagram square / Story | Orta | Frame | 82+ |
+| Bookmark vertical strip | Düşük | Mockup | 83+ |
+| Storefront / banner | Düşük | Frame | 84+ |
+
+### Phase 81 tek yüksek-impact ürün adımı
+
+**Role surface chip** — Mockup ve Frame mode sidebar'larının başına
+operator-facing role chip eklendi. Operator artık hangi modun ne
+yaptığını UI'da görür:
+
+- **Mockup mode** → "**Object surface** · Author the renderable mockup
+  — template, per-slot design, style, border, shadow. Render dispatch
+  → real mockup pack." (orange dot + uppercase mono caption + body
+  copy + `data-testid="studio-mockup-role-chip"`)
+- **Frame mode** → "**Presentation surface** · Export Phase 82+ · Compose
+  listing hero / social card / storefront banner — canvas size,
+  background, scene. Controls below preview the presentation surface;
+  real export lands in Phase 82+." (orange dot + uppercase caption +
+  Phase 82+ badge sağ üstte + body copy +
+  `data-testid="studio-frame-role-chip"`)
+
+Toolbar mode-aware copy refresh:
+- Template pill (Frame mode): "Frame · coming soon" → **"Frame ·
+  presentation surface"**
+- Status badge (Frame mode): "Phase 80+" → **"Export Phase 82+"**
+- Render button title (Frame mode): "Frame mode render — coming Phase
+  80+" → **"Frame mode is a presentation surface — render lives in
+  Mockup mode. Export pipeline Phase 82+"**
+- Export capsule title (Frame mode): "Frame export pipeline — coming
+  Phase 80+" → **"Frame export pipeline — coming Phase 82+
+  (presentation surface real export)"**
+
+### Browser end-to-end kanıt (live preview, viewport 1440×900)
+
+| Test | Sonuç |
+|---|---|
+| Mockup mode mount | shellMode "mockup", `mockupRolePresent=true`, caption "Object surface", copy "Author the renderable mockup — template, per-slot design, style, border, shadow. Render dispatch → real mockup pack." |
+| Frame mode toggle | shellMode "frame", `frameRolePresent=true`, caption "Presentation surface", badge "Export Phase 82+", copy "Compose listing hero / social card / storefront banner..." |
+| Frame mode toolbar | templatePill "Frame · presentation surface", statusBadge "Export Phase 82+", renderDisabled=true, renderTitle "Frame mode is a presentation surface — render lives in Mockup mode. Export pipeline Phase 82+" |
+| Mockup mode geri dön | mockupRole intakt, slot picker intakt (`studio-sidebar-slot-picker`), Fill all utility intakt, render enabled + title "Render mockup pack", keptItemCount=4 (Phase 79 hydrate intakt) |
+
+Screenshot: Studio dark shell Mockup mode'da — sol sidebar başında
+orange "OBJECT SURFACE" role chip + açıklama + altında Template card
++ Magic Preset + MEDIA + STYLE 9-grid + BORDER + SHADOW + slot footer.
+Stage 3-phone cascade + Front View slot ring + Cascade preset rail.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, products, selection, selections}`:
+  **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: Mockup role chip + Frame role chip + toolbar
+  copy refresh + Phase 80 slot picker / render dispatch intakt + Phase
+  79 real selection hydrate intakt
+
+### Değişmeyenler (Phase 81)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Yalnız 3 dosyada sidebar role chip
+  banner + toolbar mode-aware copy refresh. Yeni surface, route,
+  service, schema yok.
+- **Apply pipeline + Phase 80 slot picker + Phase 79 real hydrate +
+  Phase 74-75 multi-slot backend + admin authoring** hepsi intakt.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → **Mockup Studio (object surface + slot-aware) /
+  Frame mode (presentation surface, Phase 82+)** → Product → Etsy
+  Draft).
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 82+ candidate)
+
+- **ProductType-aware stage shape ailesi** (wall art frame / sticker
+  die-cut / bookmark strip / tshirt silhouette / canvas / printable) —
+  PhoneSVG hardcoded yerine `StageDeviceSVG` dispatcher + 5+ shape.
+  Operator wall_art üretirken stage'de frame, sticker üretirken
+  die-cut görür. Tek SVG ailesi turu (Phase 82).
+- **Frame mode real export pipeline** — bounded canvas + bg + asset
+  composite → MinIO export → Product / Etsy Draft listing hero hattı.
+  En büyük slice; Phase 82-83 backend tur.
+- **Canva-like composition evrimi** — text/heading layer + multi-layer
+  + alignment guides. Frame mode'un doğal devamı; Phase 83-84+
+  candidate.
+- **Pack-selection override** — handoff service `slotAssignments`'i
+  `buildPackSelection`'a `preferredVariantOrder` olarak geçirir
+  (Phase 80 log baseline'a bağlı backend tüketim). Phase 82+ candidate.
+- **Templates → Studio entry** — admin template management
+  surface'inden direkt Studio'da test ve preview.
+- **PSD ETL wire** — `ag-psd` parser + operator PSD upload (Phase 75
+  PoC). Phase 84+ candidate.
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 81 ile **rol netliği UI'da kapandı**. Operator artık:
+- Mockup mode "Object surface" badge'i ile mod'un ne yaptığını anında
+  okuyor (template + slot + style + render)
+- Frame mode "Presentation surface" + "Export Phase 82+" badge'i ile
+  rol + zaman beklentisini dürüst alıyor
+- Toolbar copy mode-aware (Phase 80 stale "Phase 80+" copy temizlendi)
+
+Sıradaki en yüksek etkili adım **Phase 82 — ProductType-aware stage
+device shape ailesi**: PhoneSVG hardcoded yerine StageDeviceSVG
+dispatcher (wall_art = frame, sticker = die-cut, tshirt = garment,
+bookmark = vertical strip). Operator wall_art set'inde Studio'da
+gerçek poster frame görür; sticker set'inde die-cut görür. Bu adım
+**placeholder telefon'un fiilen sonu** — Studio gerçek lifestyle/
+listing mockup'a görsel olarak yaklaşır.
+
+Phase 82 tamamlanınca canonical loop için **kalan tek büyük açık
+Frame mode real export pipeline** (Phase 83+) olur — Canva-like
+composition'un doğal başlangıcı.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

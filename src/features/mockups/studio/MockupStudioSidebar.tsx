@@ -128,6 +128,65 @@ function MockupBody({
 
   return (
     <div className="k-studio__sb-scroll">
+      {/* Phase 81 — Object surface role chip. Studio Mockup mode'un
+       * ne yaptığını operatöre tek bakışta söyler: object-first
+       * authoring (renderable mockup template + slot assignment +
+       * style/border/shadow). Frame mode rolü (presentation-first)
+       * FrameBody banner'ında konumlanmıştır. */}
+      <div
+        style={{
+          margin: "8px 9px 4px",
+          padding: "8px 10px 7px",
+          borderRadius: 8,
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.07)",
+        }}
+        data-testid="studio-mockup-role-chip"
+        role="note"
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            marginBottom: 3,
+          }}
+        >
+          <span
+            style={{
+              display: "inline-block",
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: "var(--ks-or)",
+            }}
+            aria-hidden
+          />
+          <span
+            style={{
+              fontFamily: "var(--ks-fm)",
+              fontSize: 9.5,
+              fontWeight: 500,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "var(--ks-or)",
+            }}
+          >
+            Object surface
+          </span>
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            lineHeight: 1.4,
+            color: "var(--ks-t2)",
+          }}
+        >
+          Author the renderable mockup — template, per-slot design,
+          style, border, shadow. Render dispatch → real mockup pack.
+        </div>
+      </div>
+
       {/* Template card */}
       <div style={{ padding: "0 9px", marginTop: 5 }}>
         <div className="k-studio__tpl-card">
@@ -854,19 +913,26 @@ function FrameBody() {
 
   return (
     <div className="k-studio__sb-scroll">
-      {/* Phase 79 — Honest disclosure banner. Frame mode presets are
-          visual-only; real export pipeline (listing hero / social /
-          storefront output) Phase 80+ candidate. */}
+      {/* Phase 79 + Phase 81 — Presentation surface role chip.
+       *
+       * Phase 79 baseline'da "Coming Phase 80+" stale copy idi; Phase 81
+       * Mockup vs Frame role clarity kararıyla netleştirdi: Frame mode
+       * = presentation-first authoring (canvas + background + scene +
+       * export). Mockup mode çıktısını veya kept asset'i Etsy listing
+       * hero / Instagram square / Story / storefront banner için
+       * presentation composition'a yerleştirir. Controls aşağıda
+       * görsel-only; real export pipeline Phase 82+ candidate
+       * (operator-friendly canvas + bg + export zinciri). */}
       <div
         style={{
           margin: "8px 9px 4px",
           padding: "9px 10px",
           borderRadius: 8,
-          background: "rgba(232,93,37,0.08)",
-          border: "1px solid rgba(232,93,37,0.22)",
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.07)",
           color: "var(--ks-t2)",
         }}
-        data-testid="studio-frame-coming-soon"
+        data-testid="studio-frame-role-chip"
         role="note"
       >
         <div
@@ -897,13 +963,29 @@ function FrameBody() {
               color: "var(--ks-or)",
             }}
           >
-            Coming Phase 80+
+            Presentation surface
+          </span>
+          <span
+            style={{
+              marginLeft: "auto",
+              fontFamily: "var(--ks-fm)",
+              fontSize: 9,
+              padding: "1px 5px",
+              borderRadius: 3,
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "var(--ks-t3)",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            Export Phase 82+
           </span>
         </div>
-        <div style={{ fontSize: 11.5, lineHeight: 1.45, color: "var(--ks-t2)" }}>
-          Frame mode presents listing-hero / social presentation
-          authoring. Controls below are visual-only — real export
-          pipeline lands in Phase 80+.
+        <div style={{ fontSize: 11, lineHeight: 1.4, color: "var(--ks-t2)" }}>
+          Compose listing hero / social card / storefront banner — canvas
+          size, background, scene. Controls below preview the
+          presentation surface; real export lands in Phase 82+.
         </div>
       </div>
 
