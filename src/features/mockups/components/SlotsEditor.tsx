@@ -38,7 +38,7 @@
  */
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Copy, LayoutGrid } from "lucide-react";
 import {
   SafeAreaEditor,
   type SafeAreaValue,
@@ -138,6 +138,72 @@ export function SlotsEditor({
     onChange(next);
   };
 
+  /** Phase 73 — Duplicate active slot (offset by 5% so it's visible). */
+  const duplicateActiveSlot = () => {
+    if (!active || slots.length >= 12) return;
+    let cloned = active.safeArea;
+    if (cloned.mode === "rect") {
+      cloned = {
+        mode: "rect",
+        rect: {
+          x: Math.min(0.95 - cloned.rect.w, cloned.rect.x + 0.05),
+          y: Math.min(0.95 - cloned.rect.h, cloned.rect.y + 0.05),
+          w: cloned.rect.w,
+          h: cloned.rect.h,
+        },
+      };
+    } else {
+      cloned = {
+        mode: "perspective",
+        perspective: {
+          corners: cloned.perspective.corners.map(([x, y]) => [
+            Math.min(1, x + 0.05),
+            Math.min(1, y + 0.05),
+          ]) as typeof cloned.perspective.corners,
+        },
+      };
+    }
+    const next: SlotEditValue = {
+      id: genSlotId(),
+      name: `${active.name ?? `Slot ${safeIdx + 1}`} copy`,
+      safeArea: cloned,
+    };
+    onChange([...slots, next]);
+    setActiveIdx(slots.length);
+  };
+
+  /** Phase 73 — 3×3 grid preset for sticker sheet authoring.
+   *  Replaces current slots with 9 evenly-spaced rect slots. */
+  const apply3x3Grid = () => {
+    if (slots.length + 9 > 12 && slots.length > 3) {
+      // Replace current slots if would exceed cap
+    }
+    const margin = 0.04;
+    const innerW = (1 - margin * 4) / 3;
+    const innerH = (1 - margin * 4) / 3;
+    const grid: SlotEditValue[] = [];
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const idx = row * 3 + col + 1;
+        grid.push({
+          id: genSlotId(),
+          name: `Tile ${idx}`,
+          safeArea: {
+            mode: "rect",
+            rect: {
+              x: margin + col * (innerW + margin),
+              y: margin + row * (innerH + margin),
+              w: innerW,
+              h: innerH,
+            },
+          },
+        });
+      }
+    }
+    onChange(grid);
+    setActiveIdx(0);
+  };
+
   if (slots.length === 0) {
     // Should never reach — parent gates rendering on slots.length > 0.
     return null;
@@ -196,20 +262,61 @@ export function SlotsEditor({
             );
           })}
         </div>
-        <button
-          type="button"
-          onClick={addSlot}
-          disabled={disabled || slots.length >= 12}
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2 hover:border-k-orange hover:text-k-orange-ink disabled:opacity-50"
-          data-testid="slots-editor-add"
-          title={
-            slots.length >= 12
-              ? "Max 12 slots per template"
-              : "Add a new design slot (default rect, 10% inset)"
-          }
-        >
-          <Plus className="h-3 w-3" aria-hidden /> Add slot
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Phase 73 — Duplicate active slot. Sticker sheet workflow:
+              author one slot then clone N times. */}
+          <button
+            type="button"
+            onClick={duplicateActiveSlot}
+            disabled={disabled || slots.length >= 12 || !active}
+            className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2 hover:border-k-orange hover:text-k-orange-ink disabled:opacity-50"
+            data-testid="slots-editor-duplicate"
+            title={
+              slots.length >= 12
+                ? "Max 12 slots per template"
+                : "Duplicate the active slot (offset 5% so the clone is visible)"
+            }
+          >
+            <Copy className="h-3 w-3" aria-hidden /> Duplicate
+          </button>
+          {/* Phase 73 — 3×3 grid preset for sticker sheet authoring.
+              Replaces current slots with 9 evenly-spaced rect tiles. */}
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                slots.length === 0 ||
+                window.confirm(
+                  `Replace ${slots.length} current slot${
+                    slots.length === 1 ? "" : "s"
+                  } with a 3×3 grid (9 tiles)? Existing slot config will be discarded.`,
+                )
+              ) {
+                apply3x3Grid();
+              }
+            }}
+            disabled={disabled}
+            className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2 hover:border-k-orange hover:text-k-orange-ink disabled:opacity-50"
+            data-testid="slots-editor-grid-preset"
+            title="Apply a 3×3 grid preset (9 evenly-spaced tiles for sticker sheets and bundle previews)"
+          >
+            <LayoutGrid className="h-3 w-3" aria-hidden /> 3×3 grid
+          </button>
+          <button
+            type="button"
+            onClick={addSlot}
+            disabled={disabled || slots.length >= 12}
+            className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 font-mono text-[10.5px] font-semibold uppercase tracking-meta text-ink-2 hover:border-k-orange hover:text-k-orange-ink disabled:opacity-50"
+            data-testid="slots-editor-add"
+            title={
+              slots.length >= 12
+                ? "Max 12 slots per template"
+                : "Add a new design slot (default rect, 10% inset)"
+            }
+          >
+            <Plus className="h-3 w-3" aria-hidden /> Add slot
+          </button>
+        </div>
       </div>
 
       {/* Active slot rename + mode toggle */}
@@ -260,9 +367,8 @@ export function SlotsEditor({
       </div>
 
       {/* SafeAreaEditor — operates on active slot only.
-          Phase 72 multi-slot preview overlay (other slots dimmed underneath)
-          handled in parent via SafeAreaEditor recipe layer (sample preview)
-          for now; per-slot ghost outline Phase 73+ polish. */}
+          Phase 73 — Inactive slots projected as ghost outlines; operator
+          sees the entire template layout while editing one slot. */}
       <SafeAreaEditor
         imageUrl={imageUrl}
         imageWidth={imageWidth}
@@ -273,6 +379,20 @@ export function SlotsEditor({
         showSamplePreview={showSamplePreview}
         onToggleSamplePreview={onToggleSamplePreview}
         recipe={recipe}
+        ghostSlots={slots
+          .map((s, i) =>
+            i === safeIdx
+              ? null
+              : {
+                  id: s.id,
+                  label: s.name ?? `Slot ${i + 1}`,
+                  safeArea: s.safeArea,
+                },
+          )
+          .filter(
+            (g): g is { id: string; label: string; safeArea: SafeAreaValue } =>
+              g !== null,
+          )}
       />
 
       <p
@@ -281,7 +401,7 @@ export function SlotsEditor({
       >
         {slots.length === 1
           ? "1 slot — operator can add more for sticker sheets, bundle previews, multi-area layouts"
-          : `${slots.length} slots · click a tab to edit · drag corners on the canvas · save persists all`}
+          : `${slots.length} slots · ghost outlines show inactive slots · click a tab to edit · save persists all`}
       </p>
     </div>
   );

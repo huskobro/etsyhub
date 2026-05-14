@@ -174,6 +174,21 @@ export type SafeAreaEditorProps = {
       opacity: number;
     };
   };
+  /** Phase 73 — Multi-slot ghost outlines.
+   *  Render-only inactive slots as dashed outlines + numbered/labeled
+   *  badges so the operator sees the entire template layout at once
+   *  while editing one active slot.
+   *
+   *  Pattern parity: Polotno/Konva canonical layer panel → operator
+   *  always sees siblings; active layer highlighted, others ghosted.
+   *
+   *  Pure render; no interaction (clicks fall through to background).
+   */
+  ghostSlots?: Array<{
+    id: string;
+    label: string;
+    safeArea: SafeAreaValue;
+  }>;
 };
 
 export function SafeAreaEditor({
@@ -187,6 +202,7 @@ export function SafeAreaEditor({
   onToggleSamplePreview,
   onReset,
   recipe,
+  ghostSlots,
 }: SafeAreaEditorProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragMode, setDragMode] = useState<DragMode>({ kind: "none" });
@@ -712,6 +728,88 @@ export function SafeAreaEditor({
             preserveAspectRatio="none"
             data-testid="safe-area-editor-image"
           />
+          {/* Phase 73 — Ghost outlines for inactive slots.
+              Render-only; pointer-events disabled (clicks fall through).
+              Pattern parity: Polotno/Konva canonical layer panel. */}
+          {ghostSlots && ghostSlots.length > 0 ? (
+            <g pointerEvents="none" data-testid="safe-area-editor-ghost-slots">
+              {ghostSlots.map((g) => {
+                if (g.safeArea.mode === "rect") {
+                  const r = g.safeArea.rect;
+                  const gx = r.x * imageWidth;
+                  const gy = r.y * imageHeight;
+                  const gw = r.w * imageWidth;
+                  const gh = r.h * imageHeight;
+                  return (
+                    <g
+                      key={g.id}
+                      data-testid={`safe-area-editor-ghost-${g.id}`}
+                    >
+                      <rect
+                        x={gx}
+                        y={gy}
+                        width={gw}
+                        height={gh}
+                        fill="rgba(232,93,37,0.04)"
+                        stroke="#e85d25"
+                        strokeWidth={Math.max(imageWidth, imageHeight) * 0.0025}
+                        strokeDasharray={`${Math.max(imageWidth, imageHeight) * 0.012} ${Math.max(imageWidth, imageHeight) * 0.008}`}
+                        opacity="0.6"
+                      />
+                      <text
+                        x={gx + Math.max(imageWidth, imageHeight) * 0.012}
+                        y={gy + Math.max(imageWidth, imageHeight) * 0.028}
+                        fill="#e85d25"
+                        fontSize={Math.max(imageWidth, imageHeight) * 0.02}
+                        fontFamily="ui-monospace, SFMono-Regular, monospace"
+                        fontWeight="700"
+                        opacity="0.85"
+                      >
+                        {g.label}
+                      </text>
+                    </g>
+                  );
+                }
+                // Perspective ghost
+                const corners = g.safeArea.perspective.corners;
+                const points = corners
+                  .map(([nx, ny]) => `${nx * imageWidth},${ny * imageHeight}`)
+                  .join(" ");
+                const cx =
+                  corners.reduce((sum, [px]) => sum + px, 0) / 4 * imageWidth;
+                const cy =
+                  corners.reduce((sum, [, py]) => sum + py, 0) / 4 * imageHeight;
+                return (
+                  <g
+                    key={g.id}
+                    data-testid={`safe-area-editor-ghost-${g.id}`}
+                  >
+                    <polygon
+                      points={points}
+                      fill="rgba(232,93,37,0.04)"
+                      stroke="#e85d25"
+                      strokeWidth={Math.max(imageWidth, imageHeight) * 0.0025}
+                      strokeDasharray={`${Math.max(imageWidth, imageHeight) * 0.012} ${Math.max(imageWidth, imageHeight) * 0.008}`}
+                      opacity="0.6"
+                    />
+                    <text
+                      x={cx}
+                      y={cy}
+                      fill="#e85d25"
+                      fontSize={Math.max(imageWidth, imageHeight) * 0.02}
+                      fontFamily="ui-monospace, SFMono-Regular, monospace"
+                      fontWeight="700"
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      opacity="0.85"
+                    >
+                      {g.label}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+          ) : null}
           {overlayElements}
         </svg>
       </div>

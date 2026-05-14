@@ -14411,6 +14411,160 @@ seviyesine ulaşır.
 
 ---
 
+## Phase 73 — Mockup studio benchmark research + slot ghosting + slot duplicate + 3×3 grid preset
+
+Phase 72 multi-slot capability açtı ama operatör tek slot'ta çalışırken
+diğer slot'ların nerede olduğunu canvas'ta göremiyordu — yalnız tab
+strip'te isimleri biliyordu. Sticker sheet 9-up workflow için her slot'u
+manuel "Add slot" + position author etmek gerekiyordu. Phase 73 hem
+**benchmark research** hem **operator-friendly authoring** ekler.
+
+### Benchmark research bulguları
+
+| Bulgu | Kaynak | Bizim için karar |
+|---|---|---|
+| **Polotno/Konva canonical layout**: side panel + top toolbar + center workspace + bottom timeline + right inspector | [Polotno docs](https://polotno.com/docs/full-canvas-editor) | Mevcut layout zaten tutarlı (header + tabs + center editor + footer). Right inspector pattern büyük refactor; Phase 73'te ertelendi |
+| **ag-psd library**: PSD smart object read/write JS-only, 0 native binding | [github.com/Agamnentzar/ag-psd](https://github.com/Agamnentzar/ag-psd) | Phase 75 PSD ETL için kullanışlı — schema + UI Phase 72'de hazır; PSD import'u parser + worker tur |
+| **MockCity/Photopea pattern**: PSD smart object'leri = template slot'ları | [mockcity.com](https://mockcity.com/psd-mockup-editor) | Bizim Phase 72 multi-slot model bu pattern'in tam karşılığı — yön doğru |
+| **Polotno/Konva multi-element layer panel**: layer panel sticky, aktif layer highlight, diğerleri canvas'ta görünür ama dim | [Polotno docs](https://polotno.com/docs/full-canvas-editor) | **Phase 73'te slot ghosting eklenecek** — aktif olmayan slot'lar canvas'ta dashed outline + label badge (operator orientation 10×) |
+| **Templated.io 1000+ pre-built template** | [aichief.com](https://aichief.com/alternatives/templated-io/) | Bizim eksiğimiz pre-built catalog. Phase 75+ candidate; copyright/lisans güvenli örnek üretimi gerek |
+| **Open-source design editor SDKs (CE.SDK, Konva, Fabric.js, Polotno)** | [img.ly blog](https://img.ly/blog/open-source-design-editor-sdks-a-developers-guide-to-choosing-the-right-solution/) | Tam editor SDK adopting **YASAK** — yeni big abstraction. Pattern study için referans |
+
+### Karar matrisi
+
+| Slice | Impact | Risk | Phase 73 |
+|---|---|---|---|
+| **Slot ghosting** (canvas tüm slot'lar; aktif highlight, diğerleri dashed outline + label) | YÜKSEK | DÜŞÜK (render-only opsiyonel prop) | ✅ EVET |
+| **Slot duplicate** (sticker sheet workflow: tek slot author + clone) | ORTA | DÜŞÜK | ✅ EVET |
+| **3×3 grid preset** (sticker sheet/bundle preview hızlı başlangıç) | YÜKSEK (sticker sheet operatör tek tıkla) | DÜŞÜK | ✅ EVET |
+| **Backend multi-slot render execution** (compositor + worker + asset assignment + composite layer order) | ÇOK YÜKSEK ama büyük | YÜKSEK | ❌ Phase 74 — backend tur |
+| **PSD ETL** (`ag-psd` parser → slots[] auto-extract) | YÜKSEK ama backend-heavy | ORTA-YÜKSEK | ❌ Phase 75 — backend tur |
+| **Profesyonel örnek template seti** | ORTA | DÜŞÜK ama copyright concern | ❌ Phase 75+ — telif/lisans audit gerek |
+| **Inspector right-panel layout refactor** | DÜŞÜK | YÜKSEK | ❌ Mevcut layout tutarlı |
+
+**Phase 73 seçim**: 3 küçük yüksek-impact slice (ghosting + duplicate + 3×3 grid) — authoring orientation + sticker sheet workflow tek turda kapanır. Backend render execution + PSD ETL bilinçli olarak ayrı turlara (Phase 74-75).
+
+### Slice 1 — Slot ghosting (`SafeAreaEditor` `ghostSlots[]` prop)
+
+`SafeAreaEditor.tsx` yeni opsiyonel `ghostSlots: Array<{ id, label, safeArea }>` prop:
+
+- Render-only; pointer-events disabled (clicks fall through)
+- SVG image'ten sonra, mevcut overlayElements'tan önce render
+- **Rect ghost**: dashed orange outline (rgba(232,93,37,0.04) fill +
+  #e85d25 stroke + strokeDasharray + opacity 0.6) + label badge
+  top-left (mono uppercase font-bold)
+- **Perspective ghost**: aynı pattern, polygon + label centroid'de
+- Pure render — SafeAreaEditor'un drag/resize/validity logic'i
+  hiç değişmez
+
+### Slice 2 — `SlotsEditor` ghost wiring + duplicate + 3×3 grid
+
+`SlotsEditor.tsx`:
+
+- **ghostSlots prop wiring**: `slots.map((s, i) => i === safeIdx ? null : { id, label: s.name ?? "Slot N", safeArea: s.safeArea }).filter(...)` → SafeAreaEditor'a inactive slots geçer
+- **`duplicateActiveSlot()` helper**: aktif slot'u 5% offset'le clone
+  eder, name "{original} copy", append + active set
+- **`apply3x3Grid()` helper**: 9 evenly-spaced rect tile (3 satır × 3
+  sütun, 4% margin); mevcut slots'u replace eder (confirm() prompt)
+- **Toolbar buttons**:
+  - Duplicate (Copy icon)
+  - 3×3 grid (LayoutGrid icon)
+  - Add slot (Plus icon, mevcut)
+- Hint güncellendi: "N slots · ghost outlines show inactive slots ·
+  click a tab to edit · save persists all"
+
+### Browser end-to-end full proof
+
+Live dev server (fresh `.next/` rebuild, viewport 1440×900, real DB,
+authenticated; mevcut Phase 72 3-slot template `cmp4pdhlv...` test):
+
+| Test | Sonuç |
+|---|---|
+| Edit page mount (Phase 72 multi-slot template) | h1 "Edit mockup template", 3 tabs hydrate, ghostsLayer mounted, **2 individual ghosts** (slot 0 active, slot 1+2 ghost) |
+| Toolbar buttons | Duplicate + 3×3 grid + Add slot all visible |
+| Hint text | "3 SLOTS · GHOST OUTLINES SHOW INACTIVE SLOTS · CLICK A TAB TO EDIT · SAVE PERSISTS ALL" |
+| Click 3×3 grid + confirm | tabsCount 9, **8 ghosts** (active Tile 1, 8 inactive görünür ghost), labels Tile 1 → Tile 9, hint "9 SLOTS" |
+| Save → /templates redirect | mutation success |
+| DB verify | slotCount 9, names Tile 1-9, slot 0 (top-left): x=0.04, y=0.04, w=0.28, h=0.28; slot 4 (center): x=0.36, y=0.36; slot 8 (bottom-right): x=0.68, y=0.68 — math doğru (4% margin, 28% inner, 32% offset between) |
+| Backend backward-compat | legacy safeArea preserved (perspective), recipe (Phase 70 multiply) intakt |
+| Visual screenshot | 9-slot tab strip + DUPLICATE + 3×3 GRID + ADD SLOT toolbar buttons + canvas active Tile 1 orange + 8 ghost tiles dashed outline + label badges |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **267/267 PASS** (Phase 72 baseline; type-only changes)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: hepsi canlı dev server'da
+
+### Değişmeyenler (Phase 73)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Phase 72 `slots[]` opsiyonel field zaten
+  mevcut; Phase 73 yalnız UI helper'ları + opsiyonel SafeAreaEditor
+  prop.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** SafeAreaEditor'a 1 opsiyonel render
+  prop + SlotsEditor'a 2 inline helper (duplicateActiveSlot,
+  apply3x3Grid) + 2 toolbar button. Yeni component yok; mevcut
+  pattern reuse.
+- **Yeni 3rd-party dep yok.**
+- **Phase 67/68/69/70/71/72 testid'ler intakt** (regression safe).
+- **Phase 72 multi-slot model tam korunur** (legacy single-slot bozulmaz).
+- **Apply drawer + Mockup studio + Render pipeline + placePerspective
+  + recipe-applicator + Phase 71 recipe-aware sample preview
+  dokunulmadı.**
+- **Backend compositor.ts hiç dokunulmadı** — Phase 72'deki backward-
+  compat aynen, multi-slot render execution Phase 74+ candidate.
+- **Canonical operator loop intakt**.
+- **Kivasy DS dışına çıkılmadı.** k-orange dashed outline (Phase 51
+  status badge family parity), font-mono tracking-meta label badge,
+  k-btn--ghost pattern (Duplicate / 3×3 grid / Add slot).
+- **Cross-user isolation hard-enforced** (Phase 67-72 baseline).
+
+### Bilinçli scope dışı (Phase 74+ candidate)
+
+- **Multi-slot render execution** (compositor + worker genişletmesi):
+  En büyük slice — Phase 74 backend tur (her slot → kept asset
+  assignment + composite layer order)
+- **PSD ETL pipeline** (`ag-psd` parser): Phase 75 backend tur
+- **Profesyonel örnek template seti**: copyright/lisans güvenli
+  örnek üretimi gerek; Phase 75+
+- **Slot drag reorder** (composite layer order ile bağlı): Phase 74
+  render execution sonrası anlam kazanır
+- **Slot duplicate-N (×N count)**: Phase 73 tek-tek duplicate yeterli
+  başlangıç; ileride bulk operasyonu eklenebilir
+- **Inspector right-panel layout refactor**: Polotno-style tam right-
+  inspector pattern; mevcut form layout tutarlı, refactor değer
+  üretmiyor şu an
+- **Slot rotation handle**: SafeAreaRect.rotation field schema'da
+  hazır; UI handle ileride
+
+### Bundan sonra templated.io clone tarafında kalan tek doğru iş
+
+Phase 73 ile **multi-slot mockup studio authoring confidence + sticker
+sheet workflow tam**:
+- Operator multi-slot template'lerinde tüm slot'ları tek bakışta görür
+  (ghost outlines)
+- Duplicate ile manuel slot çoğaltma
+- 3×3 grid preset ile sticker sheet/bundle preview tek tıkla başlangıç
+- Backend Phase 8 baseline ile tam backward-compat
+
+**En kritik kalan iş Phase 74 backend multi-slot render execution** —
+schema + UI hazır, backend pipeline genişlemesi (compositor + worker
++ kept asset assignment + composite layer order). Bu açıldığında
+multi-slot template'ler render edilen output'ta gerçekten N design
+gösterir; Phase 75 PSD ETL operator authoring iterasyonunu en üst
+seviyeye taşır.
+
+Sources:
+- [Polotno SDK docs](https://polotno.com/docs/full-canvas-editor)
+- [ag-psd GitHub](https://github.com/Agamnentzar/ag-psd)
+- [MockCity PSD editor](https://mockcity.com/psd-mockup-editor)
+- [Templated.io alternatives](https://aichief.com/alternatives/templated-io/)
+- [IMG.LY OSS design editor SDKs](https://img.ly/blog/open-source-design-editor-sdks-a-developers-guide-to-choosing-the-right-solution/)
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
