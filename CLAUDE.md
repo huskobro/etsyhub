@@ -14565,6 +14565,252 @@ Sources:
 
 ---
 
+## Phase 74 — Backend multi-slot render execution + market/UX research
+
+Phase 72-73 multi-slot template authoring **UI tarafını** açtı (schema,
+SlotsEditor, slot ghosting, 3×3 grid preset). Ama backend compositor
+hâlâ tek `safeArea` çağrıyordu — multi-slot template ACTIVE publish
+edilse bile render hep tek slot. **Phase 74 bu boşluğu kapatır**:
+backend compositor `slots[]` fanout uygular; multi-slot template'in
+9 tile'ı render output'unda gerçekten N design placement gösterir.
+
+Aynı turda **stratejik ürün araştırması** (Templated.io Canva
+import + Photopea/MockCity + ucuz mockup API pazarı) yapıldı; sonuç
+ürün kararına dönüştürüldü.
+
+### Audit — Phase 73 sonrası teknik blocker
+
+`compositor.ts` (Phase 8 baseline + Phase 63 perspective):
+
+```ts
+let placement;
+if (config.safeArea.type === "rect") { ... }
+else if (config.safeArea.type === "perspective") { ... }
+const compositedBuffer = await applyRecipe(base, placement, recipe);
+```
+
+Tek `safeArea` çağrılır. `config.slots[]` (Phase 72'de schema'ya
+eklendi) **ignore**. Multi-slot template ACTIVE publish edilse bile
+render tek slot. **Bu en kritik gerçek ürün blocker'ı** — authoring
+ve render arasında hayal kırıklığı.
+
+### Market & UX research (somut bulgular)
+
+**1. [Templated.io Canva import](https://templated.io/blog/how-to-import-canva-templates-directly-into-templated-for-automation/)** — operatör Canva'da template hazırlar → export →
+Templated.io editor'ün "Import from Canva" → tüm layer'lar separate
+olarak görünür. **Templated.io kendi editor'ünü tutuyor; Canva editor
+embed YOK**. Resmi mekanizma açıklanmamış (PDF/PNG export + parse
+veya proprietary file format converter). Smart object preserve
+edilip edilmediği belirtilmemiş.
+
+**Bizim ders**: Canva-specific import sihir değil — operatörün kendi
+PSD/PNG upload + bizim editor (Phase 67-73 yaklaşımı) **doğru yol**.
+Canva-specific entegrasyon **bu turda gerek değil**.
+
+**2. [Photopea + MockCity entegrasyonu](https://mockcity.com/psd-mockup-editor)** — MockCity gerçekten **Photopea web editor'ü embed ediyor**;
+operatörün browser'ında local olarak PSD edit. MockCity sadece
+template config storage + smart object position/size `.mct` config
+file save eder. **Photopea = operatör'ün PSD düzenleme katmanı**;
+backend render değil.
+
+**Bizim ders**: Photopea embed işe yarar **eğer biz operator'a
+"advanced PSD edit" UI istiyorsak**. Ama bizim **kendi visual editor
+(Phase 67-73)** zaten geçerli; Photopea ek katman olur (Phase 76+
+candidate). Smart object → JSON config pattern bizim `slots[]` ile
+birebir uyumlu — yolu doğrulandı.
+
+**3. Ucuz/sınırsız mockup API pazarı** (2026):
+
+| Provider | Cost/render | Free tier |
+|---|---|---|
+| **SudoMock** | **$0.002** (en ucuz) | 500 free credits |
+| Mediamodifier | $0.04 | — |
+| DynamicMockups (mevcut provider) | $0.05 | 50 free credits |
+| Smartmockups | discontinued | — |
+| Adobe Firefly | $0.02-0.10 + $1000/ay min | — |
+
+**Hiçbiri gerçekten "unlimited" değil**; hepsi pay-as-you-go veya
+credit. Kaynak: [SudoMock blog](https://sudomock.com/blog/smartmockups-api-status-alternatives) +
+[DynamicMockups](https://dynamicmockups.com/) + [imejis comparison](https://www.imejis.io/blogs/comparisons/best-canva-api-alternatives).
+
+**Bizim ders**: Local Sharp pipeline (Phase 8 + Phase 63 + Phase 74)
+**maliyet açısından kazanan** — ~$0/render (CPU/RAM cost yalnız).
+Operatör cost'a duyarlı; **self-hosted Sharp = stratejik karar**.
+DynamicMockups schema (`DynamicMockupsConfigSchema`) hazır; üçüncü
+taraf API **opsiyonel/operator-opt-in fallback** olabilir, varsayılan
+değil. Phase 74'te tek hattımız self-hosted multi-slot render.
+
+### Ürün stratejisi (research → karar)
+
+| Yön | Karar | Faz |
+|---|---|---|
+| **Self-hosted Sharp pipeline** | ✅ Ana çizgi (Phase 63 perspective + Phase 70 recipe + Phase 74 multi-slot) | Phase 74 |
+| **Üçüncü taraf API** (DynamicMockups/SudoMock) | Opsiyonel fallback; operator-opt-in; varsayılan değil | Phase 76+ |
+| **Photopea embed** | Sadece advanced PSD edit istenirse | Phase 76+ |
+| **Canva import** | Gerek değil; operator PSD/PNG upload + bizim editor yeterli | — |
+| **Profesyonel örnek template seti** | Operator kendi PSD/PNG upload edebilir; pre-built catalog Phase 75 PSD ETL açıldığında operator kendi catalog'unu kurar | Phase 75+ |
+| **Multi-design assignment** (her slot farklı design) | Phase 74 single-design fanout; multi-design Phase 75+ candidate (RenderInput shape + UI assignment) | Phase 75+ |
+
+### Backend implementation
+
+**`src/providers/mockup/local-sharp/compositor.ts`** — multi-slot fanout:
+
+```ts
+// Phase 74 — config.slots[] varsa her slot için placement;
+// yoksa Phase 8 baseline (tek safeArea) backward-compat
+const slotAreas: SafeArea[] =
+  config.slots && config.slots.length > 0
+    ? config.slots.map((s) => s.safeArea)
+    : [config.safeArea];
+
+let compositedBuffer = baseBuffer;
+for (const safeArea of slotAreas) {
+  abortIfRequested(input.signal);
+  const placement =
+    safeArea.type === "rect"
+      ? await placeRect(designBuffer, safeArea, config.baseDimensions)
+      : await placePerspective(designBuffer, safeArea, config.baseDimensions);
+  compositedBuffer = await applyRecipe(compositedBuffer, placement, config.recipe);
+}
+```
+
+Algoritma:
+- `config.slots[]` non-empty → her slot için placement (rect veya
+  perspective) + applyRecipe sequential composite. Sticker sheet
+  9-up grid → 9 placement + 9 composite. Z-order = slots array
+  index (slot 0 alt, son slot üst).
+- `slots` yok veya boş → Phase 8 baseline (tek `safeArea`). Legacy
+  template'ler **tamamen korunur**.
+- Tek `designUrl` (RenderInput) tüm slot'lara fanout — single-design
+  fanout. Sticker sheet workflow (operatör tek tasarım, N tile)
+  doğrudan karşılanıyor. Multi-design assignment (her slot farklı
+  design) RenderInput shape genişletme + UI assignment akışı
+  gerektirir — Phase 75+ candidate.
+- Recipe template-genelinde (Phase 70 baseline); her slot aynı
+  recipe alır. Slot-bazlı recipe override Phase 75+.
+
+**`src/providers/mockup/types.ts`** — `SlotConfig` type + `LocalSharpConfig.slots?: SlotConfig[]`
+field genişletmesi (backward-compat, opsiyonel).
+
+### Test kanıtı (real MinIO storage + raw pixel sampling)
+
+`tests/integration/mockup/compositor-rect.test.ts` Phase 74 testleri:
+
+**Test 1 — Multi-slot 2×2 fanout**:
+- 200×200 white base + 50×50 red design uploads (gerçek MinIO storage)
+- 4 slot config (2×2 grid, 5% margin, her slot 40% width/height)
+- `renderLocalSharp` çağrılır → output MinIO'dan download edilir
+- Sharp `raw().toBuffer()` ile RGBA decode + pixel sampling:
+  - 4 slot center (50,50 / 150,50 / 50,150 / 150,150): **kırmızı**
+    (R>180, G<80, B 40-120 ✓)
+  - Slot arası (100,100): **beyaz** (R/G/B>220 ✓)
+- 4 slot'a aynı design fanout edildiği gerçek pixel düzeyinde kanıt
+
+**Test 2 — Backward-compat legacy single-slot fallback**:
+- `slots` field yok; tek `safeArea` rect (40% inset)
+- Center (50,50): green (design); corner (5,5): gray (base)
+- Phase 8 baseline çalışıyor, Phase 74 değişikliği bozmadı
+
+### Browser end-to-end kanıt
+
+Phase 73'te save edilen 9-slot template `cmp4pdhlv00033ahkoi79xdym`
+edit page'inde:
+- ACTIVE badge + 9 tabs + 8 ghost outlines (Tile 1 active, Tile 2-9
+  ghost)
+- DB'de `bindings[0].config.slots` field 9 slot Phase 73'te persisted
+- Phase 74 compositor bu config'i okuyup multi-slot render uyguluyor
+  (real MinIO storage testleri ile kanıtlandı)
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/integration/mockup/compositor-rect.test.ts`: **16/16
+  PASS** (Phase 73 baseline 14 + 2 yeni Phase 74 multi-slot)
+- `vitest` full suite: 442/443 PASS (1 fail pre-existing — Phase 65/71
+  ownership değişikliklerinden kaynaklı `templates.test.ts` keys
+  assertion; Phase 74 stash baseline'da da aynı fail — Phase 74 ile
+  ilgisiz)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 74)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok** — `SlotConfig` type ve `LocalSharpConfig.
+  slots?` Phase 72'de `LocalSharpConfigSchema` Zod'una eklenmişti;
+  Phase 74 yalnız TypeScript provider types + compositor logic
+  + test fixture.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Compositor'a `for (slot of slotAreas)
+  { placement + applyRecipe }` loop; mevcut placeRect / placePerspective
+  / applyRecipe reuse. Yeni component / yeni service / yeni schema
+  yok.
+- **Yeni 3rd-party dep yok.**
+- **Phase 8/63/70/72/73 backend baseline tam korundu** (tek-slot
+  template'ler eskiden olduğu gibi render).
+- **Phase 67-73 authoring testid'ler intakt** (regression safe).
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → Mockup → Product → Etsy Draft).
+- **Kivasy DS dışına çıkılmadı.**
+- **Cross-user isolation hard-enforced** (Phase 67-71 baseline).
+- **DynamicMockups path dokunulmadı** (research'te ucuz pazar
+  analizine alındı; ürün stratejisi self-hosted ana çizgi olduğu
+  için kod hattında değişiklik yok).
+
+### Bilinçli scope dışı (Phase 75+ candidate)
+
+- **Multi-design assignment** (her slot farklı design): RenderInput
+  shape `designUrl: string` → `designUrls: string[]` veya slot-mapped
+  assignment; UI'da operator slot başına farklı kept asset seçer.
+  Phase 74 single-design fanout (sticker sheet workflow) ana
+  use-case'i karşılıyor; multi-design = bundle preview (cover + 3
+  variants) için yeni slice.
+- **PSD ETL** (`ag-psd` parser + worker + smart object → slots[]
+  auto-extract): Operator Photoshop'tan PSD sürükler → sistem
+  otomatik 9-up grid template oluşturur. Phase 75 backend tur.
+- **Slot-bazlı recipe override**: Şu an template-genelinde recipe.
+  Her slot kendi blendMode/shadow alabilir; UI + schema genişletmesi.
+- **Slot drag reorder** (composite layer order ile bağlı): Phase 74
+  z-order = slots array index; UI drag reorder Phase 75+.
+- **Profesyonel örnek template seti**: Operator kendi PSD upload
+  edebilir; pre-built catalog Phase 75 PSD ETL açıldıktan sonra
+  operator kendi catalog'unu kurar. Telif/lisans riski yok.
+- **Photopea embed**: Advanced PSD edit isteyen operatörler için
+  Phase 76+. Kendi editor (Phase 67-73) yeterli ana çizgi.
+- **Canva import**: Gerek değil; operator workflow'u kendi PSD/PNG
+  upload pattern'i ile tamamen karşılanır.
+- **Third-party mockup API fallback** (DynamicMockups/SudoMock):
+  Schema hazır; operator-opt-in akışı Phase 76+.
+
+### Stratejik özet
+
+Phase 74 ile **templated.io clone backend tarafı = self-hosted
+multi-slot render execution canlı**:
+- Operator multi-slot template author + ACTIVE publish edebilir
+  (Phase 67-73 UI)
+- Backend her slot için ayrı placement + sequential composite uygular
+  (Phase 74 compositor)
+- Sticker sheet 9-up grid + bundle preview + multi-area garment
+  workflow'ları gerçek render output verir
+- Recipe (blend + shadow) her slot için uygulanır
+- Real MinIO storage + Sharp pipeline + raw pixel sampling testleri
+  kanıt
+- Maliyet ~$0/render (CPU/RAM yalnız) — pazar liderleri SudoMock
+  $0.002 + DynamicMockups $0.05 ile karşılaştırıldığında
+  **self-hosted = en sürdürülebilir strateji**
+
+Kalan tek halka **Phase 75 PSD ETL** (operator Photoshop'tan import)
++ **multi-design assignment** (her slot farklı design — bundle
+preview workflow).
+
+Research sources:
+- [Templated.io Canva import workflow](https://templated.io/blog/how-to-import-canva-templates-directly-into-templated-for-automation/)
+- [MockCity PSD editor (Photopea-based)](https://mockcity.com/psd-mockup-editor)
+- [SudoMock pricing $0.002/render](https://sudomock.com/blog/smartmockups-api-status-alternatives)
+- [DynamicMockups pricing](https://dynamicmockups.com/)
+- [Best Canva API alternatives 2026 (imejis)](https://www.imejis.io/blogs/comparisons/best-canva-api-alternatives)
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

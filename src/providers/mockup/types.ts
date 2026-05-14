@@ -70,6 +70,20 @@ export type MockupRecipe = {
 // ────────────────────────────────────────────────────────────
 
 // V1 aktif provider config
+/** Phase 72/74 — Multi-slot capability.
+ *  Tek slot'lu template'ler için `slots` field yoktur; `safeArea` çağrılır
+ *  (Phase 8 baseline backward-compat). Multi-slot template'lerde `slots[]`
+ *  set edilir; compositor.ts her slot için ayrı placement + sequential
+ *  composite uygular (Phase 74). */
+export type SlotConfig = {
+  /** Stable slot id (cuid-like) */
+  id: string;
+  /** Optional operator-facing label ("Cover", "Back", "Tile 1") */
+  name?: string;
+  /** Slot geometry — rect or perspective, schema parity with safeArea */
+  safeArea: SafeArea;
+};
+
 export type LocalSharpConfig = {
   // ProviderId literal: "local-sharp" (kebab-case, TypeScript string literal)
   providerId: "local-sharp";
@@ -80,8 +94,13 @@ export type LocalSharpConfig = {
   // base asset px dimensions
   baseDimensions: { w: number; h: number };
 
-  // Geometry (discriminated union safeArea.type ile)
+  // Geometry (discriminated union safeArea.type ile).
+  // Legacy single-slot field — Phase 8 baseline. Always populated.
   safeArea: SafeArea;
+
+  // Phase 72 — Optional multi-slot list. Phase 74 compositor uses this
+  // (if non-empty) instead of `safeArea`; sequential composite per slot.
+  slots?: SlotConfig[];
 
   // Compositing davranışı (minimal — spec §3.2 kararı)
   recipe: MockupRecipe;

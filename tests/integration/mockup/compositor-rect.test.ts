@@ -516,6 +516,186 @@ describe("renderLocalSharp orchestration", () => {
 
     await expect(renderLocalSharp(input)).rejects.toThrow(/RENDER_TIMEOUT/);
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // Phase 74 — Multi-slot render execution
+  // ─────────────────────────────────────────────────────────────
+  it("Phase 74: renders 2×2 multi-slot template — single design fanout across slots", async () => {
+    const storage = getStorage();
+    const baseKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/base.png`;
+    const designKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/design.png`;
+
+    // 200×200 white base
+    await storage.upload(
+      baseKey,
+      await solidPng(200, 200, { r: 255, g: 255, b: 255, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    // 50×50 solid red design — will be placed at 4 slots
+    await storage.upload(
+      designKey,
+      await solidPng(50, 50, { r: 220, g: 20, b: 60, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    uploadedKeys.push(baseKey, designKey);
+
+    const config: Omit<LocalSharpConfig, "coverPriority"> = {
+      providerId: "local-sharp",
+      baseAssetKey: baseKey,
+      baseDimensions: { w: 200, h: 200 },
+      // Legacy safeArea preserved (backward-compat)
+      safeArea: { type: "rect", x: 0, y: 0, w: 1, h: 1 },
+      // Phase 74 — Multi-slot: 2×2 grid (4 evenly-spaced tiles, 5% margin)
+      slots: [
+        {
+          id: "slot-tl",
+          name: "Top-Left",
+          safeArea: { type: "rect", x: 0.05, y: 0.05, w: 0.4, h: 0.4 },
+        },
+        {
+          id: "slot-tr",
+          name: "Top-Right",
+          safeArea: { type: "rect", x: 0.55, y: 0.05, w: 0.4, h: 0.4 },
+        },
+        {
+          id: "slot-bl",
+          name: "Bottom-Left",
+          safeArea: { type: "rect", x: 0.05, y: 0.55, w: 0.4, h: 0.4 },
+        },
+        {
+          id: "slot-br",
+          name: "Bottom-Right",
+          safeArea: { type: "rect", x: 0.55, y: 0.55, w: 0.4, h: 0.4 },
+        },
+      ],
+      recipe: { blendMode: "normal" },
+    };
+
+    const snapshot: RenderSnapshot = {
+      templateId: "tpl-phase74-2x2",
+      bindingId: "bnd-phase74-2x2",
+      bindingVersion: 1,
+      providerId: "LOCAL_SHARP",
+      config,
+      templateName: "Phase 74 2×2 Multi-slot",
+      aspectRatios: ["1:1"],
+    };
+
+    const renderId = `phase74-2x2-${crypto.randomUUID()}`;
+    const output = await renderLocalSharp({
+      renderId,
+      designUrl: designKey,
+      designAspectRatio: "1:1",
+      snapshot,
+      signal: AbortSignal.timeout(60_000),
+    });
+    uploadedKeys.push(output.outputKey, output.thumbnailKey);
+
+    // Output dimensions = base (200×200), not changed by multi-slot
+    expect(output.outputDimensions).toEqual({ w: 200, h: 200 });
+
+    // Output PNG → sample center pixels of each slot.
+    // Each slot is at: TL=(0.05..0.45, 0.05..0.45), so center ~ (50, 50);
+    // TR center ~ (150, 50); BL center ~ (50, 150); BR center ~ (150, 150).
+    // All 4 should be red (220, 20, 60) within tolerance.
+    const downloaded = await storage.download(output.outputKey);
+    const { data, info } = await sharp(downloaded)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const sampleColor = (x: number, y: number) => {
+      const idx = (y * info.width + x) * info.channels;
+      return { r: data[idx], g: data[idx + 1], b: data[idx + 2] };
+    };
+
+    const tl = sampleColor(50, 50);
+    const tr = sampleColor(150, 50);
+    const bl = sampleColor(50, 150);
+    const br = sampleColor(150, 150);
+
+    // Each slot should show design red (220, 20, 60)
+    for (const c of [tl, tr, bl, br]) {
+      expect(c.r).toBeGreaterThan(180);
+      expect(c.g).toBeLessThan(80);
+      expect(c.b).toBeGreaterThan(40);
+      expect(c.b).toBeLessThan(120);
+    }
+
+    // Between slots (e.g. center pixel 100, 100) should still be white
+    // (no design there — base passes through).
+    const between = sampleColor(100, 100);
+    expect(between.r).toBeGreaterThan(220);
+    expect(between.g).toBeGreaterThan(220);
+    expect(between.b).toBeGreaterThan(220);
+  });
+
+  it("Phase 74: backward-compat — slots empty/missing falls back to legacy safeArea", async () => {
+    const storage = getStorage();
+    const baseKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/base.png`;
+    const designKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/design.png`;
+
+    await storage.upload(
+      baseKey,
+      await solidPng(100, 100, { r: 200, g: 200, b: 200, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    await storage.upload(
+      designKey,
+      await solidPng(20, 20, { r: 10, g: 200, b: 10, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    uploadedKeys.push(baseKey, designKey);
+
+    const config: Omit<LocalSharpConfig, "coverPriority"> = {
+      providerId: "local-sharp",
+      baseAssetKey: baseKey,
+      baseDimensions: { w: 100, h: 100 },
+      // Legacy single-slot path — no `slots` field
+      safeArea: { type: "rect", x: 0.4, y: 0.4, w: 0.2, h: 0.2 },
+      recipe: { blendMode: "normal" },
+    };
+
+    const snapshot: RenderSnapshot = {
+      templateId: "tpl-phase74-legacy",
+      bindingId: "bnd-phase74-legacy",
+      bindingVersion: 1,
+      providerId: "LOCAL_SHARP",
+      config,
+      templateName: "Phase 74 legacy",
+      aspectRatios: ["1:1"],
+    };
+
+    const output = await renderLocalSharp({
+      renderId: `phase74-legacy-${crypto.randomUUID()}`,
+      designUrl: designKey,
+      designAspectRatio: "1:1",
+      snapshot,
+      signal: AbortSignal.timeout(60_000),
+    });
+    uploadedKeys.push(output.outputKey, output.thumbnailKey);
+
+    // Single-slot center should be green (design); corners should be gray (base)
+    const downloaded = await storage.download(output.outputKey);
+    const { data, info } = await sharp(downloaded)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const sampleColor = (x: number, y: number) => {
+      const idx = (y * info.width + x) * info.channels;
+      return { r: data[idx], g: data[idx + 1], b: data[idx + 2] };
+    };
+
+    const center = sampleColor(50, 50);
+    expect(center.r).toBeLessThan(80);
+    expect(center.g).toBeGreaterThan(150);
+    expect(center.b).toBeLessThan(80);
+
+    const corner = sampleColor(5, 5);
+    expect(corner.r).toBeGreaterThan(180);
+    expect(corner.r).toBeLessThan(220);
+  });
 });
 
 // ────────────────────────────────────────────────────────────
