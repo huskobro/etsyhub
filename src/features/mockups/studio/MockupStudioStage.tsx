@@ -186,6 +186,16 @@ function MockupComposition({
 interface FrameCompositionProps {
   isEmpty: boolean;
   isPreview: boolean;
+  /* Phase 85 — Selected-slot continuity: Frame mode artık Mockup
+   * mode'da operatörün seçtiği slot'un design'ını bounded canvas
+   * içine taşır. Önceden hardcoded STUDIO_SAMPLE_DESIGNS.d1
+   * gösteriyordu — mode geçişinde operator "şu anki çalışmasını"
+   * kaybediyor + iki ayrı sayfa hissi doğuyordu. Shots.so'da mode
+   * tab yok, tek sidebar var; biz mode dichotomy'yi korurken
+   * stage composition continuity'sini sağlıyoruz. Selected slot
+   * boşsa (assigned=false) sample fallback. */
+  slots: ReadonlyArray<StudioSlotMeta>;
+  selectedSlot: number;
 }
 
 function FrameComposition({
@@ -193,36 +203,71 @@ function FrameComposition({
   isPreview,
   deviceKind,
   frameAspect,
+  slots,
+  selectedSlot,
 }: FrameCompositionProps & {
   deviceKind: StudioStageDeviceKind;
   frameAspect: FrameAspectKey;
 }) {
-  const design = isEmpty ? null : STUDIO_SAMPLE_DESIGNS.d1;
-  /* Phase 83 — Bounded canvas dims artık aspect chip seçimine
-   * göre live hesaplanıyor (Phase 82 baseline 580×326 hardcoded
-   * idi). computeFrameCanvasDims max bbox içinde aspect ratio'yu
-   * korur — operator 1:1 seçince kare canvas, 9:16 seçince tall
-   * portrait, 16:9 seçince landscape görür. */
+  /* Phase 85 — Same-composition carry-over (full cascade).
+   *
+   * Shots.so/MockupViews real-browser research (Phase 85 audit):
+   * mode switch sırasında stage kompozisyonu BİREBİR korunur. Operator
+   * Mockup mode'da hangi yerleşimi görüyorsa, Frame mode'a geçince
+   * AYNI yerleşimi bounded presentation canvas içinde görür — sadece
+   * "sunum bağlamı" değişir.
+   *
+   * Pre-Phase 85 baseline: Mockup mode'da 3-slot cascade vardı; Frame
+   * mode'da hardcoded sample d1 ile tek device gösteriliyordu. İki
+   * ayrı kompozisyon → "iki ayrı ürün" hissi.
+   *
+   * Phase 85 düzeltmesi: Frame mode artık AYNI 3-slot cascade'i bounded
+   * canvas içine sığdırılmış olarak gösterir. Selected slot active
+   * ring, diğer slotlar dim/ghost; tüm slot'lar Mockup mode ile aynı
+   * pozisyon + transform + design palette. Aspect chip canvas dims'i
+   * değiştirir; cascade içinde proporsiyonel olarak küçülür.
+   *
+   * Continuity contract:
+   *   stage composition  = mode-AGNOSTIC (cascade her iki modda)
+   *   sidebar            = mode-aware swap (Mockup: object styling,
+   *                          Frame: presentation/background/scene)
+   *   right rail presets = mode-AGNOSTIC (same composition'ın layout
+   *                          varyasyonları)
+   *   toolbar            = mode-AGNOSTIC
+   *
+   * Empty state (sw="empty") → cascade görünmez; explicit reset. */
+
+  /* Phase 83 — Bounded canvas dims aspect chip seçimine göre live
+   * hesaplanır. computeFrameCanvasDims max bbox içinde aspect ratio'yu
+   * korur. */
   const canvasDims = computeFrameCanvasDims(frameAspect);
   const aspectCfg = FRAME_ASPECT_CONFIG[frameAspect];
-  // Phase 82 — Frame inner device dims per kind. Phase 83'te
-  // canvas küçüldükçe iç device de oransal olarak küçülür
-  // (canvas height < 326 ise inner h çarpanıyla orantılı).
-  const canvasScale = canvasDims.h / 326;
-  const innerBase =
-    deviceKind === "wall_art" || deviceKind === "canvas" || deviceKind === "printable"
-      ? { w: 152, h: 220 }
-      : deviceKind === "sticker" || deviceKind === "clipart"
-        ? { w: 180, h: 180 }
-        : deviceKind === "bookmark"
-          ? { w: 70, h: 240 }
-          : deviceKind === "tshirt" || deviceKind === "hoodie" || deviceKind === "dtf"
-            ? { w: 200, h: 240 }
-            : { w: 128, h: 260 }; // phone fallback
-  const innerSize = {
-    w: Math.max(40, Math.round(innerBase.w * Math.min(canvasScale, 1))),
-    h: Math.max(60, Math.round(innerBase.h * Math.min(canvasScale, 1))),
-  };
+
+  /* Cascade layout: Mockup mode'da kullanılan ile birebir aynı
+   * (cascadeLayoutFor + 572×504 inner stage). Phase 85'te cascade
+   * tüm slotları taşır; Frame canvas'ın iç boyutuna göre scale
+   * edilir. Operator için "aynı kompozisyon" sinyali. */
+  const phones = cascadeLayoutFor(deviceKind);
+  const cascadeBaseW = 572;
+  const cascadeBaseH = 504;
+  // Frame canvas içine sığdırma: aspect-aware scale (kompozisyon
+  // canvas'ı doldurur ama proporsiyonu bozulmaz).
+  const scaleW = canvasDims.w / cascadeBaseW;
+  const scaleH = canvasDims.h / cascadeBaseH;
+  const cascadeScale = Math.min(scaleW, scaleH) * 0.94; // %94 inset
+
+  // Phase 85 audit notu: active slot meta'sı caption için hâlâ
+  // kullanılır (continuity hint "From {slot.name}"); sample fallback
+  // artık explicit cascade-empty durumunda olur (operatör hiç slot
+  // assignment yapmadıysa).
+  const activeSlot = slots[selectedSlot] ?? null;
+  const hasAnyAssignedSlot = slots.some((s) => s.assigned);
+  const designSource: "slot" | "sample" | "empty" = isEmpty
+    ? "empty"
+    : hasAnyAssignedSlot
+      ? "slot"
+      : "sample";
+
   return (
     <div
       className="k-studio__stage-inner"
@@ -235,6 +280,8 @@ function FrameComposition({
       data-frame-aspect={frameAspect}
       data-canvas-w={canvasDims.w}
       data-canvas-h={canvasDims.h}
+      data-design-source={designSource}
+      data-active-slot={selectedSlot}
     >
       <div
         style={{
@@ -263,23 +310,79 @@ function FrameComposition({
             pointerEvents: "none",
           }}
         />
-        <div
-          style={{
-            filter:
-              "drop-shadow(0 22px 44px rgba(0,0,0,0.22)) drop-shadow(0 8px 16px rgba(0,0,0,0.14))",
-            position: "relative",
-            zIndex: 2,
-          }}
-        >
-          <StageDeviceSVG
-            kind={deviceKind}
-            w={innerSize.w}
-            h={innerSize.h}
-            design={design}
-            isEmpty={!design}
-            idx={4}
-          />
-        </div>
+        {/* Phase 85 — Frame mode cascade carry-over. Mockup
+            mode'daki cascade buraya birebir taşınır, Frame canvas
+            dims'ine göre scale edilir. Selected slot active ring
+            (preview'da gizli); diğer slotlar Mockup mode'da olduğu
+            gibi z-order + rotation + drop-shadow chain ile
+            render. */}
+        {!isEmpty ? (
+          <div
+            data-testid="studio-stage-frame-cascade"
+            data-cascade-scale={cascadeScale.toFixed(2)}
+            style={{
+              position: "relative",
+              width: cascadeBaseW,
+              height: cascadeBaseH,
+              transform: `scale(${cascadeScale})`,
+              transformOrigin: "center center",
+              filter:
+                "drop-shadow(0 22px 44px rgba(0,0,0,0.22)) drop-shadow(0 8px 16px rgba(0,0,0,0.14))",
+            }}
+          >
+            {phones.map(({ si, x, y, w, h, r, z }) => {
+              const slot = slots[si];
+              if (!slot) return null;
+              const isActive = selectedSlot === si && !isPreview;
+              const isGhost = !slot.assigned && !isActive;
+              // Frame mode'da Mockup mode'la aynı palette/design
+              // gösterimi — slot atanmışsa onun design'ı, yoksa
+              // sample d1 fallback (operator-orientation için
+              // sahnenin boş kalmaması).
+              const designForSlot = slot.assigned
+                ? slot.design
+                : hasAnyAssignedSlot
+                  ? null
+                  : STUDIO_SAMPLE_DESIGNS.d1;
+              return (
+                <div
+                  key={si}
+                  style={{
+                    position: "absolute",
+                    left: x,
+                    top: y,
+                    zIndex: z,
+                    transform: `rotate(${r}deg)`,
+                    opacity: isGhost ? 0.32 : 1,
+                  }}
+                  data-testid={`studio-stage-frame-slot-${si}`}
+                  data-active={isActive ? "true" : "false"}
+                  data-ghost={isGhost ? "true" : "false"}
+                >
+                  {isActive ? (
+                    <div
+                      className="k-studio__slot-ring"
+                      data-on="true"
+                      style={{
+                        position: "absolute",
+                        inset: -6,
+                        pointerEvents: "none",
+                      }}
+                    />
+                  ) : null}
+                  <StageDeviceSVG
+                    kind={deviceKind}
+                    w={w}
+                    h={h}
+                    design={designForSlot}
+                    isEmpty={!designForSlot}
+                    idx={si}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
       {!isPreview ? (
         <div className="k-studio__frame-cap" data-testid="studio-stage-frame-cap">
@@ -294,6 +397,27 @@ function FrameComposition({
           >
             · {aspectCfg.deliverable}
           </span>
+          {/* Phase 85 — Continuity hint. Frame mode artık tüm cascade'i
+              taşıdığı için caption "From Cascade · {active slot name}"
+              sinyali verir. Operator için: stage'deki kompozisyonun
+              Mockup mode'dakiyle aynı olduğu ve hangi slot'un active
+              ring taşıdığı net görünür. */}
+          {designSource !== "empty" ? (
+            <span
+              style={{
+                marginLeft: 10,
+                opacity: 0.5,
+                fontStyle: "normal",
+              }}
+              data-testid="studio-stage-frame-source"
+              data-source={designSource}
+            >
+              ·{" "}
+              {designSource === "slot" && activeSlot
+                ? `Cascade · active ${activeSlot.name}`
+                : "Cascade · sample preview"}
+            </span>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -379,6 +503,8 @@ export function MockupStudioStage({
           isPreview={isPreview}
           deviceKind={deviceKind}
           frameAspect={frameAspect}
+          slots={slots}
+          selectedSlot={selectedSlot}
         />
       )}
 

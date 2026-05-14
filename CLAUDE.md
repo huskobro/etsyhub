@@ -16983,6 +16983,212 @@ Phase 86+ Canva-like composition evrimi doğal devam.
 
 ---
 
+## Phase 85 — Mockup ↔ Frame stage composition continuity (cascade carry-over)
+
+Phase 84 placement floor + ambient glow ile Mockup mode'a gerçek
+studio hissi kazandırdı, ama kritik bir continuity gap kaldı:
+**Mockup mode 3-slot cascade kompozisyonu Frame mode'a geçince
+tamamen kayboluyor + sample d1 hardcoded tek device bounded canvas
+içine düşüyordu**. Operatör için "iki ayrı sayfa / iki ayrı ürün"
+hissi.
+
+Phase 85 bu hissin kök nedenini **gerçek browser araştırması ile
+tespit etti** ve düzeltti: Shots.so + MockupViews'in canlı
+continuity sözleşmesi uygulandı — **stage composition mode-
+agnostic**, Mockup mode'daki cascade Frame mode'a birebir taşınır.
+
+### Gerçek browser araştırması (Shots.so primary)
+
+Shots.so canlı kullanıcı gibi gezildi (Templates picker overlay →
+media upload (KIVASY DEMO test asset) → Magic background swatch →
+Tilt tab → preset transformation → Mockup ↔ Frame mode switch →
+aspect picker → MEDIA hover top-center floating picker). Canlı
+kanıtlanmış canonical continuity sözleşmesi:
+
+| Element | Davranış | Mode-aware? |
+|---|---|---|
+| Toolbar | Templates, undo/redo, Start Over, Export · 1× · PNG | mode-AGNOSTIC |
+| Sol panel | Mockup: Screenshot template + Magic Preset + MEDIA + STYLE 8-tile + BORDER + SHADOW + Adjust Light. Frame: Default 16:9 + EFFECTS & WATERMARK + SCENE + BACKGROUND + Magic + Solid + Gradient + Glass + Cosmic | mode-aware swap |
+| **Stage composition** | Mockup → Frame geçişinde **birebir korunur** (asset + template wrap + tilted preset + Magic background hepsi taşınır) | **mode-AGNOSTIC** |
+| Sağ rail layout presets | Aynı kompozisyonun varyasyonları; **background değişince tüm thumbnails da o background ile yeniden render** | mode-aware preset set, asset-aware refresh |
+| Magic Preset | **Asset-aware thumbnail** — operator'ın yüklediği asset'in renkleriyle live preview | live preview |
+| Templates picker | Sol slide-in overlay, curated catalog (All/Image/Animated + Product promotion + Realistic Desktop + Shadow Overlays + iPhone Lineup) | büyük picker |
+| Top-center floating media picker | Hover MEDIA → stage'in üzerinde sticky thumbnail strip + "Add media" tile | non-blocking edit |
+| Aspect picker | Custom W/H input + gradient "+" + 9 aspect chip + Instagram preset family + Twitter | rich preset family |
+
+### MockupViews secondary research
+
+MockupViews Shots'un aynası gibi: aynı Mockup/Frame tab strip, aynı
+sol panel structure, **status bar bottom "Ready | Canvas: 1920×1920
+| Images: 1 active"** (Shots'da yok), **Text Elements** section
+(bizde yok), Border Radius 5-chip + Custom slider (Phase 73 paritesi),
+Adjust Light Direction dropdown. Layout: **Single / Dual / Triple**
+multi-instance composition rail.
+
+### Honest audit — Kivasy Studio vs Shots.so
+
+**En kritik continuity gap (canlı kanıtlanmış):**
+
+> Mockup mode 3-slot cascade kompozisyonu vardı (Front/Side/Back
+> View). Frame mode'a geçince **cascade kayboluyordu** ve hardcoded
+> `STUDIO_SAMPLE_DESIGNS.d1` ile tek device bounded canvas içinde
+> gösteriliyordu. Phase 85 WIP fix selected slot palette'i tek
+> device'a taşıyordu — ama **kompozisyonun kendisi (cascade structure)
+> mode-bağımlı** kalıyordu. Shots.so'da kompozisyon mode-agnostic:
+> operator Mockup → Frame'e geçince stage'deki KIVASY DEMO + tilted
+> preset + Magic background hepsi korundu — sadece sol panel
+> swap'lendi.
+
+### Phase 85 davranış düzeltmesi
+
+`MockupStudioStage.tsx` `FrameComposition` rewrite — tek-device
+yerine **tüm cascade** bounded frame canvas içine yerleşir:
+
+- **Frame canvas içinde cascade carry-over**: Mockup mode'daki aynı
+  `cascadeLayoutFor(deviceKind)` çağrısı + 572×504 inner stage +
+  per-slot z-order + rotation + drop-shadow chain birebir Frame
+  canvas içine taşınır.
+- **Aspect-aware scale**: `cascadeScale = Math.min(canvasW/572,
+  canvasH/504) × 0.94` — Frame canvas dims'e göre cascade
+  proporsiyonel olarak küçülür. 16:9 landscape'te tam görünür; 1:1
+  square'de kareye sığar (yan slotlar kısmen clipped — beklenen
+  presentation davranışı).
+- **Per-slot styling Mockup mode'la aynı**: assigned slot → palette
+  + design; ghost slot → opacity 0.32 + dim; active slot →
+  `k-studio__slot-ring` (preview'da gizli).
+- **Sample fallback sadece hiç slot atanmamışsa**: operator
+  orientation için STUDIO_SAMPLE_DESIGNS.d1 tüm slotlara uygulanır.
+  Aksi halde her slot kendi design'ını taşır.
+- **Caption continuity hint**: `Cascade · active {slot.name}` veya
+  `Cascade · sample preview`. designSource semantic'i de güncellendi:
+  "slot" (en az 1 assigned slot), "sample" (hiç assigned slot yok),
+  "empty" (sw="empty" explicit).
+- **Empty state korunur**: sw="empty" → cascade hiç render edilmez,
+  Frame canvas bounded sadece presentation surface.
+
+### Browser canlı kanıt (DOM eval)
+
+```
+Frame mode (1:1 aspect, 4-item clipart set):
+  shellMode: "frame"
+  frameCompExists: true
+  cascadeExists: true                            # Phase 85 yeni testid
+  cascadeScale: "0.54"                           # 1:1 aspect canvas scale
+  frameCanvasW × frameCanvasH: 326 × 326
+  frameSlotCount: 3                              # cascade carry-over
+  activeFrameSlot0: "true"                       # Front View active ring
+  frameDesignSource: "slot"                      # tüm slotlar assigned
+  captionText: "1080 × 1080 · 1:1 · Instagram
+    square · bundle card · Cascade · active
+    Front View"
+  sourceText: "· Cascade · active Front View"
+
+Mockup mode (geri dönüş):
+  shellMode: "mockup"
+  stageMockupSlots: 3                            # cascade aynı
+  activeSlotMockup: "true"                       # Phase 80 baseline intakt
+```
+
+Screenshot kanıtları:
+- Mockup mode baseline: 3-slot cascade (Front View active + 01
+  badge), placement floor + ambient glow, mode-specific layout
+  presets (Cascade/Centered/Mirror/Landscape/Fan/Stack)
+- Frame mode 16:9: **AYNI** 3-slot cascade bounded cream canvas
+  içinde scaled (Centered/Offset/Bleed/Angled/Duo/Story preset
+  set'i)
+- Frame mode 1:1: cascade kareye sığdı, Back View kısmen clipped
+  (beklenen), caption "1080 × 1080 · 1:1 · Instagram square · ..."
+- Mockup mode geri dönüş: cascade aynı pozisyon + aynı orange active
+  ring + sol panel object styling'e swap
+
+### Değişmeyenler (Phase 85)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek FrameComposition rewrite —
+  cascadeLayoutFor + StageDeviceSVG + slot-ring recipe reuse. Yeni
+  component, schema, endpoint, service yok.
+- **Mockup mode davranışı tam korundu** (Phase 77-84 baseline + Phase
+  80 slot picker + Phase 81 role chip + Phase 82 productType-aware +
+  Phase 83 frame aspect-aware + Phase 84 placement floor — hepsi
+  intakt).
+- **Slot assignment + render dispatch zinciri intakt** (Phase 80
+  per-slot picker + POST /api/mockup/jobs slotAssignments body +
+  Phase 79 real selection hydrate dokunulmadı).
+- **Phase 83 aspect-aware bounded canvas intakt** — Phase 85
+  cascadeScale aynı `computeFrameCanvasDims` üzerine kurulu.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy DS + Studio `--ks-*` namespace bozulmadı.**
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/mockup tests/unit/products tests/unit/selection
+  tests/unit/selections`: **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully (Studio route 14.5 kB →
+  15.2 kB, +700 bytes cascade carry-over)
+- Browser end-to-end: dev server üzerinde Mockup → Frame mode
+  geçişi + 1:1 aspect cascade scale-aware + caption continuity hint
+  + DOM testid kanıtları canlı doğrulandı
+
+### Bilinçli scope dışı (Phase 86+ candidate)
+
+Real browser research'te tespit edilen ama Phase 85'te ertelenen UX
+iyileştirmeleri (her biri ayrı turun konusu):
+
+- **Layout presets asset-aware refresh** — Shots.so'da background
+  değişince tüm preset thumbnails da o background ile yeniden render
+  ediliyor. Bizde preset thumbnails statik (PresetThumbMockup +
+  PresetThumbFrame deterministic palette). Operatör için **canlı
+  visual decision aid**; frontend-only SVG re-render ile çözülebilir.
+- **Top-center floating media picker** — Shots.so MEDIA hover →
+  stage'in üzerinde sticky thumbnail strip + "Add media" tile +
+  non-blocking medya değişimi. Bizde sol panel MEDIA section statik.
+  Phase 80 SlotAssignmentPanel pattern Studio sidebar'da; Phase 86'da
+  floating top picker olarak Studio center'a taşınabilir.
+- **Templates picker overlay** — Shots.so toolbar Templates butonu →
+  slide-in catalog. Bizde template card click → picker drawer yok.
+- **Magic Preset asset-aware thumbnail** — Shots.so'da Magic Preset
+  thumbnail operator asset'inin renklerini gösteriyor. Bizde sample.
+- **Frame aspect picker preset families** — Shots'da Instagram
+  (Post/Portrait/Story) + Twitter + Pinterest gibi platform-spesifik
+  preset family'ler. Bizde 5 aspect chip.
+- **Zoom / Tilt / Precision rail** — Bizde Phase 84'te Zoom/Tilt/
+  Precision 3-tab var ama Precision content boş. Shots.so'da Tilt →
+  Rotation slider canlı, Precision → Hold Shift for precision hint.
+- **Status bar bottom (MockupViews paterni)** — "Ready | Canvas:
+  1920×1920 | Images: 1 active" operator orientation. Bizde toolbar
+  status badge var ama bottom status bar yok.
+- **Text Elements (MockupViews)** — Sample preview overlay'inde
+  "SAMPLE DESIGN" mono caption var; operator gerçek text element
+  ekleyemiyor.
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 85 ile **stage composition continuity = Shots.so seviyesinde**:
+- Mockup → Frame geçişi artık "aynı çalışmanın presentation katmanı"
+  hissi
+- Cascade her iki modda korunur, aspect-aware Frame canvas içine
+  sığar
+- Caption operatöre hangi slot'un active olduğunu söyler
+
+Sıradaki en yüksek-impact adım **Phase 86 — Layout presets
+asset-aware refresh + Magic Preset operator-asset binding**:
+- PresetThumbMockup / PresetThumbFrame statik palette → operator
+  selectedSlot palette'i ile dinamik
+- Magic Preset thumbnail → first kept item palette
+- **Frontend-only**, backend pipeline değişmez, Phase 8 mockup render
+  dispatch + Phase 74 multi-slot backend dokunulmaz
+
+Bu, Shots.so'nun **canlı visual decision aid** davranışını Studio'ya
+getirir. Phase 87+ candidate: top-center floating media picker +
+Templates picker overlay + Precision rail wiring + bottom status bar.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
