@@ -156,10 +156,20 @@ export type MockupCategoryId = z.infer<typeof MockupCategorySchema>;
 // Spec §4.1 POST /api/mockup/jobs body — V2 enum (V1 hardcoded "canvas"
 // genişletildi; backward-compat: "canvas" hâlâ valid, diğer 7 kategori de
 // kabul edilir).
+//
+// Phase 80 — Optional `slotAssignments` (Studio-only): slot index →
+// SelectionItem id mapping. Boş veya yok ise Phase 8 baseline
+// pack-selection rotation. Var ise operator-driven Studio canonical
+// assignment (backend Phase 81+ pack-selection override için tüketir;
+// Phase 80'de log/audit seviyesinde geçer — schema kabul ediyor,
+// service Phase 81 candidate). Field yokken backward-compat sağlanır
+// (Apply view'ı, S3ApplyView submit body'si etkilenmez).
 export const CreateJobBodySchema = z.object({
   setId: z.string().min(1),
   categoryId: MockupCategorySchema,
   templateIds: z.array(z.string()).min(1).max(8),
+  /** Phase 80 — operator-driven slot → kept-item mapping (Studio). */
+  slotAssignments: z.record(z.string(), z.string()).optional(),
 });
 
 // Spec §4.8 POST /api/mockup/jobs/[jobId]/cover body

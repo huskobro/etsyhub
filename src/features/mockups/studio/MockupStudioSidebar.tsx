@@ -30,7 +30,12 @@ import {
   TinyPhone,
   type TinyPhoneStyle,
 } from "./svg-art";
-import type { StudioMode, StudioSlotMeta } from "./types";
+import type {
+  StudioKeptItem,
+  StudioMode,
+  StudioSlotAssignmentMap,
+  StudioSlotMeta,
+} from "./types";
 
 interface SectionLabelProps {
   children: React.ReactNode;
@@ -484,13 +489,65 @@ function MockupBody({
 }
 
 /* ─── Slot Footer (Mockup only) ─────────────────────────── */
+/* Phase 80 — Sidebar slot footer artık operator-driven slot
+ * assignment'ın canonical yüzeyi. Apply view'daki SlotAssignmentPanel
+ * UX paritesi (per-slot picker + Fill all / Clear all + fanout
+ * fallback caption) dark studio recipe'leriyle yeniden çizildi.
+ * Phase 76 panel hâlâ Apply view'da Quick pack akışı için canlı;
+ * Studio canonical authoring yüzeyi → bu footer. */
 interface SlotFooterProps {
   slots: ReadonlyArray<StudioSlotMeta>;
   selectedSlot: number;
   setSelectedSlot: (i: number) => void;
+  keptItems: ReadonlyArray<StudioKeptItem>;
+  slotAssignments: StudioSlotAssignmentMap;
+  onChangeSlotAssignments?: (next: StudioSlotAssignmentMap) => void;
 }
 
-function SlotFooter({ slots, selectedSlot, setSelectedSlot }: SlotFooterProps) {
+function SlotFooter({
+  slots,
+  selectedSlot,
+  setSelectedSlot,
+  keptItems,
+  slotAssignments,
+  onChangeSlotAssignments,
+}: SlotFooterProps) {
+  const primaryItem = keptItems[0];
+  const assignedCount =
+    Object.values(slotAssignments).filter(Boolean).length;
+
+  const assignSlot = (slotIdx: number, itemId: string | null) => {
+    if (!onChangeSlotAssignments) return;
+    const next = { ...slotAssignments };
+    if (itemId === null) {
+      delete next[slotIdx];
+    } else {
+      next[slotIdx] = itemId;
+    }
+    onChangeSlotAssignments(next);
+  };
+
+  const fillAllWithPrimary = () => {
+    if (!onChangeSlotAssignments || !primaryItem) return;
+    const next: StudioSlotAssignmentMap = {};
+    slots.forEach((_, i) => {
+      next[i] = primaryItem.id;
+    });
+    onChangeSlotAssignments(next);
+  };
+
+  const clearAll = () => {
+    if (!onChangeSlotAssignments) return;
+    onChangeSlotAssignments({});
+  };
+
+  const activeSlot = slots[selectedSlot];
+  const assignedItemId = slotAssignments[selectedSlot] ?? null;
+  const assignedItem =
+    assignedItemId !== null
+      ? keptItems.find((k) => k.id === assignedItemId) ?? null
+      : null;
+
   return (
     <div className="k-studio__sb-footer" data-testid="studio-sidebar-slot-footer">
       <div
@@ -504,19 +561,63 @@ function SlotFooter({ slots, selectedSlot, setSelectedSlot }: SlotFooterProps) {
         <span className="k-studio__lbl" style={{ marginBottom: 0 }}>
           Slots
         </span>
+        {assignedCount > 0 ? (
+          <span
+            style={{
+              fontFamily: "var(--ks-fm)",
+              fontSize: 9,
+              color: "var(--ks-or)",
+              padding: "0 5px",
+              height: 14,
+              display: "inline-flex",
+              alignItems: "center",
+              background: "var(--ks-ors)",
+              border: "1px solid var(--ks-orb)",
+              borderRadius: 3,
+              letterSpacing: "0.04em",
+            }}
+            data-testid="studio-sidebar-assignment-count"
+          >
+            {assignedCount} assigned
+          </span>
+        ) : null}
         <span className="k-studio__lbl-line" />
-        <button
-          type="button"
-          className="k-studio__tb-icon"
-          style={{ width: 18, height: 18, borderRadius: 4 }}
-          aria-label="Add slot"
-        >
-          <StudioIcon name="plus" size={9} color="var(--ks-t3)" />
-        </button>
+        {keptItems.length > 0 && primaryItem ? (
+          <>
+            <button
+              type="button"
+              className="k-studio__tb-icon"
+              style={{ height: 18, padding: "0 5px", fontSize: 9.5, gap: 3 }}
+              onClick={fillAllWithPrimary}
+              title="Assign primary kept item to all slots"
+              data-testid="studio-sidebar-slot-fill-all"
+            >
+              <StudioIcon name="sparkle" size={9} color="var(--ks-or)" />
+              Fill all
+            </button>
+            {assignedCount > 0 ? (
+              <button
+                type="button"
+                className="k-studio__tb-icon"
+                style={{ height: 18, padding: "0 5px", fontSize: 9.5 }}
+                onClick={clearAll}
+                title="Clear all slot assignments (revert to fanout)"
+                data-testid="studio-sidebar-slot-clear-all"
+              >
+                Clear
+              </button>
+            ) : null}
+          </>
+        ) : null}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
         {slots.map((sl, i) => {
           const on = selectedSlot === i;
+          const slotAssignedId = slotAssignments[i] ?? null;
+          const slotAssignedItem =
+            slotAssignedId !== null
+              ? keptItems.find((k) => k.id === slotAssignedId) ?? null
+              : null;
           return (
             <button
               key={sl.id}
@@ -525,11 +626,26 @@ function SlotFooter({ slots, selectedSlot, setSelectedSlot }: SlotFooterProps) {
               aria-pressed={on}
               onClick={() => setSelectedSlot(i)}
               data-testid={`studio-sidebar-slot-${i}`}
+              data-assigned={slotAssignedItem ? "true" : "false"}
             >
               <span className="k-studio__slot-pill-num">
                 {String(sl.id).padStart(2, "0")}
               </span>
-              {sl.assigned && sl.design ? (
+              {/* Phase 80 — Operator-driven assignment dot has priority
+                  over default sl.design colors (if assigned). */}
+              {slotAssignedItem ? (
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 2,
+                    flexShrink: 0,
+                    background: `linear-gradient(135deg,${slotAssignedItem.colors[0]},${slotAssignedItem.colors[1]})`,
+                    boxShadow: "0 0 0 1px var(--ks-or)",
+                  }}
+                  data-testid={`studio-sidebar-slot-${i}-assigned-dot`}
+                />
+              ) : sl.assigned && sl.design ? (
                 <span
                   style={{
                     width: 8,
@@ -549,6 +665,142 @@ function SlotFooter({ slots, selectedSlot, setSelectedSlot }: SlotFooterProps) {
           );
         })}
       </div>
+
+      {/* Phase 80 — Active slot inline picker. Operator selectedSlot
+          pill'i tıklayıp aktif yapar; aşağıda picker kept-item listesi
+          açılır (Phase 76 panel UX paritesi, dark studio recipe). */}
+      {keptItems.length > 0 && activeSlot ? (
+        <div
+          style={{
+            marginTop: 7,
+            padding: "8px 9px 9px",
+            background: "rgba(0,0,0,0.18)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: 8,
+          }}
+          data-testid="studio-sidebar-slot-picker"
+          data-active-slot={selectedSlot}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              marginBottom: 6,
+            }}
+          >
+            <span
+              style={{
+                fontFamily: "var(--ks-fm)",
+                fontSize: 9,
+                fontWeight: 500,
+                letterSpacing: "0.13em",
+                textTransform: "uppercase",
+                color: "var(--ks-t3)",
+              }}
+            >
+              Slot {String(selectedSlot + 1).padStart(2, "0")}
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                color: assignedItem ? "var(--ks-or)" : "var(--ks-t3)",
+                fontFamily: "var(--ks-fm)",
+              }}
+              data-testid="studio-sidebar-slot-picker-status"
+            >
+              {assignedItem
+                ? `→ ${assignedItem.label}`
+                : primaryItem
+                  ? `Fanout · ${primaryItem.label}`
+                  : "No kept items"}
+            </span>
+            {assignedItem ? (
+              <button
+                type="button"
+                style={{
+                  marginLeft: "auto",
+                  height: 16,
+                  padding: "0 5px",
+                  fontFamily: "var(--ks-fm)",
+                  fontSize: 9,
+                  background: "transparent",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 3,
+                  color: "var(--ks-t3)",
+                  cursor: "pointer",
+                }}
+                onClick={() => assignSlot(selectedSlot, null)}
+                data-testid="studio-sidebar-slot-picker-clear"
+                title="Revert this slot to fanout"
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 3,
+              maxHeight: 168,
+              overflowY: "auto",
+            }}
+          >
+            {keptItems.map((k) => {
+              const on = assignedItemId === k.id;
+              return (
+                <button
+                  key={k.id}
+                  type="button"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "5px 7px",
+                    background: on
+                      ? "var(--ks-ors)"
+                      : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${on ? "var(--ks-orb)" : "rgba(255,255,255,0.06)"}`,
+                    borderRadius: 5,
+                    color: on ? "var(--ks-or)" : "var(--ks-t2)",
+                    fontFamily: "var(--ks-fn)",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                  onClick={() => assignSlot(selectedSlot, on ? null : k.id)}
+                  aria-pressed={on}
+                  data-testid={`studio-sidebar-slot-picker-item-${k.id}`}
+                >
+                  <span
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: 3,
+                      flexShrink: 0,
+                      background: `linear-gradient(135deg,${k.colors[0]},${k.colors[1]})`,
+                      border: "1px solid rgba(255,255,255,0.1)",
+                    }}
+                  />
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {k.label}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "var(--ks-fm)",
+                      fontSize: 9,
+                      color: on ? "var(--ks-or)" : "var(--ks-t3)",
+                    }}
+                  >
+                    {k.dims}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -956,6 +1208,14 @@ export interface MockupStudioSidebarProps {
   templateName?: string | null;
   /** Phase 79 — real template slot count (multi-slot detection). */
   templateSlotCount?: number;
+  /** Phase 80 — kept items (selection set items[]) sidebar slot
+   *  picker dropdown'una verilir. */
+  keptItems?: ReadonlyArray<StudioKeptItem>;
+  /** Phase 80 — operator-driven slot → kept-item id mapping
+   *  (`null` veya eksik = fanout fallback). */
+  slotAssignments?: StudioSlotAssignmentMap;
+  /** Phase 80 — assignment change callback (Shell state taşır). */
+  onChangeSlotAssignments?: (next: StudioSlotAssignmentMap) => void;
 }
 
 export function MockupStudioSidebar({
@@ -966,6 +1226,9 @@ export function MockupStudioSidebar({
   setSelectedSlot,
   templateName,
   templateSlotCount,
+  keptItems,
+  slotAssignments,
+  onChangeSlotAssignments,
 }: MockupStudioSidebarProps) {
   void STUDIO_SAMPLE_DESIGNS; // imported for slot defaults usage in tests
   return (
@@ -1011,6 +1274,9 @@ export function MockupStudioSidebar({
           slots={slots}
           selectedSlot={selectedSlot}
           setSelectedSlot={setSelectedSlot}
+          keptItems={keptItems ?? []}
+          slotAssignments={slotAssignments ?? {}}
+          onChangeSlotAssignments={onChangeSlotAssignments}
         />
       ) : null}
     </aside>

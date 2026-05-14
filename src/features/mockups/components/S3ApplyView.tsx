@@ -210,19 +210,48 @@ export function S3ApplyView({ setId }: { setId: string }) {
           onToggleTemplate={packState.toggleTemplate}
         />
 
-        {/* Phase 76 — Multi-slot template seçildiğinde slot assignment panel
-            açılır. Operator slot başına farklı kept item atar. Single-slot
-            template'lerde hiç render edilmez. PSD import giriş Phase 77+
-            (PSDImportDialog). */}
+        {/* Phase 76 — Multi-slot template seçildiğinde slot assignment panel.
+         * Phase 80 demote: Studio (`/mockup/studio`) artık canonical
+         * slot-aware authoring yüzeyi (sidebar slot footer + inline
+         * picker + slot-mapped render dispatch). Apply view "Quick pack
+         * render orchestrator" rolüne çekildi — operatöre dürüst
+         * handoff: multi-slot edit istiyorsan Studio'ya çık. Panel
+         * hâlâ visible (Quick pack tek-tıkla render path fanout fallback),
+         * ama üstte Studio handoff hint banner ile rol netleştirilmiş. */}
         {multiSlotTemplate ? (
-          <SlotAssignmentPanel
-            slotCount={multiSlotTemplate.slotCount}
-            templateName={multiSlotTemplate.name}
-            keptItems={keptItemsForPanel}
-            assignments={slotAssignments}
-            onChange={setSlotAssignments}
-            onOpenPsdImport={undefined /* Phase 77 — PSDImportDialog wire */}
-          />
+          <>
+            <div
+              className="flex flex-wrap items-center gap-2 rounded-md border border-k-orange/30 bg-k-orange-soft/40 px-4 py-2.5 text-[12px] text-ink"
+              data-testid="apply-view-multi-slot-demote-hint"
+              role="note"
+            >
+              <span className="font-mono text-[10.5px] uppercase tracking-meta text-k-orange-ink">
+                Multi-slot template
+              </span>
+              <span className="text-ink-2">
+                Advanced slot-mapped authoring (per-slot picker, sticky
+                state, dispatch body) lives in
+              </span>
+              <a
+                href={`/selection/sets/${setId}/mockup/studio`}
+                className="font-mono text-[11px] font-semibold tracking-meta text-k-orange-ink hover:text-k-orange"
+                data-testid="apply-view-multi-slot-studio-link"
+              >
+                Mockup Studio →
+              </a>
+              <span className="ml-auto font-mono text-[10.5px] uppercase tracking-meta text-ink-3">
+                Quick pack here uses fanout fallback
+              </span>
+            </div>
+            <SlotAssignmentPanel
+              slotCount={multiSlotTemplate.slotCount}
+              templateName={multiSlotTemplate.name}
+              keptItems={keptItemsForPanel}
+              assignments={slotAssignments}
+              onChange={setSlotAssignments}
+              onOpenPsdImport={undefined /* Phase 77 — PSDImportDialog wire */}
+            />
+          </>
         ) : null}
       </div>
 

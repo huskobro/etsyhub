@@ -41,6 +41,11 @@ export const POST = withErrorHandling(async (req: Request) => {
     setId: parsed.data.setId,
     categoryId: parsed.data.categoryId,
     templateIds: parsed.data.templateIds,
+    // Phase 80 — Studio slot-mapped operator assignment (opsiyonel).
+    // Apply view (S3ApplyView submit) field'ı göndermez; backward-compat.
+    ...(parsed.data.slotAssignments
+      ? { slotAssignments: parsed.data.slotAssignments }
+      : {}),
   });
 
   // Spec §4.1: 202 Accepted — async job dispatch.

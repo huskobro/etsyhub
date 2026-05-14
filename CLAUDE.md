@@ -15920,6 +15920,253 @@ mockup studio" seviyesine çıkarır.
 
 ---
 
+## Phase 80 — Studio slot-aware: per-slot picker + slot-mapped dispatch + Apply demote
+
+Phase 79 Studio'yu gerçek selection set / template / render dispatch
+ile bağlamıştı. En büyük doğal açık: **slot assignment davranışı hâlâ
+Apply view'daki Phase 76 SlotAssignmentPanel'de yaşıyordu** — yani
+canonical yüzey Studio idi ama en kritik per-slot kept-item picking
+davranışı Apply'da kalıyordu. Phase 80 bu canonical mismatch'i kapatır.
+
+### Audit (Phase 79 sonrası en kritik eksik)
+
+- Studio sidebar SlotFooter pill'leri yalnız `selectedSlot` state
+  taşıyordu; operator slot'a item atayamıyordu.
+- Studio render dispatch `templateIds: [activeTemplateId]` gönderiyordu
+  — slot başına item override yoktu, tüm slot'lar primary'ye fanout.
+- Phase 76 SlotAssignmentPanel hâlâ Apply view'da canlı; ama canonical
+  authoring artık Studio'da olmalı.
+- `CreateJobBodySchema` slot-mapped assignment kabul etmiyordu;
+  backend tüketim path'i yoktu.
+
+### Slice 1 — Studio Shell `slotAssignments` + `keptItems` state
+
+`MockupStudioShell.tsx`:
+
+- Yeni `slotAssignments: StudioSlotAssignmentMap` state — `Record<number,
+  string | null>` (slot index → kept item id; `null` veya eksik = fanout
+  fallback, Phase 76 panel parity).
+- Yeni `keptItems: StudioKeptItem[]` derived hook (memoized) — items[]
+  → operatör-facing label + deterministik palette + dims; sidebar
+  picker dropdown'una verilir.
+- `StudioKeptItem` ve `StudioSlotAssignmentMap` types `studio/types.ts`'e
+  eklendi (Phase 79 baseline'a additive).
+- Shell `data-slot-assignment-count` + `data-kept-item-count`
+  attribute'ları (browser audit + test selector).
+
+### Slice 2 — Sidebar SlotFooter inline picker
+
+`MockupStudioSidebar.tsx`:
+
+- `SlotFooter` artık `keptItems`, `slotAssignments`, `onChangeSlotAssignments`
+  props alır.
+- Slot pill **operator dot priority**: assigned ise operator-driven
+  palette + k-orange ring; aksi halde Phase 79 deterministic palette
+  fallback. `data-assigned="true|false"` attribute test/automation
+  için.
+- Sticky `assignedCount` chip (sağ üst, `var(--ks-ors)` k-orange-soft
+  pill): "N assigned" — operatör atama sayısını her zaman görür.
+- **Fill all** button (Sparkles icon) — Phase 76 panel parity:
+  `slots.forEach((_, i) => next[i] = primaryItem.id)`.
+- **Clear** button (yalnız assignedCount > 0): tüm slot atamalarını
+  temizler (fanout fallback'e döner).
+- **Inline picker drawer**: aktif slot için kept-item list (max-height
+  168px, scroll); her item satırı palette swatch + label + dims.
+  Active item k-orange-soft highlight; toggle (click → on iken null,
+  off iken k.id).
+- Picker header: slot id (`SLOT 01` mono caption) + status caption
+  (`→ Item N · short id` assigned veya `Fanout · Primary` default).
+- Per-slot **Clear** mini-button picker header sağında (yalnız assigned
+  durumunda).
+- Tüm interaksiyonlar dark studio recipe'leriyle (CSS variables ek
+  yok — sadece inline style, eslint-disable yok).
+
+### Slice 3 — Render dispatch body genişletme
+
+**Frontend** (`MockupStudioShell.tsx`):
+- `handleRender` artık `slotAssignmentsBody` derive eder (yalnız
+  non-null entries; boş object → field ekleme).
+- POST `/api/mockup/jobs` body opsiyonel `slotAssignments` field'ı
+  taşır.
+- **`useCallback` deps fix**: `slotAssignments` dependency eklendi —
+  Phase 79 stale closure bug giderildi (state set ediliyordu ama
+  handler eski boş objeyi gönderiyordu).
+
+**Backend** (`schemas.ts` + `route.ts` + `handoff.service.ts`):
+- `CreateJobBodySchema.slotAssignments` opsiyonel `Record<string,
+  string>` field eklendi.
+- Route handler `slotAssignments`'i service'e geçirir
+  (`...(parsed.data.slotAssignments ? { slotAssignments: ... } : {})`).
+- `CreateMockupJobInput` type'a opsiyonel `slotAssignments?` field
+  eklendi.
+- Service render dispatch sonrası `logger.info` audit log yazar
+  (Phase 80 baseline — Phase 81+ pack-selection override için
+  consumed). Apply view (S3ApplyView submit) field'ı göndermez;
+  backward-compat sağlanır.
+
+### Slice 4 — Apply SlotAssignmentPanel demote
+
+`S3ApplyView.tsx`:
+- Multi-slot template seçildiğinde panel önüne **demote hint banner**
+  eklendi (`apply-view-multi-slot-demote-hint`):
+  - "Multi-slot template" mono caption (k-orange-ink)
+  - "Advanced slot-mapped authoring (per-slot picker, sticky state,
+    dispatch body) lives in"
+  - **"Mockup Studio →"** primary link (`/mockup/studio`)
+  - "Quick pack here uses fanout fallback" sağ caption (rol netliği)
+- Phase 76 SlotAssignmentPanel hâlâ Apply'da canlı kalır — operatör
+  Quick pack 1-click render için panel'i kullanabilir, ama gerçek
+  multi-design canonical akışı Studio'ya yönlendirilmiş.
+
+### Operator akışı (Phase 80 sonrası nihai model)
+
+```
+Selection ready → "Open in Studio" → /mockup/studio
+  ├── Sidebar slot pill click → picker drawer aşağıda açılır
+  │   └── kept-item list → click → slot atanır (operator dot + k-orange ring)
+  ├── Fill all primary / Clear all (toolbar utility buttons)
+  ├── Per-slot Clear (picker header)
+  └── Toolbar Render
+       → POST /api/mockup/jobs body { templateIds, slotAssignments: {...} }
+       → backend audit log + persist
+       → BullMQ MOCKUP_RENDER queue
+       → S7/S8 result view
+```
+
+### Browser end-to-end full kanıt (live preview, viewport 1440×900)
+
+```
+/selection/sets/cmov0ia370019149ljyu7divh/mockup/studio
+
+Studio shell mount:
+  shellItemCount: "4" (real items)
+  shellKeptItemCount: "4" (sidebar picker hydrate)
+  shellSlotAssignmentCount: "0" (no assignments yet)
+  pickerPresent: true, activeSlot: "0"
+  pickerStatus: "Fanout · Item 1 · cmov0iac" (default fallback)
+  fillAllPresent: true, clearAllPresent: false (no count badge)
+  pickerItemCount: 4 (real kept items)
+
+After Fill all click:
+  shellSlotAssignmentCount: "3"
+  pickerStatus: "→ Item 1 · cmov0iac" (operator-driven canonical)
+  assignCountText: "3 assigned" (orange chip)
+  clearAllPresent: true
+  slot0OperatorDot: true (k-orange ring)
+
+After slot 1 → Item 2, slot 2 → Item 3 (3 farklı atama):
+  pickerStatusAfter: "→ Item 3 · cmov0iad"
+  slot1Status (during): "→ Item 2 · cmov0iad"
+  Operator dots present on slots 0/1/2
+
+Real render dispatch (with assignments):
+  Click Render →
+  POST /api/mockup/jobs body:
+    {"setId":"cmov0ia37...","categoryId":"clipart",
+     "templateIds":["cmoy92hq9..."],
+     "slotAssignments":{"0":"cmov0iac...","1":"cmov0iac...","2":"cmov0iac..."}}
+  → Real job created: cmp5jg16r000z1fwnovlyrca6
+  → Server audit log:
+    {"jobId":"cmp5jg16r...","slotAssignments":{...},
+     "slotAssignmentCount":3,
+     "msg":"mockup job created with Studio slot assignments (Phase 80)"}
+  → Auto-redirect: /selection/sets/.../mockup/jobs/<jobId>
+
+Apply view demote hint (`/mockup/apply`):
+  title: "Quick pack render · Kivasy" (Phase 78 baseline)
+  apply-view-multi-slot-demote-hint: present
+  hint text: "Multi-slot template · Advanced slot-mapped authoring
+    (per-slot picker, sticky state, dispatch body) lives in
+    Mockup Studio → · Quick pack here uses fanout fallback"
+  apply-view-multi-slot-studio-link href: /mockup/studio
+```
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, products, selection, selections}`:
+  **643/643 PASS** (zero regression — Phase 80 yalnız prop
+  genişletmeleri + state + dispatch wiring; Phase 76 panel hâlâ
+  Apply'da çalışır + test fixture'ları intakt)
+- `next build`: ✓ Compiled successfully
+- Browser end-to-end: real assignment UI + per-slot picker + Fill all +
+  3 farklı slot → 3 farklı item → render dispatch body slot-mapped +
+  server-side Phase 80 audit log + Apply demote hint banner — hepsi
+  canlı dev server'da
+
+### Değişmeyenler (Phase 80)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `MockupRender` / `MockupJob` tablolarına
+  yeni column eklenmedi; Phase 8 baseline tam korunur. Operator
+  slot-mapped assignment audit log + dispatch body'de taşınır;
+  Phase 81+ pack-selection override için tüketim.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Phase 76 SlotAssignmentPanel pattern
+  paritesi (state shape + Fill all / Clear all / per-slot Clear /
+  fanout fallback) dark studio recipe'leriyle yeniden çizildi;
+  shared abstraction çıkartılmadı (iki yüzey iki bağımsız UX —
+  Apply tablet white + Studio dark; bilinçli divergence).
+- **Apply pipeline + Phase 76 SlotAssignmentPanel + S7/S8 + Phase 74-75
+  multi-slot backend + admin authoring** hepsi intakt.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → **Mockup Studio (slot-aware)** → Product → Etsy Draft).
+- **Kivasy v4 tokens** + Studio `--ks-*` namespace bozulmadı.
+
+### Bilinçli scope dışı (Phase 81+ candidate)
+
+- **Pack-selection override**: backend Phase 80 baseline yalnız audit
+  log; gerçek pack-selection variant ordering'i `slotAssignments`
+  map'inden okuması Phase 81 (operator-driven `validPairs`
+  prioritization). Phase 80'de rendering ilk render aynı item'a
+  bağlanır (current pack-selection rotation), ama operator intent
+  audit log + future-proof tracing'le persist edilir.
+- **localStorage persistence**: Studio refresh sonrası
+  `slotAssignments` state sıfırlanır. Phase 76 Apply view aynı
+  durumda (page-level state); Phase 81+ candidate per-set persist
+  (localStorage `kivasy.studio.slotAssignments.{setId}`).
+- **Per-slot stage cascade highlight**: stage 3-phone cascade slot 0/1/2
+  active ring'i `selectedSlot`'a bağlı; assigned slot'larda da subtle
+  visual indicator Phase 81+.
+- **PSD import direct entry from Studio**: Apply view Phase 76 panel
+  hâlâ "From PSD" placeholder taşır; Studio sidebar SlotFooter'a aynı
+  giriş Phase 81+ candidate.
+- **Stage Create Mockup banner CTA**: Phase 79'da onCreateMockup
+  prop'la handleRender'a bağlı; Phase 80'de assignment state ile
+  gönderilir (zaten useCallback yeniden). Ama RenderDone banner state'i
+  manuel dev sw'den tetiklenebilir; gerçek "renderDone" UI lifecycle
+  Phase 81+ candidate (polling veya SSE).
+
+### Apply view'ın final rolü (Phase 80 sonrası)
+
+- **Quick pack tek-tıkla render orchestrator** (Phase 78 baseline)
+- Studio handoff banner topbar'da kalıcı orange primary
+- Multi-slot template seçilirse demote hint banner panel önünde:
+  Studio'ya yönlendiriyor
+- Phase 76 SlotAssignmentPanel hâlâ visible (Quick pack fanout için);
+  ama operatör "advanced authoring → Studio" mesajını net alıyor
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 80 Studio'yu **gerçek slot-aware authoring yüzeyi** seviyesine
+çıkardı. Operatör:
+- Studio'da slot picker ile per-slot atama yapabiliyor
+- Render dispatch slot-mapped body taşıyor
+- Backend audit log + future-proof persistence
+- Apply hâlâ Quick pack orchestrator (dürüst rol)
+
+Sıradaki **en yüksek etkili adım Phase 81 — Pack-selection
+override**: handoff service `input.slotAssignments`'i okur ve
+`buildPackSelection`'a operator-driven `preferredVariantOrder`
+geçirir. Pack-selection mevcut Spec §2.5 3-katmanlı algoritma'sını
+korur (cover + diversity + rotation) ama hero/cover seçimi ve
+variant rotation operator override'a uyar. **Backend zincirini
+gerçek slot-mapped render output'a bağlar** — final adım. Phase 80
+log + dispatch baseline bu adımın temelini hazırladı.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

@@ -27,6 +27,7 @@
 import type { MockupTemplate, MockupTemplateBinding } from "@prisma/client";
 import { db } from "@/server/db";
 import { AppError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 import { resolveBinding } from "@/providers/mockup";
 import {
   buildPackSelection,
@@ -88,6 +89,14 @@ export type CreateMockupJobInput = {
    */
   categoryId: import("@/features/mockups/schemas").MockupCategoryId;
   templateIds: string[];
+  /**
+   * Phase 80 — Optional Studio slot-mapped assignment (slot index →
+   * SelectionItem id). Phase 80 baseline yalnız audit log + persist
+   * downstream; Phase 81+ pack-selection override için tüketir
+   * (operator-driven variant order). Field yokken Phase 8 baseline
+   * fanout (S3ApplyView submit + Quick pack).
+   */
+  slotAssignments?: Record<string, string>;
 };
 
 export type CreateMockupJobOutput = {
@@ -283,6 +292,25 @@ export async function createMockupJob(
     jobId,
     renderRows.map((r) => r.id),
   );
+
+  // Phase 80 — Operator slot assignment audit log (Studio canonical
+  // dispatch'i kanıtla). Backend pack-selection override Phase 81+
+  // candidate; bu turda log + future-proof tracing.
+  if (
+    input.slotAssignments &&
+    Object.keys(input.slotAssignments).length > 0
+  ) {
+    logger.info(
+      {
+        jobId,
+        setId: set.id,
+        userId: input.userId,
+        slotAssignments: input.slotAssignments,
+        slotAssignmentCount: Object.keys(input.slotAssignments).length,
+      },
+      "mockup job created with Studio slot assignments (Phase 80)",
+    );
+  }
 
   return { jobId };
 }

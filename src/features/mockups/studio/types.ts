@@ -29,3 +29,22 @@ export interface StudioSlotMeta {
     colors: readonly [string, string];
   } | null;
 }
+
+/* Phase 80 — Studio kept-item (selection item facade for sidebar
+ * picker). useSelectionSet items'tan türev — id + position + label +
+ * palette + dims. Phase 76 SlotAssignmentPanel `SlotAssignmentKeptItem`
+ * ile aynı role (Studio-native + dark recipe). */
+export interface StudioKeptItem {
+  id: string;
+  /** Operator-facing label (Item N · short id). */
+  label: string;
+  /** Deterministic palette for swatch dot. */
+  colors: readonly [string, string];
+  /** Asset dims (sourceAsset width×height) — operator orientation. */
+  dims: string;
+}
+
+/* Phase 80 — Slot index → kept-item id. `null` = fanout fallback
+ * (no assignment; pack-selection rotation'a düşer). Phase 76 panel
+ * `SlotAssignmentMap` parity. */
+export type StudioSlotAssignmentMap = Record<number, string | null>;

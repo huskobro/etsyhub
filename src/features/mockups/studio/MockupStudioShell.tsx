@@ -38,7 +38,9 @@ import { MockupStudioToolbar } from "./MockupStudioToolbar";
 import { studioPaletteForItem } from "./svg-art";
 import type {
   StudioAppState,
+  StudioKeptItem,
   StudioMode,
+  StudioSlotAssignmentMap,
   StudioSlotMeta,
 } from "./types";
 
@@ -91,6 +93,46 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     () => templates.find((t) => t.id === activeTemplateId) ?? null,
     [templates, activeTemplateId],
   );
+
+  /* Phase 80 — Slot-mapped assignment state (canonical Studio truth).
+   * Phase 76 SlotAssignmentPanel parity ama Studio sidebar-native:
+   * slot index → kept item id, `null` (veya eksik key) = fanout fallback.
+   * Render dispatch body bu mapping'i opsiyonel `slotAssignments`
+   * field'ında taşır; backend Phase 81+ pack-selection override için
+   * tüketir (Phase 80 baseline'da yalnız UI canonical + dispatch
+   * audit'inde görünür). */
+  const [slotAssignments, setSlotAssignments] =
+    useState<StudioSlotAssignmentMap>({});
+
+  /* Phase 80 — Kept items (selection set'in items[]'inden türev) Studio
+   * sidebar slot picker dropdown'una verilir. Phase 76 panel
+   * `SlotAssignmentKeptItem` parity. */
+  const keptItems: StudioKeptItem[] = useMemo(() => {
+    if (!items.length) return [];
+    return items
+      .slice()
+      .sort(
+        (a, b) =>
+          (a as { position?: number }).position! -
+          (b as { position?: number }).position!,
+      )
+      .map((item, idx) => {
+        const itemId = (item as { id: string }).id;
+        const sourceAsset = (
+          item as { sourceAsset?: { width?: number | null; height?: number | null } | null }
+        ).sourceAsset;
+        const dims =
+          sourceAsset?.width && sourceAsset?.height
+            ? `${sourceAsset.width}×${sourceAsset.height}`
+            : "—";
+        return {
+          id: itemId,
+          label: `Item ${idx + 1} · ${itemId.slice(0, 8)}`,
+          colors: studioPaletteForItem(itemId),
+          dims,
+        };
+      });
+  }, [items]);
 
   // Phase 79 — Slot meta'yı items'tan türet. Final HTML 3-slot cascade
   // (Front/Side/Back View) baseline'ını koruyoruz; gerçek item sayısı
@@ -160,6 +202,10 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       : realSlots;
 
   // Phase 79 — Real render dispatch.
+  // Phase 80 — Body opsiyonel `slotAssignments` taşır. Backend Zod
+  // schema'sı strict değil (mevcut `CreateJobBodySchema` extra field
+  // reddetmez; Zod default behavior); şu an audit/log seviyesinde
+  // canlı. Phase 81+ pack-selection override için tüketilir.
   const handleRender = useCallback(async () => {
     if (!activeTemplateId) {
       setRenderError("No template selected");
@@ -168,6 +214,13 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     setRenderError(null);
     setAppState("render");
     try {
+      // Phase 80 — Slot-mapped body. Boş `{}` veya all-null durumda
+      // backend baseline fanout (Phase 8 pack-selection). Operator
+      // override varsa key/value paritesi: slotIndex → keptItemId.
+      const slotAssignmentsBody: Record<string, string> = {};
+      for (const [k, v] of Object.entries(slotAssignments)) {
+        if (v) slotAssignmentsBody[k] = v;
+      }
       const res = await fetch("/api/mockup/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -175,6 +228,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           setId,
           categoryId,
           templateIds: [activeTemplateId],
+          ...(Object.keys(slotAssignmentsBody).length > 0
+            ? { slotAssignments: slotAssignmentsBody }
+            : {}),
         }),
       });
       if (!res.ok) {
@@ -189,7 +245,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       setAppState("working");
       setRenderError(err instanceof Error ? err.message : "Render failed");
     }
-  }, [setId, categoryId, activeTemplateId, router]);
+  }, [setId, categoryId, activeTemplateId, router, slotAssignments]);
 
   const backHref = `/selections/${setId}`;
   const templateLabel =
@@ -210,6 +266,10 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       data-set-id={setId}
       data-template-id={activeTemplateId ?? ""}
       data-item-count={items.length}
+      data-slot-assignment-count={
+        Object.values(slotAssignments).filter(Boolean).length
+      }
+      data-kept-item-count={keptItems.length}
     >
       <MockupStudioToolbar
         mode={mode}
@@ -233,6 +293,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           setSelectedSlot={setSelectedSlot}
           templateName={activeTemplate?.name ?? null}
           templateSlotCount={activeTemplate?.slotCount ?? 1}
+          keptItems={keptItems}
+          slotAssignments={slotAssignments}
+          onChangeSlotAssignments={setSlotAssignments}
         />
         <MockupStudioStage
           mode={mode}
