@@ -38,6 +38,34 @@ export const STUDIO_SAMPLE_DESIGNS = {
   },
 } satisfies Record<string, StudioDesign>;
 
+/* Phase 79 — Deterministik slot palette. Gerçek raw asset URL
+ * MinIO signed URL Phase 80+ pipeline'da gelecek; şu an item.id
+ * hash'inden 6 palet arasında deterministik seçim yapıyoruz —
+ * operatör aynı item'ı her açışında aynı renk kompozisyonunu
+ * görür. PhoneSVG `design.colors` shape'i ile birebir uyumlu. */
+const STUDIO_SLOT_PALETTES: ReadonlyArray<StudioDesignColors> = [
+  ["#F0E6D3", "#C49862"],
+  ["#D5E5F0", "#90B0C8"],
+  ["#E8D5C4", "#B8896A"],
+  ["#D8C8B0", "#8A6B45"],
+  ["#E4DDD1", "#A89878"],
+  ["#F0D8C8", "#C09080"],
+];
+
+function hashStringToIndex(input: string, modulo: number): number {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) {
+    h = (h * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return h % modulo;
+}
+
+/** Phase 79 — Deterministik palette resolver. */
+export function studioPaletteForItem(itemId: string): StudioDesignColors {
+  const idx = hashStringToIndex(itemId, STUDIO_SLOT_PALETTES.length);
+  return STUDIO_SLOT_PALETTES[idx]!;
+}
+
 /* ─── TinyPhone — style tile glyph ──────────────────────── */
 export type TinyPhoneStyle =
   | "default"

@@ -1,60 +1,54 @@
 "use client";
 
 /* Phase 77 — Studio shell composer.
+ * Phase 79 — Real selection set + template hydrate + render dispatch.
  *
- * Final HTML "App" component → MockupStudioShell:
- *   - mode state (Mockup / Frame) — sidebar tabs + dev sw
- *   - appState state (working / empty / preview / render / renderDone)
- *     — toolbar Edit/Preview + stage state surfaces + dev sw
- *   - selectedSlot state (mockup mode device cascade selection)
+ * Phase 77 baseline yalnız UI state'leri taşıyordu (sample WORKING_SLOTS
+ * hardcoded). Phase 79 ile shell gerçek ürün davranışlarına bağlandı:
  *
- * Bu bileşen yalnız UI state taşır. Render dispatch + selection set
- * binding'i Phase 78+ candidate; bu turda görsel state'ler yeterli
- * kanıt için yerinde.
+ *   - `useSelectionSet(setId)` ile operatörün gerçek SelectionSet detayı
+ *     (items[] + sourceAsset/editedAsset meta) hydrate edilir.
+ *   - Slot pills + stage cascade ilk 3 item üzerinden gerçek label +
+ *     deterministik renk üretir (raw asset URL Phase 80+).
+ *   - `useMockupTemplates({ categoryId })` ile gerçek template katalog
+ *     yüklenir; ilk ACTIVE template otomatik seçilir (selectedTemplateId
+ *     state). Toolbar template pill bu template'in adını gösterir.
+ *   - Toolbar Render butonu + Stage `Create Mockup` CTA artık gerçek
+ *     `POST /api/mockup/jobs` çağrısı yapar; başarılı dispatch sonrası
+ *     `/selection/sets/[setId]/mockup/jobs/[jobId]` (S7) yüzeyine
+ *     redirect olur. Hata durumunda appState `working`'e döner +
+ *     toolbar'da inline error mesajı.
+ *   - Frame mode "Coming soon" honest disclosure ile çerçevelendi —
+ *     gerçek output authoring Phase 80+ candidate (export pipeline +
+ *     bounded canvas background composite).
  *
  * Studio route entry: `/selection/sets/[setId]/mockup/studio`.
- * Apply route (`/mockup/apply`) ve admin yüzeyleri bozulmadan kalır.
+ * Apply route ve admin yüzeyleri intakt.
  */
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import "./studio.css";
+import { useSelectionSet } from "@/features/selection/queries";
+import { useMockupTemplates } from "@/features/mockups/hooks/useMockupTemplates";
 import { MockupStudioPresetRail } from "./MockupStudioPresetRail";
 import { MockupStudioSidebar } from "./MockupStudioSidebar";
 import { MockupStudioStage } from "./MockupStudioStage";
 import { MockupStudioToolbar } from "./MockupStudioToolbar";
-import { STUDIO_SAMPLE_DESIGNS } from "./svg-art";
-import type { StudioAppState, StudioMode, StudioSlotMeta } from "./types";
+import { studioPaletteForItem } from "./svg-art";
+import type {
+  StudioAppState,
+  StudioMode,
+  StudioSlotMeta,
+} from "./types";
 
 const SLOT_NAMES = ["Front View", "Side View", "Back View"];
 
-const WORKING_SLOTS: ReadonlyArray<StudioSlotMeta> = [
-  {
-    id: 1,
-    name: SLOT_NAMES[0]!,
-    assigned: true,
-    design: STUDIO_SAMPLE_DESIGNS.d1,
-  },
-  {
-    id: 2,
-    name: SLOT_NAMES[1]!,
-    assigned: true,
-    design: STUDIO_SAMPLE_DESIGNS.d2,
-  },
-  { id: 3, name: SLOT_NAMES[2]!, assigned: false, design: null },
-];
-
-const EMPTY_SLOTS: ReadonlyArray<StudioSlotMeta> = [
-  { id: 1, name: SLOT_NAMES[0]!, assigned: false, design: null },
-  { id: 2, name: SLOT_NAMES[1]!, assigned: false, design: null },
-  { id: 3, name: SLOT_NAMES[2]!, assigned: false, design: null },
-];
-
 export interface MockupStudioShellProps {
   /**
-   * Selection set id this studio session is anchored on. Phase 77 görsel
-   * yüzey: sadece toolbar back href ve operatöre context için kullanılır;
-   * gerçek selection items + template binding Phase 78+ candidate (Phase
-   * 75 backend zaten `RenderInput.designUrls[]` hazır).
+   * Selection set id this studio session is anchored on. Phase 79'da
+   * gerçek hydrate için React Query hook'una geçilir; SSR ownership
+   * check page'de zaten yapıldı (cross-user 404).
    */
   setId: string;
   /** Operator-friendly set name; toolbar template pill'inde gösterilir. */
@@ -62,20 +56,161 @@ export interface MockupStudioShellProps {
 }
 
 export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
+  const router = useRouter();
   const [mode, setMode] = useState<StudioMode>("mockup");
   const [appState, setAppState] = useState<StudioAppState>("working");
   const [selectedSlot, setSelectedSlot] = useState(0);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
-  const slots = appState === "empty" ? EMPTY_SLOTS : WORKING_SLOTS;
+  // Phase 79 — Real selection set hydrate.
+  const { data: set, isLoading: setLoading } = useSelectionSet(setId);
+
+  // Phase 79 — Real category resolve (V2 multi-category baseline parity:
+  // S3ApplyView.tsx:40 ile aynı pattern).
+  const items = set?.items ?? [];
+  const categoryId =
+    (items[0] as { productTypeKey?: string | null } | undefined)
+      ?.productTypeKey ?? "canvas";
+
+  // Phase 79 — Real template katalog hydrate.
+  const { data: templates = [], isLoading: templatesLoading } =
+    useMockupTemplates({ categoryId });
+
+  // İlk ACTIVE binding'i olan template'i otomatik seç. Operatör daha sonra
+  // template card'tan farklı template seçebilir (Phase 80+ picker drawer).
+  const defaultTemplateId = useMemo(() => {
+    const withBinding = templates.find((t) => t.hasActiveBinding);
+    return withBinding?.id ?? templates[0]?.id ?? null;
+  }, [templates]);
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
+    null,
+  );
+  const activeTemplateId = selectedTemplateId ?? defaultTemplateId;
+  const activeTemplate = useMemo(
+    () => templates.find((t) => t.id === activeTemplateId) ?? null,
+    [templates, activeTemplateId],
+  );
+
+  // Phase 79 — Slot meta'yı items'tan türet. Final HTML 3-slot cascade
+  // (Front/Side/Back View) baseline'ını koruyoruz; gerçek item sayısı
+  // 3'ten azsa kalan slot'lar boş kalır, 3'ten fazlaysa ilk 3 görünür
+  // (Phase 80+ candidate: multi-slot template + slot count > 3 desteği).
+  const realSlots: ReadonlyArray<StudioSlotMeta> = useMemo(() => {
+    if (!set) {
+      // No data yet — fall back to empty placeholder slot list (operatör
+      // loading state'i görür ama shell collapse olmaz).
+      return [
+        { id: 1, name: SLOT_NAMES[0]!, assigned: false, design: null },
+        { id: 2, name: SLOT_NAMES[1]!, assigned: false, design: null },
+        { id: 3, name: SLOT_NAMES[2]!, assigned: false, design: null },
+      ];
+    }
+
+    const sorted = items
+      .slice()
+      .sort(
+        (a, b) =>
+          (a as { position?: number }).position! -
+          (b as { position?: number }).position!,
+      );
+
+    return [0, 1, 2].map((i) => {
+      const item = sorted[i];
+      if (!item) {
+        return {
+          id: i + 1,
+          name: SLOT_NAMES[i]!,
+          assigned: false,
+          design: null,
+        };
+      }
+      const itemId = (item as { id: string }).id;
+      const colors = studioPaletteForItem(itemId);
+      const sourceAsset = (
+        item as { sourceAsset?: { width?: number | null; height?: number | null } | null }
+      ).sourceAsset;
+      const dims =
+        sourceAsset?.width && sourceAsset?.height
+          ? `${sourceAsset.width}×${sourceAsset.height}`
+          : "—";
+      return {
+        id: i + 1,
+        name: SLOT_NAMES[i]!,
+        assigned: true,
+        design: {
+          name: `Item ${i + 1} · ${itemId.slice(0, 8)}`,
+          dims,
+          colors,
+        },
+      };
+    });
+  }, [set, items]);
+
+  // appState === "empty" zorunlu boş — operatör state switcher'dan açıkça
+  // istemiş demek; gerçek items varsa yine empty davranışı korunur (Phase
+  // 77 dev sw parity).
+  const slots: ReadonlyArray<StudioSlotMeta> =
+    appState === "empty"
+      ? realSlots.map((s) => ({
+          ...s,
+          assigned: false,
+          design: null,
+        }))
+      : realSlots;
+
+  // Phase 79 — Real render dispatch.
+  const handleRender = useCallback(async () => {
+    if (!activeTemplateId) {
+      setRenderError("No template selected");
+      return;
+    }
+    setRenderError(null);
+    setAppState("render");
+    try {
+      const res = await fetch("/api/mockup/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          setId,
+          categoryId,
+          templateIds: [activeTemplateId],
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const message =
+          body?.error ?? body?.message ?? `HTTP ${res.status}`;
+        throw new Error(message);
+      }
+      const { jobId } = (await res.json()) as { jobId: string };
+      router.push(`/selection/sets/${setId}/mockup/jobs/${jobId}`);
+    } catch (err) {
+      setAppState("working");
+      setRenderError(err instanceof Error ? err.message : "Render failed");
+    }
+  }, [setId, categoryId, activeTemplateId, router]);
+
   const backHref = `/selections/${setId}`;
   const templateLabel =
     mode === "frame"
-      ? "Default 16:9"
-      : (setName?.trim() || "Hero Phone Bundle");
-  const statusLabel = mode === "frame" ? "1920×1080" : "Active";
+      ? "Frame · coming soon"
+      : (activeTemplate?.name ||
+          (setLoading || templatesLoading ? "Loading…" : "No template"));
+  const statusLabel =
+    mode === "frame"
+      ? "Phase 80+"
+      : (set?.name?.trim() || setName?.trim() || "Set");
 
   return (
-    <div className="k-studio" data-testid="studio-shell" data-mode={mode}>
+    <div
+      className="k-studio"
+      data-testid="studio-shell"
+      data-mode={mode}
+      data-set-id={setId}
+      data-template-id={activeTemplateId ?? ""}
+      data-item-count={items.length}
+    >
       <MockupStudioToolbar
         mode={mode}
         appState={appState}
@@ -83,6 +218,11 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
         templateLabel={templateLabel}
         statusLabel={statusLabel}
         backHref={backHref}
+        onRender={handleRender}
+        renderDisabled={
+          !activeTemplateId || setLoading || templatesLoading || mode === "frame"
+        }
+        renderError={renderError}
       />
       <div className="k-studio__body">
         <MockupStudioSidebar
@@ -91,6 +231,8 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           slots={slots}
           selectedSlot={selectedSlot}
           setSelectedSlot={setSelectedSlot}
+          templateName={activeTemplate?.name ?? null}
+          templateSlotCount={activeTemplate?.slotCount ?? 1}
         />
         <MockupStudioStage
           mode={mode}
@@ -99,13 +241,16 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           setSelectedSlot={setSelectedSlot}
           appState={appState}
           setAppState={setAppState}
+          onCreateMockup={handleRender}
         />
         <MockupStudioPresetRail mode={mode} appState={appState} />
       </div>
-      {/* Phase 77 dev/demo switcher — mode + state arasında geçiş yapılır.
-          UI design parity için final HTML'deki "sw" overlay'i; Phase 78
-          gerçek render pipeline bağlanınca kaldırılır veya admin-only
-          ops yardımcısına dönüşür. */}
+      {/* Phase 77 dev/demo switcher — Phase 79'da hâlâ mevcut: operatör
+          empty/preview/render UI'larını test edebilir. Gerçek render
+          (toolbar Render butonu) lifecycle Phase 79'da bağlandı; sw
+          burada yalnız görsel state'lere geçişi sağlar.
+          Phase 80+ adaylığında admin-only ops yardımcısına dönüştürülebilir
+          veya kaldırılabilir. */}
       <div className="k-studio__sw" data-testid="studio-state-switcher">
         <span className="k-studio__sw-lbl">MODE</span>
         <button

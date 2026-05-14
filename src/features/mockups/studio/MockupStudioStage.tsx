@@ -180,6 +180,9 @@ export interface MockupStudioStageProps {
   setSelectedSlot: (i: number) => void;
   appState: StudioAppState;
   setAppState: (next: StudioAppState) => void;
+  /** Phase 79 — render-done banner "Create Mockup" CTA + RenderDone /
+   *  re-render. Mockup pipeline POST /api/mockup/jobs trigger. */
+  onCreateMockup?: () => void;
 }
 
 export function MockupStudioStage({
@@ -189,6 +192,7 @@ export function MockupStudioStage({
   setSelectedSlot,
   appState,
   setAppState,
+  onCreateMockup,
 }: MockupStudioStageProps) {
   const isPreview = appState === "preview" || appState === "renderDone";
   const isRender = appState === "render";
@@ -265,6 +269,17 @@ export function MockupStudioStage({
             type="button"
             className="k-studio__render-action"
             data-primary="true"
+            onClick={() => {
+              if (mode === "frame") return;
+              if (onCreateMockup) onCreateMockup();
+            }}
+            disabled={mode === "frame" || !onCreateMockup}
+            data-testid="studio-stage-create-mockup"
+            title={
+              mode === "frame"
+                ? "Frame output — coming Phase 80+"
+                : "Render another mockup pack"
+            }
           >
             Create {mode === "frame" ? "Frame" : "Mockup"}
           </button>

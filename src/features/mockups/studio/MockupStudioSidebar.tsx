@@ -68,9 +68,18 @@ function SectionLabel({ children, badge }: SectionLabelProps) {
 interface MockupBodyProps {
   slots: ReadonlyArray<StudioSlotMeta>;
   selectedSlot: number;
+  /** Phase 79 — real template binding (useMockupTemplates hydrate). */
+  templateName?: string | null;
+  /** Phase 79 — real template slot count (multi-slot detection). */
+  templateSlotCount?: number;
 }
 
-function MockupBody({ slots, selectedSlot }: MockupBodyProps) {
+function MockupBody({
+  slots,
+  selectedSlot,
+  templateName,
+  templateSlotCount,
+}: MockupBodyProps) {
   const [shadow, setShadow] = useState<"none" | "spread" | "hug" | "adapt">(
     "spread",
   );
@@ -138,7 +147,9 @@ function MockupBody({ slots, selectedSlot }: MockupBodyProps) {
                 textOverflow: "ellipsis",
               }}
             >
-              Hero Phone Bundle
+              {/* Phase 79 — real template name (useMockupTemplates
+                  hydrate). Loading durumunda placeholder. */}
+              {templateName ?? "Loading template…"}
             </div>
             <div
               style={{
@@ -147,8 +158,13 @@ function MockupBody({ slots, selectedSlot }: MockupBodyProps) {
                 fontFamily: "var(--ks-fm)",
                 marginTop: 1.5,
               }}
+              data-testid="studio-sidebar-template-meta"
             >
-              3 slots · Active
+              {/* Phase 79 — real slot count (multi-slot template
+                  signal). N/A için "—". */}
+              {(templateSlotCount ?? 1) > 1
+                ? `${templateSlotCount} slots · Active`
+                : "1 slot · Active"}
             </div>
           </div>
           <StudioIcon name="chevD" size={10} color="rgba(255,255,255,0.28)" />
@@ -538,6 +554,11 @@ function SlotFooter({ slots, selectedSlot, setSelectedSlot }: SlotFooterProps) {
 }
 
 /* ─── Frame mode body ───────────────────────────────────── */
+/* Phase 79 — Honest disclosure: Frame mode preset/effects/scene/
+ * background controls visual-only durumda. Gerçek export pipeline
+ * (listing hero / social / storefront deliverable) Phase 80+ candidate.
+ * Operatöre dürüst sinyal: top banner + disabled state'leri title
+ * tooltip ile (Phase 80+ adayları). */
 function FrameBody() {
   const [effect, setEffect] = useState<"lens" | "portrait" | "watermark" | "bgfx">(
     "lens",
@@ -581,6 +602,59 @@ function FrameBody() {
 
   return (
     <div className="k-studio__sb-scroll">
+      {/* Phase 79 — Honest disclosure banner. Frame mode presets are
+          visual-only; real export pipeline (listing hero / social /
+          storefront output) Phase 80+ candidate. */}
+      <div
+        style={{
+          margin: "8px 9px 4px",
+          padding: "9px 10px",
+          borderRadius: 8,
+          background: "rgba(232,93,37,0.08)",
+          border: "1px solid rgba(232,93,37,0.22)",
+          color: "var(--ks-t2)",
+        }}
+        data-testid="studio-frame-coming-soon"
+        role="note"
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginBottom: 3,
+          }}
+        >
+          <span
+            style={{
+              display: "inline-block",
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: "var(--ks-or)",
+            }}
+            aria-hidden
+          />
+          <span
+            style={{
+              fontFamily: "var(--ks-fm)",
+              fontSize: 9.5,
+              fontWeight: 500,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "var(--ks-or)",
+            }}
+          >
+            Coming Phase 80+
+          </span>
+        </div>
+        <div style={{ fontSize: 11.5, lineHeight: 1.45, color: "var(--ks-t2)" }}>
+          Frame mode presents listing-hero / social presentation
+          authoring. Controls below are visual-only — real export
+          pipeline lands in Phase 80+.
+        </div>
+      </div>
+
       {/* Frame selector */}
       <div style={{ padding: "0 9px", marginTop: 5 }}>
         <div className="k-studio__tpl-card" data-stack="true">
@@ -878,6 +952,10 @@ export interface MockupStudioSidebarProps {
   slots: ReadonlyArray<StudioSlotMeta>;
   selectedSlot: number;
   setSelectedSlot: (i: number) => void;
+  /** Phase 79 — real template name (useMockupTemplates hydrate). */
+  templateName?: string | null;
+  /** Phase 79 — real template slot count (multi-slot detection). */
+  templateSlotCount?: number;
 }
 
 export function MockupStudioSidebar({
@@ -886,6 +964,8 @@ export function MockupStudioSidebar({
   slots,
   selectedSlot,
   setSelectedSlot,
+  templateName,
+  templateSlotCount,
 }: MockupStudioSidebarProps) {
   void STUDIO_SAMPLE_DESIGNS; // imported for slot defaults usage in tests
   return (
@@ -917,7 +997,12 @@ export function MockupStudioSidebar({
         </button>
       </div>
       {mode === "mockup" ? (
-        <MockupBody slots={slots} selectedSlot={selectedSlot} />
+        <MockupBody
+          slots={slots}
+          selectedSlot={selectedSlot}
+          templateName={templateName}
+          templateSlotCount={templateSlotCount}
+        />
       ) : (
         <FrameBody />
       )}

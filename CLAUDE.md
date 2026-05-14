@@ -15692,6 +15692,234 @@ authoring tamamen yerli — paid 3rd-party API ihtiyacı kalmadı).
 
 ---
 
+## Phase 79 — Studio shell'den gerçek ürün davranışına geçiş
+
+Phase 77+78 Studio dark shell'i kurmuş + canonical entry yapmıştı,
+ama içeriği hâlâ sample/dummy idi: WORKING_SLOTS hardcoded sample
+design'lar, Render butonu yalnız appState'i "render"a çekiyordu,
+template card "Hero Phone Bundle" hardcoded yazıyordu. Phase 79
+shell'i **gerçek selection set + template + render dispatch** ile
+bağladı.
+
+### Audit (Phase 78 sonrası dummy state'ler)
+
+1. **Slot data**: `WORKING_SLOTS` / `EMPTY_SLOTS` `STUDIO_SAMPLE_DESIGNS`
+   ile hardcoded (hero-front-v3 + app-screen-v2)
+2. **Render lifecycle**: toolbar Render → `setAppState("render")` UI-only
+3. **Template card**: "Hero Phone Bundle · 3 slots · Active" hardcoded
+4. **Toolbar template pill + status badge**: setName fallback yalnız
+   shell prop'undan (gerçek set adı yoktu, statik "Active")
+5. **Frame mode**: tüm preset/effect kontrolleri görsel-only; operatöre
+   ne çalıştığı belirsiz
+
+### Slice 1 — Real selection set hydrate
+
+`MockupStudioShell.tsx` artık `useSelectionSet(setId)` çağırıyor:
+
+- `set.items[]` gerçek `SelectionItemView[]` (Phase 7 hook payload —
+  review join + sourceAsset/editedAsset meta)
+- İlk 3 item Studio cascade'in `Front View / Side View / Back View`
+  slot'larına map edilir (final HTML 3-slot baseline korunur).
+- 3'ten az item varsa kalan slot'lar boş (ghost) görünür; 3'ten fazla
+  varsa ilk 3 (multi-slot template + slot count > 3 desteği Phase 80+
+  candidate).
+- Her item için `studioPaletteForItem(itemId)` deterministik palette
+  (6 renk arasında item.id hash) — gerçek MinIO signed URL Phase 80+
+  geldiğinde palette compositor'a göre değişir; bu turun seçimi
+  operatöre **tutarlı görsel kimlik** (aynı item'ı her açışta aynı
+  renkler).
+- Toolbar status badge artık `set.name` taşır (önceden hardcoded
+  "Active"); operatör hangi set üzerinde olduğunu net görür.
+
+### Slice 2 — Real template binding
+
+`useMockupTemplates({ categoryId })` çağrısı eklendi:
+
+- `categoryId` Apply pattern paritesiyle `items[0].productTypeKey ??
+  "canvas"`
+- `defaultTemplateId` resolver: `templates.find(t => t.hasActiveBinding)`
+  → otomatik seçim (operator Studio'ya girer girmez "boşa" düşmez)
+- `activeTemplate.name` toolbar template pill'inde gösterilir
+  (önceden "Hero Phone Bundle")
+- `activeTemplate.slotCount` sidebar template card meta satırında
+  ("9 slots · Active" vs "1 slot · Active")
+- `selectedTemplateId` state Phase 80+ template picker drawer için
+  hazır (şimdilik auto-default)
+
+### Slice 3 — Real render dispatch
+
+Toolbar Render butonu + Stage `Create Mockup` CTA artık `handleRender`:
+
+```ts
+POST /api/mockup/jobs
+body: { setId, categoryId, templateIds: [activeTemplateId] }
+→ on success: router.push(`/selection/sets/${setId}/mockup/jobs/${jobId}`)
+→ on failure: appState → "working" + renderError state
+```
+
+- Apply view (`S3ApplyView.tsx`) submit pattern paritesi — aynı
+  endpoint + aynı redirect target
+- `renderDisabled` state'i: `!activeTemplateId || setLoading ||
+  templatesLoading || mode === "frame"` — operatör Studio loading
+  iken veya Frame mode'da render butonunu tıklayamaz (disabled +
+  actionable title tooltip)
+- `renderError` inline toolbar'da `k-studio__tb-error` rose-tinted
+  pill ile gösterilir
+- Tüm pipeline real backend → BullMQ MOCKUP_RENDER job → worker →
+  S7/S8 result view (mevcut Phase 8 pipeline değişmedi)
+
+### Slice 4 — Frame mode honest disclosure
+
+Frame mode'da operatöre **dürüst sinyaller**:
+
+- Sidebar üst banner: k-orange-soft + accent dot + "Coming Phase 80+"
+  uppercase mono caption + "Frame mode presents listing-hero / social
+  presentation authoring. Controls below are visual-only — real
+  export pipeline lands in Phase 80+."
+- Toolbar template pill: `"Frame · coming soon"`
+- Toolbar status badge: `"Phase 80+"`
+- Render button: `disabled` + title "Frame mode render — coming
+  Phase 80+"
+- Export capsule: `disabled` + title "Frame export pipeline — coming
+  Phase 80+"
+- Mevcut frame UI (aspect chips + Effects & Watermark + Scene +
+  Background + Solid + Gradient + Glass NEW) **shell olarak görünür**
+  ama operatör hangi parçanın canlı, hangisinin Phase 80+ olduğunu
+  net biliyor.
+
+### Soft kalan parçalar (Phase 80+ bilinçli scope dışı)
+
+- **Mockup mode style/border/shadow controls**: client state mevcut,
+  ama recipe-applicator (Phase 70) çağrısı yok — gerçek render
+  output'una yansımıyor. Phase 80'de Studio Render dispatch
+  `recipe` field'ı opsiyonel olarak iletecek.
+- **Slot bazlı kept-item assignment**: Phase 76 SlotAssignmentPanel
+  Apply view'da hâlâ canlı; Studio sidebar'a entegrasyonu Phase 80+
+  candidate (slot pill click → drawer / popover ile per-slot item
+  picker).
+- **Template picker drawer**: `selectedTemplateId` state yerinde
+  ama UI yalnız auto-default. Phase 80+ Studio sidebar'a "template
+  card" click → S1BrowseDrawer-equivalent picker drawer.
+- **Stage gerçek asset thumbnails**: PhoneSVG `design.colors`
+  deterministik palette ile beslenir; gerçek MinIO signed URL'lere
+  bağlanması Phase 80+ (`sourceAsset.id` → `/api/storage/signed-url`
+  + lazy load).
+- **Asset list / Replace / Clear** (sidebar MEDIA section): görsel
+  state mevcut; operator manual asset replace Phase 80+ candidate
+  (Phase 76 SlotAssignmentPanel'in Studio'ya migration'ıyla
+  birlikte).
+- **Frame mode tüm controls**: Phase 80+ output pipeline (listing
+  hero / social presentation deliverable).
+- **Preset rail / zoom / tilt / precision**: Phase 80+ canvas
+  controls (operator preset'leri tıklayabilir ama composition
+  değişmez şu an).
+
+### Browser end-to-end full kanıt (live preview, viewport 1440×900)
+
+```
+/selection/sets/cmov0ia370019149ljyu7divh/mockup/studio
+
+Studio shell mount (real data):
+  shellSetId: "cmov0ia370019149ljyu7divh"
+  shellItemCount: "4" (gerçek 4-item SelectionSet)
+  shellTemplateId: "cmoy92hq900072cwe4bhv72eh"
+  templatePillText: "Bundle Preview · 9-up Grid" (real template name)
+  statusBadgeText: "pass57-mj-29689991" (real set name)
+  sidebarTemplateMeta: "9 slots · Active" (real slotCount from binding)
+  renderBtnDisabled: false
+  renderBtnText: "Render"
+  renderBtnTitle: "Render mockup pack"
+
+Real render dispatch:
+  Click Render button
+  → POST /api/mockup/jobs
+    body: {"setId":"cmov0ia370019149ljyu7divh","categoryId":"clipart",
+           "templateIds":["cmoy92hq900072cwe4bhv72eh"]}
+  → Server real job created: cmp5ia1zq000213ube6pciujg
+  → Auto-redirect: /selection/sets/.../mockup/jobs/<jobId>/result
+  → S8 result view canonical handoff (Phase 8 baseline)
+
+Frame mode honest disclosure:
+  Click Frame sidebar tab
+  shellMode: "frame"
+  templatePillText: "Frame · coming soon"
+  renderBtnDisabled: true + title "Frame mode render — coming Phase 80+"
+  exportBtnDisabled: true + title "Frame export pipeline — coming Phase 80+"
+  comingSoonPresent: true
+  comingSoonText: "Coming Phase 80+ · Frame mode presents listing-hero
+    / social presentation authoring. Controls below are visual-only —
+    real export pipeline lands in Phase 80+."
+```
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/mockup tests/unit/products tests/unit/selection
+  tests/unit/selections`: **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully (Studio route 14.5 kB; Apply
+  route 24.4 kB)
+- Browser end-to-end: real selection set hydrate + real template
+  binding + real render dispatch + S8 result redirect + Frame mode
+  honest disclosure — hepsi canlı dev server'da
+
+### Değişmeyenler (Phase 79)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız Studio shell + sub-components
+  prop genişletmeleri + dispatch wiring + honest disclosure copy.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Apply view `handleSubmit` pattern
+  paritesi (POST /api/mockup/jobs + redirect); yeni hook /
+  service / endpoint açılmadı. `studioPaletteForItem` helper
+  svg-art.tsx içinde (file-level eslint-disable parity).
+- **Apply route + Phase 76 SlotAssignmentPanel + S7/S8 result view +
+  admin authoring + multi-slot backend** intakt.
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → **Mockup Studio** → Product → Etsy Draft).
+- **Kivasy v4 tokens (`--k-*`) bozulmaz.** `--ks-*` Studio dark
+  namespace yerinde; `k-studio__tb-error` Phase 79 yeni recipe.
+- **3. taraf mockup API path** ana akışa girmedi; self-hosted
+  pipeline tek canonical.
+
+### Bilinçli scope dışı (Phase 80+ candidate)
+
+- **Phase 80 — Slot assignment Studio entegrasyonu**: Phase 76
+  SlotAssignmentPanel pattern Studio sidebar/stage'e taşınır;
+  slot pill click → per-slot kept-item picker; render dispatch
+  body'sine slotDesigns (Phase 75 designUrls[]) eklenir
+- **Phase 80 — Template picker drawer**: Studio sidebar template
+  card click → S1BrowseDrawer-equivalent (ownership-aware tab
+  strip + filter + ACTIVE binding)
+- **Phase 80 — Recipe wiring**: style/border/shadow controls →
+  recipe-applicator (Phase 70) çağrısı; render output'una gerçek
+  blend + shadow yansır
+- **Phase 81 — Frame mode output pipeline**: listing hero / social
+  presentation deliverable; Sharp composite + export PNG/JPG +
+  Product detail entegrasyonu
+- **Phase 82 — Studio gerçek asset thumbnails**: PhoneSVG deterministik
+  palette → MinIO signed URL (lazy load + cache)
+- **Phase 83 — Apply view sadeleşme**: Studio tam taşındıktan
+  sonra Apply view yalnız Quick pack tek-tıkla render kalır
+- **Phase 84 — dynamic-mockups deprecation karar**: self-hosted
+  pipeline tüm authoring + render + multi-slot capability'sini
+  karşılıyor; paid 3rd-party API ihtiyacı yok
+
+### Bundan sonra Mockup Studio için en doğru sonraki adım
+
+Phase 79 Studio'yu **gerçek üretim yüzeyi** haline getirdi:
+- Operator gerçek set'inde çalıştığını görsel olarak doğrular
+- Render butonuna basınca gerçek backend job tetikleniyor
+- Frame mode honest disclosure ile operatör tereddüt etmiyor
+
+Sıradaki **en yüksek etkili adım Phase 80 — Slot Assignment Studio
+entegrasyonu**: operatör Studio'da hangi item'ın hangi slot'a
+gideceğini Phase 76 SlotAssignmentPanel pattern'ı ile seçer;
+render dispatch body'sine `slotDesigns` eklenir; backend Phase 75
+zaten kabul ediyor (designUrls[]). Bu, Studio'yu "gerçek slot-aware
+mockup studio" seviyesine çıkarır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

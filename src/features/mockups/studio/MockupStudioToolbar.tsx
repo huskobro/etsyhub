@@ -1,17 +1,20 @@
 "use client";
 
 /* Phase 77 — Studio toolbar.
+ * Phase 79 — Real render dispatch wire.
  *
  * Final HTML "DarkToolbar" → dark studio chrome (38px). Soldan sağa:
  *   - back glyph + brand mark + breadcrumb + template/frame pill
- *     + status badge (Active / 1920×1080)
+ *     + status badge (set name / "Phase 80+")
  *   - spacer
  *   - undo/redo cluster + Start Over + expand
  *   - Edit / Preview mode tabs
  *   - eye / Saved / Render / Export capsule
  *
- * Phase 77 scope: görsel chrome shell. Render button local UI state
- * tetikler; gerçek render dispatch Phase 78+ candidate.
+ * Phase 79: Render button artık `onRender` callback'i alır (Phase 77'de
+ * yalnız appState'i "render"a çekiyordu). MockupStudioShell `onRender`
+ * gerçek `POST /api/mockup/jobs` çağrısı yapar + S7 redirect uygular.
+ * Frame mode'da disabled + dürüst "Phase 80+" rozeti.
  */
 
 import { StudioBrandMark, StudioIcon } from "./icons";
@@ -24,6 +27,12 @@ export interface MockupStudioToolbarProps {
   templateLabel: string;
   statusLabel: string;
   backHref: string;
+  /** Phase 79 — real render dispatch callback. */
+  onRender?: () => void;
+  /** Phase 79 — render disabled (no template / loading / frame mode). */
+  renderDisabled?: boolean;
+  /** Phase 79 — inline error message (last render dispatch failure). */
+  renderError?: string | null;
 }
 
 export function MockupStudioToolbar({
@@ -33,8 +42,12 @@ export function MockupStudioToolbar({
   templateLabel,
   statusLabel,
   backHref,
+  onRender,
+  renderDisabled,
+  renderError,
 }: MockupStudioToolbarProps) {
   const isEdit = appState === "working" || appState === "empty";
+  const isRendering = appState === "render";
   return (
     <div className="k-studio__toolbar" data-testid="studio-toolbar">
       <div className="k-studio__tb-left">
@@ -129,16 +142,46 @@ export function MockupStudioToolbar({
         type="button"
         className="k-studio__tb-icon"
         data-wide="true"
-        onClick={() => setAppState("render")}
+        onClick={() => {
+          if (renderDisabled || isRendering) return;
+          if (onRender) onRender();
+          else setAppState("render");
+        }}
+        disabled={renderDisabled || isRendering}
         data-testid="studio-toolbar-render"
+        data-render-disabled={renderDisabled ? "true" : "false"}
+        title={
+          renderError
+            ? `Last render failed: ${renderError}`
+            : renderDisabled
+              ? mode === "frame"
+                ? "Frame mode render — coming Phase 80+"
+                : "Loading or no template selected"
+              : "Render mockup pack"
+        }
       >
         <StudioIcon name="retry" size={11} />
-        Render
+        {isRendering ? "Rendering…" : "Render"}
       </button>
+      {renderError ? (
+        <span
+          className="k-studio__tb-error"
+          data-testid="studio-toolbar-render-error"
+          role="alert"
+        >
+          {renderError}
+        </span>
+      ) : null}
       <button
         type="button"
         className="k-studio__export-cap"
         data-testid="studio-toolbar-export"
+        disabled={mode === "frame"}
+        title={
+          mode === "frame"
+            ? "Frame export pipeline — coming Phase 80+"
+            : "Export · 1× · PNG"
+        }
       >
         <StudioIcon name="upload" size={11} />
         Export · 1× · PNG

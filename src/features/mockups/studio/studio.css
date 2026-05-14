@@ -164,6 +164,24 @@
   background: #4CAF77;
   display: inline-block;
 }
+/* Phase 79 — inline render error message (toolbar). */
+.k-studio__tb-error {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 4px;
+  font-family: var(--ks-fm);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  background: rgba(179, 59, 41, 0.18);
+  border: 1px solid rgba(179, 59, 41, 0.32);
+  color: rgba(255, 170, 160, 0.92);
+  max-width: 280px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* Export capsule (toolbar + rail) */
 .k-studio__export-cap {
