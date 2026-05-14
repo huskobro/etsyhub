@@ -97,34 +97,27 @@ function resolvePlateBackground(
  * stage'i shrink/grow yapmaz, sadece export hint). Plate bu kontratı
  * korur. */
 function plateDimensionsFor(
-  mode: StudioMode,
-  frameAspect: FrameAspectKey,
+  _mode: StudioMode,
+  _frameAspect: FrameAspectKey,
 ): { w: number; h: number } {
-  /* Phase 92 — Visual parity correction:
-   * Phase 91 baseline 780×560 max ile plate stage'in neredeyse
-   * tamamını kaplıyordu (CSS max-width 92% / max-height 88%
-   * birlikte). Stage padding alanı çok dar kalıyor, plate↔stage
-   * ayrımı yetersiz görünüyordu. Phase 92'de plate base dimensions
-   * 700×500'e küçültüldü + CSS max %82/%78. Stage padding genişler,
-   * plate net sınırlı. Shots gerçekten ~%75/%70 — Kivasy %82/%78
-   * Kivasy-superior rafine (plate ana subject ama operator için
-   * agresif değil). */
-  const maxW = 700;
-  const maxH = 500;
-  if (mode === "mockup") {
-    // Mockup default 4:3 — Shots Frame default + Kivasy canonical
-    // mockup plate (cascade horizontal landscape).
-    return { w: maxW, h: Math.round(maxW * 0.75) }; // 700 × 525
-  }
-  // Frame mode: aspect-aware bbox fit
-  const cfg = FRAME_ASPECT_CONFIG[frameAspect];
-  const ratio = cfg.ratio;
-  // ratio = w/h
-  const fitByWidth = { w: maxW, h: Math.round(maxW / ratio) };
-  const fitByHeight = { w: Math.round(maxH * ratio), h: maxH };
-  // pick the option that fits both
-  if (fitByWidth.h <= maxH) return fitByWidth;
-  return fitByHeight;
+  /* Phase 92 — Plate dimensions 700×525 (4:3) max + CSS %82/%78.
+   *
+   * Phase 93 — Mode-AGNOSTIC + aspect-AGNOSTIC plate (Shots.so
+   * parity bugfix):
+   * Phase 83/91/92 baseline aspect-aware bbox-fit ile Frame mode'a
+   * geçince plate dimensions değişiyordu (örn. 16:9 → 700×440).
+   * Kullanıcı bug #6 + #12: "Mockup ↔ Frame geçişlerinde sahnenin
+   * boyutu küçülüyor", "Frame stage küçülünce elementler kaybolabiliyor".
+   * Shots.so gerçek browser araştırması: Frame mode'a geçince plate
+   * dimensions DEĞİŞMEZ — aspect bilgisi yalnız caption + export
+   * dimensions hint olarak yaşar; plate stage-fit container olarak
+   * stable kalır.
+   *
+   * Phase 93'te plate her zaman 700×525 (4:3) — mode ve aspect
+   * argümanları kabul edilir ama dimensions'a etkisi yok. Frame
+   * aspect caption (Phase 83) ve toolbar status badge (Phase 83)
+   * hâlâ aspect bilgisini taşır; cascade ve plate sabit. */
+  return { w: 700, h: 525 };
 }
 
 interface MockupCompositionProps {

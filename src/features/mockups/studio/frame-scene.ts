@@ -90,7 +90,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-/** Phase 89 — Scene resolver. Phase 90 — Visual parity tune-up.
+/** Phase 89 — Scene resolver. Phase 90/93 — Visual parity tune-up.
  *
  * Operator'ın sceneOverride'ına göre Stage CSS custom properties
  * için warm/deep tone değerlerini hesaplar. Auto mode'da activePalette'e
@@ -101,19 +101,20 @@ function hexToRgba(hex: string, alpha: number): string {
  *   - deep = scene'in dominant vignette anchor katmanı (radial
  *     sağ alt)
  *
- * Phase 90 alpha curve (Shots.so visual parity correction):
- * Pre-Phase 90 (Phase 88-89) auto-mode alpha 0.10 / 0.55 ile
- * stage'in %50+'sı dark void görünüyordu — operatör "sahne
- * içindeyim" hissini sadece corner'larda alıyordu. Shots.so vibrant
- * Magic background ile karşılaştırınca scene effect "barely
- * perceptible" durumdaydı. Phase 90'da alpha'lar Kivasy-superior
- * balance'ında yükseldi: Shots'tan ~%60-70 saturation (rafine ama
- * görsel olarak okunabilir).
+ * Phase 93 alpha curve (Shots.so parity bugfix — unwanted glow):
+ * Phase 91'de plate eklendikten sonra plate ana subject oldu;
+ * scene plate'in ALTINDA değil **plate'in DIŞINDAKİ dark padding
+ * alanında** kalıyor. Phase 90'daki vivid auto alpha (0.22/0.82)
+ * plate kenarına renkli halo yaratıyor — Shots.so'da plate
+ * dışındaki padding pure dark, renkli glow YOK. Phase 93'te
+ * padding scene alpha'sı drastik düştü; plate ana subject olarak
+ * yalnız kendi bg'sini taşır.
  *
  * Alpha curve mode'a göre:
- *   - auto: 0.22 / 0.82 (Phase 88 subtle 0.10/0.55 → vivid yet refined)
- *   - solid: 0.06 / 0.92 (operator tek renk istedi, dominant)
- *   - gradient: 0.28 / 0.88 (two-tone vivid; Magic preset parity)
+ *   - auto: 0.06 / 0.18 (plate dışı padding pure dark; subtle hint)
+ *   - solid: 0.04 / 0.10 (operator tek renk istedi ama plate çoktan
+ *     bu rengi taşıyor; padding minimal echo)
+ *   - gradient: 0.06 / 0.16 (two-tone padding echo, çok sakin)
  */
 export function resolveSceneStyle(
   override: SceneOverride,
@@ -122,22 +123,22 @@ export function resolveSceneStyle(
   if (override.mode === "auto") {
     if (!activePalette) return undefined; // Phase 88 CSS fallback
     return {
-      warm: hexToRgba(activePalette[0], 0.22),
-      deep: hexToRgba(activePalette[1], 0.82),
+      warm: hexToRgba(activePalette[0], 0.06),
+      deep: hexToRgba(activePalette[1], 0.18),
     };
   }
   if (override.mode === "solid") {
     if (!override.color) return undefined;
     return {
-      warm: hexToRgba(override.color, 0.06),
-      deep: hexToRgba(override.color, 0.92),
+      warm: hexToRgba(override.color, 0.04),
+      deep: hexToRgba(override.color, 0.10),
     };
   }
   // gradient
   if (!override.color || !override.colorTo) return undefined;
   return {
-    warm: hexToRgba(override.color, 0.28),
-    deep: hexToRgba(override.colorTo, 0.88),
+    warm: hexToRgba(override.color, 0.06),
+    deep: hexToRgba(override.colorTo, 0.16),
   };
 }
 

@@ -42,8 +42,17 @@
 
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 100vh;
+  /* Phase 93 — Shots.so parity scroll lock:
+   * Phase 77 baseline `min-height: 100vh` ile body scroll'una izin
+   * veriyordu — sayfa scroll edildiğinde toolbar kayboluyor, stage
+   * yukarı kayıyor, rail position bozuluyordu. Shots.so'da scroll
+   * yalnız sol panel kendi içinde olur; toolbar + stage + rail
+   * sabit kalır. Phase 93'te root height: 100dvh + overflow: hidden
+   * → sayfa scroll'u kilitlenir; iç katmanlar (sidebar scroll, rail
+   * scroll) zaten kendi scroll alanlarını taşıyor. */
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
   background: var(--ks-sh);
   color: var(--ks-t1);
   font-family: var(--ks-fn);
@@ -482,11 +491,20 @@
   position: absolute;
   pointer-events: none;
   z-index: 0;
-  width: 56%;
-  height: 70%;
-  left: 10%;
-  top: 12%;
-  background: radial-gradient(ellipse at 38% 48%, rgba(232, 93, 37, 0.065) 0%, rgba(180, 80, 30, 0.028) 42%, transparent 68%);
+  /* Phase 93 — Shots.so parity unwanted glow cleanup:
+   * Phase 84 ambient glow Phase 91 plate üstüne taşıyor + plate
+   * dışına orange halo bırakıyordu (kullanıcı bug #4, #9 — stage
+   * sağ/alt unwanted glow). Shots.so'da stage padding'de renkli
+   * glow YOK; plate kenarında yalnız drop shadow var. Phase 93'te
+   * ambient glow plate altında ufak warm core olarak kalır
+   * (composition spotlight illusion); plate dışına taşmaz.
+   * Alpha 0.065 → 0.018; size 56%×70% → 28%×36%; konumu plate
+   * center'a yakın. */
+  width: 28%;
+  height: 36%;
+  left: 36%;
+  top: 32%;
+  background: radial-gradient(ellipse at 50% 50%, rgba(232, 93, 37, 0.018) 0%, rgba(180, 80, 30, 0.008) 50%, transparent 75%);
 }
 
 /* Phase 84 — Placement floor (Mockup mode only).

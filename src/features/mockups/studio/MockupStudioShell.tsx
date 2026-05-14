@@ -313,14 +313,20 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
    *
    * Bizde: selected slot assigned ise onun design.colors palette'i
    * Sidebar (Magic Preset) + PresetRail (Mockup/Frame preset
-   * thumbnails) + Rail head live thumb'a iner. Selected slot
-   * assigned değilse → ilk assigned slot'un palette'i (operator
-   * yine de gerçek asset paletini görür). Hiç assigned slot yoksa
-   * undefined (preset thumbs Phase 77 baseline statik dark rendering
-   * + Magic Preset thumb k-orange fallback). */
+   * thumbnails) + Rail head live thumb'a iner. Hiç assigned slot
+   * yoksa undefined (preset thumbs Phase 77 baseline statik dark
+   * rendering + Magic Preset thumb k-orange fallback).
+   *
+   * Phase 93 — Selection-stable plate bg (Shots.so parity bugfix):
+   * Phase 86-92'de activePalette = selectedSlot.design.colors idi;
+   * her slot click plate bg'i değiştiriyordu — kullanıcı bug #3
+   * "Front/Side/Back arasında geçince arka planda farklılık".
+   * Shots.so'da slot tıklamak plate bg'sini değiştirmez (plate
+   * scene'i operator-driven via Magic Preset / Frame swatch
+   * controls, slot selection-stable). Phase 93'te activePalette
+   * = İLK assigned slot'un palette'i (selection-stable) —
+   * operator slot'lar arasında geçince plate stable kalır. */
   const activePalette = (() => {
-    const sel = slots[selectedSlot];
-    if (sel?.assigned && sel.design) return sel.design.colors;
     const firstAssigned = slots.find((s) => s.assigned && s.design);
     return firstAssigned?.design?.colors;
   })();

@@ -18654,6 +18654,227 @@ surface" rolünün tam ürünleştirilmesi.
 
 ---
 
+## Phase 93 — Shots.so parity bugfix turu (page-scroll lock + glow cleanup + slot-stable plate + mode-AGNOSTIC dimensions)
+
+Phase 92'ye kadar Studio yapısal kararları (canonical shell, mode
+continuity, visible plate, scene state, rail parity) verilmişti.
+Phase 93 **feature turu değil** — kullanıcının somut bug listesini
+gerçek-browser Shots.so karşılaştırmasıyla doğrulayıp en yüksek-impact
+root cause fix'leri tek turda uygulayan **parity bugfix turu**.
+
+### Gerçek browser araştırması (Shots.so live, viewport 1331×924)
+
+Shots.so'da yapılan canlı davranış testleri:
+
+1. **Panel scroll**: Sol panel kendi içinde scroll oluyor (Magic
+   Preset kayboldu, Visibility/Details göründü); **toolbar + stage
+   + rail sabit kaldı** — page scroll yok.
+2. **Mode geçişi**: Mockup → Frame'de **plate boyutu değişmedi**
+   (default 5:4 1920×1536, frame aspect chip yalnız caption +
+   export hint). Sağ rail thumb içeriği birebir aynı (4 thumb cage
+   + flowers).
+3. **Stage padding**: Plate dışında **renkli glow YOK**, pure dark
+   `#0c0c0c`. Plate kenarda yalnız drop shadow.
+4. **Magic ✨ Frame mode**: birden fazla magic preset, asset-aware
+   renkli, 4-row swatch grid (Phase 88-89 baseline ile uyumlu).
+
+### Honest audit — bug list root cause clustering
+
+| # | Bug | Shots ile doğrulandı? | Kök neden | Phase 93 fix |
+|---|---|---|---|---|
+| 1 | Page scroll panel'leri etkiliyor | ✅ Shots'ta yok | `.k-studio` `min-height: 100vh` body scrollable | ✅ EVET |
+| 2 | Stage ortalanması bozuluyor | ✅ Shots'ta sabit | (1) ile aynı root cause | ✅ EVET (1 ile beraber) |
+| 3 | Slot click plate bg değişiyor | ✅ Shots'ta plate stable | `activePalette = selectedSlot.design.colors` | ✅ EVET |
+| 4 | Ambient glow gereksiz | ✅ Shots'ta yok | `.k-studio__stage-amb` agresif radial | ✅ EVET |
+| 5 | Right rail action davranışı | Phase 92 zaten OK | — | (zaten OK) |
+| 6 | Mode geçişinde plate shrink | ✅ Shots'ta yok | `plateDimensionsFor` aspect-aware bbox-fit | ✅ EVET |
+| 7 | Mockup center bozulması | Phase 92'de OK | — | (1, 6 ile beraber kapanır) |
+| 8 | Mockup vs Frame preset farkı | Şu an 6 vs 8 preset; minor parity drift | MOCKUP_PRESETS/FRAME_PRESETS literal lists | Defer (önemsiz) |
+| 9 | Stage sağ/alt unwanted glow | ✅ Shots'ta yok | Phase 88-90 ambient scene padding alpha vivid | ✅ EVET (4 ile beraber) |
+| 10 | Preset thumb içleri boş | Phase 92'de OK | — | (zaten OK) |
+| 11 | Claude Preview screenshot küçük | Tool kısıtı | — | Chrome browser kullanıldı |
+| 12 | Frame stage küçülünce element kaybı | ✅ Shots'ta yok | (6) ile aynı root cause | ✅ EVET (6 ile beraber) |
+
+**12 bug → 4 root cause cluster → 4 fix set**.
+
+### Phase 93 ürün kararı: 4 root cause fix
+
+#### Fix 1 — Studio shell page-scroll lock (bug #1, #2, #7)
+
+`src/features/mockups/studio/studio.css` `.k-studio`:
+- `min-height: 100vh` → `height: 100dvh; max-height: 100dvh; overflow: hidden`
+- Page scroll tamamen kilitli; iç katmanlar (sidebar
+  `.k-studio__sb-scroll`, rail `.k-studio__rail-scroll`) zaten kendi
+  scroll alanlarını taşıyor. Operator scroll yapınca **toolbar + stage
+  + rail sabit**, sadece sol panel kendi içinde scroll.
+
+#### Fix 2 — Ambient glow + scene padding cleanup (bug #4, #9)
+
+**`.k-studio__stage-amb`** (Phase 84 baseline):
+- Boyut 56%×70% → **28%×36%** (plate dışına taşmıyor)
+- Anchor sol-üst (10%/12%) → **plate center (36%/32%)** — composition
+  spotlight illusion
+- Alpha 0.065/0.028 → **0.018/0.008** (subtle warm core, plate
+  dışında glow YOK)
+
+**`resolveSceneStyle`** (frame-scene.ts Phase 88-90 baseline):
+Plate'in dışındaki padding alanı için scene tint. Phase 90'da plate
+yoktu, scene stage geneliydi; Phase 91'de plate eklendi ama scene
+alpha vivid kaldı → plate dışı padding glow yarattı. Phase 93'te:
+- auto warm 0.22 → **0.06**, deep 0.82 → **0.18**
+- solid warm 0.06 → **0.04**, deep 0.92 → **0.10**
+- gradient warm 0.28 → **0.06**, deep 0.88 → **0.16**
+
+Plate ana subject; padding pure dark. Plate'in kendi bg (Phase 91)
+alpha 1.0 zaten dolu — operator için scene yalnız çok subtle padding
+echo.
+
+#### Fix 3 — activePalette selection-stable (bug #3)
+
+`src/features/mockups/studio/MockupStudioShell.tsx`:
+```typescript
+// Phase 86-92:
+const activePalette = (() => {
+  const sel = slots[selectedSlot];
+  if (sel?.assigned && sel.design) return sel.design.colors;
+  const firstAssigned = slots.find((s) => s.assigned && s.design);
+  return firstAssigned?.design?.colors;
+})();
+
+// Phase 93:
+const activePalette = (() => {
+  const firstAssigned = slots.find((s) => s.assigned && s.design);
+  return firstAssigned?.design?.colors;
+})();
+```
+
+`selectedSlot` argümanı kaldırıldı. Operator slot click yaptığında
+plate bg artık değişmez — Shots.so'da plate scene yalnız Magic
+Preset / Frame swatch controls ile operator-driven değişir, slot
+selection-stable kalır.
+
+#### Fix 4 — Plate dimensions mode-AGNOSTIC (bug #6, #7, #12)
+
+`src/features/mockups/studio/MockupStudioStage.tsx` `plateDimensionsFor`:
+```typescript
+// Phase 91/92: aspect-aware bbox-fit
+function plateDimensionsFor(mode, frameAspect) {
+  const maxW = 700, maxH = 500;
+  if (mode === "mockup") return { w: 700, h: 525 }; // 4:3
+  const ratio = FRAME_ASPECT_CONFIG[frameAspect].ratio;
+  // ... bbox-fit math (e.g. 16:9 → 700×394)
+}
+
+// Phase 93: mode-AGNOSTIC + aspect-AGNOSTIC
+function plateDimensionsFor(_mode, _frameAspect) {
+  return { w: 700, h: 525 };  // her zaman 4:3
+}
+```
+
+Frame aspect bilgisi yalnız caption (Phase 83 `studio-stage-frame-cap`)
++ toolbar status badge ile yaşar; plate dimensions sabit. Mockup ↔
+Frame geçişinde stage shrink etmez, plate sabit kalır.
+
+### Stage center alignment + scene continuity korundu
+
+Phase 87 stage container mode-AGNOSTIC + Phase 91 plate `left: 50%
+top: 50% transform: translate(-50%, -50%)` zaten merkez hizalama
+sağlıyordu. Phase 93 fix'leri (page scroll lock + dimensions sabit
++ slot palette stable + glow cleanup) bu hizalamanın **görünür
+şekilde stable** kalmasını sağladı — operator artık stage kayıyor
+hissini almıyor.
+
+### Browser end-to-end visual proof (Chrome live, viewport 1331×924)
+
+**After-fix Mockup mode (Phase 93)**:
+- Stage net merkezde, plate ortada
+- Plate stage'den net ayrı (2px border + multi-layer shadow)
+- Plate dışı padding **pure dark, glow yok** ✓ (bug #9)
+- Cascade plate'in içinde merkezi
+- Sağ rail thumbs plate-aware, dolu
+
+**Slot click testi (bug #3)**:
+- Side View tıklandı → SLOTS section "02 Side View" orange-active
+- **Plate bg AYNI cream/warm gradient — değişmedi** ✓
+- Sol panel "MEDIA Item 2 · cmov0iad" güncel, ama plate stable
+
+**Frame mode geçiş (bug #6/#12)**:
+- Toolbar template pill "Frame · Storefront banner · hero landscape"
+- Toolbar status badge "1920×1080"
+- **Plate dimensions DEĞİŞMEDİ** — Mockup'la birebir aynı 700×525
+- Cascade aynı pozisyonda
+- Sağ rail Frame preset family (Centered/Offset/Bleed/Angled/Duo/
+  Story) — dolu, plate-aware
+- Sol panel Frame body controls
+
+**Page scroll testi (bug #1/#2)**:
+- 10 scroll tick aşağı → **toolbar + stage + rail TAMAMEN SABİT**
+- Sol panel zaten kendi internal scroll alanına sahip
+- Page scroll tamamen kilitli ✓
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products}`:
+  **643/643 PASS** (zero regression)
+- `next build`: clean
+
+### Değişmeyenler (Phase 93)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Sadece 3 dosyada (studio.css +
+  frame-scene.ts + MockupStudioShell.tsx + MockupStudioStage.tsx)
+  parameter tuning + helper simplification + root height behavior
+  fix.
+- **Plate component model (Phase 91+92) korundu** — sceneOverride-
+  driven bg, plate stage center, border + multi-layer shadow,
+  ambient scene plate dışı subtle echo.
+- **Mockup ↔ Frame continuity tam** — plate dimensions sabit, scene
+  state mode-AGNOSTIC, cascade carry-over (Phase 85+87+91), slot
+  assignment (Phase 80).
+- **Slot assignment + render dispatch (Phase 80) zinciri intakt.**
+- **References / Batch / Review / Selection / Mockup Studio / Product
+  / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 94+ candidate)
+
+- **Bug #8 — Mockup/Frame preset list 6 vs 8 fark**: Mockup
+  `MOCKUP_PRESETS = ["Cascade", "Centered", "Mirror", "Landscape",
+  "Fan", "Stack"]` (6) vs Frame `FRAME_PRESETS = ["Centered",
+  "Offset", "Bleed", "Angled", "Duo", "Story", "Comparison",
+  "Flat Lay"]` (8). Shots.so'da preset listesi mode'a göre aynı 4
+  thumb (asset üzerinde layout variants). Operator için önemsiz
+  parity drift — defer.
+- **Glass + BG Effects davranış tüketimi** (Phase 89/91/92
+  öngörüsü): Phase 94 candidate.
+- **Plate frame style preset family** — operator plate chrome'unu
+  (paper / canvas / shadow box / clean) değiştirebilir.
+- **Plate aspect explicit Mockup mode chip'i** — Mockup'ta plate
+  aspect override (Shots.so Mockup mode'da default 5:4 + chip yok;
+  Kivasy 4:3 baseline; operator için ek slider gerek değil).
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 93 ile Shots.so parity büyük ölçüde tam:
+- Page scroll lock + internal panel scroll ✓
+- Stage merkez stable + plate sabit dimensions ✓
+- Slot click plate bg stable ✓
+- Unwanted glow cleanup ✓
+- Mode geçişinde plate shrink yok ✓
+- Right rail Mockup/Frame plate-aware unified parity (Phase 92) ✓
+
+Sıradaki en yüksek-impact adım **Phase 94 — Glass + BG Effects
+davranış tüketimi** (Phase 89/91/92 öngörüsü): Glass swatch'lar plate
+üstüne `backdrop-filter` overlay, Lens Blur plate bg'ye bg-blur.
+Frame mode'un tüm sidebar controls operator-driven aktif olur —
+Frame mode "presentation surface" rolünün tam ürünleştirilmesi.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
