@@ -18028,7 +18028,213 @@ Sıradaki en yüksek-impact adım **Phase 90 — Glass swatch controls + Bg Effe
 - Lens Blur effect (Frame mode EFFECTS & WATERMARK) stage scene'e bg-blur uygular
 - Frontend-only, scene compose pipeline extended
 
-Bu Shots.so'nun "BG Effects" + "Glass" davranış paritesi. Phase 90 sonrası Frame mode tüm controls operator-driven aktif.
+Bu Shots.so'nun "BG Effects" + "Glass" davranış paritesi. Phase 90+ candidate olarak Frame mode controls operator-driven aktif.
+
+---
+
+## Phase 90 — Visual scene parity correction (Shots.so gap kapatma)
+
+Phase 88'de always-on ambient scene + Phase 89'da Frame swatch
+override mekanik olarak yerinde idi, ama kullanıcının iki screenshot
+karşılaştırması (Shots.so vivid Magic gradient vs Kivasy subtle warm
+vignette) net bir kanıttı: **"teknik olarak çalışması, görsel olarak
+doğru hissettirdiği anlamına gelmiyor"**. Phase 90 bu açığı kapatır.
+
+### Audit (Phase 89 sonrası görsel boşluk)
+
+| Parametre | Phase 88-89 | Sorun |
+|---|---|---|
+| `resolveSceneStyle` auto warm alpha | 0.10 | Palette[0] çok solgun, gözükmüyor |
+| `resolveSceneStyle` auto deep alpha | 0.55 | Sağ-alt corner'da %55 ama gradient stop %60'ta zaten kayboluyor |
+| `.k-studio__stage-scene` warm stop | `transparent 55%` | Stage'in %50+'sı fallback `var(--ks-st)` dark void |
+| `.k-studio__stage-scene` deep stop | `transparent 60%` | Aynı şekilde corner-only effect |
+| `.k-studio__stage-scene` ellipse anchor | `at 30% 25%` + `at 75% 78%` | Daha dar — stage geniş alanda boşluk |
+| `darkenForPresetBg` lerp | `0.18 palette / 0.82 dark` | Preset thumb'lar neredeyse tamamen dark, palette ipucu kayıp |
+
+Sonuç: stage'in en az %60'ı pure dark void, scene yalnız corner'larda
+subtle vignette olarak okunuyor; preset rail thumb'ları da neredeyse
+hep dark görünüyor. Shots'taki "operator açtığı anda sahne dolu"
+hissi yok.
+
+### Kivasy-superior balance kararı (Shots'tan %60-70 saturation)
+
+Kullanıcı direktifi:
+> "Shots'un gradientleri bazen daha agresif olabilir; Kivasy'de biraz
+> daha rafine bir ton seçilebilir; ama görsel okunurluk kaybolmamalı."
+
+Phase 90 tüm üç parametre ailesini yükseltir ama Shots-style maximum
+saturation'a inmez — operator için rafine ama net.
+
+### Slice 1 — `resolveSceneStyle` alpha curve revize
+
+`src/features/mockups/studio/frame-scene.ts`:
+
+| Mode | Warm alpha | Deep alpha |
+|---|---|---|
+| auto (Phase 88) | 0.10 | 0.55 |
+| auto (Phase 90) | **0.22** | **0.82** |
+| solid (Phase 89) | 0.04 | 0.92 |
+| solid (Phase 90) | **0.06** | 0.92 |
+| gradient (Phase 89) | 0.15 | 0.65 |
+| gradient (Phase 90) | **0.28** | **0.88** |
+
+Auto-mode özellikle güçlendirildi çünkü operatör default state'te
+oraya iniyor — ilk izlenim "sahne dolu" hissi. Solid + gradient
+operatör-driven override; gradient daha vivid (two-tone).
+
+### Slice 2 — `.k-studio__stage-scene` gradient stops genişletildi
+
+`src/features/mockups/studio/studio.css`:
+
+```css
+/* Phase 88 baseline (corner-only effect): */
+radial-gradient(ellipse at 30% 25%, var(...) 0%, transparent 55%),
+radial-gradient(ellipse at 75% 78%, var(...) 0%, transparent 60%),
+radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.02) 0%, transparent 70%),
+
+/* Phase 90 (full-bleed coverage): */
+radial-gradient(ellipse 75% 80% at 28% 22%, var(...) 0%, transparent 92%),
+radial-gradient(ellipse 90% 95% at 76% 80%, var(...) 0%, transparent 95%),
+radial-gradient(ellipse 45% 40% at 35% 40%, rgba(255,255,255,0.035) 0%, transparent 70%),
+```
+
+Değişiklikler:
+- **Ellipse boyutları explicit** (`75% 80%` warm + `90% 95%` deep) —
+  Phase 88'de default browser-resolved ellipse boyutu corner-based
+  daralıyordu
+- **Stops 55%/60% → 92%/95%** — gradient'in fall-off noktası stage'in
+  uzak kenarına itildi, dark void azalır
+- **Anchor'lar 30%/25% + 75%/78% → 28%/22% + 76%/80%** — daha extreme
+  corner positioning, gradient diagonal coverage'i artar
+- **Center highlight** 50%/50% → 35%/40% + ellipse 45%/40% boyut —
+  composition spotlight illusion (operator için: sahne 3-point lit)
+- **Center white alpha** 0.02 → 0.035 — hafif daha okunabilir
+
+### Slice 3 — `darkenForPresetBg` lerp revize
+
+`src/features/mockups/studio/svg-art.tsx`:
+
+```typescript
+// Phase 86 baseline: palette tone %18 visible, %82 dark Studio
+const lerp = (c, target) => Math.round(c * 0.18 + target * 0.82);
+
+// Phase 90: palette tone %55 visible, %45 dark Studio
+const lerp = (c, target) => Math.round(c * 0.55 + target * 0.45);
+```
+
+Operator için preset rail artık scene-aware görsel kimlikle dolu —
+"var ama ezici değil" tonundan "var ve sahne içinde" tonuna geçti.
+Palette tone'u 3x daha güçlü, ama tam saturation değil (Kivasy-superior
+rafinement).
+
+Phase 88 fallback hex `#0E0C0A` çok karanlıktı → Phase 90 `#1A1612`
+(hafif daha okunabilir charcoal). Palette tonsuz durumda da öngörü
+korundu.
+
+### Browser end-to-end visual proof (live preview, viewport 1600×1300)
+
+**Phase 90 öncesi (Phase 89 baseline, ilk screenshot)**:
+- Stage'in en az %60'ı pure dark void
+- Sağ-alt corner'da subtle warm vignette
+- Preset rail thumb'ları neredeyse tüm dark (cream subtle)
+
+**Phase 90 sonrası, Mockup mode auto scene (4-item clipart set)**:
+- Stage tamamına yayılan warm/copper scene gradient
+- 3 sticker cascade scene içinde otururdu — placement floor + ambient
+  glow + scene visibility birleşik
+- Preset rail thumb'ları vivid cream tones (palette-driven)
+- Cascade preset (active) sahne tone'u reflekt eder
+
+**Phase 90 Frame mode + Solid #F7F5EF**:
+- Stage'in tamamı warm cream tone (deep `rgba(247,245,239,0.92)`)
+- 3 sticker cascade scene içinde — Phase 87 carry-over korundu
+- "Reset to Auto" CTA visible (operator scene'i baseline'a çevirebilir)
+
+**Phase 90 Frame mode + Gradient #2A2420 → #1A1410 (dramatic dark)**:
+- Stage'in tamamı dramatic dark gradient (warm 0.28 + deep 0.88)
+- Stage'in karakteri Mockup mode'dan farklı — dark space scene
+- 3 sticker cascade scene'in üstünde okunabilir
+
+**Phase 90 Mockup mode'a geri dön (gradient preserved)**:
+- `shellMode = "mockup"`, `sceneMode = "gradient"`, color/colorTo persisted
+- Stage'in tamamı dramatic dark gradient — Frame mode'dan gelen
+  operator karar zinciri korunmuş
+- Mockup body (Object surface + Bundle Preview template + Style/
+  Border/Shadow controls) içerikle, scene continuity korunmuş
+- Preset rail Mockup family (Cascade/Centered/Mirror/Landscape/Fan/Stack)
+  scene tone'unu reflekt eder
+
+**DOM state kanıtı her transition'da**: `data-scene-mode` + `data-scene-color`
++ `data-scene-color-to` shell attribute'ları + CSS scene `backgroundImage`
+gradient stops + alpha values DOM eval ile doğrulandı.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products}`:
+  **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully (Studio route 16.4 kB)
+- Browser end-to-end: auto → Mockup + Frame → Solid override + Gradient
+  override + Mockup geri dönüş + scene preservation — hepsi canlı dev
+  server'da
+
+### Değişmeyenler (Phase 90)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Sadece UI parameter tuning (3 dosyada
+  ~30 LOC effective change: alpha values + gradient stops + lerp ratio).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Yeni component / hook / service /
+  schema / endpoint yok. Yalnız resolveSceneStyle + studio.css +
+  darkenForPresetBg parameter revize.
+- **Mockup ↔ Frame continuity korundu** (Phase 87+88+89 baseline +
+  Phase 90 visibility lift). Shell state mode-agnostic; scene
+  swatch override Mockup'a taşınır, Frame'e geri döndüğünde aktif.
+- **Apply pipeline + Phase 80 slot picker + Phase 79 real hydrate +
+  Phase 76 multi-design panel + Phase 74-75 multi-slot backend +
+  admin authoring** hepsi intakt.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → Mockup Studio → Product → Etsy Draft).
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+- **Phase 86 asset palette propagation** intakt — auto-mode hâlâ
+  palette-driven; Phase 90 yalnız alpha amplify.
+
+### Bilinçli scope dışı (Phase 91+ candidate)
+
+- **Glass + BG Effects (Phase 89 author'un öngördüğü "Phase 90"
+  candidate)**: Glass Light / Glass Dark / Frosted swatch'lara
+  CSS `backdrop-filter` ekleyerek frosted backdrop layer + Lens Blur
+  effect (Frame mode EFFECTS & WATERMARK) stage scene'e bg-blur.
+  Bu turun scope'unda **visual parity ön planda olduğu için ertelendi**;
+  Glass + Effects davranışı Phase 91 candidate.
+- **Scene preset gallery** (admin curated + user-owned): operator
+  bookmark edebileceği favori scene preset'leri. Şu an
+  SOLID_PRESETS + GRADIENT_PRESETS static; user-scope save Phase 92+.
+- **Scene save to template binding**: operator'ün yaptığı Frame
+  scene override'ı template recipe'a yaz (`MockupTemplateBinding.
+  config.recipe.scene`) — sonraki render'larda persiste.
+- **Animated scene transitions**: mode değişimi sırasında 320ms ease
+  geçişi var (Phase 88 baseline) ama scene color change explicit
+  ease yok; subtle keyframe animation eklenebilir.
+- **Operator-tuned alpha curve**: Phase 90 default 0.22/0.82
+  Kivasy-superior balance; operator Settings → Studio → "Scene
+  intensity" slider eklemek (Subtle / Balanced / Vivid 3-stop) ileride
+  ürün polish.
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 90 ile Studio'nun **görsel scene parity** Shots.so'ya
+yaklaştırıldı — operatör artık "sahne içinde" hissini stage'in
+tamamında alıyor, preset rail thumb'ları da scene-aware görünüyor.
+Phase 88 ambient + Phase 89 control + Phase 90 visibility üçü
+birlikte operator-facing tam ürün davranışına ulaştı.
+
+Sıradaki yüksek-impact adım **Phase 91 — Glass + BG Effects davranış
+tüketimi** (Phase 89 author'un öngörüsü): Glass swatch'lar
+backdrop-filter eklesin, Lens Blur stage scene'e bg-blur uygulasın.
+Frame mode EFFECTS & WATERMARK satırı operator-driven hale gelir.
+Phase 91 sonrası Frame mode tüm sidebar controls aktif.
 
 ---
 

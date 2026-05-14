@@ -589,21 +589,36 @@
   pointer-events: none;
   z-index: -1;
   /* Asset paletinden türetilen scene tinting. Default fallback:
-   * neutral warm (palette undefined durumu). */
+   * neutral warm (palette undefined durumu).
+   *
+   * Phase 90 — Visual parity correction:
+   * Phase 88 baseline gradient stops 55%/60%/70% ile stage'in
+   * %50+'sı dark void olarak fallback `var(--ks-st)`'a düşüyordu —
+   * scene effect yalnız corner'larda görünür kalıyordu. Phase 90'da
+   * stops 92%/95%/100%'a genişletildi ve ellipse anchor'ları yeniden
+   * yerleştirildi (warm 28%/22%, deep 76%/80%) — full-bleed coverage.
+   * Eski subtle highlight (50%/50%) 35%/40% noktasına shift edildi
+   * (composition spotlight illusion). Operator için: stage'in tüm
+   * yüzeyi sahne içinde — corner-only effect yok.
+   *
+   * Tone alpha'ları resolveSceneStyle (frame-scene.ts) tarafından
+   * mode-aware set ediliyor (Phase 90: auto 0.22/0.82, solid 0.06/0.92,
+   * gradient 0.28/0.88).
+   */
   background:
     radial-gradient(
-      ellipse at 30% 25%,
-      var(--ks-stage-scene-warm, rgba(232, 93, 37, 0.04)) 0%,
-      transparent 55%
+      ellipse 75% 80% at 28% 22%,
+      var(--ks-stage-scene-warm, rgba(232, 93, 37, 0.06)) 0%,
+      transparent 92%
     ),
     radial-gradient(
-      ellipse at 75% 78%,
-      var(--ks-stage-scene-deep, rgba(38, 26, 18, 0.6)) 0%,
-      transparent 60%
+      ellipse 90% 95% at 76% 80%,
+      var(--ks-stage-scene-deep, rgba(38, 26, 18, 0.78)) 0%,
+      transparent 95%
     ),
     radial-gradient(
-      ellipse at 50% 50%,
-      rgba(255, 255, 255, 0.02) 0%,
+      ellipse 45% 40% at 35% 40%,
+      rgba(255, 255, 255, 0.035) 0%,
       transparent 70%
     ),
     var(--ks-st);

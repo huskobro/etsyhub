@@ -462,20 +462,27 @@ export function PresetThumbMockup({
 }
 
 /* Phase 86 — Helper: palette[1] (deep tone) → preset bg için subtle
- * dark tint. Hex tone'u doğrudan göstermek yerine %18 alpha üzerinden
- * dark surface'le karıştırırız (dark Studio shell ile uyumlu). */
+ * dark tint. Hex tone'u doğrudan göstermek yerine alpha üzerinden
+ * dark surface'le karıştırırız (dark Studio shell ile uyumlu).
+ *
+ * Phase 90 — Visual parity correction:
+ * Phase 86 baseline lerp 0.18/0.82 ile preset thumb'lar neredeyse
+ * tamamen dark görünüyordu — palette ipucu %18 zayıf, Shots'taki
+ * vivid scene thumb'larından çok uzak. Phase 90'da lerp 0.55/0.45
+ * (palette tone'u %55 görünür) — operator preset rail'inde "scene
+ * dolu" hissini alır, stage scene'iyle visual parity yakalanır. */
 function darkenForPresetBg(hex: string): string {
-  // Simple darkening: lerp toward #0C0B09 at 0.82 (yani palette tone'u
-  // %18 görünür kalır, %82 dark Studio bg). Operator için "rengi var
-  // ama ezici değil" tonu.
+  // Phase 90: palette tone %55 görünür, %45 dark Studio bg.
+  // "Var ve sahne içinde" tonu (Phase 86'nın "var ama ezici değil"
+  // çok subtle pozisyonundan vurgu ekseni güncellendi).
   const m = /^#([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return "#0E0C0A";
+  if (!m) return "#1A1612";
   const hexStr = m[1]!;
   const r = parseInt(hexStr.substring(0, 2), 16);
   const g = parseInt(hexStr.substring(2, 4), 16);
   const b = parseInt(hexStr.substring(4, 6), 16);
   const lerp = (c: number, target: number) =>
-    Math.round(c * 0.18 + target * 0.82);
+    Math.round(c * 0.55 + target * 0.45);
   const rr = lerp(r, 0x0c);
   const gg = lerp(g, 0x0b);
   const bb = lerp(b, 0x09);
