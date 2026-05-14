@@ -22,6 +22,7 @@ export type {
   RenderInput,
   RenderOutput,
   RenderSnapshot,
+  SlotConfig,
 } from "./types";
 
 export type { MockupProvider } from "./registry";

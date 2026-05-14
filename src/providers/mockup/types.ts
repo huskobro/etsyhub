@@ -135,8 +135,19 @@ export type ProviderConfig = LocalSharpConfig | DynamicMockupsConfig;
 export type RenderInput = {
   // Unique render ID (MockupRender.id)
   renderId: string;
-  // Design asset URL (public HTTP(S))
+  // Design asset URL (public HTTP(S)) — primary / fallback design.
+  // Phase 74 multi-slot fanout: tek slot veya single-design-fanout için
+  // tüm slot'larda aynı design.
   designUrl: string;
+  /** Phase 75 — Optional slot-mapped design URLs.
+   *  Multi-slot template'lerde her slot için farklı design.
+   *  Index = slot order; eksik index'ler `designUrl`'e düşer (fanout
+   *  fallback). Yoksa Phase 74 baseline: tek `designUrl` fanout.
+   *  Tek-slot template'lerde ignore. Schema migration YOK — RenderInput
+   *  in-memory shape; persistence MockupJob.slotDesigns JSON map'e
+   *  yazılabilir (ileride).
+   */
+  designUrls?: string[];
   // Design aspect ratio string (e.g., "1:1", "3:4")
   designAspectRatio: string;
   // Byte-stable snapshot (Spec §3.3)

@@ -76,9 +76,10 @@ export async function renderLocalSharp(input: RenderInput): Promise<RenderOutput
   const baseBuffer = await storage.download(config.baseAssetKey);
 
   // 2) Design asset fetch (input.designUrl is storageKey, not HTTP URL —
-  //    Task 5 resolveAssetKey emsali).
+  //    Task 5 resolveAssetKey emsali). Phase 75 — primary/fallback design;
+  //    multi-slot template'te designUrls[] eksik slot'lar bu buffer'a düşer.
   abortIfRequested(input.signal);
-  const designBuffer = await storage.download(input.designUrl);
+  const primaryDesignBuffer = await storage.download(input.designUrl);
 
   // 3) SafeArea dispatch — Phase 74 multi-slot capable.
   abortIfRequested(input.signal);
@@ -91,19 +92,54 @@ export async function renderLocalSharp(input: RenderInput): Promise<RenderOutput
       ? config.slots.map((s) => s.safeArea)
       : [config.safeArea];
 
-  // Tek design buffer, N slot'a yerleştirilir (Phase 74 single-design fanout).
-  // Multi-design assignment (her slot farklı design) Phase 75+ candidate —
-  // RenderInput shape genişletme + UI assignment akışı gerektirir.
-  let compositedBuffer = baseBuffer;
-  for (const safeArea of slotAreas) {
+  /* Phase 75 — Slot-mapped design URLs.
+   * input.designUrls[] varsa her slot index'i ayrı design alır;
+   * eksik index'ler primaryDesignBuffer'a düşer (fanout fallback).
+   * input.designUrls yoksa Phase 74 baseline (tüm slot'lar
+   * primaryDesignBuffer fanout). Tek-slot template'te designUrls
+   * ignore — sadece primary kullanılır.
+   *
+   * Performance: distinct storage key'ler download edilir; aynı key
+   * ikinci kez download edilmez (Map cache). Tipik bundle preview
+   * 2-4 distinct design; sticker sheet genelde 1 design × N slot. */
+  const designBufferCache = new Map<string, Buffer>();
+  designBufferCache.set(input.designUrl, primaryDesignBuffer);
+
+  /** Slot index'ten gerekli design buffer'ı resolve eder. */
+  const resolveDesignBuffer = async (slotIndex: number): Promise<Buffer> => {
+    const candidate =
+      input.designUrls && input.designUrls[slotIndex]
+        ? input.designUrls[slotIndex]
+        : null;
+    if (!candidate || candidate === input.designUrl) {
+      return primaryDesignBuffer;
+    }
+    const cached = designBufferCache.get(candidate);
+    if (cached) return cached;
     abortIfRequested(input.signal);
+    const buf = await storage.download(candidate);
+    designBufferCache.set(candidate, buf);
+    return buf;
+  };
+
+  let compositedBuffer = baseBuffer;
+  for (let slotIdx = 0; slotIdx < slotAreas.length; slotIdx++) {
+    const safeArea = slotAreas[slotIdx]!;
+    abortIfRequested(input.signal);
+
+    // Phase 75 — Slot-specific design buffer (or primary fallback).
+    const slotDesignBuffer = await resolveDesignBuffer(slotIdx);
 
     let placement: { buffer: Buffer; top: number; left: number };
     if (safeArea.type === "rect") {
-      placement = await placeRect(designBuffer, safeArea, config.baseDimensions);
+      placement = await placeRect(
+        slotDesignBuffer,
+        safeArea,
+        config.baseDimensions,
+      );
     } else if (safeArea.type === "perspective") {
       placement = await placePerspective(
-        designBuffer,
+        slotDesignBuffer,
         safeArea,
         config.baseDimensions,
       );

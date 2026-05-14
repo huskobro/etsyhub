@@ -14811,6 +14811,255 @@ Research sources:
 
 ---
 
+## Phase 75 — Multi-design assignment + PSD ETL PoC
+
+Phase 74 backend multi-slot render execution single-design fanout
+ile çalışıyordu (tek `designUrl` tüm slot'lara aynı design). Sticker
+sheet workflow için yeterli ama bundle preview (cover + variants),
+front + back garment, mug front + handle area gibi multi-design
+yüzeyler **gerçek farklı design** placement gerektiriyordu. Phase 75
+bu gap'i kapatır ve PSD ETL yönünde ilk somut adımı atar.
+
+Aynı turda **3. taraf mockup API'lere geçmeme kararı** kalıcı yazıldı:
+self-hosted Sharp pipeline + kendi template studio = ana çizgi;
+DynamicMockups / SudoMock / Photopea opsiyonel/fallback Phase 76+.
+
+### Stratejik karar — 3. taraf API'siz devam
+
+Phase 74 research'inde pazar liderleri (SudoMock $0.002/render,
+DynamicMockups $0.05, Adobe Firefly $0.02-0.10 + $1000/ay min)
+analiz edildi. Phase 75'te bu karar **kalıcı** yazıldı:
+
+| Kriter | Self-hosted Sharp (bizim) | 3. taraf API |
+|---|---|---|
+| Maliyet | ~$0/render (CPU/RAM yalnız) | $0.002–0.05 / render |
+| Bağımlılık | Yok | Provider API uptime, rate limit, breaking change |
+| Cross-user isolation | Hard-enforced (Phase 67 4-katmanlı) | Provider'a delegate |
+| Render history | Self-contained (Phase 8 templateSnapshot) | Provider-bound |
+| Telif/lisans | Operator kendi asset upload + bizim editor | Provider template katalog (lisans bağımlılığı) |
+| Capability | rect + perspective + recipe + multi-slot + multi-design | Provider feature set |
+
+**Karar**: kendi sistemimiz pazar lideri DynamicMockups'tan **25× ucuz**
++ bağımlılık yok + cross-user isolation hard-enforced. Yön: kendi
+editor + kendi PSD/template import + kendi render motoru. 3. taraf
+API'ler **opsiyonel operator-opt-in fallback** olarak Phase 76+
+candidate (DynamicMockups stub Phase 8'den beri schema'da hazır).
+
+Photopea/MockCity ders **kalıcı**: smart object → JSON config pattern
+bizim `slots[]` ile birebir uyumlu; Photopea embed advanced PSD edit
+isteyen operatörler için opt-in (Phase 76+).
+
+### Slice 1 — RenderInput shape: optional `designUrls[]`
+
+`src/providers/mockup/types.ts`:
+
+```ts
+export type RenderInput = {
+  renderId: string;
+  designUrl: string;            // primary / fallback (zorunlu)
+  designUrls?: string[];        // Phase 75 — slot-mapped (opsiyonel)
+  designAspectRatio: string;
+  snapshot: RenderSnapshot;
+  signal: AbortSignal;
+};
+```
+
+**Backward-compat**: `designUrl` zorunlu kalır (Phase 74 baseline);
+`designUrls` opsiyonel array. Backend logic:
+
+- `designUrls` varsa → her slot index için `designUrls[i] ?? designUrl`
+  (eksik index'ler primary'ye düşer = fanout fallback)
+- `designUrls` yoksa → Phase 74 baseline (tek `designUrl` fanout)
+- Tek-slot template'lerde ignore (sadece primary)
+
+Schema migration yok — `RenderInput` in-memory shape; ileride
+`MockupJob.slotDesigns` JSON map (persistence) eklenebilir.
+
+### Slice 2 — Backend compositor slot-mapped design
+
+`src/providers/mockup/local-sharp/compositor.ts`:
+
+```ts
+// Primary design buffer + cache
+const primaryDesignBuffer = await storage.download(input.designUrl);
+const designBufferCache = new Map<string, Buffer>();
+designBufferCache.set(input.designUrl, primaryDesignBuffer);
+
+const resolveDesignBuffer = async (slotIndex: number) => {
+  const candidate = input.designUrls?.[slotIndex] ?? null;
+  if (!candidate || candidate === input.designUrl) return primaryDesignBuffer;
+  const cached = designBufferCache.get(candidate);
+  if (cached) return cached;
+  const buf = await storage.download(candidate);
+  designBufferCache.set(candidate, buf);
+  return buf;
+};
+
+for (let slotIdx = 0; slotIdx < slotAreas.length; slotIdx++) {
+  const slotDesignBuffer = await resolveDesignBuffer(slotIdx);
+  // ... placement (rect/perspective) + applyRecipe sequential
+}
+```
+
+**Performance**: distinct storage key'ler download edilir; aynı key
+ikinci kez download edilmez (Map cache). Tipik bundle preview 2-4
+distinct design; sticker sheet genelde 1 design × N slot.
+
+**Recipe scope**: template-genelinde (Phase 70 baseline); her slot
+aynı recipe alır. Slot-bazlı recipe override Phase 76+ candidate.
+
+### Slice 3 — PSD ETL PoC (contract + helper)
+
+`src/providers/mockup/local-sharp/psd-import.ts` — yeni dosya:
+
+- **Types**: `PsdImportInput` / `PsdImportLayerHit` / `PsdImportResult`
+- **`parsePsdSmartObjects()`** — pure function signature; Phase 75
+  PoC için NOT_IMPLEMENTED throw eder (operator-facing UI yok ama
+  contract netleşti)
+- **`layerBoundsToSlot()`** — pure helper (test edildi, çalışıyor):
+  PSD layer bounds (absolute px) → SafeAreaRect (normalized 0..1).
+  Operator manuel slot construction veya hardcoded template seed
+  için kullanılabilir.
+  - Bounds out-of-canvas → clamp
+  - Min dimension 5% (Phase 69 validity parity)
+  - Non-square canvas (wall art 2:3 portrait) destekli
+
+**3. taraf API path YASAK**: bu modül **input parser**; render yine
+local-sharp pipeline. `ag-psd` npm dep Phase 76+ candidate (worker
+dispatch + UI: PSDImportDialog component).
+
+Convention: layer name'inde `[slot]` prefix işaretli smart object'ler
+slot olarak kabul edilir (örn. `[slot] Cover`, `[slot] Back`). Bu
+operator-facing simple convention; daha sonra UI-driven mapping
+(operator hangi layer hangi slot) eklenebilir.
+
+### Test kanıtı (gerçek MinIO storage + raw pixel sampling)
+
+**Phase 75 multi-design assignment** (`compositor-rect.test.ts`):
+
+1. **Multi-slot 4-distinct-design test**:
+   - 200×200 white base + 4 distinct color designs (red/green/blue/yellow)
+     uploads
+   - 2×2 slot config + `designUrls: [redKey, greenKey, blueKey, yellowKey]`
+   - Render → MinIO download + Sharp raw RGBA decode
+   - Pixel sampling: TL center kırmızı (R>180), TR yeşil (G>150),
+     BL mavi (B>180), BR sarı (R>200 + G>180 + B<80)
+   - **4 slot'a 4 farklı design assignment gerçek pixel düzeyinde
+     kanıt**
+
+2. **Fanout fallback test**:
+   - 4 slot config + `designUrls: [redKey, blueKey]` (yalnız 2 slot
+     atandı)
+   - Render → TL kırmızı (designUrls[0]), TR mavi (designUrls[1]),
+     BL kırmızı (fallback primary), BR kırmızı (fallback primary)
+   - **Partial assignment + fallback fanout gerçek kanıt**
+
+**Phase 75 PSD ETL PoC** (`tests/unit/mockup/psd-import.test.ts`):
+
+5 pure unit test:
+- layerBoundsToSlot happy path (top-left aligned bounds → normalize)
+- Out-of-canvas clamping (-50/-100 + 1200/1100 → 0..1 clamp)
+- Min dimension 5% enforcement (tiny 1% layer → 5% clamped)
+- Non-square canvas (2:3 portrait wall art)
+- `parsePsdSmartObjects` NOT_IMPLEMENTED guard
+
+### Authoring studio polish — bilinçli ertelendi
+
+UI tarafında slot purpose hint, design pool affordance gibi polish'ler
+Phase 75'te **bilinçli erteleme**. Sebep: backend multi-design
+assignment ve PSD ETL contract canlı; UI affordance Phase 76 multi-
+design **apply view** akışıyla birlikte tasarlanmalı (operator
+sticker sheet/bundle preview/multi-area mockup için kept asset
+selection slot-mapped olacak; operator hangi asset hangi slot'a
+gidiyor net görmeli). Tek başına UI polish şu an value üretmez —
+apply view ile bütüncül polish daha güçlü.
+
+Mevcut authoring polish (Phase 67-73):
+- Slot tabs + ghost outlines (Phase 73)
+- Slot duplicate + 3×3 grid preset (Phase 73)
+- Status badge + recipe editor + sample preview (Phase 70-71)
+- Validity guard (Phase 69)
+
+### Quality gates
+
+- `tsc --noEmit`: clean (yalnız `SlotConfig` re-export `index.ts`'e
+  eklendi)
+- `vitest tests/integration/mockup/compositor-rect.test.ts`: **18/18
+  PASS** (Phase 74 baseline 16 + 2 yeni Phase 75 multi-design)
+- `vitest tests/unit/mockup/psd-import.test.ts`: **5/5 PASS**
+- `vitest tests/unit/mockup tests/integration/mockup` full: 443/444
+  PASS (1 fail pre-existing — Phase 65/71 ownership; Phase 74
+  entry'sinde belgelendi, Phase 75 ile ilgisiz)
+- `next build`: ✓ Compiled successfully
+
+### Browser end-to-end kanıt
+
+Backend type change browser'da gözükmez; UI authoring akışı bozulmadı.
+Phase 73 9-slot template `cmp4pdhlv00033ahkoi79xdym` edit page'i
+canlı (Phase 74 verify edildi: ACTIVE badge + 9 tabs + 8 ghost
+outlines). Phase 75 değişiklikleri **backend type extension +
+compositor logic + pure helper** — UI tarafı dokunulmadı.
+
+### Değişmeyenler (Phase 75)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** RenderInput in-memory shape genişletmesi
+  (opsiyonel field); persistence schema dokunulmadı.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** RenderInput field eklemesi + compositor
+  loop'ta resolveDesignBuffer helper + psd-import.ts küçük standalone
+  modül. Yeni service / yeni state machine yok.
+- **Yeni 3rd-party dep yok.** PSD ETL PoC contract-only; `ag-psd`
+  Phase 76+ candidate.
+- **Phase 8/63/70/72/73/74 backend baseline tam korundu.**
+- **Phase 67-73 authoring testid'ler intakt.**
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → Mockup → Product → Etsy Draft).
+- **Kivasy DS dışına çıkılmadı.**
+- **Cross-user isolation hard-enforced.**
+- **3. taraf mockup API path dokunulmadı** (DynamicMockups schema
+  Phase 8 stub; operator-opt-in Phase 76+).
+
+### Bilinçli scope dışı (Phase 76+ candidate)
+
+- **Apply view multi-design slot assignment UI**: operator kept
+  asset'leri slot başına seçer (mockup apply akışında). Phase 75
+  backend hazır; UI Phase 76.
+- **`ag-psd` npm dep + parser implementation**: PSD upload → worker
+  dispatch → parsePsdSmartObjects() → template auto-create. Operator
+  Photoshop'tan PSD sürükler → sistem otomatik 9-up grid template
+  oluşturur.
+- **PSDImportDialog UI**: drag/drop PSD upload + parse preview +
+  slot mapping confirm.
+- **PSD perspective smart object detection** (PSD transform matrix
+  → 4-corner quad).
+- **PSD asset extract** (composite preview as baseAssetKey).
+- **Slot-bazlı recipe override**: şu an template-genelinde.
+- **MockupJob.slotDesigns persistence**: in-memory designUrls →
+  DB JSON map.
+- **Operator-facing PSD import UI tutorial / layer naming
+  convention docs**.
+
+### Bundan sonra templated.io clone tarafında kalan tek doğru iş
+
+Phase 75 ile **multi-design assignment backend canlı** ve **PSD ETL
+contract netleşti**. Operator:
+- Multi-slot template author + ACTIVE publish (Phase 67-73 UI)
+- Backend her slot için ayrı placement + sequential composite
+  (Phase 74)
+- Slot-mapped designUrls → her slot kendi design'ı (Phase 75
+  backend)
+
+Kalan halka **apply view multi-design UI** + **PSD ETL implementation
+(ag-psd + worker + UI)** = Phase 76+ candidate.
+
+Stratejik yön onaylandı: self-hosted Sharp pipeline kendi PSD/template
+import hattı + kendi render motoru = sektör liderlerinden **ucuz +
+güvenli + bağımsız**. 3. taraf API path opsiyonel/operator-opt-in
+fallback Phase 76+.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

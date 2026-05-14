@@ -630,6 +630,225 @@ describe("renderLocalSharp orchestration", () => {
     expect(between.b).toBeGreaterThan(220);
   });
 
+  // ─────────────────────────────────────────────────────────────
+  // Phase 75 — Multi-design assignment (slot-mapped designUrls)
+  // ─────────────────────────────────────────────────────────────
+  it("Phase 75: multi-slot with slot-mapped designUrls — each slot different design", async () => {
+    const storage = getStorage();
+    const baseKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/base.png`;
+    const redKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/design-red.png`;
+    const greenKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/design-green.png`;
+    const blueKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/design-blue.png`;
+    const yellowKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/design-yellow.png`;
+
+    await storage.upload(
+      baseKey,
+      await solidPng(200, 200, { r: 255, g: 255, b: 255, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    await storage.upload(
+      redKey,
+      await solidPng(50, 50, { r: 220, g: 20, b: 60, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    await storage.upload(
+      greenKey,
+      await solidPng(50, 50, { r: 30, g: 200, b: 60, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    await storage.upload(
+      blueKey,
+      await solidPng(50, 50, { r: 30, g: 60, b: 220, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    await storage.upload(
+      yellowKey,
+      await solidPng(50, 50, { r: 240, g: 220, b: 30, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    uploadedKeys.push(baseKey, redKey, greenKey, blueKey, yellowKey);
+
+    const config: Omit<LocalSharpConfig, "coverPriority"> = {
+      providerId: "local-sharp",
+      baseAssetKey: baseKey,
+      baseDimensions: { w: 200, h: 200 },
+      safeArea: { type: "rect", x: 0, y: 0, w: 1, h: 1 },
+      slots: [
+        {
+          id: "slot-tl",
+          name: "Top-Left",
+          safeArea: { type: "rect", x: 0.05, y: 0.05, w: 0.4, h: 0.4 },
+        },
+        {
+          id: "slot-tr",
+          name: "Top-Right",
+          safeArea: { type: "rect", x: 0.55, y: 0.05, w: 0.4, h: 0.4 },
+        },
+        {
+          id: "slot-bl",
+          name: "Bottom-Left",
+          safeArea: { type: "rect", x: 0.05, y: 0.55, w: 0.4, h: 0.4 },
+        },
+        {
+          id: "slot-br",
+          name: "Bottom-Right",
+          safeArea: { type: "rect", x: 0.55, y: 0.55, w: 0.4, h: 0.4 },
+        },
+      ],
+      recipe: { blendMode: "normal" },
+    };
+
+    const snapshot: RenderSnapshot = {
+      templateId: "tpl-phase75-multi",
+      bindingId: "bnd-phase75-multi",
+      bindingVersion: 1,
+      providerId: "LOCAL_SHARP",
+      config,
+      templateName: "Phase 75 Multi-design",
+      aspectRatios: ["1:1"],
+    };
+
+    const renderId = `phase75-multi-${crypto.randomUUID()}`;
+    const output = await renderLocalSharp({
+      renderId,
+      designUrl: redKey,
+      designUrls: [redKey, greenKey, blueKey, yellowKey],
+      designAspectRatio: "1:1",
+      snapshot,
+      signal: AbortSignal.timeout(60_000),
+    });
+    uploadedKeys.push(output.outputKey, output.thumbnailKey);
+
+    const downloaded = await storage.download(output.outputKey);
+    const { data, info } = await sharp(downloaded)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const sampleColor = (x: number, y: number) => {
+      const idx = (y * info.width + x) * info.channels;
+      return { r: data[idx]!, g: data[idx + 1]!, b: data[idx + 2]! };
+    };
+
+    // TL → red
+    const tl = sampleColor(50, 50);
+    expect(tl.r).toBeGreaterThan(180);
+    expect(tl.g).toBeLessThan(80);
+
+    // TR → green
+    const tr = sampleColor(150, 50);
+    expect(tr.g).toBeGreaterThan(150);
+    expect(tr.r).toBeLessThan(80);
+
+    // BL → blue
+    const bl = sampleColor(50, 150);
+    expect(bl.b).toBeGreaterThan(180);
+    expect(bl.r).toBeLessThan(80);
+
+    // BR → yellow
+    const br = sampleColor(150, 150);
+    expect(br.r).toBeGreaterThan(200);
+    expect(br.g).toBeGreaterThan(180);
+    expect(br.b).toBeLessThan(80);
+  });
+
+  it("Phase 75: fanout fallback — missing slot index falls back to primary designUrl", async () => {
+    const storage = getStorage();
+    const baseKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/base.png`;
+    const redKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/design-red.png`;
+    const blueKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/design-blue.png`;
+
+    await storage.upload(
+      baseKey,
+      await solidPng(200, 200, { r: 255, g: 255, b: 255, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    await storage.upload(
+      redKey,
+      await solidPng(50, 50, { r: 220, g: 20, b: 60, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    await storage.upload(
+      blueKey,
+      await solidPng(50, 50, { r: 30, g: 60, b: 220, alpha: 1 }),
+      { contentType: "image/png" },
+    );
+    uploadedKeys.push(baseKey, redKey, blueKey);
+
+    const config: Omit<LocalSharpConfig, "coverPriority"> = {
+      providerId: "local-sharp",
+      baseAssetKey: baseKey,
+      baseDimensions: { w: 200, h: 200 },
+      safeArea: { type: "rect", x: 0, y: 0, w: 1, h: 1 },
+      slots: [
+        {
+          id: "slot-tl",
+          safeArea: { type: "rect", x: 0.05, y: 0.05, w: 0.4, h: 0.4 },
+        },
+        {
+          id: "slot-tr",
+          safeArea: { type: "rect", x: 0.55, y: 0.05, w: 0.4, h: 0.4 },
+        },
+        {
+          id: "slot-bl",
+          safeArea: { type: "rect", x: 0.05, y: 0.55, w: 0.4, h: 0.4 },
+        },
+        {
+          id: "slot-br",
+          safeArea: { type: "rect", x: 0.55, y: 0.55, w: 0.4, h: 0.4 },
+        },
+      ],
+      recipe: { blendMode: "normal" },
+    };
+
+    const snapshot: RenderSnapshot = {
+      templateId: "tpl-phase75-fallback",
+      bindingId: "bnd-phase75-fallback",
+      bindingVersion: 1,
+      providerId: "LOCAL_SHARP",
+      config,
+      templateName: "Phase 75 Fallback",
+      aspectRatios: ["1:1"],
+    };
+
+    const output = await renderLocalSharp({
+      renderId: `phase75-fallback-${crypto.randomUUID()}`,
+      designUrl: redKey,
+      designUrls: [redKey, blueKey], // Only 2 slots assigned; BL/BR fall back
+      designAspectRatio: "1:1",
+      snapshot,
+      signal: AbortSignal.timeout(60_000),
+    });
+    uploadedKeys.push(output.outputKey, output.thumbnailKey);
+
+    const downloaded = await storage.download(output.outputKey);
+    const { data, info } = await sharp(downloaded)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const sampleColor = (x: number, y: number) => {
+      const idx = (y * info.width + x) * info.channels;
+      return { r: data[idx]!, g: data[idx + 1]!, b: data[idx + 2]! };
+    };
+
+    // TL → red (designUrls[0])
+    const tl = sampleColor(50, 50);
+    expect(tl.r).toBeGreaterThan(180);
+
+    // TR → blue (designUrls[1])
+    const tr = sampleColor(150, 50);
+    expect(tr.b).toBeGreaterThan(180);
+
+    // BL → fallback to primary (red)
+    const bl = sampleColor(50, 150);
+    expect(bl.r).toBeGreaterThan(180);
+
+    // BR → fallback to primary (red)
+    const br = sampleColor(150, 150);
+    expect(br.r).toBeGreaterThan(180);
+  });
+
   it("Phase 74: backward-compat — slots empty/missing falls back to legacy safeArea", async () => {
     const storage = getStorage();
     const baseKey = `${STORAGE_PREFIX}/${crypto.randomUUID()}/base.png`;
