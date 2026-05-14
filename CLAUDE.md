@@ -16388,6 +16388,177 @@ composition'un doğal başlangıcı.
 
 ---
 
+## Phase 82 — ProductType-aware stage device shape ailesi
+
+Phase 81 Mockup vs Frame role clarity'sini UI'da kapatmıştı (Object
+surface ↔ Presentation surface chip'leri), ama Studio stage'de hâlâ
+hardcoded PhoneSVG cascade vardı (final HTML Hero Phone Bundle
+referansı, Phase 77 baseline). Operator wall_art / sticker / bookmark
+/ tshirt set'iyle Studio'ya girdiğinde de **iPhone görüyordu** —
+placeholder hissinin en güçlü kaynağı. Phase 82 bu boşluğu kapatır:
+stage artık productType.key'e göre device shape döner.
+
+### Audit (Phase 81 sonrası en kritik görsel eksik)
+
+- **Stage hardcoded PhoneSVG** (her productType için aynı iPhone
+  cascade) → wall_art set'i Studio'da yine telefon gösteriyordu
+- **Shell zaten productType bilgisini biliyordu** (`categoryId`
+  resolve: `items[0].productTypeKey ?? "canvas"`) — yalnız Stage'e
+  hiç geçirilmemişti
+- **Frame canvas iç device de PhoneSVG hardcoded** (`w=128 h=260
+  idx=4`) → Frame mode'da da telefon yerleştirilmişti
+
+### Net karar — Object surface ailesi (Phase 81 üzerine sabitleniyor)
+
+Mockup mode = "how it looks" — asset gerçek ürün surface'inde önizlenir.
+8 ProductType'ın her biri için doğal device shape:
+
+| ProductType.key | Stage device shape | Notes |
+|---|---|---|
+| `wall_art` / `canvas` / `printable` | Wall art frame (outer wood/black + cream mat + interior asset) | 2:3 portrait |
+| `sticker` / `clipart` | Sticker die-cut card (rounded, white outer edge, interior asset) | Square stacked |
+| `bookmark` | Bookmark vertical strip (tassel knot, gradient body) | Tall narrow |
+| `tshirt` / `dtf` | Garment silhouette (shoulders + sleeves + chest area asset) | — |
+| `hoodie` | Same as tshirt + small hood ellipse above shoulders | — |
+| `phone` (fallback, bilinmeyen key) | PhoneSVG legacy iPhone cascade (final HTML parity) | App / screenshot mockup |
+
+**Lifestyle mockup priorite** (Mockup mode'un doğal işi):
+1. ✓ **Wall art / poster frame** (Phase 82 baseline — yüksek)
+2. ✓ **Sticker / clipart die-cut** (Phase 82 baseline — yüksek)
+3. ✓ **T-shirt / hoodie / DTF apparel** (Phase 82 baseline)
+4. ✓ **Bookmark vertical strip** (Phase 82 baseline)
+5. Phone / app screenshot (legacy fallback)
+6. Bundle Preview 9-up grid (Phase 72 multi-slot baseline)
+
+**Listing/output priorite** (Frame mode'un doğal işi, Phase 83+):
+- Etsy hero listing card → Phase 83+ Frame export pipeline
+- Instagram square / Story → Phase 83+
+- Storefront banner → Phase 84+
+
+### Sourcing strategy (Phase 81 baseline'a sabit)
+
+| Tier | Yaklaşım | Phase 82 status |
+|---|---|---|
+| Kısa vade test | **Kendi minimal SVG-based stage device family (Phase 82 dispatch)** + admin curated catalog | ✓ Yerinde — bu turda implement |
+| Orta vade | Operator kendi PSD/PNG upload + Phase 67-73 visual safe-area editor | ✓ Yerinde (intakt) |
+| PSD ETL | `ag-psd` parser + smart-object → slot[] auto-extract | Phase 75 PoC hazır, Phase 84+ wire |
+| 3rd-party PSD/Canva indirme | Telif/lisans riski | **YASAK** (Phase 81 baseline) |
+| Stock photo / Photopea embed | Cloudflare/Datadome WAF | Phase 38'de pasifleştirildi |
+
+### Tek yüksek-impact ürün adımı (Phase 82)
+
+**`StageDeviceSVG` dispatcher + 4 yeni SVG shape** (`svg-art.tsx`'e
+~280 LOC eklendi) + **Stage `deviceKind` prop** + **Shell categoryId →
+deviceKind resolve**.
+
+Dosyalar:
+- `svg-art.tsx`: `StudioStageDeviceKind` type union (10 değer), 4
+  yeni SVG fonksiyonu (`WallArtFrameSVG`, `StickerCardSVG`,
+  `BookmarkStripSVG`, `TshirtSilhouetteSVG`), `StageDeviceSVG`
+  dispatcher (switch + fallback PhoneSVG), `stageDeviceForProductType`
+  helper (ProductType.key → device kind), `studioDeviceLabel` helper
+  (operator-facing label). PhoneSVG **bozulmadan kalır** (legacy
+  fallback + final HTML parity).
+- `MockupStudioStage.tsx`: `MockupCompositionProps.deviceKind` eklendi;
+  `cascadeLayoutFor(kind)` helper per-device cascade geometry döner
+  (wall_art 2:3 portrait, sticker square stacked, bookmark tall
+  narrow, tshirt body geniş, phone legacy iPhone cascade). PhoneSVG
+  → StageDeviceSVG çağrısı. FrameComposition'da iç device de
+  productType-aware (frame canvas 580×326 içinde inner device aspect
+  korunur). Stage wrapper `data-device-kind` attribute.
+- `MockupStudioShell.tsx`: `stageDeviceForProductType(categoryId)` +
+  `studioDeviceLabel(deviceKind)` ile deviceKind ve label resolve.
+  Stage'e `deviceKind` prop geçirilir. Shell wrapper
+  `data-device-kind` + `data-category-id` attribute. Toolbar status
+  badge (Mockup mode) artık device label gösterir ("Clipart bundle"
+  / "Wall art frame" / "T-shirt" / "Bookmark" vb. — Phase 81'in set
+  name gösteriminden device kind görünür yapıldı; bilinmeyen
+  kategoride set adı fallback).
+
+### Browser end-to-end kanıt (live preview, viewport 1440×900)
+
+Test set: `cmov0ia370019149ljyu7divh` (4-item clipart set, Phase 80'de
+de bu set kullanılmıştı — `productTypeKey="clipart"`).
+
+| Test | Sonuç |
+|---|---|
+| Shell mount | `shellMode="mockup"`, `shellDeviceKind="clipart"`, `shellCategoryId="clipart"`, `shellKeptItemCount=4` |
+| Stage device kind | `stageDeviceKind="clipart"` |
+| SVG family count | 3 sticker card gradient (`stg0kf`, `stg1kf`, `stg2kf`) — **0 phone gradient** ✓ (hardcoded iPhone kalktı) |
+| Toolbar status badge | `"Clipart bundle"` (Phase 81 set name gösteriminden device label'a geçti) |
+| Slot picker (Phase 80) | intakt — `slotPickerPresent=true`, `fillAllPresent=true` |
+| Render dispatch | enabled — `renderDisabled=false`, title "Render mockup pack" |
+| Mockup role chip (Phase 81) | intakt — `mockupRolePresent=true`, "Object surface" caption |
+| Frame mode geçiş | `stageDeviceKind="clipart"` korunur; frame canvas içinde de sticker card render (`stg4kf` gradient) — Phone yok |
+| Screenshot | Studio Mockup mode'da 3 sticker die-cut card cascade (kare, beyaz outer edge, cream interior), Slot 1 orange ring + "01 FRONT VIEW" badge — telefon hiç yok |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, products, selection, selections}`:
+  **643/643 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 82)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız UI dispatch + props.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** 1 dispatcher fonksiyon + 4 SVG
+  component + 2 helper. Stage'e tek prop + Shell'e tek resolve.
+- **PhoneSVG bozulmadan kalır** — legacy fallback + final HTML parity.
+- **Apply pipeline + Phase 80 slot picker + Phase 79 real hydrate +
+  Phase 76 multi-design panel + Phase 74-75 multi-slot backend +
+  admin authoring** hepsi intakt.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Canonical operator loop intakt** (References → Batch → Review →
+  Selection → **Mockup Studio (object surface + slot-aware +
+  productType-aware) / Frame mode (presentation surface, Phase 83+)**
+  → Product → Etsy Draft).
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 83+ candidate)
+
+- **Frame mode real export pipeline** — bounded canvas + bg + asset
+  composite → MinIO export → Product/Etsy Draft listing hero hattı.
+  En büyük slice; backend tur (Phase 83-84+).
+- **Canva-like composition evrimi** — text/heading layer + multi-layer
+  + alignment guides. Frame mode'un doğal devamı (Phase 84+).
+- **Pack-selection override** — handoff service `slotAssignments`'i
+  `buildPackSelection`'a `preferredVariantOrder` olarak geçirir
+  (Phase 80 log baseline'a bağlı backend tüketim).
+- **Stage device shape genişletme** — daha gerçekçi shadow/lighting,
+  mug curved surface (4-corner perspective approximation hâlâ),
+  poster on tilted wall (keystone). Phase 84+ candidate.
+- **Templates → Studio test entry** — admin template management
+  surface'inden direkt Studio'da test ve preview.
+- **PSD ETL wire** — `ag-psd` parser + operator PSD upload (Phase 75
+  PoC hazır).
+
+### Bundan sonra Studio için en doğru sonraki adım
+
+Phase 82 ile **placeholder telefon'un fiilen sonu**:
+- Operator wall_art set'inde Studio'da wall art frame görüyor
+- Sticker set'inde sticker die-cut card görüyor
+- Bookmark set'inde vertical strip görüyor
+- Tshirt set'inde garment silhouette görüyor
+- Phone yalnız bilinmeyen kategori için fallback
+
+Sıradaki en yüksek etkili adım **Phase 83 — Frame mode real export
+pipeline**:
+- Bounded canvas + background + asset composite (Sharp pipeline reuse)
+- Listing hero / social card / storefront banner için aspect ratio
+  + bg + composition export
+- Product / Etsy Draft listing hero hattına bağlanma
+- Frame mode "presentation surface" rolünün gerçek output'a dönüşümü
+
+Phase 83 backend-heavy bir slice (Sharp composite + MinIO export +
+Product listing handoff). Phase 82'de Mockup mode görsel olarak
+yaklaştı; Phase 83'te Frame mode davranışsal olarak yaklaşır. Studio
+sonrası Canva-like composition evrimi (Phase 84+) doğal devam.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

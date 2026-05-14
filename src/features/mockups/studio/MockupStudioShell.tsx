@@ -35,7 +35,11 @@ import { MockupStudioPresetRail } from "./MockupStudioPresetRail";
 import { MockupStudioSidebar } from "./MockupStudioSidebar";
 import { MockupStudioStage } from "./MockupStudioStage";
 import { MockupStudioToolbar } from "./MockupStudioToolbar";
-import { studioPaletteForItem } from "./svg-art";
+import {
+  stageDeviceForProductType,
+  studioDeviceLabel,
+  studioPaletteForItem,
+} from "./svg-art";
 import type {
   StudioAppState,
   StudioKeptItem,
@@ -248,6 +252,13 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
   }, [setId, categoryId, activeTemplateId, router, slotAssignments]);
 
   const backHref = `/selections/${setId}`;
+  /* Phase 82 — productType-aware stage device. Shell `categoryId`
+   * zaten resolve ediyor (`items[0].productTypeKey ?? "canvas"`);
+   * Stage'e geçirilen `deviceKind` o key'i shape ailesine map eder
+   * (wall_art frame, sticker die-cut, bookmark strip, tshirt
+   * silhouette vb.). Bilinmeyen key → phone fallback. */
+  const deviceKind = stageDeviceForProductType(categoryId);
+  const deviceLabel = studioDeviceLabel(deviceKind);
   const templateLabel =
     mode === "frame"
       ? "Frame · presentation surface"
@@ -256,7 +267,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
   const statusLabel =
     mode === "frame"
       ? "Export Phase 82+"
-      : (set?.name?.trim() || setName?.trim() || "Set");
+      : deviceKind !== "phone"
+        ? deviceLabel
+        : (set?.name?.trim() || setName?.trim() || "Set");
 
   return (
     <div
@@ -266,6 +279,8 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       data-set-id={setId}
       data-template-id={activeTemplateId ?? ""}
       data-item-count={items.length}
+      data-device-kind={deviceKind}
+      data-category-id={categoryId}
       data-slot-assignment-count={
         Object.values(slotAssignments).filter(Boolean).length
       }
@@ -305,6 +320,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           appState={appState}
           setAppState={setAppState}
           onCreateMockup={handleRender}
+          deviceKind={deviceKind}
         />
         <MockupStudioPresetRail mode={mode} appState={appState} />
       </div>

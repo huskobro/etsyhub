@@ -450,3 +450,347 @@ export function PresetThumbFrame({ idx }: { idx: number }) {
     </svg>
   );
 }
+
+/* ─── Phase 82 — Product-type aware stage devices ─────────
+ *
+ * Phase 77-81 baseline'da stage hardcoded PhoneSVG cascade idi (final
+ * HTML Hero Phone Bundle referansı). Operator wall_art / sticker /
+ * bookmark / tshirt set'i ile Studio'ya girdiğinde de iPhone görüyordu
+ * — placeholder hissi en güçlü kaynağı. Phase 82 productType.key'e
+ * göre device shape döner: wall art frame, sticker die-cut card,
+ * bookmark vertical strip, tshirt silhouette (hoodie/dtf parity).
+ *
+ * Mockup mode = "how it looks" — asset gerçek ürün surface'inde
+ * (wall art frame / sticker die-cut / tshirt front / bookmark strip
+ * / poster / canvas) önizlenir. Telefon yalnız bilinmeyen kategori +
+ * phone/app-screenshot use case için fallback olarak kalır.
+ *
+ * Schema-zero: yeni device tipi eklemek yeni dosya değil, bu helper'a
+ * yeni branch. SVG path tutarlılığı için her shape aynı w/h kontrat'ı
+ * + isEmpty placeholder + design.colors palette. PhoneSVG bozulmadan
+ * kalır (legacy fallback + final HTML parity).
+ */
+
+export type StudioStageDeviceKind =
+  | "phone"
+  | "wall_art"
+  | "canvas"
+  | "printable"
+  | "sticker"
+  | "clipart"
+  | "bookmark"
+  | "tshirt"
+  | "hoodie"
+  | "dtf";
+
+/** ProductType.key (Phase 64 enum) → stage device kind. Bilinmeyen
+ *  key → "phone" fallback (operator yine de Studio kullanır). */
+export function stageDeviceForProductType(
+  productTypeKey: string | null | undefined,
+): StudioStageDeviceKind {
+  switch (productTypeKey) {
+    case "wall_art":
+      return "wall_art";
+    case "canvas":
+      return "canvas";
+    case "printable":
+      return "printable";
+    case "sticker":
+      return "sticker";
+    case "clipart":
+      return "clipart";
+    case "bookmark":
+      return "bookmark";
+    case "tshirt":
+      return "tshirt";
+    case "hoodie":
+      return "hoodie";
+    case "dtf":
+      return "dtf";
+    default:
+      return "phone";
+  }
+}
+
+/** Operator-facing label for each device kind. Toolbar template
+ *  pill / stage caption opsiyonel kullanım için. */
+export function studioDeviceLabel(kind: StudioStageDeviceKind): string {
+  switch (kind) {
+    case "wall_art":
+      return "Wall art frame";
+    case "canvas":
+      return "Canvas";
+    case "printable":
+      return "Printable";
+    case "sticker":
+      return "Sticker";
+    case "clipart":
+      return "Clipart bundle";
+    case "bookmark":
+      return "Bookmark";
+    case "tshirt":
+      return "T-shirt";
+    case "hoodie":
+      return "Hoodie";
+    case "dtf":
+      return "DTF transfer";
+    case "phone":
+    default:
+      return "Phone";
+  }
+}
+
+interface StageDeviceSVGProps {
+  kind: StudioStageDeviceKind;
+  w?: number;
+  h?: number;
+  design?: StudioDesign | null;
+  isEmpty?: boolean;
+  idx?: number;
+}
+
+/** Wall art / canvas / printable / poster framed surface. Operator
+ *  gerçek "frame on wall" hissini görür — outer wood/black frame +
+ *  inner cream mat + asset interior. */
+function WallArtFrameSVG({
+  w = 200,
+  h = 250,
+  design,
+  isEmpty,
+  idx = 0,
+}: Omit<StageDeviceSVGProps, "kind">) {
+  const frameW = 9;
+  const matW = 14;
+  const innerX = frameW + matW;
+  const innerY = frameW + matW;
+  const innerW = w - 2 * innerX;
+  const innerH = h - 2 * innerY;
+  const dc = design ? design.colors : null;
+  const gid = `wag${idx}kf`;
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" display="block" aria-hidden>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2={w * 0.6} y2={h} gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor={dc ? dc[0] : "#2A2622"} />
+          <stop offset="100%" stopColor={dc ? dc[1] : "#161412"} />
+        </linearGradient>
+      </defs>
+      {/* Outer frame */}
+      <rect width={w} height={h} rx={3} fill="#1A1612" />
+      <rect x={1} y={1} width={w - 2} height={h - 2} rx={2} stroke="rgba(255,255,255,0.06)" strokeWidth={1} fill="none" />
+      {/* Cream mat */}
+      <rect x={frameW} y={frameW} width={w - 2 * frameW} height={h - 2 * frameW} fill="#F5F1E9" />
+      {/* Interior — asset surface */}
+      <rect x={innerX} y={innerY} width={innerW} height={innerH} fill={`url(#${gid})`} />
+      {dc ? (
+        <>
+          <rect x={innerX + 8} y={innerY + 12} width={innerW * 0.7} height={3} rx={1} fill="rgba(22,19,15,0.18)" />
+          <rect x={innerX + 8} y={innerY + 20} width={innerW * 0.5} height={3} rx={1} fill="rgba(22,19,15,0.12)" />
+          <rect x={innerX + 8} y={innerY + 34} width={innerW - 16} height={innerH * 0.45} rx={3} fill="rgba(22,19,15,0.1)" />
+        </>
+      ) : null}
+      {isEmpty ? (
+        <text x={w / 2} y={h / 2 + 8} textAnchor="middle" fill="rgba(22,19,15,0.22)" fontSize={20} fontFamily="ui-sans-serif" style={{ userSelect: "none" }}>+</text>
+      ) : null}
+    </svg>
+  );
+}
+
+/** Sticker / clipart die-cut card. Rounded card silhouette, white
+ *  edge ring, asset full-bleed interior. */
+function StickerCardSVG({
+  w = 200,
+  h = 200,
+  design,
+  isEmpty,
+  idx = 0,
+}: Omit<StageDeviceSVGProps, "kind">) {
+  const r = Math.min(22, Math.min(w, h) * 0.16);
+  const pad = 10;
+  const dc = design ? design.colors : null;
+  const gid = `stg${idx}kf`;
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" display="block" aria-hidden>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2={w} y2={h} gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor={dc ? dc[0] : "#E4DDD1"} />
+          <stop offset="100%" stopColor={dc ? dc[1] : "#C8C0B4"} />
+        </linearGradient>
+      </defs>
+      {/* White sticker outer edge */}
+      <rect x={0} y={0} width={w} height={h} rx={r} fill="#FFFFFF" />
+      {/* Asset surface */}
+      <rect x={pad} y={pad} width={w - 2 * pad} height={h - 2 * pad} rx={r - 4} fill={`url(#${gid})`} />
+      {dc ? (
+        <>
+          <circle cx={w / 2} cy={h / 2 - 8} r={Math.min(w, h) * 0.18} fill="rgba(22,19,15,0.12)" />
+          <rect x={pad + 16} y={h - pad - 22} width={w - 2 * pad - 32} height={3} rx={1} fill="rgba(22,19,15,0.16)" />
+        </>
+      ) : null}
+      {isEmpty ? (
+        <text x={w / 2} y={h / 2 + 8} textAnchor="middle" fill="rgba(22,19,15,0.22)" fontSize={22} fontFamily="ui-sans-serif" style={{ userSelect: "none" }}>+</text>
+      ) : null}
+      <rect x={0.5} y={0.5} width={w - 1} height={h - 1} rx={r - 0.5} stroke="rgba(0,0,0,0.1)" strokeWidth={1} fill="none" />
+    </svg>
+  );
+}
+
+/** Bookmark — narrow vertical strip, tassel knot top, gradient body. */
+function BookmarkStripSVG({
+  w = 80,
+  h = 280,
+  design,
+  isEmpty,
+  idx = 0,
+}: Omit<StageDeviceSVGProps, "kind">) {
+  const dc = design ? design.colors : null;
+  const gid = `bmg${idx}kf`;
+  const knotR = 6;
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" display="block" aria-hidden>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2={0} y2={h} gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor={dc ? dc[0] : "#E4DDD1"} />
+          <stop offset="100%" stopColor={dc ? dc[1] : "#A89878"} />
+        </linearGradient>
+      </defs>
+      {/* Tassel knot */}
+      <circle cx={w / 2} cy={knotR + 1} r={knotR} fill="#3A3532" />
+      <line x1={w / 2} y1={knotR * 2 + 1} x2={w / 2} y2={20} stroke="#3A3532" strokeWidth={1.2} />
+      {/* Bookmark body */}
+      <rect x={4} y={20} width={w - 8} height={h - 28} rx={3} fill={`url(#${gid})`} />
+      {dc ? (
+        <>
+          <circle cx={w / 2} cy={h * 0.32} r={(w - 8) * 0.22} fill="rgba(22,19,15,0.14)" />
+          <rect x={12} y={h * 0.6} width={w - 24} height={2} rx={1} fill="rgba(22,19,15,0.16)" />
+          <rect x={12} y={h * 0.66} width={(w - 24) * 0.7} height={2} rx={1} fill="rgba(22,19,15,0.1)" />
+        </>
+      ) : null}
+      {isEmpty ? (
+        <text x={w / 2} y={h / 2 + 7} textAnchor="middle" fill="rgba(22,19,15,0.2)" fontSize={18} fontFamily="ui-sans-serif" style={{ userSelect: "none" }}>+</text>
+      ) : null}
+      <rect x={4.5} y={20.5} width={w - 9} height={h - 29} rx={2.5} stroke="rgba(0,0,0,0.18)" strokeWidth={1} fill="none" />
+    </svg>
+  );
+}
+
+/** T-shirt / hoodie / DTF garment silhouette. Asset chest area
+ *  (front print). Hooded variant adds a small hood ellipse above
+ *  shoulders. */
+function TshirtSilhouetteSVG({
+  w = 200,
+  h = 240,
+  design,
+  isEmpty,
+  idx = 0,
+  hooded = false,
+}: Omit<StageDeviceSVGProps, "kind"> & { hooded?: boolean }) {
+  const dc = design ? design.colors : null;
+  const gid = `tsg${idx}kf`;
+  const cx = w / 2;
+  const shoulderY = h * 0.18;
+  const sleeveOffset = w * 0.18;
+  const bodyW = w * 0.62;
+  const bodyX = cx - bodyW / 2;
+  const bodyY = shoulderY + h * 0.04;
+  const bodyH = h - bodyY - h * 0.04;
+  const chestX = cx - bodyW * 0.35;
+  const chestY = bodyY + bodyH * 0.18;
+  const chestW = bodyW * 0.7;
+  const chestH = bodyW * 0.7;
+
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" display="block" aria-hidden>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2={w} y2={h} gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor={dc ? dc[0] : "#E4DDD1"} />
+          <stop offset="100%" stopColor={dc ? dc[1] : "#A89878"} />
+        </linearGradient>
+      </defs>
+      {/* Shadow under garment */}
+      <ellipse cx={cx} cy={h - 6} rx={bodyW * 0.55} ry={4} fill="rgba(0,0,0,0.25)" />
+      {/* Garment body + sleeves */}
+      <path
+        d={`
+          M ${cx - bodyW / 2} ${shoulderY}
+          Q ${cx - bodyW / 2 - sleeveOffset} ${shoulderY + h * 0.04} ${cx - bodyW / 2 - sleeveOffset * 0.6} ${shoulderY + h * 0.16}
+          L ${cx - bodyW / 2} ${shoulderY + h * 0.2}
+          L ${bodyX} ${h - bodyY * 0.5}
+          L ${bodyX + bodyW} ${h - bodyY * 0.5}
+          L ${cx + bodyW / 2} ${shoulderY + h * 0.2}
+          L ${cx + bodyW / 2 + sleeveOffset * 0.6} ${shoulderY + h * 0.16}
+          Q ${cx + bodyW / 2 + sleeveOffset} ${shoulderY + h * 0.04} ${cx + bodyW / 2} ${shoulderY}
+          Z
+        `}
+        fill="#2A2622"
+      />
+      {/* Hood (only for hoodie kind) */}
+      {hooded ? (
+        <ellipse cx={cx} cy={shoulderY - h * 0.04} rx={w * 0.18} ry={h * 0.08} fill="#2A2622" />
+      ) : null}
+      {/* Neckline */}
+      <ellipse cx={cx} cy={shoulderY + 4} rx={w * 0.12} ry={h * 0.05} fill="#161412" />
+      {/* Chest area — asset */}
+      <rect x={chestX} y={chestY} width={chestW} height={chestH} rx={4} fill={`url(#${gid})`} />
+      {dc ? (
+        <>
+          <circle cx={chestX + chestW / 2} cy={chestY + chestH * 0.4} r={chestW * 0.22} fill="rgba(22,19,15,0.14)" />
+          <rect x={chestX + 8} y={chestY + chestH - 16} width={chestW - 16} height={2} rx={1} fill="rgba(22,19,15,0.18)" />
+        </>
+      ) : null}
+      {isEmpty ? (
+        <text x={cx} y={chestY + chestH / 2 + 7} textAnchor="middle" fill="rgba(255,255,255,0.18)" fontSize={18} fontFamily="ui-sans-serif" style={{ userSelect: "none" }}>+</text>
+      ) : null}
+    </svg>
+  );
+}
+
+/** Phase 82 — Stage device dispatcher. ProductType → device shape.
+ *  Bilinmeyen / phone fallback → PhoneSVG (final HTML legacy parity).
+ *  StageDeviceSVG cascade'in her slot'unda çağrılır; layout per-kind
+ *  cascadeLayoutFor() ile MockupStudioStage'de hesaplanır. */
+export function StageDeviceSVG({
+  kind,
+  w = 200,
+  h = 250,
+  design = null,
+  isEmpty = false,
+  idx = 0,
+}: StageDeviceSVGProps) {
+  switch (kind) {
+    case "wall_art":
+    case "canvas":
+    case "printable":
+      return <WallArtFrameSVG w={w} h={h} design={design} isEmpty={isEmpty} idx={idx} />;
+    case "sticker":
+    case "clipart":
+      return <StickerCardSVG w={w} h={h} design={design} isEmpty={isEmpty} idx={idx} />;
+    case "bookmark":
+      return (
+        <BookmarkStripSVG
+          w={Math.min(w, h * 0.32)}
+          h={h}
+          design={design}
+          isEmpty={isEmpty}
+          idx={idx}
+        />
+      );
+    case "tshirt":
+    case "dtf":
+      return <TshirtSilhouetteSVG w={w} h={h} design={design} isEmpty={isEmpty} idx={idx} />;
+    case "hoodie":
+      return (
+        <TshirtSilhouetteSVG
+          w={w}
+          h={h}
+          design={design}
+          isEmpty={isEmpty}
+          idx={idx}
+          hooded
+        />
+      );
+    case "phone":
+    default:
+      return <PhoneSVG w={w} h={h} design={design} isEmpty={isEmpty} idx={idx} />;
+  }
+}

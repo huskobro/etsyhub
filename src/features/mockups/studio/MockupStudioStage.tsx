@@ -16,7 +16,12 @@
  */
 
 import { StudioIcon } from "./icons";
-import { PhoneSVG, STUDIO_SAMPLE_DESIGNS } from "./svg-art";
+import {
+  PhoneSVG,
+  StageDeviceSVG,
+  STUDIO_SAMPLE_DESIGNS,
+  type StudioStageDeviceKind,
+} from "./svg-art";
 import type { StudioAppState, StudioMode, StudioSlotMeta } from "./types";
 
 interface MockupCompositionProps {
@@ -24,6 +29,68 @@ interface MockupCompositionProps {
   selectedSlot: number;
   onSelect: (i: number) => void;
   isPreview: boolean;
+  /** Phase 82 — productType-aware stage shape. Bookmark vertical
+   *  strip, wall art frame, sticker die-cut, tshirt silhouette vb.
+   *  PhoneSVG hardcoded placeholder Phase 77-81 baseline'da idi;
+   *  Phase 82 gerçek surface'i gösterir. Bilinmeyen kategori →
+   *  phone fallback (legacy + final HTML parity). */
+  deviceKind: StudioStageDeviceKind;
+}
+
+/* Phase 82 — Per-device cascade layout. Final HTML telefon 3-phone
+ * cascade idi (204×416, 170×346, 140×284); diğer device kind'larda
+ * aynı 3-slot cascade kompoze edilir ama her shape'in doğal aspect
+ * ratio'su korunur. PhoneSVG kontrat'ı baseline kaldı → wall_art
+ * 2:3 portrait, sticker square, bookmark tall-narrow, tshirt body
+ * yatay genişlik. Layout sabitleri stage canvas 572×504 boundary
+ * içine sığacak şekilde planlandı (mevcut studio.css stage-inner
+ * geometrisini bozmaz). */
+function cascadeLayoutFor(
+  kind: StudioStageDeviceKind,
+): { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[] {
+  switch (kind) {
+    case "wall_art":
+    case "canvas":
+    case "printable":
+      // 2:3 portrait framed surfaces — wider stance
+      return [
+        { si: 0, x: 30, y: 30, w: 200, h: 280, r: 0, z: 3 },
+        { si: 1, x: 230, y: 70, w: 170, h: 240, r: -5, z: 2 },
+        { si: 2, x: 400, y: 110, w: 140, h: 200, r: -10, z: 1 },
+      ];
+    case "sticker":
+    case "clipart":
+      // Square die-cuts — playful stacked
+      return [
+        { si: 0, x: 50, y: 70, w: 220, h: 220, r: 0, z: 3 },
+        { si: 1, x: 270, y: 110, w: 180, h: 180, r: -6, z: 2 },
+        { si: 2, x: 440, y: 160, w: 130, h: 130, r: -12, z: 1 },
+      ];
+    case "bookmark":
+      // Tall narrow strips — pamphlet-like row
+      return [
+        { si: 0, x: 130, y: 30, w: 90, h: 320, r: 0, z: 3 },
+        { si: 1, x: 250, y: 50, w: 78, h: 280, r: -6, z: 2 },
+        { si: 2, x: 360, y: 70, w: 64, h: 240, r: -12, z: 1 },
+      ];
+    case "tshirt":
+    case "hoodie":
+    case "dtf":
+      // Garment silhouettes — wider chest area
+      return [
+        { si: 0, x: 20, y: 30, w: 220, h: 260, r: 0, z: 3 },
+        { si: 1, x: 240, y: 70, w: 190, h: 225, r: -5, z: 2 },
+        { si: 2, x: 430, y: 110, w: 150, h: 180, r: -10, z: 1 },
+      ];
+    case "phone":
+    default:
+      // Final HTML iPhone cascade (Phase 77 baseline)
+      return [
+        { si: 0, x: 20, y: 14, w: 204, h: 416, r: 0, z: 3 },
+        { si: 1, x: 224, y: 60, w: 170, h: 346, r: -6, z: 2 },
+        { si: 2, x: 398, y: 110, w: 140, h: 284, r: -12, z: 1 },
+      ];
+  }
 }
 
 function MockupComposition({
@@ -31,12 +98,9 @@ function MockupComposition({
   selectedSlot,
   onSelect,
   isPreview,
+  deviceKind,
 }: MockupCompositionProps) {
-  const phones = [
-    { si: 0, x: 20, y: 14, w: 204, h: 416, r: 0, z: 3 },
-    { si: 1, x: 224, y: 60, w: 170, h: 346, r: -6, z: 2 },
-    { si: 2, x: 398, y: 110, w: 140, h: 284, r: -12, z: 1 },
-  ];
+  const phones = cascadeLayoutFor(deviceKind);
   return (
     <div
       className="k-studio__stage-inner"
@@ -83,7 +147,8 @@ function MockupComposition({
                 {String(slot.id).padStart(2, "0")} {slot.name}
               </div>
             ) : null}
-            <PhoneSVG
+            <StageDeviceSVG
+              kind={deviceKind}
               w={w}
               h={h}
               design={slot.assigned ? slot.design : null}
@@ -118,8 +183,25 @@ interface FrameCompositionProps {
   isPreview: boolean;
 }
 
-function FrameComposition({ isEmpty, isPreview }: FrameCompositionProps) {
+function FrameComposition({
+  isEmpty,
+  isPreview,
+  deviceKind,
+}: FrameCompositionProps & { deviceKind: StudioStageDeviceKind }) {
   const design = isEmpty ? null : STUDIO_SAMPLE_DESIGNS.d1;
+  // Phase 82 — Frame inner device dims per kind. Frame canvas
+  // 580×326 (16:9); inner device aspect korunur (wall_art portrait,
+  // sticker square, bookmark tall, tshirt body). Bilinmeyen → phone.
+  const innerSize =
+    deviceKind === "wall_art" || deviceKind === "canvas" || deviceKind === "printable"
+      ? { w: 152, h: 220 }
+      : deviceKind === "sticker" || deviceKind === "clipart"
+        ? { w: 180, h: 180 }
+        : deviceKind === "bookmark"
+          ? { w: 70, h: 240 }
+          : deviceKind === "tshirt" || deviceKind === "hoodie" || deviceKind === "dtf"
+            ? { w: 200, h: 240 }
+            : { w: 128, h: 260 }; // phone fallback
   return (
     <div
       className="k-studio__stage-inner"
@@ -163,7 +245,14 @@ function FrameComposition({ isEmpty, isPreview }: FrameCompositionProps) {
             zIndex: 2,
           }}
         >
-          <PhoneSVG w={128} h={260} design={design} isEmpty={!design} idx={4} />
+          <StageDeviceSVG
+            kind={deviceKind}
+            w={innerSize.w}
+            h={innerSize.h}
+            design={design}
+            isEmpty={!design}
+            idx={4}
+          />
         </div>
       </div>
       {!isPreview ? (
@@ -183,6 +272,11 @@ export interface MockupStudioStageProps {
   /** Phase 79 — render-done banner "Create Mockup" CTA + RenderDone /
    *  re-render. Mockup pipeline POST /api/mockup/jobs trigger. */
   onCreateMockup?: () => void;
+  /** Phase 82 — productType-aware stage shape. Shell resolve eder
+   *  (selection items[0].productTypeKey) ve Stage'e geçirir. Bookmark
+   *  vertical strip, wall art frame, sticker die-cut, tshirt
+   *  silhouette vb. Bilinmeyen → phone fallback. */
+  deviceKind: StudioStageDeviceKind;
 }
 
 export function MockupStudioStage({
@@ -193,6 +287,7 @@ export function MockupStudioStage({
   appState,
   setAppState,
   onCreateMockup,
+  deviceKind,
 }: MockupStudioStageProps) {
   const isPreview = appState === "preview" || appState === "renderDone";
   const isRender = appState === "render";
@@ -204,6 +299,7 @@ export function MockupStudioStage({
       data-testid="studio-stage"
       data-mode={mode}
       data-state={appState}
+      data-device-kind={deviceKind}
     >
       {!isRender && mode === "mockup" ? (
         <div className="k-studio__stage-amb" />
@@ -215,9 +311,14 @@ export function MockupStudioStage({
           selectedSlot={selectedSlot}
           onSelect={setSelectedSlot}
           isPreview={isPreview}
+          deviceKind={deviceKind}
         />
       ) : (
-        <FrameComposition isEmpty={isEmpty} isPreview={isPreview} />
+        <FrameComposition
+          isEmpty={isEmpty}
+          isPreview={isPreview}
+          deviceKind={deviceKind}
+        />
       )}
 
       {isEmpty && !isPreview && !isRender ? (
