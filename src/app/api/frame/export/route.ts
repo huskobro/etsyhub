@@ -49,7 +49,13 @@ const SlotSchema = z.object({
 // Phase 105 — productType-aware device shape (preview StageDeviceSVG
 // parity). Backward-compat: opsiyonel; undefined → service "sticker"
 // fallback (Phase 104 baseline).
-const DeviceShapeSchema = z.enum(["frame", "sticker", "bezel"]);
+const DeviceShapeSchema = z.enum([
+  "frame",
+  "sticker",
+  "bezel",
+  "bookmark",
+  "garment",
+]);
 
 const BodySchema = z.object({
   setId: z.string().min(1),

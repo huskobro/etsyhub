@@ -75,7 +75,12 @@ export type FrameGlassVariant = "light" | "dark" | "frosted";
  * DeviceKind; Phase 105 bu kind'i compositor'a iletir → preview ile
  * export aynı shape ailesinden (sözleşme §11.0 Preview = Export
  * Truth). */
-export type FrameDeviceShape = "frame" | "sticker" | "bezel";
+export type FrameDeviceShape =
+  | "frame"
+  | "sticker"
+  | "bezel"
+  | "bookmark"
+  | "garment";
 
 export function resolveDeviceShape(
   deviceKind: string | null | undefined,
@@ -87,17 +92,22 @@ export function resolveDeviceShape(
       return "frame";
     case "phone":
       return "bezel";
-    case "sticker":
-    case "clipart":
     case "bookmark":
+      // Phase 106 — BookmarkStripSVG parity (dar dikey strip + tassel
+      // knot + ip + body + inner outline).
+      return "bookmark";
     case "tshirt":
     case "hoodie":
     case "dtf":
+      // Phase 106 — TshirtSilhouetteSVG parity (garment silüeti +
+      // sleeves + neckline + chest print area). hoodie → garment +
+      // hood ellipse (Phase 106'da garment baseline; hood Phase 107+).
+      return "garment";
+    case "sticker":
+    case "clipart":
     default:
-      // Phase 105 — bookmark/tshirt henüz sticker fallback (preview'da
-      // BookmarkStripSVG / TshirtSilhouetteSVG farklı; tam parity
-      // Phase 106+ candidate). clipart/sticker = StickerCardSVG (Phase
-      // 104 baseline). Bilinmeyen kind → sticker (güvenli default).
+      // clipart/sticker = StickerCardSVG (Phase 104 baseline).
+      // Bilinmeyen kind → sticker (güvenli default).
       return "sticker";
   }
 }
@@ -563,15 +573,26 @@ export async function composeFrameOutput(
         .png()
         .toBuffer();
     } else if (deviceShape === "bezel") {
-      // ── PhoneSVG parity ───────────────────────────────────────────
-      // Koyu device gövde (rounded, geniş radius) + screen inset
-      // (asset). bezel = minDim×0.035 ince çerçeve; gövde radius
-      // minDim×0.14 (telefon köşe yuvarlağı).
-      const bezel = Math.max(3, Math.round(minDim * 0.035));
-      const bodyRadius = Math.max(10, Math.round(minDim * 0.14));
-      const screenRadius = Math.max(6, Math.round(minDim * 0.11));
-      const screenW = Math.max(1, assetW - 2 * bezel);
-      const screenH = Math.max(1, assetH - 2 * bezel);
+      // ── PhoneSVG parity (svg-art.tsx:201) ─────────────────────────
+      // Preview: rect W×H rx=26 fill=#0C0A09 (koyu gövde) + screen
+      // x=bz y=bz*2 sw=W-bz*2 sh=H-bz*3 rx=sr (ASİMETRİK bezel —
+      // üst sy=bz*2, alt H-bz*3 daha kalın) + camera notch
+      // w/2-16,sy+7,32×9 #0C0A09 + outer hairline rgba(255,255,255,
+      // 0.07). bz=10 @ ref ≈ minDim×0.05.
+      const bz = Math.max(3, Math.round(minDim * 0.05));
+      const bodyRadius = Math.max(10, Math.round(minDim * 0.13));
+      const screenRadius = Math.max(6, bodyRadius - bz);
+      // Asimetrik: screen x=bz, y=bz*2 (üst bezel ×2), sw=W-bz*2,
+      // sh=H-bz*3 (alt bezel daha kalın — preview parity).
+      const screenX = bz;
+      const screenY = bz * 2;
+      const screenW = Math.max(1, assetW - bz * 2);
+      const screenH = Math.max(1, assetH - bz * 3);
+      // Notch (preview w/2-16,sy+7,32×9 → minDim'e oranla).
+      const notchW = Math.max(8, Math.round(minDim * 0.16));
+      const notchH = Math.max(3, Math.round(minDim * 0.045));
+      const notchX = Math.round(assetW / 2 - notchW / 2);
+      const notchY = screenY + Math.max(2, Math.round(minDim * 0.035));
 
       const screenAssetPng = await sharp(slot.imageBuffer)
         .resize(screenW, screenH, { fit: "cover", position: "centre" })
@@ -606,16 +627,25 @@ export async function composeFrameOutput(
           fill="black" filter="url(#slot-sh)"/>
       </svg>`;
 
+      // Body + camera notch + outer hairline (preview rect1 + notch
+      // + outline). Notch screen'in üstüne (asset compose'tan sonra).
       const bezelBodySvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
         <rect x="${cardX}" y="${cardY}"
           width="${assetW}" height="${assetH}"
           rx="${bodyRadius}" ry="${bodyRadius}"
-          fill="#0E0C0A"/>
+          fill="#0C0A09"/>
+      </svg>`;
+
+      const bezelNotchSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="${cardX + notchX}" y="${cardY + notchY}"
+          width="${notchW}" height="${notchH}"
+          rx="${Math.round(notchH / 2)}" ry="${Math.round(notchH / 2)}"
+          fill="#0C0A09"/>
         <rect x="${cardX + 0.5}" y="${cardY + 0.5}"
           width="${assetW - 1}" height="${assetH - 1}"
           rx="${bodyRadius - 0.5}" ry="${bodyRadius - 0.5}"
           fill="none"
-          stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+          stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
       </svg>`;
 
       slotTilePng = await sharp({
@@ -631,8 +661,184 @@ export async function composeFrameOutput(
           { input: Buffer.from(bezelBodySvg), top: 0, left: 0 },
           {
             input: screenAssetPng,
-            top: cardY + bezel,
-            left: cardX + bezel,
+            top: cardY + screenY,
+            left: cardX + screenX,
+          },
+          // Notch + hairline asset'in üstüne (preview: notch screen
+          // gradient'inden sonra çiziliyor).
+          { input: Buffer.from(bezelNotchSvg), top: 0, left: 0 },
+        ])
+        .png()
+        .toBuffer();
+    } else if (deviceShape === "bookmark") {
+      // ── BookmarkStripSVG parity (svg-art.tsx:988) ─────────────────
+      // Preview: tassel knot circle (w/2,knotR+1,r=6 #3A3532) + ip
+      // line (w/2,13→20) + body rect (4,20,W-8,H-28 rx=3 fill=
+      // gradient) + asset clip + inner outline (4.5,20.5 stroke
+      // rgba(0,0,0,0.18) sw=1). Dar dikey strip.
+      const knotR = Math.max(3, Math.round(minDim * 0.075));
+      const knotCy = knotR + 1;
+      const bodyTop = Math.max(knotR * 2 + 4, Math.round(assetH * 0.07));
+      const bodyMargin = Math.max(2, Math.round(assetW * 0.05));
+      const bodyX = bodyMargin;
+      const bodyY = bodyTop;
+      const bodyW = Math.max(1, assetW - 2 * bodyMargin);
+      const bodyH = Math.max(1, assetH - bodyTop - bodyMargin);
+      const bodyR = Math.max(2, Math.round(minDim * 0.04));
+
+      const bookmarkAssetPng = await sharp(slot.imageBuffer)
+        .resize(bodyW, bodyH, { fit: "cover", position: "centre" })
+        .composite([
+          {
+            input: Buffer.from(
+              `<svg width="${bodyW}" height="${bodyH}" xmlns="http://www.w3.org/2000/svg">
+                <rect width="${bodyW}" height="${bodyH}"
+                  rx="${bodyR}" ry="${bodyR}" fill="white"/>
+              </svg>`,
+            ),
+            blend: "dest-in",
+          },
+        ])
+        .png()
+        .toBuffer();
+
+      const bookmarkShadowSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="slot-sh" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="${chrome.shadowOffset1}"
+              stdDeviation="${Math.round(chrome.shadowBlur1 / 2)}"
+              flood-color="black" flood-opacity="0.5"/>
+            <feDropShadow dx="0" dy="${chrome.shadowOffset2}"
+              stdDeviation="${Math.round(chrome.shadowBlur2 / 2)}"
+              flood-color="black" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+        <rect x="${cardX + bodyX}" y="${cardY + bodyY}"
+          width="${bodyW}" height="${bodyH}"
+          rx="${bodyR}" ry="${bodyR}"
+          fill="black" filter="url(#slot-sh)"/>
+      </svg>`;
+
+      // Tassel knot + ip line (preview circle + line, body'nin üstünde)
+      const bookmarkKnotSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="${cardX + assetW / 2}" cy="${cardY + knotCy}"
+          r="${knotR}" fill="#3A3532"/>
+        <line x1="${cardX + assetW / 2}" y1="${cardY + knotR * 2 + 1}"
+          x2="${cardX + assetW / 2}" y2="${cardY + bodyY}"
+          stroke="#3A3532" stroke-width="${Math.max(1, Math.round(minDim / 60))}"/>
+      </svg>`;
+
+      const bookmarkOutlineSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="${cardX + bodyX + 0.5}" y="${cardY + bodyY + 0.5}"
+          width="${bodyW - 1}" height="${bodyH - 1}"
+          rx="${Math.max(1, bodyR - 0.5)}" ry="${Math.max(1, bodyR - 0.5)}"
+          fill="none"
+          stroke="rgba(0,0,0,0.18)" stroke-width="${chrome.innerStroke}"/>
+      </svg>`;
+
+      slotTilePng = await sharp({
+        create: {
+          width: tileW,
+          height: tileH,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
+      })
+        .composite([
+          { input: Buffer.from(bookmarkShadowSvg), top: 0, left: 0 },
+          { input: Buffer.from(bookmarkKnotSvg), top: 0, left: 0 },
+          {
+            input: bookmarkAssetPng,
+            top: cardY + bodyY,
+            left: cardX + bodyX,
+          },
+          { input: Buffer.from(bookmarkOutlineSvg), top: 0, left: 0 },
+        ])
+        .png()
+        .toBuffer();
+    } else if (deviceShape === "garment") {
+      // ── TshirtSilhouetteSVG parity (svg-art.tsx:1047) ─────────────
+      // Preview: shadow ellipse + garment body path (omuz+kol+gövde
+      // fill=#2A2622) + neckline ellipse (#161412) + chest area
+      // asset (chestX,chestY,chestW×chestH rx=4). Path-based silüet.
+      const cx = assetW / 2;
+      const shoulderY = assetH * 0.18;
+      const sleeveOffset = assetW * 0.18;
+      const bodyW = assetW * 0.62;
+      const bodyX = cx - bodyW / 2;
+      const bodyY = shoulderY + assetH * 0.04;
+      const chestW = bodyW * 0.7;
+      const chestH = bodyW * 0.7;
+      const chestX = cx - chestW / 2;
+      const chestY = bodyY + (assetH - bodyY - assetH * 0.04) * 0.18;
+      const chestR = Math.max(3, Math.round(minDim * 0.02));
+      const garmentPath = `
+        M ${cardX + cx - bodyW / 2} ${cardY + shoulderY}
+        Q ${cardX + cx - bodyW / 2 - sleeveOffset} ${cardY + shoulderY + assetH * 0.04} ${cardX + cx - bodyW / 2 - sleeveOffset * 0.6} ${cardY + shoulderY + assetH * 0.16}
+        L ${cardX + cx - bodyW / 2} ${cardY + shoulderY + assetH * 0.2}
+        L ${cardX + bodyX} ${cardY + assetH - bodyY * 0.5}
+        L ${cardX + bodyX + bodyW} ${cardY + assetH - bodyY * 0.5}
+        L ${cardX + cx + bodyW / 2} ${cardY + shoulderY + assetH * 0.2}
+        L ${cardX + cx + bodyW / 2 + sleeveOffset * 0.6} ${cardY + shoulderY + assetH * 0.16}
+        Q ${cardX + cx + bodyW / 2 + sleeveOffset} ${cardY + shoulderY + assetH * 0.04} ${cardX + cx + bodyW / 2} ${cardY + shoulderY}
+        Z`;
+
+      const chestAssetPng = await sharp(slot.imageBuffer)
+        .resize(Math.max(1, Math.round(chestW)), Math.max(1, Math.round(chestH)), {
+          fit: "cover",
+          position: "centre",
+        })
+        .composite([
+          {
+            input: Buffer.from(
+              `<svg width="${Math.round(chestW)}" height="${Math.round(chestH)}" xmlns="http://www.w3.org/2000/svg">
+                <rect width="${Math.round(chestW)}" height="${Math.round(chestH)}"
+                  rx="${chestR}" ry="${chestR}" fill="white"/>
+              </svg>`,
+            ),
+            blend: "dest-in",
+          },
+        ])
+        .png()
+        .toBuffer();
+
+      const garmentShadowSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="slot-sh" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="${chrome.shadowOffset1}"
+              stdDeviation="${Math.round(chrome.shadowBlur1 / 2)}"
+              flood-color="black" flood-opacity="0.5"/>
+            <feDropShadow dx="0" dy="${chrome.shadowOffset2}"
+              stdDeviation="${Math.round(chrome.shadowBlur2 / 2)}"
+              flood-color="black" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+        <path d="${garmentPath}" fill="black" filter="url(#slot-sh)"/>
+      </svg>`;
+
+      // Garment body + neckline (preview path #2A2622 + neckline
+      // ellipse #161412).
+      const garmentBodySvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <path d="${garmentPath}" fill="#2A2622"/>
+        <ellipse cx="${cardX + cx}" cy="${cardY + shoulderY + 4}"
+          rx="${assetW * 0.12}" ry="${assetH * 0.05}" fill="#161412"/>
+      </svg>`;
+
+      slotTilePng = await sharp({
+        create: {
+          width: tileW,
+          height: tileH,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
+      })
+        .composite([
+          { input: Buffer.from(garmentShadowSvg), top: 0, left: 0 },
+          { input: Buffer.from(garmentBodySvg), top: 0, left: 0 },
+          {
+            input: chestAssetPng,
+            top: Math.round(cardY + chestY),
+            left: Math.round(cardX + chestX),
           },
         ])
         .png()

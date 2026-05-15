@@ -19695,7 +19695,7 @@ Canonical truth = **exported PNG**. Studio preview, exported PNG'nin
 authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
 preview'ın render sözleşmesini birebir izler.
 
-### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge, Phase 105 productType shape parity)
+### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge, Phase 105-106 productType shape parity)
 
 - **Phase 102 item chrome parity fulfilled — exported PNG'deki her
   mockup item'ı Studio preview item chrome'una yaklaştı.**
@@ -21754,6 +21754,214 @@ TshirtSilhouetteSVG Sharp pipeline'a — her shape için ayrı
 layer model). Clipart/wall_art/phone divergence Phase 101-105'te
 kapandığı için Phase 106 kalan productType shape polish.
 Paralel: Etsy Draft submit pipeline frame-export end-to-end test.
+
+---
+
+## Phase 106 — kalan productType shape parity (bookmark strip, garment silhouette, phone bezel refine)
+
+Phase 105 wall_art frame+mat + sticker baseline kapadı; phone
+"bezel" branch kısmen vardı. Kullanıcı: kalan iki kritik açık —
+(1) phone/bezel parity için gerçek browser proof zayıf, (2)
+bookmark/tshirt/hoodie/dtf hâlâ "sticker" fallback davranıyordu.
+Phase 106 bu üçünü tamamlar.
+
+### Gerçek browser audit (DOM ölçüm) + temporary test harness
+
+Studio preview kalan 3 shape (svg-art.tsx) DOM ölçüm
+(test set `cmov0ia37` controlled patch ile her productType):
+
+- **phone → PhoneSVG**: rect W×H rx=26 fill `#0C0A09` koyu gövde +
+  screen **ASİMETRİK bezel** (x=bz, y=bz×2 üst, sw=W-bz×2,
+  sh=H-bz×3 alt daha kalın) + camera notch (w/2-16, sy+7, 32×9
+  `#0C0A09`) + outer hairline `rgba(255,255,255,0.07)`. bz=10 @
+  ref ≈ minDim×0.05.
+- **bookmark → BookmarkStripSVG**: dar dikey strip (viewBox
+  90×320). tassel knot circle (cx=45, r=6, `#3A3532`) + askı ipi
+  line + body rect (4,20,W-8,H-28 rx=3 gradient/asset) + inner
+  outline `rgba(0,0,0,0.18)`.
+- **tshirt/hoodie/dtf → TshirtSilhouetteSVG**: garment body
+  `<path>` (omuz+kol+gövde, fill `#2A2622`) + neckline ellipse
+  (`#161412`) + chest area asset (chestX,chestY,chestW×chestH
+  rx=4). Path-based silüet.
+
+Phase 105 bezel branch basitti (uniform bezel minDim×0.035,
+notch yok); bookmark/tshirt **"sticker" fallback** (kalın beyaz
+edge — yanlış silüet).
+
+**Temporary test harness** (CLAUDE.md Phase 12 pattern, raporlandı
++ restore edildi): test set `cmov0ia37` 4 GeneratedDesign
+productType clipart → bookmark → tshirt sırayla patch'lendi
+(runtime parity proof için); test sonrası clipart'a restore
+(`krb3g7`, production data drift yok).
+
+### En büyük kök fark
+
+`deviceShape` zinciri Phase 105'te kuruldu (Shell → route →
+service → compositor) ama yalnız 3 shape (frame/sticker/bezel-
+basit). bookmark/tshirt `resolveDeviceShape` "sticker" fallback'e
+düşüyordu → preview'da BookmarkStripSVG (dar strip + knot) /
+TshirtSilhouetteSVG (garment) export'ta kare beyaz sticker
+oluyordu. phone bezel notch + asimetrik bezel eksikti.
+
+### Ürün kararı
+
+- productType-specific shape/chrome = **final visual chrome** →
+  export'a birebir girer (contract §11.0 Preview = Export Truth).
+- preview'da görünen shape (strip+knot / garment / asimetrik
+  bezel+notch) export'a girer; selection helpers (slot-ring/badge)
+  **girmez** (§11.0 editing helper baseline korunur).
+- Product MockupsTab gerçek export PNG'sini gösterir (Phase 101
+  tile aspect baseline değişmez; shape parity otomatik yansır).
+- Canonical truth = exported PNG.
+
+### Fix — deviceShape genişletme + 3 yeni Sharp shape branch
+
+`frame-compositor.ts` `FrameDeviceShape` genişletildi:
+`"frame" | "sticker" | "bezel" | "bookmark" | "garment"`.
+`resolveDeviceShape`: bookmark → "bookmark", tshirt/hoodie/dtf
+→ "garment" (hoodie hood ellipse Phase 107+ baseline garment).
+
+Shape-aware slot composite branch'leri:
+- **"bezel" refine** (PhoneSVG parity): koyu gövde `#0C0A09` +
+  asimetrik bezel (screenX=bz, screenY=bz×2, screenW=W-bz×2,
+  screenH=H-bz×3) + camera notch (asset compose sonrası üstte) +
+  outer hairline `rgba(255,255,255,0.07)`. bz=minDim×0.05,
+  bodyRadius=minDim×0.13.
+- **"bookmark"** (BookmarkStripSVG parity): tassel knot circle
+  (`#3A3532`, knotR=minDim×0.075) + askı ipi line + body rect
+  (bodyMargin=W×0.05, bodyTop=H×0.07, rounded asset clip) +
+  inner outline `rgba(0,0,0,0.18)`. Shadow body silhouette'e.
+- **"garment"** (TshirtSilhouetteSVG parity): garment body
+  `<path>` (omuz+kol+gövde, `#2A2622`, sleeveOffset=W×0.18,
+  bodyW=W×0.62) + neckline ellipse (`#161412`) + chest area asset
+  (chestW=bodyW×0.7 kare, rounded clip). Shadow path silhouette'e.
+- "sticker"/"frame" Phase 104/105 baseline korundu.
+- Phase 103 compose order (chrome'lu tile bir bütün rotate) her
+  shape için korundu.
+
+Zincir: route `DeviceShapeSchema` 5-enum, Shell deviceKind→shape
+inline map (bookmark/garment branch eklendi; client/server
+boundary korunur — server `resolveDeviceShape` ile aynı).
+
+### Browser end-to-end real-asset doğrulama
+
+Live dev server (1600×1100, real DB, real MinIO MJ assets PAS5/
+Pinterest):
+
+| productType | Studio preview | Phase 105 export (sticker fallback) | Phase 106 export |
+|---|---|---|---|
+| **bookmark** | dar strip + tassel knot + ip | ❌ kare beyaz sticker | ✓ dar dikey strip + siyah knot + askı ipi |
+| **tshirt** | garment silüeti + neckline + chest | ❌ kare beyaz sticker | ✓ garment silüeti + yaka oyuğu + chest print |
+| clipart (restore) | StickerCardSVG kalın beyaz edge | ✓ | ✓ regression yok (pixel-perfect 721091 bytes) |
+
+- bookmark export 538.2 KB, tshirt export 312.6 KB. Studio
+  preview ↔ Phase 106 PNG yan yana screenshot: silüet birebir
+  (bookmark dar strip + knot / tshirt garment + chest); tilt
+  korundu (slot1 -6° slot2 -12°).
+- clipart regression (restore sonrası, deviceKind=clipart):
+  preview rect1 `#FFFFFF` + export 704.2 KB / 721091 bytes —
+  **Phase 104/105 baseline pixel-perfect korundu** (deviceShape
+  ="sticker" path).
+- Product MockupsTab handoff (bookmark + tshirt): 9 tile,
+  aspectRatio "4/3", bg-ink, contain, 1920/1080; bookmark strip
+  + garment silüet tile'da korundu, tshirt cover ring + Primary
+  badge.
+
+Screenshot kanıtları:
+- Studio Frame preview (bookmark): 3 bookmark strip (dar dikey +
+  siyah knot + tilt)
+- Studio Frame preview (tshirt): 3 garment silüet (omuz+gövde +
+  neckline + chest)
+- Phase 106 bookmark export PNG: birebir dar strip + knot + ip
+- Phase 106 tshirt export PNG: birebir garment + neckline + chest
+- Product MockupsTab Frame Exports: 9 tile karışık shape (bookmark
+  strip / garment / wall_art frame / sticker) hepsi gerçek export
+  PNG ile korundu
+- Clipart regression export: kalın opak beyaz sticker edge (Phase
+  104/105 ile pixel-perfect — regression yok)
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products,
+  listings}`: **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 106)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Controlled test seed patch
+  (GeneratedDesign productType clipart→bookmark→tshirt→clipart)
+  yalnız runtime verification için temporary test harness;
+  restore edildi, production drift yok.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `FrameDeviceShape` 2 yeni union
+  member + `resolveDeviceShape` 2 yeni case + 2 yeni composite
+  branch (bookmark/garment) + bezel branch refine; zincir 3
+  dosyada opsiyonel field genişletme (Shell/route/compositor;
+  service Phase 105'ten unchanged). Yeni service/route/endpoint
+  yok. Phase 103 compose order + Phase 104 sticker + Phase 105
+  frame baseline korundu.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Mockup mode render dispatch (POST /api/mockup/jobs)
+  dokunulmadı** — Phase 8 baseline ayrı compositor
+  (`compositor.ts`).
+- **Studio shell, slot-ring/badge editing chrome, Phase 94
+  split, Phase 101 plate chrome + tile aspect, Phase 103
+  compose order, Phase 104 sticker, Phase 105 frame** hepsi
+  intakt (clipart regression pixel-perfect doğrulandı).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Phase 100 persistence + handoff backward-compat tam.**
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Düzeltilen parity bug'ları (Phase 106):
+- **bookmark export kare beyaz sticker alıyordu** —
+  resolveDeviceShape "sticker" fallback'e düşüyordu. Phase 106
+  "bookmark" branch BookmarkStripSVG parity (dar strip + tassel
+  knot + ip + body + inner outline).
+- **tshirt/hoodie/dtf export kare beyaz sticker alıyordu** —
+  aynı kök. Phase 106 "garment" branch TshirtSilhouetteSVG
+  parity (garment path + neckline + chest area).
+- **phone bezel notch + asimetrik bezel eksikti** — Phase 105
+  basit uniform bezel. Phase 106 PhoneSVG parity (asimetrik
+  bezel + camera notch + outer hairline).
+
+Hâlâ açık (Phase 107+ candidate):
+- **hoodie hood ellipse** — Phase 106'da garment baseline
+  (hoodie = garment, hood ellipse yok). Preview hoodie variant'ı
+  shoulder üstünde hood ellipse çiziyor. Phase 107+ garment'a
+  hood param eklenir (küçük delta; ana garment silüeti Phase
+  106'da kapandı).
+- **Plate-only Lens Blur** (Phase 101'den devir) — blur full
+  canvas; preview plate parent'a CSS filter.
+- **Drop shadow softness fine-tune** (Phase 103'ten devir) —
+  libvips feDropShadow 2-katmanlı; preview 4-katmanlı.
+- **Etsy Draft submit pipeline frame-export end-to-end test** —
+  handoff entry + Phase 9 push pipeline outputKey/signedUrl
+  yolu intakt; gerçek Etsy push test (Etsy API key gerek).
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 106 ile **productType-specific item shape parity tüm ana
+shape'ler için fulfilled**:
+- Studio'da gördüğüm ≈ indirdiğim PNG ≈ Product MockupsTab tile
+- Plate rounded + border + drop shadow + stage padding (Phase 101)
+- Item rounded + drop-shadow chain (Phase 102)
+- Item tilt/rotation + compose order (Phase 103)
+- Kalın opak beyaz sticker edge (Phase 104)
+- wall_art koyu frame + krem mat (Phase 105)
+- **bookmark dar strip + tassel knot / tshirt garment silüeti +
+  chest / phone asimetrik bezel + notch** (Phase 106)
+- Editing chrome (selection ring + badge) export'a girmez
+
+Sıradaki adım **Phase 107 candidate**: hoodie hood ellipse delta
+(garment baseline + hood param) + plate-only Lens Blur + drop
+shadow softness fine-tune + Etsy Draft submit pipeline frame-
+export end-to-end test. Ana productType shape divergence Phase
+101-106'te kapandı; Phase 107 fine-grain polish + Etsy push e2e.
 
 ---
 
