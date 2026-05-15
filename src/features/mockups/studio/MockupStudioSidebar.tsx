@@ -31,6 +31,7 @@ import {
   type FrameAspectKey,
 } from "./frame-aspects";
 import {
+  deviceKindToShape,
   GRADIENT_PRESETS,
   LENS_BLUR_DEFAULT,
   type LensBlurConfig,
@@ -40,6 +41,7 @@ import {
   SCENE_AUTO,
   SOLID_PRESETS,
   type SceneOverride,
+  studioDeviceCapability,
 } from "./frame-scene";
 import {
   MagicPresetThumb,
@@ -910,13 +912,25 @@ function FrameBody({
   onChangeFrameAspect,
   sceneOverride,
   onChangeSceneOverride,
+  deviceKind,
 }: {
   frameAspect?: FrameAspectKey;
   onChangeFrameAspect?: (next: FrameAspectKey) => void;
   /** Phase 89 — Frame scene control state (Shell). */
   sceneOverride?: SceneOverride;
   onChangeSceneOverride?: (next: SceneOverride) => void;
+  /** Phase 112 — Capability gating (deviceKind → shape →
+   *  supportsLensBlurTargeting). Dead STUDIO_DEVICE_CAPABILITIES
+   *  fiilen tüketilir; tek tek hack yerine tek kapı. */
+  deviceKind?: string;
 }) {
+  /* Phase 112 — Lens Blur targeting capability-driven. Şu an tüm
+   * shape true → davranış birebir aynı; future SVG-specific shape
+   * supportsLensBlurTargeting=false set ederse target/intensity
+   * UI otomatik gizlenir (ad-hoc if-else büyütülmez). */
+  const lensTargetingSupported = studioDeviceCapability(
+    deviceKindToShape(deviceKind),
+  ).supportsLensBlurTargeting;
   const [effect, setEffect] = useState<"lens" | "portrait" | "watermark" | "bgfx">(
     "lens",
   );
@@ -1246,7 +1260,8 @@ function FrameBody({
          *  → 4/8/14px. Tek tek mockup hack'i yok; structured
          *  SceneOverride.lensBlur config. */}
         {normalizeLensBlur(activeScene.lensBlur).enabled &&
-        onChangeSceneOverride ? (
+        onChangeSceneOverride &&
+        lensTargetingSupported ? (
           <div
             data-testid="studio-lens-blur-controls"
             style={{ marginTop: 8, display: "grid", gap: 6 }}
@@ -1671,6 +1686,15 @@ export interface MockupStudioSidebarProps {
    * swatch click handler'ı Shell state'i günceller. */
   sceneOverride?: SceneOverride;
   onChangeSceneOverride?: (next: SceneOverride) => void;
+  /** Phase 112 — Device shape capability gating (Shell zaten
+   *  `deviceKind={deviceKind}` geçiriyordu ama prop tanımsızdı →
+   *  ignore ediliyordu). Lens Blur targeting UI'ı
+   *  `studioDeviceCapability(deviceKindToShape(deviceKind))
+   *  .supportsLensBlurTargeting` ile gate'lenir. Şu an tüm shape
+   *  true (davranış değişmez) ama capability model artık FİİLEN
+   *  tüketiliyor (Phase 109 dead-code canlandı); ileride bir
+   *  shape false olursa UI otomatik gizlenir — tek tek hack yok. */
+  deviceKind?: string;
 }
 
 export function MockupStudioSidebar({
@@ -1689,6 +1713,7 @@ export function MockupStudioSidebar({
   activePalette,
   sceneOverride,
   onChangeSceneOverride,
+  deviceKind,
 }: MockupStudioSidebarProps) {
   void STUDIO_SAMPLE_DESIGNS; // imported for slot defaults usage in tests
   return (
@@ -1733,6 +1758,7 @@ export function MockupStudioSidebar({
           onChangeFrameAspect={onChangeFrameAspect}
           sceneOverride={sceneOverride}
           onChangeSceneOverride={onChangeSceneOverride}
+          deviceKind={deviceKind}
         />
       )}
       {mode === "mockup" ? (

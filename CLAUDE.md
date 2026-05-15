@@ -19575,6 +19575,23 @@ surface" rolünün tam ürünleştirilmesi.
     `PLATE_FILL_FRAC` bbox-fit + bbox-center→plate-center mantığını
     uygular (pixel kanıt: preview group/plate %86 ↔ export %84.9,
     aynı formül `plateCenter − bbox/2·scale + (slotX−minX)·scale`).
+- **Composition primitive resmî (Phase 112 canonical):**
+  `compositionGroup(items, plateW, plateH)` (MockupStudioStage.tsx)
+  **reusable primitive**, cascade'e özel DEĞİL: herhangi
+  `{si,x,y,w,h,r,z}[]` alır → gerçek bbox + `PLATE_FILL_FRAC`
+  aspect-locked plate-fit scale (clamp YOK) + items 0-origin
+  normalize + `{scale, bboxW, bboxH, items}` döner. **Cascade =
+  first client**, underlying system = reusable primitive set.
+  Evrensel kabul edilen kavramlar: composition bbox, normalized
+  local coordinates, plate-fit strategy, anchor policy
+  (bbox-tight stage-inner + CSS plate-center), locked-group
+  transform. Yeni layout (ileride) bu primitive'i tüketir;
+  **ayrı composition engine / layout strategy interface
+  AÇILMAZ** (erken abstraction — bugünkü 1 layout-family
+  ihtiyacından kopuk; capability map'in Phase 109-111 dead-code
+  dersi). Yeni shape = `cascadeLayoutForRaw` switch'e tek case
+  (layout registry, hack değil). Bu sınır ileride Claude'un hem
+  aşırı özel-case hem aşırı soyut framework yazmasını engeller.
 
 ### 3. Plate behavior
 
@@ -19721,13 +19738,33 @@ surface" rolünün tam ürünleştirilmesi.
   yansır (Preview = Export Truth) → herhangi biri değişirse
   "Preview changed — re-export?" (sözleşme #12 no silent magic).
 
-### 7.6 Shared device capability model (Phase 109)
+### 7.6 Shared device capability model (Phase 109 + Phase 112 fiilen tüketim)
 
 - Effect/SVG-varyasyon **tek tek mockup if-else patlaması ile
   DEĞİL** — tek `STUDIO_DEVICE_CAPABILITIES` map (deviceShape →
   `{ supportsLensBlurTargeting, supportsColorVariant,
   supportsChromeTone }`). `studioDeviceCapability(shape)` tek
   erişim noktası.
+- **Phase 112 — capability map artık FİİLEN tüketiliyor.** Phase
+  109'da map kuruldu ama **sıfır tüketici** idi (dead future-only
+  abstraction — kullanıcının "gelecekte gerekebilir diye yazılmış,
+  bugünden kopuk" eleştirdiği tam örnek). Phase 112: Sidebar Lens
+  Blur targeting UI'ı `studioDeviceCapability(deviceKindToShape(
+  deviceKind)).supportsLensBlurTargeting` ile **gate'lenir** —
+  shape `false` ise target/intensity UI gizlenir (ad-hoc if-else
+  yerine tek capability kapısı). Şu an tüm shape `true` →
+  **davranış birebir aynı** (Lens Blur targeting hâlâ görünür),
+  ama capability model artık canlı (dead-code canlandı). Future
+  SVG-specific shape `supportsLensBlurTargeting=false` set ederse
+  UI otomatik gizlenir.
+- **`deviceKindToShape(deviceKind)`** (Phase 112, `frame-scene.ts`
+  client-safe) — `resolveDeviceShape` (frame-compositor.ts,
+  server-side) ile **birebir aynı mapping**. Build-boundary
+  tekrarı **bilinçli** (Phase 105 emsali: server compositor
+  sharp/server-only, client studio ayrı bundle — frame-scene
+  client modülü compositor'ı import edemez). Tek client-side
+  kaynak: capability erişimi + ileride shape-aware client logic
+  buradan okur, ad-hoc switch büyütülmez.
 - Phase 109'da yalnız `supportsLensBlurTargeting: true` (tüm
   shape — Lens Blur target/intensity evrensel). `supports
   ColorVariant` / `supportsChromeTone` tip+map'te var ama hepsi
@@ -23083,6 +23120,160 @@ Phase 111 ile cascade plate-relative LOCKED composition:
 - Preview = Export Truth (pixel kanıt %86 ↔ %84.9)
 
 Sıradaki adım **Phase 112 candidate**: drop shadow softness
+fine-tune veya residual rotation-AABB center (Preview=Export
+riski değerlendirilerek). Yeni SVG/layout builder/mockup editor
+§13.A'da ertelenmiş kalır.
+
+---
+
+## Phase 112 — Composition primitive resmîleştirme + dead capability map canlandırma (mimari sağlamlaştırma)
+
+Phase 101-111 Mockup Studio çekirdeğini büyük ölçüde olgunlaştırdı.
+Phase 112 **yalnız bug fix değil**: composition/device/effect
+davranışını gelecekte genişleyebilecek ama bugünden de işe yarayan
+genellenebilir bir temele oturtur. Stabilization turu — yeni
+feature / layout builder / mockup editor / SVG library / dev
+framework YOK (kullanıcı kısıtı).
+
+### Dürüst audit + kullanıcı ürün yönü eleştirisi
+
+**Layout-specific kalan:** `cascadeLayoutForRaw` 5 grup hardcoded
+array (`switch(kind)`). **Kabul edilebilir** — her shape geometrisi
+gerçekten farklı (telefon 416h, sticker kare, bookmark dar); layout
+*registry*, hack değil. Yeni shape = tek case.
+
+**Genellenebilir hale gelmiş:** `compositionGroup` (Phase 111) —
+cascade'e özel değil, generic `{x,y,w,h}[]` primitive. MockupComp
++ FrameComp + frame-compositor aynı mantık.
+
+**En kritik gerçek açık:** `STUDIO_DEVICE_CAPABILITIES` +
+`studioDeviceCapability()` **SIFIR TÜKETİCİ** (Phase 109'da kuruldu,
+hiç okunmuyordu). Tam da kullanıcının korktuğu şey: "gelecekte
+gerekebilir diye yazılmış, bugünden kopuk" dead future-only
+abstraction.
+
+**Kullanıcının "evrensel sistem" isteğine eleştiri (talep
+edildi):** Kısmen katılmadım. Doğru tarafı: composition primitive
+netleştirmek (Phase 111 `compositionGroup` zaten yaptı). **Riskli
+tarafı:** yeni "composition engine / layout strategy interface"
+şu an **erken abstraction** — kanıt: capability map zaten sıfır
+tüketiciyle yazılmış, daha fazla soyutlama aynı dead-code hatasını
+büyütür. `cascadeLayoutForRaw` switch 5 case ile **şu an doğru**;
+pluggable layout registry bugünkü 1 layout-family ihtiyacından
+kopuk. **Daha sade/doğru karar:** yeni framework KURMA; (1)
+`compositionGroup`'u canonical primitive olarak Contract'ta
+resmileştir, (2) dead capability'yi **fiilen tüketime bağla**.
+
+### Net mimari karar + uygulanan slice
+
+| Kavram | Statü | Karar |
+|---|---|---|
+| `compositionGroup` | Generic primitive (Phase 111) | Contract §2'de canonical resmileştir (first client = cascade; primitive = reusable). Refactor değil, netleştirme. |
+| `cascadeLayoutForRaw` switch | Per-shape registry | Kabul — yeni shape = yeni case. Strategy interface ertelendi (erken abstraction). |
+| `STUDIO_DEVICE_CAPABILITIES` | **Dead (0 tüketici)** | **Fiilen tüketime bağla** — Lens Blur targeting UI capability okur. |
+| Composition engine / layout strategy iface | — | **AÇILMAZ** (erken abstraction, dead-code dersi). |
+
+Uygulanan (davranış değişmeden):
+- `frame-scene.ts` yeni `deviceKindToShape(deviceKind)` client-safe
+  resolver — `resolveDeviceShape` (frame-compositor server-side)
+  ile birebir aynı mapping (build-boundary tekrarı bilinçli;
+  Phase 105 emsali). Tek client-side kaynak.
+- Sidebar `deviceKind` prop tanımlandı (Shell zaten geçiriyordu
+  ama prop tanımsızdı → ignore ediliyordu) + FrameBody'ye iletildi.
+- FrameBody Lens Blur targeting controls render guard'ına
+  `studioDeviceCapability(deviceKindToShape(deviceKind))
+  .supportsLensBlurTargeting` eklendi → dead capability **canlı
+  tüketiliyor**; tüm shape `true` → davranış birebir aynı.
+
+### Browser + pixel doğrulama (davranış değişmedi)
+
+Preview (16:9 @1180, baseline = Phase 111):
+
+| Metrik | Phase 111 baseline | Phase 112 | Sonuç |
+|---|---|---|---|
+| 16:9 cascadeScale | 1.404 | 1.404 | birebir |
+| 16:9 grpW/plate | %86.0 | %86.0 | birebir |
+| 16:9 centerDx/Dy | 8/8 | 8/8 | birebir |
+| 1:1 grpW/plate | %86.0 | %86.0 | birebir (locked korundu) |
+| lensTargetingVisible | — | **true** | capability gate çalışıyor (clipart→sticker, supportsLensBlurTargeting:true) |
+
+Export pixel kanıt (gerçek PNG `m0j9s7w5` 1920×1080): plate aspect
+1.782, group/plate %84.9, center dx:12/dy:13 — **Phase 111 export
+ile birebir** (frame-compositor dokunulmadı). Preview=Export Truth
+korundu. Product MockupsTab: 10 frame-export tile, aspect 4/3,
+bg-ink, contain, 1920×1080 — Phase 101-111 baseline intakt.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 112)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız client capability tüketim +
+  prop tanımı.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `deviceKindToShape` küçük
+  client-safe resolver (resolveDeviceShape mirror, build-boundary).
+  Yeni component / route / service / composition engine / layout
+  strategy interface / SVG library / layout builder / mockup
+  editor YOK. Composition primitive yalnız Contract'ta
+  resmileştirildi (kod zaten generic — Phase 111).
+- **Davranış BİREBİR korundu** — composition geometry, scale,
+  center, export pixel hepsi Phase 111 baseline ile aynı.
+  Capability tüm shape `true` → Lens Blur targeting hâlâ görünür.
+- **Phase 111 plate-relative locked group + Phase 110 responsive
+  baseline'ları intakt.**
+- **§2 stage continuity + §3 plate + §8 layout + §11.0
+  Preview=Export korundu.**
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Kapatılan (Phase 112):
+- **`STUDIO_DEVICE_CAPABILITIES` dead-code (0 tüketici)** —
+  Phase 109'da kuruldu ama hiç okunmuyordu (future-only
+  abstraction). Phase 112: `deviceKindToShape` + Sidebar/FrameBody
+  Lens Blur targeting capability-gated → fiilen tüketiliyor,
+  davranış değişmeden (tüm shape true).
+- **Sidebar `deviceKind` prop tanımsızdı** — Shell
+  `deviceKind={deviceKind}` geçiriyordu ama prop interface'de
+  yoktu (sessiz ignore). Phase 112: prop tanımlandı + FrameBody'ye
+  iletildi.
+
+Hâlâ açık (Phase 113+ candidate):
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir) — libvips feDropShadow 2-katmanlı; preview 4-katmanlı.
+- **Residual ~3-13px rotation görsel offset** (Phase 111'den
+  devir) — rotated item görsel bbox ≠ layout bbox; minimal,
+  Preview=Export riski yüksek per-item rotated-AABB ertelendi.
+- **`supportsColorVariant`/`supportsChromeTone` future SVG**
+  (phone color, garment color, chrome tone) — capability map
+  field hazır, feature §13.A'da ertelenmiş (effect sistemi
+  tasarımı hesaba kattı; bugün açılmaz).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 112 ile composition/device/effect sistemi genellenebilir
+temele oturdu (minimal, dev framework değil):
+- `compositionGroup` canonical primitive (cascade = first client)
+- `cascadeLayoutForRaw` layout registry (yeni shape = tek case)
+- `STUDIO_DEVICE_CAPABILITIES` fiilen tüketiliyor (dead → canlı)
+- `deviceKindToShape` tek client-side shape kaynağı
+- Preview = Export Truth + davranış birebir korundu
+
+Erken abstraction (composition engine / layout strategy iface)
+bilinçli ertelendi (Contract §2'ye yazıldı — Claude'un ileride
+hem aşırı özel-case hem aşırı framework yazmasını engeller).
+
+Sıradaki adım **Phase 113 candidate**: drop shadow softness
 fine-tune veya residual rotation-AABB center (Preview=Export
 riski değerlendirilerek). Yeni SVG/layout builder/mockup editor
 §13.A'da ertelenmiş kalır.

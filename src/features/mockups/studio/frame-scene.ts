@@ -388,6 +388,42 @@ export function studioDeviceCapability(
   return DEFAULT_DEVICE_CAPABILITY;
 }
 
+/* Phase 112 — Client-safe deviceKind → shape resolver.
+ *
+ * `resolveDeviceShape` (frame-compositor.ts) server-side; client
+ * modülü (Sidebar/Stage) onu import edemez (Phase 105 build
+ * boundary kararı — compositor sharp/server-only). Phase 112:
+ * capability model'i fiilen tüketmek için client tarafının da
+ * deviceKind → shape eşlemesi gerek. Bu helper `resolveDeviceShape`
+ * ile BİREBİR aynı mapping (bilinçli build-boundary tekrarı;
+ * Phase 105 emsali — server compositor + client studio ayrı
+ * bundle). Tek client-side kaynak: capability erişimi + (ileride)
+ * shape-aware client logic buradan okur, ad-hoc switch
+ * büyütülmez. */
+export function deviceKindToShape(
+  deviceKind: string | null | undefined,
+): StudioDeviceShapeKey {
+  switch (deviceKind) {
+    case "wall_art":
+    case "canvas":
+    case "printable":
+      return "frame";
+    case "phone":
+      return "bezel";
+    case "bookmark":
+      return "bookmark";
+    case "hoodie":
+      return "garment-hooded";
+    case "tshirt":
+    case "dtf":
+      return "garment";
+    case "sticker":
+    case "clipart":
+    default:
+      return "sticker";
+  }
+}
+
 /** Phase 89 — Right rail preset thumb scene-aware bg resolver.
  *
  * PresetThumbMockup + PresetThumbFrame artık scene'i de
