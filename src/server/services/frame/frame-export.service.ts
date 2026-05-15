@@ -55,6 +55,12 @@ export interface ExportFrameInput {
    *  parity). Shell `stageDeviceForProductType(categoryId)` → compositor
    *  shape. Undefined → "sticker" (Phase 104 backward-compat). */
   deviceShape?: FrameDeviceShape;
+  /** Phase 126 — Global canonical media-position. Preview ile AYNI
+   *  resolveMediaOffsetPx (§11.0 Preview=Export Truth). Undefined →
+   *  {0,0} no-op. sceneSnapshot'a da yazılır (re-export kaynağı). */
+  mediaPosition?: import(
+    "@/features/mockups/studio/media-position"
+  ).MediaPosition;
 }
 
 export interface ExportFrameResult {
@@ -187,6 +193,9 @@ export async function exportFrameComposition(
     stageInnerW: input.stageInnerW ?? 572,
     stageInnerH: input.stageInnerH ?? 504,
     ...(input.deviceShape ? { deviceShape: input.deviceShape } : {}),
+    ...(input.mediaPosition
+      ? { mediaPosition: input.mediaPosition }
+      : {}),
   };
   const outputBuffer = await composeFrameOutput(compositorInput);
 
@@ -253,6 +262,9 @@ export async function exportFrameComposition(
           color: input.scene.color ?? null,
           colorTo: input.scene.colorTo ?? null,
           palette: input.scene.palette ?? null,
+          // Phase 126 — canonical media-position (re-export kaynağı;
+          // stale-indicator karşılaştırması Task 7). {0,0} no-op.
+          mediaPosition: input.mediaPosition ?? { x: 0, y: 0 },
         },
       },
       select: { id: true },

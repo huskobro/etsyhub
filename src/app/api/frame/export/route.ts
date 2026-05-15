@@ -66,6 +66,13 @@ const DeviceShapeSchema = z.enum([
   "garment-hooded",
 ]);
 
+/* Phase 126 — Global canonical media-position. Normalized
+ * [-1,1] (pad space). Server clamp guard; {0,0} = no-op. */
+const MediaPositionSchema = z.object({
+  x: z.number().min(-1).max(1),
+  y: z.number().min(-1).max(1),
+});
+
 const BodySchema = z.object({
   setId: z.string().min(1),
   frameAspect: FrameAspectKeySchema,
@@ -74,6 +81,7 @@ const BodySchema = z.object({
   stageInnerW: z.number().positive().optional(),
   stageInnerH: z.number().positive().optional(),
   deviceShape: DeviceShapeSchema.optional(),
+  mediaPosition: MediaPositionSchema.optional(),
 });
 
 export const POST = withErrorHandling(async (req: Request) => {
@@ -101,6 +109,9 @@ export const POST = withErrorHandling(async (req: Request) => {
     ...(parsed.data.stageInnerW ? { stageInnerW: parsed.data.stageInnerW } : {}),
     ...(parsed.data.stageInnerH ? { stageInnerH: parsed.data.stageInnerH } : {}),
     ...(parsed.data.deviceShape ? { deviceShape: parsed.data.deviceShape } : {}),
+    ...(parsed.data.mediaPosition
+      ? { mediaPosition: parsed.data.mediaPosition }
+      : {}),
   });
 
   return NextResponse.json(result, { status: 200 });

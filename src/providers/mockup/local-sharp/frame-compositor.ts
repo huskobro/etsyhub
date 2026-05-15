@@ -31,6 +31,8 @@
 
 import sharp from "sharp";
 
+import { resolveMediaOffsetPx } from "@/features/mockups/studio/media-position";
+
 export interface FrameSlotInput {
   /** Slot index (0..N). */
   index: number;
@@ -182,6 +184,12 @@ export interface FrameCompositorInput {
    *  parity). Backward-compat: undefined → "sticker" (Phase 104
    *  baseline). */
   deviceShape?: FrameDeviceShape;
+  /** Phase 126 — Global canonical media-position. Preview outer-
+   *  wrapper ile AYNI resolveMediaOffsetPx; plate-area kırpar
+   *  (§11.0 Preview=Export Truth). undefined → {0,0} no-op. */
+  mediaPosition?: import(
+    "@/features/mockups/studio/media-position"
+  ).MediaPosition;
 }
 
 const STAGE_INNER_REF_W = 572;
@@ -452,6 +460,19 @@ export async function composeFrameOutput(
     plateCy - (bMinY + bboxH / 2) * cascadeScale,
   );
 
+  // Phase 126 — Global media-position offset (canonical). SAME
+  // resolveMediaOffsetPx as preview outer-wrapper; render space =
+  // plate px → resolution-independent parity. {0,0} → +0 (no-op).
+  // Plate-area mask (mevcut, bu dosyada) media taşmasını preview
+  // overflow:hidden ile aynı şekilde kırpar.
+  const mediaOff = resolveMediaOffsetPx(
+    input.mediaPosition ?? { x: 0, y: 0 },
+    plateLayout.plateW,
+    plateLayout.plateH,
+  );
+  const cascadeOffsetXFinal = Math.round(cascadeOffsetX + mediaOff.ox);
+  const cascadeOffsetYFinal = Math.round(cascadeOffsetY + mediaOff.oy);
+
   // Composite operations array.
   //
   // Phase 102 — Item-level chrome (sözleşme #11 + final visual chrome,
@@ -530,8 +551,15 @@ export async function composeFrameOutput(
 
     const slotOutW = Math.max(1, Math.round(slot.w * cascadeScale));
     const slotOutH = Math.max(1, Math.round(slot.h * cascadeScale));
-    const slotOutX = Math.round(slot.x * cascadeScale + cascadeOffsetX);
-    const slotOutY = Math.round(slot.y * cascadeScale + cascadeOffsetY);
+    // Phase 126 — *Final variants include media-position offset
+    // (canonical). {0,0} → cascadeOffset*Final === cascadeOffset*
+    // (byte-identical no-op; Phase 125 export parity korunur).
+    const slotOutX = Math.round(
+      slot.x * cascadeScale + cascadeOffsetXFinal,
+    );
+    const slotOutY = Math.round(
+      slot.y * cascadeScale + cascadeOffsetYFinal,
+    );
 
     // Ghost slot opacity (preview parity — Phase 85 baseline).
     if (!slot.assigned) {
