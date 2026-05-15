@@ -24363,7 +24363,182 @@ candidate-layout dizilmiş minyatür canlı türevleri"ne dönüştü —
 thumb Stage ile AYNI `StageDeviceSVG` + AYNI real asset + AYNI
 scene'den beslenir, tek fark candidate layout. Generic-ikon hissi
 kapandı (browser kanıtı: her thumb 3 real `<image>`). Sıradaki
-adım **Phase 117 candidate**: plate/scene chrome thumb parity
+adım **Phase 116 follow-up**: device-shape chrome (white edge /
+frame+mat / bezel / knot) thumb scale'de orantısız kalın → her
+ölçekte aynı görsel aile (proportional chrome parity).
+
+---
+
+## Phase 116 follow-up — Proportional device chrome (border/sticker line/bezel her ölçekte aynı görsel aile)
+
+Phase 116 thumb'ı `StageDeviceSVG` + real asset'e bağladı (generic
+MockupPh kaldırıldı). Bu follow-up turda kullanıcı net bir kalan
+parity açığı bildirdi: **"bazı border/sticker line kalınlıkları
+farklı, bazı thumb'lar hâlâ ikonik/generic hissi veriyor; centered
+gibi varyantlarda thumb ile orta panel görsel ayrışıyor"**.
+
+### Kök neden (browser+DOM+code triangulation)
+
+`StageDeviceSVG` device shape'lerinin **chrome sabitleri
+fixed-pixel** idi (stage scale ~200-220px için tune edilmiş):
+`StickerCardSVG pad=10`, `WallArtFrameSVG frameW=9 matW=14`,
+`PhoneSVG bz=10 r=26`, `BookmarkStripSVG knotR=6 stroke=1.2` +
+sticker inner outline `strokeWidth=1`. Phase 116 thumb device'ı
+**fitted küçük `p.w`** ile çiziyor (nested `<svg width={p.w}
+viewBox="0 0 ${p.w} ${p.h}">`). Sticker slot 2 stage'de zaten
+w=130; thumb'da daha da küçük → `pad=10` o küçük device'ın
+**%15-20'si** = "kalın generic çerçeve" hissi. Stage'de slot 0
+(w=220) → pad %4.5; slot 2 (w=130) → pad %7.7 (zaten orantısız).
+Browser DOM ölçümü: thumb sticker viewBox W=71 → eski pad=10
+ratio 0.14 (stage'de 0.045). **Aynı device, ölçeğe göre farklı
+çerçeve oranı = generic-ikon hissinin gerçek kök nedeni.**
+
+### Net ürün/mimari kararı
+
+Device chrome **fixed-pixel DEĞİL, `min(w,h)` oranlı** olmalı
+(Contract §6 border/chrome parity: "right rail item çerçevesi /
+white edge / sticker line orta panel ile aynı ailede olsun").
+Her sabit, **stage-scale parity floor** ile bağıl formüle
+çevrildi: stage scale'de eski değere ~BİREBİR eşit (sub-pixel
+fark), thumb scale'de proportional. Bu **stage'i de iyileştirir**
+(slot 2 gibi küçük device'lar artık orantılı chrome alır) —
+ad-hoc thumb-only hack DEĞİL, tek tutarlı düzeltme. Stage/export
+Preview = Export Truth riskini önlemek için her formül stage-scale
+değerini koruyacak şekilde kalibre edildi (kanıt aşağıda).
+
+### Uygulanan slice (`svg-art.tsx` device SVG chrome)
+
+| Shape | Eski (fixed) | Phase 116 fu (proportional) | Stage-scale parity |
+|---|---|---|---|
+| StickerCardSVG `pad` | `10` | `max(1.5, min(w,h)×0.045)` | w=220 → 9.9 ≈ 10 ✓ |
+| StickerCardSVG inner stroke | `1` | `max(0.75, min(w,h)×0.006)` | w=220 → 1.32 ≈ 1 ✓ |
+| WallArtFrameSVG `frameW` | `9` | `max(1.5, min(w,h)×0.045)` | w=200 → 9 ✓ exact |
+| WallArtFrameSVG `matW` | `14` | `max(2, min(w,h)×0.07)` | w=200 → 14 ✓ exact |
+| PhoneSVG `bz` | `10` | `max(2, min(w,h)×0.049)` | w=204 → ~10 ✓ |
+| PhoneSVG `r` | `26` | `max(4, min(w,h)×0.127)` | w=204 → ~25.9 ≈ 26 ✓ |
+| BookmarkStripSVG `knotR` | `6` | `max(1.5, min(w,h)×0.067)` | w=90 → ~6 ✓ |
+| BookmarkStripSVG knot stroke | `1.2` | `max(0.6, min(w,h)×0.013)` | w=90 → ~1.17 ≈ 1.2 ✓ |
+
+`min(w,h)` bağıl seçildi (en dar eksen) → portrait/kare/dik tüm
+device aspect'lerinde chrome dengeli. `Math.max(floor, …)` çok
+küçük thumb slot'unda chrome'un sıfıra inip kaybolmasını önler.
+
+### Browser+DOM+pixel kanıtı (fresh build, real asset)
+
+Test set `cmov0ia37` (4 real MinIO MJ asset), clipart→sticker,
+viewport 1600×1040, **temiz restart sonrası fresh build** (`.next`
+silindi → `preview_start` reused:false → Studio route fresh
+compile):
+
+- **Thumb = real scene-derived (generic-ikon kapandı)**: rail
+  preset-0 (cascade) `nestedSvg:6`, `imgEls:3`, href
+  `http://localhost:9000/etsyhub/midjourney/.../cmo` (real MinIO).
+  Stage slot 0 aynı asset source. Phase 116 öncesi thumb
+  `imgEls:0` (generic MockupPh) idi → **artık 3 real `<image>`**.
+- **6 preset thumb'ı her biri kendi candidate variant + 3 real
+  img**: cascade `[0,-6,-12]`, centered `[0,0,0]`, tilted
+  `[-7,0,7]`, stacked `[0,0,0]`, fan `[-13,0,13]`, offset
+  `[0,-4,-8]` — hepsi `applyLayoutVariant` formülleriyle BİREBİR;
+  her thumb 3 real MinIO `<image>`.
+- **Border parity pixel ölçümü**: stage sticker slot 0 viewBox
+  W=220, pad=9.9, **padRatio 0.045**; thumb sticker viewBox
+  W=71.08, pad=3.20, **padRatio 0.045**. Stage 9.9 ≈ eski 10
+  (0.1px, sub-pixel — **zero stage regression**); stage ratio ===
+  thumb ratio === 0.045 → **aynı görsel aile her ölçekte**.
+- **Rail → Shell → Stage unity**: rail preset-4 (fan) click →
+  `shellLayoutVariant:"fan"`, stage cascade CSS rotate
+  `[-13,0,13]`, fan thumb rotate `[-13,0,13]` + 3 real img +
+  `pressed:true` — thumb candidate geometri = stage actual
+  geometri (tek `cascadeLayoutFor` kaynağı).
+- **Mode-AGNOSTIC**: Frame mode'a geçince `layoutVariant:"fan"`
+  korundu; fan thumb hâlâ 3 real img + `[-13,0,13]`; Frame stage
+  `.k-studio__stage-inner` 3 real `<image>`.
+- **Export triangulation**: Frame export tetiklendi → request
+  payload (fetch patch ile yakalandı) slot r `[-13,0,13]`, w
+  `[220,180,130]`, **3 distinct real itemId** (Phase 113 slot-
+  identity; fanout-to-items[0] DEĞİL). Exported PNG signed URL
+  GET → `status:200 contentType:image/png bytes:1,525,957`
+  (1.5MB gerçek render). `GET /api/frame/exports` → 200, yeni
+  export `width:1920 height:1080 sizeBytes:1525957` persisted
+  (FrameExport Prisma row — Phase 100 chain kırılmadı).
+- **Product MockupsTab continuity**: `/products/cmor0wkjt...`
+  Mockups tab → **11 frame-export tile**, `firstImgNatural
+  1920x1080`, `objectFit:contain` (Phase 101 baseline) — Product
+  detail/handoff/persistence tamamen dokunulmadı, çalışıyor.
+
+Triangulation tablosu (fan variant, real asset):
+
+| Surface | Layout signature | Real asset |
+|---|---|---|
+| Rail thumb (fan) | rot `[-13,0,13]` | 3 real MinIO `<image>` |
+| Stage cascade (Mockup, fan) | rot `[-13,0,13]` | 3 real MinIO `<image>` |
+| Stage cascade (Frame, fan) | mode-AGNOSTIC | 3 real `<image>` |
+| Export payload | slot r `[-13,0,13]` w `[220,180,130]` 3 distinct itemId | 1.5MB real PNG |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (59 files, zero regression)
+- `next build`: ✓ Compiled successfully (Dynamic-server-usage
+  log satırları pre-existing auth-route prerender uyarısı —
+  Phase 116 fu ile ilgisiz, build başarılı)
+- Browser: fresh build üzerinde thumb 3 real img + 6 variant
+  geometri + border ratio 0.045 stage=thumb + rail→stage→export
+  fan unity + Product MockupsTab 11 tile
+
+### Değişmeyenler (Phase 116 follow-up)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız device SVG chrome sabitleri
+  fixed → proportional (8 sabit, 4 device shape).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `MockupPh`/`MockupPhWithPalette`
+  fallback korundu (slots yoksa legacy). Yeni layout builder /
+  mockup editor / SVG library / framework YOK.
+- **4-kategori ayrımı korundu** — chrome = shape-specific impl
+  detail (kategori 3, registry/device SVG'de); thumb prop chain
+  = canonical shared (kategori 1); selection ring/badge thumb'a
+  girmez (kategori 4 — Phase 94 baseline).
+- **Preview = Export Truth korundu + güçlendi** — chrome artık
+  ölçek-bağımsız aynı oran (geometry + asset identity + layered
+  effects + shared canonical parameter + **chrome ratio**).
+- **Stage parity sub-pixel** — her formül stage-scale'de eski
+  fixed değere ≈ eşit (kanıt: sticker pad 9.9≈10, frameW=9
+  exact, matW=14 exact, bz≈10, r≈26).
+- **Phase 113 slot identity + layered effects + Phase 114
+  layoutVariant canonical + Phase 115 cascade-layout.ts shared
+  source + Phase 116 StageDeviceSVG thumb** hepsi intakt.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ açık (Phase 117+ candidate)
+
+- **Plate/scene chrome thumb derinleştirme**: thumb device shape
+  + asset + candidate layout doğru; plate bg + glass overlay +
+  lens blur Phase 89/98 baseline'da `sceneBg` ile yaklaşık (full
+  plate chrome parity değil — thumb 184×88 küçük, layout-odaklı).
+  Gerek görülürse Phase 117+ (mevcut görsel parity operatör için
+  yeterli).
+- **View tabs (Zoom/Tilt/Precision) + Zoom slider** no-op
+  (kategori 4 preview-only helper; Phase 115'ten devir).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir) — libvips feDropShadow 2-katmanlı; preview 4-katmanlı.
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 116 + follow-up ile right rail tam "orta panelin
+candidate-layout dizilmiş minyatür canlı türevi": real asset +
+real device shape + proportional chrome (her ölçekte aynı görsel
+aile) + candidate-variant geometri; Preview = Export = Rail-thumb
+geometry + asset-identity + chrome-ratio seviyesinde holds.
+Generic-ikon hissi tam kapandı (kanıt: stage padRatio 0.045 ===
+thumb padRatio 0.045; her thumb 3 real `<image>`). Sıradaki adım
+**Phase 117 candidate**: plate/scene chrome thumb parity
 derinleştirme (gerek görülürse) veya View tabs/Zoom slider
 activation. Yeni SVG/layout builder/mockup editor §13.A'da
 ertelenmiş kalır.

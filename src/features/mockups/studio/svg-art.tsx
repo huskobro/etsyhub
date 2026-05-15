@@ -229,8 +229,13 @@ export function PhoneSVG({
   isEmpty = false,
   idx = 0,
 }: PhoneSVGProps) {
-  const bz = 10;
-  const r = 26;
+  /* Phase 116 follow-up — Phone bezel + radius proportional (was
+   * fixed 10/26px). Stage scale (w≈204) → 204×0.049≈10,
+   * 204×0.127≈26 (eski değerlerle ~BİREBİR; stage/export parity).
+   * Thumb scale → proportional bezel (eskiden generic-kalın).
+   * Contract §6 border/chrome parity. */
+  const bz = Math.max(2, Math.min(w, h) * 0.049);
+  const r = Math.max(4, Math.min(w, h) * 0.127);
   const sr = r - bz;
   const sw = w - bz * 2;
   const sh = h - bz * 3;
@@ -1041,8 +1046,13 @@ function WallArtFrameSVG({
   isEmpty,
   idx = 0,
 }: Omit<StageDeviceSVGProps, "kind">) {
-  const frameW = 9;
-  const matW = 14;
+  /* Phase 116 follow-up — Frame + mat proportional (was fixed
+   * 9/14px). Stage scale (w≈200) → 200×0.045≈9, 200×0.07≈14
+   * (eski değerlerle BİREBİR; stage/export parity korunur).
+   * Thumb scale → proportional (eskiden generic-kalın çerçeve).
+   * Contract §6 border/chrome parity (her ölçekte aynı aile). */
+  const frameW = Math.max(1.5, Math.min(w, h) * 0.045);
+  const matW = Math.max(2, Math.min(w, h) * 0.07);
   const innerX = frameW + matW;
   const innerY = frameW + matW;
   const innerW = w - 2 * innerX;
@@ -1098,7 +1108,13 @@ function StickerCardSVG({
   idx = 0,
 }: Omit<StageDeviceSVGProps, "kind">) {
   const r = Math.min(22, Math.min(w, h) * 0.16);
-  const pad = 10;
+  /* Phase 116 follow-up — White sticker edge proportional (was
+   * fixed 10px). Stage scale (w≈220) → 220×0.045≈10 (eski değerle
+   * BİREBİR; stage/export parity korunur). Thumb scale (w≈50) →
+   * 50×0.045≈2.3 (proportional; eskiden 10px = %20 kalın "generic
+   * ikon" hissi). min(w,h) bağıl + 1.5px floor → her ölçekte aynı
+   * görsel aile (Contract §6 border/chrome parity). */
+  const pad = Math.max(1.5, Math.min(w, h) * 0.045);
   const dc = design ? design.colors : null;
   const gid = `stg${idx}kf`;
   return (
@@ -1140,7 +1156,16 @@ function StickerCardSVG({
       {isEmpty ? (
         <text x={w / 2} y={h / 2 + 8} textAnchor="middle" fill="rgba(22,19,15,0.22)" fontSize={22} fontFamily="ui-sans-serif" style={{ userSelect: "none" }}>+</text>
       ) : null}
-      <rect x={0.5} y={0.5} width={w - 1} height={h - 1} rx={r - 0.5} stroke="rgba(0,0,0,0.1)" strokeWidth={1} fill="none" />
+      <rect
+        x={0.5}
+        y={0.5}
+        width={w - 1}
+        height={h - 1}
+        rx={r - 0.5}
+        stroke="rgba(0,0,0,0.1)"
+        strokeWidth={Math.max(0.75, Math.min(w, h) * 0.006)}
+        fill="none"
+      />
     </svg>
   );
 }
@@ -1155,7 +1180,11 @@ function BookmarkStripSVG({
 }: Omit<StageDeviceSVGProps, "kind">) {
   const dc = design ? design.colors : null;
   const gid = `bmg${idx}kf`;
-  const knotR = 6;
+  /* Phase 116 follow-up — Tassel knot proportional (was fixed 6px).
+   * Stage scale (w≈90) → 90×0.067≈6 (eski değerle BİREBİR; stage/
+   * export parity). Thumb scale → proportional. Contract §6. */
+  const knotR = Math.max(1.5, Math.min(w, h) * 0.067);
+  const knotStroke = Math.max(0.6, Math.min(w, h) * 0.013);
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" display="block" aria-hidden>
       <defs>
@@ -1166,7 +1195,7 @@ function BookmarkStripSVG({
       </defs>
       {/* Tassel knot */}
       <circle cx={w / 2} cy={knotR + 1} r={knotR} fill="#3A3532" />
-      <line x1={w / 2} y1={knotR * 2 + 1} x2={w / 2} y2={20} stroke="#3A3532" strokeWidth={1.2} />
+      <line x1={w / 2} y1={knotR * 2 + 1} x2={w / 2} y2={20} stroke="#3A3532" strokeWidth={knotStroke} />
       {/* Bookmark body */}
       <rect x={4} y={20} width={w - 8} height={h - 28} rx={3} fill={`url(#${gid})`} />
       {/* Phase 98 — Real asset image overlay (Sözleşme #9). */}
