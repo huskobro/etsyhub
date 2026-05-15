@@ -34,6 +34,10 @@ import {
   type StudioStageDeviceKind,
 } from "./svg-art";
 import { cascadeLayoutFor } from "./cascade-layout";
+import {
+  resolveMediaOffsetPx,
+  type MediaPosition,
+} from "./media-position";
 import type {
   StudioAppState,
   StudioLayoutVariant,
@@ -733,6 +737,11 @@ export interface StageSceneProps {
    * single-renderer + chromeless baseline'ı bozulmaz). 1.0 = no-op
    * (default; Phase 122 davranışı BİREBİR). */
   previewZoom?: number;
+  /** Phase 126 — Global canonical media-position. {0,0} = no-op
+   *  (Phase 125 byte-identical). Outer wrapper translate; inner
+   *  .k-studio__stage-inner zoom scale ayrı (kat 1 vs kat 2). Rail
+   *  thumb da yansıtır (canonical — zoom'un AKSİNE). */
+  mediaPosition?: MediaPosition;
   /** Stage main fn'in overlay'leri (empty-cap / render-ov / zoom-
    *  pill / edit-pill / render banner) AYNI `k-studio__stage` div'i
    *  içinde sibling olarak kalır → Stage DOM byte-identical.
@@ -758,6 +767,7 @@ export function StageScene({
   isEmpty,
   chromeless = false,
   previewZoom = 1,
+  mediaPosition = { x: 0, y: 0 },
   children,
 }: StageSceneProps) {
   const sceneTones = resolveSceneStyle(
@@ -889,32 +899,61 @@ export function StageScene({
               }}
             />
           ) : null}
-          {mode === "mockup" ? (
-            <MockupComposition
-              slots={slots}
-              selectedSlot={selectedSlot}
-              onSelect={setSelectedSlot}
-              isPreview={isPreview}
-              deviceKind={deviceKind}
-              plateDims={plateDims}
-              layoutCount={layoutCount}
-              layoutVariant={layoutVariant}
-              previewZoom={effectiveZoom}
-            />
-          ) : (
-            <FrameComposition
-              isEmpty={isEmpty}
-              isPreview={isPreview}
-              deviceKind={deviceKind}
-              frameAspect={frameAspect}
-              slots={slots}
-              selectedSlot={selectedSlot}
-              plateDims={plateDims}
-              layoutCount={layoutCount}
-              layoutVariant={layoutVariant}
-              previewZoom={effectiveZoom}
-            />
-          )}
+          {(() => {
+            const { ox, oy } = resolveMediaOffsetPx(
+              mediaPosition,
+              plateDims.w,
+              plateDims.h,
+            );
+            return (
+              <div
+                className="k-studio__media-pos"
+                data-testid="studio-stage-media-pos"
+                data-media-x={mediaPosition.x}
+                data-media-y={mediaPosition.y}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  // Phase 126 — canonical media-position translate
+                  // (outer). Inner .k-studio__stage-inner zoom scale
+                  // AYRI (Phase 125 dokunulmaz). neutral → translate
+                  // (0,0) = DOM byte-identical no-op.
+                  transform: `translate(${ox}px, ${oy}px)`,
+                  transformOrigin: "center center",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {mode === "mockup" ? (
+                  <MockupComposition
+                    slots={slots}
+                    selectedSlot={selectedSlot}
+                    onSelect={setSelectedSlot}
+                    isPreview={isPreview}
+                    deviceKind={deviceKind}
+                    plateDims={plateDims}
+                    layoutCount={layoutCount}
+                    layoutVariant={layoutVariant}
+                    previewZoom={effectiveZoom}
+                  />
+                ) : (
+                  <FrameComposition
+                    isEmpty={isEmpty}
+                    isPreview={isPreview}
+                    deviceKind={deviceKind}
+                    frameAspect={frameAspect}
+                    slots={slots}
+                    selectedSlot={selectedSlot}
+                    plateDims={plateDims}
+                    layoutCount={layoutCount}
+                    layoutVariant={layoutVariant}
+                    previewZoom={effectiveZoom}
+                  />
+                )}
+              </div>
+            );
+          })()}
         </div>
       ) : null}
       {children}
@@ -1006,6 +1045,9 @@ export interface MockupStudioStageProps {
    *  accumulate: stale-closure batching fix). */
   previewZoomPct?: number;
   onChangePreviewZoom?: (next: number | ((prev: number) => number)) => void;
+  /** Phase 126 — Global canonical media-position (Shell state).
+   *  StageScene'e iletilir; rail thumb da yansıtır. {0,0} no-op. */
+  mediaPosition?: MediaPosition;
 }
 
 export function MockupStudioStage({
@@ -1028,6 +1070,7 @@ export function MockupStudioStage({
   previewZoom = 1,
   previewZoomPct = 100,
   onChangePreviewZoom,
+  mediaPosition = { x: 0, y: 0 },
 }: MockupStudioStageProps) {
   const isPreview = appState === "preview" || appState === "renderDone";
   const isRender = appState === "render";
@@ -1070,6 +1113,7 @@ export function MockupStudioStage({
       isRender={isRender}
       isEmpty={isEmpty}
       previewZoom={previewZoom}
+      mediaPosition={mediaPosition}
     >
       <StageSceneOverlays
         mode={mode}
