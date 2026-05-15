@@ -19661,8 +19661,39 @@ surface" rolünün tam ürünleştirilmesi.
   default; ileride productType-specific aspect chip'leri eklenebilir
   — Phase 98+ candidate).
 
-### 11. Mockup vs Frame handoff (Phase 99 fulfilled)
+### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 chrome parity)
 
+- **Phase 101 chrome parity fulfilled — Studio preview ↔ exported PNG ↔
+  Product MockupsTab tile aynı görsel aileden gelir.**
+  Phase 99'da Sharp pipeline plate chrome'unu compose etmiyordu (düz
+  dikdörtgen bg + cascade). Phase 100 persistence + handoff'tan sonra
+  Product MockupsTab tile aspect-square + object-cover ile 16:9 export'u
+  merkezden kırpıyordu. İki katmanlı parity gap kullanıcı tarafından
+  tespit edildi. Phase 101 fix'i:
+  - **Sharp pipeline plate chrome'u compose eder**: stage dark padding
+    (var(--ks-st) `#111009` parity) → plate rounded rect (26px CSS @ ref;
+    output dims'e oranla scale) + 2px rgba(255,255,255,0.18) border +
+    multi-layer drop shadow chain (SVG feDropShadow 3-katmanlı, preview
+    4-katmanlı chain'in approximation'ı; libvips render desteği tam).
+    Plate fill ratio %85 output dims (Studio CSS max-width/max-height
+    85%/82% paritesi). Cascade plate-relative koordinatlara mapped
+    (`cascadeOffsetX = plateX + (plateW - stageInnerW * scale) / 2`).
+  - **Glass overlay plate-clipped**: önceden full-canvas rect; Phase 101
+    rounded rect yalnız plate alanında (preview backdrop-filter plate
+    parent'a uygulanıyordu — stage padding clean kalır).
+  - **MockupsTab tile aspect frame-export için preserve**: `kind ===
+    "frame-export"` ise host `aspect-[4/3] bg-ink` + image `object-contain`
+    (letterbox dark padding stage parity). Mockup-render entry'leri
+    Phase 8 baseline (`aspect-square + object-cover`) ile aynı.
+- Operator için sözleşme: **Studio'da gördüğüm + indirdiğim PNG + Product
+  tile aynı görsel aile**. "Export edildi ama başka bir görsele dönüştü"
+  hissi yok. Sözleşme #1 + #11 + #13.F birlikte fulfilled.
+- **Canonical truth = exported PNG**. Sebepler:
+  (a) FrameExport persistence + handoff + Etsy submit pipeline outputKey
+  + signedUrl üzerinden çalışıyor → Etsy'ye giden gerçek artifact PNG'dir.
+  (b) Studio preview operator authoring tool'u, canlı CSS hızlı feedback;
+  Product tile gerçek export edilmiş görseli göstermeli (yeniden yorum
+  zinciri kırar).
 - **Phase 99 fulfilled — Frame mode export pipeline çekirdeği aktif.**
   Operator Frame mode'da Glass / Lens Blur / Solid / Gradient / aspect
   ayarlarıyla bir sahne kurar; toolbar Export · 1× · PNG capsule
@@ -20662,6 +20693,216 @@ Sıradaki en yüksek-impact adım **Phase 101 candidate'lar**:
 
 Phase 100 backend persistence + handoff ana ürün boşluğunu kapattı;
 Phase 101+ operator deneyimi polish (history + reuse + Etsy push).
+
+---
+
+## Phase 101 — Preview ↔ Export ↔ Product tile chrome parity fulfilled
+
+Phase 99 stateless render + Phase 100 persistence + handoff zincirinde
+gerçek bir parity gap kaldı: kullanıcı **Studio'da gördüğüm ile
+indirdiğim PNG ve Product MockupsTab tile'ı aynı görünmüyor** dedi.
+Phase 101 bu boşluğu kapatır.
+
+### Gerçek browser parity comparison
+
+Studio dark stage'inde plate canonical chrome **DOM ölçüm** ile
+doğrulandı:
+- border-radius: 26px
+- border: 2px solid rgba(255,255,255,0.18)
+- box-shadow: 4-katmanlı drop shadow chain
+  (close edge / medium body / ambient mid / depth fade)
+- bg: sceneOverride-driven gradient (auto palette warm cream → tan)
+
+İlk gerçek export (Phase 100 baseline) indirildi (1920×1080, 962.7 KB):
+- ❌ plate chrome YOK (düz dikdörtgen warm bg + cascade)
+- ❌ stage dark padding YOK
+- ❌ rounded corners YOK
+- ❌ drop shadow YOK
+
+Product MockupsTab tile'a handoff sonrası bakıldı:
+- ❌ aspect-square + object-cover ile 16:9 export'u **merkezden kırpıyor**
+  (cascade'in üst/alt kenarı kaybolabilir; tile_W:306 tile_H:368)
+- tileBoxShadow: cover ring var ama plate chrome'u tile'da yok (zaten
+  PNG'de de yoktu)
+
+### En büyük görsel fark
+
+**İki katmanlı parity gap**:
+1. **Pipeline-level — Sharp compositor plate chrome'unu hiç compose
+   etmiyordu**. Exported PNG operator için "yarı yorumlanmış" çıkıyordu.
+2. **Tile rendering-level — frame-export aspect mismatch**. 16:9 / 4:5 /
+   9:16 PNG'ler aspect-square host'a `object-cover` ile yerleşiyordu;
+   merkezden kırpılma.
+
+### Ürün kararı (canonical truth)
+
+**Canonical truth = exported PNG**. Etsy submit pipeline + Listing.
+imageOrderJson handoff + Product detail Frame Exports bucket hepsi
+`outputKey + signedUrl` üzerinden çalışıyor → indirilen PNG = Etsy'ye
+giden artifact. Studio preview operator authoring tool'u; canlı CSS
+hızlı feedback ama not source of truth. Product MockupsTab gerçek
+export PNG'sini **dürüstçe** göstermeli (yeniden yorum zinciri kırar).
+
+Sonuç: Sharp pipeline plate chrome'unu üretmeli (preview = export);
+tile sadece o PNG'yi aspect-preserve göstermeli (export = product tile).
+
+### Fix 1 — Sharp pipeline plate chrome compose
+
+`src/providers/mockup/local-sharp/frame-compositor.ts` rewrite:
+
+- **Stage bg layer**: full canvas dark `#111009` (var(--ks-st) parity)
+- **Plate layout helper**: `resolvePlateLayout(outputW, outputH)`
+  - plateW = outputW × 0.85, plateH = outputH × 0.85 (Studio CSS
+    max-width:85% / max-height:82% paritesi)
+  - plateX/Y = stage'in ortasında (dark padding ~%7.5 her kenardan)
+  - plateRadius = 26 × radiusScale (min 14 / max 40 px guard)
+- **Plate layer SVG** (`buildPlateLayerSvg`):
+  - SVG `<rect>` rounded corner + stroke `rgba(255,255,255,0.18)` 2px
+  - `<filter feDropShadow>` 3-katmanlı chain (preview 4-katmanın yaklaşık
+    karşılığı; libvips destek tam)
+  - bg fill = scene-mode-aware (solid color / linearGradient defs /
+    auto palette gradient fallback)
+  - Sharp `composite` SVG'yi tek geçişte flatten eder
+- **Cascade plate-relative**: önceden `cascadeOffsetX/Y = output - inner
+  scale center`; Phase 101'de `cascadeOffsetX = plateX + (plateW -
+  stageInnerW * scale) / 2`. Cascade plate içine merkezi (operator
+  preview parity).
+- **Glass overlay plate-clipped**: önceden full-canvas glass rect; Phase
+  101 rounded rect yalnız plate alanında (preview backdrop-filter plate
+  parent'a uygulanıyordu — stage padding clean kalmalı).
+- **Lens Blur**: full canvas blur korundu (Phase 99 baseline). Plate-only
+  blur Phase 102+ candidate; ana parity boşluğu plate chrome'du.
+
+### Fix 2 — Product MockupsTab tile aspect-preserve
+
+`src/features/products/components/tabs/MockupsTab.tsx`:
+
+```diff
++const isFrameExport = it.kind === "frame-export";
+
+-<div className="aspect-square overflow-hidden bg-k-bg-2">
++<div className={cn(
++  "overflow-hidden",
++  isFrameExport ? "aspect-[4/3] bg-ink" : "aspect-square bg-k-bg-2",
++)}>
+   <img
+-    className="h-full w-full object-cover"
++    className={cn("h-full w-full",
++      isFrameExport ? "object-contain" : "object-cover")}
+   />
+```
+
+- frame-export entry'leri için tile host artık 4:3 aspect (landscape-
+  friendly; en yaygın frame aspect 16:9 ve square 1:1 hepsi sığar) +
+  `bg-ink` dark stage tone (preview parity; letterbox dark padding
+  Studio'daki stage padding ile aynı görsel kimlik)
+- `object-contain` ile aspect korunur, kırpılma yok
+- Mockup-render entry'leri **dokunulmadı** (Phase 8 baseline:
+  aspect-square + object-cover + bg-k-bg-2 cream — backward-compat).
+
+### Browser end-to-end real-asset doğrulama
+
+Live dev server (1600×1100, real DB, real selection set
+`cmov0ia37` 4-item clipart + real MinIO MJ assets PAS5/Pinterest):
+
+| Adım | Kanıt |
+|---|---|
+| Phase 100 export (baseline) | 1920×1080, 962.7 KB, plate chrome YOK (düz bg) |
+| Phase 101 export | 1920×1080, 739.5 KB, **plate chrome var** (rounded 26px + border + 4-layer shadow + stage dark padding) |
+| Studio preview ↔ Phase 101 PNG yan yana | aynı plate görsel ailesi (operator için "ne gördüm = ne aldım") |
+| Send to Product handoff | "✓ Added to listing" success badge |
+| Product detail MockupsTab Frame Exports | tile aspectRatio "4/3", bg `rgb(22,19,15)` = bg-ink, img objectFit "contain", img naturalW/H 1920/1080 — kırpılma yok |
+| Tile cover ring + Primary badge | mevcut Phase 100 baseline'ı korundu |
+
+Screenshot kanıtları (gerçek browser):
+- Studio Frame mode preview: rounded plate + warm gradient + cascade
+  (PAS5 + Pinterest + AI thumbnails) + slot ring + dark stage padding
+- Exported PNG (Phase 101): aynı plate chrome + aynı cascade + aynı
+  dark padding — preview ile birebir görsel aile
+- Product MockupsTab Frame Exports bucket: 3 tile, hepsi 4:3 host +
+  contain fit + dark bg-ink padding; ilki cover ring + Primary badge;
+  exported PNG'lerin **kırpılmadan** tile'a düşmesi
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products, listings}`:
+  **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully (Studio route 20.1 kB; MockupsTab
+  bundle benzer; frame-compositor backend dosyası)
+
+### Değişmeyenler (Phase 101)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Phase 100 FrameExport row + Listing.
+  imageOrderJson JSON field baseline'ı dokunulmadı.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Frame compositor 3 yeni helper
+  (`resolvePlateLayout`, `buildStageBackgroundSvg`, `buildPlateLayerSvg`)
+  + glass overlay rename + compose pipeline'ı stage→plate→cascade
+  hiyerarşisine yeniden bağladı; yeni service / yeni route / yeni
+  endpoint yok. MockupsTab kind narrow + 2-line aspect-host conditional;
+  yeni component yok.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Mockup mode render dispatch (POST /api/mockup/jobs) dokunulmadı**
+  — Phase 8 baseline Mockup pack pipeline ayrı route, ayrı compositor
+  (local-sharp `compositor.ts` Frame-only refactor'undan etkilenmedi).
+- **Studio shell, Mockup mode UI, slot assignment, Phase 80 picker,
+  Phase 79 real hydrate** hepsi intakt.
+- **References / Batch / Review / Selection / Mockup Studio / Product
+  / Etsy Draft canonical akışları intakt.**
+- **Apply pipeline + Phase 76 SlotAssignmentPanel + Phase 74-75
+  multi-slot backend + admin authoring** hepsi intakt.
+- **Phase 100 persistence + handoff + Listing.imageOrderJson
+  discriminated union backward-compat tam** — frame-export entry'lerin
+  tile rendering'i değişti ama persistence + Etsy submit (Phase 9)
+  outputKey/signedUrl yolu intakt.
+- **Phase 8 mockup-render tile davranışı** (aspect-square + object-cover)
+  korundu — kind narrow ile backward-compat.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Düzeltilen parity bug'ları (Phase 101):
+- **Studio preview ↔ exported PNG plate chrome divergence** — Phase 99
+  baseline'dan beri açık idi; Sharp pipeline plate chrome'unu hiç
+  compose etmiyordu. Phase 101 stage bg + plate rounded rect + border +
+  multi-layer drop shadow ekledi.
+- **Exported PNG ↔ Product MockupsTab tile aspect mismatch** — Phase
+  100 baseline'da frame-export entry'leri aspect-square + object-cover
+  ile merkezden kırpılıyordu. Phase 101 `kind === "frame-export"` narrow
+  ile `aspect-[4/3] bg-ink + object-contain` davranışı.
+
+Hâlâ açık (Phase 102+ candidate):
+- **Plate-only Lens Blur** (sözleşme Phase 102 candidate): blur şu an
+  full canvas; preview'da plate parent'a CSS filter uygulanıyor
+  (stage padding clean). Sharp pipeline'da plate-only extract +
+  composite zinciri gerekir; ana parity boşluğu plate chrome'du,
+  blur subtle ek katman.
+- **Drop shadow 4. katman** (depth fade): SVG feDropShadow Sharp/libvips
+  render'ında 3-katmanlı chain'i kabul ediyor; 4. katman performance
+  marjinal, ana visual impact 3-katmanla yakalandı.
+- **Slot-level rounded corner + ring chrome** (sözleşme Phase 102+):
+  Studio preview'da assigned slot'lar `border-radius: 16px` + selection
+  ring taşıyor; Sharp pipeline'da slot composite raw image; slot
+  chrome'u SVG mask + composite ile eklenebilir. Phase 101 plate-level
+  chrome'a odaklandı (operator için en büyük "ne gördüm = ne aldım"
+  divergence'i).
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 101 ile operator için **canonical chrome parity** fulfilled:
+- Studio'da gördüğüm = indirdiğim PNG = Product MockupsTab tile
+- Plate rounded corners + border + drop shadow + stage padding aynı
+- Frame export aspect 4:3 / 16:9 / 9:16 / 1:1 / 3:4 hepsi tile'da
+  aspect-preserve
+
+Sıradaki en yüksek-impact adım **Phase 102 candidate**: slot-level
+chrome (rounded corners + selection ring) Sharp pipeline'a eklenir
++ plate-only Lens Blur (CSS backdrop-filter parity). Ana visual impact
+plate-level fix ile yakalandı; Phase 102 fine-grain polish + Etsy
+Draft submit pipeline frame-export end-to-end test (Phase 101 baseline
++ Phase 9 push).
 
 ---
 

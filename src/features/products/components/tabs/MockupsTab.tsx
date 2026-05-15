@@ -223,6 +223,16 @@ export function MockupsTab({ listing }: MockupsTabProps) {
                         it.kind === "frame-export"
                           ? it.frameExportId
                           : it.renderId;
+                      // Phase 101 — Frame export PNG (16:9 / 4:5 / 9:16 /
+                      // 1:1 / 3:4) aspect-square `object-cover` ile merkez
+                      // kırpılıyordu (operator için cascade'in üst/alt
+                      // kenarı kaybolabiliyordu). Frame export entry'lerinde
+                      // tile host `aspect-[4/3]` + image `object-contain`
+                      // ile dürüstçe gerçek aspect'i koru — bg-stage tone
+                      // letterbox padding'i (Studio preview parity hissi).
+                      // Mockup-render entry'leri Phase 8 baseline davranışı
+                      // ile aynı (aspect-square + object-cover).
+                      const isFrameExport = it.kind === "frame-export";
                       return (
                       <div
                         key={entryId}
@@ -235,13 +245,25 @@ export function MockupsTab({ listing }: MockupsTabProps) {
                         data-entry-kind={it.kind ?? "mockup-render"}
                         data-is-cover={it.isCover ? "true" : undefined}
                       >
-                        <div className="aspect-square overflow-hidden bg-k-bg-2">
+                        <div
+                          className={cn(
+                            "overflow-hidden",
+                            isFrameExport
+                              ? "aspect-[4/3] bg-ink"
+                              : "aspect-square bg-k-bg-2",
+                          )}
+                        >
                           {it.signedUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={it.signedUrl}
                               alt={it.templateName}
-                              className="h-full w-full object-cover"
+                              className={cn(
+                                "h-full w-full",
+                                isFrameExport
+                                  ? "object-contain"
+                                  : "object-cover",
+                              )}
                               loading="lazy"
                             />
                           ) : (

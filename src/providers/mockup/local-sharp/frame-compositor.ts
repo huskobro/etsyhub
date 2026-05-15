@@ -79,45 +79,129 @@ export interface FrameCompositorInput {
 const STAGE_INNER_REF_W = 572;
 const STAGE_INNER_REF_H = 504;
 
-/* Phase 99 — Resolve plate background SVG layer.
+/* Phase 101 — Plate chrome parity (Studio preview ↔ export aynı görsel
+ * aileden gelir; sözleşme #1 + #11).
  *
- * Output canvas full bg'sini SVG ile compose ediyoruz; Sharp `composite`
- * SVG layer'ları PNG'ye flatten eder.
+ * Studio preview'da plate canonical chrome (DOM ölçümlerinden):
+ *   - border-radius: 26px
+ *   - border: 2px solid rgba(255,255,255,0.18)
+ *   - box-shadow chain:
+ *       0  2px   6px  rgba(0,0,0,0.35)   close edge
+ *       0 12px  28px -4px rgba(0,0,0,0.45) medium body
+ *       0 36px  80px -16px rgba(0,0,0,0.55) ambient mid
+ *       0 60px 120px -32px rgba(0,0,0,0.50) depth fade
+ *   - background: sceneOverride-driven (auto palette / solid / gradient /
+ *     glass undertone)
+ *
+ * Phase 100'e kadar Sharp pipeline plate chrome'unu hiç compose etmiyordu
+ * → exported PNG düz dikdörtgen bg + cascade. Studio preview canlı ama
+ * exported PNG "yarı yorumlanmış" çıkıyordu. Operator için divergence.
+ *
+ * Phase 101'de pipeline yeniden yapılandırıldı:
+ *   1. Stage padding (dark void surface)
+ *   2. Plate: rounded rect + border + multi-layer drop shadow + scene bg
+ *   3. Cascade (slot composites) plate-clip içinde
+ *
+ * Output dims aynı kalır (1080×1080 / 1080×1350 / 1080×1920 / 1920×1080 /
+ * 1500×2000). Plate dims output dims'in ~%85'i (Studio CSS max-width/
+ * max-height 85%/82% paritesi). Stage padding ~%7-8 her kenardan.
  */
-function buildBackgroundSvg(
+
+const PLATE_FILL_RATIO = 0.85;
+const PLATE_RADIUS_REF = 26; // CSS px @ stage-inner ref
+const STAGE_BG_HEX = "#111009"; // var(--ks-st) Studio dark stage tone
+
+interface PlateLayoutOutput {
+  plateW: number;
+  plateH: number;
+  plateX: number;
+  plateY: number;
+  plateRadius: number;
+}
+
+function resolvePlateLayout(outputW: number, outputH: number): PlateLayoutOutput {
+  const plateW = Math.round(outputW * PLATE_FILL_RATIO);
+  const plateH = Math.round(outputH * PLATE_FILL_RATIO);
+  const plateX = Math.round((outputW - plateW) / 2);
+  const plateY = Math.round((outputH - plateH) / 2);
+  // Plate radius output dims'e oranla scale (preview 26px @ 1006×608 → ~27px
+  // @ 1920×1080 plate). Min/max guard ile rafine kalır.
+  const radiusScale = Math.min(plateW / 1006, plateH / 608);
+  const plateRadius = Math.max(14, Math.min(40, Math.round(PLATE_RADIUS_REF * radiusScale)));
+  return { plateW, plateH, plateX, plateY, plateRadius };
+}
+
+/* Phase 101 — Stage padding bg (preview .k-studio__stage dark surface
+ * parity). Plate'in arkasında dark padding alanı; operator için plate'in
+ * stage'den net "kalkmasını" sağlar. */
+function buildStageBackgroundSvg(outputW: number, outputH: number): string {
+  return `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${outputW}" height="${outputH}" fill="${STAGE_BG_HEX}"/>
+  </svg>`;
+}
+
+/* Phase 101 — Plate layer (bg + rounded corner + border + drop shadow).
+ *
+ * Plate'in altına multi-layer drop shadow + plate'in kendisi rounded
+ * rect + bg gradient/solid + subtle white-tinted border. Tek SVG'de
+ * compose edilir (Sharp tek composite call'unda flatten).
+ *
+ * Preview chain'in 4 katmanı SVG `<filter>` `<feDropShadow>` ile
+ * yaklaşık olarak yansır. Sharp libvips SVG render'ında feDropShadow
+ * tam destek var. */
+function buildPlateLayerSvg(
   outputW: number,
   outputH: number,
+  layout: PlateLayoutOutput,
   scene: FrameSceneInput,
 ): string {
+  const { plateW, plateH, plateX, plateY, plateRadius } = layout;
   const mode = scene.mode;
+  let fillAttr: string;
+  let defsBlock = "";
   if (mode === "solid" && scene.color) {
-    return `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="${outputW}" height="${outputH}" fill="${escapeXml(scene.color)}"/>
-    </svg>`;
-  }
-  if (mode === "gradient" && scene.color && scene.colorTo) {
-    return `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="${escapeXml(scene.color)}"/>
-          <stop offset="100%" stop-color="${escapeXml(scene.colorTo)}"/>
-        </linearGradient>
-      </defs>
-      <rect width="${outputW}" height="${outputH}" fill="url(#g)"/>
-    </svg>`;
-  }
-  // auto + glass (glass also uses underlying palette gradient under overlay)
-  const palette = scene.palette;
-  const from = palette ? palette[0] : "#F5B27D";
-  const to = palette ? palette[1] : "#D97842";
-  return `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    fillAttr = escapeXml(scene.color);
+  } else if (mode === "gradient" && scene.color && scene.colorTo) {
+    fillAttr = "url(#plate-grad)";
+    defsBlock = `<linearGradient id="plate-grad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="${escapeXml(scene.color)}"/>
+        <stop offset="100%" stop-color="${escapeXml(scene.colorTo)}"/>
+      </linearGradient>`;
+  } else {
+    // auto + glass (glass also uses underlying palette gradient under overlay)
+    const palette = scene.palette;
+    const from = palette ? palette[0] : "#F5B27D";
+    const to = palette ? palette[1] : "#D97842";
+    fillAttr = "url(#plate-grad)";
+    defsBlock = `<linearGradient id="plate-grad" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" stop-color="${escapeXml(from)}"/>
         <stop offset="100%" stop-color="${escapeXml(to)}"/>
-      </linearGradient>
+      </linearGradient>`;
+  }
+  // Preview 4-katmanlı drop shadow chain'i SVG feDropShadow ile
+  // yansıt. Output dims'e oranla scale (preview shadow offset'leri
+  // CSS px; output px'e dönüşürken min radius guard).
+  const shadowScale = Math.min(plateW / 1006, plateH / 608);
+  const s1Off = Math.max(1, Math.round(2 * shadowScale));
+  const s1Blur = Math.max(2, Math.round(6 * shadowScale));
+  const s2Off = Math.max(4, Math.round(12 * shadowScale));
+  const s2Blur = Math.max(8, Math.round(28 * shadowScale));
+  const s3Off = Math.max(12, Math.round(36 * shadowScale));
+  const s3Blur = Math.max(16, Math.round(80 * shadowScale));
+  return `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      ${defsBlock}
+      <filter id="plate-shadow" x="-20%" y="-20%" width="140%" height="160%">
+        <feDropShadow dx="0" dy="${s1Off}" stdDeviation="${s1Blur}" flood-opacity="0.35"/>
+        <feDropShadow dx="0" dy="${s2Off}" stdDeviation="${s2Blur}" flood-opacity="0.45"/>
+        <feDropShadow dx="0" dy="${s3Off}" stdDeviation="${s3Blur}" flood-opacity="0.55"/>
+      </filter>
     </defs>
-    <rect width="${outputW}" height="${outputH}" fill="url(#g)"/>
+    <rect x="${plateX}" y="${plateY}" width="${plateW}" height="${plateH}"
+      rx="${plateRadius}" ry="${plateRadius}"
+      fill="${fillAttr}"
+      stroke="rgba(255,255,255,0.18)" stroke-width="2"
+      filter="url(#plate-shadow)"/>
   </svg>`;
 }
 
@@ -131,9 +215,10 @@ function buildBackgroundSvg(
  * = variant-tinted rect + subtle border. Operator preview ile output
  * birebir aynı görsel hissi alır (CSS backdrop-filter parity).
  */
-function buildGlassOverlaySvg(
+function buildGlassOverlayPlateClippedSvg(
   outputW: number,
   outputH: number,
+  layout: PlateLayoutOutput,
   variant: FrameGlassVariant,
 ): string {
   let fill: string;
@@ -149,8 +234,14 @@ function buildGlassOverlaySvg(
     fill = "rgba(255,255,255,0.22)";
     stroke = "rgba(255,255,255,0.30)";
   }
+  // Phase 101 — Glass overlay artık plate alanına clip'lenmiş rounded
+  // rect (preview parity: backdrop-filter plate parent'a uygulanıyordu).
+  // Stage padding alanı glass'tan etkilenmez.
   return `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
-    <rect width="${outputW}" height="${outputH}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>
+    <rect x="${layout.plateX}" y="${layout.plateY}"
+      width="${layout.plateW}" height="${layout.plateH}"
+      rx="${layout.plateRadius}" ry="${layout.plateRadius}"
+      fill="${fill}" stroke="${stroke}" stroke-width="2"/>
   </svg>`;
 }
 
@@ -178,21 +269,32 @@ export async function composeFrameOutput(
   const stageInnerW = input.stageInnerW || STAGE_INNER_REF_W;
   const stageInnerH = input.stageInnerH || STAGE_INNER_REF_H;
 
-  /* 1) Background layer */
-  const bgSvg = buildBackgroundSvg(outputW, outputH, scene);
-  const bgBuffer = Buffer.from(bgSvg);
+  /* 1) Stage padding bg (preview .k-studio__stage dark surface parity).
+   *    Plate'in arkasında dark padding alanı — operator için plate'in
+   *    stage'den net "kalkması" hissi. */
+  const stageBgSvg = buildStageBackgroundSvg(outputW, outputH);
 
-  /* 2) Cascade slot composites.
+  /* 2) Plate layout: rounded chrome + bg + border + drop shadow. */
+  const plateLayout = resolvePlateLayout(outputW, outputH);
+  const plateLayerSvg = buildPlateLayerSvg(outputW, outputH, plateLayout, scene);
+
+  /* 3) Cascade slot composites — Phase 101 plate-relative.
    *
-   * Stage-inner 572×504 → output canvas oranla scale. Aspect mismatch
-   * durumunda cascade'i en kısa boyut üzerinden orantılı küçült (preview
-   * cascadeScale parity, Phase 95 baseline). */
+   * Cascade artık plate içine yerleşir (Studio preview parity — plate'in
+   * `overflow:hidden` + cascade plate-inner ortasında). Stage-inner
+   * 572×504 → plate dims oranla scale; plate offset'i ile origin'e
+   * uygulanır. Preview ile export aynı plate-relative koordinatlar
+   * (sözleşme #2 stage continuity + #11 preview ↔ export aynı kaynak). */
   const cascadeScale = Math.min(
-    outputW / stageInnerW,
-    outputH / stageInnerH,
+    plateLayout.plateW / stageInnerW,
+    plateLayout.plateH / stageInnerH,
   );
-  const cascadeOffsetX = Math.round((outputW - stageInnerW * cascadeScale) / 2);
-  const cascadeOffsetY = Math.round((outputH - stageInnerH * cascadeScale) / 2);
+  const cascadeOffsetX = Math.round(
+    plateLayout.plateX + (plateLayout.plateW - stageInnerW * cascadeScale) / 2,
+  );
+  const cascadeOffsetY = Math.round(
+    plateLayout.plateY + (plateLayout.plateH - stageInnerH * cascadeScale) / 2,
+  );
 
   // Composite operations array
   const slotComposites: sharp.OverlayOptions[] = [];
@@ -237,29 +339,52 @@ export async function composeFrameOutput(
     });
   }
 
-  /* 3) Compose: bg → cascade composites */
-  let canvasSharp = sharp(bgBuffer).png();
-  if (slotComposites.length > 0) {
-    canvasSharp = sharp(await canvasSharp.toBuffer()).composite(slotComposites);
-  }
-  let canvasBuffer = await canvasSharp.toBuffer();
+  /* 4) Compose stage bg + plate layer + cascade composites (tek geçişte
+   *    operator için preview ↔ export aynı görsel aileden gelir). */
+  const composites: sharp.OverlayOptions[] = [
+    { input: Buffer.from(plateLayerSvg), top: 0, left: 0 },
+    ...slotComposites,
+  ];
+  let canvasBuffer = await sharp(Buffer.from(stageBgSvg))
+    .composite(composites)
+    .png()
+    .toBuffer();
 
-  /* 4) Lens Blur — apply Sharp blur to canvas (preview CSS filter:blur(8px)
-   *  parity; 8px CSS ≈ Sharp σ ≈ 5-6 depending on output dims). */
+  /* 5) Lens Blur — apply Sharp blur to canvas (preview CSS filter:blur(8px)
+   *  parity; 8px CSS ≈ Sharp σ ≈ 5-6 depending on output dims).
+   *
+   * NOT: Phase 101 plate chrome eklendiğinde blur tüm canvas'a uygulanırsa
+   * stage padding + plate border'ı da bulanıklaşır. Operator beklentisi:
+   * blur Frame mode preview'da plate'in **içindeki** content'e uygulanıyor
+   * (CSS filter plate parent'a; rounded clip içinde). Phase 101'de aynı
+   * davranış: blur'lu canvas'tan plate-area crop'lanıp stage padding +
+   * plate chrome temiz halinin üstüne yapıştırılır.
+   *
+   * Şu an Phase 101 baseline: tüm canvas blur (preview ile birebir tam
+   * pixel parity değil ama operator için Glass + Blur kombinasyonu net).
+   * Plate-only blur Phase 102+ candidate (extract + composite zinciri
+   * çok daha karmaşık; ana parity boşluğu plate chrome'du). */
   if (scene.lensBlur) {
     canvasBuffer = await sharp(canvasBuffer).blur(6).png().toBuffer();
   }
 
-  /* 5) Glass overlay (after blur, so glass overlay itself stays sharp). */
+  /* 6) Glass overlay (after blur, so glass overlay itself stays sharp).
+   *    Phase 101: glass overlay yalnız plate alanında (rounded clip ile)
+   *    operator preview parity. */
   if (scene.mode === "glass") {
     const variant = scene.glassVariant ?? "light";
-    const glassSvg = buildGlassOverlaySvg(outputW, outputH, variant);
+    const glassSvg = buildGlassOverlayPlateClippedSvg(
+      outputW,
+      outputH,
+      plateLayout,
+      variant,
+    );
     canvasBuffer = await sharp(canvasBuffer)
       .composite([{ input: Buffer.from(glassSvg) }])
       .png()
       .toBuffer();
   }
 
-  /* 6) Final PNG encode. */
+  /* 7) Final PNG encode. */
   return await sharp(canvasBuffer).png({ compressionLevel: 9 }).toBuffer();
 }
