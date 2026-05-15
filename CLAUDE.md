@@ -24718,18 +24718,211 @@ viewport 1600×1040, **clean restart** (`.next` silindi →
 
 ### Bundan sonra en doğru sonraki adım
 
-Phase 116 + fu + fu2 ile right rail tam **"tek sahne, çok
-ekran"**: thumb = orta panelin scene→plate→cascade-in-plate
-yapısının minyatürü (bounded plate + scene-padding + real
-asset + proportional chrome), tek fark candidate layoutVariant.
-"Ayrı thumb sistemi / generic ikon" tamamen bitti (kanıt: 6
-thumb HEPSI inset plate + 3 real img + scene backdrop; stage
-plate radius 26px ≈ thumb rx 5.7 proportional; fan rail→stage
-`[-13,0,13]` unity; mode-AGNOSTIC). Sıradaki adım **Phase 117
-candidate**: Stage placement-floor + ambient-glow thumb parity
-derinleştirme (gerek görülürse — mevcut yapısal parity yeterli)
-veya View tabs/Zoom slider activation. Yeni SVG/layout builder/
-mockup editor §13.A'da ertelenmiş kalır.
+Phase 116 + fu + fu2 ile right rail görsel olarak "tek sahne çok
+ekran"a yaklaştı AMA hâlâ **iki ayrı render path** vardı (thumb
+`PresetThumbMockup` AYRI SVG renderer, scene/plate'i SVG-rect ile
+TAKLİT ediyordu; middle panel `MockupComposition` + CSS divs).
+Sıradaki adım **Phase 117**: gerçek tek render path — thumb =
+orta panelin AYNI `StageScene` component'i, scaled. "Benzetmeye
+çalışan ikinci görsel sistem" tamamen kaldırıldı.
+
+---
+
+## Phase 117 — Single-renderer: thumb = orta panelin AYNI StageScene'i (scaled), ayrı SVG thumb renderer kaldırıldı
+
+Phase 116 fu2 thumb'ı "Stage'in minyatürü gibi" yaptı ama hâlâ
+**ayrı bir render path** idi: `PresetThumbMockup` (svg-art.tsx)
+kendi `<svg viewBox="0 0 184 88">`'ini + `fitCascadeToThumb`
+AYRI fit math'ini + SVG-`<rect>` ile yeniden çizilmiş scene/plate
+chrome'unu kuruyordu; middle panel `MockupComposition` + CSS
+plate/scene div'leri kullanıyordu. `cascadeLayoutFor`+
+`StageDeviceSVG` ortaktı ama **composition/plate-fit math
+(`compositionGroup` vs `fitCascadeToThumb`) + scene/plate chrome
+(CSS divs vs SVG rects) AYRI — elle senkronlanan iki görsel
+sistem**. Kullanıcı net: "benzetmeye çalışan ikinci renderer
+istemiyorum; tek sahne, çok ekran — thumb = middle panel if
+rendered in that layout, same renderer."
+
+### Yanlış model → doğru model
+
+- **Yanlış (Phase 116 fu2 dahil):** İki render path. Middle panel
+  `MockupComposition` (React divs + CSS plate/scene +
+  `compositionGroup` plate-fit). Thumb `PresetThumbMockup`
+  (hand-built SVG + `fitCascadeToThumb` + SVG-rect scene/plate).
+- **Doğru (Phase 117):** TEK render component, İKİ ölçek.
+  `StageScene` = scene→amb→floor→plate→(plate-surface/glass)→
+  `MockupComposition`/`FrameComposition` bloğunun TAMAMI. Stage
+  büyük ekranda render eder (selected layoutVariant); rail thumb
+  AYNI `StageScene`'i CSS `transform: scale()` ile küçültülmüş +
+  küçük sabit plateDims + candidate layoutVariant ile render eder
+  (`StageScenePreview`). **Ayrı SVG thumb renderer YOK.**
+
+### Hangi render path'leri birleştirdim
+
+- **`StageScene` component'i `MockupStudioStage.tsx`'ten extract
+  edildi** (export): scene/amb/floor/plate/plate-surface/plate-
+  glass + MockupComposition/FrameComposition. Scene/plate
+  resolution (sceneTones/plateBgRaw/plateEffects/plateStyle/
+  plateSurfaceStyle) StageScene İÇİNDE — Stage main fn'deki lokal
+  duplicate KALDIRILDI (tek tanım, sessiz drift §12 YASAK).
+- **Stage main fn artık `<StageScene>`'e delege eder** — yalnız
+  viewport-aware `plateDims`'i hesaplar (Stage-shell concern) +
+  StageScene'e geçirir. Overlay'ler (empty-cap/render-ov/render-
+  banner/edit-pill/zoom-pill) `StageSceneOverlays` olarak StageScene
+  `children` prop'unda AYNI `k-studio__stage` div'inde sibling
+  kalır → **Stage DOM byte-identical** (eski sibling sırası
+  korundu).
+- **`StageScenePreview.tsx` (yeni)**: rail thumb = `StageScene`'i
+  flex-fill wrapper'da PREVIEW_BASE (900×506) boyutunda render
+  eder, `transform: scale()` ile thumb kutusuna küçültür;
+  selectedSlot=-1 + no-op onSelect + appState="preview" (slot-ring/
+  badge GİZLİ — kategori 4 helper thumb'a GİRMEZ, Phase 94
+  baseline). plateDims = PREVIEW_BASE × 0.85 (Stage plate %85
+  paritesi; etrafta scene-padding).
+- **`PresetThumbMockup` rail path'ten KALDIRILDI** (svg-art.tsx'te
+  export hâlâ var ama rail kullanmıyor — `PresetThumbFrame` Frame
+  legacy için kalır). `fitCascadeToThumb`/`THUMB_PLATE_*` rail'de
+  ölü. `resolvePresetThumbScene` import + `thumbScene` rail'de
+  kaldırıldı (rail ayrı scene resolve ETMEZ — StageScene içinde).
+
+### Build-boundary (cycle yok)
+
+`StageScenePreview → MockupStudioStage` (StageScene import).
+`PresetRail → StageScenePreview`. Stage `StageScenePreview`'i
+veya `PresetRail`'i import ETMEZ → cycle yok (Stage→svg-art,
+StageScenePreview→Stage, PresetRail→StageScenePreview tek yön).
+`compositionGroup`/`MockupComposition`/`FrameComposition` AYNI
+dosyada (`MockupStudioStage.tsx`) KALDI (Phase 111-116 battle-
+tested, taşıma riski sıfır).
+
+### Artık tek kaynaktan gelen parametreler
+
+slots (real itemler + `imageUrl`), deviceKind, sceneOverride,
+activePalette, layoutCount, layoutVariant, frameAspect, mode →
+hepsi `StageScene`'e tek prop set. Middle panel + her rail thumb
+AYNI `StageScene` (aynı `MockupComposition` + `compositionGroup`
+plate-fit + `StageDeviceSVG` + real asset + CSS plate/scene
+chrome). **Fark YALNIZCA**: (a) plateDims ölçeği (Stage viewport-
+aware; thumb PREVIEW_BASE küçük + CSS scale), (b) candidate
+`layoutVariant` (Stage selected; thumb preset candidate),
+(c) appState (thumb "preview" → ring/badge gizli).
+
+### Candidate layout dışında temizlenen farklar
+
+`fitCascadeToThumb` (ayrı bbox/scale math) → kaldırıldı, thumb
+artık Stage'in `compositionGroup` plate-fit'ini kullanır.
+SVG-rect scene/plate → kaldırıldı, thumb artık Stage'in CSS
+`k-studio__stage-scene`/`k-studio__stage-plate`/`k-studio__plate-
+glass` div'lerini kullanır. SVG-rect chrome (proportional pad/
+frame/bezel Phase 116 fu) → ARTIK GEREKSİZ (thumb gerçek
+StageDeviceSVG'yi gerçek plate içinde Stage ile birebir render
+eder; chrome scale CSS transform'la otomatik orantılı).
+
+### Browser+DOM triangulation (fresh build, real asset)
+
+Test set `cmov0ia37` (4 real MinIO MJ asset), clipart→sticker,
+viewport 1600×1040:
+
+- **8 `studio-stage` instance** = 1 middle panel + 7 rail thumb
+  (live + 6 preset), **HEPSI aynı `StageScene` component**.
+- Middle panel: `hasPlate:true hasMockupComp:true` 3
+  `k-studio__slot-wrap` (React div) 3 real MinIO `<image>`
+  cascadeScale 1.722.
+- Rail thumb 0: `previewWrapperPresent:true sameStageScene
+  Component:true hasPlate:true hasMockupComp:true` 3 slot-wrap
+  3 real `<image>` (aynı href) cascadeScale 1.454. Plate
+  `plateInsidePreviewBox:true` (sizing fix sonrası — `.k-studio__
+  stage` flex:1 collapse bug'ı flex-fill wrapper ile çözüldü:
+  stageCSSheight 0→506px).
+- 6 preset her biri sameStageScene + 3 slot-wrap + 3 real img +
+  kendi candidate variant rotation (cascade `[0,-6,-12]`,
+  centered `[0,0,0]`, tilted `[-7,0,7]`, stacked `[0,0,0]`,
+  fan `[-13,0,13]`, offset `[0,-4,-8]` = `applyLayoutVariant`).
+- **Rail→Shell→Stage unity**: rail preset-4 (fan) click →
+  `shellLayoutVariant:"fan"`; middle panel cascade `[-13,0,13]`;
+  fan thumb sameStageScene + `[-13,0,13]` + 3 real img +
+  pressed:true. Middle === thumb (candidate layout dışında).
+- **Mode-AGNOSTIC**: Frame mode'a geçince `layoutVariant:"fan"`
+  korundu; fan thumb sameStageScene + hasPlate + 3 real img;
+  middle panel Frame mode 3 real img + hasPlate; 8 StageScene
+  instance sabit.
+- **Product MockupsTab continuity**: `/products/cmor0wkjt...`
+  Mockups tab 11 frame-export tile, naturalWidth 1920×1080,
+  objectFit contain (Phase 101 baseline) — StageScene refactor
+  Studio-only, Product/persistence/handoff dokunulmadı.
+- **Screenshot**: middle panel + 7 rail thumb HEPSI AYNI cream
+  plate + dark scene + 3 real sticker (PAS5/neon/car), farklı
+  candidate layout. "Ayrı thumb sistemi / generic ikon / boş
+  thumb" tamamen bitti.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (59 files, zero regression)
+- `next build`: ✓ Compiled successfully (StageScenePreview file-
+  level eslint-disable: dinamik `transform:scale` Tailwind token
+  ile ifade edilemez — MockupStudioStage/svg-art ile aynı stage-
+  namespace pattern)
+
+### Değişmeyenler (Phase 117)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Sadece component extract +
+  delegation + yeni preview wrapper.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `StageScene` = mevcut Stage scene
+  JSX'inin extract'i (yeni davranış değil); `StageScenePreview` =
+  scaled wrapper (yeni framework/layout builder/mockup editor
+  YOK). `compositionGroup`/`MockupComposition`/`FrameComposition`
+  taşınmadı (aynı dosya).
+- **Stage DOM byte-identical** — overlay'ler StageScene children
+  olarak AYNI `k-studio__stage` div'inde, eski sibling sırası
+  korundu. Stage davranışı (Preview=Export Truth, compositionGroup
+  plate-fit, viewport-aware plateDims, Phase 109 Lens Blur target,
+  Phase 113 layered effects) BİREBİR.
+- **Preview = Export Truth korundu + en güçlü hali** — thumb
+  artık Stage'in AYNI render path'i (geometry + asset identity +
+  layered effects + chrome + plate/scene + composition HEPSİ tek
+  `StageScene`).
+- **Phase 113 slot identity + Phase 114 layoutVariant canonical +
+  Phase 115 cascade-layout.ts + Phase 116/fu/fu2 baseline** hepsi
+  intakt (StageScene bunları aynen tüketir).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ açık (Phase 118+ candidate)
+
+- **`PresetThumbMockup`/`fitCascadeToThumb`/`THUMB_PLATE_*` ölü
+  kod** svg-art.tsx'te kaldı (`PresetThumbFrame` Frame legacy
+  hâlâ kullanıyor olabilir — ayrı audit). Temizlik Phase 118
+  candidate (kullanım kontrolü + güvenli silme).
+- **StageScenePreview PREVIEW_BASE sabit** (900×506) — thumb
+  kutusuna CSS scale ile sığar; çok küçük rail'de cascade detayı
+  azalır (kabul edilebilir; Shots.so thumb da düşük detay).
+- **View tabs (Zoom/Tilt/Precision) + Zoom slider** no-op
+  (kategori 4 preview-only helper; Phase 115'ten devir).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 117 ile right rail GERÇEKTEN "tek sahne, çok ekran": rail
+thumb = middle panel'in AYNI `StageScene` component'i, scaled +
+candidate layoutVariant. "Benzetmeye çalışan ikinci görsel
+sistem" tamamen kaldırıldı (kanıt: 8 StageScene instance, hepsi
+aynı `k-studio__stage`/`stage-plate`/`stage-mockup-comp`/
+`slot-wrap` + real asset; fark yalnız scale + candidate variant;
+rail→stage fan unity; mode-AGNOSTIC; Product MockupsTab intakt).
+Sıradaki adım **Phase 118 candidate**: ölü kod temizliği
+(`PresetThumbMockup`/`fitCascadeToThumb` `PresetThumbFrame`
+kullanımı kontrol edilip güvenli silme) veya View tabs/Zoom
+slider activation. Yeni SVG/layout builder/mockup editor §13.A'da
+ertelenmiş kalır.
 
 ---
 

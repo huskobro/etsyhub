@@ -881,6 +881,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
             onChangeLayoutVariant={setLayoutVariant}
             deviceShape={deviceKind}
             slots={slots}
+            frameAspect={frameAspect}
           />
         ) : null}
       </div>

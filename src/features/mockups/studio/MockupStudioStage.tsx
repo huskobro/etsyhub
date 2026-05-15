@@ -661,6 +661,209 @@ function FrameComposition({
   );
 }
 
+/* Phase 117 — Single-renderer: shared StageScene component.
+ *
+ * Yanlış model (Phase 116 fu2 dahil): middle panel `MockupComposition`
+ * + CSS plate/scene divs; rail thumb `PresetThumbMockup` AYRI SVG
+ * renderer + `fitCascadeToThumb` AYRI fit math + SVG-rect ile
+ * yeniden çizilmiş scene/plate. `cascadeLayoutFor`+`StageDeviceSVG`
+ * ortak ama composition + chrome AYRI — elle senkronlanan iki
+ * görsel sistem ("benzetmeye çalışan ikinci renderer").
+ *
+ * Doğru model (Phase 117): TEK render component, İKİ ölçek.
+ * `StageScene` = scene→amb→floor→plate→(plate-surface/glass)→
+ * MockupComposition/FrameComposition bloğunun tamamı. Stage büyük
+ * ekranda render eder (selected layoutVariant); rail thumb AYNI
+ * `StageScene`'i CSS `transform: scale()` ile küçültülmüş + küçük
+ * sabit plateDims + candidate layoutVariant ile render eder. Ayrı
+ * SVG thumb renderer YOK. Tek fark: ölçek + layoutVariant
+ * (Contract §6 "right rail = canlı mini middle-panel previews";
+ * §11.0 Preview = Export = Rail-thumb — tek render path).
+ *
+ * compositionGroup/MockupComposition/FrameComposition AYNI dosyada
+ * KALIR (Phase 111-116 battle-tested, taşıma riski yok); StageScene
+ * onları aynen çağırır. StageScenePreview.tsx (rail) bu component'i
+ * import eder (StageScene→svg-art; PresetRail→StageScenePreview→
+ * StageScene; Stage StageScenePreview'i import ETMEZ → cycle yok). */
+export interface StageSceneProps {
+  mode: StudioMode;
+  slots: ReadonlyArray<StudioSlotMeta>;
+  selectedSlot: number;
+  setSelectedSlot: (i: number) => void;
+  appState: StudioAppState;
+  deviceKind: StudioStageDeviceKind;
+  frameAspect: FrameAspectKey;
+  activePalette?: readonly [string, string];
+  sceneOverride?: SceneOverride;
+  layoutCount: 1 | 2 | 3;
+  layoutVariant: StudioLayoutVariant;
+  /** Resolved plate dims. Stage: viewport-aware plateDimensionsFor.
+   *  Thumb: küçük sabit (scale CSS ile minyatür). */
+  plateDims: { w: number; h: number };
+  isPreview: boolean;
+  isRender: boolean;
+  isEmpty: boolean;
+  /** Stage main fn'in overlay'leri (empty-cap / render-ov / zoom-
+   *  pill / edit-pill / render banner) AYNI `k-studio__stage` div'i
+   *  içinde sibling olarak kalır → Stage DOM byte-identical.
+   *  Thumb children GEÇMEZ (yalnız scene→plate→cascade). */
+  children?: React.ReactNode;
+}
+
+export function StageScene({
+  mode,
+  slots,
+  selectedSlot,
+  setSelectedSlot,
+  appState,
+  deviceKind,
+  frameAspect,
+  activePalette,
+  sceneOverride,
+  layoutCount,
+  layoutVariant,
+  plateDims,
+  isPreview,
+  isRender,
+  isEmpty,
+  children,
+}: StageSceneProps) {
+  const sceneTones = resolveSceneStyle(
+    sceneOverride ?? { mode: "auto" },
+    activePalette,
+  );
+  const sceneStyle = sceneTones
+    ? ({
+        "--ks-stage-scene-warm": sceneTones.warm,
+        "--ks-stage-scene-deep": sceneTones.deep,
+      } as React.CSSProperties)
+    : undefined;
+  const plateBgRaw = resolvePlateBackground(
+    sceneOverride ?? { mode: "auto" },
+    activePalette,
+  );
+  const plateEffects = resolvePlateEffects(sceneOverride ?? { mode: "auto" });
+  const lensBlurActive = plateEffects.filterBlurPx > 0;
+  const blurPlateOnly =
+    lensBlurActive && plateEffects.blurTarget === "plate";
+  const blurAll = lensBlurActive && plateEffects.blurTarget === "all";
+  const plateStyle: React.CSSProperties = {
+    width: plateDims.w,
+    height: plateDims.h,
+    ...(plateBgRaw && !blurPlateOnly ? { background: plateBgRaw } : {}),
+    ...(blurAll
+      ? { filter: `blur(${plateEffects.filterBlurPx}px)` }
+      : {}),
+  };
+  const plateSurfaceStyle: React.CSSProperties | undefined =
+    blurPlateOnly && plateBgRaw
+      ? {
+          position: "absolute",
+          inset: 0,
+          background: plateBgRaw,
+          borderRadius: "inherit",
+          filter: `blur(${plateEffects.filterBlurPx}px)`,
+          pointerEvents: "none",
+          zIndex: 0,
+        }
+      : undefined;
+  return (
+    <div
+      className="k-studio__stage"
+      data-testid="studio-stage"
+      data-mode={mode}
+      data-state={appState}
+      data-device-kind={deviceKind}
+      data-frame-aspect={frameAspect}
+      data-scene-asset-aware={activePalette ? "true" : "false"}
+      style={sceneStyle}
+    >
+      {!isRender ? (
+        <div
+          className="k-studio__stage-scene"
+          data-testid="studio-stage-scene"
+          aria-hidden
+        />
+      ) : null}
+      {!isRender ? <div className="k-studio__stage-amb" /> : null}
+      {!isRender ? (
+        <div
+          className="k-studio__stage-floor"
+          data-testid="studio-stage-floor"
+          aria-hidden
+        />
+      ) : null}
+      {!isRender ? (
+        <div
+          className="k-studio__stage-plate"
+          data-testid="studio-stage-plate"
+          data-mode={mode}
+          data-frame-aspect={frameAspect}
+          data-scene-mode={sceneOverride?.mode ?? "auto"}
+          data-glass-variant={
+            sceneOverride?.mode === "glass"
+              ? (sceneOverride.glassVariant ?? "light")
+              : ""
+          }
+          data-lens-blur={lensBlurActive ? "true" : "false"}
+          data-blur-target={lensBlurActive ? plateEffects.blurTarget : ""}
+          style={plateStyle}
+        >
+          {plateSurfaceStyle ? (
+            <div
+              className="k-studio__plate-surface"
+              data-testid="studio-stage-plate-surface"
+              aria-hidden
+              style={plateSurfaceStyle}
+            />
+          ) : null}
+          {plateEffects.glassOverlay ? (
+            <div
+              className="k-studio__plate-glass"
+              data-testid="studio-stage-plate-glass"
+              data-glass-variant={sceneOverride?.glassVariant ?? "light"}
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: plateEffects.glassOverlay.background,
+                borderRadius: "inherit",
+                pointerEvents: "none",
+                zIndex: 1,
+              }}
+            />
+          ) : null}
+          {mode === "mockup" ? (
+            <MockupComposition
+              slots={slots}
+              selectedSlot={selectedSlot}
+              onSelect={setSelectedSlot}
+              isPreview={isPreview}
+              deviceKind={deviceKind}
+              plateDims={plateDims}
+              layoutCount={layoutCount}
+              layoutVariant={layoutVariant}
+            />
+          ) : (
+            <FrameComposition
+              isEmpty={isEmpty}
+              isPreview={isPreview}
+              deviceKind={deviceKind}
+              frameAspect={frameAspect}
+              slots={slots}
+              selectedSlot={selectedSlot}
+              plateDims={plateDims}
+              layoutCount={layoutCount}
+              layoutVariant={layoutVariant}
+            />
+          )}
+        </div>
+      ) : null}
+      {children}
+    </div>
+  );
+}
+
 export interface MockupStudioStageProps {
   mode: StudioMode;
   slots: ReadonlyArray<StudioSlotMeta>;
@@ -756,47 +959,17 @@ export function MockupStudioStage({
   const isRender = appState === "render";
   const isEmpty = appState === "empty";
 
-  /* Phase 88 + Phase 89 — Scene surface CSS custom property inject.
-   *
-   * Phase 88 baseline'da yalnız selected slot palette'ten asset-aware
-   * subtle ambient gradient (warm × 0.10 + deep × 0.55) hesaplanıyordu.
-   *
-   * Phase 89: Frame mode swatch controls (Magic/Solid/Gradient)
-   * scene'i override edebilir. Shell sceneOverride state'i Stage'e
-   * iletilir; resolveSceneStyle mode'a göre warm/deep değerleri
-   * hesaplar:
-   *   - auto: Phase 88 baseline (activePalette × 0.10 / 0.55)
-   *   - solid: operator tek renk (× 0.04 / 0.92, dominant)
-   *   - gradient: operator two-tone (× 0.15 / 0.65, vibrant subtle)
-   *
-   * Mode-AGNOSTIC: scene Mockup mode'da da görünür; Frame mode'da
-   * operator değiştirdikten sonra Mockup'a geri dönerse scene
-   * korunur — Shots.so canonical continuity. */
-  const sceneTones = resolveSceneStyle(
-    sceneOverride ?? { mode: "auto" },
-    activePalette,
-  );
-  const sceneStyle = sceneTones
-    ? ({
-        "--ks-stage-scene-warm": sceneTones.warm,
-        "--ks-stage-scene-deep": sceneTones.deep,
-      } as React.CSSProperties)
-    : undefined;
-
-  /* Phase 91 — Visible background plate (bounded canvas surface).
-   *
-   * Phase 88-90 ambient scene tint stage'in geneli için subtle
-   * radial gradient'di; Shots.so research'i (boş + Frame mode +
-   * Mockup mode birebir aynı kanıt) bounded plate'in stage'in
-   * ortasında ana subject olduğunu gösterdi. Phase 91 plate'i
-   * Stage'in ortasında bounded surface olarak ekler; cascade
-   * plate'in İÇİNDE yaşar. Plate her iki modda görünür; sceneOverride
-   * plate'in bg'sini kontrol eder. Ambient scene plate'in dışında
-   * padding alanı için subtle vignette katmanı olarak korunur. */
-  const plateBgRaw = resolvePlateBackground(
-    sceneOverride ?? { mode: "auto" },
-    activePalette,
-  );
+  /* Phase 117 — Single-renderer: Stage scene→plate→composition
+   * artık paylaşılan `StageScene` component'inde. Stage main fn
+   * yalnız viewport-aware `plateDims`'i hesaplar (Stage-shell
+   * concern) ve `<StageScene>`'e geçirir; scene/plate resolution
+   * (sceneTones/plateBgRaw/plateEffects/plateStyle/plateSurfaceStyle)
+   * StageScene İÇİNDE yapılır (lokal duplicate kaldırıldı, tek
+   * tanım — sessiz drift §12 YASAK). Overlay'ler (empty-cap /
+   * render-ov / render-banner / edit-pill / zoom-pill) StageScene
+   * children olarak AYNI `k-studio__stage` div'inde sibling kalır
+   * → Stage DOM byte-identical. Rail thumb AYNI StageScene'i
+   * scaled render eder (StageScenePreview) — tek render path. */
   const plateDims = plateDimensionsFor(
     mode,
     frameAspect,
@@ -804,228 +977,63 @@ export function MockupStudioStage({
     viewportH,
     railCollapsed,
   );
-  /* Phase 98 — Plate effects (Glass + Lens Blur) resolved from
-   * sceneOverride. Sözleşme #11: Frame controls plate bg'sini
-   * değiştirir; #3: plate mode-AGNOSTIC görünür. Glass overlay
-   * plate'in İÇ üst katmanı (backdrop-filter); Lens Blur plate
-   * bg'sine CSS filter blur uygular. */
-  const plateEffects = resolvePlateEffects(sceneOverride ?? { mode: "auto" });
-  /* Phase 109 — Lens Blur targeting.
-   *
-   * Phase 98-108 plateStyle.filter plate div'in TÜMÜNE (cascade
-   * items dahil) blur uyguluyordu. Phase 109 structured model:
-   *   - target "all": eski davranış — plate div'e filter (bg +
-   *     cascade items hepsi blur). Backward-compat (legacy
-   *     boolean true → "all"; mevcut export'lar aynı).
-   *   - target "plate": plate bg AYRI absolute surface layer'a
-   *     taşınır + ona filter; cascade composition NET kalır
-   *     (operatör eğilimi "itemler blur'lu olmamalı" + Preview =
-   *     Export Truth §11.0). plate div'in kendisine filter YOK.
-   *
-   * Sözleşme #2 stage continuity: mode-AGNOSTIC (Mockup ↔ Frame
-   * blur target/intensity korunur). */
-  const lensBlurActive = plateEffects.filterBlurPx > 0;
-  const blurPlateOnly =
-    lensBlurActive && plateEffects.blurTarget === "plate";
-  const blurAll = lensBlurActive && plateEffects.blurTarget === "all";
-  const plateStyle: React.CSSProperties = {
-    width: plateDims.w,
-    height: plateDims.h,
-    /* bg: target "plate" iken ayrı surface layer'a taşınır
-     * (cascade net kalsın); aksi halde plate div'de (eski). */
-    ...(plateBgRaw && !blurPlateOnly ? { background: plateBgRaw } : {}),
-    /* target "all" → tüm plate (bg + cascade) blur (legacy). */
-    ...(blurAll
-      ? { filter: `blur(${plateEffects.filterBlurPx}px)` }
-      : {}),
-  };
-  /* Phase 109 — target "plate": bg + blur ayrı absolute surface
-   * (z-index 0, cascade'in ALTINDA). Cascade z-index 1+ → NET. */
-  const plateSurfaceStyle: React.CSSProperties | undefined =
-    blurPlateOnly && plateBgRaw
-      ? {
-          position: "absolute",
-          inset: 0,
-          background: plateBgRaw,
-          borderRadius: "inherit",
-          filter: `blur(${plateEffects.filterBlurPx}px)`,
-          pointerEvents: "none",
-          zIndex: 0,
-        }
-      : undefined;
 
   return (
-    <div
-      className="k-studio__stage"
-      data-testid="studio-stage"
-      data-mode={mode}
-      data-state={appState}
-      data-device-kind={deviceKind}
-      data-frame-aspect={frameAspect}
-      data-scene-asset-aware={activePalette ? "true" : "false"}
-      style={sceneStyle}
+    <StageScene
+      mode={mode}
+      slots={slots}
+      selectedSlot={selectedSlot}
+      setSelectedSlot={setSelectedSlot}
+      appState={appState}
+      deviceKind={deviceKind}
+      frameAspect={frameAspect}
+      activePalette={activePalette}
+      sceneOverride={sceneOverride}
+      layoutCount={layoutCount ?? 3}
+      layoutVariant={layoutVariant}
+      plateDims={plateDims}
+      isPreview={isPreview}
+      isRender={isRender}
+      isEmpty={isEmpty}
     >
-      {/* Phase 88 — Always-on ambient scene surface.
-       *
-       * Shots.so + MockupViews real-upload research kanıtı: her iki
-       * üründe boş state'te bile stage'de gradient surface aktif;
-       * asset upload sonrası asset-aware Magic bg auto-generate.
-       * Operator için "asset bir sahnede yaşıyor" hissi.
-       *
-       * Bizde Phase 87 baseline tek dark void idi. Phase 88 ambient
-       * scene ekledi: Shell activePalette CSS custom properties
-       * olarak inject eder, scene layer subtle warm/deep radial
-       * vignette ile asset-aware tinting yapar. Mode-AGNOSTIC.
-       *
-       * z-index: -1 stage'in arka katmanı; ambient glow + placement
-       * floor + slot wrap üstte yaşar. Pointer-events: none —
-       * operator slot click davranışı bozulmaz. */}
-      {!isRender ? (
-        <div
-          className="k-studio__stage-scene"
-          data-testid="studio-stage-scene"
-          aria-hidden
-        />
-      ) : null}
-      {/* Phase 87 — Ambient glow (her iki modda görünür).
-       *
-       * Phase 84 baseline'da yalnız Mockup mode'da görünüyordu çünkü
-       * Frame mode'da kendi bounded canvas'ı vardı. Phase 87'de
-       * bounded canvas kaldırıldı: Frame mode'da da cascade aynı
-       * stage'de yaşar, ambient glow da o sahnenin bir parçası
-       * olarak korunur. Operator için "tek sahne" continuity. */}
-      {!isRender ? (
-        <div className="k-studio__stage-amb" />
-      ) : null}
-      {/* Phase 87 — Placement floor (her iki modda görünür).
-       *
-       * Phase 84 baseline'da Frame mode'da floor display:none idi
-       * çünkü Frame mode'da bounded cream canvas vardı. Phase 87'de
-       * bounded canvas kaldırıldı — cascade Frame mode'da da Mockup
-       * mode'la aynı placement floor + contact shadow üzerinde
-       * yaşar. Operator için Mockup ↔ Frame geçişinde sahne
-       * BIREBIR aynı, sadece sol panel content swap. */}
-      {!isRender ? (
-        <div
-          className="k-studio__stage-floor"
-          data-testid="studio-stage-floor"
-          aria-hidden
-        />
-      ) : null}
+      <StageSceneOverlays
+        mode={mode}
+        appState={appState}
+        setAppState={setAppState}
+        onCreateMockup={onCreateMockup}
+        isPreview={isPreview}
+        isRender={isRender}
+        isEmpty={isEmpty}
+      />
+    </StageScene>
+  );
+}
 
-      {/* Phase 91 — Visible background plate (Shots.so canonical
-       *  bounded surface). Plate stage'in ortasında, mode-aware
-       *  aspect dimensions, sceneOverride-driven bg. Cascade
-       *  composition plate'in İÇİNDE merkezi olarak yaşar.
-       *  Operator için: "objenin arkasında gerçek görünen surface"
-       *  ana subject. */}
-      {!isRender ? (
-        <div
-          className="k-studio__stage-plate"
-          data-testid="studio-stage-plate"
-          data-mode={mode}
-          data-frame-aspect={frameAspect}
-          data-scene-mode={sceneOverride?.mode ?? "auto"}
-          data-glass-variant={
-            sceneOverride?.mode === "glass"
-              ? (sceneOverride.glassVariant ?? "light")
-              : ""
-          }
-          data-lens-blur={lensBlurActive ? "true" : "false"}
-          data-blur-target={
-            lensBlurActive ? plateEffects.blurTarget : ""
-          }
-          style={plateStyle}
-        >
-          {/* Phase 113 — Plate-local layered effects model.
-           *
-           * Sözleşme #11 + senin layer modeli:
-           *   Layer 1: plate base   (k-studio__stage-plate bg)
-           *   Layer 2: effect layer (blur surface + glass overlay)
-           *   Layer 3: item layer   (cascade composition)
-           *
-           * Effect layer (Layer 2) item layer'ın (Layer 3) ALTINDA
-           * — DOM'da cascade'DEN ÖNCE render edilir + z-index ile
-           * altta kalır. Böylece glass/blur **yalnız plate bg'yi /
-           * sahneyi** etkiler, mockup item'ları ETKİLEMEZ (operator
-           * eğilimi + Preview = Export Truth §11.0: itemler keskin,
-           * sahne atmospheric). Eski yapı glass overlay'i cascade'in
-           * ÜSTÜNDE (z-index 3) + backdrop-filter ile koyuyordu →
-           * arkasındaki item'ları da bulanıklaştırıyordu (yanlış).
-           *
-           * Layer 2a — Lens Blur surface (target "plate"): plate
-           * bg'nin ayrı blur'lu kopyası. Cascade NET. */}
-          {plateSurfaceStyle ? (
-            <div
-              className="k-studio__plate-surface"
-              data-testid="studio-stage-plate-surface"
-              aria-hidden
-              style={plateSurfaceStyle}
-            />
-          ) : null}
-          {/* Layer 2b — Glass effect layer (Frame Glass swatch).
-           *
-           * Phase 113 fix: glass overlay artık cascade'in ALTINDA
-           * (z-index 1, DOM'da cascade'den önce). `backdrop-filter`
-           * KALDIRILDI — backdrop-filter arkasındaki TÜM içeriği
-           * (plate bg + cascade items) bulanıklaştırıyordu; item'lar
-           * etkileniyordu. Yeni model: glass = plate üstüne
-           * yarı-saydam variant-tinted surface treatment (cam-üstü
-           * hissi tint ile, item'a değil plate'e). Inset border
-           * halo (eski `inset 0 1px 0 ...` + `border`) KALDIRILDI —
-           * plate kenarında istenmeyen inner-border / halo
-           * üretiyordu (Shots.so'da plate düz). Mode-AGNOSTIC
-           * (sözleşme #2 stage continuity). */}
-          {plateEffects.glassOverlay ? (
-            <div
-              className="k-studio__plate-glass"
-              data-testid="studio-stage-plate-glass"
-              data-glass-variant={
-                sceneOverride?.glassVariant ?? "light"
-              }
-              aria-hidden
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: plateEffects.glassOverlay.background,
-                borderRadius: "inherit",
-                pointerEvents: "none",
-                zIndex: 1,
-              }}
-            />
-          ) : null}
-          {mode === "mockup" ? (
-            <MockupComposition
-              slots={slots}
-              selectedSlot={selectedSlot}
-              onSelect={setSelectedSlot}
-              isPreview={isPreview}
-              deviceKind={deviceKind}
-              plateDims={plateDims}
-              layoutCount={layoutCount ?? 3}
-              layoutVariant={layoutVariant}
-            />
-          ) : (
-            <FrameComposition
-              isEmpty={isEmpty}
-              isPreview={isPreview}
-              deviceKind={deviceKind}
-              frameAspect={frameAspect}
-              slots={slots}
-              selectedSlot={selectedSlot}
-              plateDims={plateDims}
-              layoutCount={layoutCount ?? 3}
-              layoutVariant={layoutVariant}
-            />
-          )}
-          {/* Phase 113 — Glass overlay Layer 2b'ye taşındı (cascade'in
-           * ÖNCESİNE, z-index 1). Eski yapı burada (cascade SONRASI,
-           * z-index 3 + backdrop-filter) item'ları bulanıklaştırıyordu;
-           * yeni layered effects modelinde effect layer item layer'ın
-           * ALTINDA. Bkz. yukarıdaki Layer 2b bloğu. */}
-        </div>
-      ) : null}
-
+/* Phase 117 — Stage-only overlays (empty-cap / render-ov /
+ * render-banner / edit-pill / zoom-pill). Bunlar operatör
+ * etkileşim/durum katmanları — rail thumb'da GÖRÜNMEZ (thumb
+ * yalnız scene→plate→cascade). StageScene children olarak AYNI
+ * `k-studio__stage` div'inde render edilir (Stage DOM byte-
+ * identical; eski sibling sırası korunur). */
+function StageSceneOverlays({
+  mode,
+  appState,
+  setAppState,
+  onCreateMockup,
+  isPreview,
+  isRender,
+  isEmpty,
+}: {
+  mode: StudioMode;
+  appState: StudioAppState;
+  setAppState: (next: StudioAppState) => void;
+  onCreateMockup?: () => void;
+  isPreview: boolean;
+  isRender: boolean;
+  isEmpty: boolean;
+}) {
+  return (
+    <>
       {isEmpty && !isPreview && !isRender ? (
         <div
           className="k-studio__empty-cap"
@@ -1123,6 +1131,6 @@ export function MockupStudioStage({
           </button>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

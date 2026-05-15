@@ -14,17 +14,16 @@
 
 import { useState } from "react";
 import { StudioIcon } from "./icons";
-import {
-  resolvePresetThumbScene,
-  type SceneOverride,
-} from "./frame-scene";
+import type { SceneOverride } from "./frame-scene";
 /* Phase 96 — Unified Mockup+Frame rail: tek PresetThumbMockup
  * kullanılır. PresetThumbFrame Phase 86-95 baseline'da Frame mode
  * için ayrı bounded cream canvas içeren thumb idi; Phase 96'da rail
  * mode-AGNOSTIC olduğu için sadece Mockup thumb kullanılır
  * (svg-art.tsx'te PresetThumbFrame export hâlâ var — gelecek
  * kullanım için kalır). */
-import { PresetThumbMockup, type StudioStageDeviceKind } from "./svg-art";
+import { type StudioStageDeviceKind } from "./svg-art";
+import { StageScenePreview } from "./StageScenePreview";
+import type { FrameAspectKey } from "./frame-aspects";
 import {
   STUDIO_LAYOUT_VARIANTS,
   STUDIO_LAYOUT_VARIANT_LABELS,
@@ -147,6 +146,11 @@ export interface MockupStudioPresetRailProps {
    *  thumb = orta panelin candidate-layout dizilmiş minyatür canlı
    *  türevi (§11.0). Stage `slots` prop ile AYNI referans. */
   slots?: ReadonlyArray<StudioSlotMeta>;
+  /** Phase 117 — Frame aspect (Shell state). StageScenePreview
+   *  AYNI `StageScene`'i render eder; `frameAspect` Stage ile
+   *  birebir aynı plate/composition için gerekli (single-renderer
+   *  parity). Undefined → "16:9" baseline. */
+  frameAspect?: FrameAspectKey;
 }
 
 export function MockupStudioPresetRail({
@@ -160,6 +164,7 @@ export function MockupStudioPresetRail({
   onChangeLayoutVariant,
   deviceShape,
   slots,
+  frameAspect = "16:9",
 }: MockupStudioPresetRailProps) {
   /* Phase 96 — Layout count Shell state'ten geliyor; fallback local
    * state (legacy). Operator buttons → onChangeLayoutCount → Shell
@@ -201,12 +206,12 @@ export function MockupStudioPresetRail({
    * "tek kompozisyon, mode-aware sol panel" parity (Shots.so
    * canonical: rail mode-AGNOSTIC). */
   const presets = LAYOUT_PRESETS;
-  const Thumb = PresetThumbMockup;
-  /* Phase 89 — Resolve preset thumb scene (auto/solid/gradient). */
-  const thumbScene = resolvePresetThumbScene(
-    sceneOverride ?? { mode: "auto" },
-    activePalette,
-  );
+  /* Phase 117 — Ayrı thumb renderer (PresetThumbMockup) +
+   * resolvePresetThumbScene KALDIRILDI. Rail thumb artık orta
+   * panelin AYNI StageScene'i (StageScenePreview, scaled +
+   * candidate layoutVariant). Scene/plate/cascade chrome Stage
+   * StageScene içinde resolve edilir — rail ayrı scene resolve
+   * ETMEZ (tek render path, sessiz drift §12 YASAK). */
   return (
     <aside className="k-studio__rail" data-testid="studio-rail">
       <div className="k-studio__rail-head">
@@ -258,25 +263,23 @@ export function MockupStudioPresetRail({
           data-asset-aware={activePalette ? "true" : "false"}
           data-scene-mode={sceneOverride?.mode ?? "auto"}
         >
-          {/* Phase 86 — Rail head live thumb operator asset paletini
-              taşır (selected slot palette). Operator için "şu anki
-              seçtiğin kompozisyon" preview.
-              Phase 89 — Scene-aware bg (operator Frame mode Solid/
-              Gradient swatch'larıyla scene override etti ise live
-              thumb da bunu yansıtır). */}
-          <Thumb
-            idx={active}
-            palette={activePalette}
-            sceneBg={
-              thumbScene.kind === "solid" ||
-              thumbScene.kind === "gradient" ||
-              thumbScene.kind === "glass"
-                ? thumbScene
-                : undefined
-            }
-            displayCount={layout}
-            deviceShape={deviceShape}
-            slots={slots}
+          {/* Phase 117 — Rail head live thumb = orta panelin AYNI
+              StageScene'i, ACTIVE (selected) layoutVariant ile,
+              küçültülmüş. Ayrı SVG thumb renderer YOK; tek render
+              path (StageScenePreview → StageScene). Operator için
+              "şu anki seçtiğin kompozisyonun mini hali" — orta panel
+              ile candidate-layout dışında BİREBİR. */}
+          <StageScenePreview
+            layoutVariant={activeVariant}
+            mode={mode}
+            slots={slots ?? []}
+            deviceKind={deviceShape ?? "phone"}
+            frameAspect={frameAspect}
+            activePalette={activePalette}
+            sceneOverride={sceneOverride}
+            layoutCount={layout}
+            boxW={172}
+            boxH={88}
           />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -338,24 +341,27 @@ export function MockupStudioPresetRail({
               data-asset-aware={activePalette ? "true" : "false"}
               data-scene-mode={sceneOverride?.mode ?? "auto"}
             >
-              {/* Phase 86 — Asset-aware preset thumb. Operator selected
-                  slot palette'i preset card'a yansır; rail artık statik
-                  decoration değil, gerçek karar destek yüzeyi
-                  (Shots.so parity).
-                  Phase 89 — Scene-aware preset thumb bg. Operator Frame
-                  mode Solid/Gradient swatch tıklayınca thumb bg'leri
-                  scene'i yansıtır (mod-AGNOSTIC rail davranışı). */}
-              <Thumb
-                idx={i}
-                palette={activePalette}
-                sceneBg={
-                  thumbScene.kind === "solid" || thumbScene.kind === "gradient"
-                    ? thumbScene
-                    : undefined
+              {/* Phase 117 — Preset thumb = orta panelin AYNI
+                  StageScene'i, CANDIDATE layoutVariant
+                  (STUDIO_LAYOUT_VARIANTS[i]) ile, küçültülmüş.
+                  "thumb = middle panel if rendered in that layout":
+                  ayrı SVG thumb renderer YOK, tek render path
+                  (StageScenePreview → StageScene). Fark yalnız
+                  candidate layoutVariant; plate/scene/cascade/chrome/
+                  asset Stage ile BİREBİR (§11.0, Contract §6). */}
+              <StageScenePreview
+                layoutVariant={
+                  STUDIO_LAYOUT_VARIANTS[i] ?? "cascade"
                 }
-                displayCount={layout}
-                deviceShape={deviceShape}
-                slots={slots}
+                mode={mode}
+                slots={slots ?? []}
+                deviceKind={deviceShape ?? "phone"}
+                frameAspect={frameAspect}
+                activePalette={activePalette}
+                sceneOverride={sceneOverride}
+                layoutCount={layout}
+                boxW={172}
+                boxH={72}
               />
             </button>
             <div
