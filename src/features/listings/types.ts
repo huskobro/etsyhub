@@ -24,14 +24,68 @@ export type ListingStatusValue = ListingStatus;
  *
  * outputKey raw kalır (ZIP download endpoint hâlâ kullanır).
  */
-export type ListingImageOrderEntry = {
-  packPosition: number;
-  renderId: string;
-  outputKey: string;
-  templateName: string;
-  isCover: boolean;
-  signedUrl?: string | null;
-};
+/**
+ * Phase 100 — kind discriminator (sözleşme #11 + #13.F).
+ *
+ * Phase 9 baseline yalnız "mockup-render" entry kabul ediyordu
+ * (MockupJob → MockupRender → Listing handoff). Phase 100'de Frame
+ * mode export persistence (FrameExport row) eklenince Listing'e
+ * "frame-export" entry kind'ı geldi: operator Frame Studio'da
+ * ürettiği PNG'yi Product detail listing'e doğal olarak yansıtır.
+ *
+ * Backward-compat: legacy entry'ler `kind` field'ı taşımayacak
+ * (Phase 9 öncesi imageOrderJson row'ları). UI helper'ları
+ * `kind === "frame-export"` ile ayırt eder; eksik kind → "mockup-render"
+ * default (legacy parity). */
+export type ListingImageOrderEntry =
+  | {
+      kind?: "mockup-render";
+      packPosition: number;
+      renderId: string;
+      outputKey: string;
+      templateName: string;
+      isCover: boolean;
+      signedUrl?: string | null;
+    }
+  | {
+      kind: "frame-export";
+      packPosition: number;
+      /** Phase 100 — FrameExport.id reference */
+      frameExportId: string;
+      /** MinIO storageKey (Phase 100 — signedUrl refresh için kalıcı kaynak) */
+      outputKey: string;
+      /** Operator-facing label (frame aspect + scene mode özeti) */
+      templateName: string;
+      isCover: boolean;
+      signedUrl?: string | null;
+      /** Frame aspect (1:1 / 4:5 / 9:16 / 16:9 / 3:4) — UI badge için */
+      frameAspect?: string;
+    };
+
+/**
+ * Phase 100 — Helper: entry'nin stable id'i (UI key + log için).
+ *
+ * mockup-render → renderId; frame-export → frameExportId.
+ * Discriminated union narrow yardımcısı; legacy entry'ler (kind
+ * undefined) → renderId fallback. */
+export function imageOrderEntryId(entry: ListingImageOrderEntry): string {
+  if (entry.kind === "frame-export") return entry.frameExportId;
+  return entry.renderId;
+}
+
+/** Phase 100 — Helper: mockup-render guard (renderId narrow için). */
+export function isMockupRenderEntry(
+  entry: ListingImageOrderEntry,
+): entry is Extract<ListingImageOrderEntry, { renderId: string }> {
+  return entry.kind !== "frame-export";
+}
+
+/** Phase 100 — Helper: frame-export guard. */
+export function isFrameExportEntry(
+  entry: ListingImageOrderEntry,
+): entry is Extract<ListingImageOrderEntry, { kind: "frame-export" }> {
+  return entry.kind === "frame-export";
+}
 
 /**
  * Readiness check item — Spec §7.1 (V1 6 check, soft warn).

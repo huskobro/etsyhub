@@ -99,7 +99,12 @@ async function buildListingDraftView(
         logger.warn(
           {
             listingId: listing.id,
-            renderId: entry.renderId,
+            // Phase 100 — entry id (mockup-render renderId veya
+            // frame-export frameExportId — discriminated union).
+            entryId:
+              entry.kind === "frame-export"
+                ? entry.frameExportId
+                : entry.renderId,
             outputKey: entry.outputKey,
             err: err instanceof Error ? err.message : String(err),
           },

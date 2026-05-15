@@ -45,16 +45,25 @@ interface MockupsTabProps {
   listing: ListingDraftView;
 }
 
-type MockupSection = "lifestyle" | "bundle" | "user";
+/* Phase 100 — Frame bucket eklendi (sözleşme #11 + #13.F).
+ *
+ * Frame export entry'leri (`kind: "frame-export"`) ayrı "frame"
+ * bucket'ına düşer; operator için "presentation listing hero +
+ * social card" başlığı altında gruplanır. Phase 9 baseline
+ * mockup-render bucket'ları (lifestyle / bundle / user) korunur. */
+type MockupSection = "lifestyle" | "bundle" | "user" | "frame";
 
 const SECTION_LABEL: Record<MockupSection, string> = {
   lifestyle: "Lifestyle Mockups",
   bundle: "Bundle Preview Sheets",
   user: "My Templates",
+  frame: "Frame Exports",
 };
 
-function classifySection(templateName: string): MockupSection {
-  const n = templateName.toLowerCase();
+function classifySection(entry: ListingImageOrderEntry): MockupSection {
+  // Phase 100 — Frame export kind discriminator ilk önce kontrol edilir
+  if (entry.kind === "frame-export") return "frame";
+  const n = entry.templateName.toLowerCase();
   if (n.includes("bundle") || n.includes("sheet") || n.includes("preview")) {
     return "bundle";
   }
@@ -76,9 +85,10 @@ function groupByMockupSection(
     lifestyle: [],
     bundle: [],
     user: [],
+    frame: [],
   };
   for (const it of imageOrder) {
-    const sec = classifySection(it.templateName);
+    const sec = classifySection(it);
     groups[sec].push(it);
   }
   return groups;
@@ -86,7 +96,9 @@ function groupByMockupSection(
 
 export function MockupsTab({ listing }: MockupsTabProps) {
   const groups = groupByMockupSection(listing.imageOrder);
-  const sectionOrder: MockupSection[] = ["lifestyle", "bundle", "user"];
+  // Phase 100 — Frame bucket ürün hiyerarşisinde ilk önce (operator
+  // için "Frame export = listing hero" sinyali güçlü).
+  const sectionOrder: MockupSection[] = ["frame", "lifestyle", "bundle", "user"];
 
   const totalApplied = listing.imageOrder.length;
 
@@ -203,15 +215,24 @@ export function MockupsTab({ listing }: MockupsTabProps) {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-                    {items.map((it) => (
+                    {items.map((it) => {
+                      // Phase 100 — entry id (mockup-render renderId veya
+                      // frame-export frameExportId; backward-compat
+                      // legacy entry'lerde renderId).
+                      const entryId =
+                        it.kind === "frame-export"
+                          ? it.frameExportId
+                          : it.renderId;
+                      return (
                       <div
-                        key={it.renderId}
+                        key={entryId}
                         className={cn(
                           "k-card relative overflow-hidden",
                           it.isCover && "ring-2 ring-k-orange",
                         )}
                         data-testid="product-mockup-tile"
-                        data-render-id={it.renderId}
+                        data-render-id={entryId}
+                        data-entry-kind={it.kind ?? "mockup-render"}
                         data-is-cover={it.isCover ? "true" : undefined}
                       >
                         <div className="aspect-square overflow-hidden bg-k-bg-2">
@@ -245,7 +266,8 @@ export function MockupsTab({ listing }: MockupsTabProps) {
                           </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </section>

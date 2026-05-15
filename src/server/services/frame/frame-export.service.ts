@@ -61,6 +61,13 @@ export interface ExportFrameResult {
   exportId: string;
   /** Render durasyonu (compositor) — operator visibility için. */
   durationMs: number;
+  /** Phase 100 — FrameExport row id (sözleşme #11 + #13.F).
+   *
+   *  Persistence başarılı ise FrameExport.id (exportId ile aynı —
+   *  service intentionally aynı id kullanır). null ise persist
+   *  başarısız oldu (signedUrl yine çalışır, history/handoff yok).
+   *  UI banner bu id'yi Product handoff CTA'ya iletir. */
+  frameExportId: string | null;
 }
 
 /* Phase 99 — Frame export entry point.
@@ -187,12 +194,67 @@ export async function exportFrameComposition(
   // 7) Signed URL (5 min TTL — operator download için yeterli)
   const downloadUrl = await storage.signedUrl(storageKey, 300);
 
+  /* Phase 100 — Persist FrameExport row (sözleşme #11 + #13.F).
+   *
+   * Phase 99 stateless render PNG üretiyordu; signed URL 5 dakika
+   * TTL sonrası operator kayıp. Phase 100 her render'da FrameExport
+   * row yazılır: operator history + Product/Etsy Draft handoff için
+   * kalıcı ürün nesnesi.
+   *
+   * Schema kararları (prisma migration 20260516120000):
+   *   - id: cuid (newId)
+   *   - userId: cross-user isolation (Madde V)
+   *   - selectionSetId: nullable (set silinirse export kalır)
+   *   - storageKey: MinIO key (signed URL refresh için)
+   *   - dims + sizeBytes: operator visibility (history list)
+   *   - frameAspect + sceneSnapshot: re-export kaynağı
+   *
+   * Hata olursa render başarılı ama persistence başarısız; UI
+   * operator için signedUrl banner'ı yine gösterir (downgraded
+   * deneyim). Persistence hata bilgisini log'a düşürürüz; operator
+   * için "history'de görünmüyor" kabul edilebilir defans. */
+  let persistedFrameExportId: string | null = null;
+  try {
+    const persisted = await db.frameExport.create({
+      data: {
+        id: exportId,
+        userId: input.userId,
+        selectionSetId: set.id,
+        storageKey,
+        width: outputW,
+        height: outputH,
+        sizeBytes: outputBuffer.length,
+        frameAspect: input.frameAspect,
+        sceneSnapshot: {
+          mode: input.scene.mode,
+          glassVariant: input.scene.glassVariant ?? null,
+          lensBlur: input.scene.lensBlur ?? false,
+          color: input.scene.color ?? null,
+          colorTo: input.scene.colorTo ?? null,
+          palette: input.scene.palette ?? null,
+        },
+      },
+      select: { id: true },
+    });
+    persistedFrameExportId = persisted.id;
+  } catch (err) {
+    logger.warn(
+      {
+        err: err instanceof Error ? err.message : err,
+        userId: input.userId,
+        exportId,
+      },
+      "frame export: persistence row write failed (signedUrl still returned)",
+    );
+  }
+
   const durationMs = Date.now() - startTime;
   logger.info(
     {
       userId: input.userId,
       setId: input.setId,
       exportId,
+      frameExportId: persistedFrameExportId,
       frameAspect: input.frameAspect,
       sceneMode: input.scene.mode,
       glassVariant: input.scene.glassVariant,
@@ -202,8 +264,9 @@ export async function exportFrameComposition(
       sizeBytes: outputBuffer.length,
       durationMs,
       assignedSlotCount: compositorSlots.filter((s) => s.imageBuffer).length,
+      persisted: persistedFrameExportId !== null,
     },
-    "frame export rendered (Phase 99)",
+    "frame export rendered (Phase 100 persistence)",
   );
 
   return {
@@ -214,5 +277,93 @@ export async function exportFrameComposition(
     sizeBytes: outputBuffer.length,
     exportId,
     durationMs,
+    frameExportId: persistedFrameExportId,
+  };
+}
+
+/* Phase 100 — Frame export history listing (sözleşme #11 + #13.F).
+ *
+ * Operator için "ürettiğim frame export'ları nerede?" sorusunun
+ * cevabı. Son N export (default 20) reverse chronological.
+ * deletedAt:null filter (soft-delete sızıntı yok).
+ *
+ * Cross-user isolation hard: where.userId zorunlu (Madde V parity).
+ */
+export interface FrameExportHistoryItem {
+  id: string;
+  storageKey: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  frameAspect: string;
+  sceneSnapshot: unknown;
+  createdAt: string;
+  selectionSetId: string | null;
+  selectionSetName: string | null;
+  /** Signed URL (5 dakika TTL); UI refresh ile yenilenir. */
+  signedUrl: string;
+}
+
+export async function listFrameExports(input: {
+  userId: string;
+  limit?: number;
+  /** Opsiyonel: belirli bir set'in export'larını filtrele. */
+  selectionSetId?: string;
+}): Promise<FrameExportHistoryItem[]> {
+  const limit = Math.min(input.limit ?? 20, 100);
+  const rows = await db.frameExport.findMany({
+    where: {
+      userId: input.userId,
+      deletedAt: null,
+      ...(input.selectionSetId ? { selectionSetId: input.selectionSetId } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: {
+      selectionSet: { select: { id: true, name: true } },
+    },
+  });
+  const storage = getStorage();
+  return Promise.all(
+    rows.map(async (row) => ({
+      id: row.id,
+      storageKey: row.storageKey,
+      width: row.width,
+      height: row.height,
+      sizeBytes: row.sizeBytes,
+      frameAspect: row.frameAspect,
+      sceneSnapshot: row.sceneSnapshot,
+      createdAt: row.createdAt.toISOString(),
+      selectionSetId: row.selectionSetId,
+      selectionSetName: row.selectionSet?.name ?? null,
+      signedUrl: await storage.signedUrl(row.storageKey, 300),
+    })),
+  );
+}
+
+/* Phase 100 — Signed URL refresh (sözleşme #11 + #13.F).
+ *
+ * Operator banner / history listings'te eski signed URL TTL bitince
+ * "linki yeniden al" akışı. Cross-user isolation: row.userId match
+ * etmiyorsa NotFound döner. */
+export async function refreshFrameExportSignedUrl(input: {
+  userId: string;
+  frameExportId: string;
+}): Promise<{ signedUrl: string; expiresInSec: number }> {
+  const row = await db.frameExport.findFirst({
+    where: {
+      id: input.frameExportId,
+      userId: input.userId,
+      deletedAt: null,
+    },
+    select: { storageKey: true },
+  });
+  if (!row) {
+    throw new NotFoundError("Frame export bulunamadı");
+  }
+  const storage = getStorage();
+  return {
+    signedUrl: await storage.signedUrl(row.storageKey, 300),
+    expiresInSec: 300,
   };
 }

@@ -80,7 +80,14 @@ export function AssetSection({ listing }: { listing: ListingDraftView }) {
 
           {otherImages.map((img: ListingImageOrderEntry) => (
             <div
-              key={img.renderId}
+              // Phase 100 — kind discriminator: mockup-render renderId
+              // veya frame-export frameExportId (Listing imageOrder
+              // entry union narrow).
+              key={
+                img.kind === "frame-export"
+                  ? img.frameExportId
+                  : img.renderId
+              }
               className="relative rounded-lg overflow-hidden shadow border"
             >
               <div className="aspect-square bg-gray-100 flex items-center justify-center">

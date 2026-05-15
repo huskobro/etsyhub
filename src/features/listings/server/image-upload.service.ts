@@ -156,19 +156,25 @@ export async function uploadListingImages(opts: {
         },
         { accessToken, shopId },
       );
+      // Phase 100 — entryId narrow (mockup-render renderId veya
+      // frame-export frameExportId).
+      const entryId =
+        entry.kind === "frame-export" ? entry.frameExportId : entry.renderId;
       attempts.push({
         rank,
         packPosition: entry.packPosition,
-        renderId: entry.renderId,
+        renderId: entryId,
         isCover: entry.isCover,
         ok: true,
         etsyImageId: result.etsyImageId,
       });
     } catch (err) {
+      const entryId =
+        entry.kind === "frame-export" ? entry.frameExportId : entry.renderId;
       attempts.push({
         rank,
         packPosition: entry.packPosition,
-        renderId: entry.renderId,
+        renderId: entryId,
         isCover: entry.isCover,
         ok: false,
         error: err instanceof Error ? err.message : String(err),

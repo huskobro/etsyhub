@@ -19697,10 +19697,24 @@ surface" rolünün tam ürünleştirilmesi.
   scene state değiştirirse banner "Preview changed · re-export?"
   caption + Re-export button gösterir (sözleşme #12 no silent magic
   uyumu — operator için "bu PNG güncel mi?" sinyali açık).
-- **Persistence (FrameExport history) Phase 100+ candidate** —
-  şu an stateless render; storageKey signed URL 5 dakika TTL,
-  operator hemen indirir. History/audit (Product/Etsy handoff için)
-  ayrı backend turu (sözleşme #13.F yeni roadmap).
+- **Persistence (FrameExport history) Phase 100 fulfilled** —
+  her render `FrameExport` Prisma row'u yazar (id + userId + setId +
+  storageKey + dims + sceneSnapshot + createdAt + deletedAt). Signed
+  URL 5 dakika TTL geçici erişim; kalıcı kaynak `FrameExport.storageKey`.
+  History `GET /api/frame/exports` (operator için son N export);
+  signed URL refresh `GET /api/frame/exports/[id]/signed-url`.
+- **Product handoff Phase 100 fulfilled** —
+  POST `/api/listings/draft/[id]/add-frame-export` Frame export'u
+  Listing.imageOrderJson'a `kind: "frame-export"` entry olarak
+  ekler; opsiyonel `setAsCover: true` ile listing hero (Phase 9
+  Listing baseline'a paralel pattern). Studio result banner'da
+  "Send to Product" CTA + listing popover; Product detail
+  MockupsTab'da yeni **"Frame Exports"** bucket (frame-export
+  entry'leri ayrı section + kind chip). Etsy Draft submit pipeline
+  (Phase 9) Frame export entry'lerini de aynı `outputKey` /
+  `signedUrl` yoluyla aktarır — `kind` discriminator narrow ile
+  Phase 100 backward-compat. Operator için "PNG indirip Product
+  detail'a manuel upload" gereksinimi kalktı.
 
 ### 12. No silent magic
 
@@ -19782,25 +19796,35 @@ arrangement on stage)**:
   reuse edilebilir. Phase 99 export pipeline + bu birlikte gerçek
   değer üretir (operator kendi background + Frame composition export).
 
-**Future direction F — Frame export → Product / Etsy Draft handoff**
-(Phase 99 sonrası doğal devam):
-- Phase 99 stateless render üretti (signed URL 5 dakika TTL).
-  Persistence (FrameExport history table) Product detail page'den
-  "Listing hero olarak ekle" CTA'sı için gerekli.
-- **Akış (Phase 100+)**:
-  - FrameExport row (id, userId, setId, storageKey, dims, sceneSnapshot)
-    Prisma model — schema migration **bu evrede gerek olur**
-  - POST `/api/frame/export` artık FrameExport row da yazar (audit + retry)
-  - Product detail page → "Add Frame export as listing hero" CTA
-    → FrameExport.storageKey'i Listing.images dizisine ekler
-  - Etsy draft submit pipeline (Phase 9 baseline) bu image'i hero
-    olarak gönderir
-- **Hangi ürün aşamasında**: Phase 100+. Schema migration için ayrı
-  bir backend turu (Madde V Review freeze + canonical zincir bozulmaz).
-- **Şu anki dengeli karar**: Phase 99 stateless render operator için
-  yeterli (Open / Download CTA + signed URL). Persistence olmadan
-  Product handoff manuel — operator PNG'yi indirir + Product detail'a
-  manuel upload yapar. Phase 100+ bu manuel adımı kaldırır.
+**Future direction F — Frame export → Product / Etsy Draft handoff
+(Phase 100 fulfilled)**:
+- **STATUS: fulfilled (Phase 100)** — FrameExport Prisma model +
+  POST `/api/frame/export` persist + `Send to Product` CTA + Product
+  detail "Frame Exports" bucket.
+- Akış (canlı):
+  - FrameExport row her render'da yazılır (id + userId + setId +
+    storageKey + width/height + sizeBytes + frameAspect +
+    sceneSnapshot + createdAt + deletedAt).
+  - Studio result banner "Send to Product" CTA → listing draft
+    popover → POST `/api/listings/draft/[id]/add-frame-export`
+    (setAsCover default true) → Listing.imageOrderJson kind:
+    "frame-export" entry eklenir.
+  - Product detail MockupsTab "Frame Exports" bucket Phase 100
+    yeni: frame-export entry'leri ayrı section + kind chip;
+    operator için listing hero'nun nereden geldiği net.
+  - Etsy Draft submit pipeline (Phase 9) Frame export entry'lerini
+    de aynı outputKey / signedUrl yoluyla aktarır.
+- **Phase 101+ extension candidate'lar**:
+  - Studio history viewer (operator son N FrameExport'u tekrar
+    bulup re-send edebilir) — Phase 100'de defer edildi (banner
+    + handoff ana scope yeterli).
+  - FrameExport delete / archive UI (deletedAt soft-delete
+    şu an programatik; UI button Phase 101+).
+  - "Create new listing from this Frame" — Frame export'tan yeni
+    Listing draft auto-create (mevcut akış: önce Apply Mockups,
+    sonra Frame export ekleme; Phase 101+ bypass akışı).
+  - FrameExport cost telemetry + render time aggregation (admin
+    cost usage dashboard).
 
 ---
 
@@ -20446,6 +20470,198 @@ Review freeze + canonical zincir bozulmaz).
 Bu turdan sonra ya backend turu (Phase 100 persistence) ya Studio
 authoring polish (Phase 100+ layout builder / grid presentation /
 BG effects wire) — ikisi de sözleşme #13'te roadmap'li.
+
+---
+
+## Phase 100 — Frame export persistence + Product/Etsy handoff fulfilled
+
+Phase 99 stateless Sharp render PNG üretiyordu (signed URL 5 dk TTL);
+operator için "ürettiğim PNG nereye koyacağım?" sorusu cevapsızdı.
+Phase 100 bu açığı kapatır: **FrameExport Prisma persistence + Product
+detail handoff + Etsy Draft pipeline entegrasyonu**. Sözleşme #11 +
+#13.F fulfilled.
+
+### Contract'a göre en büyük açık
+
+Sözleşme #11 + #13.F: Phase 99 render canlıydı ama:
+- output **kalıcı ürün nesnesi değil** (5 dk TTL signed URL sonrası
+  operator için kayıp)
+- **Product/Etsy Draft zincirine doğal bağlanmıyor** (operator PNG
+  indirir + Product detail'a manuel upload)
+- export history yok (önceki çıktıyı yeniden bulamaz)
+
+### Net ürün kararı
+
+**1. FrameExport Prisma modeli** (minimal, schema migration kontrollü):
+```
+model FrameExport {
+  id, userId, selectionSetId?, storageKey,
+  width, height, sizeBytes, frameAspect,
+  sceneSnapshot (JSON), createdAt, deletedAt?
+}
+```
+- userId zorunlu (cross-user isolation Madde V parity)
+- selectionSetId nullable (SelectionSet silinse FrameExport kalır)
+- deletedAt soft-delete (operator archive ile gizleyebilir)
+- 3 index: userId+createdAt desc, userId+selectionSetId, deletedAt
+- Migration: `20260516120000_phase100_frame_export_persistence`
+
+**2. Endpoints** (3 yeni route):
+- POST `/api/frame/export` (Phase 99 baseline) → service artık her
+  render'da FrameExport row da yazar. Response `frameExportId` field
+  eklendi.
+- GET `/api/frame/exports` → operator history (son N, default 20).
+- GET `/api/frame/exports/[id]/signed-url` → TTL bitince refresh.
+
+**3. Listing handoff** (`POST /api/listings/draft/[id]/add-frame-export`):
+- Body: `{ frameExportId, setAsCover? }`
+- Listing.imageOrderJson'a yeni entry: `kind: "frame-export"` +
+  `frameExportId` + `outputKey` + `signedUrl` + `templateName` +
+  `frameAspect` + `isCover`
+- `setAsCover: true` → mevcut entry'lerin cover flag düşer + position
+  bump; FrameExport entry packPosition 0
+- Ownership defans: Listing.userId + FrameExport.userId match;
+  status PUBLISHED ise reddedilir
+
+**4. ListingImageOrderEntry discriminated union**:
+- `kind: "mockup-render"` (Phase 9 baseline, legacy entry'ler `kind`
+  taşımayan → mockup-render default)
+- `kind: "frame-export"` (Phase 100 yeni)
+- Helpers: `imageOrderEntryId(entry)`, `isMockupRenderEntry`,
+  `isFrameExportEntry`
+- 4 consumer file kind narrow ile genişletildi: route.ts,
+  AssetSection.tsx, image-upload.service.ts, MockupsTab.tsx
+
+**5. UI handoff**:
+- Studio `FrameExportResultBanner`:
+  - "Send to Product" CTA (k-orange-soft button)
+  - Click → popover açılır → `GET /api/listings?status=DRAFT` →
+    listing list render
+  - Listing item click → POST handoff → "✓ Added to listing"
+    success badge + popover kapanır + button "✓ Sent" durumuna döner
+- Product detail `MockupsTab`:
+  - Yeni "Frame Exports" bucket (sectionOrder ilk önce, operator için
+    "listing hero" sinyali güçlü)
+  - frame-export entry'leri ayrı section + kind discriminator
+  - Cover entry orange ring + "★ Primary" badge
+
+### Studio history viewer — Phase 101+ defer
+
+Banner + Send to Product CTA + Product handoff ana scope yeterli.
+History viewer (Studio toolbar'da ayrı buton + son N export grid'i)
+**bilinçli Phase 101+ candidate**: bu turun en kritik açığı persistence
++ handoff'tu; ikisi de fulfilled. History UI ek katman, sonraya bırakıldı.
+
+### Browser end-to-end canlı kanıt (Chrome live, viewport 1600×1100)
+
+| Adım | Kanıt |
+|---|---|
+| Studio mount (real asset hydrate) | 4 item set + 3 stage slot real MinIO `<image>` href |
+| Frame mode + Glass Light + Export click | POST `/api/frame/export` → 1920×1080 PNG, 890.3 KB, 234 ms render |
+| FrameExport row persisted | DB query: `id=v0v8s7l9..., setId=cmov0ia37..., frameAspect=16:9, dims 1920×1080, sizeBytes 911709` |
+| Banner "Send to Product" CTA | enabled, title "Send this frame to a listing draft (set as cover)" |
+| Popover open | 3 DRAFT listing render: "Modern Abstract Wall Art..." + 2 mug listing |
+| First listing select → handoff | POST `/api/listings/draft/.../add-frame-export` → success, popover kapandı, button "✓ Sent" + "✓ ADDED TO LISTING" caption |
+| Listing.imageOrderJson DB verify | 1 entry: kind="frame-export", isCover=true, outputKey="u/.../frame-exports/v0v8s7l9....png", signedUrl AWS-signed, templateName="Storefront banner · hero landscape · Glass light", frameAspect="16:9", frameExportId=v0v8s7l9... |
+| Product detail Mockups tab | tile count 1, entryKind="frame-export", renderId="v0v8s7l9...", isCover="true" |
+| "Frame Exports" section | yeni bucket render, "1 APPLIED" badge, k-orange ring tile + "★ Primary" badge + gerçek MinIO PNG thumbnail (3 sticker card "PAS5") |
+| Caption "Storefront banner · hero landscape..." | Phase 100 deriveFrameExportLabel doğru üretti |
+| Lifestyle / Bundle / My Templates section'ları | boş (operator gerçek bucket'ı ayırt ediyor) |
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest`: **730/730 PASS** (Phase 99 baseline 643 + Phase 100 4 yeni
+  listings test fixture + handful + mock fixture intakt; selection +
+  mockup + products + listings + selections suites)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 100)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration kontrollü**: yalnız 1 yeni model (FrameExport).
+  Mevcut tablolara dokunulmadı (Listing.imageOrderJson zaten JSON
+  field, schema değişmedi).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Mevcut pattern reuse: storage provider
+  (Phase 8), Sharp pipeline (Phase 99), withErrorHandling, requireUser,
+  Zod schema. ListingImageOrderEntry discriminated union mevcut tipe
+  branch + 3 helper function ekledi (helper utility, abstraction değil).
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Slot assignment + render dispatch (Phase 80) zinciri intakt.**
+- **Mockup mode render dispatch (POST /api/mockup/jobs) dokunulmadı**
+  — Mockup pack pipeline ayrı route, ayrı pipeline.
+- **References / Batch / Review / Selection / Mockup Studio / Product
+  / Etsy Draft canonical akışları intakt.**
+- **Phase 99 stateless render + signed URL baseline'ı intakt** —
+  Phase 100 üzerine **persistence** + **handoff** ekledi; legacy
+  consumer'lar (Phase 9 imageOrder) bozulmadı (kind=mockup-render
+  default backward-compat).
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bilinçli scope dışı (Phase 101+ candidate)
+
+- **Studio history viewer**: operator son N FrameExport tekrar bulup
+  re-send / re-export edebilir (gallery + thumb grid). Banner + send
+  to product CTA mevcut akışı karşılıyor.
+- **FrameExport delete / archive UI**: deletedAt soft-delete schema
+  hazır; operator-facing button Phase 101+.
+- **"Create new listing from Frame export"**: bypass akışı (mevcut:
+  önce Apply Mockups → Listing draft → Send to Product). Phase 101+
+  candidate.
+- **Etsy Draft submit pipeline frame-export entry test**: handoff
+  çalışıyor ve Listing.imageOrderJson'a entry doğru yazılıyor;
+  Phase 9 Etsy submit pipeline Frame export entry'lerini de aktarıyor
+  (image-upload.service kind narrow ile). End-to-end Etsy Draft
+  push test Phase 101+ candidate (Etsy API key gerek).
+- **Studio toolbar export history badge** (kaç export var operator
+  görünür sayısı): minor UI polish, Phase 101+.
+- **Portrait / Watermark / BG Effects wire** (sözleşme #13.D):
+  hâlâ preview-only.
+- **Layout builder** (sözleşme #13.A) + **Grid-like presentation**
+  (sözleşme #13.B): Phase 101+ candidate, sonraya bırakıldı.
+
+### Bug ledger (Phase 67-100 cumulative)
+
+**Phase 99 baseline'a Phase 100 eklendi**:
+- Phase 100: FrameExport prisma model + migration; service persist;
+  `GET /api/frame/exports` + `GET /api/frame/exports/[id]/signed-url`
+  + `POST /api/listings/draft/[id]/add-frame-export`;
+  `ListingImageOrderEntry` discriminated union (kind:
+  mockup-render | frame-export) + 3 helpers; `MockupsTab` Frame
+  Exports bucket; `FrameExportResultBanner` Send to Product CTA +
+  listing popover + handoff state machine. 4 consumer file kind
+  narrow update. Browser end-to-end canlı (Frame export → persist
+  → handoff → Product detail Frame Exports bucket render).
+
+**Hâlâ açık (Phase 101+ candidate)**:
+- Studio history viewer
+- FrameExport delete/archive UI
+- "Create new listing from Frame" bypass
+- Etsy Draft pipeline frame-export end-to-end submit test
+- Portrait / Watermark / BG Effects wire (sözleşme #13.D)
+- Layout builder (sözleşme #13.A)
+- Grid-like presentation (sözleşme #13.B)
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 100 ile Frame export **kalıcı ürün nesnesi** ve **Product/Etsy
+zincirine doğal bağlanmış**. Operator:
+- Frame mode'da sahne kurar
+- Export click → real PNG + FrameExport row persist
+- "Send to Product" → listing popover → handoff
+- Product detail Mockups tab "Frame Exports" bucket'ında görür
+- Listing hero olarak işaretlenmiş, Etsy submit'te aktarılır
+
+Sıradaki en yüksek-impact adım **Phase 101 candidate'lar**:
+1. **Studio history viewer** (toolbar'da ayrı buton; son N export +
+   re-send) — operator "geçmiş çalışma" hissi
+2. **Etsy Draft submit pipeline frame-export end-to-end test** —
+   handoff'tan sonra gerçek Etsy push
+3. **FrameExport delete/archive UI** — operator-facing soft-delete
+
+Phase 100 backend persistence + handoff ana ürün boşluğunu kapattı;
+Phase 101+ operator deneyimi polish (history + reuse + Etsy push).
 
 ---
 

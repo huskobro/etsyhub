@@ -95,6 +95,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     sizeBytes: number;
     exportId: string;
     durationMs: number;
+    /** Phase 100 — FrameExport row id (persistence). null ise persist
+     *  başarısız oldu (banner Send to Product CTA disable edilir). */
+    frameExportId: string | null;
     /** Hangi sceneMode + glassVariant + lensBlur ile üretildi —
      *  operator için "şu an gördüğüm preview bu PNG mi?" sinyali
      *  (state değişirse banner stale işareti gösterir). */
@@ -552,9 +555,12 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
         sizeBytes: number;
         exportId: string;
         durationMs: number;
+        /** Phase 100 — FrameExport row id (null ise persist hata). */
+        frameExportId: string | null;
       };
       setFrameExportResult({
         ...result,
+        frameExportId: result.frameExportId ?? null,
         sceneSnapshot: {
           mode: sceneOverride.mode,
           glassVariant: sceneOverride.glassVariant,

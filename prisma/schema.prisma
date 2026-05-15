@@ -214,6 +214,8 @@ model User {
   batches            Batch[]
   // Phase 64 — User-owned mockup templates (templated.io self-hosted model)
   mockupTemplates    MockupTemplate[]
+  // Phase 100 — Frame mode export persistence (sözleşme #11 + #13.F)
+  frameExports       FrameExport[]
 
   @@index([deletedAt])
 }
@@ -1066,10 +1068,51 @@ model SelectionSet {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  items       SelectionItem[]
-  mockupJobs  MockupJob[]
+  items        SelectionItem[]
+  mockupJobs   MockupJob[]
+  // Phase 100 — Frame export persistence (sözleşme #11 + #13.F)
+  frameExports FrameExport[]
 
   @@index([userId, status])
+}
+
+/// Phase 100 — Frame mode export persistence (sözleşme #11 + #13.F
+/// fulfilled). Phase 99'da stateless render PNG üretiyordu — signed
+/// URL 5 dakika TTL sonrası operator için kayıp. Phase 100 FrameExport
+/// row her render'da yazılır; operator history + Product/Etsy Draft
+/// handoff için kalıcı ürün nesnesi.
+///
+/// Schema kararları:
+///   - userId zorunlu (cross-user isolation, Madde V parity)
+///   - setId nullable: SelectionSet silinirse FrameExport kalır
+///     (operator history korunur, "set kaldırılmış" mesajı UI'da)
+///   - storageKey MinIO key (signed URL refresh için)
+///   - sceneSnapshot JSON (mode + glassVariant + lensBlur + color +
+///     colorTo + palette) — re-export için kaynak veri
+///   - deletedAt soft-delete (operator archive ile gizleyebilir)
+///   - listing handoff: Listing.imageOrderJson içinde kind:"frame-export"
+///     entry ile referans (Phase 100 baseline; sözleşme #11 ek)
+model FrameExport {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectionSetId String?
+  selectionSet   SelectionSet? @relation(fields: [selectionSetId], references: [id], onDelete: SetNull)
+  storageKey     String
+  width          Int
+  height         Int
+  sizeBytes      Int
+  frameAspect    String
+  /// Scene snapshot — { mode, glassVariant?, lensBlur?, color?, colorTo?, palette? }
+  /// Operator için "bu PNG hangi state ile üretildi" + re-export kaynağı
+  sceneSnapshot  Json
+  createdAt      DateTime      @default(now())
+  /// Soft-delete (operator archive). UI listings deletedAt:null filter eder
+  deletedAt      DateTime?
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, selectionSetId])
+  @@index([deletedAt])
 }
 
 model SelectionItem {
