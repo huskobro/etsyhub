@@ -527,6 +527,21 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
         palette: activePalette ?? null,
       };
 
+      // Phase 105 — productType-aware device shape (preview StageDevice
+      // SVG parity). deviceKind (stageDeviceForProductType) → compositor
+      // shape ailesi. Server'da resolveDeviceShape ile aynı mapping;
+      // burada client-local inline (client/server boundary: compositor
+      // server-only). Preview hangi StageDeviceSVG shape'i çiziyorsa
+      // export aynı shape ailesinden gelir (sözleşme §11.0).
+      const deviceShape: "frame" | "sticker" | "bezel" =
+        deviceKind === "wall_art" ||
+        deviceKind === "canvas" ||
+        deviceKind === "printable"
+          ? "frame"
+          : deviceKind === "phone"
+            ? "bezel"
+            : "sticker";
+
       const res = await fetch("/api/frame/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -537,6 +552,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           slots: slotsPayload,
           stageInnerW: 572,
           stageInnerH: 504,
+          deviceShape,
         }),
       });
       if (!res.ok) {

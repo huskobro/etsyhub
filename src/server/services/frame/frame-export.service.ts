@@ -24,6 +24,7 @@ import {
   type FrameCompositorInput,
   type FrameSlotInput,
   type FrameSceneInput,
+  type FrameDeviceShape,
 } from "@/providers/mockup/local-sharp/frame-compositor";
 import { FRAME_ASPECT_CONFIG } from "@/features/mockups/studio/frame-aspects";
 
@@ -50,6 +51,10 @@ export interface ExportFrameInput {
   slots: ReadonlyArray<ExportFrameSlotRequest>;
   stageInnerW?: number;
   stageInnerH?: number;
+  /** Phase 105 — productType-aware device shape (preview StageDeviceSVG
+   *  parity). Shell `stageDeviceForProductType(categoryId)` → compositor
+   *  shape. Undefined → "sticker" (Phase 104 backward-compat). */
+  deviceShape?: FrameDeviceShape;
 }
 
 export interface ExportFrameResult {
@@ -181,6 +186,7 @@ export async function exportFrameComposition(
     slots: compositorSlots,
     stageInnerW: input.stageInnerW ?? 572,
     stageInnerH: input.stageInnerH ?? 504,
+    ...(input.deviceShape ? { deviceShape: input.deviceShape } : {}),
   };
   const outputBuffer = await composeFrameOutput(compositorInput);
 

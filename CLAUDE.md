@@ -19695,7 +19695,7 @@ Canonical truth = **exported PNG**. Studio preview, exported PNG'nin
 authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
 preview'ın render sözleşmesini birebir izler.
 
-### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge parity)
+### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge, Phase 105 productType shape parity)
 
 - **Phase 102 item chrome parity fulfilled — exported PNG'deki her
   mockup item'ı Studio preview item chrome'una yaklaştı.**
@@ -21552,6 +21552,208 @@ bezel Sharp pipeline'a — her shape için ayrı layer model). Clipart/
 sticker divergence Phase 101-104'te kapandığı için Phase 105 diğer
 productType shape polish. Paralel: Etsy Draft submit pipeline
 frame-export end-to-end test.
+
+---
+
+## Phase 105 — productType-specific item shape parity (wall_art frame + mat, phone bezel)
+
+Phase 101-104 clipart/sticker case için preview/export parity'yi
+tam kapadı (plate + tilt + white edge). Kullanıcı belirtti: kalan
+en önemli açık **productType-specific item shape parity** —
+wall_art frame matting / phone bezel preview'da farklı, export'ta
+sticker-style düz beyaz edge alıyordu.
+
+### Gerçek browser audit (DOM rect ölçüm)
+
+Studio preview `StageDeviceSVG` 5 shape ailesi (svg-art.tsx):
+- **wall_art/canvas/printable → WallArtFrameSVG**: rect1
+  `#1A1612` (koyu ahşap frame) + rect2 frame inner hairline +
+  rect3 `#F5F1E9` (**KREM MAT**, frameW=9) + rect4 asset interior
+  (innerX=23 = frame 9 + mat 14)
+- **sticker/clipart → StickerCardSVG**: kalın opak beyaz edge
+  (Phase 104 baseline)
+- **phone → PhoneSVG**: koyu device gövde + screen inset (bezel)
+- bookmark → BookmarkStripSVG; tshirt/dtf/hoodie →
+  TshirtSilhouetteSVG
+
+Phase 104'e kadar Sharp pipeline'a `deviceKind` **hiç geçmiyordu**
+→ TÜM productType'lara sticker-style beyaz edge. wall_art
+export'unda **koyu frame + krem mat YOK** (en büyük productType-
+specific divergence). DOM ölçüm (wall_art patch'li test set):
+preview rect1 `#1A1612` + rect3 `#F5F1E9` + asset interior x=23.
+
+### En büyük kök fark
+
+`deviceKind` Shell'de resolve ediliyordu (`stageDeviceForProduct
+Type(categoryId)`, cascadeLayoutFor'da kullanılıyor) ama frame
+export body'sine / route / service / compositor zincirine **hiç
+iletilmiyordu**. Sharp compositor tek "sticker-style" chrome
+uyguluyordu. wall_art (koyu frame + krem mat) ve phone (device
+bezel) preview'da tamamen farklı shape; export sticker'a
+düzleştiriyordu.
+
+### Ürün kararı
+
+- productType-specific shape/chrome = **final visual chrome** →
+  EVET, export'a birebir girer (contract §11.0 Preview = Export
+  Truth).
+- preview'da görünen shape (frame+mat / bezel) export'a girer;
+  selection helpers (slot-ring / badge) **girmez** (§11.0 editing
+  helper baseline korunur).
+- Product MockupsTab gerçek export PNG'sini gösterir (Phase 101
+  tile aspect baseline değişmez; shape parity otomatik yansır).
+- Canonical truth = exported PNG.
+
+### Fix — deviceShape zinciri + Sharp shape model
+
+**Zincir** (Shell → route → service → compositor):
+- `frame-compositor.ts`: yeni `FrameDeviceShape = "frame" |
+  "sticker" | "bezel"` type + `resolveDeviceShape(deviceKind)`
+  helper. `FrameCompositorInput.deviceShape?` (backward-compat:
+  undefined → "sticker").
+- `frame-export.service.ts`: `ExportFrameInput.deviceShape?` +
+  compositorInput'a iletim.
+- `route.ts`: `DeviceShapeSchema = z.enum([...]).optional()` +
+  service çağrısına geçirim.
+- `MockupStudioShell.tsx`: `handleExportFrame` body'sine
+  `deviceShape` (deviceKind → shape inline map; client/server
+  boundary: compositor server-only, Shell-local map server
+  `resolveDeviceShape` ile aynı).
+
+**Sharp shape-aware slot composite** (3 branch):
+- `"frame"` → WallArtFrameSVG parity: layer1 shadow base
+  (frame silhouette) + layer2 koyu frame `#1A1612` + frame
+  inner hairline `rgba(255,255,255,0.06)` + **krem mat
+  `#F5F1E9`** (frameW=minDim×0.045, matW=minDim×0.07) + layer3
+  asset interior (innerX=frameW+matW). Preview rect1-4 birebir.
+- `"sticker"` → StickerCardSVG parity (Phase 104 baseline
+  korundu — kalın beyaz edge, regression yok).
+- `"bezel"` → PhoneSVG parity: koyu device gövde `#0E0C0A`
+  (bodyRadius=minDim×0.14) + screen inset (bezel=minDim×0.035,
+  rounded screen mask).
+- bookmark/tshirt → "sticker" fallback (Phase 106+ candidate;
+  test set'leri clipart/wall_art/phone üçlüsü kapsadı).
+- Phase 103 compose order (chrome'lu tile bir bütün rotate)
+  her shape için korundu.
+
+### Browser end-to-end real-asset doğrulama
+
+Live dev server (1600×1100, real DB). **Controlled test seed**
+(CLAUDE.md Phase 12 "seed parity gap" pattern): test set
+`cmov0ia37` 4 GeneratedDesign productType clipart → wall_art
+patch'lendi (runtime parity için); test sonrası clipart'a geri
+restore edildi (production data drift yok).
+
+| Özellik | Studio preview (WallArtFrameSVG) | Phase 104 export (sticker model) | Phase 105 export (frame model) |
+|---|---|---|---|
+| Koyu ahşap frame | ✓ #1A1612 | ❌ beyaz sticker edge | ✓ koyu çerçeve |
+| Krem mat (paspartu) | ✓ #F5F1E9 | ❌ yok | ✓ krem paspartu |
+| Asset interior | ✓ frame+mat içinde | ❌ tüm tile | ✓ frame+mat içinde |
+| Tilt/rotation | slot1 -6° slot2 -12° | ✓ | ✓ korundu |
+| Drop shadow | ✓ | ✓ | ✓ |
+
+- Wall_art export: 1920×1080, 756.4 KB. Studio preview ↔ Phase
+  105 PNG yan yana: **koyu ahşap çerçeve + krem mat + asset
+  interior birebir aynı**; tilt korundu.
+- Clipart regression (restore sonrası, deviceKind=clipart):
+  preview rect1 `#FFFFFF` (StickerCardSVG) + export 704.2 KB
+  kalın opak beyaz sticker edge — **Phase 104 baseline hiç
+  bozulmadı** (deviceShape="sticker" path).
+- Product MockupsTab handoff (wall_art): tile aspectRatio
+  "4/3", bg-ink, contain, 1920/1080, Phase 105 export cover —
+  framed wall art tile'da korundu.
+
+Screenshot kanıtları:
+- Studio Frame preview (wall_art): 3 framed wall art (koyu
+  çerçeve + krem mat + tilt)
+- Phase 105 export PNG: birebir framed wall art (Phase 104
+  sticker export ile net karşılaştırma)
+- Product MockupsTab Frame Exports: 7 tile, Phase 105 wall_art
+  export frame shape korundu, cover ring + Primary badge
+- Clipart regression export: kalın opak beyaz sticker edge
+  (Phase 104 ile birebir — regression yok)
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products,
+  listings}`: **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 105)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Phase 100 FrameExport + Listing.
+  imageOrderJson baseline dokunulmadı. Controlled test seed
+  patch (GeneratedDesign productType clipart→wall_art→clipart)
+  yalnız runtime verification için; restore edildi, production
+  drift yok.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `FrameDeviceShape` type +
+  `resolveDeviceShape` helper + shape-aware composite branch
+  (frame/sticker/bezel); zincir 4 dosyada opsiyonel field
+  (Shell/route/service/compositor). Yeni service/route/endpoint
+  yok. Phase 103 compose order + Phase 104 sticker baseline
+  korundu.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Mockup mode render dispatch (POST /api/mockup/jobs)
+  dokunulmadı** — Phase 8 baseline ayrı compositor
+  (`compositor.ts`).
+- **Studio shell, slot-ring/badge editing chrome, Phase 94
+  split, Phase 101 plate chrome + tile aspect, Phase 103
+  compose order, Phase 104 sticker white-edge** hepsi intakt
+  (clipart regression doğrulandı).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Phase 100 persistence + handoff backward-compat tam.**
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Düzeltilen parity bug'ları (Phase 105):
+- **wall_art export sticker-style düz beyaz edge alıyordu** —
+  Sharp pipeline'a deviceKind hiç geçmiyordu; tüm productType'lar
+  sticker chrome. Phase 105 deviceShape zinciri + WallArtFrameSVG
+  parity (koyu frame + krem mat + asset interior).
+- **phone export bezel chrome'u yoktu** — aynı kök neden. Phase
+  105 PhoneSVG parity (koyu device gövde + screen inset).
+
+Hâlâ açık (Phase 106+ candidate):
+- **bookmark/tshirt/hoodie/dtf shape parity** — Phase 105'te
+  "sticker" fallback (preview BookmarkStripSVG /
+  TshirtSilhouetteSVG farklı katman yapısı). Sharp pipeline
+  bunlara henüz dedicated shape uygulamıyor. Tam parity Phase
+  106+ (her shape için ayrı layer model; test set'leri
+  clipart/wall_art/phone üçlüsünü kapsadı — en görünür
+  divergence kapandı).
+- **Plate-only Lens Blur** (Phase 101'den devir) — blur full
+  canvas; preview plate parent'a CSS filter.
+- **Drop shadow softness fine-tune** (Phase 103'ten devir) —
+  libvips feDropShadow 2-katmanlı; preview 4-katmanlı.
+- **Etsy Draft submit pipeline frame-export end-to-end test** —
+  handoff entry + Phase 9 push pipeline outputKey/signedUrl
+  yolu intakt; gerçek Etsy push test (Etsy API key gerek).
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 105 ile **productType-specific item shape parity** clipart/
+sticker (Phase 104) + wall_art frame+mat + phone bezel (Phase
+105) için fulfilled:
+- Studio'da gördüğüm ≈ indirdiğim PNG ≈ Product MockupsTab tile
+- Plate rounded + border + drop shadow + stage padding (Phase 101)
+- Item rounded + drop-shadow chain (Phase 102)
+- Item tilt/rotation + compose order (Phase 103)
+- Kalın opak beyaz sticker edge (Phase 104)
+- **wall_art koyu frame + krem mat / phone device bezel** (Phase
+  105)
+- Editing chrome (selection ring + badge) export'a girmez
+
+Sıradaki en yüksek-impact adım **Phase 106 candidate**: bookmark/
+tshirt/hoodie/dtf shape parity (BookmarkStripSVG /
+TshirtSilhouetteSVG Sharp pipeline'a — her shape için ayrı
+layer model). Clipart/wall_art/phone divergence Phase 101-105'te
+kapandığı için Phase 106 kalan productType shape polish.
+Paralel: Etsy Draft submit pipeline frame-export end-to-end test.
 
 ---
 

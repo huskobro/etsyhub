@@ -52,6 +52,56 @@ export interface FrameSlotInput {
 export type FrameSceneMode = "auto" | "solid" | "gradient" | "glass";
 export type FrameGlassVariant = "light" | "dark" | "frosted";
 
+/* Phase 105 — productType-aware device shape model.
+ *
+ * Studio preview `StageDeviceSVG` 5 shape ailesine ayrılır
+ * (svg-art.tsx): wall_art/canvas/printable → WallArtFrameSVG (koyu
+ * frame + krem mat), sticker/clipart → StickerCardSVG (kalın beyaz
+ * edge — Phase 104 baseline), phone → PhoneSVG (device bezel),
+ * bookmark → BookmarkStripSVG, tshirt/dtf/hoodie →
+ * TshirtSilhouetteSVG.
+ *
+ * Phase 104'e kadar Sharp pipeline TÜM productType'lara sticker-style
+ * beyaz edge uyguluyordu → wall_art export'unda koyu frame + krem mat
+ * yoktu (en büyük productType-specific divergence). Phase 105 shape
+ * model'i compositor'a taşır:
+ *   - "frame"   → WallArtFrameSVG parity (wall_art/canvas/printable)
+ *   - "sticker" → StickerCardSVG parity (sticker/clipart — Phase 104)
+ *   - "bezel"   → PhoneSVG parity (phone — device chrome)
+ *   - bookmark/tshirt → "sticker" fallback (Phase 106+ candidate;
+ *     test set'leri clipart/wall_art/phone üçlüsünü kapsıyor).
+ *
+ * Studio Shell `stageDeviceForProductType(categoryId)` → StudioStage
+ * DeviceKind; Phase 105 bu kind'i compositor'a iletir → preview ile
+ * export aynı shape ailesinden (sözleşme §11.0 Preview = Export
+ * Truth). */
+export type FrameDeviceShape = "frame" | "sticker" | "bezel";
+
+export function resolveDeviceShape(
+  deviceKind: string | null | undefined,
+): FrameDeviceShape {
+  switch (deviceKind) {
+    case "wall_art":
+    case "canvas":
+    case "printable":
+      return "frame";
+    case "phone":
+      return "bezel";
+    case "sticker":
+    case "clipart":
+    case "bookmark":
+    case "tshirt":
+    case "hoodie":
+    case "dtf":
+    default:
+      // Phase 105 — bookmark/tshirt henüz sticker fallback (preview'da
+      // BookmarkStripSVG / TshirtSilhouetteSVG farklı; tam parity
+      // Phase 106+ candidate). clipart/sticker = StickerCardSVG (Phase
+      // 104 baseline). Bilinmeyen kind → sticker (güvenli default).
+      return "sticker";
+  }
+}
+
 export interface FrameSceneInput {
   mode: FrameSceneMode;
   /** auto + solid + gradient + glass için palette[0] (warm) ve palette[1]
@@ -74,6 +124,10 @@ export interface FrameCompositorInput {
   /** Stage-inner reference dims (cascadeLayoutFor kullanılan 572×504). */
   stageInnerW: number;
   stageInnerH: number;
+  /** Phase 105 — productType-aware device shape (preview StageDeviceSVG
+   *  parity). Backward-compat: undefined → "sticker" (Phase 104
+   *  baseline). */
+  deviceShape?: FrameDeviceShape;
 }
 
 const STAGE_INNER_REF_W = 572;
@@ -268,6 +322,9 @@ export async function composeFrameOutput(
   const { outputW, outputH, scene, slots } = input;
   const stageInnerW = input.stageInnerW || STAGE_INNER_REF_W;
   const stageInnerH = input.stageInnerH || STAGE_INNER_REF_H;
+  // Phase 105 — productType-aware device shape (preview StageDeviceSVG
+  // parity). Backward-compat: undefined → "sticker" (Phase 104 baseline).
+  const deviceShape: FrameDeviceShape = input.deviceShape ?? "sticker";
 
   /* 1) Stage padding bg (preview .k-studio__stage dark surface parity).
    *    Plate'in arkasında dark padding alanı — operator için plate'in
@@ -412,97 +469,251 @@ export async function composeFrameOutput(
     const assetH = slotOutH;
 
     const chrome = computeItemChrome(assetW, assetH);
-
-    // (b) Asset'i INNER rounded rect ile mask et — preview rect2
-    // (asset surface, rx=innerRadius, beyaz çerçevenin İÇİNDE).
-    // Asset white edge band'inin içinde yer alır (assetW-2×whiteEdge).
-    const innerAssetW = Math.max(1, assetW - 2 * chrome.whiteEdge);
-    const innerAssetH = Math.max(1, assetH - 2 * chrome.whiteEdge);
-    const innerAssetPng = await sharp(slot.imageBuffer)
-      .resize(innerAssetW, innerAssetH, { fit: "cover", position: "centre" })
-      .composite([
-        {
-          input: Buffer.from(
-            `<svg width="${innerAssetW}" height="${innerAssetH}" xmlns="http://www.w3.org/2000/svg">
-              <rect width="${innerAssetW}" height="${innerAssetH}"
-                rx="${chrome.innerRadius}" ry="${chrome.innerRadius}"
-                fill="white"/>
-            </svg>`,
-          ),
-          blend: "dest-in",
-        },
-      ])
-      .png()
-      .toBuffer();
-
-    // (c) Chrome'lu tile compose (preview StickerCardSVG 3-katman
-    // yapısı parity, axis-aligned):
-    //   layer 1: shadow base (rounded card silhouette + feDropShadow)
-    //   layer 2: OUTER WHITE EDGE — kalın opak beyaz dolgu rect
-    //            (preview rect1 fill=#FFFFFF rx=outerRadius)
-    //   layer 3: inner asset (pad=whiteEdge içeride, rx=innerRadius)
-    //   layer 4: koyu hairline inner outline (preview rect3
-    //            rgba(0,0,0,0.10) sw≈1) — white edge'i belirginleştirir
-    // Shadow padding (asset'in dışına taşar) tile'ı asset'ten büyük
-    // yapar.
+    const minDim = Math.min(assetW, assetH);
     const padding = Math.ceil(chrome.shadowOffset1 + chrome.shadowBlur1);
     const tileW = assetW + padding * 2;
     const tileH = assetH + padding * 2;
     const cardX = padding;
     const cardY = padding;
 
-    // layer 1 — shadow base (full white-edge card silhouette).
-    const shadowSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <filter id="slot-sh" x="-30%" y="-30%" width="160%" height="160%">
-          <feDropShadow dx="0" dy="${chrome.shadowOffset1}"
-            stdDeviation="${Math.round(chrome.shadowBlur1 / 2)}"
-            flood-color="black" flood-opacity="0.5"/>
-          <feDropShadow dx="0" dy="${chrome.shadowOffset2}"
-            stdDeviation="${Math.round(chrome.shadowBlur2 / 2)}"
-            flood-color="black" flood-opacity="0.35"/>
-        </filter>
-      </defs>
-      <rect x="${cardX}" y="${cardY}"
-        width="${assetW}" height="${assetH}"
-        rx="${chrome.outerRadius}" ry="${chrome.outerRadius}"
-        fill="black" filter="url(#slot-sh)"/>
-    </svg>`;
+    // Phase 105 — Shape-aware tile composite.
+    //
+    // resolveDeviceShape ile preview StageDeviceSVG shape ailesine
+    // map ediliyor:
+    //   "frame"   → WallArtFrameSVG parity (koyu frame + krem mat +
+    //               asset interior; wall_art/canvas/printable)
+    //   "sticker" → StickerCardSVG parity (kalın beyaz edge; Phase 104
+    //               baseline; sticker/clipart/bookmark/tshirt fallback)
+    //   "bezel"   → PhoneSVG parity (koyu device gövde + screen inset;
+    //               phone)
+    let slotTilePng: Buffer;
 
-    // layer 2 — OUTER WHITE EDGE (kalın opak beyaz dolgu) + layer 4
-    // koyu hairline inner outline (white edge'in iç kenarını
-    // belirginleştirir; preview rect3). Tek SVG'de compose.
-    const whiteEdgeSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="${cardX}" y="${cardY}"
-        width="${assetW}" height="${assetH}"
-        rx="${chrome.outerRadius}" ry="${chrome.outerRadius}"
-        fill="#FFFFFF"/>
-      <rect x="${cardX + 0.5}" y="${cardY + 0.5}"
-        width="${assetW - 1}" height="${assetH - 1}"
-        rx="${chrome.outerRadius - 0.5}" ry="${chrome.outerRadius - 0.5}"
-        fill="none"
-        stroke="rgba(0,0,0,0.10)" stroke-width="${chrome.innerStroke}"/>
-    </svg>`;
+    if (deviceShape === "frame") {
+      // ── WallArtFrameSVG parity (svg-art.tsx:876) ──────────────────
+      //   rect1: 0,0 W×H rx=3 fill=#1A1612      → koyu ahşap frame
+      //   rect2: 1,1 stroke rgba(255,255,255,0.06) sw=1 → frame inner
+      //   rect3: frameW,frameW (W-2fw)×(H-2fw) fill=#F5F1E9 → KREM MAT
+      //   rect4: innerX,innerY innerW×innerH fill=asset → asset interior
+      //   (frameW = minDim×0.045 ≈ preview 9 @ 200; matW = minDim×0.07
+      //    ≈ preview 14 @ 200)
+      const frameW = Math.max(3, Math.round(minDim * 0.045));
+      const matW = Math.max(5, Math.round(minDim * 0.07));
+      const innerX = frameW + matW;
+      const innerY = frameW + matW;
+      const innerW = Math.max(1, assetW - 2 * innerX);
+      const innerH = Math.max(1, assetH - 2 * innerY);
+      const frameRadius = Math.max(2, Math.round(minDim * 0.015));
 
-    let slotTilePng = await sharp({
-      create: {
-        width: tileW,
-        height: tileH,
-        channels: 4,
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
-      },
-    })
-      .composite([
-        { input: Buffer.from(shadowSvg), top: 0, left: 0 },
-        { input: Buffer.from(whiteEdgeSvg), top: 0, left: 0 },
-        {
-          input: innerAssetPng,
-          top: cardY + chrome.whiteEdge,
-          left: cardX + chrome.whiteEdge,
+      const assetInteriorPng = await sharp(slot.imageBuffer)
+        .resize(innerW, innerH, { fit: "cover", position: "centre" })
+        .png()
+        .toBuffer();
+
+      // layer 1 — shadow base (full frame silhouette)
+      const frameShadowSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="slot-sh" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="${chrome.shadowOffset1}"
+              stdDeviation="${Math.round(chrome.shadowBlur1 / 2)}"
+              flood-color="black" flood-opacity="0.5"/>
+            <feDropShadow dx="0" dy="${chrome.shadowOffset2}"
+              stdDeviation="${Math.round(chrome.shadowBlur2 / 2)}"
+              flood-color="black" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+        <rect x="${cardX}" y="${cardY}"
+          width="${assetW}" height="${assetH}"
+          rx="${frameRadius}" ry="${frameRadius}"
+          fill="black" filter="url(#slot-sh)"/>
+      </svg>`;
+
+      // layer 2 — koyu frame + frame inner hairline + KREM MAT
+      const frameBodySvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="${cardX}" y="${cardY}"
+          width="${assetW}" height="${assetH}"
+          rx="${frameRadius}" ry="${frameRadius}"
+          fill="#1A1612"/>
+        <rect x="${cardX + 1}" y="${cardY + 1}"
+          width="${assetW - 2}" height="${assetH - 2}"
+          rx="${Math.max(1, frameRadius - 1)}" ry="${Math.max(1, frameRadius - 1)}"
+          fill="none"
+          stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <rect x="${cardX + frameW}" y="${cardY + frameW}"
+          width="${assetW - 2 * frameW}" height="${assetH - 2 * frameW}"
+          fill="#F5F1E9"/>
+      </svg>`;
+
+      slotTilePng = await sharp({
+        create: {
+          width: tileW,
+          height: tileH,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
         },
-      ])
-      .png()
-      .toBuffer();
+      })
+        .composite([
+          { input: Buffer.from(frameShadowSvg), top: 0, left: 0 },
+          { input: Buffer.from(frameBodySvg), top: 0, left: 0 },
+          {
+            input: assetInteriorPng,
+            top: cardY + innerY,
+            left: cardX + innerX,
+          },
+        ])
+        .png()
+        .toBuffer();
+    } else if (deviceShape === "bezel") {
+      // ── PhoneSVG parity ───────────────────────────────────────────
+      // Koyu device gövde (rounded, geniş radius) + screen inset
+      // (asset). bezel = minDim×0.035 ince çerçeve; gövde radius
+      // minDim×0.14 (telefon köşe yuvarlağı).
+      const bezel = Math.max(3, Math.round(minDim * 0.035));
+      const bodyRadius = Math.max(10, Math.round(minDim * 0.14));
+      const screenRadius = Math.max(6, Math.round(minDim * 0.11));
+      const screenW = Math.max(1, assetW - 2 * bezel);
+      const screenH = Math.max(1, assetH - 2 * bezel);
+
+      const screenAssetPng = await sharp(slot.imageBuffer)
+        .resize(screenW, screenH, { fit: "cover", position: "centre" })
+        .composite([
+          {
+            input: Buffer.from(
+              `<svg width="${screenW}" height="${screenH}" xmlns="http://www.w3.org/2000/svg">
+                <rect width="${screenW}" height="${screenH}"
+                  rx="${screenRadius}" ry="${screenRadius}" fill="white"/>
+              </svg>`,
+            ),
+            blend: "dest-in",
+          },
+        ])
+        .png()
+        .toBuffer();
+
+      const bezelShadowSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="slot-sh" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="${chrome.shadowOffset1}"
+              stdDeviation="${Math.round(chrome.shadowBlur1 / 2)}"
+              flood-color="black" flood-opacity="0.5"/>
+            <feDropShadow dx="0" dy="${chrome.shadowOffset2}"
+              stdDeviation="${Math.round(chrome.shadowBlur2 / 2)}"
+              flood-color="black" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+        <rect x="${cardX}" y="${cardY}"
+          width="${assetW}" height="${assetH}"
+          rx="${bodyRadius}" ry="${bodyRadius}"
+          fill="black" filter="url(#slot-sh)"/>
+      </svg>`;
+
+      const bezelBodySvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="${cardX}" y="${cardY}"
+          width="${assetW}" height="${assetH}"
+          rx="${bodyRadius}" ry="${bodyRadius}"
+          fill="#0E0C0A"/>
+        <rect x="${cardX + 0.5}" y="${cardY + 0.5}"
+          width="${assetW - 1}" height="${assetH - 1}"
+          rx="${bodyRadius - 0.5}" ry="${bodyRadius - 0.5}"
+          fill="none"
+          stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+      </svg>`;
+
+      slotTilePng = await sharp({
+        create: {
+          width: tileW,
+          height: tileH,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
+      })
+        .composite([
+          { input: Buffer.from(bezelShadowSvg), top: 0, left: 0 },
+          { input: Buffer.from(bezelBodySvg), top: 0, left: 0 },
+          {
+            input: screenAssetPng,
+            top: cardY + bezel,
+            left: cardX + bezel,
+          },
+        ])
+        .png()
+        .toBuffer();
+    } else {
+      // ── StickerCardSVG parity (Phase 104 baseline) ────────────────
+      // (b) Asset'i INNER rounded rect ile mask et — preview rect2
+      // (asset surface, rx=innerRadius, beyaz çerçevenin İÇİNDE).
+      const innerAssetW = Math.max(1, assetW - 2 * chrome.whiteEdge);
+      const innerAssetH = Math.max(1, assetH - 2 * chrome.whiteEdge);
+      const innerAssetPng = await sharp(slot.imageBuffer)
+        .resize(innerAssetW, innerAssetH, { fit: "cover", position: "centre" })
+        .composite([
+          {
+            input: Buffer.from(
+              `<svg width="${innerAssetW}" height="${innerAssetH}" xmlns="http://www.w3.org/2000/svg">
+                <rect width="${innerAssetW}" height="${innerAssetH}"
+                  rx="${chrome.innerRadius}" ry="${chrome.innerRadius}"
+                  fill="white"/>
+              </svg>`,
+            ),
+            blend: "dest-in",
+          },
+        ])
+        .png()
+        .toBuffer();
+
+      // (c) Chrome'lu tile compose (preview StickerCardSVG 3-katman):
+      //   layer 1: shadow base (rounded card silhouette + feDropShadow)
+      //   layer 2: OUTER WHITE EDGE — kalın opak beyaz dolgu rect
+      //   layer 3: inner asset (pad=whiteEdge içeride, rx=innerRadius)
+      //   layer 4: koyu hairline inner outline (preview rect3)
+      const shadowSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="slot-sh" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="${chrome.shadowOffset1}"
+              stdDeviation="${Math.round(chrome.shadowBlur1 / 2)}"
+              flood-color="black" flood-opacity="0.5"/>
+            <feDropShadow dx="0" dy="${chrome.shadowOffset2}"
+              stdDeviation="${Math.round(chrome.shadowBlur2 / 2)}"
+              flood-color="black" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+        <rect x="${cardX}" y="${cardY}"
+          width="${assetW}" height="${assetH}"
+          rx="${chrome.outerRadius}" ry="${chrome.outerRadius}"
+          fill="black" filter="url(#slot-sh)"/>
+      </svg>`;
+
+      const whiteEdgeSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="${cardX}" y="${cardY}"
+          width="${assetW}" height="${assetH}"
+          rx="${chrome.outerRadius}" ry="${chrome.outerRadius}"
+          fill="#FFFFFF"/>
+        <rect x="${cardX + 0.5}" y="${cardY + 0.5}"
+          width="${assetW - 1}" height="${assetH - 1}"
+          rx="${chrome.outerRadius - 0.5}" ry="${chrome.outerRadius - 0.5}"
+          fill="none"
+          stroke="rgba(0,0,0,0.10)" stroke-width="${chrome.innerStroke}"/>
+      </svg>`;
+
+      slotTilePng = await sharp({
+        create: {
+          width: tileW,
+          height: tileH,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
+      })
+        .composite([
+          { input: Buffer.from(shadowSvg), top: 0, left: 0 },
+          { input: Buffer.from(whiteEdgeSvg), top: 0, left: 0 },
+          {
+            input: innerAssetPng,
+            top: cardY + chrome.whiteEdge,
+            left: cardX + chrome.whiteEdge,
+          },
+        ])
+        .png()
+        .toBuffer();
+    }
 
     // (d) Chrome'lu tile'ı BİR BÜTÜN olarak rotate et — preview CSS
     // `transform:rotate(${r}deg)` parity. Rounded corner + outline +

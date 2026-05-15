@@ -46,6 +46,11 @@ const SlotSchema = z.object({
   z: z.number().int(),
 });
 
+// Phase 105 — productType-aware device shape (preview StageDeviceSVG
+// parity). Backward-compat: opsiyonel; undefined → service "sticker"
+// fallback (Phase 104 baseline).
+const DeviceShapeSchema = z.enum(["frame", "sticker", "bezel"]);
+
 const BodySchema = z.object({
   setId: z.string().min(1),
   frameAspect: FrameAspectKeySchema,
@@ -53,6 +58,7 @@ const BodySchema = z.object({
   slots: z.array(SlotSchema).min(0).max(9),
   stageInnerW: z.number().positive().optional(),
   stageInnerH: z.number().positive().optional(),
+  deviceShape: DeviceShapeSchema.optional(),
 });
 
 export const POST = withErrorHandling(async (req: Request) => {
@@ -79,6 +85,7 @@ export const POST = withErrorHandling(async (req: Request) => {
     slots: parsed.data.slots,
     ...(parsed.data.stageInnerW ? { stageInnerW: parsed.data.stageInnerW } : {}),
     ...(parsed.data.stageInnerH ? { stageInnerH: parsed.data.stageInnerH } : {}),
+    ...(parsed.data.deviceShape ? { deviceShape: parsed.data.deviceShape } : {}),
   });
 
   return NextResponse.json(result, { status: 200 });
