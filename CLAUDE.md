@@ -19695,7 +19695,7 @@ Canonical truth = **exported PNG**. Studio preview, exported PNG'nin
 authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
 preview'ın render sözleşmesini birebir izler.
 
-### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge, Phase 105-106 productType shape parity)
+### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge, Phase 105-106 productType shape, Phase 107 phone bezel + Etsy continuity)
 
 - **Phase 102 item chrome parity fulfilled — exported PNG'deki her
   mockup item'ı Studio preview item chrome'una yaklaştı.**
@@ -21962,6 +21962,249 @@ Sıradaki adım **Phase 107 candidate**: hoodie hood ellipse delta
 shadow softness fine-tune + Etsy Draft submit pipeline frame-
 export end-to-end test. Ana productType shape divergence Phase
 101-106'te kapandı; Phase 107 fine-grain polish + Etsy push e2e.
+
+---
+
+## Phase 107 — phone bezel detay parity + Etsy Draft e2e continuity proof
+
+Phase 106 bookmark/garment/wall_art shape parity'yi kapadı; phone
+"bezel" branch geometry'si doğruydu ama 2 kritik açık vardı:
+(1) phone/bezel parity için gerçek browser proof + ikincil chrome
+detayları (side buttons / speaker / screen sheen) eksik, (2)
+Frame export → Etsy Draft zinciri uçtan uca kanıtlanmamıştı.
+Phase 107 ikisini tamamlar.
+
+### Gerçek browser audit (PhoneSVG vs Phase 106 bezel)
+
+Studio preview `PhoneSVG` (svg-art.tsx:201) DOM ölçüm
+(temporary test harness ile deviceKind=phone):
+- rect1: koyu gövde `#0C0A09` rx=26 (r/w=0.13)
+- rect2: screen x=bz y=bz×2 sw=W-bz×2 sh=H-bz×3 (bz/w=0.05;
+  **asimetrik bezel** — üst sy=bz×2 alt'tan 2× kalın)
+- notch: w/2-16, sy+7, 32×9 `#0C0A09`
+- **side buttons** (Phase 106'da eksikti): sol-üst x=-1.5
+  y=h×0.28 3×18, sol-alt y=h×0.37 3×27, sağ x=w-1.5 y=h×0.31
+  3×34 (`#080706`, gövde kenarına bitişik)
+- **speaker slot** (eksikti): w/2-20 h-bz-5 40×3.5
+  rgba(255,255,255,0.12)
+- **screen sheen** (eksikti): 2 gradient (sid üst rgba(255,255,
+  255,0.13)→0, rid alt 0→0.04 gloss)
+- outer hairline rgba(255,255,255,0.07)
+
+Phase 106 bezel branch geometry (bz, radius, asimetrik bezel,
+notch) **doğruydu** ama side buttons / speaker / screen sheen
+**yoktu** → telefon kimliği zayıf (preview'da net görünen kenar
+tuşları + gloss export'ta yoktu).
+
+### En büyük fark
+
+Phone genel parity Phase 106'da iyi (koyu gövde + asimetrik
+bezel + notch + hairline). Eksik **ikincil chrome detayları**:
+en görünür side buttons (gövde dışına taşan koyu kenar tuşları —
+iPhone silüetinin imzası), sonra screen sheen gloss, speaker
+slot. Preview = Export Truth için kapatılmalı.
+
+### Ürün kararı
+
+- PhoneSVG shape/chrome (gövde + asimetrik bezel + notch + side
+  buttons + speaker + sheen) = **final visual chrome** → export'a
+  birebir girer (contract §11.0).
+- Product MockupsTab gerçek export PNG'sini gösterir (Phase 101
+  tile aspect baseline değişmez).
+- editing helpers (slot-ring/badge) export'a girmez (§11.0).
+- Canonical truth = exported PNG.
+
+### Fix — bezel branch ikincil chrome detayları
+
+`frame-compositor.ts` "bezel" branch'e eklendi (geometry Phase
+106 baseline korundu):
+- **side buttons** (3 koyu rect `#080706`, gövde kenarına
+  bitişik — sbW=minDim×0.015; sol-üst y=H×0.28 h=H×0.044,
+  sol-alt y=H×0.37 h=H×0.066, sağ y=H×0.31 h=H×0.083): body
+  SVG'sine eklendi (asset altında, gövdeyle birlikte).
+- **screen sheen** (2 linearGradient gloss — üst H×0.48
+  rgba(255,255,255,0.13)→0, alt H×0.55+ 0→0.04; screen rounded
+  clip içinde): asset compose'tan sonra, notch'tan önce ayrı
+  SVG layer.
+- **speaker slot** (rgba(255,255,255,0.12) rect, w/2 ortalı,
+  spkW=W×0.2 spkH=minDim×0.017): notch SVG'sine eklendi.
+- Compose sırası preview parity: shadow → body+sidebuttons →
+  screen asset → sheen → notch+speaker+hairline.
+- Phase 103 compose order (chrome'lu tile bir bütün rotate)
+  korundu.
+
+### Etsy Draft e2e continuity proof (backend + kod + browser)
+
+Phone export Product'a handoff edildi (setAsCover: true).
+**DB-level kanıt** (Listing cmor0wkjt..., imageOrderJson):
+- 10 entry hepsi `kind: "frame-export"` (önceki turlardan birikmiş)
+- Phone entry: `kind: "frame-export"`, packPosition 0,
+  **isCover: true**, frameExportId set, outputKey + signedUrl
+  var, frameAspect "16:9"
+- FrameExport row persisted: 1920×1080, aspect 16:9, storageKey
+  var, selectionSetId bağlı (Phase 100 persistence intakt)
+- Cover-first ordering: 1 cover entry, kind frame-export,
+  packPosition 0 → Etsy submit pipeline cover-first (packPosition
+  ASC, cover rank=1) sözleşmesine uygun
+
+**Kod-level kanıt** (`image-upload.service.ts`):
+- `orderForUpload`: imageOrder packPosition ASC sıralı
+  (cover-first), frame-export + mockup-render ayrım yapmaz
+- `storage.download(entry.outputKey)`: frame-export entry'nin
+  outputKey'i (Phase 100 FrameExport storageKey) Etsy upload
+  için buffer download — kind-agnostic
+- `entryId` narrow: `entry.kind === "frame-export" ?
+  entry.frameExportId : entry.renderId` (Phase 100 discriminated
+  union backward-compat)
+
+**Zincir uçtan uca kanıtlandı**: Frame export (Studio) →
+FrameExport persist (Phase 100) → Listing.imageOrderJson
+`kind:"frame-export"` cover entry (handoff) → Etsy submit
+pipeline orderForUpload + storage.download(outputKey) → Etsy V3
+uploadListingImage.
+
+**Güvenli durma noktası**: Gerçek Etsy V3 API POST (final
+submit) Etsy API key + OAuth token (production credential)
+gerektirir; dev'de credential yok + gerçek Etsy'ye POST riskli.
+Continuity DB-level (entry + FrameExport + cover ordering) +
+kod-level (submit pipeline frame-export outputKey download)
+kanıtlandı. Gerçek Etsy POST açıkça scope dışı (credential +
+production risk).
+
+### Browser end-to-end real-asset doğrulama
+
+Live dev server (1600×1100, real DB, real MinIO MJ assets).
+**Temporary test harness** (CLAUDE.md Phase 12 pattern,
+raporlandı + restore): clipart productType key `clipart` →
+`phone` patch (stageDeviceForProductType("phone")="phone"
+branch tetikler); test sonrası key `clipart`a restore
+(single-row, production drift yok).
+
+| Özellik | Studio preview (PhoneSVG) | Phase 106 export | Phase 107 export |
+|---|---|---|---|
+| Koyu gövde + asimetrik bezel + notch | ✓ | ✓ | ✓ |
+| side buttons (kenar tuşları) | ✓ | ❌ yok | ✓ sol/sağ koyu tuşlar |
+| screen sheen (gloss) | ✓ | ❌ yok | ✓ screen gradient gloss |
+| speaker slot | ✓ | ❌ yok | ✓ |
+| Real asset (PAS5) screen'de | gradient placeholder | — | ✓ gerçek MJ asset |
+| Tilt/rotation | slot1 -6° slot2 -12° | ✓ | ✓ korundu |
+
+- phone export 1271.1 KB. Studio preview ↔ Phase 107 PNG yan
+  yana screenshot: iPhone-style mockup birebir (gövde + notch +
+  side buttons + sheen + gerçek MJ asset screen'de); tilt
+  korundu.
+- clipart regression (restore sonrası, deviceKind=clipart):
+  preview rect1 `#FFFFFF` + export 704.2 KB / **721091 bytes —
+  Phase 105/106/107 PIXEL-PERFECT korundu** (3 turdur aynı;
+  deviceShape="sticker" path; bezel branch izole değişti).
+- Product MockupsTab handoff (phone): 10 tile, aspectRatio
+  "4/3", bg-ink, contain, 1920/1080, phone export cover ring +
+  Primary badge. Frame Exports section "Send to Etsy as Draft"
+  CTA görünür (downstream zincir konumu).
+
+Screenshot kanıtları:
+- Studio Frame preview (phone): 3 iPhone-style device (koyu
+  gövde + camera notch + side buttons + tilt)
+- Phase 107 phone export PNG: birebir iPhone-style + gerçek MJ
+  asset screen'de + side buttons + sheen + notch
+- Product MockupsTab Frame Exports: 10 tile karışık shape
+  (phone / bookmark / garment / wall_art / sticker) hepsi
+  gerçek export PNG; phone cover ring + Primary badge + "Send
+  to Etsy as Draft" CTA
+- Clipart regression export: kalın opak beyaz sticker edge
+  (Phase 105/106 ile pixel-perfect 721091 bytes — regression
+  yok)
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products,
+  listings}`: **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 107)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Temporary test harness
+  (productType.key clipart→phone→clipart) yalnız runtime
+  verification için; restore edildi, production drift yok.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Yalnız `frame-compositor.ts`
+  "bezel" branch'e side buttons / screen sheen / speaker slot
+  SVG layer eklendi (geometry Phase 106 baseline korundu); yeni
+  helper/service/route/endpoint yok. deviceShape zinciri
+  (Shell/route/service) Phase 105/106'dan unchanged. Etsy Draft
+  continuity yalnız **doğrulama** (kod değişikliği yok — mevcut
+  pipeline kanıtlandı).
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Mockup mode render dispatch (POST /api/mockup/jobs)
+  dokunulmadı** — Phase 8 baseline ayrı compositor.
+- **Studio shell, slot-ring/badge editing chrome, Phase 94
+  split, Phase 101 plate chrome + tile aspect, Phase 103
+  compose order, Phase 104 sticker, Phase 105 frame, Phase 106
+  bookmark/garment** hepsi intakt (clipart regression
+  pixel-perfect 721091 bytes 3 turdur).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Phase 100 persistence + handoff + Listing discriminated
+  union backward-compat tam** (Etsy Draft continuity DB+kod
+  kanıtlandı).
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Düzeltilen parity bug'ları (Phase 107):
+- **phone export side buttons (kenar tuşları) yoktu** — Phase
+  106 bezel branch geometry doğruydu ama side buttons eksikti.
+  Phase 107 body SVG'sine 3 koyu rect `#080706` (sol-üst /
+  sol-alt / sağ, gövde kenarına bitişik) PhoneSVG parity.
+- **phone export screen sheen (gloss) yoktu** — Phase 107
+  asset compose'tan sonra 2 linearGradient gloss (screen
+  rounded clip içinde, preview sid/rid parity).
+- **phone export speaker slot yoktu** — Phase 107 notch
+  SVG'sine speaker rect (rgba(255,255,255,0.12)) eklendi.
+
+Continuity doğrulandı (kod değişikliği yok):
+- **Frame export → Etsy Draft zinciri uçtan uca kanıtlandı** —
+  DB-level (imageOrderJson kind:"frame-export" cover entry +
+  FrameExport row) + kod-level (image-upload.service
+  orderForUpload + storage.download(outputKey) + entryId
+  narrow). Önceki turlarda yalnız handoff doğrulanmıştı; Phase
+  107 Etsy submit pipeline'ın frame-export entry'leri gerçekten
+  aktardığını kanıtladı.
+
+Hâlâ açık (Phase 108+ candidate):
+- **Gerçek Etsy V3 API POST e2e** — final submit Etsy API key +
+  OAuth token gerektirir (production credential; dev'de yok).
+  Continuity DB+kod kanıtlandı; gerçek Etsy POST açıkça scope
+  dışı.
+- **hoodie hood ellipse** (Phase 106'dan devir) — garment
+  baseline; hood Phase 108+ (küçük delta).
+- **Plate-only Lens Blur** (Phase 101'den devir) — blur full
+  canvas; preview plate parent'a CSS filter.
+- **Drop shadow softness fine-tune** (Phase 103'ten devir) —
+  libvips feDropShadow 2-katmanlı; preview 4-katmanlı.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 107 ile **tüm ana productType shape parity + Etsy Draft
+continuity fulfilled**:
+- Studio'da gördüğüm ≈ indirdiğim PNG ≈ Product MockupsTab tile
+- Plate (Phase 101) + item chrome (Phase 102) + tilt (Phase
+  103) + sticker white-edge (Phase 104) + wall_art frame+mat
+  (Phase 105) + bookmark/garment (Phase 106) + **phone
+  full bezel (gövde + asimetrik bezel + notch + side buttons +
+  speaker + sheen)** (Phase 107)
+- Frame export → FrameExport persist → Listing imageOrder
+  cover entry → Etsy submit pipeline outputKey download
+  (DB+kod kanıtlandı)
+- Editing chrome export'a girmez
+
+Sıradaki adım **Phase 108 candidate**: hoodie hood ellipse
+delta + plate-only Lens Blur + drop shadow softness + gerçek
+Etsy V3 POST e2e (credential gerektiğinde). Ana shape +
+continuity Phase 101-107'te kapandı; Phase 108 fine-grain
+polish + production Etsy push.
 
 ---
 

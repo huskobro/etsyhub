@@ -627,13 +627,67 @@ export async function composeFrameOutput(
           fill="black" filter="url(#slot-sh)"/>
       </svg>`;
 
-      // Body + camera notch + outer hairline (preview rect1 + notch
-      // + outline). Notch screen'in üstüne (asset compose'tan sonra).
+      // Phase 107 — PhoneSVG ek chrome detayları (preview parity):
+      //   side buttons (x=-1.5/w-1.5 → gövde kenarına bitişik koyu
+      //   tuşlar #080706), speaker slot (w/2-20,h-bz-5,40×3.5
+      //   rgba(255,255,255,0.12)), screen sheen overlay (üst+alt
+      //   gradient gloss). bodyRadius=minDim×0.13, side button
+      //   genişlik 3 @ w=200 ≈ minDim×0.015, gövde kenarına yapışık.
+      const sbW = Math.max(2, Math.round(minDim * 0.015));
+      const sbLU = { y: assetH * 0.28, h: assetH * 0.044 }; // sol üst (h=18@408≈0.044)
+      const sbLL = { y: assetH * 0.37, h: assetH * 0.066 }; // sol alt (h=27@408≈0.066)
+      const sbR = { y: assetH * 0.31, h: assetH * 0.083 }; // sağ (h=34@408≈0.083)
+      const sbR2 = Math.max(1, Math.round(sbW / 2));
+      const spkW = Math.max(8, Math.round(assetW * 0.2)); // w/2-20→40@200=0.2
+      const spkH = Math.max(2, Math.round(minDim * 0.017)); // 3.5@200≈0.017
+      const spkX = Math.round(assetW / 2 - spkW / 2);
+      const spkY = Math.round(assetH - bz - Math.max(3, Math.round(minDim * 0.025)));
+
+      // Body + side buttons + speaker slot (preview rect1 + side
+      // buttons + speaker; screen'in altında — asset compose'tan önce).
       const bezelBodySvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
         <rect x="${cardX}" y="${cardY}"
           width="${assetW}" height="${assetH}"
           rx="${bodyRadius}" ry="${bodyRadius}"
           fill="#0C0A09"/>
+        <rect x="${cardX - Math.round(sbW / 2)}" y="${cardY + sbLU.y}"
+          width="${sbW}" height="${sbLU.h}"
+          rx="${sbR2}" ry="${sbR2}" fill="#080706"/>
+        <rect x="${cardX - Math.round(sbW / 2)}" y="${cardY + sbLL.y}"
+          width="${sbW}" height="${sbLL.h}"
+          rx="${sbR2}" ry="${sbR2}" fill="#080706"/>
+        <rect x="${cardX + assetW - Math.round(sbW / 2)}" y="${cardY + sbR.y}"
+          width="${sbW}" height="${sbR.h}"
+          rx="${sbR2}" ry="${sbR2}" fill="#080706"/>
+      </svg>`;
+
+      // Screen sheen overlay (preview sid/rid gradient gloss — asset
+      // compose'tan sonra, notch'tan önce).
+      const bezelSheenSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="ph-sheen-t" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(255,255,255,0.13)"/>
+            <stop offset="60%" stop-color="rgba(255,255,255,0.02)"/>
+            <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+          </linearGradient>
+          <linearGradient id="ph-sheen-b" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(255,255,255,0)"/>
+            <stop offset="100%" stop-color="rgba(255,255,255,0.04)"/>
+          </linearGradient>
+          <clipPath id="ph-screen-clip">
+            <rect x="${cardX + screenX}" y="${cardY + screenY}"
+              width="${screenW}" height="${screenH}"
+              rx="${screenRadius}" ry="${screenRadius}"/>
+          </clipPath>
+        </defs>
+        <g clip-path="url(#ph-screen-clip)">
+          <rect x="${cardX + screenX}" y="${cardY + screenY}"
+            width="${screenW}" height="${Math.round(screenH * 0.48)}"
+            fill="url(#ph-sheen-t)"/>
+          <rect x="${cardX + screenX}" y="${cardY + screenY + Math.round(screenH * 0.55)}"
+            width="${screenW}" height="${Math.round(screenH * 0.45)}"
+            fill="url(#ph-sheen-b)"/>
+        </g>
       </svg>`;
 
       const bezelNotchSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
@@ -641,6 +695,10 @@ export async function composeFrameOutput(
           width="${notchW}" height="${notchH}"
           rx="${Math.round(notchH / 2)}" ry="${Math.round(notchH / 2)}"
           fill="#0C0A09"/>
+        <rect x="${cardX + spkX}" y="${cardY + spkY}"
+          width="${spkW}" height="${spkH}"
+          rx="${Math.round(spkH / 2)}" ry="${Math.round(spkH / 2)}"
+          fill="rgba(255,255,255,0.12)"/>
         <rect x="${cardX + 0.5}" y="${cardY + 0.5}"
           width="${assetW - 1}" height="${assetH - 1}"
           rx="${bodyRadius - 0.5}" ry="${bodyRadius - 0.5}"
@@ -664,8 +722,9 @@ export async function composeFrameOutput(
             top: cardY + screenY,
             left: cardX + screenX,
           },
-          // Notch + hairline asset'in üstüne (preview: notch screen
-          // gradient'inden sonra çiziliyor).
+          // Screen sheen → notch + speaker + hairline (preview:
+          // sheen screen gradient'inden sonra, notch sheen'den sonra).
+          { input: Buffer.from(bezelSheenSvg), top: 0, left: 0 },
           { input: Buffer.from(bezelNotchSvg), top: 0, left: 0 },
         ])
         .png()
