@@ -290,23 +290,28 @@ function buildPlateLayerSvg(
         <stop offset="100%" stop-color="${escapeXml(to)}"/>
       </linearGradient>`;
   }
-  // Preview 4-katmanlı drop shadow chain'i SVG feDropShadow ile
-  // yansıt. Output dims'e oranla scale (preview shadow offset'leri
-  // CSS px; output px'e dönüşürken min radius guard).
+  // Phase 113 (revize — kullanıcı notu: plate kenarında HİÇBİR
+  // border/keskin hat istenmiyor). Preview studio.css ile parity:
+  // keskin close-edge (s1: dy 2, blur 6) + medium (s2) katmanları
+  // KALDIRILDI — plate kenarında "border gibi" keskin koyu hat
+  // üretiyorlardı (16:9 glass dark'ta net görünüyordu). Yalnız
+  // yumuşak ambient-depth: büyük stdDeviation + büyük dy offset +
+  // ince flood-opacity (preview'ın `0 30px 70px -28px / 0 60px
+  // 120px -40px` güçlü negatif-spread yumuşak depth katmanlarının
+  // SVG karşılığı — feDropShadow'da negatif spread yok, büyük blur
+  // + düşük opacity ile yayvan yumuşak gölge). Plate dark
+  // padding'den yumuşakça "yüzer", keskin kenar hattı OLUŞMAZ.
   const shadowScale = Math.min(plateW / 1006, plateH / 608);
-  const s1Off = Math.max(1, Math.round(2 * shadowScale));
-  const s1Blur = Math.max(2, Math.round(6 * shadowScale));
-  const s2Off = Math.max(4, Math.round(12 * shadowScale));
-  const s2Blur = Math.max(8, Math.round(28 * shadowScale));
-  const s3Off = Math.max(12, Math.round(36 * shadowScale));
-  const s3Blur = Math.max(16, Math.round(80 * shadowScale));
+  const d1Off = Math.max(12, Math.round(30 * shadowScale));
+  const d1Blur = Math.max(24, Math.round(60 * shadowScale));
+  const d2Off = Math.max(24, Math.round(60 * shadowScale));
+  const d2Blur = Math.max(40, Math.round(96 * shadowScale));
   return `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
     <defs>
       ${defsBlock}
-      <filter id="plate-shadow" x="-20%" y="-20%" width="140%" height="160%">
-        <feDropShadow dx="0" dy="${s1Off}" stdDeviation="${s1Blur}" flood-opacity="0.35"/>
-        <feDropShadow dx="0" dy="${s2Off}" stdDeviation="${s2Blur}" flood-opacity="0.45"/>
-        <feDropShadow dx="0" dy="${s3Off}" stdDeviation="${s3Blur}" flood-opacity="0.55"/>
+      <filter id="plate-shadow" x="-30%" y="-30%" width="160%" height="180%">
+        <feDropShadow dx="0" dy="${d1Off}" stdDeviation="${d1Blur}" flood-opacity="0.32"/>
+        <feDropShadow dx="0" dy="${d2Off}" stdDeviation="${d2Blur}" flood-opacity="0.30"/>
       </filter>
     </defs>
     <rect x="${plateX}" y="${plateY}" width="${plateW}" height="${plateH}"

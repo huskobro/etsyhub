@@ -736,33 +736,75 @@
    * inner-border cleanup #7).
    *
    * Phase 92 baseline `2px solid rgba(255,255,255,0.18)` beyaz
-   * border'dı; Shots-parity gerekçesiyle eklenmişti. Ama solid
-   * koyu background (sceneMode solid #111009 / dark) seçildiğinde
-   * plate bg dark + 2px beyaz border + dark stage padding arasında
-   * border BELİRGİN pop ediyordu — kullanıcı bunu istemiyor; bu
-   * görsel ileride explicit bir parametre/efekt olarak gelecek
-   * (frame style / plate chrome). Şimdilik border yok; plate
-   * stage'den yalnız drop-shadow chain (aşağıda) ile ayrılır —
-   * drop shadow dark padding'den zaten net "kalkma" sağlar,
-   * border'a ihtiyaç yok. transparent border layout-stable
-   * (box-sizing kayması olmasın). */
-  border: 2px solid transparent;
-  /* Plate drop shadow — stage'in dark padding alanı ile kontrast.
-   * Phase 92: tek-katmanlı soft 50px shadow yetersizdi; multi-
-   * layer chain ile plate stage'den net "kalkar" (close edge
-   * + medium body + ambient depth).
+   * border'dı (Shots-parity); solid koyu bg'de pop ediyordu.
    *
-   * Phase 113 — inset top-line KALDIRILDI (glow/inner-border
-   * cleanup). `inset 0 1px 0 rgba(255,255,255,0.08)` plate üst
-   * kenarında subtle açık çizgi (inner-border hissi) bırakıyordu;
-   * Shots.so'da plate düz, inner highlight YOK. Drop shadow
-   * chain'in dış (outset) katmanları korunur — plate stage dark
-   * padding'den net ayrılır; yalnız iç highlight temizlendi. */
+   * Phase 113 (4. revize — TERSİNE MÜHENDİSLİK kök neden, DOM
+   * pixel ölçümüyle KANITLANDI): "tüm plate'i saran outline/rim"
+   * sorununun gerçek kaynağı `border: 2px solid transparent`
+   * idi. Plate `box-sizing: border-box`; glass overlay
+   * (`.k-studio__plate-glass`) `position:absolute; inset:0` →
+   * glass plate'in PADDING/CONTENT box'ına oturur, yani 2px
+   * transparent border'ın İÇİNE (glass box 918×514, plate box
+   * 922×518 → her kenardan tam 2px inset). Plate çevresinde 2px
+   * genişliğinde açık cream bg HALKASI glass tarafından
+   * örtülmez; dark stage padding ile kontrast = plate'i saran
+   * "outline/border" rim (glass dark'ta plate koyulaşınca daha
+   * belli). Export `buildGlassOverlayPlateClippedSvg` glass'ı
+   * plate ile BİREBİR aynı plateX/Y/W/H + plateRadius'ta çizer
+   * (2px inset YOK) → export'ta halka YOK, rim YOK.
+   *
+   * Fix — `border: none` (export'ta plate border hiç yok; Studio
+   * = Export). Border kalkınca box-sizing etkisiz; glass
+   * `inset:0` plate'i BİREBİR kaplar, 2px halka kaybolur. Phase
+   * 113 önceki revizeler (transparent border + shadow tuning)
+   * rim'i çözmüyordu çünkü kök neden border'ın VARLIĞIYDI
+   * (rengi değil — transparent bile glass inset halkası
+   * üretiyordu). Layout-stable: border-radius/box-shadow/inset
+   * koordinatları border'sız da aynı (transparent border zaten
+   * görünmüyordu, yalnız glass box'ını içe itiyordu —
+   * istenmeyen). Sözleşme #11 Preview = Export Truth (Studio
+   * plate render = export plate render). */
+  border: none;
+  /* Plate drop shadow — stage'in dark padding alanı ile kontrast.
+   *
+   * Phase 113 (revize — kullanıcı notu: plate kenarında HİÇBİR
+   * border/keskin hat istenmiyor; ileride explicit parametre/
+   * efekt olana kadar kapalı):
+   *
+   * Phase 92-113 baseline chain'in ilk iki katmanı:
+   *   - `0 2px 6px rgba(0,0,0,0.35)`  close-edge (offset 2, blur
+   *     6, spread 0) → plate kenarında BELİRGİN keskin koyu hat;
+   *     dark padding üzerinde "border gibi" görünüyordu (16:9
+   *     glass dark'ta net belli oluyordu — kullanıcı bunu
+   *     istemiyor)
+   *   - `0 12px 28px -4px rgba(0,0,0,0.45)` medium body, hâlâ
+   *     kenar-yoğun ikinci hat
+   * İkisi de KALDIRILDI.
+   *
+   * Phase 113 (3. revize — TERSİNE MÜHENDİSLİK: export border'sız,
+   * Studio'da rim var; fark bulundu ve Studio export'a hizalandı):
+   *
+   * Kök neden — CSS box-shadow `0 30px 70px -28px` (dy 30, blur 70,
+   * **negatif spread -28**) + `0 60px 120px -40px`. Negatif spread
+   * gölgeyi 28-40px KÜÇÜLTÜR + dy pozitif (aşağı) → gölge plate'in
+   * ÜST kenarından geri çekilir; plate'in açık cream bg köşesi
+   * (`#F0E6D3`) dark stage padding (`#111009`) ile GÖLGESİZ, keskin
+   * temas eder = açık ışıklı rim (glass dark'ta plate koyulaşınca
+   * daha belli). Export `frame-compositor.ts` feDropShadow ise
+   * `dy≈26, stdDeviation(blur)≈51` — blur OFFSET'TEN ÇOK BÜYÜK,
+   * gölge her kenarı (ÜST dahil) sarıyor → export'ta üst kenar
+   * yumuşak, rim YOK.
+   *
+   * Fix — CSS box-shadow export feDropShadow davranışına hizalandı:
+   * negatif spread KALDIRILDI, blur >> offset (her kenarı saran
+   * simetrik yumuşak gölge — plate üst kenarı da yumuşar). Export
+   * @1080 ≈ dy 26 / blur 51 / op 0.32 + dy 51 / blur 82 / op 0.30
+   * oranları CSS px'e uyarlandı. Plate dark padding'den yumuşakça
+   * "yüzer"; kenar çizgisi / açık rim YOK; export ile birebir
+   * (Preview = Export Truth §11.0). */
   box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.35),
-    0 12px 28px -4px rgba(0, 0, 0, 0.45),
-    0 36px 80px -16px rgba(0, 0, 0, 0.55),
-    0 60px 120px -32px rgba(0, 0, 0, 0.5);
+    0 26px 51px 0 rgba(0, 0, 0, 0.32),
+    0 51px 82px 0 rgba(0, 0, 0, 0.30);
   /* Default bg fallback (palette/scene undefined) — neutral warm cream */
   /* Phase 94 — Canlı default fallback gradient (bug #15):
    * Phase 91 baseline soluk cream/khaki ile ilk açılışta plate

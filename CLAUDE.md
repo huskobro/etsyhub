@@ -19900,6 +19900,55 @@ authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
 preview'ın render sözleşmesini birebir izler (geometry + asset
 identity + layered effects).
 
+**Studio ↔ Export plate render parity (Phase 113 canonical — unify
+ilkesi):** Studio plate'i **CSS `<div>` zinciri** ile render eder
+(`.k-studio__stage-plate` + `.k-studio__plate-glass` + scene/floor
+katmanları); export plate'i **Sharp SVG composite** ile render eder
+(`buildStageBackgroundSvg` + `buildPlateLayerSvg` +
+`buildGlassOverlayPlateClippedSvg`). Bu iki teknoloji yapısal olarak
+FARKLI; **aynı görsel sonucu üretmek zorundalar** ama otomatik
+garanti YOK. Geçmişte (Phase 113 öncesi) bu yapısal fark sessiz
+divergence'lar üretti:
+
+- **Plate border + glass inset halkası**: Studio plate `border:
+  2px solid transparent` + `box-sizing: border-box` taşıyordu;
+  glass overlay `position:absolute; inset:0` → glass plate'in
+  border'ının İÇİNE oturup çevrede 2px açık bg halkası ("tüm
+  plate'i saran outline" rim) bırakıyordu. Export glass'ı plate
+  ile birebir aynı koordinatta (`plateX/Y/W/H + plateRadius`)
+  çiziyordu — halka YOK. Fix: Studio plate `border: none`
+  (export'ta plate border zaten yok → Studio export'a hizalandı).
+- **Box-shadow vs feDropShadow**: Studio CSS `box-shadow` negatif
+  spread + dy offset ile gölgeyi üst kenardan geri çekiyordu;
+  export `feDropShadow` blur >> offset ile her kenarı sarıyordu.
+  Fix: Studio box-shadow export feDropShadow oran/davranışına
+  hizalandı (negatif spread yok, blur >> offset).
+
+Kalıcı kural: **plate/glass/effect render'ında Studio CSS ile
+export Sharp SVG arasında görsel divergence kabul edilmez.** Yeni
+bir plate/glass/effect değişikliği yapılırken HER İKİ taraf
+(studio.css `.k-studio__stage-plate*` + frame-compositor.ts
+`buildPlateLayerSvg`/`buildGlassOverlay*`) birlikte güncellenir
+ve canlı browser + exported PNG **yan yana** doğrulanır. Studio'da
+olup export'ta olmayan bir görsel katman (Studio-özel CSS
+artifact: clip rim, border halka, box-shadow asimetrisi) bir
+**parity bug**'dır; varsayım yapılmadan DOM pixel ölçümü +
+exported PNG karşılaştırması ile kök neden bulunur, Studio
+export'a hizalanır (export canonical truth — Etsy'ye giden
+artifact odur). Studio-özel dekoratif katmanlar (dot-grid
+`.k-studio__stage::before`, ambient scene tint, placement floor)
+plate'in DIŞINDA kalır, plate kenarına / asset identity'sine
+sızmaz; sızarsa export ile birebirleştirilir veya kaldırılır.
+
+İleride bu yapısal farkı tamamen elemek için (uzun vadeli
+sağlık): plate/glass/effect render'ı tek bir **paylaşılan
+geometri/stil sözleşmesi** (plateRadius, fill, glass tint,
+shadow params) üzerinden hem CSS hem SVG'ye türetilebilir
+(Phase 114+ candidate — şimdi açılmadı; bugünkü ihtiyaç iki
+tarafı manuel senkron + parity testi). Bu, capability map
+(§7.6) gibi erken-abstraction tuzağına düşmeden, gerçek bir
+parity bug tekrarladığında değerlendirilir.
+
 ### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge, Phase 105-106 productType shape, Phase 107 phone bezel + Etsy continuity, Phase 108 plate-only Lens Blur + hoodie hood, Phase 109 responsive viewport + Lens Blur targeting + shared capability)
 
 - **Phase 102 item chrome parity fulfilled — exported PNG'deki her
@@ -23500,6 +23549,42 @@ backward-compat normalize korunur.
 - **Canonical studio kararı + studio shell bozulmadı.**
 - **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
 
+### FIX 4 — Plate "tüm plate'i saran outline/rim" kök neden (ters mühendislik)
+
+Phase 113 ilk revizelerden sonra kullanıcı plate kenarında HÂLÂ
+"tüm plate'i saran outline/border" gördü (glass dark'ta net). İlk
+varsayımlar (box-shadow close-edge, scene tint, overflow:hidden
+clip) **canlı browser DOM pixel ölçümü ile tek tek çürütüldü**.
+Gerçek kök neden (DOM box ölçümüyle KANITLANDI):
+
+- Studio plate `border: 2px solid transparent` + `box-sizing:
+  border-box` taşıyordu (Phase 113'te "layout-stable" diye
+  bırakılmış transparent border).
+- Glass overlay (`.k-studio__plate-glass`) `position:absolute;
+  inset:0` → glass plate'in **content/padding box**'ına oturur,
+  yani 2px transparent border'ın İÇİNE. Ölçüm: glass box
+  918×514, plate box 922×518 → her kenardan **tam 2px inset**.
+- Plate çevresinde 2px açık cream bg HALKASI glass tarafından
+  örtülmüyor; dark stage padding ile kontrast = plate'i saran
+  "outline/rim" (glass dark'ta plate koyulaşınca daha belli).
+- Export `buildGlassOverlayPlateClippedSvg` glass'ı plate ile
+  BİREBİR aynı `plateX/Y/W/H + plateRadius`'ta çizer (2px inset
+  YOK) → export'ta halka YOK. **Studio ≠ Export yapısal farkı.**
+
+**Fix**: Studio plate `border: 2px solid transparent` →
+`border: none` (export'ta plate border zaten hiç yok → Studio
+export'a hizalandı). Border kalkınca `box-sizing` etkisiz; glass
+`inset:0` plate'i BİREBİR kaplar (glass box = plate box,
+inset 0/0/0/0 — DOM ölçümüyle doğrulandı). 2px halka kayboldu,
+rim YOK. Önceki revizeler (transparent border + shadow tuning)
+çözmüyordu çünkü kök neden border'ın **rengi** değil
+**varlığıydı** (transparent bile glass inset halkası
+üretiyordu). `frame-compositor.ts` dokunulmadı (export zaten
+doğruydu); slot identity (FIX 1) korundu (export `distinctItems:
+3`). §11.0'a "Studio ↔ Export plate render parity" canonical
+unify ilkesi eklendi (gelecekte aynı sınıf yapısal divergence'ı
+önlemek için).
+
 ### Hâlâ açık (Phase 114+ candidate)
 
 - **Plate frame-style / chrome parametresi**: Phase 113'te plate
@@ -23507,6 +23592,10 @@ backward-compat normalize korunur.
   frame-style (border / inner-shadow / chrome tone) ileride
   explicit bir efekt/parametre olarak gelecek (§13 future SVG
   readiness — capability map field eklenerek).
+- **Plate/glass/effect render shared geometry/style sözleşmesi**
+  (Studio CSS + export SVG tek kaynaktan türesin — §11.0
+  unify ilkesi Phase 114+ candidate; erken-abstraction tuzağına
+  düşmeden gerçek parity bug tekrarında değerlendirilir).
 - **Drop shadow softness fine-tune** (Phase 103/107/108'ten
   devir) — libvips feDropShadow 2-3 katmanlı; preview 4-katmanlı.
 - **Gerçek Etsy V3 API POST e2e** — production credential.
