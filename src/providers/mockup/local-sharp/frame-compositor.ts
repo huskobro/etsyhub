@@ -80,7 +80,8 @@ export type FrameDeviceShape =
   | "sticker"
   | "bezel"
   | "bookmark"
-  | "garment";
+  | "garment"
+  | "garment-hooded";
 
 export function resolveDeviceShape(
   deviceKind: string | null | undefined,
@@ -96,12 +97,15 @@ export function resolveDeviceShape(
       // Phase 106 — BookmarkStripSVG parity (dar dikey strip + tassel
       // knot + ip + body + inner outline).
       return "bookmark";
-    case "tshirt":
     case "hoodie":
+      // Phase 108 — TshirtSilhouetteSVG hooded parity (svg-art.tsx:
+      // 1095 `hooded` ellipse cx, shoulderY-h*0.04 rx=w*0.18
+      // ry=h*0.08 #2A2622). garment baseline + hood ellipse.
+      return "garment-hooded";
+    case "tshirt":
     case "dtf":
       // Phase 106 — TshirtSilhouetteSVG parity (garment silüeti +
-      // sleeves + neckline + chest print area). hoodie → garment +
-      // hood ellipse (Phase 106'da garment baseline; hood Phase 107+).
+      // sleeves + neckline + chest print area, hood YOK).
       return "garment";
     case "sticker":
     case "clipart":
@@ -815,11 +819,14 @@ export async function composeFrameOutput(
         ])
         .png()
         .toBuffer();
-    } else if (deviceShape === "garment") {
+    } else if (deviceShape === "garment" || deviceShape === "garment-hooded") {
       // ── TshirtSilhouetteSVG parity (svg-art.tsx:1047) ─────────────
       // Preview: shadow ellipse + garment body path (omuz+kol+gövde
-      // fill=#2A2622) + neckline ellipse (#161412) + chest area
-      // asset (chestX,chestY,chestW×chestH rx=4). Path-based silüet.
+      // fill=#2A2622) + [hooded ? hood ellipse #2A2622] + neckline
+      // ellipse (#161412) + chest area asset (chestX,chestY,chestW×
+      // chestH rx=4). Path-based silüet. Phase 108: hoodie → hood
+      // ellipse (svg-art.tsx:1095 parity).
+      const isHooded = deviceShape === "garment-hooded";
       const cx = assetW / 2;
       const shoulderY = assetH * 0.18;
       const sleeveOffset = assetW * 0.18;
@@ -875,10 +882,16 @@ export async function composeFrameOutput(
         <path d="${garmentPath}" fill="black" filter="url(#slot-sh)"/>
       </svg>`;
 
-      // Garment body + neckline (preview path #2A2622 + neckline
-      // ellipse #161412).
+      // Garment body + [hood] + neckline (preview svg-art.tsx:1080-
+      // 1099 katman sırası: path #2A2622 → hood ellipse #2A2622
+      // (hooded) → neckline ellipse #161412).
+      const hoodSvg = isHooded
+        ? `<ellipse cx="${cardX + cx}" cy="${cardY + shoulderY - assetH * 0.04}"
+            rx="${assetW * 0.18}" ry="${assetH * 0.08}" fill="#2A2622"/>`
+        : "";
       const garmentBodySvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
         <path d="${garmentPath}" fill="#2A2622"/>
+        ${hoodSvg}
         <ellipse cx="${cardX + cx}" cy="${cardY + shoulderY + 4}"
           rx="${assetW * 0.12}" ry="${assetH * 0.05}" fill="#161412"/>
       </svg>`;
@@ -1022,22 +1035,45 @@ export async function composeFrameOutput(
     .png()
     .toBuffer();
 
-  /* 5) Lens Blur — apply Sharp blur to canvas (preview CSS filter:blur(8px)
-   *  parity; 8px CSS ≈ Sharp σ ≈ 5-6 depending on output dims).
+  /* 5) Lens Blur — Phase 108 PLATE-ONLY parity (Preview = Export Truth).
    *
-   * NOT: Phase 101 plate chrome eklendiğinde blur tüm canvas'a uygulanırsa
-   * stage padding + plate border'ı da bulanıklaşır. Operator beklentisi:
-   * blur Frame mode preview'da plate'in **içindeki** content'e uygulanıyor
-   * (CSS filter plate parent'a; rounded clip içinde). Phase 101'de aynı
-   * davranış: blur'lu canvas'tan plate-area crop'lanıp stage padding +
-   * plate chrome temiz halinin üstüne yapıştırılır.
+   * Preview'da Lens Blur `plateStyle.filter = blur(px)` plate element'ine
+   * uygulanıyor (MockupStudioStage.tsx:748) → yalnız plate + içindeki
+   * cascade bulanık; stage dark padding alanı NET kalıyor. Phase 101-107
+   * baseline tüm canvas'ı blur'luyordu (stage padding + plate chrome +
+   * cascade hepsi bulanık) → operator için belirgin divergence (preview
+   * net padding + bulanık plate, export tamamen bulanık).
    *
-   * Şu an Phase 101 baseline: tüm canvas blur (preview ile birebir tam
-   * pixel parity değil ama operator için Glass + Blur kombinasyonu net).
-   * Plate-only blur Phase 102+ candidate (extract + composite zinciri
-   * çok daha karmaşık; ana parity boşluğu plate chrome'du). */
+   * Phase 108 fix (preview parity):
+   *   (a) Full canvas blur (blur(6) ≈ preview ~8px CSS)
+   *   (b) Blur'lu canvas'tan plate-area rounded-rect crop (plate region
+   *       — border dahil; preview `plateStyle.filter` plate div'ine
+   *       uygulanıyor, plate border de blur içinde)
+   *   (c) Net (blur'suz) canvas'a plate-area blur'lu region'ı rounded
+   *       mask ile composite → stage padding NET, plate region BULANIK
+   *       (preview ile birebir). */
   if (scene.lensBlur) {
-    canvasBuffer = await sharp(canvasBuffer).blur(6).png().toBuffer();
+    const sharpCanvas = await sharp(canvasBuffer)
+      .blur(6)
+      .png()
+      .toBuffer();
+    // Plate-area rounded mask: blur'lu region yalnız plate rounded
+    // rect içinde (stage padding net kalır — preview parity).
+    const plateMaskSvg = `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="${plateLayout.plateX}" y="${plateLayout.plateY}"
+        width="${plateLayout.plateW}" height="${plateLayout.plateH}"
+        rx="${plateLayout.plateRadius}" ry="${plateLayout.plateRadius}"
+        fill="white"/>
+    </svg>`;
+    const blurredPlateRegion = await sharp(sharpCanvas)
+      .composite([{ input: Buffer.from(plateMaskSvg), blend: "dest-in" }])
+      .png()
+      .toBuffer();
+    // Net canvas (blur öncesi) + plate-area blur'lu region üstte.
+    canvasBuffer = await sharp(canvasBuffer)
+      .composite([{ input: blurredPlateRegion, top: 0, left: 0 }])
+      .png()
+      .toBuffer();
   }
 
   /* 6) Glass overlay (after blur, so glass overlay itself stays sharp).

@@ -19695,7 +19695,7 @@ Canonical truth = **exported PNG**. Studio preview, exported PNG'nin
 authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
 preview'ın render sözleşmesini birebir izler.
 
-### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge, Phase 105-106 productType shape, Phase 107 phone bezel + Etsy continuity)
+### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge, Phase 105-106 productType shape, Phase 107 phone bezel + Etsy continuity, Phase 108 plate-only Lens Blur + hoodie hood)
 
 - **Phase 102 item chrome parity fulfilled — exported PNG'deki her
   mockup item'ı Studio preview item chrome'una yaklaştı.**
@@ -22205,6 +22205,214 @@ delta + plate-only Lens Blur + drop shadow softness + gerçek
 Etsy V3 POST e2e (credential gerektiğinde). Ana shape +
 continuity Phase 101-107'te kapandı; Phase 108 fine-grain
 polish + production Etsy push.
+
+---
+
+## Phase 108 — Plate-only Lens Blur parity + hoodie hood ellipse (stabilization turu)
+
+Phase 101-107 plate + item + tilt + white-edge + productType
+shape (clipart/sticker/wall_art/phone/bookmark/garment) +
+Etsy continuity'yi kapadı. Phase 108 **feature turu DEĞİL —
+stabilization/polish turu**: kalan parity açıklarını kapat,
+mevcut shape/chrome kalitesini üretim seviyesine çek, geçici
+test harness'e bağımlılığı azalt. Kullanıcı net kısıt: yeni
+SVG varyasyonu yok, layout builder yok, mockup item drag/
+resize/tilt editable yapma yok, mockup editor yok.
+
+### Audit — en büyük kalan polish açığı
+
+`MockupStudioStage.tsx:748-750` DOM ölçümü: preview Lens Blur
+`plateStyle.filter = blur(${plateEffects.filterBlurPx}px)`
+**plate element'ine** uygulanıyor → yalnız plate + içindeki
+cascade bulanık, **stage dark padding alanı NET kalıyor**.
+Phase 101-107 Sharp pipeline ise **tüm canvas'ı blur'luyordu**
+(`sharp(canvasBuffer).blur(6)` — stage padding + plate chrome +
+cascade hepsi bulanık) → Preview = Export Truth (§11.0) ihlali.
+Operator için belirgin divergence (preview'da net dark padding +
+bulanık plate, export'ta her şey bulanık). **En yüksek-impact
+açık.**
+
+İkincil: hoodie productType `resolveDeviceShape` Phase 106'da
+`"garment"`'a düşürülüyordu → hood ellipse export'ta KAYIP.
+Preview `TshirtSilhouetteSVG hooded` (svg-art.tsx:1095) omuz
+üstünde `ellipse cx, shoulderY-h*0.04 rx=w*0.18 ry=h*0.08
+#2A2622` çiziyor; export çizmiyordu.
+
+### Fix 1 — Plate-only Lens Blur (Preview = Export Truth)
+
+`frame-compositor.ts` Lens Blur bloğu (full-canvas → plate-only):
+- (a) Full canvas `blur(6)` (preview ~8px CSS karşılığı)
+- (b) Blur'lu canvas'tan **plate-area rounded-rect crop** —
+  `plateLayout.{plateX,plateY,plateW,plateH,plateRadius}` SVG
+  rect + Sharp `composite blend:"dest-in"` mask (plate border
+  dahil; preview `plateStyle.filter` plate div'ine uygulanıyor)
+- (c) Net (blur'suz) canvas'a plate-area blur'lu region'ı
+  composite → **stage padding NET, plate region BULANIK**
+  (preview ile birebir)
+
+Pipeline sırası korundu: stage bg → composites → **(5) plate-
+only blur** → (6) glass overlay (sharp kalır) → (7) PNG encode.
+Lens Blur OFF path'i (`scene.lensBlur` false) hiç değişmedi
+(Phase 105/106/107 clipart pixel-perfect korunur).
+
+### Fix 2 — Hoodie hood ellipse delta (deviceShape granularity)
+
+`FrameDeviceShape` enum'a `"garment-hooded"` eklendi (yeni big
+abstraction değil — Phase 105 deviceShape chain pattern'inin
+tek branch genişletmesi). 4-katmanlı chain tek satır branch:
+
+| Katman | Değişiklik |
+|---|---|
+| `frame-compositor.ts` `FrameDeviceShape` | + `"garment-hooded"` |
+| `frame-compositor.ts` `resolveDeviceShape` | `hoodie` → `"garment-hooded"` (tshirt/dtf → `"garment"` hood YOK) |
+| `frame-compositor.ts` garment branch | koşul `garment \|\| garment-hooded`; `isHooded` flag → hood ellipse SVG (svg-art.tsx:1095 parity: path #2A2622 → hood ellipse #2A2622 → neckline #161412 katman sırası) |
+| `MockupStudioShell.tsx` inline deviceShape map | `hoodie` → `"garment-hooded"` |
+| `route.ts` `DeviceShapeSchema` | enum + `"garment-hooded"` |
+
+### Browser proof (gerçek dev server, clean restart)
+
+`.next` clear + fresh `preview_start` (hot reload'a güvenilmedi).
+Test set `cmov0ia370019149ljyu7divh` (4-item clipart, real MinIO
+MJ assets PAS5/Pinterest).
+
+**Lens Blur — plate-only pixel kanıtı** (high-freq energy =
+mean abs diff of horizontal neighbors, S=90 patch):
+
+| Patch | Blur ON (ha2uhrd6) | Blur OFF (wtfhnid2) | Yorum |
+|---|---|---|---|
+| cornerTL (stage padding) | 0 | 0 | **birebir aynı** — blur padding'e dokunmuyor ✓ |
+| cornerBL | 0.013 | 0.013 | aynı ✓ |
+| plateInterior | 0.019 | 0.019 | plate gradient smooth, fark yok |
+| **plateCenter** (cascade) | **1.028** | **2.731** | blur ON cascade'i **%62 yumuşatmış**; OFF keskin ✓ |
+
+Preview screenshot: plate (cream + 3 cascade) bulanık, **stage
+dark padding TAM NET** (keskin sınırlı çerçeve). Banner
+"PREVIEW CHANGED RE-EXPORT?" (Phase 99 stale indicator §12
+uyumu). Lens Blur OFF preview `plateFilter: "none"` (parity
+diğer yön de doğru).
+
+**Clipart regresyon**: blur OFF export **721091 bytes** —
+Phase 105/106/107 pixel-perfect baseline (721091 bytes) **3
+turdur korundu, hiçbir regresyon yok** (plate-only değişikliği
+blur OFF path'ini hiç etkilemedi).
+
+**Hoodie hood ellipse — pixel kanıtı** (temporary test harness:
+4 design clipart→hoodie patch, test, **revert edildi** — Phase
+12 pattern, production drift=0, `reverted:4 allClipart:true`
+doğrulandı):
+
+| Patch | Dark fraction (luma<70) | Yorum |
+|---|---|---|
+| **hoodBand** (omuz üstü, hood region) | **0.9764** | %97.6 koyu → hood ellipse #2A2622 mevcut ✓ |
+| bodyBand (gövde/göğüs) | 0.5733 | garment body + chest asset (normal) |
+| **plateLightControl** (plate cream bg) | **0** | %0 koyu → kontrol noktası doğru (hood'suz olsa cream olurdu) |
+
+Preview screenshot (hoodie deviceKind): 3 garment silüeti,
+**her birinin omuzlarının üstünde belirgin koyu hood ellipse**
+(kapüşon şekli). Export hoodBand %97.6 koyu → `garment-hooded`
+parity export'ta birebir.
+
+**Product MockupsTab + Etsy continuity** (Phase 108 dokunmadı,
+re-verify): `/products/cmor0wkjt...` Mockups tab → 10 frame-
+export tile, `tileHostAspectRatio: "4 / 3"`, `tileHostBg:
+rgb(22,19,15)` (bg-ink), `tileImgObjectFit: "contain"`,
+naturalWH 1920×1080 — Phase 101 baseline intakt. Etsy submit
+pipeline (`image-upload.service.ts` line 95/146/162) kod-level
+kind-agnostic (orderForUpload packPosition ASC + storage.
+download(outputKey) + entryId narrow) — frame-export entry'leri
+Phase 100 discriminated union backward-compat ile akıyor.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 108)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `FrameDeviceShape` TypeScript
+  union + Zod enum genişletme; runtime DB schema dokunulmadı.
+  Temporary test harness (productTypeId clipart→hoodie→clipart)
+  yalnız runtime verification; revert edildi, production
+  drift=0.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Yalnız `frame-compositor.ts`
+  Lens Blur bloğu (full→plate-only) + `FrameDeviceShape` tek
+  union member + `resolveDeviceShape` hoodie branch + garment
+  branch hood ellipse delta + Shell inline map + route enum.
+  Yeni helper/service/component/endpoint yok. Phase 103
+  compose order (chrome'lu tile bir bütün rotate) + Phase 104
+  sticker + Phase 105 frame + Phase 106 bookmark/garment +
+  Phase 107 bezel detay baseline'ları intakt.
+- **Yeni SVG varyasyonu YOK** (kullanıcı kısıtı). **Layout
+  builder YOK** (kullanıcı kısıtı). **Mockup item editable
+  YOK** (kullanıcı kısıtı). Bunlar future direction'da
+  ertelenmiş kalır (§13.A layout builder, yeni SVG varyasyon).
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Mockup mode render dispatch (POST /api/mockup/jobs)
+  dokunulmadı** — Phase 8 baseline ayrı compositor.
+- **Studio shell, slot-ring/badge editing chrome, Phase 94
+  editing/final split, Phase 101 plate chrome + tile aspect,
+  Phase 103 compose order** hepsi intakt (clipart regresyon
+  pixel-perfect 721091 bytes doğrulandı).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Phase 100 persistence + handoff + Listing discriminated
+  union backward-compat tam** (continuity re-verify).
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Düzeltilen parity bug'ları (Phase 108):
+- **Lens Blur export'ta full-canvas idi (preview plate-only)**
+  — Phase 101-107 baseline `sharp(canvasBuffer).blur(6)` tüm
+  canvas'ı blur'luyordu; preview `plateStyle.filter` yalnız
+  plate'e uyguluyordu. Phase 108 plate-area rounded-rect mask
+  ile blur'lu region'ı net canvas'a composite → stage padding
+  NET, plate region BULANIK (Preview = Export Truth §11.0).
+- **hoodie export hood ellipse'i yoktu** — `resolveDeviceShape`
+  Phase 106'da hoodie'yi `"garment"`'a düşürüyordu (hood YOK).
+  Phase 108 `"garment-hooded"` granularity + garment branch
+  hood ellipse delta (svg-art.tsx:1095 parity).
+
+Hâlâ açık (Phase 109+ candidate):
+- **Drop shadow softness fine-tune** (Phase 103/107'ten devir)
+  — libvips feDropShadow 2-katmanlı; preview 4-katmanlı.
+  Ana visual impact Phase 101-108'de yakalandı; yumuşaklık
+  ince fark.
+- **Gerçek Etsy V3 API POST e2e** — final submit Etsy API key
+  + OAuth token (production credential; dev'de yok).
+  Continuity DB+kod kanıtlandı (Phase 107-108); gerçek Etsy
+  POST açıkça scope dışı.
+- **Yeni SVG varyasyonları + layout builder** — kullanıcı
+  kararıyla **future direction'da ertelenmiş** (§13.A; bu turun
+  scope'unda DEĞİL). Frame mode export pipeline (§13.C Phase 99
+  fulfilled) + productType shape parity (Phase 101-108
+  fulfilled) tamamlandıktan sonra yeni varyasyon/layout builder
+  ayrı tur olarak değerlendirilir.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 108 ile Mockup Studio çekirdeği üretim seviyesine yaklaştı:
+- Studio'da gördüğüm ≈ indirdiğim PNG ≈ Product MockupsTab tile
+- Plate (Phase 101) + item chrome (Phase 102) + tilt (Phase 103)
+  + sticker white-edge (Phase 104) + wall_art frame+mat (Phase
+  105) + bookmark/garment (Phase 106) + phone full bezel (Phase
+  107) + **plate-only Lens Blur + hoodie hood** (Phase 108)
+- Lens Blur preview = export (plate bulanık, padding net)
+- Editing chrome (selection ring + badge) export'a girmez
+- Temporary test harness bağımlılığı azaltıldı (clipart natural
+  set ile Lens Blur + regresyon; hoodie tek geçici patch +
+  zorunlu revert)
+
+Sıradaki adım **Phase 109 candidate**: drop shadow softness
+fine-tune (preview 4-katman libvips 2-katman) + gerçek Etsy V3
+POST e2e (credential geldiğinde). Yeni SVG varyasyonları +
+layout builder kullanıcı kararıyla **ertelenmiş** (§13.A) —
+Frame mode export + productType shape parity tam olduğu için
+ayrı bir genişleme turu olarak ele alınır.
 
 ---
 

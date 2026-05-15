@@ -533,12 +533,16 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       // aynı mapping; burada client-local inline (client/server
       // boundary: compositor server-only). Preview hangi StageDeviceSVG
       // shape'i çiziyorsa export aynı shape ailesinden gelir (§11.0).
+      // Phase 108 — hoodie → "garment-hooded" (preview
+      // TshirtSilhouetteSVG hooded ellipse parity, svg-art.tsx:1095).
+      // tshirt/dtf hood YOK → "garment".
       const deviceShape:
         | "frame"
         | "sticker"
         | "bezel"
         | "bookmark"
-        | "garment" =
+        | "garment"
+        | "garment-hooded" =
         deviceKind === "wall_art" ||
         deviceKind === "canvas" ||
         deviceKind === "printable"
@@ -547,11 +551,11 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
             ? "bezel"
             : deviceKind === "bookmark"
               ? "bookmark"
-              : deviceKind === "tshirt" ||
-                  deviceKind === "hoodie" ||
-                  deviceKind === "dtf"
-                ? "garment"
-                : "sticker";
+              : deviceKind === "hoodie"
+                ? "garment-hooded"
+                : deviceKind === "tshirt" || deviceKind === "dtf"
+                  ? "garment"
+                  : "sticker";
 
       const res = await fetch("/api/frame/export", {
         method: "POST",

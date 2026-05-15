@@ -55,6 +55,7 @@ const DeviceShapeSchema = z.enum([
   "bezel",
   "bookmark",
   "garment",
+  "garment-hooded",
 ]);
 
 const BodySchema = z.object({
