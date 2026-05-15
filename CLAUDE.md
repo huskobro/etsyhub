@@ -25744,6 +25744,224 @@ slider activation. Yeni SVG/layout builder/mockup editor
 
 ---
 
+## Phase 123 — Zoom slider gerçekten çalışıyor: preview-only middle-stage zoom (no-op kontrol canlandı, rail/export bağımsız)
+
+Phase 96-122 boyunca right rail head'deki **Zoom slider** + Tilt/
+Precision view tab'ları görünür ama **NO-OP** idi. Bu turun amacı
+Studio'yu bir sonraki ürün seviyesine taşımak — son fazların doğru
+kurduğu right rail / middle panel / export birlikteliğini bozmadan
+en değerli yarım/no-op kontrolü gerçekten çalışır hale getirmek.
+
+### Kısa audit (browser+code kanıtı)
+
+| Soru | Cevap |
+|---|---|
+| En değerli no-op kontrol | Rail head **Zoom slider** (+ Tilt/Precision tab'ları). Browser kanıt: 9:16'da plate 491×874, slider/tab tıklamasından önce/sonra BİREBİR aynı (`zoomSliderEffect: "NO-OP"`, `tiltTabEffect: "NO-OP"`). Kod: `<input type="range" defaultValue={100}>` — onChange YOK, label statik "100%". |
+| Kullanıcı etkisi | Operatör orta paneldeki kompozisyonu yakınlaştırıp inceleyemiyor (Shots.so preview-inspection kontrolü eksik). Görünür kontrol var ama hiçbir şey yapmıyor → "yarım ürün" hissi. |
+| Sistemi bozmadan ele alış | Zoom **preview-only helper** (Contract kategori 2/4 — canonical shared visual param DEĞİL, export'a GİRMEZ §11.0, rail candidate thumb'lara UYGULANMAZ). Shell-level state → yalnız orta panel plate scale. StageScene shared render path + rail candidate previews + plateDims/aspect + export pipeline DOKUNULMAZ. |
+
+Tilt/Precision ikincil — bu turda Zoom'a odaklanıldı (en yüksek
+etki), gerçekten bitirildi.
+
+### Net ürün/mimari kararı (4-kategori ayrımı korundu)
+
+Zoom = **kategori 2 (mode/UI-specific helper state)** — operatörün
+preview'ı yakınlaştırıp inceleme aracı. **Canonical visual
+parameter DEĞİL** (kategori 1'e GİRMEZ): export'a yansımaz (§11.0
+Preview = Export Truth — zoom viewing aid, final visual değil),
+rail candidate thumb'lara uygulanmaz (kategori 1 layoutVariant/
+scene/aspect rail'e yansır; zoom yansımaz — Phase 117-118 single-
+renderer + chromeless baseline bozulmaz). Selection ring/badge
+(kategori 4) zaten preview-only — zoom onlarla aynı katmanda.
+
+### Uygulanan slice
+
+- **`MockupStudioShell.tsx`**: yeni `previewZoom` state (yüzde,
+  100 = no-op = Phase 122 BİREBİR). Stage'e `previewZoom/100`
+  (ratio), PresetRail'e `previewZoom` + `onChangePreviewZoom`
+  iletilir. Canonical Shell state (Phase 114 layoutVariant ile
+  aynı pattern — tek kaynak).
+- **`MockupStudioPresetRail.tsx`**: Zoom slider artık çalışıyor:
+  `value={zoom}` + `onChange → setZoom → onChangePreviewZoom →
+  Shell`. min 25 / max 200 / step 5; label dinamik `{zoom}%`.
+  Fallback local state (Shell prop yoksa legacy). `data-testid`
+  `studio-rail-zoom` + `studio-rail-zoom-val`.
+- **`MockupStudioStage.tsx`**: `previewZoom` prop → `StageScene`.
+  `zoomActive = !chromeless && previewZoom !== 1` — **çift
+  guard**: (a) `!chromeless` → rail thumb (chromeless=true)
+  zoom'u YOK SAYAR, (b) StageScenePreview previewZoom geçmez
+  (default 1). Rail candidate previews operatör zoom'undan
+  yapısal olarak bağımsız. Plate'e `data-preview-zoom` attr.
+- **`studio.css`**: **CSS-variable kompozisyonu** —
+  `.k-studio__stage-plate { transform: translate(-50%,-50%)
+  scale(var(--ks-preview-zoom, 1)); transition: transform 120ms
+  ease; }`. React yalnız `--ks-preview-zoom` custom property'sini
+  set eder (zoomActive iken); CSS rule translate+scale'i KENDİSİ
+  compose eder. Default fallback `1` = no-op. Stage `overflow:
+  hidden` → zoom-in'de plate kenarı kırpılır (Shots.so preview-
+  inspection).
+
+### Kritik bug: inline transform ↔ CSS transform kompozisyon kırılması (DOM pixel ölçümüyle kanıtlandı)
+
+İlk implementasyon zoom'u **React inline `transform: translate
+(-50%,-50%) scale(${zoom})`** ile uyguladı. Browser DOM ölçümü:
+inline style attribute DOĞRU (`mPlate.style.transform ===
+"translate(-50%, -50%) scale(1.5)"`) AMA `getComputedStyle().
+transform = matrix(1,0,0,1,-461,-259)` — **scale DÜŞÜYORDU**
+(yalnız translate kalıyor). 2sn settle sonrası, `!important`
+ile bile, scale-only ile bile reprodüklendi: plate box
+değişmiyordu. Kök neden: plate'in CSS rule'u (`transform:
+translate(-50%,-50%)`) + React inline transform + `transition:
+transform` üçlüsünde scale güvenilmez şekilde drop ediliyordu
+(inline transform ↔ CSS rule transform kompozisyon fragility).
+**Çözüm:** CSS rule translate + scale'i kendisi compose eder
+(`scale(var(--ks-preview-zoom,1))`), React yalnız değişkeni
+set eder → inline/CSS transform conflict YOK, scale güvenle
+uygulanır. CSS-variable inline'da set edilince güvenilir; CSS
+rule tek transform kaynağı kalır.
+
+### Browser triangulation (fresh build, real asset, viewport 1600×1040)
+
+Test set `cmov0ia37` (4 real MinIO MJ asset PAS5/neon/car):
+
+| Test | Zoom 100 (no-op) | Zoom 175 | Verdict |
+|---|---|---|---|
+| Slider label | "100%" | **"175%"** | ✓ wired |
+| Middle `data-preview-zoom` | "1" | **"1.75"** | ✓ |
+| Middle inline `--ks-preview-zoom` | (not set→CSS 1) | **"1.75"** | ✓ |
+| Middle computed scaleX/Y | 1 / 1 | **1.75 / 1.75** | ✓ scale APPLIED |
+| Middle translate | -533/-299.5 | **-533/-299.5** | ✓ centering preserved |
+| Middle plate box | 922×518 | **1866×1048** (≈1.75×) | ✓ zoomed |
+| 7 rail thumb scaleX | 1×7 | **1×7** | ✓ rail immune |
+| Rail thumb 0 box | 179×101 | **179×101** (unchanged) | ✓ |
+| StageScene instance count | 8 (1+7) | **8** | ✓ Phase 117 intact |
+
+Ek doğrulamalar:
+- **Zoom-out** (50%): plate `matrix(0.5,...)` = 533×300
+  (yarım), centered, label "50%" ✓
+- **Zoom + layout-variant coexist**: zoom 150 iken Tilted
+  preset click → `shellLayoutVariant: "tilted"`, slot rot
+  `[-7,0,7]`, badge "03 Tilted" + ring `data-on=true`
+  (Phase 121), `zoomStillActive scaleX 1.5` (zoom persisted,
+  variant uncorrupted) ✓
+- **Zoom + aspect coexist** (Frame 9:16): rail thumb
+  `data-frame-aspect="9:16"` plate aspect 0.562 === middle
+  0.562 (`aspectReactive: true`, Phase 118 intact), all 7
+  rail `--ks-preview-zoom` empty/scale 1 ✓
+- **Reset 100 = clean no-op**: `data-preview-zoom="1"`, inline
+  var not set (CSS fallback 1), scaleX 1, box 922×518 (Phase
+  122 BİREBİR) ✓
+- **Product MockupsTab continuity**: `/products/cmor0wkjt...`
+  Mockups tab → "Frame Exports · 11 APPLIED", tüm tile
+  `aspect-[4/3] bg-ink object-contain 1920×1080` (Phase 101
+  baseline) — export persistence + handoff zinciri zoom'dan
+  HİÇ etkilenmedi (§11.0 Preview = Export Truth: zoom Sharp
+  pipeline'a ulaşmaz, FrameExport'a persist olmaz, Product
+  tile'da görünmez) ✓
+- Screenshot (fresh build): middle stage 175% zoom 3 büyük
+  real-asset cascade + selection ring + overlay badge'ler,
+  kenar stage'de kırpılı (Shots.so preview-inspection); sağ
+  rail 7 küçük un-zoomed candidate thumb (her biri kendi
+  variant'ı — Cascade ring'li, Centered/Tilted/Stacked/Fan/
+  Offset) operatör zoom'undan bağımsız.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (59 files, zero regression)
+- `next build`: ✓ Compiled successfully (`NODE_OPTIONS=
+  --max-old-space-size=4096` — default heap OOM, kod hatası
+  değil)
+- Clean restart (fresh `.next` + port kill + `reused:false`
+  server) üzerinde fresh-build browser verification (HMR
+  state'e güvenilmedi)
+
+### Değişmeyenler (Phase 123)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız 1 Shell state + prop iletimi
+  + Zoom slider wiring + 1 CSS rule (transform var-compose).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Shell `useState` + prop
+  iletimi (store/reducer/context DEĞİL — Phase 114 layoutVariant
+  pattern parity). Yeni component / route / service / SVG
+  library / layout builder / mockup editor YOK.
+- **4-kategori ayrımı korundu** — zoom kategori 2 (mode/UI
+  helper); kategori 1 canonical params (layoutVariant/scene/
+  aspect/slot/deviceShape/palette) zoom'dan ETKİLENMEZ;
+  kategori 3 (compositionGroup/cascadeLayoutFor/StageDeviceSVG)
+  dokunulmadı; kategori 4 (ring/badge) preview-only baseline
+  korundu.
+- **Preview = Export Truth (§11.0) korundu** — zoom CSS-only
+  middle-stage helper; `frame-compositor.ts` (Sharp export)
+  bu değeri ASLA görmez; FrameExport persist etmez; Product
+  MockupsTab tile'da yansımaz (browser kanıtlı 11 tile
+  baseline).
+- **Phase 117 single-renderer + Phase 118 aspect-aware/
+  chromeless + Phase 120 containerless aspect-adaptive rail +
+  Phase 121 selection ring/badge + Phase 122 frame-cap removal
+  baseline'ları intakt** (8 StageScene, rail candidate previews
+  bağımsız, aspect-reactive, ring/badge çalışıyor).
+- **Phase 114 layoutVariant canonical + Phase 116 real-asset
+  rail thumb baseline'ları intakt** (zoom 150 iken Tilted
+  variant doğru propagate).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı**
+  (`--ks-preview-zoom` yeni custom property, `--ks-*`
+  namespace altında).
+
+### Canonical not (Contract'a)
+
+Zoom = **preview-only viewing aid** (Contract §6 view controls
++ §11.0 + 4-kategori): operatör orta paneldeki kompozisyonu
+yakınlaştırıp inceler. **Canonical visual parameter DEĞİL** —
+exported PNG'ye, FrameExport persistence'a, Product MockupsTab
+tile'a, rail candidate thumb'lara YANSIMAZ. Yalnız orta panel
+(`StageScene` chromeless=false) plate'ine CSS `scale(var(--ks-
+preview-zoom,1))` uygulanır. Rail thumb (chromeless=true)
+değişkeni set ETMEZ → daima scale 1 (rail = candidate layout
+preview, operatör zoom'undan bağımsız). Yeni preview-only
+helper eklenirken aynı disiplin: kategori 2/4, canonical
+shared pota'ya GİRMEZ, export-bağımsız, rail-bağımsız.
+
+### Hâlâ kalan (Phase 124+ candidate)
+
+- **Tilt / Precision view tab'ları** hâlâ no-op (kategori 4
+  preview-only helper). Phase 123 Zoom'a öncelik verdi (en
+  yüksek etki). Tilt = preview rotate-inspect, Precision =
+  fine-step nudge — ileride aynı preview-only disiplinle
+  (export-bağımsız, rail-bağımsız) wire edilebilir.
+- **Sidebar `data-wired="false"` kontroller** (Portrait /
+  Watermark / BG Effects — §13.D) honest disclosure preview-
+  only; Phase 124+ candidate.
+- **Ölü kod temizliği** (Phase 117-119'dan devir):
+  `PresetThumbMockup` / `fitCascadeToThumb` / `THUMB_PLATE_*`
+  rail path'inde kullanılmıyor (`PresetThumbFrame` kullanımı
+  kontrol edilip güvenli silinmeli).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A
+  ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 123 ile rail head'deki en değerli no-op kontrol (Zoom
+slider) gerçekten çalışıyor — operatör orta paneldeki gerçek-
+asset kompozisyonu 25-200% yakınlaştırıp inceleyebiliyor
+(Shots.so preview-inspection); rail candidate previews + export
++ Product tile zoom'dan tamamen bağımsız (preview-only helper
+disiplini). Sıradaki adım **Phase 124 candidate**: Tilt/
+Precision view tab'larını aynı preview-only disiplinle wire
+etme veya ölü kod temizliği (`PresetThumbMockup`/
+`fitCascadeToThumb`). Yeni SVG/layout builder/mockup editor
+§13.A'da ertelenmiş kalır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

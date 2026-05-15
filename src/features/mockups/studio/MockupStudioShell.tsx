@@ -152,6 +152,22 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
   const [layoutVariant, setLayoutVariant] =
     useState<StudioLayoutVariant>("cascade");
 
+  /* Phase 123 — Preview-only zoom (rail-head Zoom slider).
+   *
+   * Phase 96-122 boyunca rail head'deki Zoom slider + Tilt/Precision
+   * tab'ları NO-OP idi (browser kanıtı: slider/tab tıklamasından
+   * önce/sonra plate birebir aynı). Operatör orta paneldeki
+   * kompozisyonu yakınlaştırıp inceleyemiyordu (Shots.so preview-
+   * inspection kontrolü eksik). Phase 123: Zoom slider canonical
+   * Shell state'e bağlandı; yalnız ORTA PANEL plate'ine CSS scale
+   * uygulanır. Bu canonical VISUAL parameter DEĞİL — Contract
+   * kategori 2 (mode/UI-specific helper state): export'a girmez
+   * (§11.0 Preview = Export Truth — zoom viewing aid), rail
+   * candidate thumb'lara uygulanmaz (Phase 117-118 single-renderer
+   * + chromeless baseline'ı bozulmaz). 100 = no-op (Phase 122
+   * davranışı BİREBİR). */
+  const [previewZoom, setPreviewZoom] = useState(100);
+
   /* Phase 89 — Frame mode scene control override state.
    *
    * Shots.so real browser araştırması: Frame mode'da operator
@@ -864,6 +880,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           viewportW={viewport.w}
           viewportH={viewport.h}
           railCollapsed={railCollapsed}
+          previewZoom={previewZoom / 100}
         />
         {/* Phase 110 — Rail-collapse ara aşaması (Shots.so canonical):
          *  880–1280px'te sağ rail gizli, stage o alanı kazanır.
@@ -882,6 +899,8 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
             deviceShape={deviceKind}
             slots={slots}
             frameAspect={frameAspect}
+            previewZoom={previewZoom}
+            onChangePreviewZoom={setPreviewZoom}
           />
         ) : null}
       </div>

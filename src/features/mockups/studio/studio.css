@@ -738,7 +738,24 @@
    * agresif değil). */
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%);
+  /* Phase 123 — Preview-only zoom CSS-variable kompozisyonu.
+   *
+   * Plate hem `translate(-50%,-50%)` (merkezleme) hem zoom scale
+   * taşır. Önce React inline `transform: translate(...) scale(...)`
+   * denendi ama computed'da scale DÜŞÜYORDU (inline transform ↔
+   * CSS rule transform + transition kompozisyon kırılması, DOM
+   * pixel ölçümüyle kanıtlandı). Çözüm: CSS rule translate +
+   * scale'i KENDİSİ compose eder, React yalnız `--ks-preview-zoom`
+   * custom property'sini set eder (inline transform conflict YOK,
+   * scale güvenle uygulanır). Default 1 = no-op (Phase 122
+   * davranışı BİREBİR). Rail thumb (chromeless) bu değişkeni
+   * SET ETMEZ → daima 1 (rail candidate preview'ları operatör
+   * zoom'undan bağımsız; Phase 117-118 single-renderer +
+   * chromeless baseline bozulmaz). Export pipeline CSS değil
+   * Sharp — bu değişkeni ASLA görmez (§11.0 Preview = Export
+   * Truth; zoom = viewing aid, final visual değil). */
+  transform: translate(-50%, -50%) scale(var(--ks-preview-zoom, 1));
+  transition: transform 120ms ease;
   /* Phase 110 — CSS max-width/max-height % clamp KALDIRILDI.
    *
    * Phase 94-109 baseline `max-width:85% / max-height:82%` plate

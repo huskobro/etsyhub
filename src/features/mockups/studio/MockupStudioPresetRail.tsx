@@ -151,6 +151,16 @@ export interface MockupStudioPresetRailProps {
    *  birebir aynı plate/composition için gerekli (single-renderer
    *  parity). Undefined → "16:9" baseline. */
   frameAspect?: FrameAspectKey;
+  /** Phase 123 — Preview-only zoom (rail-head Zoom slider).
+   *
+   * Phase 96-122 boyunca bu slider NO-OP idi. Shell state'e
+   * bağlandı: slider onChange → onChangePreviewZoom → Shell →
+   * orta panel plate'i CSS scale. Canonical visual param DEĞİL
+   * (Contract kategori 2 helper state); export'a girmez (§11.0),
+   * rail candidate thumb'lara uygulanmaz. Yüzde (25–200);
+   * 100 = no-op. */
+  previewZoom?: number;
+  onChangePreviewZoom?: (next: number) => void;
 }
 
 export function MockupStudioPresetRail({
@@ -165,7 +175,18 @@ export function MockupStudioPresetRail({
   deviceShape,
   slots,
   frameAspect = "16:9",
+  previewZoom,
+  onChangePreviewZoom,
 }: MockupStudioPresetRailProps) {
+  /* Phase 123 — Zoom slider Shell state'ten (canonical). Fallback
+   * local state (legacy / Shell prop yoksa). Slider → setZoom →
+   * onChangePreviewZoom → Shell → orta panel plate scale. */
+  const [localZoom, setLocalZoom] = useState(100);
+  const zoom = previewZoom ?? localZoom;
+  const setZoom = (n: number) => {
+    if (onChangePreviewZoom) onChangePreviewZoom(n);
+    else setLocalZoom(n);
+  };
   /* Phase 96 — Layout count Shell state'ten geliyor; fallback local
    * state (legacy). Operator buttons → onChangeLayoutCount → Shell
    * setter → tüm rail thumb + stage senkron. */
@@ -359,6 +380,11 @@ export function MockupStudioPresetRail({
             {STUDIO_LAYOUT_VARIANT_LABELS[activeVariant]}
           </div>
         </div>
+        {/* Phase 123 — Zoom slider artık çalışıyor (Phase 96-122
+            no-op idi). onChange → setZoom → Shell previewZoom →
+            orta panel plate CSS scale. Preview-only helper:
+            export'a girmez (§11.0), rail candidate thumb'lara
+            uygulanmaz (chromeless single-renderer baseline). */}
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <span className="k-studio__range-cap">Zoom</span>
           <input
@@ -366,14 +392,18 @@ export function MockupStudioPresetRail({
             className="k-studio__range"
             min={25}
             max={200}
-            defaultValue={100}
+            step={5}
+            value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
             aria-label="Zoom"
+            data-testid="studio-rail-zoom"
           />
           <span
             className="k-studio__range-val"
             style={{ minWidth: 32 }}
+            data-testid="studio-rail-zoom-val"
           >
-            100%
+            {zoom}%
           </span>
         </div>
       </div>

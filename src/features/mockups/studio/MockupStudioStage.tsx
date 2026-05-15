@@ -701,6 +701,19 @@ export interface StageSceneProps {
    * Phase 117 davranışı BİREBİR (DOM byte-identical, regression
    * yok). Yalnız StageScenePreview chromeless=true geçer. */
   chromeless?: boolean;
+  /** Phase 123 — Preview-only zoom (rail-head Zoom slider).
+   *
+   * Operatör orta paneldeki kompozisyonu yakınlaştırıp inceleyebilsin
+   * (Shots.so preview-inspection kontrolü). Yalnız **orta panel
+   * plate'ine** CSS `transform: scale()` olarak uygulanır; canonical
+   * visual parameter DEĞİL — Contract kategori 2 (mode/UI-specific
+   * helper state). §11.0 Preview = Export Truth: export pipeline
+   * (frame-compositor.ts) bu değeri ASLA görmez (zoom = viewing aid,
+   * final visual değil). chromeless=true (rail candidate thumb)
+   * iken UYGULANMAZ — rail preview'ları bağımsız (Phase 117-118
+   * single-renderer + chromeless baseline'ı bozulmaz). 1.0 = no-op
+   * (default; Phase 122 davranışı BİREBİR). */
+  previewZoom?: number;
   /** Stage main fn'in overlay'leri (empty-cap / render-ov / zoom-
    *  pill / edit-pill / render banner) AYNI `k-studio__stage` div'i
    *  içinde sibling olarak kalır → Stage DOM byte-identical.
@@ -725,6 +738,7 @@ export function StageScene({
   isRender,
   isEmpty,
   chromeless = false,
+  previewZoom = 1,
   children,
 }: StageSceneProps) {
   const sceneTones = resolveSceneStyle(
@@ -746,12 +760,31 @@ export function StageScene({
   const blurPlateOnly =
     lensBlurActive && plateEffects.blurTarget === "plate";
   const blurAll = lensBlurActive && plateEffects.blurTarget === "all";
+  /* Phase 123 — Preview-only zoom yalnız ORTA PANEL plate'ine
+   * (chromeless=false). Rail candidate thumb (chromeless=true)
+   * previewZoom'u YOK SAYAR → rail preview'ları operatör zoom'undan
+   * bağımsız (Phase 117-118 single-renderer + chromeless baseline
+   * bozulmaz). Export pipeline bu transform'u görmez (§11.0). */
+  const zoomActive = !chromeless && previewZoom !== 1;
   const plateStyle: React.CSSProperties = {
     width: plateDims.w,
     height: plateDims.h,
     ...(plateBgRaw && !blurPlateOnly ? { background: plateBgRaw } : {}),
     ...(blurAll
       ? { filter: `blur(${plateEffects.filterBlurPx}px)` }
+      : {}),
+    /* Phase 123 — Zoom CSS-variable ile (inline transform DEĞİL).
+     * Plate'in CSS rule'u `transform: translate(-50%,-50%)
+     * scale(var(--ks-preview-zoom,1))` translate+scale'i kendisi
+     * compose eder; React yalnız değişkeni set eder (inline
+     * transform ↔ CSS transform kompozisyon kırılması YOK — DOM
+     * pixel ölçümüyle kanıtlanan eski bug). zoomActive=false
+     * iken değişken hiç set edilmez → CSS fallback 1 (no-op,
+     * Phase 122 BİREBİR). chromeless (rail thumb) zoomActive
+     * daima false → değişken set edilmez → rail thumb plate
+     * scale 1 (rail candidate previews bağımsız). */
+    ...(zoomActive
+      ? ({ "--ks-preview-zoom": previewZoom } as React.CSSProperties)
       : {}),
   };
   const plateSurfaceStyle: React.CSSProperties | undefined =
@@ -815,6 +848,7 @@ export function StageScene({
           }
           data-lens-blur={lensBlurActive ? "true" : "false"}
           data-blur-target={lensBlurActive ? plateEffects.blurTarget : ""}
+          data-preview-zoom={zoomActive ? String(previewZoom) : "1"}
           style={plateStyle}
         >
           {plateSurfaceStyle ? (
@@ -943,6 +977,11 @@ export interface MockupStudioStageProps {
   viewportW?: number;
   viewportH?: number;
   railCollapsed?: boolean;
+  /** Phase 123 — Preview-only zoom (rail-head Zoom slider). Shell
+   *  state; yalnız orta panel plate'ine uygulanır (StageScene
+   *  previewZoom). Canonical visual param DEĞİL — export'a girmez
+   *  (§11.0), rail candidate thumb'lara uygulanmaz. 1.0 = no-op. */
+  previewZoom?: number;
 }
 
 export function MockupStudioStage({
@@ -962,6 +1001,7 @@ export function MockupStudioStage({
   viewportW = 1440,
   viewportH = 900,
   railCollapsed = false,
+  previewZoom = 1,
 }: MockupStudioStageProps) {
   const isPreview = appState === "preview" || appState === "renderDone";
   const isRender = appState === "render";
@@ -1003,6 +1043,7 @@ export function MockupStudioStage({
       isPreview={isPreview}
       isRender={isRender}
       isEmpty={isEmpty}
+      previewZoom={previewZoom}
     >
       <StageSceneOverlays
         mode={mode}
