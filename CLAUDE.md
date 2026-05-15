@@ -19661,8 +19661,44 @@ surface" rolünün tam ürünleştirilmesi.
   default; ileride productType-specific aspect chip'leri eklenebilir
   — Phase 98+ candidate).
 
-### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 chrome parity)
+### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome)
 
+- **Phase 102 item chrome parity fulfilled — exported PNG'deki her
+  mockup item'ı Studio preview item chrome'una yaklaştı.**
+  Phase 101 plate chrome'unu (rounded + border + drop shadow + dark
+  stage padding) compose etti ama **item-level chrome eksikti**: Sharp
+  slot composite raw `fit:cover` resize yapıyordu; preview'da
+  `.k-studio__slot-wrap` `filter: drop-shadow(0 16px 32px rgba(0,0,0,
+  0.5)) drop-shadow(0 4px 10px rgba(0,0,0,0.35))` item shadow chain +
+  ProductType-aware SVG shape rounded body + outline taşıyordu.
+  Phase 102 fix'i (yalnız `frame-compositor.ts`, slot composite zinciri):
+  - **Rounded mask**: her asset SVG `<clipPath>` rounded rect ile
+    maskelenir (`itemRadius = clamp(6, min(slotW,slotH)×0.11, 40)`).
+    Asset 1:1 raw image (operator MJ output) olsa bile item'ın kendi
+    rounded chrome'u var.
+  - **Drop-shadow chain**: her slot için ayrı SVG layer
+    `<feDropShadow>` 2-katmanlı (preview `0 16px 32px rgba(.5)` +
+    `0 4px 10px rgba(.35)` parity; output dims'e oranla scaled).
+    Shadow padding (`shadowOffset1 + shadowBlur1`) ile slot tile
+    asset'ten büyük; shadow item'ın dışına taşar.
+  - **White outline ring**: asset üstüne `stroke="rgba(255,255,255,
+    0.18)" stroke-width=clamp(1.5,minDim/100,4)"` (Shots.so item
+    border parity).
+  - Slot başına TEK Sharp composite (transparent canvas + shadow +
+    rounded asset + outline) — performans için 3 slot × 3 layer
+    yerine slot başına 1 chrome wrap.
+- **Editing chrome vs final chrome split** (operator talimatı):
+  - **Final visual chrome export'a girer**: rounded corner +
+    drop-shadow chain + white outline (Shots.so download davranışı:
+    studio'da görünen item chrome indirilen dosyada da var).
+  - **Editing chrome export'a GİRMEZ**: slot-ring selection
+    box-shadow (Phase 94 baseline — Frame mode'da `data-on` ama
+    `box-shadow:none`), slot badge "01 Front View" (preview-only,
+    `pointer-events:none`). Sharp pipeline bunları compose etmez —
+    yalnız assigned slot asset + final chrome.
+- **Canonical truth = exported PNG** (Phase 101 baseline sabit).
+  Studio preview = exported PNG'nin authoring önizlemesi; operator
+  için "studio'da gördüğüm ≈ indirdiğim PNG ≈ Product tile".
 - **Phase 101 chrome parity fulfilled — Studio preview ↔ exported PNG ↔
   Product MockupsTab tile aynı görsel aileden gelir.**
   Phase 99'da Sharp pipeline plate chrome'unu compose etmiyordu (düz
@@ -20903,6 +20939,198 @@ chrome (rounded corners + selection ring) Sharp pipeline'a eklenir
 plate-level fix ile yakalandı; Phase 102 fine-grain polish + Etsy
 Draft submit pipeline frame-export end-to-end test (Phase 101 baseline
 + Phase 9 push).
+
+---
+
+## Phase 102 — Item-level chrome parity (rounded + outline + drop shadow)
+
+Phase 101 plate chrome parity'yi kapattı (rounded plate + border +
+drop shadow + dark stage padding). Kullanıcı net belirtti: "yalnız
+plate'in çevresi değildi; mockup item'ların kendisi de Studio
+preview ile export arasında aynı görünmeli" (item border/chrome,
+white outline, rounded corners, item shadow, item crop/fit).
+Shots.so'da studio'da görünen ne ise indirilen dosya da ona çok
+yakın. Phase 102 item-level parity'yi kapatır.
+
+### Shots.so download davranışı research
+
+WebFetch + WebSearch ile incelendi: Shots.so "Pixel perfect exports"
++ Style (Glass Light/Dark/Liquid) + Shadow (None/Spread/Hug/Adaptive)
+sunuyor; teknik pipeline detayı public değil ama ürün vaadi net —
+**studio preview = downloaded file** (item chrome dahil). Kivasy
+hedefi aynı: preview'da görünen item shadow/border/rounded download'a
+yansımalı.
+
+### Item-level audit (kod + DOM ölçüm)
+
+`.k-studio__slot-wrap` DOM ölçümü (Studio preview canonical):
+- `filter: drop-shadow(rgba(0,0,0,0.5) 0px 16px 32px)
+  drop-shadow(rgba(0,0,0,0.35) 0px 4px 10px)` — 2-katmanlı item shadow
+- Slot içeriği `StageDeviceSVG` (ProductType-aware): test set clipart
+  → `StickerCardSVG` white sticker edge (10px pad) + rounded body
+  (`rx≈22`) + asset surface clip + 1px outline
+- Slot-ring ayrı element: Frame mode'da `data-on=true` ama
+  `box-shadow:none` (Phase 94 baseline — selection chrome Frame'de
+  gizli)
+- Slot badge "01 Front View": `pointer-events:none`, Mockup-only
+
+Phase 101 Sharp pipeline: asset raw `fit:cover` resize → **item
+shadow + rounded + outline YOK**. Bu kullanıcının "item'ların
+kendisi de aynı görünmeli" şikayetinin **kök nedeni**.
+
+### En büyük parity farkı
+
+Plate parity Phase 101'de zaten tamdı. Phase 102 sonrası net:
+**item-level chrome eksikti** (plate değil item). 3 eksik:
+1. Item drop-shadow chain export'a girmiyor (raw composite)
+2. Item rounded corner export'a girmiyor (raw rectangle)
+3. Item white outline export'a girmiyor
+
+### Ürün kararı (chrome split)
+
+**Canonical truth = exported PNG** (Phase 101 baseline sabit;
+değişmedi). Studio preview = export'un authoring önizlemesi.
+
+Item chrome split:
+- **Final visual chrome → export'a girer**: rounded corner +
+  drop-shadow chain + white outline. Operator studio'da bunu
+  görüyor, indirdiği PNG'de de olmalı (Shots.so download
+  davranışı).
+- **Editing chrome → export'a GİRMEZ**: slot-ring selection
+  box-shadow (Phase 94 baseline Frame'de zaten gizli) + slot badge
+  (preview-only). Operator-only feedback; production deliverable'a
+  sızmaz.
+
+### Fix — Sharp slot composite item chrome
+
+`src/providers/mockup/local-sharp/frame-compositor.ts` slot
+composite zinciri yeniden yapılandırıldı:
+
+- `computeItemChrome(slotW, slotH)` helper: itemRadius
+  `clamp(6, minDim×0.11, 40)`; outlineWidth `clamp(1.5, minDim/100,
+  4)`; shadow offset/blur output dims'e oranla scaled (preview
+  16+32 / 4+10 chain parity).
+- Slot başına pipeline:
+  - (a) Asset resize `fit:cover` + optional rotate → raw PNG
+  - (b) Rounded mask: SVG `<rect rx ry fill=white>` + Sharp
+    `composite blend:"dest-in"` → rounded asset
+  - (c) Shadow+outline SVG: `<feDropShadow>` 2-katmanlı (filled
+    black rect + filter) + ayrı `<rect fill=none stroke>` outline
+  - (d) Slot tile: transparent canvas (tileW/H = asset + shadow
+    padding ×2) + shadow layer + rounded asset + outline layer →
+    TEK Sharp composite call
+  - Tile pozisyonu asset center slot center'a hizalı (shadow
+    padding offset hesaba katıldı)
+- Selection ring + badge **compose edilmez** (Phase 94 split
+  korunur; yalnız assigned slot + final chrome).
+
+`MockupsTab` **dokunulmadı** — Phase 101 baseline (frame-export
+entry → `aspect-[4/3] bg-ink object-contain`) korundu; tile gerçek
+export PNG'sini gösterdiği için item chrome otomatik yansır.
+
+### Browser end-to-end real-asset doğrulama
+
+Live dev server (1600×1100, real DB, real selection set
+`cmov0ia37` 4-item clipart + real MinIO MJ assets PAS5/Pinterest):
+
+| Adım | Kanıt |
+|---|---|
+| Studio preview (Frame mode) | StickerCardSVG cascade: white sticker edge + rounded + drop shadow + plate warm gradient + dark padding (screenshot) |
+| Phase 101 export (baseline ref) | rounded plate ama item keskin köşeli rectangle, item shadow YOK |
+| Phase 102 export | 1920×1080, 759.1 KB; **item rounded corner + white outline + drop-shadow chain** (screenshot) — Studio preview item chrome'una çok yakın |
+| Studio preview ↔ Phase 102 PNG yan yana | aynı görsel aile (rounded + shadow + outline); ProductType-specific sticker white-pad farkı kaldı (Phase 103+ candidate) |
+| Send to Product handoff | "✓ Added to listing" |
+| Product MockupsTab Frame Exports | tile aspectRatio "4/3", bg rgb(22,19,15)=bg-ink, objectFit "contain", img naturalW/H 1920/1080, Phase 102 export (`rg3cae6n9`) cover; Phase 101 tile baseline korundu |
+
+Screenshot kanıtları:
+- Studio Frame preview: 3 sticker card cascade, white edge +
+  rounded + item shadow
+- Phase 102 export PNG: rounded asset + white outline ring +
+  drop-shadow chain (Phase 101 keskin köşeli ile karşılaştırma)
+- Product MockupsTab: Frame Exports bucket 4 tile, Phase 102
+  export item chrome'lu, ilki cover ring + Primary badge
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products,
+  listings}`: **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 102)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Phase 100 FrameExport + Listing.
+  imageOrderJson baseline dokunulmadı.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek dosya (`frame-compositor.ts`)
+  slot composite zinciri + `computeItemChrome` helper. Yeni
+  service / route / endpoint yok. MockupsTab + Studio shell +
+  diğer tüm yüzeyler dokunulmadı.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Mockup mode render dispatch (POST /api/mockup/jobs)
+  dokunulmadı** — Phase 8 baseline Mockup pack pipeline ayrı
+  compositor (`compositor.ts`); Frame-only `frame-compositor.ts`
+  refactor'undan etkilenmedi.
+- **Studio shell, slot-ring selection chrome, slot badge, Phase 94
+  editing/final split, Phase 101 plate chrome + tile aspect**
+  hepsi intakt.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Phase 100 persistence + handoff + Listing discriminated union
+  backward-compat tam.**
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Düzeltilen parity bug'ları (Phase 102):
+- **Studio preview ↔ exported PNG item drop-shadow divergence** —
+  preview'da `.k-studio__slot-wrap` 2-katmanlı drop-shadow chain
+  vardı; Sharp slot composite raw resize ediyordu. Phase 102
+  `<feDropShadow>` 2-katmanlı slot tile.
+- **Item rounded corner kaybı** — Sharp raw rectangle composite;
+  preview'da SVG shape rounded body. Phase 102 SVG `<clipPath>`
+  rounded mask.
+- **Item white outline kaybı** — Sharp'ta yok; preview'da SVG
+  shape outline. Phase 102 `stroke="rgba(255,255,255,0.18)"` ring.
+
+Hâlâ açık (Phase 103+ candidate):
+- **ProductType-specific item shape parity** — Studio preview
+  `StageDeviceSVG` ProductType-aware (sticker → white sticker
+  edge 10px pad / wall_art → frame matting / phone → device
+  bezel). Phase 102 Sharp pipeline ortak chrome (rounded +
+  outline + shadow) tüm productType'lara aynı; sticker white-pad
+  / wall_art matting / phone bezel tam parity Phase 103+ (her
+  shape için ayrı SVG compose büyük scope; ana "ne gördüm = ne
+  aldım" divergence'i Phase 102 rounded+outline+shadow ile
+  yakalandı).
+- **Plate-only Lens Blur** (Phase 101'den devir) — blur şu an
+  full canvas; preview'da plate parent'a CSS filter (stage
+  padding clean). Sharp plate-only extract + composite zinciri
+  Phase 103+.
+- **Drop shadow 4. katman** (Phase 101'den devir) — preview
+  4-katmanlı; libvips feDropShadow 2-3 katman tutarlı; ana visual
+  impact yakalandı.
+- **Etsy Draft submit pipeline frame-export end-to-end test** —
+  handoff entry Listing.imageOrderJson'a yazılıyor + Phase 9
+  push pipeline outputKey/signedUrl yolu intakt; gerçek Etsy
+  push test Phase 103+ (Etsy API key gerek).
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 102 ile operator için **plate + item chrome parity** birlikte
+fulfilled:
+- Studio'da gördüğüm ≈ indirdiğim PNG ≈ Product MockupsTab tile
+- Plate rounded + border + drop shadow + stage padding (Phase 101)
+- Item rounded + white outline + drop-shadow chain (Phase 102)
+- Editing chrome (selection ring + badge) export'a girmez
+
+Sıradaki en yüksek-impact adım **Phase 103 candidate**: ProductType-
+specific item shape parity (sticker white-pad / wall_art matting /
+phone bezel Sharp pipeline'a) — operator için kalan en görünür
+divergence. Ana item chrome (rounded+outline+shadow) Phase 102'de
+yakalandığı için Phase 103 fine-grain shape polish. Paralel: Etsy
+Draft submit pipeline frame-export end-to-end test.
 
 ---
 

@@ -296,8 +296,46 @@ export async function composeFrameOutput(
     plateLayout.plateY + (plateLayout.plateH - stageInnerH * cascadeScale) / 2,
   );
 
-  // Composite operations array
+  // Composite operations array.
+  //
+  // Phase 102 — Item-level chrome (sözleşme #11 + final visual chrome,
+  // editing chrome export'a girmez):
+  //
+  //   1. **Drop-shadow chain** — preview'da `.k-studio__slot-wrap` CSS
+  //      `filter: drop-shadow(0 16px 32px rgba(0,0,0,0.5)) drop-shadow(
+  //      0 4px 10px rgba(0,0,0,0.35))` 2-katmanlı item-level shadow var.
+  //      Sharp pipeline her slot için ayrı SVG layer (slot bg shadow
+  //      mask) compose eder.
+  //   2. **Rounded corner mask** — asset 1:1 raw image olsa bile (operator
+  //      MJ output) slot'un kendi rounded chrome'u var (preview Phase 102
+  //      `.k-studio__slot-wrap` border-radius). Asset SVG `<clipPath>`
+  //      rounded rect ile maskelenir.
+  //   3. **White outline ring** — Shots.so item border parity; asset'in
+  //      üzerine subtle white outline çizilir (`stroke="rgba(255,255,255,
+  //      0.18)" stroke-width="2"`).
+  //
+  // Selection ring + slot badge **export'a girmez** (Phase 94 baseline
+  // korunur — slot-ring data-on=false Frame mode'da; badge ise yalnız
+  // Mockup mode'da preview-only).
   const slotComposites: sharp.OverlayOptions[] = [];
+
+  // Phase 102 — Item chrome ölçüleri (preview CSS parity scaled).
+  // Slot output dims < 200px → radius+stroke küçülür (overflow yok).
+  const computeItemChrome = (slotOutW: number, slotOutH: number) => {
+    const minDim = Math.min(slotOutW, slotOutH);
+    // Preview wrap radius ~16-20px @ ref slot ~120-200px → radius/dim
+    // ratio ~0.10-0.13. Export'ta da aynı ratio.
+    const itemRadius = Math.max(6, Math.min(40, Math.round(minDim * 0.11)));
+    // White outline 2px @ preview, output dims'e oranla minimum 1.5px.
+    const outlineWidth = Math.max(1.5, Math.min(4, minDim / 100));
+    // Shadow scale (preview 16+32 / 4+10 — output dims'e oranla
+    // libvips feDropShadow tutarlı 2-katmanlı chain).
+    const shadowOffset1 = Math.max(4, Math.round(minDim * 0.08));
+    const shadowBlur1 = Math.max(8, Math.round(minDim * 0.16));
+    const shadowOffset2 = Math.max(1, Math.round(minDim * 0.02));
+    const shadowBlur2 = Math.max(2, Math.round(minDim * 0.05));
+    return { itemRadius, outlineWidth, shadowOffset1, shadowBlur1, shadowOffset2, shadowBlur2 };
+  };
 
   for (const slot of slots) {
     if (!slot.imageBuffer) continue; // ghost slot: skip in export
@@ -307,7 +345,26 @@ export async function composeFrameOutput(
     const slotOutX = Math.round(slot.x * cascadeScale + cascadeOffsetX);
     const slotOutY = Math.round(slot.y * cascadeScale + cascadeOffsetY);
 
-    // Resize asset, optional rotate, alpha-aware
+    // Ghost slot opacity (preview parity — Phase 85 baseline).
+    if (!slot.assigned) {
+      // Skip ghosts in export (operator için unassigned slot'lar export
+      // edilmez — production deliverable yalnız assigned cascade gösterir).
+      continue;
+    }
+
+    // Phase 102 — Item chrome compose (rounded mask + drop-shadow + outline)
+    //
+    // Pipeline:
+    //   (a) Asset resize + (optional) rotate → raw asset PNG
+    //   (b) SVG mask: rounded rect clipPath ile asset'i rounded yap
+    //   (c) Drop-shadow chain SVG layer (asset'in altına ekle)
+    //   (d) White outline ring SVG layer (asset'in üzerine)
+    //
+    // Tüm bunları slot başına TEK Sharp composite call'ında yapmak
+    // performans için kritik (3 slot × 3 layer = 9 ek composite call
+    // yerine slot başına 1 raw → 1 chrome wrap).
+
+    // (a) Asset resize + rotate
     let assetSharp = sharp(slot.imageBuffer).resize(slotOutW, slotOutH, {
       fit: "cover",
       position: "centre",
@@ -317,23 +374,96 @@ export async function composeFrameOutput(
         background: { r: 0, g: 0, b: 0, alpha: 0 },
       });
     }
-    const slotPng = await assetSharp.png().toBuffer();
+    const rawAssetPng = await assetSharp.png().toBuffer();
     // After rotation, dimensions may have grown; recenter
-    const meta = await sharp(slotPng).metadata();
+    const meta = await sharp(rawAssetPng).metadata();
     const finalW = meta.width ?? slotOutW;
     const finalH = meta.height ?? slotOutH;
-    const finalX = Math.round(slotOutX + (slotOutW - finalW) / 2);
-    const finalY = Math.round(slotOutY + (slotOutH - finalH) / 2);
 
-    // Ghost slot opacity (preview parity — Phase 85 baseline).
-    if (!slot.assigned) {
-      // Skip ghosts in export (operator için unassigned slot'lar export
-      // edilmez — production deliverable yalnız assigned cascade gösterir).
-      continue;
-    }
+    const chrome = computeItemChrome(finalW, finalH);
+
+    // (b) Rounded mask SVG — asset'i rounded rect ile mask et
+    const maskSvg = `<svg width="${finalW}" height="${finalH}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="${finalW}" height="${finalH}"
+        rx="${chrome.itemRadius}" ry="${chrome.itemRadius}"
+        fill="white"/>
+    </svg>`;
+    const roundedAssetPng = await sharp(rawAssetPng)
+      .composite([
+        {
+          input: Buffer.from(maskSvg),
+          blend: "dest-in",
+        },
+      ])
+      .png()
+      .toBuffer();
+
+    // (c) + (d) Full slot tile: drop-shadow chain underneath + rounded
+    // asset on top + white outline ring. Shadow chain padding gerekir
+    // (shadow rounded asset'in dışına taşacak); slot tile output > asset.
+    const padding = Math.ceil(chrome.shadowOffset1 + chrome.shadowBlur1);
+    const tileW = finalW + padding * 2;
+    const tileH = finalH + padding * 2;
+    const assetXInTile = padding;
+    const assetYInTile = padding;
+
+    // Shadow + outline SVG layer (single SVG; feDropShadow on rounded rect)
+    // - Rounded rect with feDropShadow filter creates the shadow chain
+    // - Rounded rect stroke creates the white outline
+    // - fill=none on the visible rect (asset will sit on top via composite)
+    const shadowOutlineSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="slot-sh" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="${chrome.shadowOffset1}"
+            stdDeviation="${Math.round(chrome.shadowBlur1 / 2)}"
+            flood-color="black" flood-opacity="0.5"/>
+          <feDropShadow dx="0" dy="${chrome.shadowOffset2}"
+            stdDeviation="${Math.round(chrome.shadowBlur2 / 2)}"
+            flood-color="black" flood-opacity="0.35"/>
+        </filter>
+      </defs>
+      <!-- Shadow base rect (filled black with shadow filter; will be
+           covered by rounded asset) -->
+      <rect x="${assetXInTile}" y="${assetYInTile}"
+        width="${finalW}" height="${finalH}"
+        rx="${chrome.itemRadius}" ry="${chrome.itemRadius}"
+        fill="black" filter="url(#slot-sh)"/>
+    </svg>`;
+
+    // Outline SVG layer — asset'in tam üstüne white outline ring
+    const outlineSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="${assetXInTile + chrome.outlineWidth / 2}"
+        y="${assetYInTile + chrome.outlineWidth / 2}"
+        width="${finalW - chrome.outlineWidth}"
+        height="${finalH - chrome.outlineWidth}"
+        rx="${chrome.itemRadius}" ry="${chrome.itemRadius}"
+        fill="none"
+        stroke="rgba(255,255,255,0.18)" stroke-width="${chrome.outlineWidth}"/>
+    </svg>`;
+
+    // Build slot tile: transparent canvas + shadow + rounded asset + outline
+    const slotTilePng = await sharp({
+      create: {
+        width: tileW,
+        height: tileH,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .composite([
+        { input: Buffer.from(shadowOutlineSvg), top: 0, left: 0 },
+        { input: roundedAssetPng, top: assetYInTile, left: assetXInTile },
+        { input: Buffer.from(outlineSvg), top: 0, left: 0 },
+      ])
+      .png()
+      .toBuffer();
+
+    // Position tile so asset center aligns with slot center
+    const finalX = Math.round(slotOutX + (slotOutW - finalW) / 2 - padding);
+    const finalY = Math.round(slotOutY + (slotOutH - finalH) / 2 - padding);
 
     slotComposites.push({
-      input: slotPng,
+      input: slotTilePng,
       top: Math.max(0, finalY),
       left: Math.max(0, finalX),
     });
