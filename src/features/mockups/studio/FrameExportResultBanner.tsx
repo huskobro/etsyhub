@@ -13,6 +13,10 @@ import {
   type LensBlurConfig,
   normalizeLensBlur,
 } from "./frame-scene";
+import {
+  type MediaPosition,
+  mediaPositionsEqual,
+} from "./media-position";
 
 export interface FrameExportResultSnapshot {
   mode: string;
@@ -21,6 +25,11 @@ export interface FrameExportResultSnapshot {
    *  Stale karşılaştırması normalizeLensBlur ile yapılır. */
   lensBlur?: boolean | LensBlurConfig;
   frameAspect: string;
+  /** Phase 126 — Global canonical media-position (export'a girer
+   *  §11.0). Stale karşılaştırması mediaPositionsEqual epsilon
+   *  ile (float drift'ten sahte stale üretmez). undefined →
+   *  {0,0} (eski export'lar pad'siz — neutral backward-compat). */
+  mediaPosition?: MediaPosition;
 }
 
 export interface FrameExportResultBannerProps {
@@ -70,10 +79,19 @@ export function FrameExportResultBanner({
     (curLb.enabled &&
       (curLb.target !== snapLb.target ||
         curLb.intensity !== snapLb.intensity));
+  /* Phase 126 — Media-position stale: canonical (export'a girer
+   *  §11.0) → değişirse "Preview changed — re-export?". Epsilon
+   *  eşitlik (mediaPositionsEqual 1e-3) float drift'ten sahte
+   *  stale üretmez. undefined → {0,0} (eski export'lar pad'siz). */
+  const mediaPositionChanged = !mediaPositionsEqual(
+    currentSceneSnapshot.mediaPosition ?? { x: 0, y: 0 },
+    result.sceneSnapshot.mediaPosition ?? { x: 0, y: 0 },
+  );
   const isStale =
     currentSceneSnapshot.mode !== result.sceneSnapshot.mode ||
     currentSceneSnapshot.glassVariant !== result.sceneSnapshot.glassVariant ||
     lensBlurChanged ||
+    mediaPositionChanged ||
     currentSceneSnapshot.frameAspect !== result.sceneSnapshot.frameAspect;
   const filename = `kivasy-frame-${result.exportId.slice(0, 8)}-${result.width}x${result.height}.png`;
 

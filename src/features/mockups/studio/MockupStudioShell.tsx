@@ -121,6 +121,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
        *  ile (Preview = Export Truth §11.0). */
       lensBlur?: boolean | LensBlurConfig;
       frameAspect: string;
+      /** Phase 126 — canonical media-position (export anı; banner
+       *  stale karşılaştırması epsilon ile). */
+      mediaPosition?: MediaPosition;
     };
   } | null>(null);
   /* Phase 83 — Frame mode aspect ratio (presentation surface).
@@ -711,6 +714,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           glassVariant: sceneOverride.glassVariant,
           lensBlur: sceneOverride.lensBlur,
           frameAspect,
+          // Phase 126 — export anındaki canonical media-position
+          // (banner stale: sonra pad sürülürse "re-export?").
+          mediaPosition,
         },
       });
     } catch (err) {
@@ -949,6 +955,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
             glassVariant: sceneOverride.glassVariant,
             lensBlur: sceneOverride.lensBlur,
             frameAspect,
+            // Phase 126 — şu anki canonical media-position; export
+            // snapshot'tan epsilon farklıysa banner stale gösterir.
+            mediaPosition,
           }}
           onClose={() => setFrameExportResult(null)}
           onReexport={handleExportFrame}
