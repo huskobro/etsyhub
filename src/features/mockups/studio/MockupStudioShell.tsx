@@ -206,25 +206,38 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     Record<string, string | null>
   >({});
 
-  /* Phase 109 — Minimum usable viewport guard (Shots.so canonical
-   * davranış: dar viewport'ta editor'ü HİÇ gösterme → intercept
-   * screen). Shots.so live ölçümü: ~960px altında editor gizli,
-   * promo/splash screen. Kivasy eşiği: sidebar 214 + rail 202 +
-   * min stage ~600 + padding = 1100×640. Bu eşiğin altında studio
-   * shell yerine sade "Larger screen required" state (yeni route/
-   * yüzey DEĞİL — Shell'in koşullu render dalı; client matchMedia).
-   * Sözleşme §5 viewport behavior + §13 future direction. */
-  const [viewportTooSmall, setViewportTooSmall] = useState(false);
+  /* Phase 110 — 3-aşamalı responsive viewport (Shots.so canonical
+   * davranış, browser+DOM ölçümüyle doğrulandı):
+   *
+   *   ≥ 1280px         → full (sidebar + stage + rail)
+   *   880–1280px       → rail-collapse (sidebar + stage genişler;
+   *                       rail gizli — Shots ~764-1200'de rail'i
+   *                       gizleyip stage'i büyütür, eşik öncesi
+   *                       usability korunur)
+   *   < 880px / <640h  → larger-screen intercept (editor gizli,
+   *                       sade Kivasy dark-shell-uyumlu state)
+   *
+   * Phase 109 tek-aşamalı idi (≥1100 full / <1100 intercept).
+   * Shots.so live ölçümü 3-aşamalı kanıtladı: rail-collapse ara
+   * aşaması dar viewport'ta studio'yu usable tutar (rail gizli,
+   * stage o alanı kazanır). Phase 110 intercept eşiği 1100→880
+   * çünkü rail-collapse ara aşaması artık 880-1280'de usable
+   * studio sağlıyor. window dimensions plate-fit hesabına da
+   * beslenir (aspect-locked plateDimensionsFor). Sözleşme §5. */
+  const [viewport, setViewport] = useState<{
+    w: number;
+    h: number;
+  }>({ w: 1440, h: 900 });
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const mq = window.matchMedia(
-      "(max-width: 1099px), (max-height: 639px)",
-    );
-    const sync = () => setViewportTooSmall(mq.matches);
+    const sync = () =>
+      setViewport({ w: window.innerWidth, h: window.innerHeight });
     sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
   }, []);
+  const viewportTooSmall = viewport.w < 880 || viewport.h < 640;
+  const railCollapsed = !viewportTooSmall && viewport.w < 1280;
 
   const keptItems: StudioKeptItem[] = useMemo(() => {
     if (!items.length) return [];
@@ -716,9 +729,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
               lineHeight: 1.55,
             }}
           >
-            The studio canvas, side panel and preset rail need at
-            least a 1100×640 viewport. Open this on a wider window
-            or larger display to compose mockups.
+            The studio canvas and side panel need at least an
+            880×640 viewport. Open this on a wider window or
+            larger display to compose mockups.
           </div>
           <a
             href={`/selections/${setId}`}
@@ -808,15 +821,24 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           activePalette={activePalette}
           sceneOverride={sceneOverride}
           layoutCount={layoutCount}
+          viewportW={viewport.w}
+          viewportH={viewport.h}
+          railCollapsed={railCollapsed}
         />
-        <MockupStudioPresetRail
-          mode={mode}
-          appState={appState}
-          activePalette={activePalette}
-          sceneOverride={sceneOverride}
-          layoutCount={layoutCount}
-          onChangeLayoutCount={setLayoutCount}
-        />
+        {/* Phase 110 — Rail-collapse ara aşaması (Shots.so canonical):
+         *  880–1280px'te sağ rail gizli, stage o alanı kazanır.
+         *  ≥1280px'te full. Mockup studio shell bozulmaz —
+         *  rail conditional render, layout flex devam eder. */}
+        {!railCollapsed ? (
+          <MockupStudioPresetRail
+            mode={mode}
+            appState={appState}
+            activePalette={activePalette}
+            sceneOverride={sceneOverride}
+            layoutCount={layoutCount}
+            onChangeLayoutCount={setLayoutCount}
+          />
+        ) : null}
       </div>
       {/* Phase 94 — Dev/demo state switcher kaldırıldı (bug #19). */}
       {/* Phase 99 — Frame export result panel (inline, bottom-center).

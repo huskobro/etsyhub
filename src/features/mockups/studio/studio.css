@@ -716,11 +716,21 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  /* Phase 94 — Plate %85/%82 (Phase 93 %82/%78 → aspect-aware
-   * Frame mode'da 9:16 portrait yüksek yer kaplar, biraz daha
-   * generous bbox-fit). Stage padding hâlâ belirgin. */
-  max-width: 85%;
-  max-height: 82%;
+  /* Phase 110 — CSS max-width/max-height % clamp KALDIRILDI.
+   *
+   * Phase 94-109 baseline `max-width:85% / max-height:82%` plate
+   * boyutunu inline JS w/h'tan BAĞIMSIZ iki ayrı % ile cap'liyordu.
+   * Biri tetiklenince diğeri orantısal küçülmüyor → 16:9 plate
+   * @1440 aspect 1.432, @1180 1.097 (16:9=1.778'den sapma —
+   * kompozisyon görsel bozuluyor). Kullanıcı "browser daralınca
+   * aspect sabit kalmıyor" bug'ının kök nedeni.
+   *
+   * Phase 110: plate boyutu tamamen plateDimensionsFor'da
+   * (viewport-aware + aspect-locked bbox-fit) hesaplanır; CSS
+   * yalnız inline w/h'ı render eder, clamp YOK. Aspect daima
+   * sabit (Shots.so canonical). overflow guard: aşırı dar
+   * viewport zaten Phase 110 larger-screen intercept'e düşer
+   * (<880px), o yüzden CSS clamp gereksiz. */
   border-radius: 26px;
   /* Plate'in kendi subtle border'ı — stage'den ayırır.
    * Phase 92: 1px rgba(.07) neredeyse görünmezdi; 2px rgba(.18)

@@ -19587,27 +19587,50 @@ surface" rolünün tam ürünleştirilmesi.
 - Sol sidebar + sağ rail kendi internal scroll alanlarını taşır.
   Operator sidebar'da Magic Preset altına inerse stage + rail
   sabit kalır.
-- Stage viewport-aware: viewport büyüdükçe plate ve stage de
-  proporsiyonel büyür (CSS `max-width` / `max-height` + plate
-  dimensions helper birlikte). Eşik üstü (≥1100×640) viewport'a
-  inilirse plate küçülür ama proportions korunur (cascadeScale
-  + CSS %85/%82 guard).
-- **Minimum usable viewport (Phase 109 — Shots.so canonical):**
-  Studio shell sidebar 214px + rail 202px + min stage ~600 +
-  padding = **1100×640** minimum kullanılabilir viewport. Bu
-  eşiğin **altında** studio shell render edilmez — bunun yerine
-  sade, Kivasy dark-shell-uyumlu **"Mockup Studio needs a larger
-  screen"** intercept state (orange monitor icon + 1100×640
-  açıklama + "Back to selection" link). Shots.so canlı davranış
-  araştırması doğruladı: Shots.so ~960px altında editor'ü HİÇ
-  göstermez, intercept/splash screen koyar (broken editor
-  göstermez — dürüst). Kivasy aynı: dar viewport'ta bozuk
-  sidebar/stage squeeze YERİNE dürüst intercept.
-- Guard mekanizması: client `window.matchMedia("(max-width:
-  1099px), (max-height: 639px)")` + Shell koşullu render dalı
-  (yeni route/yüzey DEĞİL — `MockupStudioShell` early return).
-  Mount'ta + resize'da sync. Eşik üstüne dönülünce full studio
-  geri gelir (responsive geçiş çift yönlü).
+- **Phase 110 — Aspect-locked viewport-aware plate scaling
+  (Shots.so canonical, browser+DOM ölçümüyle doğrulandı):**
+  Plate boyutu **viewport-aware tek aspect-sabit hesapta**
+  belirlenir (`plateDimensionsFor` window dims + railCollapsed
+  → available stage alanı → aspect-locked bbox-fit). CSS
+  bağımsız `max-width`/`max-height` % clamp **KALDIRILDI** —
+  Phase 95-109'da iki ayrı % cap (biri tetiklenince diğeri
+  orantısal küçülmüyor) 16:9 plate aspect'ini bozuyordu (@1440
+  1.432, @1180 1.097; 16:9=1.778'den sapma — kullanıcının
+  "browser daralınca aspect sabit kalmıyor" bug'ının kök
+  nedeni). Phase 110 sonrası aspect **daima sabit** (16:9 →
+  1.777-1.780 her viewport'ta). cascadeScale plateDims'i
+  kullandığı için otomatik düzelir: plate küçülünce cascade
+  orantılı küçülür = **plate + item beraber browser-zoom-out
+  hissi** (Shots parity; @1440 cascade scale 0.964 → @1180
+  0.907). Stage merkez stable (Phase 93/95 baseline korunur).
+- **3-aşamalı responsive viewport (Phase 110 — Shots.so live
+  ölçümü 3-aşamalı kanıtladı):**
+  - **≥ 1280px** → full: sidebar 214px + stage + rail 202px.
+  - **880–1280px** → **rail-collapse ara aşaması**: sağ rail
+    gizli (conditional render), stage o alanı kazanır (stage
+    764→966px, plate %55→%73.6 vw — Shots'ta da rail <~1200'de
+    gizlenir, stage büyür). Sol panel + stage usable kalır;
+    aspect sabit, cascade orantılı zoom-out. Eşik öncesi iyi
+    deneyim.
+  - **< 880px veya < 640px height** → larger-screen intercept:
+    studio shell render edilmez, sade Kivasy dark-shell-uyumlu
+    **"Mockup Studio needs a larger screen"** state (orange
+    monitor icon + 880×640 açıklama + "Back to selection"
+    link). Shots.so ~764px altında editor'ü HİÇ göstermez,
+    landing/splash koyar (broken editor değil — dürüst). Kivasy
+    aynı: bozuk sidebar/stage squeeze YERİNE dürüst intercept.
+  - Phase 109 tek-aşamalı idi (≥1100 full / <1100 intercept);
+    Phase 110 rail-collapse ara aşaması ekledi, intercept eşiği
+    1100→880'e indi (rail-collapse 880-1280'de usable studio
+    sağladığı için).
+- Guard mekanizması: Shell `window.innerWidth/innerHeight`
+  state (resize listener) + türetilen `viewportTooSmall`
+  (<880w veya <640h) + `railCollapsed` (<1280, not tooSmall).
+  Yeni route/yüzey DEĞİL — `MockupStudioStage` viewport prop'ları
+  + rail conditional render + Shell early-return intercept.
+  Mount'ta + resize'da sync. Geçişler çift yönlü (eşik üstüne
+  dönülünce full studio + rail geri gelir; resize sonrası
+  aspect bozulmaz).
 
 ### 6. Right rail behavior
 
@@ -22675,6 +22698,193 @@ fine-tune (preview 4-katman libvips 2-katman) veya — kullanıcı
 kararı geldiğinde — capability map field'larıyla future SVG
 color/chrome variant (effect sistemi hazır). Yeni SVG library
 + layout builder + mockup editörü §13.A'da ertelenmiş kalır.
+
+---
+
+## Phase 110 — Responsive scaling parity: aspect-locked plate + cascade-follows-plate + rail-collapse ara aşama (stabilization turu)
+
+Phase 109 minimum-viewport/larger-screen baseline'ı (tek-aşamalı:
+≥1100 full / <1100 intercept) eklemişti. Phase 110 **eşik öncesi**
+responsive davranışı Shots.so'nun "browser zoom-out" hissine
+yaklaştırır. Feature turu DEĞİL — `plateDimensionsFor` + cascadeScale
++ Phase 109 viewport guard'ın düzeltilmesi. Yeni feature / layout
+builder / mockup editor / yeni SVG library YOK (kullanıcı kısıtı).
+
+### Shots.so resize behavior (gerçek browser + DOM ölçümü)
+
+Chrome'da Shots.so 16:9 sahne, browser pencere adım adım daraltıldı,
+`.frame-background` (stage plate) DOM rect ölçüldü:
+
+| Aşama | Viewport | Sol panel | Stage plate | Sağ rail | Aspect |
+|---|---|---|---|---|---|
+| Full | ≥~1200px | ✓ | %57.8 vw | ✓ | sabit 1.776 |
+| Rail-collapse | ~764–1200px | ✓ | %65.7 vw (büyür) | **❌ gizli** | sabit 1.784 |
+| Intercept | <~764px | — | landing splash | — | — |
+
+Kanonik bulgular: **(1) aspect daima sabit** (1.776→1.784, 16:9
+korunuyor — kompozisyon hiç bozulmuyor), **(2) plate viewport ile
+orantılı küçülüyor** (mutlak 696→528 ama plate/vw %57.8→%65.7 —
+plate viewport'tan yavaş küçülür, dar viewport'ta dominant kalır),
+**(3) item plate ile %100 orantılı** (birlikte zoom-out hissi),
+**(4) rail önce gizlenir** (~764-1200'de rail kapanır, stage o
+alanı kazanır — eşik öncesi usability), **(5) sonra editor
+intercept** (<~764px landing splash). Kullanıcı ek gözlemi
+("belirli daraltma altında sağ panel kapatılmış oluyor") DOM
+ile doğrulandı: @804px `hasLayoutPresets:false`, `hasZoom:false`,
+`rightSideEls:[]` — rail tamamen yok, sol panel + stage var.
+
+### Kivasy resize ölçümü + 3 kök neden
+
+`preview_resize` ile Studio 16:9, farklı genişlik DOM rect:
+
+| | Kivasy @1440 (Phase 109) | Kivasy @1180 (Phase 109) | Shots |
+|---|---|---|---|
+| plate aspect | **1.432** ✗ | **1.097** ✗ | 1.776-1.784 ✓ |
+| cascade cssScale | 1.000 (sabit) | 1.000 (sabit) | orantılı |
+| rail | 202px görünür | 202px görünür | <1200 gizli |
+
+**Kök neden #1 (en kritik) — plate aspect bozuluyor:**
+`plateStyle` inline `width:1080/height:608` (fixed px) + CSS
+`.k-studio__stage-plate` **bağımsız** `max-width:85%` &
+`max-height:82%`. İki ayrı % cap → biri (height) tetiklenince
+diğeri (width) orantısal küçülmüyor → 16:9 plate aspect'i
+1.778'den sapıyor (@1440 1.432, @1180 1.097, neredeyse kare).
+Contract §3 (plate aspect-aware) ihlali; kullanıcının "browser
+daralınca aspect sabit kalmıyor" şikayetinin kök nedeni.
+
+**Kök neden #2 — cascade plate'i izlemiyor:** `cascadeScale =
+Math.min((plateDims.w-32)/572, ...)` fixed px (1080×608) →
+daima ~1.0. Plate küçülürken cascade fixed 572×504 + scale 1.0
+kalıyor → plate + item birlikte zoom-out YOK (Phase 109'da da
+tespit).
+
+**Kök neden #3 — rail-collapse ara aşaması yok:** Kivasy @1180
+rail hâlâ 202px (sidebar 214 + rail 202 = 416px sabit chrome,
+stage'e sadece 764px). Shots <1200'de rail'i gizler. Kivasy
+tek-aşamalı.
+
+### Net ürün kararı + fix
+
+1. **Aspect-locked viewport-aware plate scaling:** `plateDimensionsFor`
+   artık `(mode, frameAspect, viewportW, viewportH, railCollapsed)`
+   alır; available stage alanını viewport'tan hesaplar (sidebar 214
+   + rail 0/202 + padding çıkarılır), **aspect-locked bbox-fit**
+   (capW ≤ 1180, capH ≤ 880; hem capW hem capH'a sığ, aspect SABİT).
+   CSS `.k-studio__stage-plate` `max-width:85%/max-height:82%`
+   clamp **KALDIRILDI** (aspect bozan kaynak). Plate boyutu tamamen
+   tek aspect-sabit JS hesabında.
+2. **Cascade-follows-plate:** cascadeScale plateDims'i kullandığı
+   için plateDims viewport-aware olunca otomatik düzeldi (@1440
+   0.964 → @1180 0.907 → plate küçülünce cascade orantılı).
+3. **3-aşamalı responsive (rail-collapse ara aşaması):** Shell
+   `viewport {w,h}` state (resize listener) → `viewportTooSmall`
+   (<880w veya <640h) + `railCollapsed` (<1280, not tooSmall).
+   `≥1280` full, `880-1280` rail conditional-render gizli (stage
+   genişler), `<880` larger-screen intercept (Phase 109 baseline,
+   eşik 1100→880 indi). Phase 109 intercept metni `1100×640` →
+   `880×640` güncellendi.
+
+### Browser doğrulama (3 aşama + roundtrip + continuity)
+
+`preview_resize` + DOM rect + screenshot:
+
+| Viewport | plate aspect | cascade scale | rail | intercept | sonuç |
+|---|---|---|---|---|---|
+| 1440 | **1.780** ✓ | 0.964 | görünür | yok | full, 16:9 sabit |
+| 1180 | **1.777** ✓ | 0.907 | **gizli** | yok | rail-collapse, stage 764→966px, plate %55→%73.6 vw |
+| 820 | — | — | — | **var** | clean intercept (stage yok, "880×640" metni) |
+| 1440 (roundtrip) | **1.780** ✓ | — | görünür | gone | full geri geldi (çift yönlü) |
+
+Screenshot kanıtları: @1180 rail YOK + büyük 16:9 stage plate +
+3 cascade orantılı (browser-zoom-out hissi); @820 sade orange
+monitor icon + "needs a larger screen" + "880×640" + "Back to
+selection" (bozuk studio değil — Shots.so canonical dürüst
+intercept).
+
+**Product/export continuity korundu:** Phase 110 yalnız studio
+shell scaling (Shell viewport state + plateDimensionsFor + CSS
+clamp kaldırma + rail conditional render). `frame-compositor.ts`
+/ export persistence / handoff / Product MockupsTab **hiç
+dokunulmadı**. Product detail Mockups tab DOM: 10 frame-export
+tile, `aspect 4/3`, `bg rgb(22,19,15)`, `object-contain`,
+naturalWH 1920×1080 — Phase 101-108 baseline intakt.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 110)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız studio shell scaling +
+  responsive 3-aşama.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `plateDimensionsFor` signature
+  genişletme + Shell viewport state + rail conditional render +
+  CSS clamp kaldırma. Yeni component / route / service / SVG
+  library / layout builder / mockup editor YOK.
+- **Stage continuity (§2) korunur** — stage merkez stable
+  (Phase 93/95), mode-AGNOSTIC, slot click plate bg değiştirmez.
+- **Aspect SHARED state (§4) korunur** — Mockup ↔ Frame aynı
+  frameAspect.
+- **Preview = Export Truth (§11.0) korunur** — responsive yalnız
+  preview scaling; export pipeline (frame-compositor Phase 108
+  baseline) dokunulmadı.
+- **Phase 109 Lens Blur structured + shared capability + larger-
+  screen guard baseline'ları intakt** (Phase 110 guard'ı
+  matchMedia → innerWidth/innerHeight state'e çevirdi + 3-aşama
+  ekledi; Lens Blur/capability dokunulmadı).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Kapatılan responsive bug'ları (Phase 110):
+- **Plate aspect ratio sabit değildi** (16:9 @1440 1.432, @1180
+  1.097) — fixed px inline w/h + CSS bağımsız max-w/max-h % iki
+  ayrı cap. Phase 110 aspect-locked viewport-aware bbox-fit +
+  CSS clamp kaldırma → aspect daima sabit (1.777-1.780).
+- **Cascade plate ile beraber zoom-out olmuyordu** (cascadeScale
+  fixed-px ~1.0) — Phase 110 plateDims viewport-aware olunca
+  cascadeScale otomatik plate'i izler (0.964→0.907).
+- **Rail-collapse ara aşaması yoktu** (Kivasy tek-aşamalı, @1180
+  rail 202px sabit) — Phase 110 880-1280 rail conditional-render
+  gizli, stage genişler (Shots.so canonical 3-aşama parity).
+
+Hâlâ açık (Phase 111+ candidate):
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir) — libvips feDropShadow 2-katmanlı; preview 4-katmanlı.
+  Ana visual impact yakalandı; yumuşaklık ince fark.
+- **Gerçek Etsy V3 API POST e2e** — production credential
+  gerektirir. Continuity DB+kod kanıtlı (Phase 107-109).
+- **Yeni SVG varyasyonları + layout builder + mockup editörü** —
+  kullanıcı kararıyla §13.A future direction'da ertelenmiş.
+- **Rail-collapse'ta rail content erişimi** — 880-1280'de rail
+  gizli; rail'deki layout preset / zoom / export-capsule
+  kontrolleri o aralıkta erişilemez (Shots'ta da rail gizli;
+  Export toolbar'da kalır). Phase 111+ candidate: dar viewport'ta
+  rail kontrollerini collapsible drawer/popover ile sunma
+  (şimdilik Shots-parity: rail gizli, toolbar Export yeterli).
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 110 ile responsive scaling Shots.so canonical seviyesinde:
+- Plate aspect daima sabit (16:9 → 1.777-1.780 her viewport)
+- Plate + cascade beraber browser-zoom-out (cascadeScale plate'i
+  izler)
+- 3-aşamalı responsive: full / rail-collapse / intercept (Shots
+  parity)
+- Çift-yönlü geçiş + Product/export continuity intakt
+
+Sıradaki adım **Phase 111 candidate**: drop shadow softness
+fine-tune veya rail-collapse'ta rail kontrol erişimi (collapsible
+drawer). Yeni SVG/layout builder/mockup editor §13.A'da
+ertelenmiş kalır.
 
 ---
 

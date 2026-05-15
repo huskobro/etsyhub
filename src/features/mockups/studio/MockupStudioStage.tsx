@@ -100,6 +100,9 @@ function resolvePlateBackground(
 function plateDimensionsFor(
   _mode: StudioMode,
   frameAspect: FrameAspectKey,
+  viewportW: number,
+  viewportH: number,
+  railCollapsed: boolean,
 ): { w: number; h: number } {
   /* Phase 95 — Aspect SHARED state (Mockup ↔ Frame) + larger bbox
    * (Shots.so live davranış doğrulaması):
@@ -151,13 +154,47 @@ function plateDimensionsFor(
    * küçüldüğünde orantısal küçülme aynı pattern. Stage çok daha
    * dolu hissedilir. Sözleşme #3 (Plate behavior — stage ~%85-90
    * hedef) ile uyumlu. */
-  const maxW = 1080;
-  const maxH = 820;
+  /* Phase 110 — Aspect-locked viewport-aware bbox-fit (Shots.so
+   * canonical: aspect daima sabit, plate viewport ile orantılı
+   * zoom-out).
+   *
+   * Phase 95-109 BUG: fixed maxW=1080/maxH=820 + CSS BAĞIMSIZ
+   * `max-width:85%` & `max-height:82%` clamp. İki ayrı % cap →
+   * biri tetiklenince diğeri orantısal küçülmüyor → 16:9 plate
+   * @1440 aspect 1.432, @1180 1.097 (16:9=1.778'den sapıyor;
+   * kompozisyon görsel bozuluyor). Kullanıcı "browser daralınca
+   * aspect sabit kalmıyor" şikayetinin kök nedeni.
+   *
+   * Phase 110 fix: available stage alanını viewport'tan hesapla
+   * (sidebar 214 + rail 0/202 + padding çıkar), aspect-locked
+   * bbox-fit. CSS `.k-studio__stage-plate` max-w/max-h % clamp'ı
+   * KALDIRILDI (aspect bozan kaynak) — plate boyutu tamamen bu
+   * helper'da, tek aspect-sabit hesapta. cascadeScale plateDims'i
+   * kullandığı için otomatik düzelir (plate küçülünce cascade de
+   * orantılı = birlikte zoom-out). railCollapsed → rail alanı
+   * stage'e geçer (Shots ara aşaması parity). */
   const cfg = FRAME_ASPECT_CONFIG[frameAspect];
   const ratio = cfg.ratio; // w/h
-  const fitByWidth = { w: maxW, h: Math.round(maxW / ratio) };
-  if (fitByWidth.h <= maxH) return fitByWidth;
-  return { w: Math.round(maxH * ratio), h: maxH };
+  const SIDEBAR_W = 214;
+  const RAIL_W = railCollapsed ? 0 : 202;
+  // Stage available alanı: viewport - sidebar - rail - stage padding.
+  // Plate stage'in ~%85'ini hedefler (Shots %57-66 vw paritesi:
+  // stage padding korunur ama plate dominant).
+  const stageW = Math.max(280, viewportW - SIDEBAR_W - RAIL_W);
+  const stageH = Math.max(220, viewportH - 24); // toolbar/padding payı
+  const availW = stageW * 0.9;
+  const availH = stageH * 0.86;
+  // Geniş viewport'ta plate sınırsız büyümesin (Shots'ta da plate
+  // mutlak ~700-900px civarı kalır; çok geniş ekranda dev plate
+  // operatör için kötü). Üst sınır viewport-aware ama capped.
+  const capW = Math.min(availW, 1180);
+  const capH = Math.min(availH, 880);
+  // Aspect-locked bbox-fit: hem capW hem capH'a sığ, aspect SABİT.
+  const fitByWidth = { w: capW, h: capW / ratio };
+  if (fitByWidth.h <= capH) {
+    return { w: Math.round(capW), h: Math.round(capW / ratio) };
+  }
+  return { w: Math.round(capH * ratio), h: Math.round(capH) };
 }
 
 interface MockupCompositionProps {
@@ -665,6 +702,20 @@ export interface MockupStudioStageProps {
    *  Stage cascade item count'unu sınırlar. Rail head 1/2/3 buttons
    *  ile aynı Shell state'i paylaşır. */
   layoutCount?: 1 | 2 | 3;
+  /** Phase 110 — Viewport-aware aspect-locked plate scaling.
+   *
+   * Shell window.innerWidth/innerHeight'i izler ve Stage'e geçirir.
+   * plateDimensionsFor available stage alanını bu boyutlardan
+   * hesaplar (sidebar 214 + rail 0/202 + padding çıkarılır) ve
+   * aspect-locked bbox-fit yapar — CSS bağımsız max-w/max-h %
+   * clamp'ı KALDIRILDI (Phase 95-109'da iki ayrı % cap aspect'i
+   * bozuyordu: 16:9 plate @1440 aspect 1.432, @1180 1.097).
+   * cascadeScale otomatik düzelir (plateDims artık viewport-aware).
+   * Shots.so canonical: aspect daima sabit, plate+cascade beraber
+   * zoom-out. railCollapsed → stage rail alanını kazanır. */
+  viewportW?: number;
+  viewportH?: number;
+  railCollapsed?: boolean;
 }
 
 export function MockupStudioStage({
@@ -680,6 +731,9 @@ export function MockupStudioStage({
   activePalette,
   sceneOverride,
   layoutCount,
+  viewportW = 1440,
+  viewportH = 900,
+  railCollapsed = false,
 }: MockupStudioStageProps) {
   const isPreview = appState === "preview" || appState === "renderDone";
   const isRender = appState === "render";
@@ -726,7 +780,13 @@ export function MockupStudioStage({
     sceneOverride ?? { mode: "auto" },
     activePalette,
   );
-  const plateDims = plateDimensionsFor(mode, frameAspect);
+  const plateDims = plateDimensionsFor(
+    mode,
+    frameAspect,
+    viewportW,
+    viewportH,
+    railCollapsed,
+  );
   /* Phase 98 — Plate effects (Glass + Lens Blur) resolved from
    * sceneOverride. Sözleşme #11: Frame controls plate bg'sini
    * değiştirir; #3: plate mode-AGNOSTIC görünür. Glass overlay
