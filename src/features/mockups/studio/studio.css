@@ -738,24 +738,20 @@
    * agresif değil). */
   left: 50%;
   top: 50%;
-  /* Phase 123 — Preview-only zoom CSS-variable kompozisyonu.
+  /* Phase 125 — Plate SABİT-boyut (Shots.so canonical zoom).
    *
-   * Plate hem `translate(-50%,-50%)` (merkezleme) hem zoom scale
-   * taşır. Önce React inline `transform: translate(...) scale(...)`
-   * denendi ama computed'da scale DÜŞÜYORDU (inline transform ↔
-   * CSS rule transform + transition kompozisyon kırılması, DOM
-   * pixel ölçümüyle kanıtlandı). Çözüm: CSS rule translate +
-   * scale'i KENDİSİ compose eder, React yalnız `--ks-preview-zoom`
-   * custom property'sini set eder (inline transform conflict YOK,
-   * scale güvenle uygulanır). Default 1 = no-op (Phase 122
-   * davranışı BİREBİR). Rail thumb (chromeless) bu değişkeni
-   * SET ETMEZ → daima 1 (rail candidate preview'ları operatör
-   * zoom'undan bağımsız; Phase 117-118 single-renderer +
-   * chromeless baseline bozulmaz). Export pipeline CSS değil
-   * Sharp — bu değişkeni ASLA görmez (§11.0 Preview = Export
-   * Truth; zoom = viewing aid, final visual değil). */
-  transform: translate(-50%, -50%) scale(var(--ks-preview-zoom, 1));
-  transition: transform 120ms ease;
+   * Phase 123/124 zoom'u plate'in KENDİSİNE (`scale(var(--ks-
+   * preview-zoom))`) uyguluyordu → plate + chrome (rounded corner,
+   * border, shadow) büyüyüp stage'i taşıyordu. Shots.so canlı
+   * browser ölçümü (Phase 125): zoom frame/plate'i DEĞİL, frame
+   * İÇİNDEKİ composition içeriğini (`.component` ≈ Kivasy
+   * `.k-studio__stage-inner`) scale eder; frame SABİT-boyut bir
+   * viewport kalır, içerik `overflow:hidden` ile kırpılır
+   * (preview-inspection). Phase 125: zoom plate'ten KALDIRILDI,
+   * `.k-studio__stage-inner`'a (composition layer) taşındı.
+   * Plate yalnız merkezleme translate'i taşır (Phase 122
+   * baseline). */
+  transform: translate(-50%, -50%);
   /* Phase 110 — CSS max-width/max-height % clamp KALDIRILDI.
    *
    * Phase 94-109 baseline `max-width:85% / max-height:82%` plate

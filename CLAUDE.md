@@ -25962,6 +25962,191 @@ etme veya ölü kod temizliği (`PresetThumbMockup`/
 
 ---
 
+## Phase 124 — Stage zoom-pill ↔ rail slider tek kaynak (− / % / + / Fit wired)
+
+Phase 123 rail slider'ı çalışır yaptı ama Stage'in bottom-center
+**zoom-pill**'i (`−` / `%` / `+` / `Fit`) hâlâ NO-OP idi (static
+"50%", handler yok). Kullanıcı talebi: "zoom slider üzerinde ufak
+bir panel var, onu da entegre edelim" (Shots.so referansı).
+
+### Uygulanan
+
+- `StageSceneOverlays` zoom-pill: `−`/`+` ±10 step
+  (`stepZoom(delta)` React **functional updater** → rapid-click
+  accumulate; stale-closure batching fix), `Fit` = 100 reset,
+  25–200 clamp, dinamik `{pct}%`, disabled-state'ler (min/max/at-100).
+- Pill rail slider (Phase 123) ile **AYNI Shell `previewZoom`
+  state'i sürer** → iki kontrol yüzeyi senkron, % her yerde aynı
+  (Shots.so canonical: tek zoom state, iki kontrol yüzeyi).
+  `MockupStudioStage.previewZoomPct` + `onChangePreviewZoom`
+  (functional updater destekli) prop'ları Shell `setPreviewZoom`'a
+  bağlandı.
+- Mode-AGNOSTIC: pill her iki modda render + çalışır.
+
+Browser kanıt (Phase 124): pill `+`×4 rapid → 140% (accumulate),
+slider "140" senkron, middle scaleX 1.4, 7 rail thumb scaleX 1
+(immune); Fit → 100% clean; Frame mode pill `+`×5 → 150% identical
++ slider senkron. Bu davranış Phase 125'te düzeltildi (aşağı bkz.).
+
+## Phase 125 — Shots.so-canonical zoom: plate SABİT, composition içeriği scale (gerçek browser ölçümü)
+
+Kullanıcı: "shots.so'yu browser üzerinden incele, zoom davranışı
+şu an aynı değil; bundan sonra hep Shots.so'yu kod+görsel browser
+üzerinden inceleyerek aksiyon al." Phase 123/124 zoom'u **plate'in
+KENDİSİNE** (`scale(var(--ks-preview-zoom))`) uyguluyordu → plate
++ chrome (rounded corner, border, shadow) büyüyüp stage'i taşıyordu.
+Bu Shots.so davranışıyla **uyuşmuyordu** (kullanıcı tespiti doğru).
+
+### Shots.so canlı browser araştırması (Claude in Chrome, kanıtlı)
+
+Preview tool localhost'a kilitli; **Claude in Chrome** ile
+shots.so/ gerçek browser'da açıldı, editor'e girildi, DOM+computed
+style ölçüldü:
+
+| Ölçüm | 100% | 400% |
+|---|---|---|
+| `.frame.preview-frame` (plate/canvas) | 909×682 | **909×682 DEĞİŞMEDİ** |
+| `.component` (composition İÇERİĞİ) | scale 1 | **`transform: matrix(4,0,0,4,0,0)`** |
+| Composition image | 512×512 | **2046×2046** (4×, frame'i taşıp kırpılıyor) |
+| Rail LAYOUT PRESETS thumb'ları | full comp | **DEĞİŞMEDİ** (zoom'dan bağımsız) |
+| Üst live preview thumb | full comp | **DEĞİŞMEDİ** |
+
+**Shots.so canonical:** zoom frame/plate'i DEĞİL, frame İÇİNDEKİ
+composition içeriğini (`.component`) scale eder; frame SABİT-boyut
+viewport kalır, içerik `overflow:hidden` ile **kırpılır**
+(preview-inspection); pan yok (yalnız scale, ortadan). Mockup ↔
+Frame mode **birebir aynı** (mode-AGNOSTIC, zoom state korunur,
+rail her iki modda bağımsız). Slider üstündeki "ufak panel" =
+`Zoom/Tilt` segment + canlı preview thumb + Zoom slider; hover'da
+"Hold 0 for precision" ipucu. Shots.so **Remotion** kullanıyor
+(`.__remotion-player`).
+
+### Uygulanan düzeltme (Shots.so parity)
+
+- **Plate'ten zoom KALDIRILDI**: `.k-studio__stage-plate` CSS rule
+  `transform: translate(-50%,-50%) scale(var(--ks-preview-zoom,1))`
+  → `transform: translate(-50%, -50%)` (Phase 122 baseline; plate
+  SABİT-boyut, chrome büyümez). `--ks-preview-zoom` CSS-var tamamen
+  kaldırıldı (hiçbir yerde okunmuyor).
+- **Zoom composition layer'ına taşındı**: `MockupComposition` +
+  `FrameComposition` `.k-studio__stage-inner` inline transform
+  `scale(${grp.scale})` → `scale(${grp.scale * previewZoom})`.
+  Plate `overflow: hidden` (zaten vardı, studio.css:132) taşmayı
+  kırpar = preview-inspection (Shots.so `.component` davranışı).
+- **`effectiveZoom` rail-independence guard**: `StageScene`
+  `chromeless ? 1 : previewZoom` → rail thumb (chromeless=true)
+  composition'ı DAİMA 1 (kendi plate-fit cascadeScale'i, ×zoom
+  YOK) → rail candidate preview'ları operatör zoom'undan bağımsız
+  (Phase 117-118 single-renderer + chromeless baseline korunur).
+  Her iki composition'a `previewZoom={effectiveZoom}` iletilir.
+- `data-preview-zoom` plate attr `effectiveZoom`'u yansıtır.
+  Phase 123/124 zoom-pill ↔ slider tek-kaynak + Fit + functional
+  updater **korundu** (yalnız scale'in UYGULANDIĞI element değişti:
+  plate → stage-inner).
+
+### Browser kanıt (Kivasy, Phase 125)
+
+Preview-tool DOM ölçümü (zoom 150):
+- PLATE box 1066×599 → **1066×599 UNCHANGED**, transform
+  `matrix(1,0,0,1,-533,-299.5)` (pure centering, **NO scale**),
+  `overflow: hidden`, `data-preview-zoom="1.5"`.
+- COMPOSITION (`.k-studio__stage-inner`) scaleX **2.583** =
+  `data-cascade-scale "2.583"` = 1.722 (Phase 111 plate-fit) ×
+  1.5 (zoom) **exact**.
+- 7 rail thumb composition scales `[1.235, 1.235, 1.564, 1.537,
+  1.642, 1.358, 1.613]` (her biri kendi plate-fit cascadeScale'i,
+  **×1.5 DEĞİL**); `data-preview-zoom ["1"×7]` → rail bağımsız.
+- 8 StageScene instance (1 middle + 7 rail) — single-renderer
+  intact.
+
+**Claude in Chrome büyük-ekran görsel doğrulama** (yan yana
+Shots.so karşılaştırması): zoom 150 → plate cream rounded surface
+SABİT-boyut + chrome büyümedi; composition 3 cascade card büyüyüp
+plate sınırında **kırpıldı** (Front-View sol kenar + blue-car sağ
+kenar clipped); rail 6 layout-preset thumb tam un-zoomed kaldı.
+Frame mode'a geçince zoom **persisted** (150% korundu) + davranış
+**birebir aynı** (mode-AGNOSTIC); Fit → 100% clean no-op (Phase
+122 byte-identical). Tüm davranışlar Shots.so canlı ölçümle
+**birebir** eşleşti.
+
+### Quality gates (Phase 124+125)
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (59 files, zero regression)
+- `next build`: ✓ Compiled successfully (`NODE_OPTIONS=
+  --max-old-space-size=4096`)
+- Clean restart (fresh `.next` + port kill) + fresh-build
+  browser verification (preview DOM + **Claude in Chrome** büyük
+  ekran görsel)
+
+### Değişmeyenler (Phase 124+125)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız zoom-pill wiring + zoom scale'in
+  uygulandığı element (plate → composition layer) + CSS-var kaldırma.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Mevcut `compositionGroup` scale'e
+  `× previewZoom` çarpanı + `effectiveZoom` chromeless guard.
+  Yeni component/route/service/SVG library/layout builder/mockup
+  editor YOK.
+- **4-kategori ayrımı korundu** — zoom kategori 2 (mode/UI helper);
+  kategori 1 canonical params zoom'dan ETKİLENMEZ; kategori 3
+  (compositionGroup/cascadeLayoutFor) plate-fit mantığı korundu
+  (`grp.scale` baseline, ×previewZoom yalnız preview-inspection
+  katmanı); kategori 4 (ring/badge) preview-only baseline korundu.
+- **Preview = Export Truth (§11.0) korundu** — zoom yalnız
+  `.k-studio__stage-inner` CSS scale (orta panel); `frame-
+  compositor.ts` (Sharp export) bu değeri ASLA görmez; FrameExport
+  persist etmez; Product MockupsTab tile'da yansımaz.
+- **Phase 117 single-renderer + Phase 118 aspect-aware/chromeless
+  + Phase 120 containerless rail + Phase 121 selection ring/badge
+  + Phase 122 frame-cap removal baseline'ları intakt.**
+- **Phase 123 rail slider + Phase 124 zoom-pill tek-kaynak + Fit
+  + functional updater korundu** (yalnız scale uygulandığı element
+  düzeltildi).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı**
+  (`--ks-preview-zoom` CSS-var kaldırıldı — artık kullanılmıyor).
+
+### Kalıcı kural (kullanıcı talebi)
+
+Bundan sonra Studio'ya eklenecek tüm özelliklerde Shots.so
+**kod + görsel olarak gerçek browser üzerinden (Claude in
+Chrome)** incelenip aksiyon alınır. Preview tool localhost'a
+kilitli olduğu için Shots.so araştırması Claude in Chrome ile
+yapılır; varsayımla değil canlı DOM/computed-style ölçümü +
+görsel karşılaştırma ile.
+
+### Hâlâ kalan (Phase 126+ candidate)
+
+- **Tilt / Precision view tab'ları** hâlâ no-op (kategori 4
+  preview-only helper; Phase 123'ten devir). Shots.so'da Tilt =
+  composition rotate-inspect, "Hold 0 for precision" = precision
+  modifier. İleride aynı preview-only disiplinle + Shots.so canlı
+  inceleme ile wire edilir.
+- **Sidebar `data-wired="false"` kontroller** (Portrait /
+  Watermark / BG Effects — §13.D) honest disclosure preview-only.
+- **Ölü kod temizliği** (`PresetThumbMockup`/`fitCascadeToThumb`).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 125 ile Studio zoom davranışı Shots.so canonical ile
+**birebir** (canlı browser ölçümüyle kanıtlı): plate SABİT-boyut,
+composition içeriği scale + plate kırpar, rail bağımsız, mode-
+AGNOSTIC, Fit reset. Sıradaki adım **Phase 126 candidate**:
+Tilt/Precision view tab'larını Shots.so'yu Claude in Chrome ile
+inceleyip aynı preview-only disiplinle wire etme veya ölü kod
+temizliği. Yeni SVG/layout builder/mockup editor §13.A'da
+ertelenmiş kalır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

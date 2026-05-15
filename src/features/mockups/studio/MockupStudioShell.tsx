@@ -881,6 +881,8 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           viewportH={viewport.h}
           railCollapsed={railCollapsed}
           previewZoom={previewZoom / 100}
+          previewZoomPct={previewZoom}
+          onChangePreviewZoom={setPreviewZoom}
         />
         {/* Phase 110 — Rail-collapse ara aşaması (Shots.so canonical):
          *  880–1280px'te sağ rail gizli, stage o alanı kazanır.

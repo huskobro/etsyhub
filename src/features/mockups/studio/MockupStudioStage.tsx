@@ -296,10 +296,16 @@ function MockupComposition({
   plateDims,
   layoutCount,
   layoutVariant,
+  previewZoom = 1,
 }: MockupCompositionProps & {
   plateDims: { w: number; h: number };
   layoutCount: 1 | 2 | 3;
   layoutVariant: StudioLayoutVariant;
+  /** Phase 125 — Preview-only zoom (Shots.so canonical: composition
+   *  içeriği scale, plate SABİT). cascadeScale ile çarpılır;
+   *  plate `overflow:hidden` kırpar (preview-inspection). 1 = no-op.
+   *  Rail thumb (chromeless) daima 1 → rail bağımsız. */
+  previewZoom?: number;
 }) {
   /* Phase 96 — Layout count Shell state ile cascade item count
    * sınırlandı (bug #13). Rail head 1/2/3 buttons → Shell setter →
@@ -335,7 +341,11 @@ function MockupComposition({
    * §11.0 Preview=Export + Phase 111 canonical). */
   const grp = compositionGroup(rawPhones, plateDims.w, plateDims.h);
   const phones = grp.items;
-  const cascadeScale = grp.scale;
+  /* Phase 125 — Shots.so canonical: zoom composition layer'ına
+   * (plate SABİT). cascadeScale (Phase 111 plate-fit) × previewZoom
+   * (operatör zoom). Plate `overflow:hidden` taşmayı kırpar
+   * (preview-inspection). previewZoom=1 → Phase 122 BİREBİR. */
+  const cascadeScale = grp.scale * previewZoom;
   return (
     <div
       className="k-studio__stage-inner"
@@ -460,12 +470,17 @@ function FrameComposition({
   plateDims,
   layoutCount,
   layoutVariant,
+  previewZoom = 1,
 }: FrameCompositionProps & {
   deviceKind: StudioStageDeviceKind;
   frameAspect: FrameAspectKey;
   plateDims: { w: number; h: number };
   layoutCount: 1 | 2 | 3;
   layoutVariant: StudioLayoutVariant;
+  /** Phase 125 — Preview-only zoom (Shots.so canonical: composition
+   *  içeriği scale, plate SABİT). MockupComposition ile BİREBİR
+   *  aynı (mode-AGNOSTIC §2). 1 = no-op; rail thumb daima 1. */
+  previewZoom?: number;
 }) {
   /* Phase 87 — True stage continuity (bounded canvas removed).
    *
@@ -537,7 +552,11 @@ function FrameComposition({
    * Items relative offset korunur. */
   const grp = compositionGroup(rawPhones, plateDims.w, plateDims.h);
   const phones = grp.items;
-  const cascadeScale = grp.scale;
+  /* Phase 125 — Shots.so canonical: zoom composition layer'ına
+   * (plate SABİT, mode-AGNOSTIC — MockupComposition ile BİREBİR).
+   * cascadeScale × previewZoom; plate `overflow:hidden` kırpar.
+   * previewZoom=1 → Phase 122 BİREBİR. */
+  const cascadeScale = grp.scale * previewZoom;
 
   return (
     <>
@@ -760,31 +779,26 @@ export function StageScene({
   const blurPlateOnly =
     lensBlurActive && plateEffects.blurTarget === "plate";
   const blurAll = lensBlurActive && plateEffects.blurTarget === "all";
-  /* Phase 123 — Preview-only zoom yalnız ORTA PANEL plate'ine
-   * (chromeless=false). Rail candidate thumb (chromeless=true)
-   * previewZoom'u YOK SAYAR → rail preview'ları operatör zoom'undan
-   * bağımsız (Phase 117-118 single-renderer + chromeless baseline
-   * bozulmaz). Export pipeline bu transform'u görmez (§11.0). */
-  const zoomActive = !chromeless && previewZoom !== 1;
+  /* Phase 125 — Shots.so canonical zoom: plate SABİT-boyut,
+   * composition İÇERİĞİ scale (plate `overflow:hidden` kırpar =
+   * preview-inspection). Phase 123/124 plate'i scale ediyordu
+   * (chrome büyüyordu); Shots.so canlı browser ölçümü plate'in
+   * SABİT kaldığını, içerideki `.component` (≈ Kivasy
+   * `.k-studio__stage-inner`) scale ettiğini kanıtladı.
+   *
+   * effectiveZoom: rail thumb (chromeless=true) DAİMA 1 → rail
+   * candidate preview'ları operatör zoom'undan bağımsız (Phase
+   * 117-118 single-renderer + chromeless baseline bozulmaz).
+   * Orta panel (chromeless=false) → previewZoom. Compositions'a
+   * iletilir; plate transform/CSS-var YOK (export Sharp bu
+   * değeri ASLA görmez §11.0). */
+  const effectiveZoom = chromeless ? 1 : previewZoom;
   const plateStyle: React.CSSProperties = {
     width: plateDims.w,
     height: plateDims.h,
     ...(plateBgRaw && !blurPlateOnly ? { background: plateBgRaw } : {}),
     ...(blurAll
       ? { filter: `blur(${plateEffects.filterBlurPx}px)` }
-      : {}),
-    /* Phase 123 — Zoom CSS-variable ile (inline transform DEĞİL).
-     * Plate'in CSS rule'u `transform: translate(-50%,-50%)
-     * scale(var(--ks-preview-zoom,1))` translate+scale'i kendisi
-     * compose eder; React yalnız değişkeni set eder (inline
-     * transform ↔ CSS transform kompozisyon kırılması YOK — DOM
-     * pixel ölçümüyle kanıtlanan eski bug). zoomActive=false
-     * iken değişken hiç set edilmez → CSS fallback 1 (no-op,
-     * Phase 122 BİREBİR). chromeless (rail thumb) zoomActive
-     * daima false → değişken set edilmez → rail thumb plate
-     * scale 1 (rail candidate previews bağımsız). */
-    ...(zoomActive
-      ? ({ "--ks-preview-zoom": previewZoom } as React.CSSProperties)
       : {}),
   };
   const plateSurfaceStyle: React.CSSProperties | undefined =
@@ -848,7 +862,7 @@ export function StageScene({
           }
           data-lens-blur={lensBlurActive ? "true" : "false"}
           data-blur-target={lensBlurActive ? plateEffects.blurTarget : ""}
-          data-preview-zoom={zoomActive ? String(previewZoom) : "1"}
+          data-preview-zoom={String(effectiveZoom)}
           style={plateStyle}
         >
           {plateSurfaceStyle ? (
@@ -885,6 +899,7 @@ export function StageScene({
               plateDims={plateDims}
               layoutCount={layoutCount}
               layoutVariant={layoutVariant}
+              previewZoom={effectiveZoom}
             />
           ) : (
             <FrameComposition
@@ -897,6 +912,7 @@ export function StageScene({
               plateDims={plateDims}
               layoutCount={layoutCount}
               layoutVariant={layoutVariant}
+              previewZoom={effectiveZoom}
             />
           )}
         </div>
@@ -982,6 +998,14 @@ export interface MockupStudioStageProps {
    *  previewZoom). Canonical visual param DEĞİL — export'a girmez
    *  (§11.0), rail candidate thumb'lara uygulanmaz. 1.0 = no-op. */
   previewZoom?: number;
+  /** Phase 124 — Stage zoom-pill (−/%/+/Fit) için yüzde + setter.
+   *  Pill rail slider (Phase 123) ile AYNI Shell state'i sürer
+   *  (Shots.so canonical: tek zoom state, iki kontrol yüzeyi,
+   *  % senkron). Yüzde (100 = no-op). Setter React functional
+   *  updater'ı da kabul eder (pill ±10 step rapid-click
+   *  accumulate: stale-closure batching fix). */
+  previewZoomPct?: number;
+  onChangePreviewZoom?: (next: number | ((prev: number) => number)) => void;
 }
 
 export function MockupStudioStage({
@@ -1002,6 +1026,8 @@ export function MockupStudioStage({
   viewportH = 900,
   railCollapsed = false,
   previewZoom = 1,
+  previewZoomPct = 100,
+  onChangePreviewZoom,
 }: MockupStudioStageProps) {
   const isPreview = appState === "preview" || appState === "renderDone";
   const isRender = appState === "render";
@@ -1053,6 +1079,8 @@ export function MockupStudioStage({
         isPreview={isPreview}
         isRender={isRender}
         isEmpty={isEmpty}
+        previewZoomPct={previewZoomPct}
+        onChangePreviewZoom={onChangePreviewZoom ?? (() => {})}
       />
     </StageScene>
   );
@@ -1072,6 +1100,8 @@ function StageSceneOverlays({
   isPreview,
   isRender,
   isEmpty,
+  previewZoomPct,
+  onChangePreviewZoom,
 }: {
   mode: StudioMode;
   appState: StudioAppState;
@@ -1080,7 +1110,25 @@ function StageSceneOverlays({
   isPreview: boolean;
   isRender: boolean;
   isEmpty: boolean;
+  /** Phase 124 — Stage zoom-pill ↔ rail slider TEK kaynak.
+   *  previewZoom yüzde (100 = no-op); pill `−`/`%`/`+`/`Fit`
+   *  Shell state'i Phase 123 rail slider ile AYNI günceller
+   *  (Shots.so canonical: bir zoom state, iki kontrol yüzeyi,
+   *  % senkron). Mode-AGNOSTIC. */
+  previewZoomPct: number;
+  onChangePreviewZoom: (next: number | ((prev: number) => number)) => void;
 }) {
+  /* Phase 124 — Zoom step/fit (Shots.so canonical): ±10 adım,
+   * 25–200 clamp, Fit = 100 reset. Rail slider step 5 ile uyumlu
+   * (ikisi aynı Shell state'i sürer; pill ±10 daha hızlı
+   * inspection). −/+ React functional updater kullanır →
+   * rapid-click accumulate (stale-closure batching fix). */
+  const ZOOM_MIN = 25;
+  const ZOOM_MAX = 200;
+  const clampZoom = (n: number) =>
+    Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(n)));
+  const stepZoom = (delta: number) =>
+    onChangePreviewZoom((prev) => clampZoom(prev + delta));
   return (
     <>
       {isEmpty && !isPreview && !isRender ? (
@@ -1165,16 +1213,54 @@ function StageSceneOverlays({
         </button>
       ) : null}
 
+      {/* Phase 124 — Zoom-pill artık çalışıyor (Phase 123 öncesi
+          + Phase 123'te de NO-OP idi: static "50%", handler yok).
+          Rail slider (Phase 123) ile AYNI Shell previewZoom
+          state'i sürer → iki kontrol yüzeyi senkron, % her yerde
+          aynı (Shots.so canonical). −/+ ±10 step, Fit = 100
+          reset. Preview-only helper: export'a girmez (§11.0),
+          rail candidate thumb'lara uygulanmaz. Mode-AGNOSTIC
+          (Mockup + Frame aynı davranış). */}
       {!isRender ? (
-        <div className="k-studio__zoom-pill" data-testid="studio-stage-zoom-pill">
-          <button type="button" className="k-studio__zp-btn" aria-label="Zoom out">
+        <div
+          className="k-studio__zoom-pill"
+          data-testid="studio-stage-zoom-pill"
+          data-zoom={previewZoomPct}
+        >
+          <button
+            type="button"
+            className="k-studio__zp-btn"
+            aria-label="Zoom out"
+            data-testid="studio-stage-zoom-out"
+            disabled={previewZoomPct <= ZOOM_MIN}
+            onClick={() => stepZoom(-10)}
+          >
             −
           </button>
-          <span className="k-studio__zp-val">50%</span>
-          <button type="button" className="k-studio__zp-btn" aria-label="Zoom in">
+          <span
+            className="k-studio__zp-val"
+            data-testid="studio-stage-zoom-val"
+          >
+            {previewZoomPct}%
+          </span>
+          <button
+            type="button"
+            className="k-studio__zp-btn"
+            aria-label="Zoom in"
+            data-testid="studio-stage-zoom-in"
+            disabled={previewZoomPct >= ZOOM_MAX}
+            onClick={() => stepZoom(10)}
+          >
             +
           </button>
-          <button type="button" className="k-studio__zp-fit">
+          <button
+            type="button"
+            className="k-studio__zp-fit"
+            data-testid="studio-stage-zoom-fit"
+            aria-label="Fit (reset zoom to 100%)"
+            disabled={previewZoomPct === 100}
+            onClick={() => onChangePreviewZoom(100)}
+          >
             <StudioIcon name="mountain" size={10} />
             Fit
           </button>
