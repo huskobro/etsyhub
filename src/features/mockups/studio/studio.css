@@ -1391,3 +1391,62 @@
   background: rgba(255, 255, 255, 0.12);
   margin: 0 2px;
 }
+
+/* Phase 126 — Global media-position pad overlay (Shots.so parity).
+ * StageScenePreview canlı preview'ı boğmaz: overlay subtle, ayrı
+ * UI slab değil — yalnız safe-area çerçevesi + küçük handle. */
+.k-studio__pad-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: auto;
+  cursor: crosshair;
+}
+.k-studio__pad-safearea {
+  position: absolute;
+  left: 14%;
+  top: 14%;
+  width: 72%;
+  height: 72%;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 7px;
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.28),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+.k-studio__pad-dim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* safe-area dışını hafif karart (Shots.so viewfinder dim
+   * rgba(100,100,100,0.2) paritesi) — preview'ı boğmadan. */
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.16));
+  -webkit-mask:
+    linear-gradient(#000 0 0) padding-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+.k-studio__pad-handle {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  cursor: grab;
+  z-index: 6;
+  pointer-events: auto;
+  touch-action: none;
+}
+.k-studio__pad-handle:active {
+  cursor: grabbing;
+}
+.k-studio__view-tab-soon {
+  font-size: 9px;
+  opacity: 0.6;
+}

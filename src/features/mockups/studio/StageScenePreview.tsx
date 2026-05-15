@@ -50,6 +50,10 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 import { StageScene } from "./MockupStudioStage";
 import {
+  normalizePadPointToPosition,
+  type MediaPosition,
+} from "./media-position";
+import {
   FRAME_ASPECT_CONFIG,
   type FrameAspectKey,
 } from "./frame-aspects";
@@ -82,6 +86,14 @@ export interface StageScenePreviewProps {
   activePalette?: readonly [string, string];
   sceneOverride?: SceneOverride;
   layoutCount: 1 | 2 | 3;
+  /** Phase 126 — Global canonical media-position. StageScene'e
+   *  iletilir (rail thumb yansıtır — canonical). Pad overlay
+   *  handle bunu sürer. Undefined → {0,0} no-op. */
+  mediaPosition?: MediaPosition;
+  /** Pad handle drag setter (Shell setMediaPosition). Verilmezse
+   *  pad overlay görünmez (rail candidate thumb'lar yalnız
+   *  yansıtır, sürmez — yalnız rail-head pad sürer). */
+  onChangeMediaPosition?: (next: MediaPosition) => void;
 }
 
 export function StageScenePreview({
@@ -93,6 +105,8 @@ export function StageScenePreview({
   activePalette,
   sceneOverride,
   layoutCount,
+  mediaPosition = { x: 0, y: 0 },
+  onChangeMediaPosition,
 }: StageScenePreviewProps) {
   /* Phase 119 — Self-measuring box (gerçek render boyutu).
    *
@@ -186,6 +200,58 @@ export function StageScenePreview({
   const scale =
     Math.min(boxW / plateDims.w, boxH / plateDims.h) * PREVIEW_FILL;
 
+  /* Phase 126 — Pad overlay pointer drag. Pure-math mapping
+   * normalizePadPointToPosition'a delege (DOM-free; spec §5).
+   * prevPosRef: Shift precision delta'sının kaynağı (her drag
+   * başında mediaPosition'a senkronlanır). Pointer capture +
+   * up + cancel temiz (spec §4 — drag pad dışına taşsa da takip,
+   * release güvenli). */
+  const padRef = useRef<HTMLDivElement | null>(null);
+  const prevPosRef = useRef<MediaPosition>(mediaPosition);
+
+  const applyFromEvent = (
+    clientX: number,
+    clientY: number,
+    shift: boolean,
+  ) => {
+    const el = padRef.current;
+    if (!el || !onChangeMediaPosition) return;
+    const r = el.getBoundingClientRect();
+    const next = normalizePadPointToPosition(
+      clientX,
+      clientY,
+      { left: r.left, top: r.top, width: r.width, height: r.height },
+      shift,
+      prevPosRef.current,
+    );
+    prevPosRef.current = next;
+    onChangeMediaPosition(next);
+  };
+
+  const onPadPointerDown = (
+    e: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (!onChangeMediaPosition) return;
+    e.preventDefault();
+    prevPosRef.current = mediaPosition;
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+    applyFromEvent(e.clientX, e.clientY, e.shiftKey);
+  };
+  const onPadPointerMove = (
+    e: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (e.buttons === 0) return;
+    applyFromEvent(e.clientX, e.clientY, e.shiftKey);
+  };
+  const onPadPointerUpCancel = (
+    e: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    const el = e.currentTarget as HTMLDivElement;
+    if (el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+  };
+
   return (
     <div
       ref={hostRef}
@@ -235,12 +301,52 @@ export function StageScenePreview({
           layoutCount={layoutCount}
           layoutVariant={layoutVariant}
           plateDims={plateDims}
+          /* Phase 126 — rail thumb canonical mediaPosition'ı
+             YANSITIR (zoom'un AKSİNE — zoom rail-independent,
+             media-position canonical). */
+          mediaPosition={mediaPosition}
           isPreview
           isRender={false}
           isEmpty={false}
           chromeless
         />
       </div>
+      {/* Phase 126 — Pad overlay yalnız onChangeMediaPosition
+          verildiğinde (rail-head pad). Preset thumb'lar overlay
+          GÖSTERMEZ — yalnız mediaPosition'ı yansıtır (sürmez).
+          Overlay subtle: safe-area çerçevesi + framing dim +
+          küçük handle (canlı preview'ı boğmaz; spec §2). Root
+          wrapper pointerEvents:none ama .k-studio__pad-overlay
+          CSS pointer-events:auto → handle/pad etkileşimli. */}
+      {onChangeMediaPosition ? (
+        <div
+          ref={padRef}
+          className="k-studio__pad-overlay"
+          data-testid="studio-rail-media-pad"
+          data-media-x={mediaPosition.x}
+          data-media-y={mediaPosition.y}
+          onPointerDown={onPadPointerDown}
+          onPointerMove={onPadPointerMove}
+          onPointerUp={onPadPointerUpCancel}
+          onPointerCancel={onPadPointerUpCancel}
+        >
+          <div className="k-studio__pad-dim" aria-hidden />
+          <div
+            className="k-studio__pad-safearea"
+            data-testid="studio-rail-pad-safearea"
+            aria-hidden
+          />
+          <div
+            className="k-studio__pad-handle"
+            data-testid="studio-rail-pad-handle"
+            style={{
+              left: `${50 + mediaPosition.x * 50}%`,
+              top: `${50 + mediaPosition.y * 50}%`,
+            }}
+            aria-label="Media position handle"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
