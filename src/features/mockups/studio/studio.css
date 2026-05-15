@@ -1090,31 +1090,11 @@
   text-transform: uppercase;
 }
 
-/* Frame canvas caption */
-.k-studio__frame-cap {
-  /* Phase 97 — caption plate'in alt kenarında absolute pozisyon.
-   *
-   * Phase 91 baseline'da plate flex container'ında stage-inner'ın
-   * kardeşi olarak yer alıyordu; flex-direction column geçişinde
-   * (Phase 97) caption stage-inner'ın altında ek dikey alan kaplıyor,
-   * cascade host'u dikeyde sıkıştırıyordu. Phase 97 düzeltme: caption
-   * plate'in IÇ alt kenarına absolute positioned — cascade tam plate
-   * yüksekliğini kullanır. Sözleşme #3 plate boyut ifadesi (export
-   * dims + deliverable type) bilgi katmanı olarak korunur.
-   *
-   * z-index: 2 → cascade slot'larının üstünde okunabilir kalır. */
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 14px;
-  font-family: var(--ks-fm);
-  font-size: 9.5px;
-  color: rgba(255, 255, 255, 0.45);
-  letter-spacing: 0.06em;
-  text-align: center;
-  z-index: 2;
-  pointer-events: none;
-}
+/* Phase 122 — `.k-studio__frame-cap` KALDIRILDI (orphan). Frame
+ * mode plate caption JSX'i MockupStudioStage'ten silindi
+ * (kullanıcı: cream plate üstünde okunmuyor + redundant: aspect/
+ * dims/deliverable toolbar'da, continuity hint rail slot-ring/
+ * badge'de). Recipe artık kullanılmıyor → silindi. */
 
 /* ─── Rail ─────────────────────────────────────────── */
 .k-studio__rail {

@@ -25617,6 +25617,133 @@ slider activation. Yeni SVG/layout builder/mockup editor
 
 ---
 
+## Phase 122 — Frame mode plate caption kaldırıldı (okunmuyor + redundant)
+
+Phase 121 rail selection unified design'ı bitirdi. Kullanıcı tek
+ufak görsel sorun bildirdi: Frame mode'da plate üzerindeki
+caption (`1080 × 1920 · 9:16 · Instagram Story · Cascade ·
+active Front View`) cream plate üstünde açık renk → **tam
+okunmuyor**; "gerekli bir yazı değilse kaldırabiliriz". Küçük
+cleanup turu.
+
+### Analiz — caption gerekli mi?
+
+`FrameComposition` içindeki `.k-studio__frame-cap` (Frame-mode-
+only, `!isPreview`) üç bilgi taşıyordu:
+1. `{outputW} × {outputH} · {label}` (örn. "1080 × 1920 · 9:16")
+2. `· {deliverable}` (örn. "· Instagram Story")
+3. `· Cascade · active {slot}` (Phase 85 continuity hint)
+
+Browser+code denetimi: **hepsi redundant.**
+- Toolbar (Phase 83 baseline) Frame mode'da zaten gösteriyor:
+  `templateLabel` = `Frame · {deliverable}` ("Frame · Instagram
+  Story") + `statusLabel` = `{outputW}×{outputH}` ("1080×1920").
+  Browser doğrulaması: caption silindikten sonra body'de hâlâ
+  "Instagram Story" + "1080×1920" var (`toolbar_showsDeliverable:
+  true`, `toolbar_showsDims: true`).
+- "Cascade · active {slot}" continuity hint'i Phase 121 rail
+  slot-ring/badge ile redundant (operatör hangi layout seçili +
+  active'i artık rail'de görüyor).
+- Caption preview-only chrome — exported PNG'de YOK (§11.0
+  editing-helper kategorisi, frame-compositor.ts üretmiyor).
+- Cream plate üstünde `rgba(255,255,255,0.45)` açık renk →
+  okunmuyor.
+
+Sonuç: kaldırınca **sıfır bilgi kaybı** (toolbar + rail aynısını
+taşıyor) + okunabilirlik sorunu biter.
+
+### Fix (MockupStudioStage + studio.css)
+
+- `MockupStudioStage` `FrameComposition`: `.k-studio__frame-cap`
+  JSX bloğu (`!isPreview` koşullu div + 3 span) tamamen
+  KALDIRILDI. Yalnız caption'da kullanılan `aspectCfg`
+  (`FRAME_ASPECT_CONFIG[frameAspect]`) + `activeSlot`
+  (`slots[selectedSlot]`) declaration'ları da silindi (artık
+  unused — tsc temiz). `designSource` KORUNDU (line 560
+  `data-design-source` hâlâ kullanıyor).
+- `studio.css`: orphan `.k-studio__frame-cap` recipe (Phase
+  97'den absolute bottom positioned caption) KALDIRILDI.
+- Test refs: `studio-stage-frame-cap` / `-deliverable` /
+  `-source` testid'leri hiçbir testte kullanılmıyordu →
+  sıfır test breakage.
+
+### Browser+DOM triangulation (fresh build, real asset)
+
+Frame mode 9:16 (kullanıcı screenshot context):
+- `frameMode_plateCaptionPresent: false` +
+  `frameCap_testidCount: 0` → caption gitti.
+- `toolbar_showsDeliverable: true` + `toolbar_showsDims: true`
+  → "Instagram Story" + "1080×1920" toolbar'da korundu (sıfır
+  bilgi kaybı).
+- `mockupMode_plateOk: true` + `mockupMode_cascadeSlots: 3` →
+  Mockup mode tamamen etkilenmedi (caption zaten Frame-only +
+  !isPreview idi).
+- Screenshot: Frame 9:16 plate temiz, alt caption yok; cascade
+  composition korundu; rail slot-ring/badge (Phase 121) intakt.
+
+### Quality gates
+
+- `tsc --noEmit`: clean (unused `aspectCfg`/`activeSlot` silindi)
+- `vitest tests/unit/{mockup,selection,products,listings}`:
+  **730/730 PASS** (59 files, zero regression — testid'ler hiçbir
+  testte yoktu)
+- `next build`: ✓ Compiled successfully (`NODE_OPTIONS=--max-old-
+  space-size=4096`; default heap OOM build mem baskısı, kod
+  hatası değil)
+
+### Değişmeyenler (Phase 122)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız bir preview-only caption JSX
+  + 2 unused declaration + 1 orphan CSS recipe silindi.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Sadece silme (redundant +
+  okunmayan chrome).
+- **Phase 117 single-renderer + Phase 118 reactive + Phase 119
+  plate-fit + Phase 120 containerless/aspect-adaptive + Phase
+  121 rail slot-ring/badge baseline'ları intakt.**
+- **Bilgi kaybı YOK** — aspect/dims/deliverable toolbar'da
+  (Phase 83), continuity rail'de (Phase 121).
+- **§11.0 Preview = Export Truth** korunur: caption zaten
+  exported PNG'de yoktu (preview-only chrome); silmek export'u
+  etkilemez.
+- **Mockup mode etkilenmedi** (caption Frame-only + !isPreview).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ kalan (Phase 123+ candidate)
+
+- **Ölü kod temizliği** (Phase 117-121'den devir):
+  `PresetThumbMockup` / `fitCascadeToThumb` / `THUMB_PLATE_*`
+  svg-art.tsx rail path'inde kullanılmıyor (`PresetThumbFrame`
+  kullanımı kontrol edilip güvenli silinmeli).
+- **StageScenePreview `PREVIEW_BASE` + transform:scale** hâlâ
+  scaled-screenshot modelinde (Phase 119-120 container + fill
+  düzeltti; mevcut görsel sonuç her aspect'te edge-to-edge).
+- **View tabs (Zoom/Tilt/Precision) + Zoom slider** no-op
+  (kategori 4 preview-only helper; Phase 115'ten devir).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 122 ile Frame mode plate'i temiz: okunmayan + redundant
+caption kaldırıldı, bilgi toolbar (Phase 83) + rail slot-ring/
+badge'de (Phase 121) korunuyor. Tek render path (Phase 117) +
+reactivity (Phase 118) + plate-fit (Phase 119) + containerless/
+aspect-adaptive (Phase 120) + rail selection unified (Phase
+121) + candidate layout (Phase 114) BİREBİR korundu. Sıradaki
+adım **Phase 123 candidate**: ölü kod temizliği
+(`PresetThumbMockup`/`fitCascadeToThumb`) veya View tabs/Zoom
+slider activation. Yeni SVG/layout builder/mockup editor
+§13.A'da ertelenmiş kalır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

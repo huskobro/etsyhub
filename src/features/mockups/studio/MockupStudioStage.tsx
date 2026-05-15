@@ -508,7 +508,6 @@ function FrameComposition({
    *                         YAPMAZ
    *
    * Empty state (sw="empty") → cascade görünmez; explicit reset. */
-  const aspectCfg = FRAME_ASPECT_CONFIG[frameAspect];
 
   /* Cascade layout: Mockup mode ile birebir aynı (cascadeLayoutFor
    * + 572×504 inner stage). Phase 87'de scale = 1 (Mockup mode ile
@@ -522,7 +521,6 @@ function FrameComposition({
    * Preview = Export Truth §11.0). */
   const rawPhones = cascadeLayoutFor(deviceKind, layoutCount, layoutVariant);
 
-  const activeSlot = slots[selectedSlot] ?? null;
   const hasAnyAssignedSlot = slots.some((s) => s.assigned);
   const designSource: "slot" | "sample" | "empty" = isEmpty
     ? "empty"
@@ -621,42 +619,17 @@ function FrameComposition({
             })
           : null}
       </div>
-      {!isPreview ? (
-        <div className="k-studio__frame-cap" data-testid="studio-stage-frame-cap">
-          {aspectCfg.outputW} × {aspectCfg.outputH} · {aspectCfg.label}
-          <span
-            style={{
-              marginLeft: 8,
-              opacity: 0.6,
-              fontStyle: "normal",
-            }}
-            data-testid="studio-stage-frame-deliverable"
-          >
-            · {aspectCfg.deliverable}
-          </span>
-          {/* Phase 85 — Continuity hint. Frame mode artık tüm cascade'i
-              taşıdığı için caption "From Cascade · {active slot name}"
-              sinyali verir. Operator için: stage'deki kompozisyonun
-              Mockup mode'dakiyle aynı olduğu ve hangi slot'un active
-              ring taşıdığı net görünür. */}
-          {designSource !== "empty" ? (
-            <span
-              style={{
-                marginLeft: 10,
-                opacity: 0.5,
-                fontStyle: "normal",
-              }}
-              data-testid="studio-stage-frame-source"
-              data-source={designSource}
-            >
-              ·{" "}
-              {designSource === "slot" && activeSlot
-                ? `Cascade · active ${activeSlot.name}`
-                : "Cascade · sample preview"}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
+      {/* Phase 122 — Frame mode plate caption (`.k-studio__frame-cap`)
+          KALDIRILDI. Kullanıcı: "frame modda plate üzerindeki yazı
+          tam okunmuyor, gerekli değilse kaldırabiliriz." Caption
+          aspect/dims/deliverable bilgisini gösteriyordu ama bu zaten
+          toolbar'da var (Phase 83 baseline: templateLabel "Frame ·
+          {deliverable}" + statusLabel "{outputW}×{outputH}"); "Cascade
+          · active {slot}" continuity hint'i de Phase 121 rail
+          slot-ring/badge ile redundant. Preview-only chrome (exported
+          PNG'de yok — §11.0 editing-helper kategorisi); cream plate
+          üstünde açık renk okunmuyordu. Kaldırınca SIFIR bilgi kaybı
+          (toolbar + rail aynısını taşıyor). */}
     </>
   );
 }
