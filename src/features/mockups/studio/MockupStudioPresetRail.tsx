@@ -161,6 +161,14 @@ export interface MockupStudioPresetRailProps {
    * 100 = no-op. */
   previewZoom?: number;
   onChangePreviewZoom?: (next: number) => void;
+  /** Phase 126 — Global media-position (canonical). Rail head pad
+   *  bunu sürer; StageScenePreview overlay'ine iletilir. Rail thumb
+   *  candidate preview'ları da yansıtır (canonical — zoom'un
+   *  AKSİNE). */
+  mediaPosition?: import("./media-position").MediaPosition;
+  onChangeMediaPosition?: (
+    next: import("./media-position").MediaPosition,
+  ) => void;
 }
 
 export function MockupStudioPresetRail({
@@ -177,6 +185,8 @@ export function MockupStudioPresetRail({
   frameAspect = "16:9",
   previewZoom,
   onChangePreviewZoom,
+  mediaPosition = { x: 0, y: 0 },
+  onChangeMediaPosition,
 }: MockupStudioPresetRailProps) {
   /* Phase 123 — Zoom slider Shell state'ten (canonical). Fallback
    * local state (legacy / Shell prop yoksa). Slider → setZoom →
@@ -196,7 +206,11 @@ export function MockupStudioPresetRail({
     if (onChangeLayoutCount) onChangeLayoutCount(n);
     else setLocalLayout(n);
   };
-  const [viewTab, setViewTab] = useState<"zoom" | "tilt" | "precision">("zoom");
+  /* Phase 126 — View tabs sadeleşti: yalnız "Zoom" aktif.
+   *  "Precision" tab'ı kaldırıldı (Shift modifier zaten precision
+   *  sağlıyor — ayrı mode değil; spec §2). "Tilt" honest-disabled
+   *  (no-op sahte kontrol yok). viewTab state artık tek değer. */
+  const viewTab = "zoom" as const;
   /* Phase 114 — Active preset = CANONICAL Shell layoutVariant
    * index (fallback local legacy). Phase 96-113 `const [active,
    * setActive] = useState(0)` LOCAL idi → preset seçimi yalnız
@@ -330,19 +344,31 @@ export function MockupStudioPresetRail({
           ))}
         </div>
         <div className="k-studio__view-tabs" role="tablist" aria-label="View">
-          {(["zoom", "tilt", "precision"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              className="k-studio__view-tab"
-              aria-pressed={viewTab === t}
-              onClick={() => setViewTab(t)}
-              data-testid={`studio-rail-view-${t}`}
-            >
-              {t[0]!.toUpperCase()}
-              {t.slice(1)}
-            </button>
-          ))}
+          {/* Phase 126 — Zoom: tek aktif view tab (canonical). */}
+          <button
+            type="button"
+            className="k-studio__view-tab"
+            aria-pressed={viewTab === "zoom"}
+            data-testid="studio-rail-view-zoom"
+          >
+            Zoom
+          </button>
+          {/* Phase 126 — Tilt honest-disabled (no-op sahte kontrol
+              yok; spec §2). Tilt media-rotate ileride ayrı turun
+              işi. Precision tab tamamen kaldırıldı — Shift modifier
+              precision sağlar. */}
+          <button
+            type="button"
+            className="k-studio__view-tab"
+            data-testid="studio-rail-view-tilt"
+            disabled
+            aria-disabled="true"
+            title="Tilt — coming soon"
+            style={{ cursor: "not-allowed", opacity: 0.45 }}
+          >
+            Tilt
+            <span className="k-studio__view-tab-soon"> · Soon</span>
+          </button>
         </div>
         <div
           className="k-studio__live-thumb"
@@ -367,6 +393,8 @@ export function MockupStudioPresetRail({
             activePalette={activePalette}
             sceneOverride={sceneOverride}
             layoutCount={layout}
+            mediaPosition={mediaPosition}
+            onChangeMediaPosition={onChangeMediaPosition}
           />
           {/* Phase 121 — Live thumb head = aktif (selected)
               layoutVariant'ın canlı hali. Plate üstü overlay
@@ -472,6 +500,11 @@ export function MockupStudioPresetRail({
                 activePalette={activePalette}
                 sceneOverride={sceneOverride}
                 layoutCount={layout}
+                /* Phase 126 — Preset thumb canonical mediaPosition'ı
+                   YANSITIR (zoom'un AKSİNE) ama interaktif DEĞİL:
+                   onChangeMediaPosition GEÇİLMEZ → read-only
+                   candidate preview (pad yalnız rail-head'de). */
+                mediaPosition={mediaPosition}
               />
               {/* Phase 121 — Seçili layout slot-ring (orta panel
                   parity) + isim alt-caption yerine plate üstü
