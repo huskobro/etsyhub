@@ -352,66 +352,59 @@ export async function composeFrameOutput(
       continue;
     }
 
-    // Phase 102 — Item chrome compose (rounded mask + drop-shadow + outline)
+    // Phase 103 — Item chrome compose order FIX (Preview = Export Truth).
     //
-    // Pipeline:
-    //   (a) Asset resize + (optional) rotate → raw asset PNG
-    //   (b) SVG mask: rounded rect clipPath ile asset'i rounded yap
-    //   (c) Drop-shadow chain SVG layer (asset'in altına ekle)
-    //   (d) White outline ring SVG layer (asset'in üzerine)
+    // Phase 102 bug'ı: asset önce resize **+ rotate** ediliyordu, sonra
+    // rounded mask + outline + shadow rotated asset'in büyümüş transparent
+    // bbox'ına uygulanıyordu → rounded corner + outline rotated item'da
+    // yanlış yerde / kayıp. Studio preview ise CSS `transform:rotate` ile
+    // **chrome'lu item'ı bir bütün olarak** döndürüyor (SVG shape rounded
+    // + outline rotate'den önce çiziliyor). Sıra terstiydi.
     //
-    // Tüm bunları slot başına TEK Sharp composite call'ında yapmak
-    // performans için kritik (3 slot × 3 layer = 9 ek composite call
-    // yerine slot başına 1 raw → 1 chrome wrap).
+    // Phase 103 doğru sıra (preview parity):
+    //   (a) Asset resize (rotate YOK) → axis-aligned asset
+    //   (b) Rounded mask asset'in GERÇEK dims'ine uygulanır
+    //   (c) Chrome'lu tile compose: shadow base + rounded asset + outline
+    //       (hepsi axis-aligned, asset gerçek köşesine hizalı)
+    //   (d) Chrome'lu tile'ı BİR BÜTÜN olarak rotate et (preview CSS
+    //       `transform:rotate` ile birebir — chrome rotation'la birlikte
+    //       döner, rounded corner + outline asset'in gerçek kenarında
+    //       kalır)
+    //   (e) Rotated tile'ı slot center'a hizala (rotate sonrası bbox
+    //       büyür; recenter)
 
-    // (a) Asset resize + rotate
-    let assetSharp = sharp(slot.imageBuffer).resize(slotOutW, slotOutH, {
-      fit: "cover",
-      position: "centre",
-    });
-    if (slot.r && slot.r !== 0) {
-      assetSharp = assetSharp.rotate(slot.r, {
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
-      });
-    }
-    const rawAssetPng = await assetSharp.png().toBuffer();
-    // After rotation, dimensions may have grown; recenter
-    const meta = await sharp(rawAssetPng).metadata();
-    const finalW = meta.width ?? slotOutW;
-    const finalH = meta.height ?? slotOutH;
+    // (a) Asset resize — axis-aligned (rotate YOK; rotation chrome'lu
+    // tile'a (d) adımında bir bütün olarak uygulanır).
+    const assetPng = await sharp(slot.imageBuffer)
+      .resize(slotOutW, slotOutH, { fit: "cover", position: "centre" })
+      .png()
+      .toBuffer();
+    const assetW = slotOutW;
+    const assetH = slotOutH;
 
-    const chrome = computeItemChrome(finalW, finalH);
+    const chrome = computeItemChrome(assetW, assetH);
 
-    // (b) Rounded mask SVG — asset'i rounded rect ile mask et
-    const maskSvg = `<svg width="${finalW}" height="${finalH}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="${finalW}" height="${finalH}"
+    // (b) Rounded mask — asset'in GERÇEK dims'ine (axis-aligned)
+    const maskSvg = `<svg width="${assetW}" height="${assetH}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="${assetW}" height="${assetH}"
         rx="${chrome.itemRadius}" ry="${chrome.itemRadius}"
         fill="white"/>
     </svg>`;
-    const roundedAssetPng = await sharp(rawAssetPng)
-      .composite([
-        {
-          input: Buffer.from(maskSvg),
-          blend: "dest-in",
-        },
-      ])
+    const roundedAssetPng = await sharp(assetPng)
+      .composite([{ input: Buffer.from(maskSvg), blend: "dest-in" }])
       .png()
       .toBuffer();
 
-    // (c) + (d) Full slot tile: drop-shadow chain underneath + rounded
-    // asset on top + white outline ring. Shadow chain padding gerekir
-    // (shadow rounded asset'in dışına taşacak); slot tile output > asset.
+    // (c) Chrome'lu tile compose (axis-aligned, asset gerçek köşesine
+    // hizalı): shadow base + rounded asset + white outline ring. Shadow
+    // padding (asset'in dışına taşar) tile'ı asset'ten büyük yapar.
     const padding = Math.ceil(chrome.shadowOffset1 + chrome.shadowBlur1);
-    const tileW = finalW + padding * 2;
-    const tileH = finalH + padding * 2;
+    const tileW = assetW + padding * 2;
+    const tileH = assetH + padding * 2;
     const assetXInTile = padding;
     const assetYInTile = padding;
 
-    // Shadow + outline SVG layer (single SVG; feDropShadow on rounded rect)
-    // - Rounded rect with feDropShadow filter creates the shadow chain
-    // - Rounded rect stroke creates the white outline
-    // - fill=none on the visible rect (asset will sit on top via composite)
-    const shadowOutlineSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+    const shadowSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <filter id="slot-sh" x="-30%" y="-30%" width="160%" height="160%">
           <feDropShadow dx="0" dy="${chrome.shadowOffset1}"
@@ -422,27 +415,23 @@ export async function composeFrameOutput(
             flood-color="black" flood-opacity="0.35"/>
         </filter>
       </defs>
-      <!-- Shadow base rect (filled black with shadow filter; will be
-           covered by rounded asset) -->
       <rect x="${assetXInTile}" y="${assetYInTile}"
-        width="${finalW}" height="${finalH}"
+        width="${assetW}" height="${assetH}"
         rx="${chrome.itemRadius}" ry="${chrome.itemRadius}"
         fill="black" filter="url(#slot-sh)"/>
     </svg>`;
 
-    // Outline SVG layer — asset'in tam üstüne white outline ring
     const outlineSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
       <rect x="${assetXInTile + chrome.outlineWidth / 2}"
         y="${assetYInTile + chrome.outlineWidth / 2}"
-        width="${finalW - chrome.outlineWidth}"
-        height="${finalH - chrome.outlineWidth}"
+        width="${assetW - chrome.outlineWidth}"
+        height="${assetH - chrome.outlineWidth}"
         rx="${chrome.itemRadius}" ry="${chrome.itemRadius}"
         fill="none"
         stroke="rgba(255,255,255,0.18)" stroke-width="${chrome.outlineWidth}"/>
     </svg>`;
 
-    // Build slot tile: transparent canvas + shadow + rounded asset + outline
-    const slotTilePng = await sharp({
+    let slotTilePng = await sharp({
       create: {
         width: tileW,
         height: tileH,
@@ -451,16 +440,36 @@ export async function composeFrameOutput(
       },
     })
       .composite([
-        { input: Buffer.from(shadowOutlineSvg), top: 0, left: 0 },
+        { input: Buffer.from(shadowSvg), top: 0, left: 0 },
         { input: roundedAssetPng, top: assetYInTile, left: assetXInTile },
         { input: Buffer.from(outlineSvg), top: 0, left: 0 },
       ])
       .png()
       .toBuffer();
 
-    // Position tile so asset center aligns with slot center
-    const finalX = Math.round(slotOutX + (slotOutW - finalW) / 2 - padding);
-    const finalY = Math.round(slotOutY + (slotOutH - finalH) / 2 - padding);
+    // (d) Chrome'lu tile'ı BİR BÜTÜN olarak rotate et — preview CSS
+    // `transform:rotate(${r}deg)` parity. Rounded corner + outline +
+    // shadow chrome rotation'la birlikte döner (asset'in gerçek
+    // kenarında kalır, transparent bbox'a değil).
+    let tileFinalW = tileW;
+    let tileFinalH = tileH;
+    if (slot.r && slot.r !== 0) {
+      slotTilePng = await sharp(slotTilePng)
+        .rotate(slot.r, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .png()
+        .toBuffer();
+      const rotMeta = await sharp(slotTilePng).metadata();
+      tileFinalW = rotMeta.width ?? tileW;
+      tileFinalH = rotMeta.height ?? tileH;
+    }
+
+    // (e) Rotated tile'ı slot center'a hizala. Slot'un mantıksal merkezi
+    // (slotOutX + slotOutW/2, slotOutY + slotOutH/2); rotate sonrası tile
+    // bbox büyüdüğü için tile'ı kendi merkezine göre yerleştir.
+    const slotCenterX = slotOutX + slotOutW / 2;
+    const slotCenterY = slotOutY + slotOutH / 2;
+    const finalX = Math.round(slotCenterX - tileFinalW / 2);
+    const finalY = Math.round(slotCenterY - tileFinalH / 2);
 
     slotComposites.push({
       input: slotTilePng,

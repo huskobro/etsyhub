@@ -19661,7 +19661,41 @@ surface" rolünün tam ürünleştirilmesi.
   default; ileride productType-specific aspect chip'leri eklenebilir
   — Phase 98+ candidate).
 
-### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome)
+### 11.0 Preview = Export Truth (canonical ilke — Phase 103)
+
+**Bu ilke Mockup Studio'nun en yüksek öncelikli görsel sözleşmesidir.**
+
+Studio preview'da operator ne görüyorsa, exported PNG **birebir o**
+olmalı — **yalnız editing helper'lar hariç**.
+
+**Editing helpers (preview-only — export'a GİRMEZ):**
+- slot-ring (selection box-shadow / active marker)
+- slot badge ("01 Front View" / active helper label)
+- selection marker / hover state
+- debug / dev overlay (varsa)
+
+**Final visual chrome (preview = export — ikisi de aynı):**
+- item border / white outline
+- item rounded corner
+- item drop shadow chain
+- **item tilt / rotation** (slot `r` derecesi — preview CSS
+  `transform:rotate` ile export Sharp tile rotation birebir)
+- item scale
+- item placement (slot pozisyonu, cascade dizilimi)
+- plate ↔ item ilişkisi (plate chrome + item'ın plate üzerindeki
+  yeri)
+
+Bu ilkeye aykırı bir davranış görülürse (preview'da yatık item
+export'ta dimdik, preview'da görünen outline export'ta kayıp,
+vb.): ya sözleşme açıkça güncellenir ya da kod düzeltilir. **Sessiz
+divergence kabul edilmez.** Operator "export edildi ama başka bir
+görsele dönüştü" hissi almamalı.
+
+Canonical truth = **exported PNG**. Studio preview, exported PNG'nin
+authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
+preview'ın render sözleşmesini birebir izler.
+
+### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation parity)
 
 - **Phase 102 item chrome parity fulfilled — exported PNG'deki her
   mockup item'ı Studio preview item chrome'una yaklaştı.**
@@ -21131,6 +21165,200 @@ phone bezel Sharp pipeline'a) — operator için kalan en görünür
 divergence. Ana item chrome (rounded+outline+shadow) Phase 102'de
 yakalandığı için Phase 103 fine-grain shape polish. Paralel: Etsy
 Draft submit pipeline frame-export end-to-end test.
+
+---
+
+## Phase 103 — Item tilt/rotation + chrome compose order FIX (Preview = Export Truth)
+
+Phase 102 item chrome (rounded + outline + drop shadow) ekledi ama
+kullanıcı kritik bir fark gözledi: **Studio preview'da 2. ve 3.
+item yatık (angled) dururken export'ta dimdik çıkıyor** + white
+outline export'ta zayıf/kayıp. Ürünün ana ilkesi artık net:
+**Preview = Export Truth** (editing helper'lar hariç). Phase 103
+bu kök bug'ı düzeltir + ilkeyi contract'a yazar.
+
+### Gerçek browser comparison
+
+Studio preview slot transform DOM ölçümü (canonical truth):
+- Slot 0: `matrix(1,0,0,1,0,0)` = rotate(0°)
+- Slot 1: `matrix(0.994522,-0.104528,...)` = **rotate(-6°)**
+- Slot 2: `matrix(0.978148,-0.207912,...)` = **rotate(-12°)**
+- Her slot: `filter: drop-shadow(0 16px 32px rgba(0,0,0,0.5))
+  drop-shadow(0 4px 10px rgba(0,0,0,0.35))` 2-katmanlı item shadow
+
+`cascadeLayoutForRaw` clipart layout: slot1 `r:-6`, slot2 `r:-12`.
+Preview slot-wrap'e `transform:rotate(${r}deg)` + `filter:
+drop-shadow` uyguluyor; içindeki `StageDeviceSVG` (rounded + outline
++ asset) **rotate'den önce** çiziliyor → slot-wrap **bir bütün
+olarak** dönüyor (chrome rotation'la birlikte döner).
+
+Phase 102 export indirildi: item'lar **dimdik** (rotation bozulmuş),
+outline rotated bbox'a yanlış uygulanmış.
+
+### En büyük kök fark
+
+Phase 102 Sharp pipeline **sırası tersti**:
+1. asset resize **+ rotate** → rotated asset bbox büyür
+   (200×280 @ -12° → ~240×320 transparent köşeli)
+2. rounded mask + outline + shadow **rotated asset'in büyümüş
+   transparent bbox'ına** uygulanıyordu → rounded corner asset'in
+   gerçek görsel kenarına değil transparent bbox köşesine geliyor;
+   outline/shadow yanlış yerde → operator için "item'lar dimdik +
+   outline kayıp" divergence.
+
+Studio preview tam tersi: chrome (rounded + outline) **rotate'den
+ÖNCE** asset'in gerçek dims'inde çiziliyor, sonra chrome'lu item
+**bir bütün olarak** döndürülüyor.
+
+### Ürün kararı (Preview = Export Truth)
+
+Contract'a yeni canonical ilke eklendi (**§11.0**):
+- **Canonical truth = exported PNG**; Studio preview onun birebir
+  authoring önizlemesi
+- **Final visual chrome → preview = export**: item border / outline /
+  rounded corner / **tilt-rotation** / scale / placement / drop
+  shadow / plate↔item ilişkisi
+- **Editing helpers → preview-only**: slot-ring / slot badge /
+  selection marker / debug overlay
+- Sessiz divergence yasak
+
+### Fix — Sharp slot composite compose order
+
+`frame-compositor.ts` slot composite zinciri preview parity
+sırasına getirildi:
+- (a) Asset resize **(rotate YOK)** → axis-aligned asset
+- (b) Rounded mask asset'in **gerçek dims'ine** uygulanır
+  (axis-aligned; rounded corner asset'in gerçek köşesinde)
+- (c) Chrome'lu tile compose (axis-aligned): shadow base SVG
+  (`feDropShadow` 2-katmanlı) + rounded asset + white outline ring
+  → TEK Sharp composite
+- (d) **Chrome'lu tile'ı BİR BÜTÜN olarak rotate et** —
+  `sharp(slotTilePng).rotate(slot.r, {transparent bg})` — preview
+  CSS `transform:rotate(${r}deg)` ile birebir; rounded corner +
+  outline + shadow rotation'la birlikte döner
+- (e) Rotated tile'ı slot mantıksal merkezine (`slotCenterX/Y`)
+  hizala (rotate sonrası bbox büyür; recenter)
+
+Selection ring + badge **compose edilmez** (Phase 94 baseline +
+§11.0 editing helper ilkesi). Yalnız assigned slot asset + final
+chrome export'a girer.
+
+### Browser end-to-end real-asset doğrulama
+
+Live dev server (1600×1100, real DB, real selection set
+`cmov0ia37` 4-item clipart + real MinIO MJ assets PAS5/Pinterest):
+
+| Item | Studio preview | Phase 102 export (ref) | Phase 103 export |
+|---|---|---|---|
+| Slot 0 | dik 0° | dik (raw) | ✓ dik 0° |
+| Slot 1 | **-6° yatık** | **dimdik (BUG)** | ✓ **-6° yatık** |
+| Slot 2 | **-12° yatık** | **dimdik (BUG)** | ✓ **-12° yatık** |
+| White outline | ✓ | zayıf/kayık | ✓ görünür |
+| Rounded corner | ✓ | rotated bbox köşesinde | ✓ asset gerçek köşesinde |
+| Drop shadow | ✓ | yanlış yerde | ✓ rotation'la döner |
+
+Phase 103 export: 1920×1080, 784.1 KB. Studio preview ↔ Phase 103
+PNG yan yana: **slot 1 -6°, slot 2 -12° birebir aynı kompozisyon**;
+white outline + rounded + shadow her item'da rotation'la birlikte
+döndü (asset gerçek kenarında).
+
+Product MockupsTab handoff: tile aspectRatio "4/3", bg
+rgb(22,19,15)=bg-ink, objectFit "contain", img 1920/1080, Phase 103
+export (`h85yvkic`) cover ring + Primary badge. Tile gerçek export
+PNG'sini gösterdiği için item tilt/rotation + chrome otomatik
+korundu (Phase 101 tile aspect baseline + Phase 103 item parity).
+
+Screenshot kanıtları:
+- Studio Frame preview: slot 0 dik, slot 1 -6° yatık, slot 2 -12°
+  yatık; white sticker edge + rounded + item shadow
+- Phase 103 export PNG: birebir aynı açılar (slot 1 -6°, slot 2
+  -12°) + outline + rounded + shadow rotation'la döndü
+- Product MockupsTab Frame Exports bucket: 5 tile, Phase 103
+  export item tilt korundu, ilki cover ring + Primary badge
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products,
+  listings}`: **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 103)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Phase 100 FrameExport + Listing.
+  imageOrderJson baseline dokunulmadı.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek dosya (`frame-compositor.ts`)
+  slot composite zinciri compose order fix; yeni helper / service /
+  route / endpoint yok. `computeItemChrome` Phase 102 helper'ı
+  korundu. MockupsTab + Studio shell + diğer tüm yüzeyler
+  dokunulmadı.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Mockup mode render dispatch (POST /api/mockup/jobs)
+  dokunulmadı** — Phase 8 baseline Mockup pack pipeline ayrı
+  compositor (`compositor.ts`); Frame-only `frame-compositor.ts`
+  refactor'undan etkilenmedi.
+- **Studio shell, slot-ring/badge editing chrome, Phase 94
+  editing/final split, Phase 101 plate chrome + tile aspect,
+  Phase 102 item chrome helper** hepsi intakt.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Phase 100 persistence + handoff + Listing discriminated union
+  backward-compat tam.**
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Düzeltilen parity bug'ları (Phase 103):
+- **Item tilt/rotation export'ta düzleşiyor** — Phase 102 Sharp
+  pipeline asset'i önce rotate edip sonra chrome uyguluyordu;
+  preview slot-wrap'i bir bütün olarak döndürüyordu. Phase 103
+  compose order fix: chrome'lu tile bir bütün olarak rotate
+  (preview parity).
+- **White outline rotated item'da kayıp/zayıf** — outline rotated
+  asset'in büyümüş transparent bbox'ına uygulanıyordu. Phase 103
+  outline axis-aligned asset gerçek dims'ine uygulanıp tile ile
+  birlikte döner.
+- **Rounded corner rotated item'da yanlış yerde** — rounded mask
+  rotated bbox köşesindeydi. Phase 103 rounded mask axis-aligned
+  asset gerçek köşesinde.
+
+Hâlâ açık (Phase 104+ candidate):
+- **ProductType-specific item shape parity** (Phase 102'den devir)
+  — Studio preview `StageDeviceSVG` ProductType-aware (sticker →
+  white sticker edge 10px pad / wall_art → frame matting / phone →
+  device bezel). Phase 103 ortak chrome (rounded + outline + shadow
+  + tilt) tüm productType'lara aynı; sticker white-pad / wall_art
+  matting / phone bezel tam parity Phase 104+ (her shape için ayrı
+  SVG compose büyük scope; ana "ne gördüm = ne aldım" divergence
+  Phase 101-103'te kapandı).
+- **Plate-only Lens Blur** (Phase 101'den devir) — blur full canvas;
+  preview plate parent'a CSS filter.
+- **Drop shadow shadow softness fine-tune** — preview 4-katmanlı;
+  libvips feDropShadow 2-katmanlı; ana visual impact yakalandı,
+  yumuşaklık ince fark.
+- **Etsy Draft submit pipeline frame-export end-to-end test** —
+  handoff entry + Phase 9 push pipeline outputKey/signedUrl yolu
+  intakt; gerçek Etsy push test (Etsy API key gerek).
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 103 ile **Preview = Export Truth** ilkesi hem contract'a
+yazıldı hem item-level kök bug (tilt/rotation + outline compose
+order) çözüldü:
+- Studio'da gördüğüm ≈ indirdiğim PNG ≈ Product MockupsTab tile
+- Plate rounded + border + drop shadow + stage padding (Phase 101)
+- Item rounded + white outline + drop-shadow chain (Phase 102)
+- **Item tilt/rotation + chrome compose order birebir** (Phase 103)
+- Editing chrome (selection ring + badge) export'a girmez
+
+Sıradaki en yüksek-impact adım **Phase 104 candidate**: ProductType-
+specific item shape parity (sticker white-pad / wall_art matting /
+phone bezel Sharp pipeline'a) — kalan en görünür divergence. Ana
+item chrome + tilt/rotation Phase 101-103'te kapandığı için Phase
+104 fine-grain shape polish. Paralel: Etsy Draft submit pipeline
+frame-export end-to-end test.
 
 ---
 
