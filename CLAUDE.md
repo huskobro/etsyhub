@@ -19695,7 +19695,7 @@ Canonical truth = **exported PNG**. Studio preview, exported PNG'nin
 authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
 preview'ın render sözleşmesini birebir izler.
 
-### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation parity)
+### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge parity)
 
 - **Phase 102 item chrome parity fulfilled — exported PNG'deki her
   mockup item'ı Studio preview item chrome'una yaklaştı.**
@@ -21358,6 +21358,199 @@ specific item shape parity (sticker white-pad / wall_art matting /
 phone bezel Sharp pipeline'a) — kalan en görünür divergence. Ana
 item chrome + tilt/rotation Phase 101-103'te kapandığı için Phase
 104 fine-grain shape polish. Paralel: Etsy Draft submit pipeline
+frame-export end-to-end test.
+
+---
+
+## Phase 104 — White edge / sticker outline parity (kalın opak beyaz çerçeve)
+
+Phase 103 tilt/rotation + compose order düzeltti ama kullanıcı hâlâ
+kritik bir fark gözledi: **item'ların etrafındaki beyaz çerçeve /
+white edge export'ta preview'daki kadar görünmüyor**. Tilt parity
+tamamdı ama item chrome parity (white edge) hâlâ kapanmamıştı.
+Phase 104 bu kök bug'ı düzeltir.
+
+### Gerçek browser comparison (DOM ölçüm + screenshot)
+
+Studio preview slot 0 (clipart → `StickerCardSVG`, 220×220) DOM
+rect ölçümü — **white edge'in gerçek katman yapısı**:
+- rect1: `0,0 220×220 rx=22 fill=#FFFFFF` → **KALIN OPAK BEYAZ
+  DOLGU** (polaroid/sticker tarzı çerçeve)
+- rect2: `10,10 200×200 rx=18 fill=gradient` → asset surface
+  (pad=10px İÇERİDE; pad/minDim ≈ %4.5)
+- image: asset 10px içeride, rx=18 clip
+- rect3: `0.5,0.5 219×219 rx=21.5 stroke=rgba(0,0,0,0.1) sw=1` →
+  ince **koyu** hairline inner outline
+
+Screenshot: preview'da 3 sticker card, her birinde belirgin kalın
+opak beyaz çerçeve asset'in etrafında.
+
+### En büyük kök fark
+
+Phase 102/103 "white edge"i **ince 2px `rgba(255,255,255,0.18)`
+stroke outline** ile taklit ediyordu. Ama preview'daki gerçek
+white edge = asset'in etrafında **kalın opak beyaz dolgu bandı**
+(asset beyaz çerçevenin İÇİNDE çizilir, %4.5 her kenarda). İnce
+saydam stroke kalın opak banta karşılık gelmiyordu → export'ta
+white edge **görünmüyordu**. Kullanıcının şikayetinin tam kök
+nedeni buydu (tilt değil — item chrome white edge layer model'i).
+
+### Ürün kararı
+
+- **White edge / sticker outline = final visual chrome** → EVET,
+  export'a birebir girer (contract §11.0 Preview = Export Truth).
+- **Product tile** exported PNG üzerinden korunur (tile gerçek
+  PNG'yi gösterdiği için white edge otomatik yansır; Phase 101
+  tile aspect baseline değişmez).
+- Canonical truth = exported PNG; preview StickerCardSVG katman
+  yapısı export'ta birebir compose edilir.
+
+### Fix — frame-compositor.ts preview StickerCardSVG layer parity
+
+`computeItemChrome` yeniden tanımlandı (preview StickerCardSVG
+geometry):
+- `outerRadius = clamp(8, minDim×0.16, 56)` (preview rect1 rx =
+  min(22, minDim×0.16))
+- `whiteEdge = max(6, minDim×0.046)` (preview pad/minDim ≈ %4.5;
+  min 6px küçük slot'ta görünür kalsın)
+- `innerRadius = max(4, outerRadius×0.82)` (preview rect2 rx = r-4)
+- `innerStroke = max(1, minDim/200)` (preview rect3 koyu hairline)
+
+Slot composite zinciri preview 3-katman yapısına göre yeniden
+yazıldı:
+- (a) Card silhouette dims (rotate YOK — Phase 103 order korundu)
+- (b) Asset INNER rounded rect mask: `assetW-2×whiteEdge` ×
+  `assetH-2×whiteEdge`, `rx=innerRadius` (asset beyaz çerçevenin
+  içinde, preview rect2 parity)
+- (c) Chrome'lu tile compose (axis-aligned):
+  - layer 1: shadow base (full card silhouette + feDropShadow
+    2-katmanlı, Phase 102/103 baseline)
+  - layer 2: **OUTER WHITE EDGE** — `<rect fill=#FFFFFF
+    rx=outerRadius>` kalın opak beyaz dolgu (preview rect1) +
+    koyu hairline inner outline `<rect stroke=rgba(0,0,0,0.10)
+    sw=innerStroke>` (preview rect3) tek SVG
+  - layer 3: inner asset (whiteEdge band içinde, rx=innerRadius)
+- (d) Chrome'lu tile'ı BİR BÜTÜN olarak rotate (Phase 103
+  compose order korundu — preview CSS transform:rotate parity)
+- (e) Rotated tile slot mantıksal merkezine recenter
+
+Selection ring + badge **compose edilmez** (§11.0 editing helper
+baseline korundu). `MockupsTab` **dokunulmadı** (Phase 101 tile
+baseline; tile gerçek export PNG'sini gösterdiği için white edge
+otomatik yansır).
+
+### Browser end-to-end real-asset doğrulama
+
+Live dev server (1600×1100, real DB, real selection set
+`cmov0ia37` 4-item clipart + real MinIO MJ assets PAS5/Pinterest):
+
+| Özellik | Studio preview | Phase 103 export (ref) | Phase 104 export |
+|---|---|---|---|
+| Kalın opak beyaz edge | ✓ belirgin | ❌ ince saydam stroke (kayıp) | ✓ belirgin kalın opak |
+| Asset beyaz çerçeve içinde | ✓ pad=10px | ❌ tüm tile | ✓ whiteEdge band içinde |
+| Tilt/rotation | slot1 -6° slot2 -12° | ✓ korundu | ✓ korundu |
+| Rounded corner | ✓ | ✓ | ✓ |
+| Drop shadow | ✓ | ✓ | ✓ |
+| Inner hairline | rgba(0,0,0,0.1) | rgba(255,255,255,0.18) yanlış | ✓ rgba(0,0,0,0.1) parity |
+
+Phase 104 export: 1920×1080, 704.2 KB. Studio preview ↔ Phase 104
+PNG yan yana screenshot: **kalın opak beyaz polaroid/sticker
+çerçeve birebir aynı**; asset beyaz çerçevenin içinde, tilt
+korundu (slot1 -6°, slot2 -12°).
+
+Product MockupsTab handoff: tile aspectRatio "4/3", bg
+rgb(22,19,15)=bg-ink, objectFit "contain", img 1920/1080, Phase
+104 export (`p0cmfv6v`) cover ring + Primary badge. Tile gerçek
+export PNG'sini gösterdiği için white edge + tilt otomatik
+korundu (Phase 101 tile aspect baseline değişmedi).
+
+Screenshot kanıtları:
+- Studio Frame preview: 3 sticker card, kalın opak beyaz edge +
+  tilt (slot1 -6° slot2 -12°)
+- Phase 104 export PNG: birebir aynı kalın opak beyaz çerçeve +
+  tilt korundu (Phase 103'ün ince stroke export'u ile net
+  karşılaştırma)
+- Product MockupsTab Frame Exports bucket: 6 tile, Phase 104
+  export white edge korundu, ilki cover ring + Primary badge
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup, selection, selections, products,
+  listings}`: **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 104)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Phase 100 FrameExport + Listing.
+  imageOrderJson baseline dokunulmadı.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek dosya (`frame-compositor.ts`)
+  `computeItemChrome` helper redefinition + slot composite layer
+  yapısı; yeni helper/service/route/endpoint yok. Phase 103
+  compose order (rotate sırası) korundu. MockupsTab + Studio shell
+  + diğer tüm yüzeyler dokunulmadı.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Mockup mode render dispatch (POST /api/mockup/jobs)
+  dokunulmadı** — Phase 8 baseline Mockup pack pipeline ayrı
+  compositor (`compositor.ts`); Frame-only `frame-compositor.ts`
+  refactor'undan etkilenmedi.
+- **Studio shell, slot-ring/badge editing chrome, Phase 94
+  editing/final split, Phase 101 plate chrome + tile aspect,
+  Phase 103 compose order** hepsi intakt.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Phase 100 persistence + handoff + Listing discriminated union
+  backward-compat tam.**
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Düzeltilen parity bug'ları (Phase 104):
+- **White edge / sticker outline export'ta görünmüyor** — Phase
+  102/103 ince 2px `rgba(255,255,255,0.18)` stroke ile taklit
+  ediyordu; preview gerçek white edge = kalın opak beyaz dolgu
+  bandı. Phase 104 preview StickerCardSVG 3-katman yapısı birebir
+  (outer white edge rect + asset pad içeride + koyu hairline).
+- **Inner outline yanlış renk** — Phase 102/103 beyaz saydam
+  stroke; preview koyu `rgba(0,0,0,0.10)` hairline. Phase 104
+  preview parity.
+
+Hâlâ açık (Phase 105+ candidate):
+- **ProductType-specific item shape parity** (Phase 102'den devir)
+  — Phase 104 white edge model'i StickerCardSVG'ye birebir; ama
+  wall_art → frame matting / phone → device bezel farklı katman
+  yapısı taşıyor. Sharp pipeline şu an tüm productType'lara
+  sticker-style white edge uyguluyor. wall_art frame matting /
+  phone bezel tam parity Phase 105+ (her shape için ayrı SVG
+  layer model; ana clipart/sticker divergence Phase 101-104'te
+  kapandı — test set clipart).
+- **Plate-only Lens Blur** (Phase 101'den devir) — blur full
+  canvas; preview plate parent'a CSS filter.
+- **Drop shadow softness fine-tune** (Phase 103'ten devir) —
+  libvips feDropShadow 2-katmanlı; preview 4-katmanlı; ana
+  visual impact yakalandı.
+- **Etsy Draft submit pipeline frame-export end-to-end test** —
+  handoff entry + Phase 9 push pipeline outputKey/signedUrl yolu
+  intakt; gerçek Etsy push test (Etsy API key gerek).
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 104 ile **item chrome parity** (plate + tilt + white edge)
+clipart/sticker için tam fulfilled:
+- Studio'da gördüğüm ≈ indirdiğim PNG ≈ Product MockupsTab tile
+- Plate rounded + border + drop shadow + stage padding (Phase 101)
+- Item rounded + drop-shadow chain (Phase 102)
+- Item tilt/rotation + compose order (Phase 103)
+- **Kalın opak beyaz sticker edge + koyu hairline** (Phase 104)
+- Editing chrome (selection ring + badge) export'a girmez
+
+Sıradaki en yüksek-impact adım **Phase 105 candidate**: ProductType-
+specific item shape parity (wall_art frame matting / phone device
+bezel Sharp pipeline'a — her shape için ayrı layer model). Clipart/
+sticker divergence Phase 101-104'te kapandığı için Phase 105 diğer
+productType shape polish. Paralel: Etsy Draft submit pipeline
 frame-export end-to-end test.
 
 ---

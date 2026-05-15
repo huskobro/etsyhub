@@ -319,22 +319,54 @@ export async function composeFrameOutput(
   // Mockup mode'da preview-only).
   const slotComposites: sharp.OverlayOptions[] = [];
 
-  // Phase 102 — Item chrome ölçüleri (preview CSS parity scaled).
-  // Slot output dims < 200px → radius+stroke küçülür (overflow yok).
+  // Phase 104 — Item chrome ölçüleri (preview StickerCardSVG parity).
+  //
+  // Phase 102/103 bug'ı: white edge "ince 2px stroke outline" olarak
+  // taklit ediliyordu. Ama preview'daki gerçek chrome (StickerCardSVG):
+  //   - rect1: 0,0 W×H rx=r fill=#FFFFFF  → KALIN OPAK BEYAZ DOLGU
+  //   - rect2: pad,pad (W-2pad)×(H-2pad) rx=r-4 fill=asset → asset
+  //     beyaz çerçevenin İÇİNDE (pad=10px @ 200px slot ≈ %5)
+  //   - rect3: 0.5 stroke rgba(0,0,0,0.1) sw=1 → ince koyu inner outline
+  // Yani "white edge" = asset'in etrafında polaroid/sticker tarzı
+  // **kalın opak beyaz dolgu bandı**, ince saydam stroke DEĞİL. Bu
+  // kullanıcının "white edge export'ta kayboluyor" şikayetinin tam
+  // kök nedeni — ince rgba(255,255,255,0.18) stroke kalın opak banta
+  // karşılık gelmiyordu.
+  //
+  // Phase 104 fix: preview StickerCardSVG katman yapısı birebir:
+  //   - whiteEdge: pad/minDim ≈ %4.5 (preview pad=10 @ 220 = 0.0455)
+  //   - outerRadius: r = min(22, minDim×0.16)  (preview rect1 rx)
+  //   - innerRadius: r-4  (preview rect2 rx; asset köşesi biraz daha az)
+  //   - innerStroke: rgba(0,0,0,0.10) sw≈1  (preview rect3 — koyu hairline)
   const computeItemChrome = (slotOutW: number, slotOutH: number) => {
     const minDim = Math.min(slotOutW, slotOutH);
-    // Preview wrap radius ~16-20px @ ref slot ~120-200px → radius/dim
-    // ratio ~0.10-0.13. Export'ta da aynı ratio.
-    const itemRadius = Math.max(6, Math.min(40, Math.round(minDim * 0.11)));
-    // White outline 2px @ preview, output dims'e oranla minimum 1.5px.
-    const outlineWidth = Math.max(1.5, Math.min(4, minDim / 100));
-    // Shadow scale (preview 16+32 / 4+10 — output dims'e oranla
-    // libvips feDropShadow tutarlı 2-katmanlı chain).
+    // Preview StickerCardSVG: r = min(22, minDim×0.16). Export output
+    // dims daha büyük → ratio'yu koru (clamp ile rafine).
+    const outerRadius = Math.max(8, Math.min(56, Math.round(minDim * 0.16)));
+    // Preview pad=10 @ slot ~200-220 → pad/minDim ≈ 0.045-0.05. White
+    // edge bandı bu oranla; min 6px (küçük slot'ta görünür kalsın).
+    const whiteEdge = Math.max(6, Math.round(minDim * 0.046));
+    // Asset köşesi beyaz çerçevenin içinde biraz daha az rounded
+    // (preview rect2 rx = r-4 → outer'a oranla ~%18 az).
+    const innerRadius = Math.max(4, Math.round(outerRadius * 0.82));
+    // Koyu hairline inner outline (preview rect3 rgba(0,0,0,0.1) sw=1).
+    const innerStroke = Math.max(1, Math.round(minDim / 200));
+    // Shadow scale (preview slot-wrap filter 16+32 / 4+10 — output
+    // dims'e oranla libvips feDropShadow tutarlı 2-katmanlı chain).
     const shadowOffset1 = Math.max(4, Math.round(minDim * 0.08));
     const shadowBlur1 = Math.max(8, Math.round(minDim * 0.16));
     const shadowOffset2 = Math.max(1, Math.round(minDim * 0.02));
     const shadowBlur2 = Math.max(2, Math.round(minDim * 0.05));
-    return { itemRadius, outlineWidth, shadowOffset1, shadowBlur1, shadowOffset2, shadowBlur2 };
+    return {
+      outerRadius,
+      whiteEdge,
+      innerRadius,
+      innerStroke,
+      shadowOffset1,
+      shadowBlur1,
+      shadowOffset2,
+      shadowBlur2,
+    };
   };
 
   for (const slot of slots) {
@@ -373,37 +405,53 @@ export async function composeFrameOutput(
     //   (e) Rotated tile'ı slot center'a hizala (rotate sonrası bbox
     //       büyür; recenter)
 
-    // (a) Asset resize — axis-aligned (rotate YOK; rotation chrome'lu
-    // tile'a (d) adımında bir bütün olarak uygulanır).
-    const assetPng = await sharp(slot.imageBuffer)
-      .resize(slotOutW, slotOutH, { fit: "cover", position: "centre" })
-      .png()
-      .toBuffer();
+    // (a) Card silhouette dims — axis-aligned (rotation chrome'lu
+    // tile'a (d) adımında bir bütün olarak uygulanır). Asset
+    // resize/mask (b) adımında inner band için yapılır.
     const assetW = slotOutW;
     const assetH = slotOutH;
 
     const chrome = computeItemChrome(assetW, assetH);
 
-    // (b) Rounded mask — asset'in GERÇEK dims'ine (axis-aligned)
-    const maskSvg = `<svg width="${assetW}" height="${assetH}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="${assetW}" height="${assetH}"
-        rx="${chrome.itemRadius}" ry="${chrome.itemRadius}"
-        fill="white"/>
-    </svg>`;
-    const roundedAssetPng = await sharp(assetPng)
-      .composite([{ input: Buffer.from(maskSvg), blend: "dest-in" }])
+    // (b) Asset'i INNER rounded rect ile mask et — preview rect2
+    // (asset surface, rx=innerRadius, beyaz çerçevenin İÇİNDE).
+    // Asset white edge band'inin içinde yer alır (assetW-2×whiteEdge).
+    const innerAssetW = Math.max(1, assetW - 2 * chrome.whiteEdge);
+    const innerAssetH = Math.max(1, assetH - 2 * chrome.whiteEdge);
+    const innerAssetPng = await sharp(slot.imageBuffer)
+      .resize(innerAssetW, innerAssetH, { fit: "cover", position: "centre" })
+      .composite([
+        {
+          input: Buffer.from(
+            `<svg width="${innerAssetW}" height="${innerAssetH}" xmlns="http://www.w3.org/2000/svg">
+              <rect width="${innerAssetW}" height="${innerAssetH}"
+                rx="${chrome.innerRadius}" ry="${chrome.innerRadius}"
+                fill="white"/>
+            </svg>`,
+          ),
+          blend: "dest-in",
+        },
+      ])
       .png()
       .toBuffer();
 
-    // (c) Chrome'lu tile compose (axis-aligned, asset gerçek köşesine
-    // hizalı): shadow base + rounded asset + white outline ring. Shadow
-    // padding (asset'in dışına taşar) tile'ı asset'ten büyük yapar.
+    // (c) Chrome'lu tile compose (preview StickerCardSVG 3-katman
+    // yapısı parity, axis-aligned):
+    //   layer 1: shadow base (rounded card silhouette + feDropShadow)
+    //   layer 2: OUTER WHITE EDGE — kalın opak beyaz dolgu rect
+    //            (preview rect1 fill=#FFFFFF rx=outerRadius)
+    //   layer 3: inner asset (pad=whiteEdge içeride, rx=innerRadius)
+    //   layer 4: koyu hairline inner outline (preview rect3
+    //            rgba(0,0,0,0.10) sw≈1) — white edge'i belirginleştirir
+    // Shadow padding (asset'in dışına taşar) tile'ı asset'ten büyük
+    // yapar.
     const padding = Math.ceil(chrome.shadowOffset1 + chrome.shadowBlur1);
     const tileW = assetW + padding * 2;
     const tileH = assetH + padding * 2;
-    const assetXInTile = padding;
-    const assetYInTile = padding;
+    const cardX = padding;
+    const cardY = padding;
 
+    // layer 1 — shadow base (full white-edge card silhouette).
     const shadowSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <filter id="slot-sh" x="-30%" y="-30%" width="160%" height="160%">
@@ -415,20 +463,25 @@ export async function composeFrameOutput(
             flood-color="black" flood-opacity="0.35"/>
         </filter>
       </defs>
-      <rect x="${assetXInTile}" y="${assetYInTile}"
+      <rect x="${cardX}" y="${cardY}"
         width="${assetW}" height="${assetH}"
-        rx="${chrome.itemRadius}" ry="${chrome.itemRadius}"
+        rx="${chrome.outerRadius}" ry="${chrome.outerRadius}"
         fill="black" filter="url(#slot-sh)"/>
     </svg>`;
 
-    const outlineSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="${assetXInTile + chrome.outlineWidth / 2}"
-        y="${assetYInTile + chrome.outlineWidth / 2}"
-        width="${assetW - chrome.outlineWidth}"
-        height="${assetH - chrome.outlineWidth}"
-        rx="${chrome.itemRadius}" ry="${chrome.itemRadius}"
+    // layer 2 — OUTER WHITE EDGE (kalın opak beyaz dolgu) + layer 4
+    // koyu hairline inner outline (white edge'in iç kenarını
+    // belirginleştirir; preview rect3). Tek SVG'de compose.
+    const whiteEdgeSvg = `<svg width="${tileW}" height="${tileH}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="${cardX}" y="${cardY}"
+        width="${assetW}" height="${assetH}"
+        rx="${chrome.outerRadius}" ry="${chrome.outerRadius}"
+        fill="#FFFFFF"/>
+      <rect x="${cardX + 0.5}" y="${cardY + 0.5}"
+        width="${assetW - 1}" height="${assetH - 1}"
+        rx="${chrome.outerRadius - 0.5}" ry="${chrome.outerRadius - 0.5}"
         fill="none"
-        stroke="rgba(255,255,255,0.18)" stroke-width="${chrome.outlineWidth}"/>
+        stroke="rgba(0,0,0,0.10)" stroke-width="${chrome.innerStroke}"/>
     </svg>`;
 
     let slotTilePng = await sharp({
@@ -441,8 +494,12 @@ export async function composeFrameOutput(
     })
       .composite([
         { input: Buffer.from(shadowSvg), top: 0, left: 0 },
-        { input: roundedAssetPng, top: assetYInTile, left: assetXInTile },
-        { input: Buffer.from(outlineSvg), top: 0, left: 0 },
+        { input: Buffer.from(whiteEdgeSvg), top: 0, left: 0 },
+        {
+          input: innerAssetPng,
+          top: cardY + chrome.whiteEdge,
+          left: cardX + chrome.whiteEdge,
+        },
       ])
       .png()
       .toBuffer();
