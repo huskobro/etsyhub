@@ -19771,6 +19771,55 @@ surface" rolünün tam ürünleştirilmesi.
     (Phase 115 productType-aware). Hepsi tek canonical Shell
     state'ten beslenir → rail = preview = export.
 
+- **Rail thumb = orta panelin minyatür CANLI türevi, generic
+  ikon DEĞİL (Phase 116 canonical — scene-derived thumb).**
+  Phase 115 thumb GEOMETRİSİNİ canonical yaptı (`cascadeLayoutFor`
+  slot pozisyon/rotation) ama thumb HÂLÂ `MockupPh` /
+  `MockupPhWithPalette` ile **generic device-frame dikdörtgenleri**
+  çiziyordu: productType ne olursa olsun (clipart/wall_art/
+  bookmark) aynı generic phone-frame şekli, **gerçek device
+  shape YOK** (sticker die-cut / wall_art frame+mat / phone
+  bezel), **gerçek asset image YOK** (operator'ın yüklediği
+  MinIO MJ görseli). Browser+code audit kanıtı: rail thumb
+  `<image>` element sayısı **0**, stage slot **1** (gerçek
+  `StageDeviceSVG` + real MinIO asset). Doğru geometri + yanlış
+  görsel = operator için "saçma ikonlar" hissinin kök nedeni
+  (Madde #12 yapısal drift — geometri canonical'dı ama
+  render-engine farkı vardı).
+
+  - **Phase 116 fix**: `PresetThumbMockup` opsiyonel
+    `slots?: ReadonlyArray<StudioSlotMeta>` prop alır. Verildiğinde
+    thumb **Stage'in AYNI `StageDeviceSVG` component'i** + AYNI
+    real `slot.design` (gerçek MinIO `imageUrl`) ile render
+    edilir — generic `MockupPh` YERİNE. Her slot nested `<svg
+    x y width height viewBox>` viewport'una yerleşir (device'ın
+    kendi koordinat uzayını korur) + `<g transform="rotate(r cx
+    cy)">` (Stage CSS `rotate(${r}deg)` parity). Geometri Phase
+    115 `cascadeLayoutFor` candidate-variant çıktısından
+    (`fitCascadeToThumb` artık `si` taşır → real slot eşleme).
+    Sonuç: thumb = orta panelin candidate-layout dizilmiş
+    minyatür **canlı** türevi.
+  - **Prop zinciri**: Shell `slots` (real itemler + real
+    `design.imageUrl`, Stage'e geçen AYNI referans) → PresetRail
+    `slots` → `PresetThumbMockup` `slots` →
+    `<StageDeviceSVG kind={deviceShape} design={slot.design}>`.
+    Stage + thumb AYNI `slots` + AYNI `StageDeviceSVG` + AYNI
+    scene params — **tek fark candidate layoutVariant geometri**.
+  - **Backward-compat**: `slots` verilmezse (legacy consumer /
+    operator hiç set yok) Phase 86 baseline generic `MockupPh`
+    fallback (render-engine değişikliği opsiyonel, kırılma yok).
+  - **Kategori 4 korunur**: selection helper (slot-ring /
+    badge) thumb'a GİRMEZ (Phase 94 baseline — thumb yalnız
+    final visual chrome; editing helper preview-only). Stage'in
+    `StageDeviceSVG` çağrısı zaten helper-free; thumb aynı
+    component'i helper'sız tüketir.
+  - **Operator-facing sonuç**: rail her thumb için "bu layout'u
+    seçersem mevcut sahnem (gerçek asset + gerçek device shape +
+    candidate dizilim) nasıl görünür" sorusunun GÖRSEL cevabını
+    verir. Generic-ikon hissi kapandı (browser kanıtı: her
+    preset thumb 3 real `<image>` + kendi candidate-variant
+    geometri).
+
 ### 7. Selection / preview behavior
 
 - Selection ring + slot badge **yalnız Mockup mode**, **yalnız Edit
@@ -20034,6 +20083,37 @@ kategori 3 stage-specific, thumb'a girmez ama temel slot dizilim
 + rotation BİREBİR aynı kaynak). Yeni layout-related thumb/preview
 yüzeyi eklenirken aynı kural: `cascade-layout.ts`'ten oku, ayrı
 geometri kopyalama (sessiz drift YASAK §12).
+
+**Rail thumb GÖRSEL içeriği de Preview = Export Truth kapsamındadır
+(Phase 116 canonical — scene-derived thumb genişletme):** Phase 115
+thumb GEOMETRİSİNİ canonical kaynağa bağladı, ama thumb hâlâ generic
+`MockupPh` device-frame dikdörtgenleri çiziyordu (gerçek device
+shape YOK, gerçek asset image YOK) — geometri canonical'dı ama
+**render-engine farkı** vardı (thumb generic `MockupPh` vs stage
+real `StageDeviceSVG` + real `<image>`). Bu §11.0'ın "preview =
+export = rail-thumb tek canonical kaynak" garantisini **görsel**
+olarak ihlal ediyordu (yapısal dizilim aynı, görsel içerik kopuk —
+Madde #12 drift). Phase 116 fix: `PresetThumbMockup` opsiyonel
+`slots` prop alır; verildiğinde thumb **Stage'in AYNI
+`StageDeviceSVG` component'i** + AYNI real `slot.design` (gerçek
+MinIO `imageUrl`) ile render edilir (generic `MockupPh` YERİNE).
+Shell `slots` (Stage'e geçen AYNI referans) → PresetRail → thumb.
+Sonuç: rail thumb / stage / export ÜÇÜ DE aynı **gerçek asset
+identity** + aynı `StageDeviceSVG` device shape + aynı scene
+params'tan beslenir; **tek fark candidate layoutVariant geometri**.
+Browser+code+export triangulation kanıtı (real asset): rail thumb
+3 real `<image>` (`cmov06na50016`) ↔ stage slot real `<image>`
+(aynı href, `sameAssetSource:true`) ↔ export payload 3 distinct
+real itemId (Phase 113 slot-identity korundu) + Fan `r:[-13,0,13]`
+BİREBİR. Yani Preview = Export = Rail-thumb artık **yalnız
+geometry/asset-identity değil GÖRSEL içerik** seviyesinde de
+holds. Selection helper (ring/badge) thumb'a GİRMEZ (kategori 4
+— Phase 94 baseline; Stage'in StageDeviceSVG çağrısı zaten
+helper-free, thumb aynı component'i helper'sız tüketir). Yeni
+thumb/preview yüzeyi eklenirken aynı kural: real scene params
+(slots + deviceShape + scene) tek canonical kaynaktan, generic
+placeholder render YASAK (operator için "saçma ikon" hissi
+yeniden doğmaz).
 
 Canonical truth = **exported PNG**. Studio preview, exported PNG'nin
 authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
@@ -24102,6 +24182,191 @@ yapısal garanti). Sıradaki adım **Phase 116 candidate**: View tabs +
 Zoom slider activation (kategori 4 — Zoom preview-only, export'a
 girmez) veya plate frame-style explicit parametresi. Yeni SVG/
 layout builder/mockup editor §13.A'da ertelenmiş kalır.
+
+---
+
+## Phase 116 — Right rail thumb = orta panelin minyatür CANLI türevi (generic MockupPh → real StageDeviceSVG + real slots)
+
+Phase 115 thumb GEOMETRİSİNİ canonical kaynağa bağladı
+(`cascadeLayoutFor` slot pozisyon/rotation) ama thumb HÂLÂ generic
+`MockupPh` çiziyordu — operator için "saçma ikonlar" hissi devam
+ediyordu. Phase 116 odak: thumb'ı generic ikondan **orta panelin
+gerçek sahnesinin (gerçek itemler + gerçek device shape + gerçek
+asset) candidate-layout dizilmiş minyatür canlı türevine** çevirmek.
+Yeni feature/layout builder/mockup editor/SVG library YOK (kullanıcı
+kısıtı).
+
+### Shots.so right rail araştırması
+
+Preview tool localhost:3000'e sandboxed (shots.so'ya navigate
+etmiyor — Phase 110/115 documented constraint). Shots.so right
+rail davranışı **Phase 96-115 canlı-browser araştırmalarından
+dökümante** (promo banner kapatılıp gerçek editor incelenmişti) +
+Phase 116 WebSearch ile teyit. Canonical bulgu: Shots.so
+layout-item thumb = kullanıcının **gerçek sahnesinin** minyatür
+canlı önizlemesi (gerçek asset + gerçek device + gerçek bg);
+thumb seçilince stage o variant'a geçer; aspect/bg/effect değişince
+thumb yeniden render. Thumb içeriği = ana canvas ile AYNI sahne,
+yalnız mini + candidate-layout dizilimli. Kivasy hedefi birebir
+aynı.
+
+### Dürüst audit (browser+code triangulation KANITI)
+
+| | Stage slot 0 (Mockup, deviceKind=clipart) | Rail thumb 0 (Phase 115) |
+|---|---|---|
+| Render component | `StageDeviceSVG` (StickerCardSVG real die-cut 220×220) | `MockupPh` generic device-frame rects |
+| Real asset `<image>` | **1** (`http://localhost:9000/etsyhub/midjourney/.../cmov06na`) | **0** |
+| İçerik | Real sticker die-cut + real MJ asset | Generic palette-renkli rounded rects (13 rect, 0 image) |
+
+Phase 115 doğru dizilim ürettiği için geometri canonical'dı, ama
+**render-engine farkı** vardı: thumb generic phone-frame
+dikdörtgenler (productType ne olursa olsun aynı), stage gerçek
+device shape + gerçek asset. Operator'ın "saçma ikon" hissinin
+kök nedeni tam buydu (Madde #12 yapısal drift — geometri
+canonical'dı ama görsel içerik kopuk; §11.0 "rail-thumb tek
+canonical kaynak" garantisi GÖRSEL olarak ihlaldi).
+
+### Net ürün/mimari karar (4-kategori ayrımı korundu)
+
+Right rail **statik preset listesi DEĞİL** — **current scene +
+candidate layout türevi**. Operator bir thumb'a baktığında o anki
+gerçek item identity + device shape + scene'in **candidate layout
+ile nasıl görüneceğini** görür. **right rail = canlı mini
+middle-panel previews.**
+
+1. **Canonical shared (kategori 1)**: `slots` (real itemler +
+   identity + `imageUrl`), `deviceShape`, `displayCount`,
+   candidate `layoutVariant`, scene params → Shell → PresetRail →
+   thumb (Stage'e geçen AYNI `slots` referansı).
+2. **Mode/UI-specific (kategori 2)**: mode/appState/tab — AYRI,
+   dokunulmadı.
+3. **Shape/layout impl (kategori 3)**: `StageDeviceSVG` per-shape
+   registry + `cascadeLayoutForRaw` base + `compositionGroup`/
+   `PLATE_FILL_FRAC` Stage-local — registry/stage'de KALDI
+   (thumb StageDeviceSVG'yi REUSE eder, kopyalamaz).
+4. **Preview-only helper (kategori 4)**: slot-ring/badge thumb'a
+   GİRMEZ (Phase 94 baseline; Stage'in StageDeviceSVG çağrısı
+   zaten helper-free).
+
+Yeni framework/composition engine/layout strategy interface
+AÇILMADI (§7.6 dead-code dersi) — küçük yapısal slice: thumb'a
+`slots` prop + render branch.
+
+### Uygulanan slice
+
+- **`svg-art.tsx` `PresetThumbMockup`**: opsiyonel `slots?:
+  ReadonlyArray<StudioSlotMeta>` prop. Verildiğinde `phones.map`
+  generic `MockupPh`/`MockupPhWithPalette` YERİNE her slot için
+  nested `<svg x y width height viewBox> <StageDeviceSVG
+  kind={deviceShape} design={slot.design} ...>` (device kendi
+  koordinat uzayını korur) + `<g transform="rotate(r cx cy)">`
+  (Stage CSS `rotate(${r}deg)` parity). `fitCascadeToThumb`
+  artık `si` + `z` taşır → fitted slot ↔ real `slots[si].design`
+  eşleme. `slots` verilmezse Phase 86 baseline `MockupPh`
+  fallback (backward-compat, legacy consumer / set yok).
+- **`MockupStudioPresetRail.tsx`**: `slots` prop (Props +
+  destructure + iki `<Thumb>` call site: live-thumb + preset
+  cards). `StudioSlotMeta` type import.
+- **`MockupStudioShell.tsx`**: PresetRail JSX `slots={slots}`
+  (Shell zaten `slots` Stage'e geçiriyor — AYNI referans →
+  rail + stage tek kaynak).
+- **Build-boundary**: `StageDeviceSVG` function-declaration
+  (hoisted) — `PresetThumbMockup` textual olarak ondan önce
+  ama runtime hoisting ile çağırabilir; circular import yok
+  (aynı modül, svg-art.tsx).
+
+### Browser+DOM+code+export triangulation (gerçek asset, fresh build)
+
+Test set `cmov0ia37` (4 real MinIO MJ asset: PAS5 / neon city /
+blue car), deviceKind `clipart`→shape `sticker`, viewport
+1600×1000 (≥1280 full studio + rail).
+
+**Generic-icon gap kapandı:**
+| | Rail thumb-0 (Phase 116) | Stage slot 0 |
+|---|---|---|
+| Nested StageDeviceSVG | **6** (3 slot × StageDeviceSVG) | per-slot |
+| Real asset `<image>` | **3** (Phase 115'te **0** idi) | 1 |
+| Asset href | `http://localhost:9000/etsyhub/midjourney/.../cmov06na50016` | aynı |
+| `sameAssetSource` | **true** ✓ | — |
+
+**Her preset thumb kendi candidate variant + real scene:**
+cascade `[0,-6,-12]` 3 img · centered `[0,0,0]` 3 img · tilted
+`[-7,0,7]` 3 img · stacked `[0,0,0]` 3 img · fan `[-13,0,13]`
+3 img · offset `[0,-4,-8]` 3 img. Hepsi `applyLayoutVariant`
+formülleriyle BİREBİR + 3 real `<image>` (Phase 115'te generic
+0-image idi).
+
+**Export leg (Fan, mode-AGNOSTIC Mockup→Frame):** payload slots
+`r:[-13,0,13]` w:`220,180,130` + 3 DISTINCT real itemId
+(`cmov0iacy`/`cmov0iad0`/`cmov0iad2` — Phase 113 slot-identity
+korundu, fanout DEĞİL). Real PNG 1920×1080, 1490.2 KB, MinIO
+URL. Rail thumb (real StageDeviceSVG+asset+Fan) ≈ stage (aynı)
+≈ export (Fan slot pozisyon + distinct real itemId) — §11.0
+GÖRSEL seviyede holds.
+
+**Continuity korundu:** Product `/products/cmor0wkjt...`
+MockupsTab 11 frame-export tile, hepsi `aspect-[4/3] bg-ink`
+naturalW/H 1920×1080 (Phase 100/101 baseline intakt), 0 React
+error, 0 console error.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (59 files, zero regression)
+- `next build`: ✓ Compiled successfully
+- Clean restart: `.next` silindi + port 3000 kill → fresh
+  `preview_start`; fresh build üzerinde browser-verified
+  (hot reload DEĞİL).
+
+### Değişmeyenler (Phase 116)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `StudioSlotMeta` mevcut tip;
+  yalnız thumb opsiyonel prop + render branch.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `StageDeviceSVG` REUSE (yeni
+  shape/library/engine YOK); thumb'a tek `slots` prop + render
+  branch. Backward-compat (slots yoksa Phase 86 MockupPh).
+- **Phase 113 slot identity + layered effects** intakt (export
+  payload 3 distinct itemId kanıtlandı).
+- **Phase 115 cascade-layout.ts canonical geometri kaynağı**
+  intakt (geometri değişmedi, yalnız render component değişti).
+- **Phase 94 editing/final split** korundu (helper thumb'a
+  girmez).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt** (Product
+  MockupsTab browser-verified).
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ açık (Phase 117+ candidate)
+
+- **Plate/scene chrome thumb'da minimal**: thumb StageDeviceSVG
+  device shape + asset gösterir; plate bg + glass overlay + lens
+  blur Phase 89/98 baseline'da `sceneBg` ile yaklaşık (full plate
+  chrome parity değil — thumb 184×88 küçük, plate-context-siz
+  layout odaklı). Tam plate chrome thumb'da Phase 117+ candidate
+  (gerek görülürse; mevcut görsel parity operator için yeterli).
+- **View tabs (Zoom/Tilt/Precision) + Zoom slider** hâlâ no-op
+  (kategori 4 preview-only helper; Phase 115'ten devir).
+- **Plate frame-style/chrome parametresi** (Phase 113'ten devir).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 116 ile right rail "generic ikon listesi"nden "orta panelin
+candidate-layout dizilmiş minyatür canlı türevleri"ne dönüştü —
+thumb Stage ile AYNI `StageDeviceSVG` + AYNI real asset + AYNI
+scene'den beslenir, tek fark candidate layout. Generic-ikon hissi
+kapandı (browser kanıtı: her thumb 3 real `<image>`). Sıradaki
+adım **Phase 117 candidate**: plate/scene chrome thumb parity
+derinleştirme (gerek görülürse) veya View tabs/Zoom slider
+activation. Yeni SVG/layout builder/mockup editor §13.A'da
+ertelenmiş kalır.
 
 ---
 

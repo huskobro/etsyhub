@@ -31,6 +31,7 @@ import {
   type StudioAppState,
   type StudioLayoutVariant,
   type StudioMode,
+  type StudioSlotMeta,
 } from "./types";
 
 /* Phase 96 — Unified LAYOUT_PRESETS family (Shots.so canonical
@@ -140,6 +141,12 @@ export interface MockupStudioPresetRailProps {
    *  cascade'den türer (Preview = Export = Rail-thumb §11.0).
    *  Undefined → "phone" baseline. */
   deviceShape?: StudioStageDeviceKind;
+  /** Phase 116 — Gerçek selection slots (Shell hydrate; real
+   *  MinIO imageUrl). Rail thumb generic MockupPh yerine Stage'in
+   *  AYNI StageDeviceSVG + AYNI real asset ile render edilir →
+   *  thumb = orta panelin candidate-layout dizilmiş minyatür canlı
+   *  türevi (§11.0). Stage `slots` prop ile AYNI referans. */
+  slots?: ReadonlyArray<StudioSlotMeta>;
 }
 
 export function MockupStudioPresetRail({
@@ -152,6 +159,7 @@ export function MockupStudioPresetRail({
   layoutVariant,
   onChangeLayoutVariant,
   deviceShape,
+  slots,
 }: MockupStudioPresetRailProps) {
   /* Phase 96 — Layout count Shell state'ten geliyor; fallback local
    * state (legacy). Operator buttons → onChangeLayoutCount → Shell
@@ -268,6 +276,7 @@ export function MockupStudioPresetRail({
             }
             displayCount={layout}
             deviceShape={deviceShape}
+            slots={slots}
           />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -346,6 +355,7 @@ export function MockupStudioPresetRail({
                 }
                 displayCount={layout}
                 deviceShape={deviceShape}
+                slots={slots}
               />
             </button>
             <div

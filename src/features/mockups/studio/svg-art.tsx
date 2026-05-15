@@ -20,6 +20,7 @@ import type { CSSProperties } from "react";
 import {
   STUDIO_LAYOUT_VARIANTS,
   type StudioLayoutVariant,
+  type StudioSlotMeta,
 } from "./types";
 
 /* Phase 115 — Shared canonical cascade geometry import.
@@ -428,6 +429,7 @@ const THUMB_PAD = 8;
 
 function fitCascadeToThumb(
   items: ReadonlyArray<{
+    si: number;
     x: number;
     y: number;
     w: number;
@@ -436,11 +438,13 @@ function fitCascadeToThumb(
     z: number;
   }>,
 ): ReadonlyArray<{
+  si: number;
   x: number;
   y: number;
   w: number;
   h: number;
   r: number;
+  z: number;
   o: number;
 }> {
   if (items.length === 0) return [];
@@ -469,11 +473,13 @@ function fitCascadeToThumb(
   // da korunur — ilk slot en üstte). opacity z'ye göre derinlik.
   const maxZ = Math.max(...items.map((i) => i.z));
   return items.map((it) => ({
+    si: it.si,
     x: offsetX + (it.x - minX) * scale,
     y: offsetY + (it.y - minY) * scale,
     w: it.w * scale,
     h: it.h * scale,
     r: it.r,
+    z: it.z,
     o: maxZ > 1 ? 0.62 + 0.38 * (it.z / maxZ) : 1,
   }));
 }
@@ -484,6 +490,7 @@ export function PresetThumbMockup({
   sceneBg,
   displayCount,
   deviceShape = "phone",
+  slots,
 }: {
   idx: number;
   palette?: readonly [string, string];
@@ -503,6 +510,15 @@ export function PresetThumbMockup({
    *  Thumb geometri kaynağı productType-aware (sticker kare,
    *  telefon dik, wall_art portrait) — Stage ile aynı. */
   deviceShape?: StudioStageDeviceKind;
+  /** Phase 116 — Gerçek selection slots (Shell hydrate; her
+   *  slot.design real MinIO `imageUrl` taşır). Verildiğinde thumb
+   *  generic MockupPh yerine Stage'in AYNI `StageDeviceSVG`
+   *  component'i + AYNI real asset ile render edilir → thumb =
+   *  orta panelin candidate-layout dizilmiş minyatür canlı türevi
+   *  (§11.0 Preview = Export = Rail-thumb). undefined → Phase 86
+   *  baseline generic MockupPh (operator hiç set yokken / legacy
+   *  consumer). */
+  slots?: ReadonlyArray<StudioSlotMeta>;
 }) {
   const c = MOCKUP_PRESETS[idx] ?? MOCKUP_PRESETS[0]!;
   // Phase 115 — geometri canonical cascadeLayoutFor'dan (Stage/
@@ -604,13 +620,57 @@ export function PresetThumbMockup({
         }
       />
       <g filter={lensBlurFilterId ? `url(#${lensBlurFilterId})` : undefined}>
-        {phones.map((p, i) =>
-          hasPalette ? (
-            <MockupPhWithPalette key={i} {...p} palette={palette!} />
-          ) : (
-            <MockupPh key={i} {...p} />
-          ),
-        )}
+        {slots && slots.length > 0
+          ? /* Phase 116 — Real scene-derived thumb: Stage'in AYNI
+             *  StageDeviceSVG component'i + AYNI real slot.design
+             *  (gerçek MinIO `<image>`), candidate-variant geometri
+             *  ile dizilmiş. Generic MockupPh YERİNE — thumb artık
+             *  orta panelin minyatür canlı türevi (Preview = Export
+             *  = Rail-thumb §11.0). Nested <svg> viewport her
+             *  device'ın kendi viewBox koordinat uzayını korur;
+             *  <g rotate> Stage'deki CSS `rotate(${r}deg)` parity.
+             *  Selection helper (ring/badge) thumb'a GİRMEZ
+             *  (kategori 4 — Phase 94 baseline; thumb yalnız final
+             *  visual chrome). */
+            phones.map((p) => {
+              const slot = slots[p.si];
+              const cx = p.x + p.w / 2;
+              const cy = p.y + p.h / 2;
+              return (
+                <g
+                  key={p.si}
+                  transform={`rotate(${p.r} ${cx} ${cy})`}
+                  opacity={p.o}
+                >
+                  <svg
+                    x={p.x}
+                    y={p.y}
+                    width={p.w}
+                    height={p.h}
+                    viewBox={`0 0 ${p.w} ${p.h}`}
+                    overflow="visible"
+                  >
+                    <StageDeviceSVG
+                      kind={deviceShape}
+                      w={p.w}
+                      h={p.h}
+                      design={slot?.assigned ? slot.design : null}
+                      isEmpty={!slot?.assigned}
+                      idx={p.si}
+                    />
+                  </svg>
+                </g>
+              );
+            })
+          : /* Phase 86 baseline — generic MockupPh (slots verilmedi:
+             *  legacy consumer / operator hiç set yok). */
+            phones.map((p, i) =>
+              hasPalette ? (
+                <MockupPhWithPalette key={i} {...p} palette={palette!} />
+              ) : (
+                <MockupPh key={i} {...p} />
+              ),
+            )}
       </g>
       {/* Phase 98 — Glass overlay rect (variant-tinted). Operator rail'e
        *  bakınca stage'in glass effect'ini görür: alt katmandaki

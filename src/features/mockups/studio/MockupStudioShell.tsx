@@ -880,6 +880,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
             layoutVariant={layoutVariant}
             onChangeLayoutVariant={setLayoutVariant}
             deviceShape={deviceKind}
+            slots={slots}
           />
         ) : null}
       </div>
