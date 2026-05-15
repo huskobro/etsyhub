@@ -703,6 +703,31 @@ export interface StageSceneProps {
   isPreview: boolean;
   isRender: boolean;
   isEmpty: boolean;
+  /** Phase 118 — Chrome-suppressed render (rail thumb only).
+   *
+   * Kullanıcı (Phase 118): "right rail'de stage'i / siyah kutuyu
+   * görüyorum; Shots.so'daki gibi yalnız preview görünmeli".
+   * Phase 117 single-renderer DOĞRU yön (tek render path) ama
+   * `StageScene`'in TAMAMINI render ediyordu — `.k-studio__stage`
+   * dark bg (--ks-st) + `::before` dot-grid + `.k-studio__stage-
+   * scene` ambient tint + `.k-studio__stage-floor` placement floor.
+   * Bunlar **stage container chrome'u** (operatör çalışma alanı
+   * tonu) — rail thumb'da görünmemeli. Shots.so'da rail thumb
+   * yalnız plate + composition gösterir, stage kutusu YOK.
+   *
+   * chromeless=true:
+   *   - `.k-studio__stage` `data-chromeless="true"` → CSS bg
+   *     transparent + `::before` dot-grid display:none
+   *   - `.k-studio__stage-scene` + `.k-studio__stage-floor`
+   *     render EDİLMEZ (görünür stage chrome layer'ları;
+   *     `-amb` zaten display:none — Phase 94 baseline)
+   *   - Plate + MockupComposition/FrameComposition AYNEN render
+   *     (tek render path korunur — sessiz drift §12 YASAK)
+   *
+   * Stage main fn (orta panel) chromeless=false (default) →
+   * Phase 117 davranışı BİREBİR (DOM byte-identical, regression
+   * yok). Yalnız StageScenePreview chromeless=true geçer. */
+  chromeless?: boolean;
   /** Stage main fn'in overlay'leri (empty-cap / render-ov / zoom-
    *  pill / edit-pill / render banner) AYNI `k-studio__stage` div'i
    *  içinde sibling olarak kalır → Stage DOM byte-identical.
@@ -726,6 +751,7 @@ export function StageScene({
   isPreview,
   isRender,
   isEmpty,
+  chromeless = false,
   children,
 }: StageSceneProps) {
   const sceneTones = resolveSceneStyle(
@@ -776,17 +802,26 @@ export function StageScene({
       data-device-kind={deviceKind}
       data-frame-aspect={frameAspect}
       data-scene-asset-aware={activePalette ? "true" : "false"}
+      data-chromeless={chromeless ? "true" : "false"}
       style={sceneStyle}
     >
-      {!isRender ? (
+      {/* Phase 118 — chromeless (rail thumb): stage container chrome
+          layer'ları (scene ambient tint + placement floor) render
+          EDİLMEZ; `.k-studio__stage` bg + dot-grid CSS ile gizli
+          (data-chromeless). Operatör için "siyah kutu / stage
+          frame" YOK — yalnız plate + composition (Shots.so parity).
+          Orta panel chromeless=false → Phase 117 davranışı BİREBİR. */}
+      {!isRender && !chromeless ? (
         <div
           className="k-studio__stage-scene"
           data-testid="studio-stage-scene"
           aria-hidden
         />
       ) : null}
-      {!isRender ? <div className="k-studio__stage-amb" /> : null}
-      {!isRender ? (
+      {!isRender && !chromeless ? (
+        <div className="k-studio__stage-amb" />
+      ) : null}
+      {!isRender && !chromeless ? (
         <div
           className="k-studio__stage-floor"
           data-testid="studio-stage-floor"

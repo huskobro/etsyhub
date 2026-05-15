@@ -24926,6 +24926,196 @@ ertelenmiş kalır.
 
 ---
 
+## Phase 118 — Right rail = canlı bağlı çok ekran: aspect-aware reactive plateDims + chromeless thumb (siyah stage kutusu kaldırıldı)
+
+Phase 117 single-renderer DOĞRU yöndü (rail thumb = orta panelin
+AYNI `StageScene`'i, ayrı SVG renderer yok) ama iki açık kaldı:
+**(1)** middle panelde aspect ratio değişince rail thumb'lar AYNI
+oranda güncellenmiyordu (stale); **(2)** rail thumb'da stage
+container'ın siyah kutusu + dot-grid görünüyordu. Kullanıcı:
+"tek sahne, çok ekran, **canlı bağlı**" + "right rail'de
+siyah kare / stage container görünmesin, Shots.so'daki gibi
+yalnız preview hissi".
+
+### Kök neden (browser+DOM+code triangulation)
+
+**Açık #1 — reaktivite gap'i (en kritik):** `StageScenePreview`
+`plateDims={{ w: PREVIEW_BASE_W*0.85, h: PREVIEW_BASE_H*0.85 }}`
+= sabit `765×430` (16:9-ish oran) geçiyordu. `frameAspect` prop
+reaktif akıyordu (DOM `data-frame-aspect` doğru güncelleniyordu)
+AMA plate boyutu hiç recompute edilmiyordu. Stage'in
+`plateDimensionsFor`'u aspect-locked iken `StageScenePreview`
+sabit constant kullanıyordu → operatör 9:16 seçince orta panel
+plate `0.562` (portrait) olurken **rail thumb plate `1.778`
+(landscape) STALE kalıyordu**. Kullanıcının "aspect ratio
+değişince right rail güncellenmiyor" şikayetinin tam kök nedeni.
+
+**Açık #2 — stage container görünür:** `StageScenePreview`
+`StageScene`'in TAMAMINI render ediyordu: `.k-studio__stage`
+dark bg (`--ks-st` `rgb(17,16,9)`) + `::before` dot-grid +
+`.k-studio__stage-scene` ambient tint + `.k-studio__stage-floor`
+placement floor. Bunlar **stage workspace chrome'u** (operatör
+çalışma alanı tonu) — Shots.so'da rail thumb'da görünmez (yalnız
+plate + composition). Kullanıcının "siyah kare / stage kutusu"
+gözlemi DOM ile doğrulandı (baseline: `stageBg: rgb(17,16,9)`,
+`dotGridBefore: radial-gradient(...)`, `sceneLayerPresent: true`,
+`floorLayerPresent: true`).
+
+### Doğru model
+
+**Tek kaynak, çok preview, canlı bağlı.** middle panel = selected
+layout; right rail = aynı sahnenin candidate-layout preview'ları;
+middle panelde yapılan HER görsel değişiklik (aspect / asset /
+item identity / device shape / layout count / plate-bg / scene /
+glass / blur / chrome) sağ paneldeki bütün preview'lara anında
+yansır (`right rail = current middle-panel state re-rendered with
+each candidate layout`). Right rail'de stage container hissi YOK
+— yalnız plate + composition (Shots.so parity). Tek render path
+korunur (Phase 117 baseline; sessiz drift §12 YASAK).
+
+### Fix #1 — aspect-aware reactive plateDims (`StageScenePreview`)
+
+Sabit `765×430` → `FRAME_ASPECT_CONFIG[frameAspect].ratio`
+(w/h, Shell SHARED state — Stage ile AYNI kaynak) ile
+**aspect-locked bbox-fit** (Stage `plateDimensionsFor`
+paritesi, PREVIEW_BASE ölçeğinde):
+```ts
+const ratio = FRAME_ASPECT_CONFIG[frameAspect].ratio;
+const maxW = PREVIEW_BASE_W * 0.85, maxH = PREVIEW_BASE_H * 0.85;
+const fitByWidth = { w: maxW, h: maxW / ratio };
+const plateDims = fitByWidth.h <= maxH
+  ? { w: maxW, h: maxW / ratio }
+  : { w: maxH * ratio, h: maxH };
+```
+`frameAspect` zaten reaktif akıyordu; artık plate dims o değerden
+recompute → aspect (ve değişimle birlikte tüm scene/asset/count/
+device) rail thumb'a canlı yansır. Wrapper'a `data-frame-aspect`
+attribute (audit/test selector).
+
+### Fix #2 — chromeless prop (`StageScene` + `studio.css`)
+
+`StageScene`'e `chromeless?: boolean` prop. `chromeless=true`:
+- `.k-studio__stage` `data-chromeless="true"` → CSS:
+  `background: transparent` + `::before { display: none }`
+  (dark `--ks-st` kutusu YOK, dot-grid YOK)
+- `.k-studio__stage-scene` + `.k-studio__stage-floor` +
+  `.k-studio__stage-amb` render EDİLMEZ (görünür stage chrome
+  layer'ları; `-amb` zaten Phase 94'te `display:none`)
+- Plate + `MockupComposition`/`FrameComposition` AYNEN render
+  (tek render path korunur)
+
+`StageScenePreview` `chromeless` geçer. Stage main fn (orta
+panel) `chromeless=false` (default) → Phase 117 davranışı
+**BİREBİR** (DOM byte-identical, regression yok).
+
+### Artık canlı bağlı parametreler (Shell state → rail thumb)
+
+`frameAspect` (Fix #1 ile plate dims recompute) · `sceneOverride`
+(mode/glass/blur/color) · `slots` (real item identity + imageUrl)
+· `layoutCount` · `deviceKind` (productType shape) · `activePalette`
+· `layoutVariant` (candidate — tek fark). Hepsi Shell `useState`
+→ `MockupStudioPresetRail` → `StageScenePreview` → `StageScene`;
+React her state değişiminde rail'i yeniden render eder. **Snapshot/
+stale state YOK** — derived live previews.
+
+### Candidate layout dışında temizlenen farklar
+
+Stage container chrome (dark bg + dot-grid + scene tint + floor)
+artık rail thumb'da yok — middle panel ile rail thumb arasında
+**plate + composition + chrome + asset + scene + aspect HEPSİ
+AYNI**; tek fark candidate `layoutVariant`. Phase 117'de "tek
+render path" idi ama stage container görünüyordu + aspect stale
+idi; Phase 118 ikisini de kapattı.
+
+### Browser triangulation (fresh build, real asset, DOM+screenshot)
+
+Test set `cmov0ia37` (4 real MinIO MJ asset), viewport 1600×1040:
+
+**Test A — chromeless:**
+| | Rail thumb 0 | Middle panel |
+|---|---|---|
+| `data-chromeless` | `"true"` ✓ | `"false"` ✓ |
+| stage bg | `rgba(0,0,0,0)` (transparent) ✓ | `rgb(17,16,9)` (dark, korundu) ✓ |
+| dot-grid `::before` | `display:none` ✓ | `display:block` (korundu) ✓ |
+| scene/floor layer | NOT rendered ✓ | rendered (korundu) ✓ |
+| plate + 3 real img | present ✓ | — |
+
+**Test B — aspect reactivity (core fix):** aspect `9:16` →
+rail thumb plate `0.562` (portrait) === middle panel plate
+`0.562` (portrait). Phase 117 stale `1.778` GİTTİ. `RAIL_MATCHES_
+MIDDLE: true`.
+
+**Test C — full sweep:** glass-dark → rail thumb + middle ikisi
+de `data-glass-variant="dark"` (`SCENE_REACTIVE: true`); layout
+count 2 → rail thumb + middle ikisi de 2 slot (`COUNT_REACTIVE:
+true`).
+
+**Screenshot:** middle panel 9:16 portrait plate + 2 sticker-card
++ glass-dark; 7 rail thumb hepsi **portrait 9:16** (aspect canlı
+yansıdı) + 2 card + glass-dark + **siyah stage kutusu/dot-grid
+YOK** (yalnız plate + composition, panel bg üzerinde). Fark
+yalnız candidate layout.
+
+**Continuity:** Product MockupsTab 11 frame-export tile,
+1920×1080, `aspect-[4/3]` + `object-contain` (Phase 100/101
+baseline intakt — Phase 118 yalnız studio rail rendering).
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (59 files, zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 118)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız `StageScene`'e bir opsiyonel
+  prop + `StageScenePreview` plate dims hesabı + 1 CSS rule.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek render path (Phase 117)
+  KORUNDU — `chromeless` aynı `StageScene`'in görünürlük
+  varyantı, ayrı thumb sistemi DEĞİL. `plateDims` Stage
+  `plateDimensionsFor` aspect-locked mantığının PREVIEW_BASE
+  ölçeğinde parity'si. Yeni component/service/route/SVG library/
+  layout builder/mockup editor YOK.
+- **Phase 117 single-renderer + Phase 114 layoutVariant canonical
+  + Phase 115 cascade-layout.ts + Phase 116 StageDeviceSVG real
+  asset thumb baseline'ları intakt.**
+- **Orta panel davranışı BİREBİR** (chromeless=false default →
+  Phase 117 DOM byte-identical, regression yok).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ kalan (Phase 119+ candidate)
+
+- **Ölü kod temizliği** (Phase 117'den devir): `PresetThumbMockup`
+  / `fitCascadeToThumb` / `THUMB_PLATE_*` rail path'inde
+  kullanılmıyor (`PresetThumbFrame` kullanımı kontrol edilip
+  güvenli silinmeli).
+- **View tabs (Zoom/Tilt/Precision) + Zoom slider** no-op
+  (kategori 4 preview-only helper; Phase 115'ten devir).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 118 ile right rail GERÇEKTEN "tek kaynak, çok preview,
+canlı bağlı": rail thumb = current middle-panel state re-rendered
+per candidate layout (aspect dahil tüm scene/asset/count/device
+canlı yansır), stage container kutusu YOK (Shots.so parity), tek
+render path (Phase 117) korundu. Sıradaki adım **Phase 119
+candidate**: ölü kod temizliği (`PresetThumbMockup`/
+`fitCascadeToThumb` güvenli silme) veya View tabs/Zoom slider
+activation. Yeni SVG/layout builder/mockup editor §13.A'da
+ertelenmiş kalır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

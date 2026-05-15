@@ -19,10 +19,23 @@
  *
  * Doğru model (Phase 117): rail thumb = orta panelin AYNI
  * `StageScene` component'i, CSS `transform: scale()` ile küçültülmüş
- * + küçük sabit plateDims + candidate `layoutVariant`. Ayrı SVG
- * thumb renderer YOK — tek render path, iki ölçek. Fark yalnız
- * ölçek + layoutVariant (Contract §6 "right rail = canlı mini
+ * + candidate `layoutVariant`. Ayrı SVG thumb renderer YOK — tek
+ * render path, iki ölçek (Contract §6 "right rail = canlı mini
  * middle-panel previews"; §11.0 Preview = Export = Rail-thumb).
+ *
+ * Phase 118 — iki açık kapatıldı:
+ *   1. ASPECT-AWARE plateDims (reactive): Phase 117 sabit 16:9-ish
+ *      plateDims geçiyordu → aspect değişince rail thumb STALE.
+ *      Phase 118 plateDims FRAME_ASPECT_CONFIG[frameAspect].ratio
+ *      ile aspect-locked recompute (Stage plateDimensionsFor
+ *      paritesi) → aspect/scene/asset/count/device HEPSİ canlı
+ *      bağlı (current middle-panel state re-rendered per candidate).
+ *   2. CHROMELESS: Phase 117 `StageScene` TAMAMINI render ediyordu
+ *      (stage dark bg + dot-grid + scene tint + floor) → kullanıcı
+ *      "siyah kutu / stage frame" görüyordu. Phase 118 chromeless
+ *      prop → stage container chrome render edilmez; yalnız plate
+ *      + composition (Shots.so rail davranışı). Tek render path
+ *      korunur (sessiz drift §12 YASAK).
  *
  * StageScenePreview → MockupStudioStage (StageScene import).
  * PresetRail → StageScenePreview. Stage StageScenePreview'i import
@@ -34,6 +47,10 @@
  * GİRMEZ). selectedSlot=-1 + no-op onSelect (etkileşim yok). */
 
 import { StageScene } from "./MockupStudioStage";
+import {
+  FRAME_ASPECT_CONFIG,
+  type FrameAspectKey,
+} from "./frame-aspects";
 import type { SceneOverride } from "./frame-scene";
 import type { StudioStageDeviceKind } from "./svg-art";
 import type {
@@ -59,7 +76,7 @@ export interface StageScenePreviewProps {
   mode: StudioMode;
   slots: ReadonlyArray<StudioSlotMeta>;
   deviceKind: StudioStageDeviceKind;
-  frameAspect: import("./frame-aspects").FrameAspectKey;
+  frameAspect: FrameAspectKey;
   activePalette?: readonly [string, string];
   sceneOverride?: SceneOverride;
   layoutCount: 1 | 2 | 3;
@@ -88,10 +105,39 @@ export function StageScenePreview({
    * Orta panelin BİREBİR küçültülmüş hali. */
   const scale = Math.min(boxW / PREVIEW_BASE_W, boxH / PREVIEW_BASE_H);
 
+  /* Phase 118 — Plate dims ASPECT-AWARE (reactive to frameAspect).
+   *
+   * Phase 117 BUG: plateDims `{ w: PREVIEW_BASE_W*0.85, h:
+   * PREVIEW_BASE_H*0.85 }` SABİT 16:9-ish oran idi → operatör
+   * Frame mode'da aspect (9:16 / 1:1 / 4:5 / 3:4) değiştirdiğinde
+   * `frameAspect` prop reaktif akıyordu (data-frame-aspect doğru
+   * güncelleniyordu) AMA plate boyutu hiç recompute edilmiyordu
+   * → rail thumb aspect STALE (orta panel 9:16 portrait, rail
+   * thumb hâlâ 16:9 landscape). Kullanıcı bug "right rail aspect
+   * ratio değişince güncellenmiyor" tam bu.
+   *
+   * Phase 118 fix: Stage `plateDimensionsFor`'un aspect-locked
+   * bbox-fit mantığını PREVIEW_BASE ölçeğinde uygula. ratio =
+   * FRAME_ASPECT_CONFIG[frameAspect].ratio (w/h, Shell SHARED
+   * state — Stage ile AYNI kaynak). Plate PREVIEW_BASE'in ~%85'i
+   * (Stage avail %86-90 paritesi); aspect-locked: hem maxW hem
+   * maxH'a sığ, oran SABİT. Sonuç: aspect değişince rail thumb
+   * plate de orta panelle AYNI oranda recompute (Preview = Export
+   * = Rail-thumb §11.0; canlı bağlı çok-ekran). */
+  const ratio = FRAME_ASPECT_CONFIG[frameAspect].ratio; // w/h
+  const maxW = PREVIEW_BASE_W * 0.85;
+  const maxH = PREVIEW_BASE_H * 0.85;
+  const fitByWidth = { w: maxW, h: maxW / ratio };
+  const plateDims =
+    fitByWidth.h <= maxH
+      ? { w: maxW, h: maxW / ratio }
+      : { w: maxH * ratio, h: maxH };
+
   return (
     <div
       data-testid="studio-rail-stagescene-preview"
       data-layout-variant={layoutVariant}
+      data-frame-aspect={frameAspect}
       style={{
         width: boxW,
         height: boxH,
@@ -110,10 +156,11 @@ export function StageScenePreview({
           transform: `translate(-50%, -50%) scale(${scale})`,
           transformOrigin: "center center",
           /* StageScene root `.k-studio__stage` CSS `flex:1` — flex
-           * parent gerekir yoksa height 0 collapse (scene/floor
-           * inset:0 kaybolur). Bu wrapper flex container yaparak
-           * stage'i PREVIEW_BASE boyutuna doldurur (Stage'de stage
-           * alanı flex-fill ettiği gibi). */
+           * parent gerekir yoksa height 0 collapse (plate center
+           * kaybolur). Bu wrapper flex container yaparak stage'i
+           * PREVIEW_BASE boyutuna doldurur (Stage'de stage alanı
+           * flex-fill ettiği gibi). chromeless: stage bg/dot-grid/
+           * scene/floor render edilmez — yalnız plate görünür. */
           display: "flex",
         }}
       >
@@ -129,16 +176,11 @@ export function StageScenePreview({
           sceneOverride={sceneOverride}
           layoutCount={layoutCount}
           layoutVariant={layoutVariant}
-          plateDims={{
-            /* Plate stage'in ~%85'i (Stage `plateDimensionsFor`
-             * avail %86-90 paritesi); etrafta scene-padding kalır
-             * — orta panelin BİREBİR minyatürü. */
-            w: PREVIEW_BASE_W * 0.85,
-            h: PREVIEW_BASE_H * 0.85,
-          }}
+          plateDims={plateDims}
           isPreview
           isRender={false}
           isEmpty={false}
+          chromeless
         />
       </div>
     </div>

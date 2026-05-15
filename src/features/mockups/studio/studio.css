@@ -496,6 +496,29 @@
   pointer-events: none;
   z-index: 0;
 }
+/* Phase 118 — Chromeless stage (rail thumb only).
+ *
+ * Kullanıcı (Phase 118): right rail'de stage container'ın siyah
+ * kutusu + dot-grid görünüyordu; Shots.so'da rail thumb yalnız
+ * plate + composition gösterir (stage frame YOK). Phase 117
+ * single-renderer DOĞRU yön ama `.k-studio__stage` dark bg
+ * (--ks-st) + `::before` dot-grid'i de render ediyordu.
+ *
+ * data-chromeless="true" (StageScenePreview → StageScene):
+ *   - bg transparent (dark --ks-st kutusu YOK)
+ *   - ::before dot-grid display:none (stage workspace pattern'i
+ *     thumb'a sızmaz)
+ * scene ambient tint + placement floor zaten JSX'te chromeless
+ * iken render edilmiyor (MockupStudioStage.tsx). Plate +
+ * composition AYNEN render — tek render path korunur (sessiz
+ * drift §12 YASAK). Orta panel data-chromeless="false" → Phase
+ * 117 görünümü BİREBİR (regression yok). */
+.k-studio__stage[data-chromeless="true"] {
+  background: transparent;
+}
+.k-studio__stage[data-chromeless="true"]::before {
+  display: none;
+}
 .k-studio__stage-amb {
   /* Phase 94 — Ambient glow tamamen kaldırıldı (bug #24).
    * Phase 93'te alpha düşürülmüş subtle warm core'a indirilmişti,
