@@ -19,6 +19,55 @@ export type StudioAppState =
   | "render"
   | "renderDone";
 
+/* Phase 114 — Canonical layout variant (unified studio parameter).
+ *
+ * Right rail "Layout Presets" (Cascade / Centered / Tilted / Stacked /
+ * Fan / Offset) Phase 96-113 boyunca yalnız rail thumb highlight'ı
+ * değiştiren NO-OP idi (`cascadeLayoutForRaw` tek hardcoded layout
+ * döndürüyordu; preset variant'ı hiç kullanılmıyordu — Contract §6
+ * "preset isimleri gerçek farklı kompozisyon olmalı" sözü ile kod
+ * gerçeği ayrışmıştı, Madde #12 sessiz drift).
+ *
+ * Phase 114: layoutVariant CANONICAL shared parameter. Operator
+ * rail'de bir preset seçtiğinde tek Shell state'e yazılır;
+ * stage cascade + rail thumb + Frame export payload HEPSİ bu tek
+ * değerden okur (Preview = Export Truth §11.0 — final visual
+ * parameter, UI helper değil). cascadeLayoutFor(kind, count,
+ * variant) productType base boyutlarını koruyup dizilim/rotation/
+ * offset'i variant'a göre üretir (tek registry; yeni layout
+ * builder / SVG library DEĞİL). */
+export type StudioLayoutVariant =
+  | "cascade"
+  | "centered"
+  | "tilted"
+  | "stacked"
+  | "fan"
+  | "offset";
+
+export const STUDIO_LAYOUT_VARIANTS: ReadonlyArray<StudioLayoutVariant> = [
+  "cascade",
+  "centered",
+  "tilted",
+  "stacked",
+  "fan",
+  "offset",
+];
+
+/** Operator-facing label (rail preset card). Index parity with
+ *  STUDIO_LAYOUT_VARIANTS — Phase 97 rationalized terminology
+ *  (Shots.so layout variation library parity). */
+export const STUDIO_LAYOUT_VARIANT_LABELS: Record<
+  StudioLayoutVariant,
+  string
+> = {
+  cascade: "Cascade",
+  centered: "Centered",
+  tilted: "Tilted",
+  stacked: "Stacked",
+  fan: "Fan",
+  offset: "Offset",
+};
+
 export interface StudioSlotMeta {
   id: number;
   name: string;

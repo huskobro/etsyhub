@@ -32,7 +32,12 @@ import {
   STUDIO_SAMPLE_DESIGNS,
   type StudioStageDeviceKind,
 } from "./svg-art";
-import type { StudioAppState, StudioMode, StudioSlotMeta } from "./types";
+import type {
+  StudioAppState,
+  StudioLayoutVariant,
+  StudioMode,
+  StudioSlotMeta,
+} from "./types";
 
 /* Phase 88 — Hex → rgba conversion for asset-aware scene CSS
  * custom property injection. Stage scene'in radial gradient
@@ -356,9 +361,114 @@ function compositionGroup(
 export function cascadeLayoutFor(
   kind: StudioStageDeviceKind,
   layoutCount: 1 | 2 | 3 = 3,
+  variant: StudioLayoutVariant = "cascade",
 ): { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[] {
-  const raw = cascadeLayoutForRaw(kind).slice(0, layoutCount);
-  return centerCascade(raw);
+  // AYRIM DİSİPLİNİ (Phase 114 — kullanıcı yön ayarı):
+  //  - cascadeLayoutForRaw = SHAPE-SPECIFIC impl detail (kategori 3):
+  //    her productType'ın slot boyut karakteri (telefon dik 416,
+  //    sticker kare 220, bookmark dar 90). Registry içinde AYRI kalır,
+  //    tek potaya eritilmez.
+  //  - applyLayoutVariant = CANONICAL shared parameter (kategori 1)
+  //    layoutVariant'ı tüketir: base slot BOYUTLARINI korur, sadece
+  //    DİZİLİM/rotation/offset'i variant'a göre üretir. productType-
+  //    AGNOSTIC (her shape base'ine aynı dönüşüm). "cascade" = mevcut
+  //    Phase 77-113 davranış (regression yok); 5 variant ek.
+  const base = cascadeLayoutForRaw(kind).slice(0, layoutCount);
+  const arranged = applyLayoutVariant(base, variant);
+  return centerCascade(arranged);
+}
+
+/* Phase 114 — Layout variant arranger (canonical shared parameter
+ * layoutVariant'ı gerçek kompozisyona çevirir). Right rail "Layout
+ * Presets" Phase 96-113 boyunca NO-OP idi (sadece thumb highlight);
+ * Phase 114 stage cascade + Frame export'a gerçekten yansır
+ * (Preview = Export Truth §11.0 — final visual parameter).
+ *
+ * Girdi: cascadeLayoutForRaw'ın productType base item'ları (slot
+ * w/h karakteri korunur). Çıktı: aynı boyutlar, variant'a göre
+ * x/y/rotation/z yeniden dizilim. centerCascade sonradan plate'e
+ * fit eder (Phase 111 locked-group; bu fonksiyon ham layout üretir,
+ * fit/center DEĞİL — sözleşme #2 + Phase 112 composition primitive).
+ *
+ * Variant tasarımı (Shots.so layout variation library parity —
+ * canlı browser audit: 8 layout-item, dikey gallery, `active`
+ * selected state, 1180px'te collapse):
+ *  - cascade:  Phase 77-113 baseline (offset + downstep + tilt)
+ *  - centered: tek-merkez yığın (overlap, minimal offset, düz)
+ *  - tilted:   simetrik karşıt eğim (fan'a benzer ama daha sıkı)
+ *  - stacked:  dikey üst üste (z-stack, küçük y-step, tilt yok)
+ *  - fan:      geniş yelpaze (büyük açı yayılımı + yatay yayılım)
+ *  - offset:   diyagonal kayık (eşit adım, hafif tek-yön tilt) */
+function applyLayoutVariant(
+  base: { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[],
+  variant: StudioLayoutVariant,
+): { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[] {
+  const n = base.length;
+  if (n === 0) return base;
+  // Karakteristik ölçü: ilk (en büyük) slot boyutu — variant
+  // spacing'leri buna oranlanır (productType-agnostic).
+  const w0 = base[0]!.w;
+  const h0 = base[0]!.h;
+
+  if (variant === "cascade") {
+    // Phase 77-113 baseline — DEĞİŞMEZ (regression koruması).
+    return base.map((b) => ({ ...b }));
+  }
+
+  return base.map((b, i) => {
+    const mid = (n - 1) / 2;
+    const d = i - mid; // merkeze göre ofset (-..0..+)
+    const zTop = n - i; // ilk slot en üstte (Phase baseline z davranışı)
+
+    if (variant === "centered") {
+      // Tek-merkez yığın: minimal x ofset, tilt yok, hafif y-step.
+      return {
+        ...b,
+        x: Math.round(w0 * 0.5 + d * w0 * 0.16),
+        y: Math.round(h0 * 0.12 + Math.abs(d) * h0 * 0.05),
+        r: 0,
+        z: zTop,
+      };
+    }
+    if (variant === "tilted") {
+      // Simetrik karşıt eğim, orta-sıkı yatay yayılım.
+      return {
+        ...b,
+        x: Math.round(d * w0 * 0.62 + w0 * (mid * 0.62)),
+        y: Math.round(Math.abs(d) * h0 * 0.07),
+        r: Math.round(d * 7),
+        z: zTop,
+      };
+    }
+    if (variant === "stacked") {
+      // Dikey z-stack: aynı x, küçük y-step, tilt yok, derinlik z.
+      return {
+        ...b,
+        x: Math.round(w0 * 0.12 + Math.abs(d) * w0 * 0.04),
+        y: Math.round(i * h0 * 0.14),
+        r: 0,
+        z: zTop,
+      };
+    }
+    if (variant === "fan") {
+      // Geniş yelpaze: büyük açı + geniş yatay yayılım.
+      return {
+        ...b,
+        x: Math.round(d * w0 * 0.78 + w0 * (mid * 0.78)),
+        y: Math.round(Math.abs(d) * h0 * 0.11),
+        r: Math.round(d * 13),
+        z: zTop,
+      };
+    }
+    // offset — diyagonal eşit adım, hafif tek-yön tilt.
+    return {
+      ...b,
+      x: Math.round(i * w0 * 0.42),
+      y: Math.round(i * h0 * 0.2),
+      r: Math.round(i * -4),
+      z: zTop,
+    };
+  });
 }
 
 function cascadeLayoutForRaw(
@@ -417,9 +527,11 @@ function MockupComposition({
   deviceKind,
   plateDims,
   layoutCount,
+  layoutVariant,
 }: MockupCompositionProps & {
   plateDims: { w: number; h: number };
   layoutCount: 1 | 2 | 3;
+  layoutVariant: StudioLayoutVariant;
 }) {
   /* Phase 96 — Layout count Shell state ile cascade item count
    * sınırlandı (bug #13). Rail head 1/2/3 buttons → Shell setter →
@@ -427,9 +539,13 @@ function MockupComposition({
    * thumb hepsi aynı limit'i uygular.
    *
    * Phase 97 — slice helper içine taşındı (single-item center fix).
-   * cascadeLayoutFor artık (kind, layoutCount) signature; center
-   * slice sonrası uygulanır. */
-  const rawPhones = cascadeLayoutFor(deviceKind, layoutCount);
+   *
+   * Phase 114 — layoutVariant canonical shared parameter. Rail
+   * "Layout Presets" no-op idi; artık Shell layoutVariant state →
+   * Stage cascade + Frame export + rail thumb HEPSİ bu tek
+   * değerden okur (Preview = Export Truth §11.0). cascadeLayoutFor
+   * (kind, count, variant). */
+  const rawPhones = cascadeLayoutFor(deviceKind, layoutCount, layoutVariant);
   /* Phase 111 — Plate-relative LOCKED composition group.
    *
    * Phase 95-110 baseline: stage-inner sabit 572×504 +
@@ -575,11 +691,13 @@ function FrameComposition({
   selectedSlot,
   plateDims,
   layoutCount,
+  layoutVariant,
 }: FrameCompositionProps & {
   deviceKind: StudioStageDeviceKind;
   frameAspect: FrameAspectKey;
   plateDims: { w: number; h: number };
   layoutCount: 1 | 2 | 3;
+  layoutVariant: StudioLayoutVariant;
 }) {
   /* Phase 87 — True stage continuity (bounded canvas removed).
    *
@@ -629,8 +747,12 @@ function FrameComposition({
    * aynı boyut). Phase 96 — layoutCount ile slice (bug #13).
    * Phase 97 — slice helper içine taşındı (single-item center fix);
    * cascadeLayoutFor (kind, layoutCount) signature, center slice
-   * sonrası. */
-  const rawPhones = cascadeLayoutFor(deviceKind, layoutCount);
+   * sonrası.
+   *
+   * Phase 114 — layoutVariant canonical shared parameter (Frame
+   * mode cascade = preview; Frame export aynı variant'ı kullanır,
+   * Preview = Export Truth §11.0). */
+  const rawPhones = cascadeLayoutFor(deviceKind, layoutCount, layoutVariant);
 
   const activeSlot = slots[selectedSlot] ?? null;
   const hasAnyAssignedSlot = slots.some((s) => s.assigned);
@@ -820,6 +942,14 @@ export interface MockupStudioStageProps {
    *  Stage cascade item count'unu sınırlar. Rail head 1/2/3 buttons
    *  ile aynı Shell state'i paylaşır. */
   layoutCount?: 1 | 2 | 3;
+  /** Phase 114 — Layout variant CANONICAL shared parameter.
+   *  Rail "Layout Presets" (Cascade/Centered/Tilted/Stacked/Fan/
+   *  Offset) artık no-op değil: Shell layoutVariant state → Stage
+   *  cascade + rail thumb + Frame export HEPSİ bu tek değerden
+   *  okur (Preview = Export Truth §11.0 — final visual parameter,
+   *  UI helper değil). Default "cascade" (Phase 77-113 baseline,
+   *  regression yok). */
+  layoutVariant?: StudioLayoutVariant;
   /** Phase 110 — Viewport-aware aspect-locked plate scaling.
    *
    * Shell window.innerWidth/innerHeight'i izler ve Stage'e geçirir.
@@ -849,6 +979,7 @@ export function MockupStudioStage({
   activePalette,
   sceneOverride,
   layoutCount,
+  layoutVariant = "cascade",
   viewportW = 1440,
   viewportH = 900,
   railCollapsed = false,
@@ -1104,6 +1235,7 @@ export function MockupStudioStage({
               deviceKind={deviceKind}
               plateDims={plateDims}
               layoutCount={layoutCount ?? 3}
+              layoutVariant={layoutVariant}
             />
           ) : (
             <FrameComposition
@@ -1115,6 +1247,7 @@ export function MockupStudioStage({
               selectedSlot={selectedSlot}
               plateDims={plateDims}
               layoutCount={layoutCount ?? 3}
+              layoutVariant={layoutVariant}
             />
           )}
           {/* Phase 113 — Glass overlay Layer 2b'ye taşındı (cascade'in

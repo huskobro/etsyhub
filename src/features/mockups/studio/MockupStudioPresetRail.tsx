@@ -25,7 +25,13 @@ import {
  * (svg-art.tsx'te PresetThumbFrame export hâlâ var — gelecek
  * kullanım için kalır). */
 import { PresetThumbMockup } from "./svg-art";
-import type { StudioAppState, StudioMode } from "./types";
+import {
+  STUDIO_LAYOUT_VARIANTS,
+  STUDIO_LAYOUT_VARIANT_LABELS,
+  type StudioAppState,
+  type StudioLayoutVariant,
+  type StudioMode,
+} from "./types";
 
 /* Phase 96 — Unified LAYOUT_PRESETS family (Shots.so canonical
  * parity). Phase 77 baseline Mockup için 6 isim + Frame için 8
@@ -55,12 +61,15 @@ import type { StudioAppState, StudioMode } from "./types";
  * yana ayna gibi yanıltıcı; aslında MOCKUP_PRESETS index=2 phone
  * positions tilted/mirrored variation taşır.
  *
- * Phase 97 rename (preset config DEĞİŞMEDİ — sadece label):
- *   - "Mirror"     → "Tilted"    (idx 2: -4°/+4° rotated phones)
- *   - "Landscape"  → "Stacked"   (idx 3: single wide phone variant)
- *   - "Stack"      → "Offset"    (idx 5: rotated-offset stacked variant)
- * Cascade / Centered / Fan korundu (Shots-aligned). */
-const LAYOUT_PRESETS = ["Cascade", "Centered", "Tilted", "Stacked", "Fan", "Offset"];
+ * Phase 114 — preset list artık CANONICAL kaynaktan
+ * (STUDIO_LAYOUT_VARIANTS + LABELS, types.ts). Index parity
+ * garantili; rail preset i. kart = STUDIO_LAYOUT_VARIANTS[i]
+ * = Stage cascade + Frame export aynı variant. String drift yok
+ * (Phase 96-97 hardcoded label array → canonical türetme).
+ * Cascade / Centered / Tilted / Stacked / Fan / Offset. */
+const LAYOUT_PRESETS = STUDIO_LAYOUT_VARIANTS.map(
+  (v) => STUDIO_LAYOUT_VARIANT_LABELS[v],
+);
 
 function LayoutIcon({ n }: { n: 1 | 2 | 3 }) {
   if (n === 1) {
@@ -115,6 +124,15 @@ export interface MockupStudioPresetRailProps {
    *  buttons → setter; thumb + stage aynı limit'i uygular. */
   layoutCount?: 1 | 2 | 3;
   onChangeLayoutCount?: (next: 1 | 2 | 3) => void;
+  /** Phase 114 — CANONICAL shared layout variant. Rail "Layout
+   *  Presets" Phase 96-113 boyunca NO-OP idi (local `active`
+   *  state, sadece thumb highlight). Phase 114: Shell layoutVariant
+   *  state → preset card seçimi Shell setter'a gider → Stage
+   *  cascade + rail thumb + Frame export HEPSİ aynı değerden okur
+   *  (Preview = Export Truth §11.0). Fallback local state legacy
+   *  (Shell prop yoksa). */
+  layoutVariant?: StudioLayoutVariant;
+  onChangeLayoutVariant?: (next: StudioLayoutVariant) => void;
 }
 
 export function MockupStudioPresetRail({
@@ -124,6 +142,8 @@ export function MockupStudioPresetRail({
   sceneOverride,
   layoutCount,
   onChangeLayoutCount,
+  layoutVariant,
+  onChangeLayoutVariant,
 }: MockupStudioPresetRailProps) {
   /* Phase 96 — Layout count Shell state'ten geliyor; fallback local
    * state (legacy). Operator buttons → onChangeLayoutCount → Shell
@@ -135,7 +155,28 @@ export function MockupStudioPresetRail({
     else setLocalLayout(n);
   };
   const [viewTab, setViewTab] = useState<"zoom" | "tilt" | "precision">("zoom");
-  const [active, setActive] = useState(0);
+  /* Phase 114 — Active preset = CANONICAL Shell layoutVariant
+   * index (fallback local legacy). Phase 96-113 `const [active,
+   * setActive] = useState(0)` LOCAL idi → preset seçimi yalnız
+   * rail thumb highlight'ı değiştiriyordu, Stage cascade + export
+   * DEĞİŞMİYORDU (Contract §6 sözü ↔ kod gerçeği ayrışması, Madde
+   * #12 sessiz drift). Phase 114: active Shell variant'tan türer;
+   * preset card onClick → onChangeLayoutVariant (Shell setter) →
+   * Stage cascade + rail thumb + Frame export HEPSİ senkron
+   * (Preview = Export Truth §11.0). */
+  const [localVariant, setLocalVariant] =
+    useState<StudioLayoutVariant>("cascade");
+  const activeVariant = layoutVariant ?? localVariant;
+  const active = Math.max(
+    0,
+    STUDIO_LAYOUT_VARIANTS.indexOf(activeVariant),
+  );
+  const selectVariant = (i: number) => {
+    const v = STUDIO_LAYOUT_VARIANTS[i];
+    if (!v) return;
+    if (onChangeLayoutVariant) onChangeLayoutVariant(v);
+    else setLocalVariant(v);
+  };
   const isPreview = appState === "preview" || appState === "renderDone";
   /* Phase 96 — Unified rail: Mockup ve Frame için tek preset family
    * + tek thumb component. Phase 95 aspect SHARED state ile Mockup ↔
@@ -273,8 +314,9 @@ export function MockupStudioPresetRail({
               type="button"
               className="k-studio__preset-card"
               aria-pressed={active === i}
-              onClick={() => setActive(i)}
+              onClick={() => selectVariant(i)}
               data-testid={`studio-rail-preset-${i}`}
+              data-variant={STUDIO_LAYOUT_VARIANTS[i]}
               data-asset-aware={activePalette ? "true" : "false"}
               data-scene-mode={sceneOverride?.mode ?? "auto"}
             >

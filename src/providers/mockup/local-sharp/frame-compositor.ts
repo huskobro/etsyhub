@@ -1099,13 +1099,52 @@ export async function composeFrameOutput(
     // bbox büyüdüğü için tile'ı kendi merkezine göre yerleştir.
     const slotCenterX = slotOutX + slotOutW / 2;
     const slotCenterY = slotOutY + slotOutH / 2;
-    const finalX = Math.round(slotCenterX - tileFinalW / 2);
-    const finalY = Math.round(slotCenterY - tileFinalH / 2);
+
+    /* Phase 114 — Tile-fits-canvas guard (Preview = Export Truth
+     * §11.0 + export pipeline robustness).
+     *
+     * Phase 114 layoutVariant'lar (fan/stacked/offset) cascade'den
+     * geniş yayılım üretir; rotated tile bbox şişer. Bazı variant +
+     * aspect kombinasyonunda slot tile output canvas'tan BÜYÜK
+     * çıkıyordu → Sharp `composite` "Image to composite must have
+     * same dimensions or smaller" 500 (latent bug; cascade dar
+     * olduğu için Phase 113'e kadar tetiklenmiyordu, Phase 114
+     * variant'lar açığa çıkardı).
+     *
+     * Fix: tile output canvas'tan büyükse (her iki eksende) aspect-
+     * korumalı resize-down (tile kompozisyon karakterini korur,
+     * yalnız canvas'a sığar — preview compositionGroup plate-fit
+     * mantığıyla aynı niyet). Sonra position [0, output-tile]
+     * aralığına clamp (sağ/alt taşma da kesilir; eski sadece
+     * Math.max(0,…) sol/üst taşmayı kesiyordu — eksikti). */
+    let compTile = slotTilePng;
+    let compW = tileFinalW;
+    let compH = tileFinalH;
+    if (compW > outputW || compH > outputH) {
+      const fit = Math.min(outputW / compW, outputH / compH);
+      compW = Math.max(1, Math.floor(compW * fit));
+      compH = Math.max(1, Math.floor(compH * fit));
+      compTile = await sharp(slotTilePng)
+        .resize(compW, compH, { fit: "inside" })
+        .png()
+        .toBuffer();
+    }
+    const finalX = Math.round(slotCenterX - compW / 2);
+    const finalY = Math.round(slotCenterY - compH / 2);
+    // Position clamp: tile tamamen canvas içinde (sol/üst + sağ/alt).
+    const clampedLeft = Math.min(
+      Math.max(0, finalX),
+      Math.max(0, outputW - compW),
+    );
+    const clampedTop = Math.min(
+      Math.max(0, finalY),
+      Math.max(0, outputH - compH),
+    );
 
     slotComposites.push({
-      input: slotTilePng,
-      top: Math.max(0, finalY),
-      left: Math.max(0, finalX),
+      input: compTile,
+      top: clampedTop,
+      left: clampedLeft,
     });
   }
 

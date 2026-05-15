@@ -58,6 +58,7 @@ import {
 import type {
   StudioAppState,
   StudioKeptItem,
+  StudioLayoutVariant,
   StudioMode,
   StudioSlotAssignmentMap,
   StudioSlotMeta,
@@ -135,6 +136,20 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
    * rail thumb'larda displayCount prop ile cascade item N ile sınırlı;
    * stage MockupComposition/FrameComposition aynı limit'i uygular. */
   const [layoutCount, setLayoutCount] = useState<1 | 2 | 3>(3);
+
+  /* Phase 114 — CANONICAL shared layout variant (unified studio
+   * parameter). Right rail "Layout Presets" (Cascade/Centered/
+   * Tilted/Stacked/Fan/Offset) Phase 96-113 boyunca NO-OP idi
+   * (rail thumb highlight'tan ibaret; cascadeLayoutForRaw tek
+   * hardcoded layout — Contract §6 sözü ile kod gerçeği ayrıştı,
+   * Madde #12 sessiz drift). Phase 114: TEK Shell state. Operator
+   * rail'de preset seçince buraya yazılır; Stage cascade + rail
+   * thumb + Frame export payload HEPSİ bu tek değerden okur
+   * (Preview = Export Truth §11.0 — final visual parameter, UI
+   * helper DEĞİL). Default "cascade" = Phase 77-113 baseline
+   * (regression koruması). Mode-AGNOSTIC (Mockup + Frame aynı). */
+  const [layoutVariant, setLayoutVariant] =
+    useState<StudioLayoutVariant>("cascade");
 
   /* Phase 89 — Frame mode scene control override state.
    *
@@ -545,7 +560,13 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     setExportError(null);
     setIsExportingFrame(true);
     try {
-      const cascade = cascadeLayoutFor(deviceKind, layoutCount);
+      // Phase 114 — Export cascade preview ile AYNI layoutVariant'ı
+      // kullanır (Preview = Export Truth §11.0; canonical shared
+      // parameter). cascadeLayoutFor(kind, count, variant) — preview
+      // MockupComposition/FrameComposition ile birebir slot
+      // pozisyonları. Export "cascade" baseline + preview layoutVariant
+      // ayrışması (Phase 114 öncesi) YASAK.
+      const cascade = cascadeLayoutFor(deviceKind, layoutCount, layoutVariant);
       // Phase 113 — Slot→item identity zinciri (Sözleşme §11.0):
       //   1. operator override (slotAssignments — Phase 80) en güçlü
       //   2. slot'un DOĞAL item'ı (realSlots position-sorted dizilim;
@@ -676,6 +697,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     frameAspect,
     sceneOverride,
     activePalette,
+    layoutVariant,
   ]);
 
   /* Phase 99 — Export disabled gate. Frame mode'da bile assigned
@@ -779,6 +801,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       data-category-id={categoryId}
       data-frame-aspect={frameAspect}
       data-layout-count={layoutCount}
+      data-layout-variant={layoutVariant}
       data-slot-assignment-count={
         Object.values(slotAssignments).filter(Boolean).length
       }
@@ -836,6 +859,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           activePalette={activePalette}
           sceneOverride={sceneOverride}
           layoutCount={layoutCount}
+          layoutVariant={layoutVariant}
           viewportW={viewport.w}
           viewportH={viewport.h}
           railCollapsed={railCollapsed}
@@ -852,6 +876,8 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
             sceneOverride={sceneOverride}
             layoutCount={layoutCount}
             onChangeLayoutCount={setLayoutCount}
+            layoutVariant={layoutVariant}
+            onChangeLayoutVariant={setLayoutVariant}
           />
         ) : null}
       </div>

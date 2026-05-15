@@ -19685,13 +19685,28 @@ surface" rolünün tam ürünleştirilmesi.
 - Rail thumb sayısı Shots'ta 7 sabit; Kivasy'de 6 (LAYOUT_PRESETS).
   Operator için "aynı kompozisyonun N farklı layout varyasyonu"
   hissi — sayı değil **varyasyon library** önemli.
-- Preset isimleri yalnız label değil **gerçek farklı kompozisyon**
-  olmalı (rotated/tilted/offset/stacked variation). Phase 97'de
-  label rationalization (Mirror/Landscape → Tilted/Stacked Shots-
-  terminoloji parity); preset config (phone position'ları)
-  değişmedi.
+- **Preset isimleri yalnız label değil GERÇEK farklı kompozisyon
+  (Phase 114 fulfilled — CANONICAL shared parameter).** Phase
+  96-113 boyunca bu madde Contract'ta yazılıydı ama kod gerçeği
+  AYRIŞMIŞTI: rail preset onClick `setActive(i)` LOCAL state'ti
+  (yalnız thumb highlight), `cascadeLayoutForRaw` tek hardcoded
+  layout döndürüyordu — preset NO-OP (Madde #12 sessiz drift).
+  Phase 114: `StudioLayoutVariant` canonical Shell state
+  (cascade/centered/tilted/stacked/fan/offset). Rail preset
+  onClick → Shell setter → Stage cascade + rail thumb + Frame
+  export HEPSİ aynı değerden okur. `cascadeLayoutFor(kind, count,
+  variant)` — `cascadeLayoutForRaw` per-productType BASE boyut
+  (shape-specific impl detail, kategori 3, registry içinde AYRI)
+  + `applyLayoutVariant` boyutları koruyup dizilim/rotation/offset
+  variant'a göre üretir (canonical shared parameter, kategori 1,
+  productType-agnostic). "cascade" = Phase 77-113 baseline
+  (regression yok). Operator preset seçince preview cascade +
+  exported PNG GERÇEKTEN değişir (browser+pixel kanıtlı).
 - Rail thumb asset-aware (Phase 86) + scene-aware (Phase 89) +
-  count-aware (Phase 96). Mode-AGNOSTIC (Phase 96 unified family).
+  count-aware (Phase 96) + **variant-aware (Phase 114 — thumb
+  `displayCount`/`active` canonical layoutVariant index'inden)**.
+  Mode-AGNOSTIC (Phase 96 unified family + Phase 114 layoutVariant
+  mode-AGNOSTIC: Mockup↔Frame geçişinde korunur).
 
 ### 7. Selection / preview behavior
 
@@ -19895,10 +19910,46 @@ color / browser window style / chrome tone) bu 3-layer modele
 oturur — Layer 2'ye yeni treatment, Layer 3 (item) effect-bağımsız
 kalır. Tek-mockup hack veya per-effect z-index patlaması YASAK.
 
+**Shared canonical parameter de Preview = Export Truth kapsamındadır
+(Phase 114 canonical — unified studio parameter):** Preview = Export
+Truth yalnız geometry + asset identity + layered effects için değil,
+**operator'ın seçtiği her final visual parametre** için geçerlidir.
+Kullanıcı bir değer seçtiğinde (layout variant, layout count, scene
+mode/glass/blur, frame aspect, slot assignment, device shape) bu
+seçim **tek canonical Shell state'ten** okunur ve stage preview +
+rail thumb + Frame export payload + Product MockupsTab tile HEPSİ
+aynı değerden türer. Ayrışma (preview "X", export "Y baseline")
+YASAK.
+
+- **Canonical shared parameters (kategori 1 — final visual,
+  preview+export+rail aynı kaynak):** layoutVariant (Phase 114),
+  layoutCount, sceneOverride (mode/glass/blur/color), frameAspect,
+  slot itemId / slotAssignments, deviceShape, activePalette.
+- **Mode/UI-specific state (kategori 2 — AYRI kalır, unify
+  edilmez):** mode (mockup/frame), appState, viewTab (zoom/tilt/
+  precision). Bunlar tek canonical parameter potasına ERİTİLMEZ
+  (yanlış unify — önceki fazların doğru ayrımları korunur).
+- **Shape/layout-specific impl detail (kategori 3 — registry
+  içinde AYRI):** `cascadeLayoutForRaw` per-productType base
+  geometri, `resolveDeviceShape` SVG mapping. Variant logic
+  productType-agnostic; shape detail registry'de kalır (tek pota
+  DEĞİL).
+- **Preview-only helper (kategori 4 — export'a GİRMEZ):**
+  selectedSlot ring, slot badge (Phase 94 baseline korunur).
+
+Yeni final visual parametre eklenirken kategori 1'e girer (tek
+Shell state → preview + export + rail). Yeni framework / store /
+reducer AÇILMAZ — Shell `useState` + sub-component prop iletimi
+yeterli (bugün tek consumer ailesi; erken abstraction §7.6
+dead-code dersi). `cascadeLayoutFor` çağrısı preview
+(MockupComposition/FrameComposition) ve export (`handleExportFrame`)
+TEK kaynak; `frame-compositor.ts` slot pozisyonlarını TÜKETİR
+(kendi layout üretmez) → Preview = Export yapısal garanti.
+
 Canonical truth = **exported PNG**. Studio preview, exported PNG'nin
 authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
 preview'ın render sözleşmesini birebir izler (geometry + asset
-identity + layered effects).
+identity + layered effects + shared canonical parameter).
 
 **Studio ↔ Export plate render parity (Phase 113 canonical — unify
 ilkesi):** Studio plate'i **CSS `<div>` zinciri** ile render eder
@@ -23611,6 +23662,171 @@ controlled plate frame-style parametresi (Phase 113'te kaldırılan
 border'ın §13 future SVG readiness modeliyle explicit efekt
 olarak geri gelmesi) veya drop shadow softness fine-tune. Yeni
 SVG/layout builder/mockup editor §13.A'da ertelenmiş kalır.
+
+---
+
+## Phase 114 — Unified studio parameter + right rail productization (layout variant canonical, no-op canlandı)
+
+Phase 101-113 parity/cleanup turlarıydı. Phase 114 odak değişti:
+**unified parameter model + right rail productization + no-op/
+dormant control activation**. Yeni feature/layout builder/mockup
+editor/SVG library YOK (kullanıcı kısıtı).
+
+### Dürüst audit (en pahalı bakım noktası)
+
+| Sorun | Kanıt |
+|---|---|
+| **Dağınık parametre kaynağı** | Shell 8+ ayrı `useState`; Stage'e 13 prop, Rail'e 5 prop ayrı; `handleExportFrame` deviceShape mapping'i inline tekrar (Shell + frame-scene `deviceKindToShape` + frame-compositor `resolveDeviceShape` = 3 yer). |
+| **Layout presets TAMAMEN no-op** | Rail 6 preset onClick `setActive(i)` LOCAL state (yalnız thumb highlight); `cascadeLayoutForRaw` tek hardcoded layout — preset variant hiç kullanılmıyor. Stage cascade + export DEĞİŞMİYOR. Right rail'in ANA vaadi ölü. |
+| **Contract ↔ kod divergence** | Contract §6 "preset gerçek farklı kompozisyon olmalı" diyor; kod tek layout. Phase 95-97 "yapıldı" demiş ama gerçek farklı (Madde #12 sessiz drift). |
+
+### Kullanıcı isteğinin eleştirisi
+
+- **Doğru:** Dağınık parametreleri canonical kaynağa topla +
+  no-op presets'i canlandır. Right rail "control surface" olmalı
+  (Shots.so parity).
+- **Aşırı abstraction riski:** "Her şeyi unified model yap" —
+  tehlikeli (Phase 109 capability map dead-future-only örneği).
+  Tüm state'leri `StudioParamStore`/reducer/context'e sokmak
+  erken abstraction (bugün 1 consumer ailesi).
+- **Sade/doğru yol:** Yeni framework YOK. `StudioLayoutVariant`
+  canonical Shell state (en yüksek değerli no-op'u canlandır) +
+  Shell `useState` + prop iletimi. Store/reducer DEĞİL.
+
+### Net ürün/mimari kararı — 4 kategori ayrımı (kullanıcı yön ayarı)
+
+Yanlış unify YASAK. Ayrım net (§11.0 + §6'ya canonical yazıldı):
+
+1. **Canonical shared (final visual)**: layoutVariant,
+   layoutCount, sceneOverride, frameAspect, slot itemId,
+   deviceShape, activePalette → preview + export + rail TEK kaynak.
+2. **Mode/UI-specific**: mode, appState, viewTab → AYRI kalır,
+   potaya eritilmez.
+3. **Shape/layout-specific impl**: `cascadeLayoutForRaw` per-
+   productType base, `resolveDeviceShape` → registry içinde AYRI.
+4. **Preview-only helper**: selectedSlot ring, slot badge →
+   export'a GİRMEZ (Phase 94 korunur).
+
+### Shots.so right rail audit (gerçek browser — Playwright)
+
+Canlı DOM + screenshot (1440px + responsive):
+- Right rail `panel-control` w:208 (Kivasy 202 ≈ birebir);
+  yapı `layout-filters` (count) → `zoom-tilt-controls` (view
+  tabs+zoom) → layout preset gallery (8 `layout-item`, dikey).
+- Selected state `layout-item active` (Kivasy `aria-pressed` +
+  active parity).
+- Responsive: 1180px'te right panel GİZLİ (Kivasy Phase 110
+  rail-collapse 1280 eşiği uyumlu).
+- **Kritik fark:** Shots'ta layout-item seçimi stage'i değiştirir;
+  Kivasy'de no-op. Kullanıcı haklı — yapı zaten çok yakın, eksik
+  olan preset'in gerçek stage/export etkisi.
+
+### Uygulanan slice (en yüksek etki — 1+2 birlikte)
+
+- **`types.ts`**: `StudioLayoutVariant` (cascade/centered/tilted/
+  stacked/fan/offset) + `STUDIO_LAYOUT_VARIANTS` +
+  `STUDIO_LAYOUT_VARIANT_LABELS` (canonical, index parity).
+- **`MockupStudioStage.tsx`**: `cascadeLayoutFor(kind, count,
+  variant)` + yeni `applyLayoutVariant(base, variant)` — base
+  slot boyutlarını korur (shape detail registry'de AYRI),
+  dizilim/rotation/offset variant'a göre üretir (productType-
+  agnostic). "cascade" = Phase 77-113 baseline (regression yok);
+  5 yeni variant. MockupComposition + FrameComposition + Stage
+  prop `layoutVariant`.
+- **`MockupStudioShell.tsx`**: canonical `layoutVariant` state
+  (mode-AGNOSTIC, default "cascade"). Stage + Rail'e iletilir;
+  `handleExportFrame` `cascadeLayoutFor(kind, count, variant)`
+  (export preview ile AYNI variant — Preview = Export Truth);
+  `useCallback` deps + `data-layout-variant` attr.
+- **`MockupStudioPresetRail.tsx`**: `LAYOUT_PRESETS` canonical
+  türetme (string drift yok); preset onClick `setActive(i)` →
+  `selectVariant(i)` → Shell setter (NO-OP CANLANDI). `active`
+  Shell variant index'inden türer (fallback local legacy).
+  `data-variant` attr.
+- **`frame-compositor.ts`** (regression fix): Phase 114
+  variant'lar (fan/stacked) geniş yayılım → rotated slot tile
+  output canvas'tan büyük → Sharp `composite` "must have same
+  dimensions or smaller" 500. **Tile-fits-canvas guard**: tile
+  output'tan büyükse aspect-korumalı resize-down + position
+  `[0, output-tile]` clamp (eski `Math.max(0,…)` sadece sol/üst
+  taşmayı kesiyordu — eksikti; latent bug Phase 114 açığa
+  çıkardı). Layout-variant'a özel hack DEĞİL — export pipeline
+  robustness.
+
+### Browser+DOM+export+pixel triangulation (gerçek asset)
+
+Test set `cmov0ia37` (4 MinIO MJ asset, real):
+- **Preview**: Cascade slots (358,330)/(722,383)/(1009,464);
+  **Stacked** → (565,267)/(544,338)/(565,409) dikey;
+  **Fan** → (317,292)/(684,288)/(983,309) geniş yatay. 3 variant
+  3 FARKLI kompozisyon (no-op canlandı kanıt).
+- **Rail**: 6 preset card `data-variant` doğru; seçili
+  `aria-pressed=true`.
+- **Mode-AGNOSTIC**: Mockup→Frame geçişinde Fan KORUNDU
+  (`data-layout-variant=fan`).
+- **Export**: Fan payload slots `r:-13/0/13` (simetrik fan açı;
+  cascade olsaydı `0/-6/-12`) — preview Fan ile birebir; export
+  200 (regression fix sonrası); exported PNG 1920×1080 pixel
+  3 farklı bölge (L/C/R distinct) + görsel Fan dizilimi.
+- **Continuity**: Product MockupsTab handoff/persistence
+  baseline intakt (frame-compositor slot TÜKETİR, kendi layout
+  üretmez).
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (59 files, zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 114)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `StudioLayoutVariant` TypeScript;
+  runtime DB schema dokunulmadı.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Canonical state = Shell `useState`
+  + prop iletimi (store/reducer/context DEĞİL); `applyLayoutVariant`
+  pure helper; preset list canonical türetme. Yeni layout builder
+  / mockup editor / SVG library YOK.
+- **4 kategori ayrımı korundu** — yanlış unify YOK (mode/UI-
+  specific + shape impl + preview-only helper AYRI).
+- **Preview = Export Truth korundu + genişletildi** (geometry +
+  asset identity + layered effects + shared canonical parameter).
+- **Phase 111 plate-relative locked composition** intakt
+  (`applyLayoutVariant` ham layout üretir, `centerCascade` +
+  `compositionGroup` plate-fit eder — fit/center DEĞİŞMEDİ).
+- **Phase 113 layered effects + slot identity + plate border:none
+  + Studio↔Export parity** intakt.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ açık (Phase 115+ candidate)
+
+- **View tabs (Zoom/Tilt/Precision) + Zoom slider** hâlâ no-op
+  (kategori 4 — preview-only helper; Phase 114 layoutVariant'a
+  öncelik verildi, bunlar düşük değerli). Phase 115+: Zoom slider
+  preview scale'e bağlanabilir (Shots parity), ama Preview =
+  Export riski değerlendirilmeli (zoom export'a girmemeli — UI
+  helper).
+- **Plate frame-style/chrome parametresi** (Phase 113'ten devir).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 114 ile right rail "preset listesi"nden "layout control
+surface"e dönüştü (Shots.so parity), unified canonical parameter
+model kuruldu (4 kategori ayrımı net), no-op layout presets
+canlandı (preview+export+rail tek kaynak, Preview = Export Truth
+genişledi). Sıradaki adım **Phase 115 candidate**: View tabs +
+Zoom slider activation (kategori 4 — Zoom preview-only scale,
+export'a girmez) veya plate frame-style explicit parametresi
+(Phase 113'ten devir, §13 future SVG readiness modeliyle).
+Yeni SVG/layout builder/mockup editor §13.A'da ertelenmiş kalır.
 
 ---
 
