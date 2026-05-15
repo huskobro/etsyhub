@@ -25116,6 +25116,174 @@ ertelenmiş kalır.
 
 ---
 
+## Phase 119 — Right rail preview-first framing: plate-fit scale + self-measuring box + dark card bg/padding kaldırıldı (Shots.so crop parity)
+
+Phase 117 single-renderer + Phase 118 aspect-aware/chromeless'ten
+sonra kalan tek görünür açık: rail thumb içinde plate **küçük**
+görünüyordu + etrafında fazla **siyah/boş alan** vardı (kullanıcı
+"kutunun içinde küçük görüntü, preview küçük"). Stabilization/
+framing turu — yeni feature/layout builder/mockup editor/SVG
+library YOK; tek render path (Phase 117) korunur.
+
+### Boş alanın gerçek kaynağı (browser+DOM ölçümüyle)
+
+Phase 118 baseline ölçümü (16:9, rail card 167×88): plate
+**133×75**, box'ı yalnız **width %79.6 / height %85** kaplıyor.
+Üç ayrı kaynak:
+
+1. **Scale full-canvas'a göre (en kritik):** `StageScenePreview`
+   `scale = Math.min(boxW/PREVIEW_BASE_W, boxH/PREVIEW_BASE_H)`
+   ile TÜM 900×506 PREVIEW_BASE canvas'ını box'a sığdırıyordu.
+   Ama plate canvas'ın yalnız ~%85'i (`maxW = PREVIEW_BASE_W*0.85`)
+   + portrait aspect'lerde çok daha dar (`maxH*ratio`). Yani box'a
+   `[ boş stage-padding ][ küçük plate ][ boş stage-padding ]`
+   ölçeklenmiş geliyordu → plate küçük + çevre boş.
+2. **Dark card bg + iç padding (Phase 92 SVG-thumb dönemi
+   kalıntısı):** `.k-studio__preset-card` + `.k-studio__live-thumb`
+   `background: #0C0B09` (koyu) + `padding: 6-7px` taşıyordu.
+   Phase 92'de thumb bir SVG idi; dark card bg + inset padding
+   "bounded plate on dark stage" hissini SVG-level taklit ediyordu.
+   Phase 117 single-renderer'da StageScene plate kendi chrome'unu
+   (rounded+border+shadow) taşır; dark bg + padding artık yalnız
+   kullanıcının şikayet ettiği "siyah çevre" boş alanını üretiyordu.
+3. **Hardcoded box dims (boxW=172 boxH=88/72) ≠ gerçek kart:**
+   PresetRail sabit box geçiyordu ama kart CSS `width:100%`
+   (≈167-183px ölçülen) × CSS height (102/92px) idi → plate-fit
+   scale hatalı + responsive resize'da stale.
+
+### Shots.so thumb framing (dokümante davranış)
+
+Shots.so rail thumb = composition'ı **karta dolduran** preview;
+edge-to-edge değil ama küçük breathing-room ile, çevre stage-
+padding **crop edilmiş**. Operatör "küçük bir stage kutusu"
+değil "bu layout seçilirse böyle görünür" preview'si görür
+(preview-first). Kivasy hedefi birebir aynı.
+
+### Net karar + fix (framing/crop only, tek render path korunur)
+
+**Fix A — plate-fit scale (`StageScenePreview`):** `scale`
+artık **plate**'in box'a sığması için hesaplanır (full canvas
+değil): `Math.min(boxW/plateDims.w, boxH/plateDims.h) ×
+PREVIEW_FILL`. `PREVIEW_FILL=0.96` küçük breathing-room inset
+(Shots.so thumb da hafif iç boşluk taşır). `overflow:hidden`
+çevredeki transparent stage-padding'i KIRPAR → preview box'ı
+doldurur (preview-first). Plate PREVIEW_BASE merkezinde,
+`plateDims` Phase 118 aspect-aware (recompute) — scale onu
+karta oturtur.
+
+**Fix B — self-measuring box (`StageScenePreview`):** `boxW`/
+`boxH` prop'ları KALDIRILDI. Wrapper parent kartı `width:100%
+height:100%` doldurur; gerçek px `useLayoutEffect` + `ResizeObserver`
+ile ölçülür (`hostRef.getBoundingClientRect`). Scale gerçek
+karta göre **exact** + responsive-safe. PresetRail'deki hardcoded
+`boxW=172 boxH=88/72` (live + preset) silindi.
+
+**Fix C — dark card bg/padding kaldırıldı (`studio.css`):**
+`.k-studio__preset-card` + `.k-studio__live-thumb` `background:
+#0C0B09 → transparent`, `padding: 6-7px → 0`, `border` rgba(.07)
+→ rgba(.06) (near-borderless). Phase 92 SVG-era inset shadow
+recipe'leri (`svg { box-shadow ... }`) kaldırıldı (artık SVG
+thumb yok). Hover/active subtle ring KORUNDU (operatör seçim
+sinyali — aktif preset `box-shadow: 0 0 0 1px k-orange/.35`).
+preset-card height 84→92 (preview-first daha çok dikey alan).
+
+### Browser+DOM triangulation (fresh build, real asset)
+
+Test set `cmov0ia37` (4 real MinIO MJ asset), viewport 1600×1040:
+
+| Metrik | Phase 118 baseline (16:9) | Phase 119 (16:9) |
+|---|---|---|
+| Card bg | `#0C0B09` (dark) | `rgba(0,0,0,0)` ✓ |
+| Card padding | `6px` | `0px` ✓ |
+| Stage bg (chromeless) | `rgba(0,0,0,0)` | `rgba(0,0,0,0)` (korundu) |
+| Plate box width frac | %79.6 | **%83.9** ✓ |
+| Plate box height frac | %85.0 | **%93.9** ✓ |
+| Real MinIO `<image>` | 3 | 3 (single render path) |
+
+**Aspect reactivity (Phase 118 baseline korundu + Phase 119
+framing):** Frame mode + 9:16 → middle plate aspect `0.562`,
+rail thumb plate aspect `0.563` (`aspectReactive: true`), rail
+plate height frac `0.929` (portrait plate karta dikey doluyor).
+16:9'a geri → rail `1.778` / middle `1.78` (`reactiveBothWays:
+true`). 6 preset thumb + live-thumb HEPSI aspect-reactive
+(`allAspect916: true`), HEPSI 3 real `<image>` (`allHave3Img:
+true`), 6 distinct variant (cascade/centered/tilted/stacked/
+fan/offset — candidate layout mantığı korundu).
+
+**Diğer param reactivity (Phase 118 baseline):** Glass Dark →
+rail `data-glass-variant="dark"` === middle (`glassReactive:
+true`); Layout count 2 → rail slot count 2 === middle
+(`countReactive: true`).
+
+**Continuity:** Product `/products/cmor0wkjt...` MockupsTab 11
+frame-export tile, `1920×1080`, `aspect-[4/3]` + `object-contain`
+(Phase 100/101 baseline intakt — Phase 119 yalnız studio rail
+framing, export/handoff/Product dokunulmadı).
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (59 files, zero regression —
+  `StageScenePreviewProps` boxW/boxH kaldırıldı; test fixture
+  etkilenmedi)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 119)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız `StageScenePreview` framing/
+  scale/self-measure + 2 CSS recipe (card bg/padding) + PresetRail
+  prop temizliği.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `useLayoutEffect`+`ResizeObserver`
+  küçük self-measure (yeni framework/hook lib YOK). Tek render
+  path (Phase 117 StageScene) BİREBİR korundu — Phase 119 yalnız
+  **framing/crop/scale/visible-area** değiştirdi (render path,
+  candidate layout mantığı, reactivity dokunulmadı).
+- **Phase 117 single-renderer + Phase 118 aspect-aware/chromeless
+  baseline'ları intakt** (StageScene `chromeless` prop + CSS
+  Phase 118; Phase 119 onun üzerine framing ekledi).
+- **Candidate layout mantığı korundu** — 6 distinct variant,
+  rail→Shell→Stage canonical (Phase 114 baseline).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ kalan (Phase 120+ candidate)
+
+- **Portrait aspect yatay boşluk**: 9:16 portrait plate landscape
+  karta dikey doluyor (height frac %93) ama doğal olarak yatayda
+  dar (width frac %26 — plate aspect 0.562, kart ~2:1). Bu
+  **doğru davranış** (portrait composition landscape karta tam
+  oturmaz; Shots.so'da da portrait thumb yatay boşluk taşır) —
+  kart aspect'ini içeriğe göre değiştirmek ayrı UX kararı
+  (Phase 120+ candidate, şimdilik plate-fit + chromeless yeterli).
+- **Ölü kod temizliği** (Phase 117/118'den devir): `PresetThumbMockup`
+  / `fitCascadeToThumb` / `THUMB_PLATE_*` svg-art.tsx'te rail
+  path'inde kullanılmıyor (`PresetThumbFrame` kullanımı kontrol
+  edilip güvenli silinmeli).
+- **View tabs (Zoom/Tilt/Precision) + Zoom slider** no-op
+  (kategori 4 preview-only helper; Phase 115'ten devir).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 119 ile right rail "kutunun içinde küçük preview"den
+"preview-first büyük candidate-layout görünümü"ne dönüştü
+(Shots.so parity): plate-fit scale + self-measure box + dark
+card bg/padding kaldırıldı; tek render path (Phase 117) + aspect/
+scene/count reactivity (Phase 118) + candidate layout mantığı
+(Phase 114) BİREBİR korundu. Sıradaki adım **Phase 120
+candidate**: ölü kod temizliği (`PresetThumbMockup`/
+`fitCascadeToThumb`) veya View tabs/Zoom slider activation. Yeni
+SVG/layout builder/mockup editor §13.A'da ertelenmiş kalır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

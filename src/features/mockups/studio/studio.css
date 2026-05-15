@@ -1199,35 +1199,44 @@
   color: var(--ks-t1);
 }
 
+/* Phase 119 — Preview-first rail thumb framing (Shots.so parity).
+ *
+ * Phase 92 SVG-thumb döneminde live-thumb + preset-card `background:
+ * #0C0B09` (dark) + `padding: 6-7px` taşıyordu: o zaman thumb bir
+ * SVG idi ve dark card bg + inset padding "bounded plate on dark
+ * stage" hissini SVG-level taklit ediyordu. Phase 117 single-
+ * renderer ile thumb artık StageScene'in scaled hali; StageScene
+ * plate'i kendi chrome'unu (rounded + border + shadow) zaten taşır.
+ * Phase 92 dark bg + padding ARTIK yalnız kullanıcının şikayet
+ * ettiği "siyah çevre / küçük preview" boş alanını üretiyor
+ * (StageScenePreview chromeless + Phase 119 plate-fit scale ile
+ * preview box'ı dolduruyor; card bg/padding gereksiz çevre).
+ *
+ * Phase 119 fix: dark card bg + iç padding KALDIRILDI; kart artık
+ * şeffaf, near-borderless frame — preview-first kompozisyon
+ * baskın (Shots.so rail davranışı: thumb = composition, kutu
+ * değil). Hover/active subtle ring KORUNUR (operatör seçim
+ * sinyali). overflow:hidden + border-radius preview'yi kart
+ * köşelerine clip'ler (StageScenePreview plate-fit scale çevre
+ * stage-padding'i zaten crop ediyor). */
 .k-studio__live-thumb {
   width: 100%;
   height: 102px;
   border-radius: 9px;
-  background: #0C0B09;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  /* Phase 92 — Rail head live thumb plate parity (preset card
-   * paritesi). Live thumb da inset padding ile plate'in stage'den
-   * ayrımını yansıtır. */
-  padding: 7px;
-}
-.k-studio__live-thumb svg {
-  border-radius: 6px;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.4),
-    0 4px 8px -2px rgba(0, 0, 0, 0.45),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .k-studio__preset-card {
   width: 100%;
-  height: 84px;
+  height: 92px;
   border-radius: 8px;
-  background: #0C0B09;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   cursor: pointer;
   transition: all 120ms;
   display: flex;
@@ -1236,30 +1245,12 @@
   overflow: hidden;
   flex-shrink: 0;
   margin-bottom: 4px;
-  /* Phase 92 — Right rail thumb plate parity:
-   * Stage'deki plate behavior'a thumb-level parity ver. Mevcut
-   * SVG bg full kart kaplıyordu; Phase 92'de kart shell dark
-   * stage tone kalır, SVG plate-aware bg etrafında dark padding
-   * görünür. SVG inset radius ve thumb içi soft shadow ile plate
-   * stage'den ayrılır.
-   *
-   * SVG element thumb içinde inset margin ile dark padding
-   * çevresinde görünür yapılır — bu thumb'larda da "bounded plate
-   * on dark stage" hissini güçlendirir. */
-  padding: 6px;
 }
-.k-studio__preset-card svg {
-  border-radius: 5px;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.4),
-    0 4px 8px -2px rgba(0, 0, 0, 0.45),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-.k-studio__preset-card:hover { border-color: rgba(255, 255, 255, 0.20); }
+.k-studio__preset-card:hover { border-color: rgba(255, 255, 255, 0.18); }
 .k-studio__preset-card[aria-pressed="true"] {
   border-color: rgba(232, 93, 37, 0.70);
   border-width: 1.5px;
-  background: rgba(232, 93, 37, 0.05);
+  box-shadow: 0 0 0 1px rgba(232, 93, 37, 0.35);
 }
 .k-studio__preset-cap {
   font-family: var(--ks-fm);

@@ -46,6 +46,8 @@
  * badge GİZLİ (Phase 77/94 baseline — kategori 4 helper thumb'a
  * GİRMEZ). selectedSlot=-1 + no-op onSelect (etkileşim yok). */
 
+import { useLayoutEffect, useRef, useState } from "react";
+
 import { StageScene } from "./MockupStudioStage";
 import {
   FRAME_ASPECT_CONFIG,
@@ -80,10 +82,6 @@ export interface StageScenePreviewProps {
   activePalette?: readonly [string, string];
   sceneOverride?: SceneOverride;
   layoutCount: 1 | 2 | 3;
-  /** Thumb kutu boyutu (preset card iç alanı; CSS'ten ölçülür ya
-   *  da sabit). Default preset-card ~ (auto width × 84h). */
-  boxW: number;
-  boxH: number;
 }
 
 export function StageScenePreview({
@@ -95,16 +93,38 @@ export function StageScenePreview({
   activePalette,
   sceneOverride,
   layoutCount,
-  boxW,
-  boxH,
 }: StageScenePreviewProps) {
-  /* StageScene base sahneyi PREVIEW_BASE (büyük) koordinatlarda
-   * render eder; wrapper CSS scale ile thumb kutusuna sığdırır.
-   * Aspect-locked: en dar eksene fit (Stage compositionGroup
-   * paritesi — cascade plate-relative locked, scale ile bozulmaz).
-   * Orta panelin BİREBİR küçültülmüş hali. */
-  const scale = Math.min(boxW / PREVIEW_BASE_W, boxH / PREVIEW_BASE_H);
-
+  /* Phase 119 — Self-measuring box (gerçek render boyutu).
+   *
+   * Phase 117/118'de boxW/boxH PresetRail'den HARDCODED (172×88
+   * live / 172×72 preset) geliyordu — ama kart CSS `width:100%`
+   * (≈167px ölçülen) × CSS height (102/92px) idi. Hardcoded box ≠
+   * gerçek kart → plate-fit scale hatalı + responsive resize'da
+   * stale. Phase 119: wrapper parent'ı %100 doldurur, gerçek px'i
+   * ResizeObserver ile ölçer → scale gerçek karta göre exact,
+   * responsive-safe. Tek render path KORUNUR (yalnız ölçüm
+   * kaynağı prop → self-measure; framing doğruluğu). */
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [box, setBox] = useState<{ w: number; h: number }>({
+    w: 167,
+    h: 90,
+  });
+  useLayoutEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        setBox({ w: r.width, h: r.height });
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const boxW = box.w;
+  const boxH = box.h;
   /* Phase 118 — Plate dims ASPECT-AWARE (reactive to frameAspect).
    *
    * Phase 117 BUG: plateDims `{ w: PREVIEW_BASE_W*0.85, h:
@@ -133,14 +153,44 @@ export function StageScenePreview({
       ? { w: maxW, h: maxW / ratio }
       : { w: maxH * ratio, h: maxH };
 
+  /* Phase 119 — Preview-first framing (Shots.so parity).
+   *
+   * Phase 117/118 BUG: `scale = Math.min(boxW/PREVIEW_BASE_W,
+   * boxH/PREVIEW_BASE_H)` TÜM 900×506 PREVIEW_BASE canvas'ını
+   * box'a sığdırıyordu. Ama plate canvas'ın yalnız ~%85'i +
+   * portrait aspect'lerde çok daha dar (`maxH*ratio`) → box'ta
+   * plate %80 width / %85 height kaplıyor, çevresinde transparent
+   * stage-padding kalıyor. Kullanıcı "thumb içinde küçük görüntü,
+   * etrafında fazla siyah/boş alan, preview küçük görünüyor"
+   * şikayeti tam bu (chromeless ile stage bg kalktı ama scale
+   * hâlâ tüm canvas'a göre → plate küçük + boş çevre).
+   *
+   * Phase 119 fix: scale'i **plate**'in box'a sığması için hesapla
+   * (full canvas değil). Plate PREVIEW_BASE merkezinde; plateDims
+   * biliniyor. Box'a plate-fit: `min(boxW/plateW, boxH/plateH) ×
+   * FILL`. FILL=0.96 küçük breathing-room inset (Shots.so thumb
+   * da hafif iç boşluk taşır, edge-to-edge değil). overflow:hidden
+   * çevredeki transparent stage-padding'i KIRPAR (crop) → preview
+   * box'ı doldurur, "preview-first" Shots.so görünümü. Tek render
+   * path KORUNUR (aynı StageScene, candidate layout mantığı
+   * bozulmaz — yalnız framing/crop/scale değişir). */
+  const PREVIEW_FILL = 0.96;
+  const scale =
+    Math.min(boxW / plateDims.w, boxH / plateDims.h) * PREVIEW_FILL;
+
   return (
     <div
+      ref={hostRef}
       data-testid="studio-rail-stagescene-preview"
       data-layout-variant={layoutVariant}
       data-frame-aspect={frameAspect}
       style={{
-        width: boxW,
-        height: boxH,
+        /* Phase 119 — Kartı %100 doldur (hardcoded box DEĞİL).
+         * Gerçek render boyutu ResizeObserver ile ölçülür → scale
+         * exact + responsive-safe. overflow:hidden çevre transparent
+         * stage-padding'i crop eder (preview-first Shots.so). */
+        width: "100%",
+        height: "100%",
         overflow: "hidden",
         position: "relative",
         pointerEvents: "none",

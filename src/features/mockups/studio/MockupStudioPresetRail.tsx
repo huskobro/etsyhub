@@ -278,8 +278,6 @@ export function MockupStudioPresetRail({
             activePalette={activePalette}
             sceneOverride={sceneOverride}
             layoutCount={layout}
-            boxW={172}
-            boxH={88}
           />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -360,8 +358,6 @@ export function MockupStudioPresetRail({
                 activePalette={activePalette}
                 sceneOverride={sceneOverride}
                 layoutCount={layout}
-                boxW={172}
-                boxH={72}
               />
             </button>
             <div
