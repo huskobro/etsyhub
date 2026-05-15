@@ -347,6 +347,17 @@ export function MockupStudioPresetRail({
             sceneOverride={sceneOverride}
             layoutCount={layout}
           />
+          {/* Phase 121 — Live thumb head = aktif (selected)
+              layoutVariant'ın canlı hali. Plate üstü overlay
+              badge (preset kartlarla unified dizayn); her zaman
+              lit (head daima aktif seçimi yansıtır). */}
+          <div
+            className="k-studio__preset-badge"
+            data-tone="lit"
+            data-testid="studio-rail-live-badge"
+          >
+            {STUDIO_LAYOUT_VARIANT_LABELS[activeVariant]}
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <span className="k-studio__range-cap">Zoom</span>
@@ -432,13 +443,30 @@ export function MockupStudioPresetRail({
                 sceneOverride={sceneOverride}
                 layoutCount={layout}
               />
+              {/* Phase 121 — Seçili layout slot-ring (orta panel
+                  parity) + isim alt-caption yerine plate üstü
+                  overlay badge ("01 Front View" gibi unified
+                  dizayn). Ring yalnız active iken; badge her
+                  zaman görünür, active=lit (orange) /
+                  inactive=dim (dark). Kategori 4 helper Stage'de
+                  preview'da gizli ama RAIL operatör seçim
+                  yüzeyidir — ring/badge burada selection sinyali
+                  (Stage'deki slot-ring/badge ile AYNI görsel
+                  dil). */}
+              {active === i ? (
+                <div
+                  className="k-studio__preset-ring"
+                  data-on="true"
+                  aria-hidden
+                />
+              ) : null}
+              <div
+                className="k-studio__preset-badge"
+                data-tone={active === i ? "lit" : "dim"}
+              >
+                {String(i + 1).padStart(2, "0")} {label}
+              </div>
             </button>
-            <div
-              className="k-studio__preset-cap"
-              data-active={active === i ? "true" : "false"}
-            >
-              {label}
-            </div>
           </div>
         ))}
         {isPreview ? (

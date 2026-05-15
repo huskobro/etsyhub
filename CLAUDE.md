@@ -25452,6 +25452,171 @@ Yeni SVG/layout builder/mockup editor §13.A'da ertelenmiş kalır.
 
 ---
 
+## Phase 121 — Rail selection unified design: slot-ring + overlay badge + opacity-dimming kaldırıldı
+
+Phase 120 containerless aspect-adaptive rail item'ı bitirdi.
+Kullanıcı üç net görsel tutarlılık eksiği bildirdi: (1) seçili
+layout orta paneldeki gibi turuncu **slot-ring** ile işaretlensin
+(caption rengi + font-weight yerine), (2) layout isimleri altta
+ayrı caption yerine orta paneldeki "01 Front View" gibi **plate
+üstü overlay badge** olsun (unified dizayn), (3) seçili olmayan
+layout'lar daha karanlık görünüyor + bu **glow hover'da da
+beli oluyor** — düzelt. Stabilization/UX-parity turu; tek
+render path (Phase 117 StageScene) korunur.
+
+### Kök neden (browser+DOM ölçümüyle)
+
+1. **Karanlık/glow:** Phase 120'de `.k-studio__preset-card`
+   `opacity: 0.78` (inactive) + `:hover { opacity: 1 }` +
+   `[aria-pressed="true"] { opacity: 1 }` idi. → Seçili olmayan
+   kartlar sönük (0.78), hover'da `0.78→1` parlama (kullanıcı
+   "glow hover'da beli oluyor"), seçili kart parlak. Selection
+   sinyali yanlış kanal (opacity).
+2. **İsim alt caption:** ayrı `<div class="k-studio__preset-cap">
+   {label}</div>` kartın ALTINDA → orta panel "01 Front View"
+   plate-üstü badge ile tutarsız (kullanıcı "daha unified
+   dizayn").
+3. **Ring yok:** seçili kart yalnız caption rengi + font-weight:
+   600 ile işaretliydi → orta panel `.k-studio__slot-ring`
+   turuncu ring paritesi yoktu.
+
+### Net karar — orta panel slot-ring/slot-badge AYNI görsel dili
+
+Orta panel Stage'de slot-ring (`.k-studio__slot-ring`,
+`box-shadow: 0 0 0 1.5px orange + 5px soft + 28px glow`) +
+slot-badge (`.k-studio__slot-badge`, "01 Front View",
+lit=orange / dim=dark blur) zaten var. Kategori 4 helper
+Stage **preview** state'inde gizli; ama RAIL operatör seçim
+yüzeyidir → ring/badge orada selection sinyali olarak Stage
+ile AYNI görsel dilden gelir (unified). opacity-dimming
+kaldırılır; selection = ring (opacity DEĞİL).
+
+### Fix (3 parça, render path korunur)
+
+**Fix A — opacity-dimming KALDIRILDI (`studio.css`):**
+`.k-studio__preset-card` `opacity: 0.78` + `:hover { opacity:
+1 }` + `[aria-pressed] { opacity: 1 }` + `transition: opacity`
+silindi. Tüm kartlar AYNI parlaklıkta (opacity 1). Hover glow
+biter (opacity geçişi kaynağı yok). Selection sinyali artık
+yalnız ring.
+
+**Fix B — slot-ring overlay (`MockupStudioPresetRail` +
+`studio.css`):** Kart `position: relative`. Seçili kartta
+(`active === i`) `<div class="k-studio__preset-ring"
+data-on="true">` plate üstüne absolute overlay. Recipe orta
+panel `.k-studio__slot-ring[data-on]` ile AYNI box-shadow
+katmanları (`0 0 0 1.5px rgba(232,93,37,0.62) + 0 0 0 5px
+rgba(...,0.10) + 0 0 24px rgba(...,0.13)`); inset -6px +
+radius 14 plate rounded chrome'una göre. Kart `overflow:
+visible` → ring kırpılmaz. Unselected: ring render edilmez
+(`unselectedNoRing: true`).
+
+**Fix C — overlay badge (alt caption KALDIRILDI):** Ayrı
+`<div class="k-studio__preset-cap">` + `.k-studio__preset-cap`
+CSS silindi. Her kartta `<div class="k-studio__preset-badge"
+data-tone={active?lit:dim}>{NN} {label}</div>` plate üst-sol
+köşede (top:6 left:6, z-index:2). Recipe orta panel
+`.k-studio__slot-badge` paritesi (lit=`var(--ks-or)` orange /
+dim=`rgba(8,7,6,0.78)` blur). "01 Cascade" / "02 Centered" /
+… "06 Offset" (Stage "01 Front View" formatı, unified). Live
+thumb head badge: `STUDIO_LAYOUT_VARIANT_LABELS[activeVariant]`
+(daima lit, head aktif seçimi yansıtır; ring YOK — head daima
+aktif preview).
+
+### Browser+DOM triangulation (6 preset + live-thumb, real asset)
+
+Test set `cmov0ia37` (4 real MinIO MJ asset), viewport 1600×1040:
+
+- **`allOpacity1: true`** — 6 kart hepsi opacity 1 (sönük kart
+  YOK; kullanıcı "karanlık" şikayeti çözüldü).
+- **`hoverTest.noHoverGlow: true`** — unselected karta hover:
+  opacity 1 → 1 (önce 0.78→1 glow; artık geçiş yok, hover
+  glow YOK — kullanıcı "glow hover'da beli oluyor" çözüldü).
+- **`selectedHasRing: true` + `unselectedNoRing: true`** —
+  seçili kart turuncu ring (box-shadow Stage parity), diğerleri
+  ringsiz. Click Fan (preset-4) → ring preset-0'dan preset-4'e
+  taşındı (`p0_ringRemoved: true`, `p4_hasRing: true`).
+- **`oldBottomCaptionCount: 0`** — alt ayrı caption kaldırıldı.
+  **`allHaveBadge: true`** — 6 kart + live-thumb plate üstü
+  badge ("01 Cascade"…"06 Offset"; active=lit orange
+  `rgb(232,93,37)`, inactive=dim `rgba(8,7,6,0.78)`; top:6px
+  — Stage "01 Front View" unified).
+- Live-thumb: badge "Fan" (active variant), `hasNoRing: true`
+  (head ring YOK). Click Fan → live-thumb badge → "Fan".
+- 3 real MinIO `<image>` her thumb (single render path Phase
+  117 korundu), 6 distinct variant (candidate layout Phase
+  114 korundu), Phase 120 containerless/aspect-adaptive/
+  symmetry BİREBİR (border none + bg transparent + extra 0).
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,products,listings}`:
+  **730/730 PASS** (59 files, zero regression)
+- `next build`: ✓ Compiled successfully (`NODE_OPTIONS=--max-old-
+  space-size=4096`; default heap OOM build mem baskısı, kod
+  hatası değil)
+
+### Değişmeyenler (Phase 121)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız `MockupStudioPresetRail`
+  (ring/badge JSX) + 3 CSS recipe (opacity kaldır + ring +
+  badge; preset-cap silindi).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** ring/badge recipe'leri orta
+  panel `.k-studio__slot-ring` / `.k-studio__slot-badge`
+  paritesi (yeni component/framework YOK). Tek render path
+  (Phase 117 StageScene) BİREBİR korundu — Phase 121 yalnız
+  **selection sinyali görsel dili** (ring + badge + opacity
+  kaldır); render path / candidate layout / aspect / reactivity
+  dokunulmadı.
+- **Phase 117 single-renderer + Phase 118 reactive + Phase 119
+  plate-fit + Phase 120 containerless/aspect-adaptive/symmetry
+  baseline'ları intakt.**
+- **Kategori 4 helper sınırı:** Stage **preview** state'inde
+  ring/badge gizli kalır (Phase 94 baseline değişmedi); RAIL
+  operatör seçim yüzeyi olduğu için orada görünür (Stage'le
+  AYNI görsel dil, ayrı yüzey rolü).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı**
+  (`var(--ks-or)`, `var(--ks-fm)`).
+
+### Hâlâ kalan (Phase 122+ candidate)
+
+- **Ölü kod temizliği** (Phase 117-120'den devir):
+  `PresetThumbMockup` / `fitCascadeToThumb` / `THUMB_PLATE_*`
+  svg-art.tsx rail path'inde kullanılmıyor (`PresetThumbFrame`
+  kullanımı kontrol edilip güvenli silinmeli).
+- **StageScenePreview `PREVIEW_BASE` + transform:scale** hâlâ
+  scaled-screenshot modelinde (Phase 119-120 container + fill
+  düzeltti; tam native container-fit ileride değerlendirilebilir
+  — mevcut görsel sonuç her aspect'te edge-to-edge).
+- **View tabs (Zoom/Tilt/Precision) + Zoom slider** no-op
+  (kategori 4 preview-only helper; Phase 115'ten devir).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 121 ile rail selection görsel dili orta panelle unified:
+turuncu slot-ring (selected) + plate-üstü overlay badge ("01
+Cascade" formatı) + opacity-dimming kaldırıldı (tüm kartlar
+aynı parlaklık, hover glow yok). Kullanıcının üç eksiği birebir
+çözüldü. Tek render path (Phase 117) + reactivity (Phase 118) +
+plate-fit (Phase 119) + containerless/aspect-adaptive (Phase
+120) + candidate layout (Phase 114) BİREBİR korundu. Sıradaki
+adım **Phase 122 candidate**: ölü kod temizliği
+(`PresetThumbMockup`/`fitCascadeToThumb`) veya View tabs/Zoom
+slider activation. Yeni SVG/layout builder/mockup editor
+§13.A'da ertelenmiş kalır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

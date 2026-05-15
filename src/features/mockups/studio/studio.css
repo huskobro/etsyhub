@@ -1259,15 +1259,26 @@
  *  - StageScene plate kendi rounded chrome'unu (Phase 117'den
  *    beri) zaten taşır → tek görsel sınır plate'in kendisi
  *    (containersiz; "biraz padding'le direkt rail üstüne").
- *  - Selected state artık FRAMING border DEĞİL: yalnız caption
- *    rengi (data-active orange) + plate-altı ufak accent çizgi.
- *    Operatör seçimi görür ama kutu hissi yok.
  *  - Horizontal simetri: rail-scroll `scrollbar-gutter: stable
  *    both-edges` → scrollbar (2px) iki kenardan SİMETRİK pay
  *    alır; clientWidth skew'i biter, kart yatayda ortalı
  *    (leftGap == rightGap). margin-inline:auto + flex column
- *    center portrait kartı simetrik ortalar. */
+ *    center portrait kartı simetrik ortalar.
+ *
+ * Phase 121 — Selection sinyali = orta panel slot-ring/slot-badge
+ * AYNI görsel dili (kullanıcı: "unified design"):
+ *  - Opacity-dimming (`0.78` inactive + `:hover 1` + active 1)
+ *    KALDIRILDI. Kullanıcı: "seçili olmayan layout'lar daha
+ *    karanlık görünüyor + bu glow hover'da da beli oluyor".
+ *    Tüm kartlar AYNI parlaklıkta; selection sinyali artık
+ *    opacity DEĞİL ring. Hover glow da biter (opacity geçişi
+ *    yoktu zaten kaynak: 0.78↔1).
+ *  - Kart `position: relative` → ring + badge plate üstüne
+ *    absolute overlay (alt ayrı `preset-cap` KALDIRILDI;
+ *    isim artık plate üstü badge — Stage "01 Front View"
+ *    unified). */
 .k-studio__live-thumb {
+  position: relative;
   margin-inline: auto;
   background: transparent;
   border: none;
@@ -1279,32 +1290,67 @@
 }
 
 .k-studio__preset-card {
+  position: relative;
   margin-inline: auto;
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: opacity 120ms;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: visible;
   flex-shrink: 0;
-  margin-bottom: 8px;
-  opacity: 0.78;
+  margin-bottom: 14px;
 }
-.k-studio__preset-card:hover { opacity: 1; }
-.k-studio__preset-card[aria-pressed="true"] { opacity: 1; }
-.k-studio__preset-cap {
+
+/* Phase 121 — Rail selection ring (orta panel `.k-studio__slot-
+ * ring` paritesi). Plate'in etrafını saran turuncu ring; yalnız
+ * seçili kartta (`active === i` → data-on). inset negatif değer
+ * + radius plate rounded chrome'una göre; box-shadow Stage
+ * slot-ring ile AYNI katmanlar (1.5px solid + 5px soft + 28px
+ * glow). overflow:visible (kart) → ring kırpılmaz. */
+.k-studio__preset-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 14px;
+  pointer-events: none;
+  transition: box-shadow 200ms;
+}
+.k-studio__preset-ring[data-on="true"] {
+  box-shadow:
+    0 0 0 1.5px rgba(232, 93, 37, 0.62),
+    0 0 0 5px rgba(232, 93, 37, 0.10),
+    0 0 24px rgba(232, 93, 37, 0.13);
+}
+
+/* Phase 121 — Rail overlay badge (orta panel `.k-studio__slot-
+ * badge` paritesi: "01 Front View" gibi). Plate üst-sol köşede;
+ * isim alt ayrı caption yerine plate üstünde. active=lit
+ * (orange bg) / inactive=dim (dark blur bg). */
+.k-studio__preset-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 16px;
+  padding: 0 7px;
+  border-radius: 4px;
   font-family: var(--ks-fm);
   font-size: 9px;
-  color: var(--ks-t3);
-  text-align: center;
-  margin-bottom: 10px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.92);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
 }
-.k-studio__preset-cap[data-active="true"] {
-  color: rgba(232, 93, 37, 0.85);
-  font-weight: 600;
+.k-studio__preset-badge[data-tone="dim"] {
+  background: rgba(8, 7, 6, 0.78);
+  backdrop-filter: blur(4px);
+}
+.k-studio__preset-badge[data-tone="lit"] {
+  background: var(--ks-or);
 }
 
 /* ─── State switcher (dev overlay; Phase 77 görsel state demo) ─── */
