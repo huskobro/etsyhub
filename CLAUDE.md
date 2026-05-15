@@ -19549,6 +19549,32 @@ surface" rolünün tam ürünleştirilmesi.
 - Stage merkez stable — page scroll, panel scroll, viewport resize
   stage'i kaydırmaz (Phase 93 page-scroll lock + Phase 95 overscroll
   lock).
+- **Cascade / multi-item compositions = plate-relative LOCKED group
+  (Phase 111 canonical):** Cascade ve benzeri çoklu mockup item
+  setleri tek tek bağımsız obje DEĞİL, plate'e bağlı **tek
+  composition group**. Responsive scaling + aspect değişimi
+  sırasında:
+  - **Composition geometry önce grup olarak korunur** (items
+    birbirlerine göre relative offset'leri sabit — gerçek bbox
+    0-origin normalize), **sonra plate'e fit edilir** (group bbox
+    plate'in `PLATE_FILL_FRAC` iç alanına aspect-locked bbox-fit
+    scale; CLAMP YOK — plate büyürse group orantılı büyür,
+    küçülürse küçülür).
+  - **Group center daima plate center'da** (stage-inner BBOX-TIGHT,
+    CSS plate-center → drift sıfır; rotation görsel offset'i
+    simetrik dağılır).
+  - **Individual item drift KABUL EDİLMEZ.** Phase 95-110 baseline
+    sabit 572×504 stage-inner + `Math.min(.../572, .../504, 1.0)`
+    (tek-eksen + clamp) plate aspect değişince group bbox/plate
+    oranını dramatik kaydırıyordu (16:9 %55.5 → 1:1 %84.1) +
+    center drift (16:9 @1440 centerDy:22). Phase 111 fix: group
+    bbox/plate oranı **tüm aspect/viewport'ta sabit** (%86 width,
+    aspect değişse de drift sıfır), center dx≈dy simetrik küçük
+    residual (~3-9px rotation görsel).
+  - **Preview = Export Truth (§11.0):** `frame-compositor.ts` aynı
+    `PLATE_FILL_FRAC` bbox-fit + bbox-center→plate-center mantığını
+    uygular (pixel kanıt: preview group/plate %86 ↔ export %84.9,
+    aynı formül `plateCenter − bbox/2·scale + (slotX−minX)·scale`).
 
 ### 3. Plate behavior
 
@@ -22885,6 +22911,181 @@ Sıradaki adım **Phase 111 candidate**: drop shadow softness
 fine-tune veya rail-collapse'ta rail kontrol erişimi (collapsible
 drawer). Yeni SVG/layout builder/mockup editor §13.A'da
 ertelenmiş kalır.
+
+---
+
+## Phase 111 — Cascade composition group locking: plate-relative locked group (drift sıfır)
+
+Phase 110 responsive scaling parity'yi (aspect-locked plate +
+rail-collapse) bitirmişti. Phase 111 **cascade gibi mockup item
+gruplarının plate'e bağlı tek locked composition** gibi
+davranmasını sağlar. Stabilization turu — yeni feature / layout
+builder / mockup editor / SVG library / manual drag-resize YOK
+(kullanıcı kısıtı).
+
+### Drift'in kök nedeni (browser+DOM+code triangulation)
+
+Cascade aslında **zaten bir group transform** içinde (`stage-inner`
+div + sabit local koordinatlar + `transform:scale`). Drift'in
+gerçek kök nedeni iki katmanda:
+
+1. **`cascadeScale = Math.min(innerW/572, innerH/504, 1.0)`** —
+   tek-eksen fit + `Math.min(..., 1.0)` clamp + sabit 572×504
+   referans. Plate aspect değişince group dar eksene fit; geniş
+   eksende boşluk → group bbox/plate oranı dramatik kayar.
+   Plate group'tan büyükse (1:1 plate 633: inner 601, 601/572=1.05)
+   scale 1.0'da takılır → group plate'e küçük kalmaz.
+2. **`centerCascade` 572×504 sabit canvas merkezli** — stage-inner
+   572×504 aspect ≠ plate aspect → 572×504 box plate-center'da ama
+   group bbox box içinde offsetli + rotation'lı item'larda görsel
+   bbox ≠ layout bbox → center drift.
+
+Browser+DOM kanıt (16:9, preview):
+
+| | @1440 16:9 | @1180 16:9 | @1180 1:1 |
+|---|---|---|---|
+| grpW/plate (Phase 110) | %55.6 | %55.5 | **%84.1** ✗ |
+| centerDy (Phase 110) | 6 | **14** ✗ | 6 |
+
+Group plate'e KİLİTLİ DEĞİL (aspect değişince %55.5 → %84.1
+dramatik kayma) + dikey drift (@1440 6 → @1180 14).
+
+### Net ürün kararı
+
+Cascade ve benzeri mockup item setleri **tek tek bağımsız obje
+değil, plate'e bağlı tek locked composition group**. Responsive
+scale + aspect değişimi sırasında: **(1) composition geometry
+önce grup olarak korunur** (relative offsets sabit), **(2) sonra
+plate'e fit edilir** (bbox plate `PLATE_FILL_FRAC` iç alanına
+aspect-locked, clamp YOK), **(3) group center daima plate
+center'da** (drift sıfır). Plate küçülürse group orantılı küçülür,
+büyürse büyür, kompozisyon karakteri bozulmaz.
+
+### Fix (composition-level transform)
+
+`compositionGroup(items, plateW, plateH)` helper (eski
+`compositionGroupScale`'in genişletilmişi):
+- Cascade'in **gerçek bbox**'ını hesaplar (sabit 572×504 değil).
+- `scale = min(plateW·FRAC/bboxW, plateH·FRAC/bboxH)`, FRAC=0.84;
+  **clamp YOK** (plate büyürse scale > 1 → group orantılı).
+- Items **0-origin normalize** (minX/minY çıkar — birbirlerine
+  göre relative offset değişmez; bbox 0..bboxW × 0..bboxH).
+- `stage-inner` artık **BBOX-TIGHT** (`width=bboxW, height=bboxH`,
+  572×504 sabit değil) + `transformOrigin:center` + CSS plate-
+  center → group center = plate center otomatik (drift sıfır,
+  rotation simetrik dağılır).
+
+MockupComposition + FrameComposition **birebir aynı** (Sözleşme
+§2 stage continuity mode-AGNOSTIC).
+
+**Preview = Export Truth (§11.0):** `frame-compositor.ts` aynı
+mantık — slot positions gerçek bbox + `FRAME_PLATE_FILL_FRAC=0.84`
+bbox-fit scale + `cascadeOffset = plateCenter − (bMin+bbox/2)·
+scale` → final konum `plateCenter − bbox/2·scale + (slotX−bMin)·
+scale` (preview 0-origin normalize + CSS plate-center ile **aynı
+formül**).
+
+### Browser + pixel doğrulama
+
+Preview (16:9 @1180, aspect değişimi):
+
+| Aspect | grpW/plate | centerDx | centerDy |
+|---|---|---|---|
+| 16:9 | **%86.0** | 8 | 8 |
+| 1:1 | **%86.0** | 6 | 6 |
+| 9:16 | **%86.0** | 3 | 3 |
+| 16:9 (roundtrip) | **%86.0** | 8 | 8 |
+
+grpW/plate **tüm aspect'lerde SABİT %86.0** (Phase 110'da %55.5→
+%84.1 kayıyordu) — group plate'e LOCKED. Center dx≈dy simetrik
+küçük (3-8px residual rotation görsel). 16:9→1:1→9:16→16:9
+roundtrip birebir aynı (drift sıfır). @1440 16:9 centerDy
+22→**9** (Phase 110 → Phase 111).
+
+Export pixel kanıt (gerçek PNG `si9yox3o`, 1920×1080):
+plate-region aspect 1.782 (16:9), cascade group/plate width
+**%84.9** ↔ preview %86.0 (PLATE_FILL_FRAC=0.84 birebir), group
+center offset dx:12/dy:13 ↔ preview dx:8/dy:8 (aynı simetri,
+pixel-sampling toleransı). **Preview = Export Truth korundu.**
+
+Screenshot: cascade 3-item group plate ortasında kilitli
+kompozisyon (Front dik + Side -6° + Back -12° relative offset
+korunmuş), group center plate center'da, %86 plate-locked.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Continuity korundu
+
+Product MockupsTab: 10 frame-export tile, aspect 4/3, bg-ink,
+object-contain, 1920×1080 — Phase 101-110 baseline intakt. Phase
+111 yalnız composition group scale/anchor mantığı; handoff /
+export persistence / tile render **dokunulmadı**.
+
+### Değişmeyenler (Phase 111)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız composition group transform.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `compositionGroup` helper (eski
+  `compositionGroupScale` genişletilmişi) + bbox-tight stage-inner
+  + compositor parity. Yeni component / route / service / SVG
+  library / layout builder / mockup editor / manual drag-resize
+  YOK.
+- **Phase 110 responsive scaling baseline'ları intakt** (aspect-
+  locked plate, 3-aşamalı viewport, rail-collapse; Phase 111
+  cascade'i plate'e LOCK eder, plate scaling'i değiştirmez).
+- **§2 stage continuity + §3 plate behavior + §8 layout count +
+  §11.0 Preview=Export korundu.**
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Kapatılan (Phase 111):
+- **Cascade group plate'e kilitli değildi** — aspect değişince
+  group bbox/plate oranı dramatik kayıyordu (16:9 %55.5 → 1:1
+  %84.1). Phase 111: gerçek bbox + PLATE_FILL_FRAC bbox-fit
+  (clamp YOK) → tüm aspect'te %86 sabit.
+- **Group center plate center'a göre drift ediyordu** (16:9
+  @1440 centerDy:22, @1180 dy:14 vs @1440 dy:6) — 572×504 sabit
+  stage-inner ≠ plate aspect + rotation görsel. Phase 111:
+  bbox-tight stage-inner + 0-origin normalize → CSS plate-center
+  = group center (dx≈dy ~3-9px simetrik residual).
+- **Plate büyürse group orantılı büyümüyordu** (`Math.min(...,
+  1.0)` clamp) — Phase 111 clamp kaldırıldı.
+
+Hâlâ açık (Phase 112+ candidate):
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir) — libvips feDropShadow 2-katmanlı; preview 4-katmanlı.
+- **Residual ~3-9px rotation görsel offset** — rotated item'ın
+  görsel bbox'ı layout bbox'tan farklı (rotation köşeleri
+  şişirir). Layout-bbox center plate-center'da; görsel-bbox
+  küçük asimetri. Minimal, kabul edilebilir; tam görsel-bbox
+  center için per-item rotated-AABB hesabı gerekir (Phase 112+,
+  Preview=Export riski yüksek — şimdilik ertelendi).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 111 ile cascade plate-relative LOCKED composition:
+- Group bbox/plate oranı tüm aspect/viewport'ta sabit (%86)
+- Group center plate center'da (drift sıfır, ~3-9px residual)
+- Relative offsets korunur, plate küçülünce/büyüyünce group
+  orantılı (browser-zoom-out hissi + kompozisyon karakteri
+  bozulmaz)
+- Preview = Export Truth (pixel kanıt %86 ↔ %84.9)
+
+Sıradaki adım **Phase 112 candidate**: drop shadow softness
+fine-tune veya residual rotation-AABB center (Preview=Export
+riski değerlendirilerek). Yeni SVG/layout builder/mockup editor
+§13.A'da ertelenmiş kalır.
 
 ---
 

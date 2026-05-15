@@ -389,22 +389,55 @@ export async function composeFrameOutput(
   const plateLayout = resolvePlateLayout(outputW, outputH);
   const plateLayerSvg = buildPlateLayerSvg(outputW, outputH, plateLayout, scene);
 
-  /* 3) Cascade slot composites — Phase 101 plate-relative.
+  /* 3) Cascade slot composites — Phase 111 plate-relative LOCKED
+   *    composition group (Preview = Export Truth §11.0).
    *
-   * Cascade artık plate içine yerleşir (Studio preview parity — plate'in
-   * `overflow:hidden` + cascade plate-inner ortasında). Stage-inner
-   * 572×504 → plate dims oranla scale; plate offset'i ile origin'e
-   * uygulanır. Preview ile export aynı plate-relative koordinatlar
-   * (sözleşme #2 stage continuity + #11 preview ↔ export aynı kaynak). */
-  const cascadeScale = Math.min(
-    plateLayout.plateW / stageInnerW,
-    plateLayout.plateH / stageInnerH,
-  );
+   * Phase 101-110 baseline `Math.min(plateW/stageInnerW,
+   * plateH/stageInnerH)` stage-inner 572×504 referansını plate'e
+   * fit ediyordu. Phase 111 preview'ı (`compositionGroupScale`)
+   * cascade'in GERÇEK bbox'ını plate'in PLATE_FILL_FRAC iç
+   * alanına aspect-locked bbox-fit edecek şekilde değiştirdi —
+   * export aynı mantığı izlemezse preview ≠ export (drift).
+   *
+   * Phase 111 export fix (preview ile BİREBİR):
+   *   (a) Cascade slot positions'ın gerçek bbox'ını hesapla
+   *       (stage-inner sabit 572×504 değil — preview centerCascade
+   *       bbox'ı 572×504 ortasına hizalar, ama scale GERÇEK bbox
+   *       üzerinden).
+   *   (b) Group scale = min(targetW/bboxW, targetH/bboxH),
+   *       target = plate × PLATE_FILL_FRAC; clamp YOK (plate
+   *       büyürse group orantılı büyür — preview parity).
+   *   (c) Group bbox center'ı plate center'a hizala (preview:
+   *       stage-inner plate ortasında + centerCascade bbox
+   *       merkezli → group center = plate center, drift sıfır).
+   * Sözleşme #2 stage continuity + #11 + Phase 111 canonical
+   * (cascade plate-relative locked group). */
+  const FRAME_PLATE_FILL_FRAC = 0.84;
+  let bMinX = Infinity,
+    bMinY = Infinity,
+    bMaxX = -Infinity,
+    bMaxY = -Infinity;
+  for (const s of slots) {
+    bMinX = Math.min(bMinX, s.x);
+    bMinY = Math.min(bMinY, s.y);
+    bMaxX = Math.max(bMaxX, s.x + s.w);
+    bMaxY = Math.max(bMaxY, s.y + s.h);
+  }
+  const bboxW = Math.max(1, bMaxX - bMinX);
+  const bboxH = Math.max(1, bMaxY - bMinY);
+  const targetW = plateLayout.plateW * FRAME_PLATE_FILL_FRAC;
+  const targetH = plateLayout.plateH * FRAME_PLATE_FILL_FRAC;
+  const cascadeScale = Math.min(targetW / bboxW, targetH / bboxH);
+  // Group bbox center'ı plate center'a hizala (preview drift-sıfır
+  // parity). Scaled bbox = bbox × cascadeScale; offset = plate
+  // center − scaled bbox center (bMin'in scaled konumunu çıkar).
+  const plateCx = plateLayout.plateX + plateLayout.plateW / 2;
+  const plateCy = plateLayout.plateY + plateLayout.plateH / 2;
   const cascadeOffsetX = Math.round(
-    plateLayout.plateX + (plateLayout.plateW - stageInnerW * cascadeScale) / 2,
+    plateCx - (bMinX + bboxW / 2) * cascadeScale,
   );
   const cascadeOffsetY = Math.round(
-    plateLayout.plateY + (plateLayout.plateH - stageInnerH * cascadeScale) / 2,
+    plateCy - (bMinY + bboxH / 2) * cascadeScale,
   );
 
   // Composite operations array.
