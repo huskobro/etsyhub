@@ -392,6 +392,11 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
         name: SLOT_NAMES[i]!,
         assigned: true,
         design: {
+          // Phase 113 — Stable slot→item identity (Sözleşme §11.0
+          // slot assignment de Preview=Export Truth). realSlots
+          // position-sorted dizilim canonical; export payload bunu
+          // taşır (firstAssignedItemId fanout bug'ı kapatıldı).
+          itemId,
           name: `Item ${i + 1} · ${itemId.slice(0, 8)}`,
           dims,
           colors,
@@ -541,6 +546,15 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     setIsExportingFrame(true);
     try {
       const cascade = cascadeLayoutFor(deviceKind, layoutCount);
+      // Phase 113 — Slot→item identity zinciri (Sözleşme §11.0):
+      //   1. operator override (slotAssignments — Phase 80) en güçlü
+      //   2. slot'un DOĞAL item'ı (realSlots position-sorted dizilim;
+      //      slot 0 → sorted[0], slot 1 → sorted[1], …) — preview ne
+      //      çiziyorsa o
+      //   3. firstAssignedItemId yalnız son çare (slot.design yoksa)
+      // Eski kod adım 2'yi atlayıp doğrudan firstAssignedItemId'e
+      // düşüyordu → operator override yokken (slotAssignments={})
+      // 3 slot da items[0] alıyordu (export'ta 3 slot aynı item bug).
       const firstAssignedItemId = items[0]
         ? (items[0] as { id: string }).id
         : null;
@@ -548,7 +562,8 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
         const slotIdx = c.si;
         const override = slotAssignments[slotIdx] ?? null;
         const slot = slots[slotIdx];
-        const itemId = override ?? firstAssignedItemId ?? null;
+        const slotNaturalItemId = slot?.design?.itemId ?? null;
+        const itemId = override ?? slotNaturalItemId ?? firstAssignedItemId ?? null;
         const assigned = !!slot?.assigned && !!itemId;
         return {
           slotIndex: slotIdx,

@@ -192,7 +192,11 @@ const STAGE_INNER_REF_H = 504;
  *
  * Studio preview'da plate canonical chrome (DOM ölçümlerinden):
  *   - border-radius: 26px
- *   - border: 2px solid rgba(255,255,255,0.18)
+ *   - Phase 113: plate border KALDIRILDI (kullanıcı notu + glow/
+ *     inner-border cleanup). Eski `2px solid rgba(255,255,255,0.18)`
+ *     solid koyu bg'de pop ediyordu; preview'dan da kaldırıldı
+ *     (`border: 2px solid transparent`). Export parity: plate rect
+ *     stroke YOK — plate stage'den yalnız drop shadow ile ayrılır.
  *   - box-shadow chain:
  *       0  2px   6px  rgba(0,0,0,0.35)   close edge
  *       0 12px  28px -4px rgba(0,0,0,0.45) medium body
@@ -308,7 +312,6 @@ function buildPlateLayerSvg(
     <rect x="${plateX}" y="${plateY}" width="${plateW}" height="${plateH}"
       rx="${plateRadius}" ry="${plateRadius}"
       fill="${fillAttr}"
-      stroke="rgba(255,255,255,0.18)" stroke-width="2"
       filter="url(#plate-shadow)"/>
   </svg>`;
 }
@@ -330,26 +333,30 @@ function buildGlassOverlayPlateClippedSvg(
   variant: FrameGlassVariant,
 ): string {
   let fill: string;
-  let stroke: string;
   if (variant === "dark") {
     fill = "rgba(15,12,8,0.30)";
-    stroke = "rgba(255,255,255,0.10)";
   } else if (variant === "frosted") {
     fill = "rgba(255,255,255,0.12)";
-    stroke = "rgba(255,255,255,0.22)";
   } else {
     // light
     fill = "rgba(255,255,255,0.22)";
-    stroke = "rgba(255,255,255,0.30)";
   }
-  // Phase 101 — Glass overlay artık plate alanına clip'lenmiş rounded
-  // rect (preview parity: backdrop-filter plate parent'a uygulanıyordu).
-  // Stage padding alanı glass'tan etkilenmez.
+  // Phase 113 — Glass overlay stroke (border) KALDIRILDI (preview
+  // Layer 2b parity: preview glass overlay'inden de `border` +
+  // `inset box-shadow` halo temizlendi — plate kenarında istenmeyen
+  // inner-border üretiyordu). Glass = plate üstüne yarı-saydam
+  // variant-tinted surface treatment (cam-üstü hissi tint ile).
+  // Plate alanına clip'lenmiş rounded rect; stage padding glass'tan
+  // etkilenmez. Bu layer item layer'ın ALTINDA compose edilir
+  // (aşağıdaki composite sırası: plate → glass → cascade) — preview
+  // Layer modeli (Layer 1 plate / Layer 2 effect / Layer 3 item)
+  // birebir. Glass mockup item'ları ETKİLEMEZ (§11.0 Preview =
+  // Export Truth).
   return `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
     <rect x="${layout.plateX}" y="${layout.plateY}"
       width="${layout.plateW}" height="${layout.plateH}"
       rx="${layout.plateRadius}" ry="${layout.plateRadius}"
-      fill="${fill}" stroke="${stroke}" stroke-width="2"/>
+      fill="${fill}"/>
   </svg>`;
 }
 
@@ -1097,91 +1104,41 @@ export async function composeFrameOutput(
     });
   }
 
-  /* 4) Compose stage bg + plate layer + cascade composites (tek geçişte
-   *    operator için preview ↔ export aynı görsel aileden gelir). */
-  const composites: sharp.OverlayOptions[] = [
-    { input: Buffer.from(plateLayerSvg), top: 0, left: 0 },
-    ...slotComposites,
-  ];
+  /* Phase 113 — Plate-local layered effects model (Preview = Export
+   * Truth §11.0). Preview MockupStudioStage.tsx Layer modeli:
+   *
+   *   Layer 1: plate base   (k-studio__stage-plate bg)
+   *   Layer 2: effect layer (glass overlay + lens blur surface) —
+   *            cascade'in ALTINDA (z-index 0/1)
+   *   Layer 3: item layer   (cascade, z-index 2) — effect'ten
+   *            ETKİLENMEZ (glass tint + blur item'lara değmez)
+   *
+   * Eski export (Phase 101-112): cascade önce compose ediliyor,
+   * glass overlay EN SON cascade'in ÜSTÜNE → glass yarı-saydam fill
+   * cascade item'larını da tint'liyordu (preview'da glass cascade'in
+   * ALTINDA → item'ları etkilemiyor). Bu Preview ≠ Export
+   * divergence + glass dark'ta item'larda istenmeyen tint/halo.
+   *
+   * Phase 113 compose sırası (preview Layer parity):
+   *   1. stage bg + plate layer            (Layer 1, cascade YOK)
+   *   2. glass overlay                     (Layer 2, plate üstüne)
+   *   3. lens blur (plate-area, Layer 1+2) (Layer 2, cascade YOK)
+   *   4. cascade slotComposites EN ÜSTE    (Layer 3, glass+blur'dan
+   *      ETKİLENMEZ — preview cascade z-index 2 birebir)
+   *
+   * Sözleşme #2 stage continuity + #11 + Phase 113 canonical
+   * (plate-local layered effects; item layer effect-bağımsız). */
+
+  /* 4) Layer 1 — Stage bg + plate base (cascade YOK). */
   let canvasBuffer = await sharp(Buffer.from(stageBgSvg))
-    .composite(composites)
+    .composite([{ input: Buffer.from(plateLayerSvg), top: 0, left: 0 }])
     .png()
     .toBuffer();
 
-  /* 5) Lens Blur — Phase 109 STRUCTURED targeting (Preview = Export
-   *    Truth §11.0).
-   *
-   * Preview (MockupStudioStage.tsx Phase 109):
-   *   - target "all": plateStyle.filter plate div'in TÜMÜNE (bg +
-   *     cascade) blur. Legacy Phase 98-108 davranış.
-   *   - target "plate": plate bg AYRI surface layer'a (z-index 0)
-   *     + ona blur; cascade composition (z-index 1) NET. Operatör
-   *     eğilimi "itemler blur'lu olmamalı" + Preview = Export
-   *     Truth: items keskin, sahne atmospheric.
-   *
-   * Export parity (intensity → Sharp sigma, plate-area rounded
-   * mask ile stage padding NET — Phase 108 baseline):
-   *   - "all": Phase 108 davranış — stageBg+plate+cascade compose
-   *     edilmiş canvas blur → plate-area mask → net canvas üstüne.
-   *     (cascade dahil blur)
-   *   - "plate": cascade-SİZ canvas (stageBg + plateLayer) blur →
-   *     plate-area mask → net canvas'a; SONRA slotComposites
-   *     blur'suz EN ÜSTE tekrar compose (cascade NET — preview
-   *     plateSurface z-index 0 + cascade z-index 1 birebir). */
-  const lb = normalizeFrameLensBlur(scene.lensBlur);
-  if (lb.enabled) {
-    const sigma = FRAME_LENS_BLUR_SIGMA[lb.intensity];
-    const plateMaskSvg = `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="${plateLayout.plateX}" y="${plateLayout.plateY}"
-        width="${plateLayout.plateW}" height="${plateLayout.plateH}"
-        rx="${plateLayout.plateRadius}" ry="${plateLayout.plateRadius}"
-        fill="white"/>
-    </svg>`;
-    if (lb.target === "all") {
-      // Legacy Phase 108 — cascade dahil tüm plate region blur.
-      const sharpCanvas = await sharp(canvasBuffer)
-        .blur(sigma)
-        .png()
-        .toBuffer();
-      const blurredPlateRegion = await sharp(sharpCanvas)
-        .composite([{ input: Buffer.from(plateMaskSvg), blend: "dest-in" }])
-        .png()
-        .toBuffer();
-      canvasBuffer = await sharp(canvasBuffer)
-        .composite([{ input: blurredPlateRegion, top: 0, left: 0 }])
-        .png()
-        .toBuffer();
-    } else {
-      // Phase 109 — target "plate": cascade-SİZ canvas blur, sonra
-      // cascade net üstte (preview plateSurface z-index 0 +
-      // cascade z-index 1 birebir; items NET).
-      const cascadelessCanvas = await sharp(Buffer.from(stageBgSvg))
-        .composite([{ input: Buffer.from(plateLayerSvg), top: 0, left: 0 }])
-        .png()
-        .toBuffer();
-      const blurredCascadeless = await sharp(cascadelessCanvas)
-        .blur(sigma)
-        .png()
-        .toBuffer();
-      const blurredPlateRegion = await sharp(blurredCascadeless)
-        .composite([{ input: Buffer.from(plateMaskSvg), blend: "dest-in" }])
-        .png()
-        .toBuffer();
-      // Net cascadeless (stage padding) + plate-area blur'lu bg +
-      // slotComposites blur'suz EN ÜSTE (cascade keskin).
-      canvasBuffer = await sharp(cascadelessCanvas)
-        .composite([
-          { input: blurredPlateRegion, top: 0, left: 0 },
-          ...slotComposites,
-        ])
-        .png()
-        .toBuffer();
-    }
-  }
-
-  /* 6) Glass overlay (after blur, so glass overlay itself stays sharp).
-   *    Phase 101: glass overlay yalnız plate alanında (rounded clip ile)
-   *    operator preview parity. */
+  /* 5) Layer 2a — Glass overlay (plate üstüne, cascade'DEN ÖNCE).
+   *    Preview k-studio__plate-glass z-index 1, cascade z-index 2.
+   *    Glass = plate üstü variant-tinted surface treatment; item'a
+   *    değil plate'e (preview Layer 2b parity). */
   if (scene.mode === "glass") {
     const variant = scene.glassVariant ?? "light";
     const glassSvg = buildGlassOverlayPlateClippedSvg(
@@ -1196,6 +1153,54 @@ export async function composeFrameOutput(
       .toBuffer();
   }
 
-  /* 7) Final PNG encode. */
+  /* 6) Layer 2b — Lens Blur (Phase 109 STRUCTURED targeting,
+   *    Preview = Export Truth §11.0). Cascade hâlâ compose
+   *    EDİLMEDİ → her iki target'ta da plate bg + glass (Layer
+   *    1+2) blur, cascade (Layer 3) ASLA blur değil.
+   *
+   * Phase 113 — target "all" vs "plate" ARTIK aynı export
+   * davranış: ikisi de plate-area (stage padding NET) bg blur,
+   * cascade üstte keskin. "all" eski semantiği (cascade dahil
+   * blur) Phase 113 layered model ile geçersiz — item layer
+   * effect-bağımsız (operatör eğilimi + §11.0). Backward-compat:
+   * legacy boolean true → "all" normalize; davranış yeni model
+   * (item NET). */
+  const lb = normalizeFrameLensBlur(scene.lensBlur);
+  if (lb.enabled) {
+    const sigma = FRAME_LENS_BLUR_SIGMA[lb.intensity];
+    const plateMaskSvg = `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="${plateLayout.plateX}" y="${plateLayout.plateY}"
+        width="${plateLayout.plateW}" height="${plateLayout.plateH}"
+        rx="${plateLayout.plateRadius}" ry="${plateLayout.plateRadius}"
+        fill="white"/>
+    </svg>`;
+    // canvasBuffer şu an = stage bg + plate + glass (cascade YOK).
+    // Tümünü blur → plate-area rounded mask → net canvas'a geri
+    // composite (stage padding NET).
+    const blurredCanvas = await sharp(canvasBuffer)
+      .blur(sigma)
+      .png()
+      .toBuffer();
+    const blurredPlateRegion = await sharp(blurredCanvas)
+      .composite([{ input: Buffer.from(plateMaskSvg), blend: "dest-in" }])
+      .png()
+      .toBuffer();
+    canvasBuffer = await sharp(canvasBuffer)
+      .composite([{ input: blurredPlateRegion, top: 0, left: 0 }])
+      .png()
+      .toBuffer();
+  }
+
+  /* 7) Layer 3 — Cascade slotComposites EN ÜSTE (glass + blur'dan
+   *    ETKİLENMEZ; preview cascade z-index 2 birebir). Item layer
+   *    keskin — operatör eğilimi + Preview = Export Truth §11.0. */
+  if (slotComposites.length > 0) {
+    canvasBuffer = await sharp(canvasBuffer)
+      .composite(slotComposites)
+      .png()
+      .toBuffer();
+  }
+
+  /* 8) Final PNG encode. */
   return await sharp(canvasBuffer).png({ compressionLevel: 9 }).toBuffer();
 }

@@ -19839,15 +19839,66 @@ olmalı — **yalnız editing helper'lar hariç**.
 - plate ↔ item ilişkisi (plate chrome + item'ın plate üzerindeki
   yeri)
 
+**Slot / asset identity de Preview = Export Truth kapsamındadır
+(Phase 113 canonical):** Preview = Export Truth yalnız geometry
+(tilt / scale / placement / chrome) için değil, **hangi slot'ta
+hangi item görünüyor** için de geçerlidir. Studio preview'da slot
+N'de hangi selection-item çiziliyorsa, exported PNG'de slot N'de
+**birebir o item** olmalı.
+
+- Studio `realSlots` selection set items'ı `position` sıralı slot
+  index'e map eder (slot 0 → sorted[0], slot 1 → sorted[1], …).
+  Preview her slot'un kendi item'ını çizer.
+- Export request body slot→itemId eşleşmesi bu **doğal slot→item
+  dizilimini** taşımalıdır (`StudioSlotMeta.design.itemId` stable
+  identity field; export fallback zinciri: operator override
+  (Phase 80 `slotAssignments`) → slot.design.itemId → son çare
+  global fallback).
+- "firstAssignedItemId fanout fallback" (operator override yokken
+  TÜM slot'lara items[0]) **YASAK** — Phase 113 öncesi bu bug
+  3 farklı preview item'ı export'ta tek item'a düşürüyordu.
+  Yeni model: slot'un doğal item'ı canonical.
+
 Bu ilkeye aykırı bir davranış görülürse (preview'da yatık item
 export'ta dimdik, preview'da görünen outline export'ta kayıp,
-vb.): ya sözleşme açıkça güncellenir ya da kod düzeltilir. **Sessiz
-divergence kabul edilmez.** Operator "export edildi ama başka bir
-görsele dönüştü" hissi almamalı.
+preview'da 3 farklı item export'ta 1 item, vb.): ya sözleşme
+açıkça güncellenir ya da kod düzeltilir. **Sessiz divergence
+kabul edilmez.** Operator "export edildi ama başka bir görsele
+dönüştü" hissi almamalı.
+
+**Plate-local layered effects modeli (Phase 113 canonical):**
+Frame mode efektleri (glass / lens blur / glow / tint) 3-katmanlı
+düşünülür ve hem preview hem export bu modeli birebir izler:
+
+- **Layer 1 — plate base**: `k-studio__stage-plate` bg (export
+  `buildPlateLayerSvg`). Plate stage'den **yalnız drop-shadow
+  chain** ile ayrılır; sabit beyaz/inset border YOK (Phase 113'te
+  kaldırıldı — solid koyu bg'de pop ediyordu; bu görsel ileride
+  explicit bir frame-style/chrome parametresi olarak gelecek).
+- **Layer 2 — effect layer**: glass overlay + lens blur surface.
+  Item layer'ın **ALTINDA** (preview z-index 0/1, DOM'da
+  cascade'den ÖNCE; export compose sırası plate → glass → blur).
+  Glass = plate üstü variant-tinted surface treatment (item'a
+  değil plate'e). `backdrop-filter` + inset border halo
+  KALDIRILDI (item'ları bulanıklaştırıyor + plate kenarında
+  inner-border üretiyordu).
+- **Layer 3 — item layer**: cascade composition (preview
+  z-index 2; export compose'da slotComposites EN ÜSTE). Effect'ten
+  **ETKİLENMEZ** — itemler varsayılan olarak blur/tint ALMAZ
+  (operatör eğilimi + §11.0). Lens Blur target "plate" (default)
+  vs "all" export'ta artık aynı: ikisi de plate-area bg blur,
+  item NET (Phase 113 — "all" eski "cascade dahil blur" semantiği
+  layered model ile geçersiz; backward-compat normalize korunur).
+
+Future SVG/effect readiness: yeni efekt (phone color / button
+color / browser window style / chrome tone) bu 3-layer modele
+oturur — Layer 2'ye yeni treatment, Layer 3 (item) effect-bağımsız
+kalır. Tek-mockup hack veya per-effect z-index patlaması YASAK.
 
 Canonical truth = **exported PNG**. Studio preview, exported PNG'nin
 authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
-preview'ın render sözleşmesini birebir izler.
+preview'ın render sözleşmesini birebir izler (geometry + asset
+identity + layered effects).
 
 ### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge, Phase 105-106 productType shape, Phase 107 phone bezel + Etsy continuity, Phase 108 plate-only Lens Blur + hoodie hood, Phase 109 responsive viewport + Lens Blur targeting + shared capability)
 
@@ -23277,6 +23328,200 @@ Sıradaki adım **Phase 113 candidate**: drop shadow softness
 fine-tune veya residual rotation-AABB center (Preview=Export
 riski değerlendirilerek). Yeni SVG/layout builder/mockup editor
 §13.A'da ertelenmiş kalır.
+
+---
+
+## Phase 113 — Export slot identity bugfix + plate-local layered effects modeli
+
+Phase 112 composition primitive'i resmileştirip dead capability'yi
+canlandırmıştı. Phase 113 iki kritik açığı kapatır: (1) **export
+slot assignment bug'ı** (Studio'da 3 farklı item, export'ta 3 slotta
+da items[0]), (2) **plate-local layered effects** (glass/lens blur
+item'ları etkiliyor + plate kenarında glow/inner-border/beyaz border
+artifact). Stabilization turu — yeni feature/layout builder/mockup
+editor/SVG library YOK (kullanıcı kısıtı).
+
+### Bug #1 — Slot assignment / export identity (kök neden netleşti)
+
+**Browser + network + pixel triangulation ile KESİN doğrulandı:**
+
+Studio preview'da 3 slot DOĞRU 3 farklı item gösteriyor (slot 0/1/2
+= Item 1/2/3 — `realSlots` position-sorted dizilim). Ama export
+request body (`/api/frame/export`) yakalandığında, operator hiç
+slot assignment yapmadığı durumda (`slotAssignmentCount: 0`,
+varsayılan):
+
+```
+slot 0 → cmov0iacy… (Item 1)
+slot 1 → cmov0iacy… (Item 1)  ← YANLIŞ (Item 2 olmalı)
+slot 2 → cmov0iacy… (Item 1)  ← YANLIŞ (Item 3 olmalı)
+distinctItemIds: ["cmov0iacy…"]  ← TEK item, 3 slot için
+```
+
+**Kök neden = frontend mapping** (`MockupStudioShell.tsx`
+`handleExportFrame`). Zincir audit'i:
+- Route (`/api/frame/export/route.ts`) DOĞRU — `slots[]` her biri
+  `{slotIndex, assigned, itemId, …}` taşır.
+- Service (`frame-export.service.ts`) DOĞRU — assignedItemIds
+  toplar, `id IN assignedItemIds, selectionSetId` query, itemMap
+  ile her slot için DOĞRU asset buffer fetch.
+- **Frontend BOZUK**: `handleExportFrame` `itemId = override ??
+  firstAssignedItemId` kullanıyordu. `override` = `slotAssignments[
+  slotIdx]` (Phase 80 operator override; varsayılan `{}`).
+  `firstAssignedItemId` = `items[0].id` (HEP ilk item). Operator
+  override yokken → her 3 slot da `items[0]`. Preview'ın doğal
+  slot→item dizilimi (`realSlots`) export payload'a hiç
+  taşınmıyordu çünkü `StudioSlotMeta` itemId tutmuyordu.
+
+### FIX 1 — Stable slot identity (küçük doğruluk katmanı)
+
+- `StudioSlotMeta.design.itemId: string` field eklendi (canonical
+  slot→item identity; `realSlots`'ta zaten var olan `sorted[i].id`
+  buraya doldurulur). Yeni big abstraction değil — tek field.
+- `handleExportFrame` fallback zinciri düzeltildi:
+  `override ?? slotNaturalItemId ?? firstAssignedItemId`. Yani
+  (1) operator override en güçlü, (2) slot'un DOĞAL item'ı
+  (preview ne çiziyorsa), (3) global fallback son çare.
+- **Sonuç (network kanıt)**: aynı durumda export body artık
+  `slot 0 → Item 1, slot 1 → Item 2, slot 2 → Item 3`,
+  `distinctCount: 3`. **Pixel kanıt**: exported PNG'de 3 slot 3
+  farklı renk imzası (slot0 PAS5 kırmızı, slot1 mor şehir,
+  slot2 mavi araba; distBC 105 — bug öncesi ~0). Görsel
+  screenshot: exported PNG'de 3 görünür farklı item.
+
+### Bug #2 — Plate-local effects (glass item'ları etkiliyor + glow/border)
+
+Audit (preview DOM + export compose code):
+- Preview `k-studio__plate-glass` **z-index 3** (cascade'in
+  ÜSTÜNDE) + `backdrop-filter: blur(10px)` → glass overlay
+  arkasındaki TÜM içeriği (plate bg + cascade items) bulanık.
+  Item'lar effect'ten etkileniyordu (yanlış).
+- Glass overlay `border: 1px solid borderTone` + `boxShadow:
+  inset 0 1px 0 … , inset 0 -1px 0 …` → plate kenarında
+  inner-border halo.
+- `k-studio__stage-plate` box-shadow son satır `inset 0 1px 0
+  rgba(255,255,255,0.08)` → plate üstünde subtle inner top-line.
+- `k-studio__stage-plate` `border: 2px solid rgba(255,255,255,
+  0.18)` → solid koyu bg (sceneMode solid #111009 / glass dark)
+  seçilince beyaz border BELİRGİN pop ediyordu (kullanıcı notu —
+  istenmiyor; ileride explicit frame-style parametresi).
+- Export `frame-compositor.ts` aynı divergence: plate rect
+  `stroke="rgba(255,255,255,0.18)"`, glass overlay rect `stroke`,
+  ve **glass overlay cascade'in ÜSTÜNE** compose ediliyordu
+  (preview ≠ export).
+
+### FIX 2+3 — Plate-local layered effects modeli (3-layer)
+
+**Net ürün kararı**: efekt sistemi 3-layer (Layer 1 plate base /
+Layer 2 effect / Layer 3 item). Item layer effect-bağımsız;
+itemler varsayılan blur/tint ALMAZ. Hem preview hem export bu
+modeli birebir izler (§11.0).
+
+Preview (`MockupStudioStage.tsx`):
+- Glass overlay cascade'in **ÖNCESİNE** taşındı (DOM'da
+  plate-surface'in hemen ardı), z-index **1** (cascade'in
+  ALTINDA). `backdrop-filter` + inset border halo KALDIRILDI —
+  glass artık `background: variant-tint` + z-index 1 (plate üstü
+  surface treatment, item'a değil plate'e).
+- Cascade host (`stage-inner`) `position: relative; z-index: 2`
+  (MockupComposition + FrameComposition ikisinde) — effect'in
+  ÜSTÜNDE, glass/blur item'ları etkilemez.
+- `stage-plate` border `2px solid transparent` (layout-stable —
+  box-sizing kayması yok), inset box-shadow top-line kaldırıldı.
+  Plate stage'den **yalnız drop-shadow chain** ile ayrılır.
+
+Export (`frame-compositor.ts`) compose sırası preview Layer
+parity'sine yeniden yazıldı:
+1. Layer 1 — stage bg + plate base (cascade YOK)
+2. Layer 2a — glass overlay (plate üstüne, cascade'DEN ÖNCE,
+   stroke YOK)
+3. Layer 2b — lens blur (plate-area rounded mask; cascade hâlâ
+   compose EDİLMEDİ → bg+glass blur, cascade ASLA blur değil)
+4. Layer 3 — cascade slotComposites EN ÜSTE (glass+blur'dan
+   ETKİLENMEZ)
+5. Final PNG encode
+
+`buildPlateLayerSvg` plate rect stroke KALDIRILDI;
+`buildGlassOverlayPlateClippedSvg` stroke KALDIRILDI (preview
+parity). Phase 113 — Lens Blur target "all" vs "plate" export'ta
+artık aynı (ikisi de plate-area bg blur, item NET); "all" eski
+"cascade dahil blur" semantiği layered model ile geçersiz,
+backward-compat normalize korunur.
+
+### Browser + DOM + pixel + export kanıtları
+
+- **Glass Dark DOM**: `glassBorder: 0px` (border kaldırıldı),
+  `glassBoxShadow: none` (inset halo kaldırıldı), `glassZIndex: 1`,
+  `cascadeZIndex: 2`, `plateBorder: 2px solid rgba(0,0,0,0)`
+  (transparent). Screenshot: glass dark plate'i koyulaştırıyor,
+  3 cascade item NET (glass'tan etkilenmemiş), belirgin border YOK.
+- **Lens Blur + Glass DOM**: `plateDivFilter: none`,
+  `plateSurfaceFilter: blur(8px)` (z-index 0), `cascadeHostFilter:
+  none` (z-index 2 — items NET).
+- **Slot identity network**: export body `distinctCount: 3`
+  (slot 0/1/2 → Item 1/2/3).
+- **Slot identity pixel**: exported PNG slot renk imzaları
+  farklı (distBC 105); görsel screenshot 3 farklı item.
+- **Product MockupsTab continuity**: handoff sonrası "Frame
+  Exports · 11 APPLIED", cover tile (★ Primary) Phase 113 yeni
+  export = 3 FARKLI item, diğer tile'lar (önceki turlar) intakt,
+  plate'lerde beyaz border YOK, item chrome korundu, "Send to
+  Etsy as Draft" CTA mevcut.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (59 files; zero regression —
+  `StudioSlotMeta.design.itemId` zorunlu field test fixture'larını
+  etkilemedi)
+- `next build`: ✓ Compiled successfully (exit 0)
+
+### Değişmeyenler (Phase 113)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `StudioSlotMeta` TypeScript interface
+  field eklemesi (runtime DB schema dokunulmadı).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Slot identity = tek field +
+  fallback zinciri düzeltmesi; layered effects = mevcut JSX/SVG
+  yeniden sıralama (yeni component/service/route YOK).
+- **Service tarafı dokunulmadı** (`frame-export.service.ts` zaten
+  doğru slot→item resolve ediyordu; bug yalnız frontend
+  payload'daydı).
+- **Phase 101-112 baseline'ları intakt**: item chrome (rounded +
+  white sticker edge + drop shadow + tilt), productType-specific
+  shape (clipart/sticker/wall_art/phone/bookmark/garment),
+  composition group locking, plate dimensions/aspect, persistence
+  + handoff zinciri.
+- **3. taraf mockup API path** ana akışa girmedi.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Canonical studio kararı + studio shell bozulmadı.**
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ açık (Phase 114+ candidate)
+
+- **Plate frame-style / chrome parametresi**: Phase 113'te plate
+  border kaldırıldı (kullanıcı notu). Operator-controlled
+  frame-style (border / inner-shadow / chrome tone) ileride
+  explicit bir efekt/parametre olarak gelecek (§13 future SVG
+  readiness — capability map field eklenerek).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir) — libvips feDropShadow 2-3 katmanlı; preview 4-katmanlı.
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 113 ile export slot identity (Preview = Export Truth artık
+asset identity için de geçerli) + plate-local layered effects
+(item layer effect-bağımsız) + glow/inner-border/plate-border
+cleanup tamam. Sıradaki adım **Phase 114 candidate**: operator-
+controlled plate frame-style parametresi (Phase 113'te kaldırılan
+border'ın §13 future SVG readiness modeliyle explicit efekt
+olarak geri gelmesi) veya drop shadow softness fine-tune. Yeni
+SVG/layout builder/mockup editor §13.A'da ertelenmiş kalır.
 
 ---
 

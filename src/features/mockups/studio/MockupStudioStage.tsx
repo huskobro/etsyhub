@@ -460,6 +460,13 @@ function MockupComposition({
         height: grp.bboxH,
         transform: `scale(${cascadeScale})`,
         transformOrigin: "center center",
+        /* Phase 113 — Layer 3 (item layer) effect layer'ın (Layer
+         * 2, z-index 1) ÜSTÜNDE. Cascade DOM'da glass'tan sonra
+         * gelir; explicit z-index 2 stacking context robustluğu
+         * (plate-surface z0 + glass z1 < cascade z2). Glass/blur
+         * item'ları etkilemez. */
+        position: "relative",
+        zIndex: 2,
       }}
       data-testid="studio-stage-mockup-comp"
       data-cascade-scale={cascadeScale.toFixed(3)}
@@ -653,6 +660,12 @@ function FrameComposition({
           height: grp.bboxH,
           transform: `scale(${cascadeScale})`,
           transformOrigin: "center center",
+          /* Phase 113 — Layer 3 (item layer) effect layer'ın
+           * (Layer 2, z-index 1) ÜSTÜNDE. Mode-AGNOSTIC: Frame
+           * mode'da da glass/blur cascade item'ları etkilemez
+           * (sözleşme #2 stage continuity + §11.0). */
+          position: "relative",
+          zIndex: 2,
         }}
         data-testid="studio-stage-frame-comp"
         data-frame-aspect={frameAspect}
@@ -1025,15 +1038,61 @@ export function MockupStudioStage({
           }
           style={plateStyle}
         >
-          {/* Phase 109 — target "plate": blur'lu bg surface layer
-           *  (cascade'in ALTINDA, z-index 0). Cascade NET kalır;
-           *  yalnız sahne/plate bg atmospheric blur. */}
+          {/* Phase 113 — Plate-local layered effects model.
+           *
+           * Sözleşme #11 + senin layer modeli:
+           *   Layer 1: plate base   (k-studio__stage-plate bg)
+           *   Layer 2: effect layer (blur surface + glass overlay)
+           *   Layer 3: item layer   (cascade composition)
+           *
+           * Effect layer (Layer 2) item layer'ın (Layer 3) ALTINDA
+           * — DOM'da cascade'DEN ÖNCE render edilir + z-index ile
+           * altta kalır. Böylece glass/blur **yalnız plate bg'yi /
+           * sahneyi** etkiler, mockup item'ları ETKİLEMEZ (operator
+           * eğilimi + Preview = Export Truth §11.0: itemler keskin,
+           * sahne atmospheric). Eski yapı glass overlay'i cascade'in
+           * ÜSTÜNDE (z-index 3) + backdrop-filter ile koyuyordu →
+           * arkasındaki item'ları da bulanıklaştırıyordu (yanlış).
+           *
+           * Layer 2a — Lens Blur surface (target "plate"): plate
+           * bg'nin ayrı blur'lu kopyası. Cascade NET. */}
           {plateSurfaceStyle ? (
             <div
               className="k-studio__plate-surface"
               data-testid="studio-stage-plate-surface"
               aria-hidden
               style={plateSurfaceStyle}
+            />
+          ) : null}
+          {/* Layer 2b — Glass effect layer (Frame Glass swatch).
+           *
+           * Phase 113 fix: glass overlay artık cascade'in ALTINDA
+           * (z-index 1, DOM'da cascade'den önce). `backdrop-filter`
+           * KALDIRILDI — backdrop-filter arkasındaki TÜM içeriği
+           * (plate bg + cascade items) bulanıklaştırıyordu; item'lar
+           * etkileniyordu. Yeni model: glass = plate üstüne
+           * yarı-saydam variant-tinted surface treatment (cam-üstü
+           * hissi tint ile, item'a değil plate'e). Inset border
+           * halo (eski `inset 0 1px 0 ...` + `border`) KALDIRILDI —
+           * plate kenarında istenmeyen inner-border / halo
+           * üretiyordu (Shots.so'da plate düz). Mode-AGNOSTIC
+           * (sözleşme #2 stage continuity). */}
+          {plateEffects.glassOverlay ? (
+            <div
+              className="k-studio__plate-glass"
+              data-testid="studio-stage-plate-glass"
+              data-glass-variant={
+                sceneOverride?.glassVariant ?? "light"
+              }
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: plateEffects.glassOverlay.background,
+                borderRadius: "inherit",
+                pointerEvents: "none",
+                zIndex: 1,
+              }}
             />
           ) : null}
           {mode === "mockup" ? (
@@ -1058,47 +1117,11 @@ export function MockupStudioStage({
               layoutCount={layoutCount ?? 3}
             />
           )}
-          {/* Phase 98 — Glass overlay (Frame Glass swatch).
-           *
-           * Sözleşme #11: Frame Glass swatch'ları plate bg'sini
-           * değiştirir. Phase 98 düzeltmesi: glass overlay plate'in
-           * IÇ üst katmanı, `backdrop-filter: blur()` ile altta
-           * yatan plate bg + cascade'i frosted-glass-effect olarak
-           * gösterir; ayrıca variant tone + subtle border ile cam-üstü
-           * hissi.
-           *
-           * Mode-AGNOSTIC: glass override Frame mode'da seçilir
-           * ama overlay Mockup mode'a da continuity ile taşınır
-           * (sözleşme #2 stage continuity). Plate'in cascade
-           * pozisyonunu/ölçeğini bozmaz — yalnız üstüne overlay
-           * katmanı koyar.
-           *
-           * pointer-events: none — operator slot click davranışı
-           * bozulmaz; selection chrome cascade'in altında yaşadığı
-           * için glass overlay yine de görünebilir. */}
-          {plateEffects.glassOverlay ? (
-            <div
-              className="k-studio__plate-glass"
-              data-testid="studio-stage-plate-glass"
-              data-glass-variant={
-                sceneOverride?.glassVariant ?? "light"
-              }
-              aria-hidden
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: plateEffects.glassOverlay.background,
-                backdropFilter: "blur(10px) saturate(1.05)",
-                WebkitBackdropFilter: "blur(10px) saturate(1.05)",
-                borderRadius: "inherit",
-                border: `1px solid ${plateEffects.glassOverlay.borderTone}`,
-                pointerEvents: "none",
-                zIndex: 3,
-                boxShadow:
-                  "inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.12)",
-              }}
-            />
-          ) : null}
+          {/* Phase 113 — Glass overlay Layer 2b'ye taşındı (cascade'in
+           * ÖNCESİNE, z-index 1). Eski yapı burada (cascade SONRASI,
+           * z-index 3 + backdrop-filter) item'ları bulanıklaştırıyordu;
+           * yeni layered effects modelinde effect layer item layer'ın
+           * ALTINDA. Bkz. yukarıdaki Layer 2b bloğu. */}
         </div>
       ) : null}
 

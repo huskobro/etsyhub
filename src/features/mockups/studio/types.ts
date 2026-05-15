@@ -24,6 +24,19 @@ export interface StudioSlotMeta {
   name: string;
   assigned: boolean;
   design: {
+    /** Phase 113 — Stable selection-item id for this slot. Canonical
+     *  slot→item identity (Preview = Export Truth, Sözleşme §11.0:
+     *  slot assignment de Preview=Export kapsamındadır).
+     *
+     *  realSlots position-sorted items'ı slot index'e map eder
+     *  (slot 0 → sorted[0], slot 1 → sorted[1], …). Preview her
+     *  slot'un kendi design'ını çizer; export payload bu DOĞAL
+     *  slot→item dizilimini bu field üzerinden taşır. Phase 80
+     *  operator override (slotAssignments) bunu ezer; override yoksa
+     *  slot.design.itemId canonical (eski "firstAssignedItemId
+     *  fanout fallback" bug'ı — 3 slot da items[0] gönderiyordu —
+     *  kapatıldı). */
+    itemId: string;
     name: string;
     dims: string;
     colors: readonly [string, string];
