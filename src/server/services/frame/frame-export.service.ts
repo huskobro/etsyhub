@@ -231,10 +231,25 @@ export async function exportFrameComposition(
         height: outputH,
         sizeBytes: outputBuffer.length,
         frameAspect: input.frameAspect,
+        /* Phase 109 — lensBlur structured (target/intensity) veya
+         * legacy boolean; JSON-safe plain shape (Prisma
+         * InputJsonValue). normalize: undefined/false → false;
+         * true → {enabled,target:"all",intensity:"medium"};
+         * structured → plain obje. */
         sceneSnapshot: {
           mode: input.scene.mode,
           glassVariant: input.scene.glassVariant ?? null,
-          lensBlur: input.scene.lensBlur ?? false,
+          lensBlur:
+            input.scene.lensBlur === undefined ||
+            input.scene.lensBlur === false
+              ? false
+              : input.scene.lensBlur === true
+                ? { enabled: true, target: "all", intensity: "medium" }
+                : {
+                    enabled: input.scene.lensBlur.enabled,
+                    target: input.scene.lensBlur.target,
+                    intensity: input.scene.lensBlur.intensity,
+                  },
           color: input.scene.color ?? null,
           colorTo: input.scene.colorTo ?? null,
           palette: input.scene.palette ?? null,

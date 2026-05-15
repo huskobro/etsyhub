@@ -19589,8 +19589,25 @@ surface" rolünün tam ürünleştirilmesi.
   sabit kalır.
 - Stage viewport-aware: viewport büyüdükçe plate ve stage de
   proporsiyonel büyür (CSS `max-width` / `max-height` + plate
-  dimensions helper birlikte). Mobil/küçük viewport'a inilirse
-  plate küçülür ama proportions korunur.
+  dimensions helper birlikte). Eşik üstü (≥1100×640) viewport'a
+  inilirse plate küçülür ama proportions korunur (cascadeScale
+  + CSS %85/%82 guard).
+- **Minimum usable viewport (Phase 109 — Shots.so canonical):**
+  Studio shell sidebar 214px + rail 202px + min stage ~600 +
+  padding = **1100×640** minimum kullanılabilir viewport. Bu
+  eşiğin **altında** studio shell render edilmez — bunun yerine
+  sade, Kivasy dark-shell-uyumlu **"Mockup Studio needs a larger
+  screen"** intercept state (orange monitor icon + 1100×640
+  açıklama + "Back to selection" link). Shots.so canlı davranış
+  araştırması doğruladı: Shots.so ~960px altında editor'ü HİÇ
+  göstermez, intercept/splash screen koyar (broken editor
+  göstermez — dürüst). Kivasy aynı: dar viewport'ta bozuk
+  sidebar/stage squeeze YERİNE dürüst intercept.
+- Guard mekanizması: client `window.matchMedia("(max-width:
+  1099px), (max-height: 639px)")` + Shell koşullu render dalı
+  (yeni route/yüzey DEĞİL — `MockupStudioShell` early return).
+  Mount'ta + resize'da sync. Eşik üstüne dönülünce full studio
+  geri gelir (responsive geçiş çift yönlü).
 
 ### 6. Right rail behavior
 
@@ -19622,6 +19639,57 @@ surface" rolünün tam ürünleştirilmesi.
   baseline). Uniform drop-shadow + selection ring tek sinyal.
 - Hover preview / replace flow operator için non-blocking; stage
   composition bozulmaz.
+
+### 7.5 Lens Blur / effect targeting (Phase 109)
+
+- Lens Blur **monolitik boolean DEĞİL** — structured config
+  `{ enabled, target, intensity }` (`SceneOverride.lensBlur`;
+  backward-compat: legacy `boolean true` → `{enabled:true,
+  target:"all", intensity:"medium"}`, `undefined/false` →
+  disabled; `normalizeLensBlur` helper tek normalize noktası).
+- **target** `"plate"` (default) | `"all"`:
+  - `"plate"`: yalnız plate bg/scene bulanık; **cascade items
+    NET**. Operatör eğilimi ("itemler blur'lu olmamalı") +
+    Preview = Export Truth §11.0 (items keskin, sahne
+    atmospheric). Preview: plate bg AYRI absolute surface
+    layer (`k-studio__plate-surface`, z-index 0) + ona CSS
+    `filter:blur`; cascade composition (`k-studio__stage-inner`
+    z-index 1) NET. Export: Sharp pipeline cascade-SİZ canvas
+    blur → plate-area rounded mask → net canvas + slotComposites
+    blur'suz EN ÜSTE (preview z-index 0/1 birebir).
+  - `"all"`: plate + cascade items hepsi blur (legacy Phase
+    98-108 davranış — backward-compat). Preview: plate div'in
+    tümüne filter. Export: Phase 108 baseline (full canvas blur
+    → plate-area mask).
+- **intensity** `"soft" | "medium" | "strong"` → CSS 4/8/14px
+  (preview) / Sharp sigma 3/6/11 (export). Default `medium`.
+- Lens Blur enable iken Frame sidebar'da **target + intensity
+  seçim UI** (Plate only / Plate + items + Soft/Medium/Strong
+  segment'leri). Shots.so'da ayrı Lens Blur tile YOK (blur
+  STYLE/Glass içinden) — Kivasy Lens Blur **Kivasy-özgü**;
+  parity zorlaması yok, tasarım kararı bize ait.
+- Banner stale: enabled + target + intensity hepsi export'a
+  yansır (Preview = Export Truth) → herhangi biri değişirse
+  "Preview changed — re-export?" (sözleşme #12 no silent magic).
+
+### 7.6 Shared device capability model (Phase 109)
+
+- Effect/SVG-varyasyon **tek tek mockup if-else patlaması ile
+  DEĞİL** — tek `STUDIO_DEVICE_CAPABILITIES` map (deviceShape →
+  `{ supportsLensBlurTargeting, supportsColorVariant,
+  supportsChromeTone }`). `studioDeviceCapability(shape)` tek
+  erişim noktası.
+- Phase 109'da yalnız `supportsLensBlurTargeting: true` (tüm
+  shape — Lens Blur target/intensity evrensel). `supports
+  ColorVariant` / `supportsChromeTone` tip+map'te var ama hepsi
+  **false** (feature açılmadı — future SVG readiness §13 / §7).
+- **Future SVG-specific feature** (phone color, button color,
+  browser frame style, chrome/material tone): ilgili shape'in
+  capability entry'sine **FIELD eklenerek** gelir — kod
+  patlamaz, effect sistemi baştan buna göre tasarlandı. Feature
+  şimdi açılmaz; effect/action sistemi tasarlanırken hesaba
+  katılır (kullanıcı kısıtı: "ortak capability/parameter
+  modeliyle ilerlesin, tek tek hack değil").
 
 ### 8. Layout count behavior
 
@@ -19695,7 +19763,7 @@ Canonical truth = **exported PNG**. Studio preview, exported PNG'nin
 authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
 preview'ın render sözleşmesini birebir izler.
 
-### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge, Phase 105-106 productType shape, Phase 107 phone bezel + Etsy continuity, Phase 108 plate-only Lens Blur + hoodie hood)
+### 11. Mockup vs Frame handoff (Phase 99 fulfilled, Phase 101 plate chrome, Phase 102 item chrome, Phase 103 tilt/rotation, Phase 104 white-edge, Phase 105-106 productType shape, Phase 107 phone bezel + Etsy continuity, Phase 108 plate-only Lens Blur + hoodie hood, Phase 109 responsive viewport + Lens Blur targeting + shared capability)
 
 - **Phase 102 item chrome parity fulfilled — exported PNG'deki her
   mockup item'ı Studio preview item chrome'una yaklaştı.**
@@ -22413,6 +22481,200 @@ POST e2e (credential geldiğinde). Yeni SVG varyasyonları +
 layout builder kullanıcı kararıyla **ertelenmiş** (§13.A) —
 Frame mode export + productType shape parity tam olduğu için
 ayrı bir genişleme turu olarak ele alınır.
+
+---
+
+## Phase 109 — Responsive viewport + Lens Blur targeting + shared capability (stabilization turu)
+
+Phase 101-108 plate/item/tilt/white-edge/productType-shape
+parity'yi kapadı. Phase 109 **feature turu DEĞİL —
+stabilization/maintainability turu**: Mockup Studio çekirdeğini
+responsive behavior + effects architecture + maintainability
+açısından sağlamlaştır. Kullanıcı kısıtı: yeni SVG library yok,
+layout builder yok, mockup editörü yok, Etsy gerçek POST
+odaklanma yok, hoodie polish'e fazla enerji yok.
+
+### Dürüst audit — en büyük kalan açık
+
+Mevcut kod + Contract + gerçek browser:
+- **Responsive viewport behavior YOK**: studio.css'te `@media`
+  query yok, `matchMedia`/`resize` JS yok, **minimum viewport
+  eşiği YOK**, **larger-screen state YOK**. Sidebar 214px + rail
+  202px **fixed px**. Viewport <~600px → sidebar+rail sabit,
+  stage squeeze → **broken studio** (operatör için bozuk yüzey).
+- **Lens Blur targeting modeli ilkel**: `resolvePlateEffects`
+  → `filterBlurPx = override.lensBlur ? 8 : 0` — monolitik (tek
+  boolean, sabit 8px, target seçimi YOK, intensity YOK, plate'in
+  TÜM child'ları + cascade items dahil blur). Future SVG-effect
+  için shared capability model YOK (her effect ayrı if-else).
+
+İki açık birden Contract §5'i (viewport) + §7'yi (effect
+targeting) eksik bırakıyordu.
+
+### Davranışsal ölçüm (Shots.so + MockupViews gerçek browser)
+
+Shots.so canlı (Chrome, pencere 1316→900→600px):
+- **1316px**: full editor (sol panel + center stage + sağ rail).
+- **900px ve 600px**: editor **TAMAMEN GİZLİ** → intercept/
+  promo splash ("Create Amazing Mockups"). Shots.so dar
+  viewport'ta **broken editor göstermez — dürüst intercept
+  screen** koyar. Eşik ~960px civarı.
+- Shots STYLE satırı Glass Light/Dark var ama **ayrı "Lens
+  Blur" tile YOK** — blur STYLE/Glass içinden. → Kivasy Lens
+  Blur **Kivasy-özgü**; parity zorlaması yok.
+- MockupViews: login wall/error — ölçülemedi (dürüst not;
+  Shots.so kanıtı yeterli canonical referans).
+
+### Net ürün kararları
+
+1. **Responsive**: mevcut CSS `max-width:85%/max-height:82%` +
+   `plateDimensionsFor` + `cascadeScale` viewport-aware
+   ölçeklemeyi sağlıyor (≥1100px için yeterli) — korunur.
+2. **Minimum viewport eşiği = 1100×640** (sidebar 214 + rail
+   202 + min stage ~600 + padding). Altında studio shell
+   render edilmez → sade "Mockup Studio needs a larger screen"
+   intercept state (Shots.so canonical). Client `matchMedia`
+   + Shell early return (yeni route/yüzey DEĞİL).
+3. **Lens Blur**: structured `{ enabled, target, intensity }`
+   (backward-compat boolean). `target` plate (default — items
+   NET) / all (legacy); `intensity` soft/medium/strong →
+   4/8/14px. Frame sidebar'da target+intensity seçim UI.
+4. **Shared capability model**: tek `STUDIO_DEVICE_CAPABILITIES`
+   map (deviceShape → supports*). Future SVG-specific feature
+   FIELD eklenerek gelir — if-else patlaması yok.
+
+### Implementation
+
+| Dosya | Değişiklik |
+|---|---|
+| `frame-scene.ts` | `LensBlurConfig/Target/Intensity` type + `LENS_BLUR_PX` + `LENS_BLUR_DEFAULT` + `normalizeLensBlur` (backward-compat) + `resolvePlateEffects` structured (`filterBlurPx`+`blurTarget`) + `STUDIO_DEVICE_CAPABILITIES` map + `studioDeviceCapability` |
+| `MockupStudioStage.tsx` | target-aware blur: "all" → plate div filter (legacy); "plate" → ayrı `k-studio__plate-surface` absolute layer (z-index 0) + blur, cascade (`k-studio__stage-inner` z-index 1) NET |
+| `MockupStudioSidebar.tsx` | Lens Blur tile structured toggle (LENS_BLUR_DEFAULT) + target (Plate only/Plate+items) + intensity (Soft/Med/Strong) seçim UI |
+| `MockupStudioShell.tsx` | `viewportTooSmall` matchMedia state + early return larger-screen intercept state; lensBlur snapshot tipi structured; file-level eslint-disable (Studio dark shell pattern) |
+| `FrameExportResultBanner.tsx` | snapshot tipi structured; stale = enabled+target+intensity normalizeLensBlur ile |
+| `route.ts` | `LensBlurConfigSchema` + `lensBlur: z.union([boolean, config])` |
+| `frame-export.service.ts` | sceneSnapshot lensBlur JSON-safe structured serialize |
+| `frame-compositor.ts` | `FrameLensBlurConfig` type + `FRAME_LENS_BLUR_SIGMA` (3/6/11) + `normalizeFrameLensBlur` + Phase 108 blur bloğu target-aware: "all" → Phase 108 davranış; "plate" → cascade-SİZ canvas blur + plate-mask + slotComposites blur'suz EN ÜSTE |
+
+### Browser proof (fresh restart, viewport ölçümlü)
+
+`.next` clear + fresh `preview_start` (hot reload'a güvenilmedi).
+Test set `cmov0ia37` (4-item clipart, real MinIO PAS5/Pinterest).
+
+**Lens Blur targeting**:
+- Frame mode + Lens Blur on (1440×900): `lensControlsPresent:
+  true`, `targetPlateActive: "true"` (default), `intensityMed
+  Active: "true"`, `plateBlurTarget: "plate"`, `plateDivFilter:
+  "none"` (cascade net), `plateSurfaceLayerPresent: true`.
+  Screenshot: plate bg bulanık, **3 PAS5 cascade item TAMAMEN
+  KESKİN** + sol panel BLUR TARGET / INTENSITY UI.
+- target "all" → `plateDivFilter: "blur(8px)"`, surface yok
+  (legacy davranış). target "all" + strong → `blur(14px)`.
+  back plate + soft → `surfaceFilter: "blur(4px)"`. intensity
+  4/8/14 + target plate/all hepsi doğru.
+- **Export pixel kanıtı** (`q1ml4dti` target=plate + strong,
+  1920×1080): cornerTL 0 (padding sharp), **plateBgTopMid
+  0.023 (bulanık)**, **cascadeCenter 2.731 + leftItem 2.721
+  (KESKİN — items blur ALMAMIŞ)**. ~119x fark. Preview =
+  Export Truth §11.0 sağlandı; Phase 108 clipart baseline
+  (cascadeCenter 2.731) ile aynı keskinlik.
+
+**Responsive / larger-screen**:
+- 1000px reload: `tooSmall: "true"`, `largerScreenPresent:
+  true`, "Mockup Studio needs a larger screen". Screenshot:
+  orange monitor icon + 1100×640 açıklama + "Back to selection"
+  — bozuk sidebar/stage YOK (Shots.so canonical parity).
+- 1440px reload: `tooSmall: null`, sidebar+stage var, full
+  studio (responsive geçiş çift yönlü doğru).
+
+**Continuity** (Phase 109 backend bozmadı): Product MockupsTab
+`/products/cmor0wkjt...` → 10 frame-export tile, `tileHost
+AspectRatio: "4 / 3"`, `tileHostBg: rgb(22,19,15)`, `tileImg
+ObjectFit: "contain"`, naturalWH 1920×1080 — Phase 101 baseline
+intakt. Etsy submit pipeline (`image-upload.service.ts`)
+dokunulmadı (kind-agnostic outputKey; Phase 108 baseline).
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 109)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `sceneSnapshot` Prisma JSON column
+  (esnek — structured config serialize, migration yok).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Structured Lens Blur =
+  `SceneOverride.lensBlur` field genişletmesi (boolean →
+  union) + `normalizeLensBlur` helper. Capability model = tek
+  static map + tek accessor. Larger-screen = Shell koşullu dal
+  (yeni route/component/yüzey YOK).
+- **Yeni SVG library YOK, layout builder YOK, mockup editörü
+  YOK, Etsy gerçek POST YOK** (kullanıcı kısıtı; §13.A future
+  direction'da ertelenmiş kalır).
+- **Backward-compat tam**: legacy `lensBlur: boolean true` →
+  `{enabled,target:"all",intensity:"medium"}` (Phase 98-108
+  export davranışı korunur); `undefined/false` → disabled.
+- **Studio shell, canonical studio kararı, slot assignment,
+  Phase 80 picker, Phase 79 real hydrate, Phase 101 plate
+  chrome + tile aspect, Phase 103 compose order, Phase 104
+  sticker, Phase 105 frame, Phase 106 bookmark/garment, Phase
+  107 phone bezel, Phase 108 plate-only blur baseline** hepsi
+  intakt.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Bug ledger update
+
+Kapatılan açıklar (Phase 109):
+- **Responsive viewport behavior yoktu** — dar viewport'ta
+  broken studio (sidebar/rail fixed, stage squeeze). Phase 109
+  matchMedia guard + 1100×640 eşiği + larger-screen intercept
+  state (Shots.so canonical parity).
+- **Lens Blur monolitik (boolean, 8px sabit, items dahil)** —
+  Phase 109 structured `{enabled,target,intensity}` + target
+  "plate" (items NET, default) / "all" (legacy) + intensity
+  soft/medium/strong + Frame sidebar seçim UI. Preview =
+  Export Truth (Sharp pipeline target-aware).
+- **Future SVG-effect için shared capability yoktu** — Phase
+  109 `STUDIO_DEVICE_CAPABILITIES` tek map (if-else patlaması
+  yerine).
+
+Hâlâ açık (Phase 110+ candidate):
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir) — libvips feDropShadow 2-katmanlı; preview 4-katmanlı.
+- **Future SVG-specific color/chrome variant** — capability
+  map'te `supportsColorVariant`/`supportsChromeTone` field
+  hazır (false); feature kullanıcı kararıyla ertelenmiş (§13
+  / §7.6). Effect sistemi tasarımı hesaba kattı; açma ayrı tur.
+- **Gerçek Etsy V3 API POST e2e** — credential gerektirir
+  (production; dev'de yok). Continuity DB+kod kanıtlı (Phase
+  107-109).
+- **Yeni SVG varyasyonları + layout builder + mockup editörü**
+  — kullanıcı kararıyla **future direction'da ertelenmiş**
+  (§13.A; bu turun scope'unda DEĞİL).
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 109 ile Mockup Studio çekirdeği responsive + effects
+architecture + maintainability açısından sağlamlaştı:
+- Dar viewport'ta dürüst larger-screen intercept (broken
+  studio yok)
+- Lens Blur structured target/intensity (items NET default,
+  Preview = Export Truth)
+- Shared capability model (future SVG readiness — if-else yok)
+- Continuity (Product MockupsTab + Etsy) bozulmadı
+
+Sıradaki adım **Phase 110 candidate**: drop shadow softness
+fine-tune (preview 4-katman libvips 2-katman) veya — kullanıcı
+kararı geldiğinde — capability map field'larıyla future SVG
+color/chrome variant (effect sistemi hazır). Yeni SVG library
++ layout builder + mockup editörü §13.A'da ertelenmiş kalır.
 
 ---
 

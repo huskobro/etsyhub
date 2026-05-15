@@ -32,6 +32,11 @@ import {
 } from "./frame-aspects";
 import {
   GRADIENT_PRESETS,
+  LENS_BLUR_DEFAULT,
+  type LensBlurConfig,
+  type LensBlurIntensity,
+  type LensBlurTarget,
+  normalizeLensBlur,
   SCENE_AUTO,
   SOLID_PRESETS,
   type SceneOverride,
@@ -1183,7 +1188,9 @@ function FrameBody({
           {efx.map(({ k, l, n }) => {
             const isLens = k === "lens";
             const isWired = isLens;
-            const lensActive = isLens && (activeScene.lensBlur ?? false);
+            // Phase 109 — structured Lens Blur (backward-compat).
+            const lensCfg = normalizeLensBlur(activeScene.lensBlur);
+            const lensActive = isLens && lensCfg.enabled;
             const on = isLens ? lensActive : effect === k;
             return (
               <button
@@ -1194,9 +1201,15 @@ function FrameBody({
                 onClick={() => {
                   if (isLens) {
                     if (onChangeSceneOverride) {
+                      // Phase 109 — toggle: kapat → enabled:false;
+                      // aç → LENS_BLUR_DEFAULT (target "plate",
+                      // intensity medium — items NET default).
+                      const next: LensBlurConfig = lensCfg.enabled
+                        ? { ...lensCfg, enabled: false }
+                        : { ...LENS_BLUR_DEFAULT };
                       onChangeSceneOverride({
                         ...activeScene,
-                        lensBlur: !lensActive,
+                        lensBlur: next,
                       });
                     }
                     return;
@@ -1226,6 +1239,127 @@ function FrameBody({
             );
           })}
         </div>
+        {/* Phase 109 — Lens Blur target + intensity (yalnız lens
+         *  aktif). Shared model: target "plate" (cascade items NET,
+         *  default — operatör eğilimi + Preview = Export Truth) /
+         *  "all" (items dahil, legacy). intensity soft/med/strong
+         *  → 4/8/14px. Tek tek mockup hack'i yok; structured
+         *  SceneOverride.lensBlur config. */}
+        {normalizeLensBlur(activeScene.lensBlur).enabled &&
+        onChangeSceneOverride ? (
+          <div
+            data-testid="studio-lens-blur-controls"
+            style={{ marginTop: 8, display: "grid", gap: 6 }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 9.5,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: "var(--ks-t3)",
+                  marginBottom: 4,
+                }}
+              >
+                Blur target
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {(
+                  [
+                    ["plate", "Plate only"],
+                    ["all", "Plate + items"],
+                  ] as [LensBlurTarget, string][]
+                ).map(([t, lbl]) => {
+                  const cfg = normalizeLensBlur(activeScene.lensBlur);
+                  const active = cfg.target === t;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      className="k-studio__tile"
+                      data-testid={`studio-lens-target-${t}`}
+                      data-active={active ? "true" : "false"}
+                      aria-pressed={active}
+                      onClick={() =>
+                        onChangeSceneOverride({
+                          ...activeScene,
+                          lensBlur: { ...cfg, target: t },
+                        })
+                      }
+                      style={{
+                        flex: 1,
+                        minHeight: 30,
+                        fontSize: 10.5,
+                        color: active
+                          ? "var(--ks-or-bright)"
+                          : "var(--ks-t2)",
+                        borderColor: active
+                          ? "var(--ks-orb)"
+                          : "rgba(255,255,255,0.12)",
+                      }}
+                    >
+                      {lbl}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <div
+                style={{
+                  fontSize: 9.5,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: "var(--ks-t3)",
+                  marginBottom: 4,
+                }}
+              >
+                Intensity
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {(
+                  [
+                    ["soft", "Soft"],
+                    ["medium", "Medium"],
+                    ["strong", "Strong"],
+                  ] as [LensBlurIntensity, string][]
+                ).map(([iv, lbl]) => {
+                  const cfg = normalizeLensBlur(activeScene.lensBlur);
+                  const active = cfg.intensity === iv;
+                  return (
+                    <button
+                      key={iv}
+                      type="button"
+                      className="k-studio__tile"
+                      data-testid={`studio-lens-intensity-${iv}`}
+                      data-active={active ? "true" : "false"}
+                      aria-pressed={active}
+                      onClick={() =>
+                        onChangeSceneOverride({
+                          ...activeScene,
+                          lensBlur: { ...cfg, intensity: iv },
+                        })
+                      }
+                      style={{
+                        flex: 1,
+                        minHeight: 30,
+                        fontSize: 10.5,
+                        color: active
+                          ? "var(--ks-or-bright)"
+                          : "var(--ks-t2)",
+                        borderColor: active
+                          ? "var(--ks-orb)"
+                          : "rgba(255,255,255,0.12)",
+                      }}
+                    >
+                      {lbl}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* SCENE */}

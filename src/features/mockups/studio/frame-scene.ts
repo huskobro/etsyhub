@@ -38,6 +38,67 @@ export type SceneMode = "auto" | "solid" | "gradient" | "glass";
 /** Phase 98 — Glass scene variants. */
 export type GlassVariant = "light" | "dark" | "frosted";
 
+/** Phase 109 — Lens Blur targeting model.
+ *
+ *  Phase 98-108 baseline `lensBlur: boolean` monolitikti (tek
+ *  sabit 8px; plate'in TÜM child'ları — cascade items dahil —
+ *  blur'lanıyordu). Shots.so canlı davranış araştırması: Shots'ta
+ *  ayrı "Lens Blur" tile YOK (blur STYLE/Glass içinden) → Kivasy
+ *  Lens Blur Kivasy-özgü; parity zorlaması yok, tasarım kararı
+ *  bize ait.
+ *
+ *  Phase 109 structured model (geleceğe açık, minimal):
+ *   - target "plate": yalnız plate bg/scene bulanık, cascade
+ *     items NET (default — operatör eğilimi "itemler blur'lu
+ *     olmamalı" + Preview = Export Truth §11.0: items keskin,
+ *     sahne atmospheric).
+ *   - target "all": plate + cascade items (Phase 98-108 eski
+ *     davranış — backward-compat).
+ *   - intensity soft/medium/strong → 4/8/14px CSS blur. */
+export type LensBlurTarget = "plate" | "all";
+export type LensBlurIntensity = "soft" | "medium" | "strong";
+export interface LensBlurConfig {
+  enabled: boolean;
+  target: LensBlurTarget;
+  intensity: LensBlurIntensity;
+}
+
+/** Phase 109 — intensity → CSS blur px. */
+export const LENS_BLUR_PX: Record<LensBlurIntensity, number> = {
+  soft: 4,
+  medium: 8,
+  strong: 14,
+};
+
+/** Phase 109 — Lens Blur default (target=plate, items NET). */
+export const LENS_BLUR_DEFAULT: LensBlurConfig = {
+  enabled: true,
+  target: "plate",
+  intensity: "medium",
+};
+
+/** Phase 109 — Normalize lensBlur field (backward-compat).
+ *  - undefined / false        → disabled
+ *  - true (Phase 98-108)      → enabled, target "all" (eski
+ *    davranış: tüm plate child blur), intensity medium (8px)
+ *  - LensBlurConfig (Phase 109) → as-is
+ *
+ *  Phase 98-108 `lensBlur: true` semantiği "plate'in tüm child'ı
+ *  blur" idi → backward-compat için legacy boolean true →
+ *  target "all" (mevcut export'lar aynı kalır; yeni Phase 109
+ *  default'u explicit structured config ile target "plate"). */
+export function normalizeLensBlur(
+  raw: boolean | LensBlurConfig | undefined,
+): LensBlurConfig {
+  if (raw === undefined || raw === false) {
+    return { enabled: false, target: "plate", intensity: "medium" };
+  }
+  if (raw === true) {
+    return { enabled: true, target: "all", intensity: "medium" };
+  }
+  return raw;
+}
+
 export interface SceneOverride {
   mode: SceneMode;
   /** Solid mode: tek renk (#RRGGBB).
@@ -71,7 +132,7 @@ export interface SceneOverride {
    *  uygulanır. Lens Blur Glass'tan farklı: Glass plate'i
    *  cam-effect ile kaplar; Lens Blur plate bg'sini bulanıklaştırır
    *  (sahnede yumuşak/atmospheric hissi). */
-  lensBlur?: boolean;
+  lensBlur?: boolean | LensBlurConfig;
 }
 
 /** Phase 89 — Auto mode default (Phase 88 baseline parity). */
@@ -215,8 +276,12 @@ export function resolveSceneStyle(
  *     "cam üstü gibi" presentation hissi.
  */
 export interface PlateEffectStyle {
-  /** Plate-içi blur (Lens Blur Frame effect). */
+  /** Plate-içi blur px (Lens Blur Frame effect; 0 = no blur). */
   filterBlurPx: number;
+  /** Phase 109 — blur target. "plate" = yalnız plate bg/scene
+   *  bulanık (cascade items NET); "all" = plate + items (legacy
+   *  Phase 98-108 davranış). filterBlurPx=0 iken anlamsız. */
+  blurTarget: LensBlurTarget;
   /** Glass overlay sözleşmesi (variant + alpha). undefined = no glass. */
   glassOverlay: { background: string; borderTone: string } | undefined;
 }
@@ -224,7 +289,12 @@ export interface PlateEffectStyle {
 export function resolvePlateEffects(
   override: SceneOverride,
 ): PlateEffectStyle {
-  const filterBlurPx = override.lensBlur ? 8 : 0;
+  /* Phase 109 — structured Lens Blur (backward-compat normalize).
+   * legacy boolean true → target "all" (Phase 98-108 parity);
+   * Phase 109 explicit config → target/intensity as-is. */
+  const lb = normalizeLensBlur(override.lensBlur);
+  const filterBlurPx = lb.enabled ? LENS_BLUR_PX[lb.intensity] : 0;
+  const blurTarget = lb.target;
   let glassOverlay: PlateEffectStyle["glassOverlay"];
   if (override.mode === "glass") {
     const variant = override.glassVariant ?? "light";
@@ -246,7 +316,76 @@ export function resolvePlateEffects(
       };
     }
   }
-  return { filterBlurPx, glassOverlay };
+  return { filterBlurPx, blurTarget, glassOverlay };
+}
+
+/** Phase 109 — Shared device capability model.
+ *
+ *  Kullanıcı kısıtı: "her mockup için ayrı if-else büyütme, her
+ *  effect için ayrı parametre patlaması istemiyorum". Bunun yerine
+ *  tek capability map: deviceShape → hangi effect/varyasyon
+ *  desteklenir. Future SVG-specific feature'lar (phone color,
+ *  button color, browser frame style, chrome/material tone) bu
+ *  map'e FIELD eklenerek gelir — kod patlamaz, effect sistemi
+ *  baştan buna göre tasarlanır.
+ *
+ *  Phase 109'da yalnız `supportsLensBlurTargeting` aktif (hepsi
+ *  true — Lens Blur target/intensity her shape'te çalışır).
+ *  `supportsColorVariant` / `supportsChromeTone` future readiness
+ *  için tip+map'te var ama hepsi false (feature açılmadı —
+ *  sözleşme #13 / §7 future direction; effect sistemi tasarımı
+ *  bunları hesaba katar). */
+export type StudioDeviceShapeKey =
+  | "frame"
+  | "sticker"
+  | "bezel"
+  | "bookmark"
+  | "garment"
+  | "garment-hooded";
+
+export interface StudioDeviceCapability {
+  /** Lens Blur target/intensity seçimi destekleniyor mu (Phase
+   *  109 — hepsi true; plate vs all + soft/medium/strong). */
+  supportsLensBlurTargeting: boolean;
+  /** Future (sözleşme §13 / §7): SVG-specific renk varyantı
+   *  (phone color, garment color). Phase 109'da hepsi false —
+   *  feature açılmadı, effect sistemi tasarımı hesaba katar. */
+  supportsColorVariant: boolean;
+  /** Future: chrome/material tone (phone bezel metal/black,
+   *  frame ahşap/siyah). Phase 109'da hepsi false. */
+  supportsChromeTone: boolean;
+}
+
+const DEFAULT_DEVICE_CAPABILITY: StudioDeviceCapability = {
+  supportsLensBlurTargeting: true,
+  supportsColorVariant: false,
+  supportsChromeTone: false,
+};
+
+/** Phase 109 — deviceShape → capability. Şu an tüm shape'ler
+ *  aynı (Lens Blur targeting evrensel; color/chrome future).
+ *  Future SVG-specific feature: ilgili shape'in entry'sine
+ *  field set edilir (örn. bezel.supportsChromeTone=true) —
+ *  if-else patlaması yok, tek map. */
+const STUDIO_DEVICE_CAPABILITIES: Record<
+  StudioDeviceShapeKey,
+  StudioDeviceCapability
+> = {
+  frame: { ...DEFAULT_DEVICE_CAPABILITY },
+  sticker: { ...DEFAULT_DEVICE_CAPABILITY },
+  bezel: { ...DEFAULT_DEVICE_CAPABILITY },
+  bookmark: { ...DEFAULT_DEVICE_CAPABILITY },
+  garment: { ...DEFAULT_DEVICE_CAPABILITY },
+  "garment-hooded": { ...DEFAULT_DEVICE_CAPABILITY },
+};
+
+export function studioDeviceCapability(
+  shape: string | null | undefined,
+): StudioDeviceCapability {
+  if (shape && shape in STUDIO_DEVICE_CAPABILITIES) {
+    return STUDIO_DEVICE_CAPABILITIES[shape as StudioDeviceShapeKey];
+  }
+  return DEFAULT_DEVICE_CAPABILITY;
 }
 
 /** Phase 89 — Right rail preset thumb scene-aware bg resolver.
@@ -296,7 +435,11 @@ export function resolvePresetThumbScene(
       kind: "glass",
       variant: override.glassVariant ?? "light",
       palette: activePalette,
-      lensBlur: override.lensBlur ?? false,
+      // Phase 109 — rail thumb scene-aware: blur var/yok flag
+      // (target/intensity rail thumb için anlamsız; sadece
+      // "atmospheric mı" sinyali). normalizeLensBlur ile
+      // backward-compat (boolean true / structured config).
+      lensBlur: normalizeLensBlur(override.lensBlur).enabled,
     };
   }
   return { kind: "auto", palette: activePalette };

@@ -733,22 +733,49 @@ export function MockupStudioStage({
    * plate'in İÇ üst katmanı (backdrop-filter); Lens Blur plate
    * bg'sine CSS filter blur uygular. */
   const plateEffects = resolvePlateEffects(sceneOverride ?? { mode: "auto" });
+  /* Phase 109 — Lens Blur targeting.
+   *
+   * Phase 98-108 plateStyle.filter plate div'in TÜMÜNE (cascade
+   * items dahil) blur uyguluyordu. Phase 109 structured model:
+   *   - target "all": eski davranış — plate div'e filter (bg +
+   *     cascade items hepsi blur). Backward-compat (legacy
+   *     boolean true → "all"; mevcut export'lar aynı).
+   *   - target "plate": plate bg AYRI absolute surface layer'a
+   *     taşınır + ona filter; cascade composition NET kalır
+   *     (operatör eğilimi "itemler blur'lu olmamalı" + Preview =
+   *     Export Truth §11.0). plate div'in kendisine filter YOK.
+   *
+   * Sözleşme #2 stage continuity: mode-AGNOSTIC (Mockup ↔ Frame
+   * blur target/intensity korunur). */
+  const lensBlurActive = plateEffects.filterBlurPx > 0;
+  const blurPlateOnly =
+    lensBlurActive && plateEffects.blurTarget === "plate";
+  const blurAll = lensBlurActive && plateEffects.blurTarget === "all";
   const plateStyle: React.CSSProperties = {
     width: plateDims.w,
     height: plateDims.h,
-    ...(plateBgRaw ? { background: plateBgRaw } : {}),
-    /* Phase 98 — Lens Blur (Frame Effects "Lens Blur" tile).
-     *
-     * Plate bg + cascade içeriği üzerine CSS filter blur uygular.
-     * Cascade visibility kaybolmasın diye `cascadeScale 1.0` ve
-     * scaled inner stage'te zaten transform vardı; filter blur
-     * tüm plate-child'larını yumuşatır (operator için "out-of-focus
-     * atmospheric scene" hissi). Mockup mode'a continuity ile
-     * taşınır (sözleşme #2 stage continuity). */
-    ...(plateEffects.filterBlurPx > 0
+    /* bg: target "plate" iken ayrı surface layer'a taşınır
+     * (cascade net kalsın); aksi halde plate div'de (eski). */
+    ...(plateBgRaw && !blurPlateOnly ? { background: plateBgRaw } : {}),
+    /* target "all" → tüm plate (bg + cascade) blur (legacy). */
+    ...(blurAll
       ? { filter: `blur(${plateEffects.filterBlurPx}px)` }
       : {}),
   };
+  /* Phase 109 — target "plate": bg + blur ayrı absolute surface
+   * (z-index 0, cascade'in ALTINDA). Cascade z-index 1+ → NET. */
+  const plateSurfaceStyle: React.CSSProperties | undefined =
+    blurPlateOnly && plateBgRaw
+      ? {
+          position: "absolute",
+          inset: 0,
+          background: plateBgRaw,
+          borderRadius: "inherit",
+          filter: `blur(${plateEffects.filterBlurPx}px)`,
+          pointerEvents: "none",
+          zIndex: 0,
+        }
+      : undefined;
 
   return (
     <div
@@ -827,11 +854,23 @@ export function MockupStudioStage({
               ? (sceneOverride.glassVariant ?? "light")
               : ""
           }
-          data-lens-blur={
-            (sceneOverride?.lensBlur ?? false) ? "true" : "false"
+          data-lens-blur={lensBlurActive ? "true" : "false"}
+          data-blur-target={
+            lensBlurActive ? plateEffects.blurTarget : ""
           }
           style={plateStyle}
         >
+          {/* Phase 109 — target "plate": blur'lu bg surface layer
+           *  (cascade'in ALTINDA, z-index 0). Cascade NET kalır;
+           *  yalnız sahne/plate bg atmospheric blur. */}
+          {plateSurfaceStyle ? (
+            <div
+              className="k-studio__plate-surface"
+              data-testid="studio-stage-plate-surface"
+              aria-hidden
+              style={plateSurfaceStyle}
+            />
+          ) : null}
           {mode === "mockup" ? (
             <MockupComposition
               slots={slots}

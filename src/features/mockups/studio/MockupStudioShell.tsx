@@ -1,4 +1,9 @@
 "use client";
+/* eslint-disable no-restricted-syntax */
+// File-level eslint-disable: Studio dark shell inline-style yoğun
+// (MockupStudioSidebar / MockupStudioStage / FrameExportResultBanner
+// aynı Phase 77+ pattern — `--ks-*` dark token CSS değişkenleri
+// inline). Phase 109 larger-screen guard state'i de aynı konvansiyon.
 
 /* Phase 77 — Studio shell composer.
  * Phase 79 — Real selection set + template hydrate + render dispatch.
@@ -40,7 +45,11 @@ import {
   FRAME_ASPECT_CONFIG,
   type FrameAspectKey,
 } from "./frame-aspects";
-import { SCENE_AUTO, type SceneOverride } from "./frame-scene";
+import {
+  type LensBlurConfig,
+  SCENE_AUTO,
+  type SceneOverride,
+} from "./frame-scene";
 import {
   stageDeviceForProductType,
   studioDeviceLabel,
@@ -104,7 +113,10 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     sceneSnapshot: {
       mode: string;
       glassVariant?: string;
-      lensBlur?: boolean;
+      /** Phase 109 — structured (target/intensity) veya legacy
+       *  boolean; banner stale karşılaştırması normalizeLensBlur
+       *  ile (Preview = Export Truth §11.0). */
+      lensBlur?: boolean | LensBlurConfig;
       frameAspect: string;
     };
   } | null>(null);
@@ -193,6 +205,26 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
   const [assetSignedUrls, setAssetSignedUrls] = useState<
     Record<string, string | null>
   >({});
+
+  /* Phase 109 — Minimum usable viewport guard (Shots.so canonical
+   * davranış: dar viewport'ta editor'ü HİÇ gösterme → intercept
+   * screen). Shots.so live ölçümü: ~960px altında editor gizli,
+   * promo/splash screen. Kivasy eşiği: sidebar 214 + rail 202 +
+   * min stage ~600 + padding = 1100×640. Bu eşiğin altında studio
+   * shell yerine sade "Larger screen required" state (yeni route/
+   * yüzey DEĞİL — Shell'in koşullu render dalı; client matchMedia).
+   * Sözleşme §5 viewport behavior + §13 future direction. */
+  const [viewportTooSmall, setViewportTooSmall] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(
+      "(max-width: 1099px), (max-height: 639px)",
+    );
+    const sync = () => setViewportTooSmall(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   const keptItems: StudioKeptItem[] = useMemo(() => {
     if (!items.length) return [];
@@ -625,6 +657,87 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     setLoading ||
     !slots.some((s) => s.assigned) ||
     items.length === 0;
+
+  /* Phase 109 — Larger-screen guard (Shots.so canonical: dar
+   * viewport'ta broken editor gösterme; intercept screen).
+   * Eşik altında studio shell render edilmez — sade, Kivasy
+   * dark-shell-uyumlu "use a larger screen" state. Operatör için
+   * dürüst: editor sığmıyor, bozuk değil. Yeni ürün yüzeyi DEĞİL
+   * (Shell koşullu dal). Sözleşme §5 + §13. */
+  if (viewportTooSmall) {
+    return (
+      <div
+        className="k-studio"
+        data-testid="studio-shell"
+        data-mode={mode}
+        data-viewport-too-small="true"
+        style={{
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          padding: 24,
+        }}
+      >
+        <div
+          data-testid="studio-larger-screen-state"
+          style={{
+            maxWidth: 360,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 14,
+          }}
+        >
+          <svg
+            width={48}
+            height={48}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="var(--ks-or)"
+            strokeWidth={1.5}
+            aria-hidden
+          >
+            <rect x={2} y={4} width={20} height={13} rx={2} />
+            <path d="M8 21h8M12 17v4" />
+          </svg>
+          <div
+            style={{
+              color: "var(--ks-t1)",
+              fontSize: 16,
+              fontWeight: 600,
+            }}
+          >
+            Mockup Studio needs a larger screen
+          </div>
+          <div
+            style={{
+              color: "var(--ks-t2)",
+              fontSize: 13,
+              lineHeight: 1.55,
+            }}
+          >
+            The studio canvas, side panel and preset rail need at
+            least a 1100×640 viewport. Open this on a wider window
+            or larger display to compose mockups.
+          </div>
+          <a
+            href={`/selections/${setId}`}
+            data-testid="studio-larger-screen-back"
+            style={{
+              marginTop: 6,
+              color: "var(--ks-or-bright)",
+              fontSize: 12.5,
+              textDecoration: "none",
+              borderBottom: "1px solid var(--ks-orb)",
+              paddingBottom: 1,
+            }}
+          >
+            Back to selection
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -22,12 +22,20 @@ const FrameAspectKeySchema = z.enum(["1:1", "4:5", "9:16", "16:9", "3:4"]);
 const SceneModeSchema = z.enum(["auto", "solid", "gradient", "glass"]);
 const GlassVariantSchema = z.enum(["light", "dark", "frosted"]);
 
+// Phase 109 — Lens Blur: legacy boolean (Phase 98-108) veya
+// structured config (target/intensity). Backward-compat.
+const LensBlurConfigSchema = z.object({
+  enabled: z.boolean(),
+  target: z.enum(["plate", "all"]),
+  intensity: z.enum(["soft", "medium", "strong"]),
+});
+
 const SceneSchema = z.object({
   mode: SceneModeSchema,
   color: z.string().optional(),
   colorTo: z.string().optional(),
   glassVariant: GlassVariantSchema.optional(),
-  lensBlur: z.boolean().optional(),
+  lensBlur: z.union([z.boolean(), LensBlurConfigSchema]).optional(),
   palette: z
     .tuple([z.string(), z.string()])
     .optional()

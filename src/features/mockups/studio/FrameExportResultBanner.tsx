@@ -9,11 +9,17 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import {
+  type LensBlurConfig,
+  normalizeLensBlur,
+} from "./frame-scene";
 
 export interface FrameExportResultSnapshot {
   mode: string;
   glassVariant?: string;
-  lensBlur?: boolean;
+  /** Phase 109 — structured (target/intensity) veya legacy boolean.
+   *  Stale karşılaştırması normalizeLensBlur ile yapılır. */
+  lensBlur?: boolean | LensBlurConfig;
   frameAspect: string;
 }
 
@@ -54,10 +60,20 @@ export function FrameExportResultBanner({
   isExporting,
 }: FrameExportResultBannerProps): ReactNode {
   const sizeKb = (result.sizeBytes / 1024).toFixed(1);
+  /* Phase 109 — Lens Blur stale: enabled + target + intensity
+   *  hepsi export'a yansır (Preview = Export Truth §11.0) →
+   *  herhangi biri değişirse "Preview changed — re-export?". */
+  const curLb = normalizeLensBlur(currentSceneSnapshot.lensBlur);
+  const snapLb = normalizeLensBlur(result.sceneSnapshot.lensBlur);
+  const lensBlurChanged =
+    curLb.enabled !== snapLb.enabled ||
+    (curLb.enabled &&
+      (curLb.target !== snapLb.target ||
+        curLb.intensity !== snapLb.intensity));
   const isStale =
     currentSceneSnapshot.mode !== result.sceneSnapshot.mode ||
     currentSceneSnapshot.glassVariant !== result.sceneSnapshot.glassVariant ||
-    !!currentSceneSnapshot.lensBlur !== !!result.sceneSnapshot.lensBlur ||
+    lensBlurChanged ||
     currentSceneSnapshot.frameAspect !== result.sceneSnapshot.frameAspect;
   const filename = `kivasy-frame-${result.exportId.slice(0, 8)}-${result.width}x${result.height}.png`;
 

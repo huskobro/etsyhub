@@ -116,6 +116,43 @@ export function resolveDeviceShape(
   }
 }
 
+/* Phase 109 — Lens Blur structured config (server-side mirror of
+ * frame-scene.ts LensBlurConfig; compositor UI import etmez —
+ * bağımsız tip, mevcut pattern). target "plate" = yalnız plate
+ * bg/scene bulanık (cascade items NET — Preview = Export Truth
+ * §11.0); "all" = plate + items (legacy Phase 98-108). intensity
+ * soft/medium/strong → 4/8/14px (Sharp .blur sigma karşılığı). */
+export type FrameLensBlurTarget = "plate" | "all";
+export type FrameLensBlurIntensity = "soft" | "medium" | "strong";
+export interface FrameLensBlurConfig {
+  enabled: boolean;
+  target: FrameLensBlurTarget;
+  intensity: FrameLensBlurIntensity;
+}
+
+/** Sharp blur sigma per intensity (CSS px ile uyumlu yumuşaklık;
+ *  preview LENS_BLUR_PX 4/8/14 paritesi). */
+const FRAME_LENS_BLUR_SIGMA: Record<FrameLensBlurIntensity, number> = {
+  soft: 3,
+  medium: 6,
+  strong: 11,
+};
+
+/** Backward-compat normalize: undefined/false → disabled;
+ *  true (Phase 98-108) → enabled target "all" (eski davranış:
+ *  tüm plate child blur); structured → as-is. */
+function normalizeFrameLensBlur(
+  raw: boolean | FrameLensBlurConfig | undefined,
+): FrameLensBlurConfig {
+  if (raw === undefined || raw === false) {
+    return { enabled: false, target: "plate", intensity: "medium" };
+  }
+  if (raw === true) {
+    return { enabled: true, target: "all", intensity: "medium" };
+  }
+  return raw;
+}
+
 export interface FrameSceneInput {
   mode: FrameSceneMode;
   /** auto + solid + gradient + glass için palette[0] (warm) ve palette[1]
@@ -125,7 +162,10 @@ export interface FrameSceneInput {
   color?: string;
   colorTo?: string;
   glassVariant?: FrameGlassVariant;
-  lensBlur?: boolean;
+  /** Phase 109 — legacy boolean (Phase 98-108) veya structured
+   *  config (target/intensity). normalizeFrameLensBlur ile
+   *  backward-compat. */
+  lensBlur?: boolean | FrameLensBlurConfig;
   /** auto mode fallback (activePalette[0], activePalette[1]). */
   palette?: readonly [string, string];
 }
@@ -1035,45 +1075,75 @@ export async function composeFrameOutput(
     .png()
     .toBuffer();
 
-  /* 5) Lens Blur — Phase 108 PLATE-ONLY parity (Preview = Export Truth).
+  /* 5) Lens Blur — Phase 109 STRUCTURED targeting (Preview = Export
+   *    Truth §11.0).
    *
-   * Preview'da Lens Blur `plateStyle.filter = blur(px)` plate element'ine
-   * uygulanıyor (MockupStudioStage.tsx:748) → yalnız plate + içindeki
-   * cascade bulanık; stage dark padding alanı NET kalıyor. Phase 101-107
-   * baseline tüm canvas'ı blur'luyordu (stage padding + plate chrome +
-   * cascade hepsi bulanık) → operator için belirgin divergence (preview
-   * net padding + bulanık plate, export tamamen bulanık).
+   * Preview (MockupStudioStage.tsx Phase 109):
+   *   - target "all": plateStyle.filter plate div'in TÜMÜNE (bg +
+   *     cascade) blur. Legacy Phase 98-108 davranış.
+   *   - target "plate": plate bg AYRI surface layer'a (z-index 0)
+   *     + ona blur; cascade composition (z-index 1) NET. Operatör
+   *     eğilimi "itemler blur'lu olmamalı" + Preview = Export
+   *     Truth: items keskin, sahne atmospheric.
    *
-   * Phase 108 fix (preview parity):
-   *   (a) Full canvas blur (blur(6) ≈ preview ~8px CSS)
-   *   (b) Blur'lu canvas'tan plate-area rounded-rect crop (plate region
-   *       — border dahil; preview `plateStyle.filter` plate div'ine
-   *       uygulanıyor, plate border de blur içinde)
-   *   (c) Net (blur'suz) canvas'a plate-area blur'lu region'ı rounded
-   *       mask ile composite → stage padding NET, plate region BULANIK
-   *       (preview ile birebir). */
-  if (scene.lensBlur) {
-    const sharpCanvas = await sharp(canvasBuffer)
-      .blur(6)
-      .png()
-      .toBuffer();
-    // Plate-area rounded mask: blur'lu region yalnız plate rounded
-    // rect içinde (stage padding net kalır — preview parity).
+   * Export parity (intensity → Sharp sigma, plate-area rounded
+   * mask ile stage padding NET — Phase 108 baseline):
+   *   - "all": Phase 108 davranış — stageBg+plate+cascade compose
+   *     edilmiş canvas blur → plate-area mask → net canvas üstüne.
+   *     (cascade dahil blur)
+   *   - "plate": cascade-SİZ canvas (stageBg + plateLayer) blur →
+   *     plate-area mask → net canvas'a; SONRA slotComposites
+   *     blur'suz EN ÜSTE tekrar compose (cascade NET — preview
+   *     plateSurface z-index 0 + cascade z-index 1 birebir). */
+  const lb = normalizeFrameLensBlur(scene.lensBlur);
+  if (lb.enabled) {
+    const sigma = FRAME_LENS_BLUR_SIGMA[lb.intensity];
     const plateMaskSvg = `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
       <rect x="${plateLayout.plateX}" y="${plateLayout.plateY}"
         width="${plateLayout.plateW}" height="${plateLayout.plateH}"
         rx="${plateLayout.plateRadius}" ry="${plateLayout.plateRadius}"
         fill="white"/>
     </svg>`;
-    const blurredPlateRegion = await sharp(sharpCanvas)
-      .composite([{ input: Buffer.from(plateMaskSvg), blend: "dest-in" }])
-      .png()
-      .toBuffer();
-    // Net canvas (blur öncesi) + plate-area blur'lu region üstte.
-    canvasBuffer = await sharp(canvasBuffer)
-      .composite([{ input: blurredPlateRegion, top: 0, left: 0 }])
-      .png()
-      .toBuffer();
+    if (lb.target === "all") {
+      // Legacy Phase 108 — cascade dahil tüm plate region blur.
+      const sharpCanvas = await sharp(canvasBuffer)
+        .blur(sigma)
+        .png()
+        .toBuffer();
+      const blurredPlateRegion = await sharp(sharpCanvas)
+        .composite([{ input: Buffer.from(plateMaskSvg), blend: "dest-in" }])
+        .png()
+        .toBuffer();
+      canvasBuffer = await sharp(canvasBuffer)
+        .composite([{ input: blurredPlateRegion, top: 0, left: 0 }])
+        .png()
+        .toBuffer();
+    } else {
+      // Phase 109 — target "plate": cascade-SİZ canvas blur, sonra
+      // cascade net üstte (preview plateSurface z-index 0 +
+      // cascade z-index 1 birebir; items NET).
+      const cascadelessCanvas = await sharp(Buffer.from(stageBgSvg))
+        .composite([{ input: Buffer.from(plateLayerSvg), top: 0, left: 0 }])
+        .png()
+        .toBuffer();
+      const blurredCascadeless = await sharp(cascadelessCanvas)
+        .blur(sigma)
+        .png()
+        .toBuffer();
+      const blurredPlateRegion = await sharp(blurredCascadeless)
+        .composite([{ input: Buffer.from(plateMaskSvg), blend: "dest-in" }])
+        .png()
+        .toBuffer();
+      // Net cascadeless (stage padding) + plate-area blur'lu bg +
+      // slotComposites blur'suz EN ÜSTE (cascade keskin).
+      canvasBuffer = await sharp(cascadelessCanvas)
+        .composite([
+          { input: blurredPlateRegion, top: 0, left: 0 },
+          ...slotComposites,
+        ])
+        .png()
+        .toBuffer();
+    }
   }
 
   /* 6) Glass overlay (after blur, so glass overlay itself stays sharp).
