@@ -40,6 +40,7 @@ import { MockupStudioPresetRail } from "./MockupStudioPresetRail";
 import { MockupStudioSidebar } from "./MockupStudioSidebar";
 import { MockupStudioStage } from "./MockupStudioStage";
 import { cascadeLayoutFor } from "./cascade-layout";
+import type { MediaPosition } from "./media-position";
 import { FrameExportResultBanner } from "./FrameExportResultBanner";
 import { MockupStudioToolbar } from "./MockupStudioToolbar";
 import {
@@ -167,6 +168,17 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
    * + chromeless baseline'ı bozulmaz). 100 = no-op (Phase 122
    * davranışı BİREBİR). */
   const [previewZoom, setPreviewZoom] = useState(100);
+
+  /* Phase 126 — Global canonical media-position (Shots.so pad).
+   *  Kategori 1 shared visual param (zoom'un AKSİNE: zoom kat 2
+   *  preview-only). {0,0} = no-op (Phase 125 byte-identical).
+   *  Preview + rail thumb + export hepsi bunu kullanır (tek
+   *  resolveMediaOffsetPx). İleride per-slot override eklenir
+   *  (slot.override ?? global) — bu turda global. */
+  const [mediaPosition, setMediaPosition] = useState<MediaPosition>({
+    x: 0,
+    y: 0,
+  });
 
   /* Phase 89 — Frame mode scene control override state.
    *
@@ -661,6 +673,10 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
         body: JSON.stringify({
           setId,
           frameAspect,
+          // Phase 126 — canonical global media-position (export parity).
+          // previewZoom DELİBERATELY excluded (category-2 preview-only
+          // helper — never reaches Sharp export; spec §11.0).
+          mediaPosition,
           scene: sceneBody,
           slots: slotsPayload,
           stageInnerW: 572,
@@ -883,6 +899,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           previewZoom={previewZoom / 100}
           previewZoomPct={previewZoom}
           onChangePreviewZoom={setPreviewZoom}
+          mediaPosition={mediaPosition}
         />
         {/* Phase 110 — Rail-collapse ara aşaması (Shots.so canonical):
          *  880–1280px'te sağ rail gizli, stage o alanı kazanır.
@@ -903,6 +920,8 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
             frameAspect={frameAspect}
             previewZoom={previewZoom}
             onChangePreviewZoom={setPreviewZoom}
+            mediaPosition={mediaPosition}
+            onChangeMediaPosition={setMediaPosition}
           />
         ) : null}
       </div>
