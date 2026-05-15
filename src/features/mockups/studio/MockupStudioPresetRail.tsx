@@ -12,7 +12,7 @@
  *     export CTA görünür
  */
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { StudioIcon } from "./icons";
 import type { SceneOverride } from "./frame-scene";
 /* Phase 96 — Unified Mockup+Frame rail: tek PresetThumbMockup
@@ -23,7 +23,7 @@ import type { SceneOverride } from "./frame-scene";
  * kullanım için kalır). */
 import { type StudioStageDeviceKind } from "./svg-art";
 import { StageScenePreview } from "./StageScenePreview";
-import type { FrameAspectKey } from "./frame-aspects";
+import { FRAME_ASPECT_CONFIG, type FrameAspectKey } from "./frame-aspects";
 import {
   STUDIO_LAYOUT_VARIANTS,
   STUDIO_LAYOUT_VARIANT_LABELS,
@@ -199,6 +199,72 @@ export function MockupStudioPresetRail({
     else setLocalVariant(v);
   };
   const isPreview = appState === "preview" || appState === "renderDone";
+  /* Phase 120 — Aspect-adaptive rail item CONTAINER + layout
+   * container'ı TAM doldurur (middle panel fit/fill parity).
+   *
+   * Sorun: Phase 117-119 yalnız preview İÇERİĞİNİ aspect-aware
+   * yaptı; rail item kutusu SABİT landscape `height: 92px` kaldı.
+   * 16:9 idare ediyordu ama 9:16 portrait'te plate kart
+   * genişliğinin %74'ünü void bırakıyordu. CSS `aspect-ratio` +
+   * `max-height` + `width:100%` denemesi de çelişti (width:100%
+   * width'i kilitliyor, aspect bozuluyor → hâlâ ~%30 void;
+   * kullanıcı "container içinde layout küçük kalıyor, container
+   * daha da büyüsün layout tamamen doldursun").
+   *
+   * Phase 120 final fix — JS-computed EXACT aspect kart geometry:
+   *
+   *  1. Rail-scroll iç genişliği `ResizeObserver` ile ÖLÇÜLÜR
+   *     (hardcoded değil; responsive-safe). idealW = ölçülen
+   *     genişlik. idealH = idealW / plateAspect (kart aspect =
+   *     plate aspect BİREBİR).
+   *  2. idealH bir üst sınırı (RAIL_CARD_MAX_H, rail-scroll
+   *     bütçesi — 6 portrait kart scroll'u zorlamasın) aşarsa
+   *     YÜKSEKLİK clamp'lenir VE genişlik de aspect'i korumak
+   *     için ORANTISAL küçültülür (cardW = cardH * plateAspect).
+   *     Böylece kart her aspect'te plate'le BİREBİR oranlı;
+   *     portrait'te dar+uzun (rail'de ortalı), landscape'te
+   *     geniş+kısa. Aspect ASLA bozulmaz.
+   *  3. StageScenePreview `PREVIEW_FILL = 1.0` + kart aspect =
+   *     plate aspect → plate kartı EDGE-TO-EDGE doldurur (her
+   *     iki eksende ~%100; "layout container ile AYNI boyut,
+   *     küçük kalmaz").
+   *
+   * Aspect değişince kart geometry + plate fill BİRLİKTE yeniden
+   * hesaplanır (middle panel'in plate'i stage'e sığdığı AYNI
+   * fit/fill ilişkisi). Tek render path KORUNUR (StageScene). */
+  /* Phase 120 — Ölçüm kaynağı = kart WRAPPER `<div>` (content-flow
+   * içinde, scrollbar/gutter SKEW'i YOK). rail-scroll `clientWidth`
+   * `scrollbar-gutter: stable both-edges` ile ilk ölçümde stale
+   * olabiliyordu → 16:9 kart content box'tan 16px taşıyordu
+   * (rightGap -16). Wrapper div tam available genişlik (padding +
+   * gutter + scrollbar SONRASI); cardW = bu genişlik → ASLA taşmaz,
+   * yatay simetri exact. */
+  const wrapMeasureRef = useRef<HTMLDivElement | null>(null);
+  const [railInnerW, setRailInnerW] = useState<number>(167);
+  useLayoutEffect(() => {
+    const el = wrapMeasureRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setRailInnerW(w);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const plateAspect = FRAME_ASPECT_CONFIG[frameAspect].ratio; // w/h
+  /* Rail-scroll bütçesi: çok uzun portrait kart (9:16 →
+   * idealW/0.5625) 6 preset'i scroll'da zorlamasın. Üst sınır
+   * aşılınca height clamp + width orantısal küçülür → aspect
+   * EXACT korunur. */
+  const RAIL_CARD_MAX_H = 260;
+  const idealW = railInnerW;
+  const idealH = idealW / plateAspect;
+  const cardH = Math.min(idealH, RAIL_CARD_MAX_H);
+  const cardW =
+    cardH < idealH ? Math.round(cardH * plateAspect) : Math.round(idealW);
+  const cardHr = Math.round(cardH);
   /* Phase 96 — Unified rail: Mockup ve Frame için tek preset family
    * + tek thumb component. Phase 95 aspect SHARED state ile Mockup ↔
    * Frame plate aynı aspect taşıyor; Phase 96 rail thumb da aynı
@@ -262,6 +328,8 @@ export function MockupStudioPresetRail({
           data-testid="studio-rail-live-thumb"
           data-asset-aware={activePalette ? "true" : "false"}
           data-scene-mode={sceneOverride?.mode ?? "auto"}
+          data-frame-aspect={frameAspect}
+          style={{ width: cardW, height: cardHr }}
         >
           {/* Phase 117 — Rail head live thumb = orta panelin AYNI
               StageScene'i, ACTIVE (selected) layoutVariant ile,
@@ -328,7 +396,10 @@ export function MockupStudioPresetRail({
           />
         </div>
         {presets.map((label, i) => (
-          <div key={`${mode}-${i}`}>
+          <div
+            key={`${mode}-${i}`}
+            ref={i === 0 ? wrapMeasureRef : undefined}
+          >
             <button
               type="button"
               className="k-studio__preset-card"
@@ -338,6 +409,8 @@ export function MockupStudioPresetRail({
               data-variant={STUDIO_LAYOUT_VARIANTS[i]}
               data-asset-aware={activePalette ? "true" : "false"}
               data-scene-mode={sceneOverride?.mode ?? "auto"}
+              data-frame-aspect={frameAspect}
+              style={{ width: cardW, height: cardHr }}
             >
               {/* Phase 117 — Preset thumb = orta panelin AYNI
                   StageScene'i, CANDIDATE layoutVariant

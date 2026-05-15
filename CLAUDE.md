@@ -25284,6 +25284,174 @@ SVG/layout builder/mockup editor §13.A'da ertelenmiş kalır.
 
 ---
 
+## Phase 120 — Containerless aspect-adaptive rail item (sabit kutu kaldırıldı, container = layout exact, yatay simetri)
+
+Phase 119 plate-fit framing'i içeriği büyüttü ama kullanıcı kalan
+gerçek sorunu net gösterdi (2 screenshot, yatay vs dikey):
+**rail item'ı taşıyan kutu hâlâ sabit boyutlu + border'lı +
+asimetrik padding'li**. Yatay aspect'te idare ediyordu (kart
+aspect ≈ plate aspect) ama dikey aspect'te (9:16) belirgin
+bozuluyordu. Stabilization/framing turu — yeni feature/layout
+builder/mockup editor/SVG library YOK; tek render path (Phase
+117 StageScene) korunur.
+
+### Kök neden (browser+DOM ölçümüyle, üç ayrı sorun)
+
+Phase 119 baseline ölçümü:
+
+1. **Sabit landscape kutu (en kritik):** `.k-studio__preset-card`
+   / `.k-studio__live-thumb` `height: 92/102px` SABİT → kart hep
+   ~1.99 landscape. 16:9'da kart aspect ≈ plate aspect → plate %83
+   width doluyor (idare). 9:16 portrait'te portrait plate aynı
+   SABİT landscape kutuya sıkışıp **kart genişliğinin %74'ünü
+   void** bırakıyordu (plate %26 width). Middle panel'de yok çünkü
+   `.k-studio__stage` `flex:1` (kocaman adaptif alan).
+2. **Görünür container border + arka plan:** inactive `1px
+   rgba(255,255,255,0.06)` + active `1.5px rgba(232,93,37,0.7)`
+   box-shadow → kart "çerçeveli kutu" gibi görünüyordu. Kullanıcı
+   "container olduğu belli oluyor etrafındaki çerçeveden".
+3. **Asimetrik yatay padding:** rail-scroll `scrollbar` (2px)
+   yalnız sağdan yer kaplıyor → `clientWidth` skew → portrait
+   kart `margin-inline:auto` ile ortalanırken leftGap≠rightGap
+   (18 vs 20; 16:9'da -16 right overflow).
+
+### Net karar (kullanıcı: "container gereksizse kaldır VEYA layout ile birebir aynı boyut/yapı")
+
+Container gerçekten gereksiz: Phase 117'den beri `StageScene`
+plate'i kendi rounded chrome'uyla render eder; rail card yalnız
+tıklama hedefi. Çözüm A = containerless: kart **plate'in tam
+kendisi kadar** (zero extra container shell), border yok,
+transparent bg (rail dark bg görünür), aspect-adaptive.
+
+### Fix (3 parça, framing/geometry only, tek render path korunur)
+
+**Fix A — Containerless card (`studio.css`):** `.k-studio__preset-
+card` + `.k-studio__live-thumb` `border: none`, `background:
+transparent`, `border-radius`/`box-shadow` framing kaldırıldı,
+`overflow: visible`. Selected state artık FRAMING border DEĞİL:
+yalnız caption `data-active` orange + `font-weight:600` (kutu
+hissi yok). Inactive `opacity:0.78`, hover/active `opacity:1`
+(subtle, çerçevesiz). Kart bg transparent → rail
+`.k-studio__rail` `rgb(28,25,22)` görünür (kullanıcı "arka plan
+sağ panelle aynı"). StageScene plate'in kendi chrome'u tek
+görsel sınır.
+
+**Fix B — Aspect-adaptive card geometry (`MockupStudioPresetRail`):**
+Sabit `height` JS-COMPUTED exact aspect'e çevrildi. Kart
+WRAPPER `<div>` `ResizeObserver` ile ölçülür (rail-scroll
+`clientWidth` DEĞİL — scrollbar-gutter skew'i ilk ölçümde stale
+oluyordu, 16:9 kart 16px taşıyordu; wrapper content-flow içinde,
+skew yok). `cardW = idealW`, `cardH = idealW / plateAspect`
+(`FRAME_ASPECT_CONFIG[frameAspect].ratio`). `cardH` üst sınırı
+(`RAIL_CARD_MAX_H=260`, rail-scroll bütçesi) aşarsa height clamp
++ `cardW = cardH * plateAspect` (aspect EXACT korunur). Kart
+aspect = plate aspect BİREBİR (portrait → dar+uzun ortalı kart,
+landscape → geniş+kısa). Aspect değişince geometry yeniden
+hesaplanır (middle panel'in plate'i stage'e sığdığı AYNI
+fit/fill ilişkisi, küçük ölçek).
+
+**Fix C — Yatay simetri (`studio.css` rail-scroll):**
+`scrollbar-gutter: stable both-edges` → scrollbar (2px) iki
+kenardan SİMETRİK pay alır; `margin-inline:auto` portrait kartı
+tam ortalar (leftGap == rightGap).
+
+**StageScenePreview `PREVIEW_FILL` 0.96 → 1.0:** kart artık
+plate ile TRUE aspect-match → FILL=1.0 + aspect-match → plate
+kartı EDGE-TO-EDGE doldurur (her iki eksende ~%98-99; "layout
+container ile AYNI boyut, küçük kalmaz"). `overflow:hidden`
+sub-pixel taşmayı güvenle kırpar.
+
+### Browser+DOM triangulation (4 aspect, real asset)
+
+Test set `cmov0ia37` (4 real MinIO MJ asset), viewport 1600×1040:
+
+| Aspect | Kart | Border | Bg | Extra W/H vs plate | Simetri |
+|---|---|---|---|---|---|
+| 16:9 | 179×101 (1.772) | **none** | transparent | **0 / 0** | L2 = R2 ✓ |
+| 9:16 | 146×260 (0.562) | **none** | transparent | **0 / 0** | L19 = R19 ✓ |
+| 1:1 | 179×179 (1.0) | **none** | transparent | **0 / 0** | L2 = R2 ✓ |
+| 4:5 | 179×224 (0.799) | **none** | transparent | **0 / 0** | L2 = R2 ✓ |
+
+- **`cardVsPlateExtraW/H: 0` her aspect'te** — kart = plate
+  BİREBİR (zero container shell; "container = layout exact").
+- **Kart aspect = plate aspect** her aspect'te (0.562/0.562,
+  1.772/1.778, 1.0/1.0, 0.799/0.8) — container aspect-adaptive.
+- **Border none + bg transparent** her aspect'te — kutu hissi
+  YOK, rail bg görünür.
+- **Yatay simetri** her aspect'te leftGap == rightGap (16:9
+  baseline -16 overflow → 2/2; 9:16 18/20 → 19/19).
+- 6 preset thumb HEPSI 3 real MinIO `<image>`, 6 distinct
+  variant (cascade/centered/tilted/stacked/fan/offset) —
+  candidate layout + single render path korundu.
+- `middlePlateAspect 0.562` == rail card aspect 0.562 →
+  **rail container orta panel plate aspect'ini BİREBİR
+  yansıtır** (container seviyesinde middle≈rail parity).
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,products,listings}`:
+  **730/730 PASS** (59 files, zero regression)
+- `next build`: ✓ Compiled successfully (default heap'te OOM
+  exit 137 → `NODE_OPTIONS=--max-old-space-size=4096` ile clean;
+  kod hatası değil, build mem baskısı)
+
+### Değişmeyenler (Phase 120)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız `MockupStudioPresetRail`
+  (wrapper-measure + JS card geometry) + 2 CSS recipe
+  (containerless + scrollbar-gutter) + StageScenePreview FILL
+  1.0.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `ResizeObserver` wrapper-measure
+  küçük (yeni framework/hook lib YOK). Tek render path (Phase
+  117 StageScene) BİREBİR korundu — Phase 120 yalnız **container
+  geometry/border/bg/symmetry** değiştirdi (render path,
+  candidate layout mantığı, reactivity dokunulmadı).
+- **Phase 117 single-renderer + Phase 118 aspect-aware/chromeless
+  + Phase 119 plate-fit/self-measure baseline'ları intakt.**
+- **Candidate layout mantığı korundu** — 6 distinct variant,
+  rail→Shell→Stage canonical (Phase 114 baseline).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ kalan (Phase 121+ candidate)
+
+- **Ölü kod temizliği** (Phase 117-119'dan devir):
+  `PresetThumbMockup` / `fitCascadeToThumb` / `THUMB_PLATE_*`
+  svg-art.tsx'te rail path'inde kullanılmıyor (`PresetThumbFrame`
+  kullanımı kontrol edilip güvenli silinmeli).
+- **StageScenePreview `PREVIEW_BASE` (900×506) + transform:scale**
+  hâlâ scaled-screenshot modelinde (Phase 120 container'ı
+  düzeltti, içerik scaling Phase 119 plate-fit; tam native
+  container-fit ileride değerlendirilebilir — ama mevcut görsel
+  sonuç her aspect'te plate kartı edge-to-edge dolduruyor).
+- **View tabs (Zoom/Tilt/Precision) + Zoom slider** no-op
+  (kategori 4 preview-only helper; Phase 115'ten devir).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 120 ile rail item "sabit border'lı kutu içinde küçük
+preview"den "containersiz, aspect-adaptive, layout-ile-birebir-
+boyut, yatay-simetrik" hale geldi (kullanıcı talebi birebir):
+border yok, bg = rail bg, kart = plate exact (zero shell),
+her aspect'te (özellikle dikey 9:16) plate kartı edge-to-edge
+doldurur. Tek render path (Phase 117) + aspect/scene/count
+reactivity (Phase 118) + plate-fit (Phase 119) + candidate
+layout (Phase 114) BİREBİR korundu. Sıradaki adım **Phase 121
+candidate**: ölü kod temizliği (`PresetThumbMockup`/
+`fitCascadeToThumb`) veya View tabs/Zoom slider activation.
+Yeni SVG/layout builder/mockup editor §13.A'da ertelenmiş kalır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

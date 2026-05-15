@@ -1138,6 +1138,13 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 9px 14px;
+  /* Phase 120 — Horizontal simetri: scrollbar (2px) iki kenardan
+   * SİMETRİK pay alsın (kullanıcı "sağ/sol padding aynı değil").
+   * `stable both-edges` olmadan scrollbar yalnız sağdan yer
+   * kaplıyor → clientWidth skew → portrait kart margin-inline:auto
+   * ile ortalanırken leftGap≠rightGap (18 vs 20). both-edges ile
+   * iki kenar eşit; kart yatayda tam ortalı. */
+  scrollbar-gutter: stable both-edges;
 }
 .k-studio__rail-scroll::-webkit-scrollbar { width: 2px; }
 .k-studio__rail-scroll::-webkit-scrollbar-thumb {
@@ -1200,67 +1207,105 @@
 }
 
 /* Phase 119 — Preview-first rail thumb framing (Shots.so parity).
+ * Phase 92 dark card bg + iç padding KALDIRILDI; kart şeffaf,
+ * near-borderless — preview-first kompozisyon baskın.
  *
- * Phase 92 SVG-thumb döneminde live-thumb + preset-card `background:
- * #0C0B09` (dark) + `padding: 6-7px` taşıyordu: o zaman thumb bir
- * SVG idi ve dark card bg + inset padding "bounded plate on dark
- * stage" hissini SVG-level taklit ediyordu. Phase 117 single-
- * renderer ile thumb artık StageScene'in scaled hali; StageScene
- * plate'i kendi chrome'unu (rounded + border + shadow) zaten taşır.
- * Phase 92 dark bg + padding ARTIK yalnız kullanıcının şikayet
- * ettiği "siyah çevre / küçük preview" boş alanını üretiyor
- * (StageScenePreview chromeless + Phase 119 plate-fit scale ile
- * preview box'ı dolduruyor; card bg/padding gereksiz çevre).
+ * Phase 120 — Aspect-ADAPTİF rail item container (middle panel
+ * fit/fill parity).
  *
- * Phase 119 fix: dark card bg + iç padding KALDIRILDI; kart artık
- * şeffaf, near-borderless frame — preview-first kompozisyon
- * baskın (Shots.so rail davranışı: thumb = composition, kutu
- * değil). Hover/active subtle ring KORUNUR (operatör seçim
- * sinyali). overflow:hidden + border-radius preview'yi kart
- * köşelerine clip'ler (StageScenePreview plate-fit scale çevre
- * stage-padding'i zaten crop ediyor). */
+ * Phase 119'a kadar height SABİT (`live-thumb 102px` /
+ * `preset-card 92px`) → kart hep ~1.99 landscape kutu. 16:9'da
+ * idare ediyordu (kart aspect ≈ plate aspect) ama 9:16 portrait'te
+ * plate aynı sabit landscape kutuya sıkışıp kart genişliğinin
+ * %74'ünü void bırakıyordu (kullanıcı "dikeyde bozuluyor").
+ * Middle panel'de bu yok çünkü `.k-studio__stage` `flex:1`
+ * (kocaman adaptif alan).
+ *
+ * Phase 120: `height` CSS'ten KALDIRILDI; MockupStudioPresetRail
+ * inline `style={{ height }}` ile preview aspect'inden türetilen
+ * adaptif yükseklik verir (portrait → uzun kart, landscape →
+ * kısa kart; clamp bant 64-188px rail-scroll bütçesi için).
+ * Kart artık sabit kutu değil, içeriğinin aspect'ine göre
+ * boyutlanan küçük "stage alanı" — middle panel'in plate'i
+ * stage'e sığdığı AYNI fit/fill ilişkisi, küçük ölçek. CSS yalnız
+ * adaptif-olmayan kontratları (width, radius, bg, border, flex,
+ * overflow) taşır; geometry MockupStudioPresetRail'de. Tek render
+ * path KORUNUR (StageScene). */
+/* Phase 120 — Kart geometry JS-COMPUTED (MockupStudioPresetRail
+ * inline `style={{ width, height }}`): rail-scroll iç genişliği
+ * ResizeObserver ile ölçülür → cardW/cardH = plate aspect'ten
+ * EXACT türer (kart aspect = plate aspect BİREBİR; max-height
+ * aşılırsa width orantısal küçülür, aspect ASLA bozulmaz).
+ * StageScenePreview FILL=1.0 + kart aspect = plate aspect →
+ * plate kartı EDGE-TO-EDGE doldurur ("layout container ile AYNI
+ * boyut"). CSS yalnız adaptif-OLMAYAN kontratları taşır
+ * (radius/bg/border/flex/overflow); width+height + aspect JS'te.
+ * `margin-inline:auto` portrait kart rail-scroll'da ortalanır
+ * (cardW < railInnerW olduğunda). Hiçbir CSS height/width
+ * assertion'ı YOK — JS exact px tek kaynak (CSS ile çelişmez). */
+/* Phase 120 final — CONTAINERSIZ rail preview (kullanıcı talebi).
+ *
+ * Kullanıcı: "container olduğu belli oluyor etrafındaki çerçeveden
+ * ve arka planından... border'ı kaldıralım ve arka planı sağ
+ * panelin arka planı ile aynı yapalım... containere gerek yoksa
+ * biraz padding bırakıp containersiz direk sağ panelin üzerine
+ * koyabiliriz... sağ/sol padding asimetrik, düzeltelim."
+ *
+ *  - Kart border'ı TAMAMEN kaldırıldı (inactive 1px white +
+ *    active 1.5px orange box-shadow). Kart artık görsel bir kutu
+ *    değil; preview doğrudan rail dark bg (`.k-studio__rail`
+ *    rgb(28,25,22)) üstünde durur. Kart bg zaten transparent →
+ *    rail bg görünür (kullanıcı "arka planı sağ panelle aynı").
+ *  - StageScene plate kendi rounded chrome'unu (Phase 117'den
+ *    beri) zaten taşır → tek görsel sınır plate'in kendisi
+ *    (containersiz; "biraz padding'le direkt rail üstüne").
+ *  - Selected state artık FRAMING border DEĞİL: yalnız caption
+ *    rengi (data-active orange) + plate-altı ufak accent çizgi.
+ *    Operatör seçimi görür ama kutu hissi yok.
+ *  - Horizontal simetri: rail-scroll `scrollbar-gutter: stable
+ *    both-edges` → scrollbar (2px) iki kenardan SİMETRİK pay
+ *    alır; clientWidth skew'i biter, kart yatayda ortalı
+ *    (leftGap == rightGap). margin-inline:auto + flex column
+ *    center portrait kartı simetrik ortalar. */
 .k-studio__live-thumb {
-  width: 100%;
-  height: 102px;
-  border-radius: 9px;
+  margin-inline: auto;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
+  flex-shrink: 0;
 }
 
 .k-studio__preset-card {
-  width: 100%;
-  height: 92px;
-  border-radius: 8px;
+  margin-inline: auto;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: none;
   cursor: pointer;
-  transition: all 120ms;
+  transition: opacity 120ms;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
+  opacity: 0.78;
 }
-.k-studio__preset-card:hover { border-color: rgba(255, 255, 255, 0.18); }
-.k-studio__preset-card[aria-pressed="true"] {
-  border-color: rgba(232, 93, 37, 0.70);
-  border-width: 1.5px;
-  box-shadow: 0 0 0 1px rgba(232, 93, 37, 0.35);
-}
+.k-studio__preset-card:hover { opacity: 1; }
+.k-studio__preset-card[aria-pressed="true"] { opacity: 1; }
 .k-studio__preset-cap {
   font-family: var(--ks-fm);
   font-size: 9px;
   color: var(--ks-t3);
   text-align: center;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
   letter-spacing: 0.06em;
 }
-.k-studio__preset-cap[data-active="true"] { color: rgba(232, 93, 37, 0.65); }
+.k-studio__preset-cap[data-active="true"] {
+  color: rgba(232, 93, 37, 0.85);
+  font-weight: 600;
+}
 
 /* ─── State switcher (dev overlay; Phase 77 görsel state demo) ─── */
 .k-studio__sw {

@@ -168,13 +168,21 @@ export function StageScenePreview({
    * Phase 119 fix: scale'i **plate**'in box'a sığması için hesapla
    * (full canvas değil). Plate PREVIEW_BASE merkezinde; plateDims
    * biliniyor. Box'a plate-fit: `min(boxW/plateW, boxH/plateH) ×
-   * FILL`. FILL=0.96 küçük breathing-room inset (Shots.so thumb
-   * da hafif iç boşluk taşır, edge-to-edge değil). overflow:hidden
-   * çevredeki transparent stage-padding'i KIRPAR (crop) → preview
-   * box'ı doldurur, "preview-first" Shots.so görünümü. Tek render
-   * path KORUNUR (aynı StageScene, candidate layout mantığı
-   * bozulmaz — yalnız framing/crop/scale değişir). */
-  const PREVIEW_FILL = 0.96;
+   * FILL`. overflow:hidden çevredeki transparent stage-padding'i
+   * KIRPAR (crop) → preview box'ı doldurur. Tek render path
+   * KORUNUR (aynı StageScene, candidate layout mantığı bozulmaz
+   * — yalnız framing/crop/scale değişir).
+   *
+   * Phase 120 — FILL 0.96 → 1.0. Phase 119'da 0.96 küçük
+   * breathing-room inset bırakıyordu (kart aspect ≠ plate aspect
+   * iken void zaten vardı, inset onu artırıyordu). Phase 120 rail
+   * kartı artık plate ile TRUE aspect-match (MockupStudioPresetRail
+   * previewCardH = railContentW / plateAspect) → kart aspect ≈
+   * plate aspect. FILL=1.0 + aspect-match → plate kartı EDGE-TO-EDGE
+   * doldurur (her iki eksende ~%100): "layout container ile AYNI
+   * boyut, küçük kalmaz" (kullanıcı talebi). overflow:hidden
+   * sub-pixel taşmayı güvenle kırpar. */
+  const PREVIEW_FILL = 1.0;
   const scale =
     Math.min(boxW / plateDims.w, boxH / plateDims.h) * PREVIEW_FILL;
 
