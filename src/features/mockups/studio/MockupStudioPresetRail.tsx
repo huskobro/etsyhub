@@ -24,7 +24,7 @@ import {
  * mode-AGNOSTIC olduğu için sadece Mockup thumb kullanılır
  * (svg-art.tsx'te PresetThumbFrame export hâlâ var — gelecek
  * kullanım için kalır). */
-import { PresetThumbMockup } from "./svg-art";
+import { PresetThumbMockup, type StudioStageDeviceKind } from "./svg-art";
 import {
   STUDIO_LAYOUT_VARIANTS,
   STUDIO_LAYOUT_VARIANT_LABELS,
@@ -133,6 +133,13 @@ export interface MockupStudioPresetRailProps {
    *  (Shell prop yoksa). */
   layoutVariant?: StudioLayoutVariant;
   onChangeLayoutVariant?: (next: StudioLayoutVariant) => void;
+  /** Phase 115 — Current scene device shape (Shell
+   *  stageDeviceForProductType). Rail thumb geometri kaynağı
+   *  productType-aware: thumb `cascadeLayoutFor(deviceShape, count,
+   *  candidateVariant)` ile Stage + export ile AYNI canonical
+   *  cascade'den türer (Preview = Export = Rail-thumb §11.0).
+   *  Undefined → "phone" baseline. */
+  deviceShape?: StudioStageDeviceKind;
 }
 
 export function MockupStudioPresetRail({
@@ -144,6 +151,7 @@ export function MockupStudioPresetRail({
   onChangeLayoutCount,
   layoutVariant,
   onChangeLayoutVariant,
+  deviceShape,
 }: MockupStudioPresetRailProps) {
   /* Phase 96 — Layout count Shell state'ten geliyor; fallback local
    * state (legacy). Operator buttons → onChangeLayoutCount → Shell
@@ -259,6 +267,7 @@ export function MockupStudioPresetRail({
                 : undefined
             }
             displayCount={layout}
+            deviceShape={deviceShape}
           />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -336,6 +345,7 @@ export function MockupStudioPresetRail({
                     : undefined
                 }
                 displayCount={layout}
+                deviceShape={deviceShape}
               />
             </button>
             <div

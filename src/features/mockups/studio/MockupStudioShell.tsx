@@ -38,7 +38,8 @@ import { useSelectionSet } from "@/features/selection/queries";
 import { useMockupTemplates } from "@/features/mockups/hooks/useMockupTemplates";
 import { MockupStudioPresetRail } from "./MockupStudioPresetRail";
 import { MockupStudioSidebar } from "./MockupStudioSidebar";
-import { MockupStudioStage, cascadeLayoutFor } from "./MockupStudioStage";
+import { MockupStudioStage } from "./MockupStudioStage";
+import { cascadeLayoutFor } from "./cascade-layout";
 import { FrameExportResultBanner } from "./FrameExportResultBanner";
 import { MockupStudioToolbar } from "./MockupStudioToolbar";
 import {
@@ -878,6 +879,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
             onChangeLayoutCount={setLayoutCount}
             layoutVariant={layoutVariant}
             onChangeLayoutVariant={setLayoutVariant}
+            deviceShape={deviceKind}
           />
         ) : null}
       </div>

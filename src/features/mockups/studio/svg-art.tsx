@@ -17,6 +17,29 @@
 
 import type { CSSProperties } from "react";
 
+import {
+  STUDIO_LAYOUT_VARIANTS,
+  type StudioLayoutVariant,
+} from "./types";
+
+/* Phase 115 — Shared canonical cascade geometry import.
+ *
+ * `cascade-layout.ts` Phase 115'te paylaşılan module'e çıkarıldı
+ * (Stage circular import: Stage svg-art'tan StageDeviceSVG/
+ * StudioStageDeviceKind import ediyor — svg-art Stage'ten
+ * cascadeLayoutFor import edemezdi). cascade-layout `type
+ * StudioStageDeviceKind`'ı svg-art'tan TYPE-only import eder
+ * (runtime circular YOK — type import emit edilmez); svg-art
+ * cascade-layout'tan `cascadeLayoutFor` VALUE import eder. Bu
+ * yön güvenli: type ↔ value asimetrik, ES module döngüsü
+ * oluşmaz.
+ *
+ * §11.0 thumb-candidate genişletme: PresetThumbMockup artık
+ * Stage + Shell/export ile AYNI `cascadeLayoutFor` kaynağından
+ * geometri türetir → Preview = Export = Rail-thumb yapısal
+ * garanti (hardcoded MOCKUP_PRESETS[idx].ph kaldırıldı). */
+import { cascadeLayoutFor } from "./cascade-layout";
+
 export type StudioDesignColors = readonly [string, string];
 
 export interface StudioDesign {
@@ -390,11 +413,77 @@ function MockupPhWithPalette({
   );
 }
 
+/* Phase 115 — Thumb viewBox + canonical-cascade fit.
+ *
+ * `cascadeLayoutFor` Stage/Shell/export ile AYNI kaynak; çıktı
+ * stage-inner (~572×504) merkez-hizalı koordinat uzayında. Thumb
+ * 184×88 viewBox'a bbox-fit ile normalize edilir (aspect-locked
+ * scale + center) — operator rail thumb'da "bu layout'u seçersem
+ * mevcut sahnem (device shape + count) nasıl dizilir" yapısal
+ * önizlemesini görür. Geometri artık hardcoded değil, candidate
+ * variant türevi (Preview = Export = Rail-thumb §11.0). */
+const THUMB_VB_W = 184;
+const THUMB_VB_H = 88;
+const THUMB_PAD = 8;
+
+function fitCascadeToThumb(
+  items: ReadonlyArray<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    r: number;
+    z: number;
+  }>,
+): ReadonlyArray<{
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  r: number;
+  o: number;
+}> {
+  if (items.length === 0) return [];
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const it of items) {
+    minX = Math.min(minX, it.x);
+    minY = Math.min(minY, it.y);
+    maxX = Math.max(maxX, it.x + it.w);
+    maxY = Math.max(maxY, it.y + it.h);
+  }
+  const bboxW = maxX - minX || 1;
+  const bboxH = maxY - minY || 1;
+  const availW = THUMB_VB_W - THUMB_PAD * 2;
+  const availH = THUMB_VB_H - THUMB_PAD * 2;
+  // Aspect-locked bbox-fit (Phase 111 composition-group parity:
+  // tek-eksen değil, en dar eksene min scale → aspect korunur).
+  const scale = Math.min(availW / bboxW, availH / bboxH);
+  const drawW = bboxW * scale;
+  const drawH = bboxH * scale;
+  const offsetX = (THUMB_VB_W - drawW) / 2;
+  const offsetY = (THUMB_VB_H - drawH) / 2;
+  // z-order: yüksek z arkada (Phase baseline z davranışı thumb'ta
+  // da korunur — ilk slot en üstte). opacity z'ye göre derinlik.
+  const maxZ = Math.max(...items.map((i) => i.z));
+  return items.map((it) => ({
+    x: offsetX + (it.x - minX) * scale,
+    y: offsetY + (it.y - minY) * scale,
+    w: it.w * scale,
+    h: it.h * scale,
+    r: it.r,
+    o: maxZ > 1 ? 0.62 + 0.38 * (it.z / maxZ) : 1,
+  }));
+}
+
 export function PresetThumbMockup({
   idx,
   palette,
   sceneBg,
   displayCount,
+  deviceShape = "phone",
 }: {
   idx: number;
   palette?: readonly [string, string];
@@ -410,10 +499,22 @@ export function PresetThumbMockup({
       };
   /** Phase 96 — Layout count Shell state. */
   displayCount?: 1 | 2 | 3;
+  /** Phase 115 — Current scene device shape (StudioStageDeviceKind).
+   *  Thumb geometri kaynağı productType-aware (sticker kare,
+   *  telefon dik, wall_art portrait) — Stage ile aynı. */
+  deviceShape?: StudioStageDeviceKind;
 }) {
   const c = MOCKUP_PRESETS[idx] ?? MOCKUP_PRESETS[0]!;
-  const phones =
-    displayCount !== undefined ? c.ph.slice(0, displayCount) : c.ph;
+  // Phase 115 — geometri canonical cascadeLayoutFor'dan (Stage/
+  // Shell/export AYNI kaynak). idx → candidate layoutVariant.
+  const candidateVariant: StudioLayoutVariant =
+    STUDIO_LAYOUT_VARIANTS[idx] ?? "cascade";
+  const rawCascade = cascadeLayoutFor(
+    deviceShape,
+    displayCount ?? 3,
+    candidateVariant,
+  );
+  const phones = fitCascadeToThumb(rawCascade);
   const isGradient = idx === 1;
   const hasPalette = !!palette;
   const bgFromPalette = palette ? darkenForPresetBg(palette[1]) : null;

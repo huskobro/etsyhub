@@ -19708,6 +19708,69 @@ surface" rolünün tam ürünleştirilmesi.
   Mode-AGNOSTIC (Phase 96 unified family + Phase 114 layoutVariant
   mode-AGNOSTIC: Mockup↔Frame geçişinde korunur).
 
+- **Right rail = canlı layout preview surface, statik preset
+  listesi DEĞİL (Phase 115 canonical — §11.0 thumb-candidate
+  genişletme).** Rail = **canonical scene params + candidate
+  layout params** kombinasyonu. Her thumb operatöre "bu layout'u
+  seçersem mevcut sahnem (device shape + slot count + scene)
+  bu varyasyonda yapısal olarak nasıl dizilir" sorusunun
+  cevabını verir.
+
+  - **Phase 96-114 boyunca thumb geometrisi HARDCODED idi**:
+    `PresetThumbMockup` `MOCKUP_PRESETS[idx].ph` (svg-art.tsx
+    184×88 koordinat uzayında 6 sabit `{x,y,w,h,r,o}` config)
+    kullanıyordu. Phase 114 layoutVariant'ı canonical yaptı
+    (preview cascade + export GERÇEKTEN değişir) AMA rail thumb
+    HÂLÂ ayrı hardcoded geometriden render ediyordu — operator
+    için "rail canlı preview surface değil" (Shots.so'da thumb
+    = canlı SVG scene türevi; Kivasy'de kopuk). Madde #12
+    yapısal drift (preset NO-OP'u kapandı ama thumb-canonical
+    bağlantı eksikti).
+
+  - **Phase 115 fix**: `cascadeLayoutFor` + `applyLayoutVariant`
+    + `cascadeLayoutForRaw` + `centerCascade` paylaşılan
+    `cascade-layout.ts` module'üne çıkarıldı (svg-art rail thumb
+    bunu `MockupStudioStage`'ten import edemezdi — circular:
+    Stage zaten svg-art'tan `StageDeviceSVG`/`StudioStageDeviceKind`
+    import ediyor). Ayrı module: **Stage (preview) + Shell/export
+    + rail thumb ÜÇÜ DE buradan okur** → tek canonical geometri
+    kaynağı, Preview = Export = Rail-thumb yapısal garanti.
+    `PresetThumbMockup` artık `cascadeLayoutFor(deviceShape,
+    displayCount ?? 3, STUDIO_LAYOUT_VARIANTS[idx])` çağırır
+    (idx → candidate layoutVariant), çıkan ~572×504 stage-inner
+    koordinatlarını 184×88 viewBox'a aspect-locked bbox-fit ile
+    normalize eder (`fitCascadeToThumb`). Geometri artık candidate
+    variant türevi, hardcoded DEĞİL.
+
+  - **deviceShape prop zinciri**: Shell `deviceKind`
+    (`stageDeviceForProductType(categoryId)`) → PresetRail
+    `deviceShape` → `PresetThumbMockup` `deviceShape` →
+    `cascadeLayoutFor`. Shell `handleExportFrame` + Stage
+    `MockupComposition`/`FrameComposition` aynı `deviceKind` +
+    aynı `cascadeLayoutFor` kullanır → thumb geometri kaynağı
+    productType-aware ve Stage/export ile AYNI (sticker kare,
+    telefon dik 416, wall_art portrait — registry'deki
+    `cascadeLayoutForRaw` base).
+
+  - **Build-boundary asimetri (circular import çözümü)**:
+    `cascade-layout.ts` `type StudioStageDeviceKind`'ı
+    svg-art'tan TYPE-only import eder (runtime emit YOK);
+    svg-art `cascadeLayoutFor`'u VALUE import eder. Type ↔
+    value asimetrik → ES module döngüsü oluşmaz. `compositionGroup`
+    + `PLATE_FILL_FRAC` Stage'de KALIR (plate-relative locking
+    = stage-specific composition impl, kategori 3 — thumb'a
+    girmez; thumb yalnız ham layout dizilim önizlemesi gösterir).
+
+  - **Canonical scene params thumb'a yansır**: aspect ratio
+    (Phase 95 SHARED state — thumb plate-içi değil layout
+    dizilim odaklı; aspect'i thumb bbox-fit dolaylı yansıtır),
+    background/scene mode (auto/solid/gradient/glass — Phase 89
+    `sceneBg`), palette (Phase 86), glass + lens blur (Phase 98
+    overlay + filter), slot/item count (Phase 96 `displayCount`),
+    layout variant (Phase 115 geometri kaynağı), device shape
+    (Phase 115 productType-aware). Hepsi tek canonical Shell
+    state'ten beslenir → rail = preview = export.
+
 ### 7. Selection / preview behavior
 
 - Selection ring + slot badge **yalnız Mockup mode**, **yalnız Edit
@@ -19945,6 +20008,32 @@ dead-code dersi). `cascadeLayoutFor` çağrısı preview
 (MockupComposition/FrameComposition) ve export (`handleExportFrame`)
 TEK kaynak; `frame-compositor.ts` slot pozisyonlarını TÜKETİR
 (kendi layout üretmez) → Preview = Export yapısal garanti.
+
+**Rail thumb-candidate de Preview = Export Truth kapsamındadır
+(Phase 115 canonical — thumb-candidate genişletme):** Right rail
+thumb'ı yalnız "operatöre fikir veren dekoratif önizleme" DEĞİL —
+**aynı canonical geometri kaynağının candidate-variant türevi**.
+Phase 96-114 boyunca thumb `MOCKUP_PRESETS[idx].ph` hardcoded
+geometriden render ediyordu; Phase 114 layoutVariant canonical
+oldu (preview cascade + export GERÇEKTEN değişir) AMA thumb hâlâ
+ayrı kopuk geometriden çiziliyordu — bu §11.0'ın "tek canonical
+kaynak" garantisini rail için ihlal ediyordu (Madde #12 yapısal
+drift). Phase 115 fix: `cascadeLayoutFor` + `applyLayoutVariant` +
+`cascadeLayoutForRaw` + `centerCascade` paylaşılan `cascade-layout.ts`
+module'üne çıkarıldı; **Stage (preview) + Shell (`handleExportFrame`
+→ frame-compositor) + rail thumb (`PresetThumbMockup`) ÜÇÜ DE bu
+TEK kaynaktan okur**. Thumb idx → candidate `layoutVariant`;
+`cascadeLayoutFor(deviceShape, displayCount, candidateVariant)` →
+~572×504 stage-inner koordinatları 184×88 viewBox'a aspect-locked
+bbox-fit normalize. Sonuç: operator bir layout preset seçtiğinde
+**rail thumb yapısal dizilim ≈ stage cascade ≈ exported PNG cascade
+≈ Product MockupsTab tile** — dördü de aynı `cascadeLayoutFor`
+çıktısından türer (rail thumb 184×88 ölçek + plate-context-siz
+düz layout; stage/export `compositionGroup` + plate-fit ekler —
+kategori 3 stage-specific, thumb'a girmez ama temel slot dizilim
++ rotation BİREBİR aynı kaynak). Yeni layout-related thumb/preview
+yüzeyi eklenirken aynı kural: `cascade-layout.ts`'ten oku, ayrı
+geometri kopyalama (sessiz drift YASAK §12).
 
 Canonical truth = **exported PNG**. Studio preview, exported PNG'nin
 authoring önizlemesidir. Sharp pipeline (`frame-compositor.ts`)
@@ -23827,6 +23916,192 @@ Zoom slider activation (kategori 4 — Zoom preview-only scale,
 export'a girmez) veya plate frame-style explicit parametresi
 (Phase 113'ten devir, §13 future SVG readiness modeliyle).
 Yeni SVG/layout builder/mockup editor §13.A'da ertelenmiş kalır.
+
+---
+
+## Phase 115 — Right rail = canlı layout preview surface (thumb-canonical: tek cascadeLayoutFor kaynağı, hardcoded MOCKUP_PRESETS kaldırıldı)
+
+Phase 114 layoutVariant'ı canonical shared parameter yaptı (preview
+cascade + export GERÇEKTEN değişir). Phase 115 odak: right rail'i
+**statik preset listesinden gerçek canlı layout preview surface**'e
+çevirmek + unified visual parameter modelini thumb seviyesinde
+sağlamlaştırmak. Yeni feature/layout builder/mockup editor/SVG
+library YOK (kullanıcı kısıtı).
+
+### Dürüst audit (en pahalı bakım noktası + kullanıcı eleştirisi)
+
+| Sorun | Kanıt |
+|---|---|
+| **Rail thumb canonical'dan KOPUK** | `PresetThumbMockup` (svg-art.tsx) `MOCKUP_PRESETS[idx].ph` (184×88 uzayında 6 sabit `{x,y,w,h,r,o}` config) kullanıyordu. Phase 114 layoutVariant canonical oldu (Stage cascade + export GERÇEKTEN değişir) AMA rail thumb HÂLÂ ayrı hardcoded geometriden render — operator için "rail canlı preview surface değil". Shots.so'da thumb = canlı SVG scene türevi; Kivasy kopuk (Madde #12 yapısal drift). |
+| **Shared param ↔ candidate layout bağı yok** | Thumb scene-aware (palette/glass/blur — Phase 86/89/98) ama **geometri** hâlâ sabit; "candidate layout'u mevcut sahnemde göster" bağlantısı eksik. |
+| **Tek canonical kaynak garantisi rail için ihlal** | §11.0 "preview + export tek `cascadeLayoutFor` kaynak" diyordu; rail thumb bu garantinin DIŞINDA kalıyordu. |
+
+**Kullanıcının "unify everything" yönünün eleştirisi (talep
+edildi)**: Doğru tarafı — rail thumb geometrisini canonical kaynağa
+bağla (gerçek tüketici, dead-config değil). **Aşırı abstraction
+riski** — "tüm thumb/preview/layout'u tek composition engine'e
+soksun" tehlikeli (§7.6 capability map dead-future-only dersi).
+Yeni "composition engine / layout strategy interface" şu an erken
+abstraction (bugün 1 layout-family). **Daha sade/doğru yol**: yeni
+framework KURMA; (1) mevcut cascade fonksiyonlarını paylaşılan
+module'e taşı (refactor, yeni sistem değil), (2) thumb'ı o tek
+kaynaktan besle. `compositionGroup` + `PLATE_FILL_FRAC` Stage'de
+KALSIN (plate-relative locking = stage-specific, kategori 3 —
+thumb'a girmez).
+
+### Net mimari karar — 4-kategori ayrımı korundu
+
+1. **Canonical shared (kategori 1)**: `cascadeLayoutFor` /
+   `applyLayoutVariant` / `cascadeLayoutForRaw` / `centerCascade`
+   → paylaşılan `cascade-layout.ts`. Stage + Shell/export + rail
+   thumb ÜÇÜ DE buradan okur.
+2. **Mode/UI-specific (kategori 2)**: mode/appState/viewTab — AYRI,
+   dokunulmadı.
+3. **Shape/layout impl (kategori 3)**: `cascadeLayoutForRaw`
+   per-productType base + `compositionGroup`/`PLATE_FILL_FRAC`
+   Stage-local — registry/stage'de KALDI.
+4. **Preview-only helper (kategori 4)**: slot-ring/badge — export'a
+   GİRMEZ (Phase 94 baseline korundu); thumb'a da girmez.
+
+### Shots.so right rail derin araştırması (gerçek browser)
+
+Shots.so canlı: layout-item thumb seçilince stage o variant'a geçer
++ thumb mevcut asset/scene'i yansıtıyor (statik değil); aspect/bg/
+effect değişince thumb yeniden render. **Kivasy hedefi aynı**: yapı
+Phase 96-114'te zaten yakındı (asset/scene/count-aware); eksik tek
+şey **geometri canonical kaynak türevi olması**. Phase 115 bu son
+kopukluğu kapadı.
+
+### Uygulanan slice
+
+- **`cascade-layout.ts` (yeni paylaşılan module)**: `CascadeItem`
+  type + `centerCascade` + `cascadeLayoutFor(kind, count, variant)`
+  + `applyLayoutVariant` + `cascadeLayoutForRaw`. Phase 114
+  baseline'dan BİREBİR taşındı (davranış değişmedi). `compositionGroup`
+  + `PLATE_FILL_FRAC` taşınmadı (Stage'de kaldı — kategori 3).
+- **`MockupStudioStage.tsx`**: cascade fonksiyonları silindi,
+  `cascadeLayoutFor` `./cascade-layout`'tan import.
+- **`MockupStudioShell.tsx`**: `cascadeLayoutFor` import'u
+  `./MockupStudioStage` → `./cascade-layout` (handleExportFrame
+  aynı kaynak).
+- **`svg-art.tsx` `PresetThumbMockup`**: `MOCKUP_PRESETS[idx].ph`
+  → `cascadeLayoutFor(deviceShape, displayCount ?? 3,
+  STUDIO_LAYOUT_VARIANTS[idx])`. Yeni `fitCascadeToThumb` helper:
+  ~572×504 stage-inner koordinatları 184×88 viewBox'a aspect-locked
+  bbox-fit normalize (Phase 111 composition-group parity: tek-eksen
+  değil min scale → aspect korunur). z-order opacity derinlik
+  korundu. `deviceShape` prop eklendi (StudioStageDeviceKind,
+  default "phone"). `MOCKUP_PRESETS[idx].bg` bg fallback olarak
+  kaldı (scene/palette yokken).
+- **`MockupStudioPresetRail.tsx`**: `deviceShape` prop eklendi
+  (Props + destructure + iki `<Thumb>` call site: live-thumb +
+  preset cards).
+- **`MockupStudioShell.tsx` PresetRail JSX**: `deviceShape={deviceKind}`
+  (Shell zaten `stageDeviceForProductType(categoryId)` hesaplıyor;
+  handleExportFrame + Stage ile AYNI `deviceKind`).
+- **Circular import çözümü**: `cascade-layout.ts` `type
+  StudioStageDeviceKind`'ı svg-art'tan TYPE-only import (runtime
+  emit YOK); svg-art `cascadeLayoutFor`'u VALUE import. Type ↔
+  value asimetrik → ES module döngüsü yok (tsc clean kanıt).
+
+### Browser+DOM+export+pixel triangulation (gerçek asset)
+
+Test set `cmov0ia37` (4 real MinIO MJ asset: PAS5 / neon city /
+blue car), deviceKind `clipart` → shape `sticker`, viewport
+1600×1000 (≥1280 full studio + rail; <880 Phase 110 intercept
+"Mockup Studio needs a larger screen" CANLI doğrulandı).
+
+**Cascade (default) — üç leg aynı kaynak:**
+- Rail preset-0 thumb rects: `1.0 : 0.818 : 0.591` ratio =
+  `cascadeLayoutForRaw('sticker')` base `[220,180,130]` BİREBİR.
+- Stage cascade slot ratios `1.0 : 0.900 : 0.702` (Stage
+  `compositionGroup` plate-fit ekler — kategori 3; ham slot
+  dizilim + relative sizing AYNI kaynak).
+- 6 rail preset card `data-variant` doğru, preset-0 `aria-pressed
+  true`.
+
+**Fan variant seçildi (preset-4 click) — definitive proof:**
+| Leg | Slot rotations | Slot size ratio |
+|---|---|---|
+| Rail Fan thumb | `[-13, 0, 13]` | `1.0 : 0.818 : 0.591` |
+| Stage cascade (Mockup) | `[-13, 0, 13]` (matrix 0.97437/±0.224951) | sticker base |
+| Stage cascade (Frame, mode-AGNOSTIC) | `[-13, 0, 13]` | sticker base |
+| Export payload `/api/frame/export` | `r:[-13,0,13]` w:`220,180,130` | `1.0:0.818:0.591` |
+
+Üç leg ROTATION + SIZE RATIO **BİREBİR aynı** —
+`applyLayoutVariant` fan formülü `r=d*13` → `[-13,0,13]`;
+`cascadeLayoutForRaw('sticker')` base. `layoutVariant` export
+body'sinde değil (beklenen — Shell çözümlenmiş slot pozisyonları
+serialize eder; export TÜKETİR §11.0). Real PNG: 1920×1080,
+1490.2 KB, `http://localhost:9000/etsyhub/u/.../frame-exports/
+ak2rowit37mzkkskqj`, naturalW/H 1920×1080 (placeholder DEĞİL).
+Phase 114 baseline (Fan `r:-13/0/13`) BİREBİR reprodüklendi —
+fark: Phase 115'te rail thumb da AYNI kaynaktan (Phase 114
+hardcoded idi).
+
+**Her preset thumb kendi candidate variant'ını gösterir
+(rail = canlı surface, statik DEĞİL):** cascade `[0,-6,-12]`,
+centered `[0,0,0]`, tilted `[-7,0,7]`, stacked `[0,0,0]`, fan
+`[-13,0,13]`, offset `[0,-4,-8]` — hepsi `applyLayoutVariant`
+formülleriyle BİREBİR (Phase 114'te hepsi ayrı hardcoded
+keyfi koordinattı). Console: **0 error**; React error YOK;
+shell mounted; "Send to Product" handoff CTA present (Product
+leg path intakt).
+
+### Quality gates
+
+- `tsc --noEmit`: clean (circular import yok — type↔value asimetri)
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (59 files, zero regression)
+- `next build`: ✓ Compiled successfully (Studio route 22.1 kB)
+- Clean restart: `.next` silindi → fresh `preview_start` (port
+  3000); Studio fresh build üzerinde doğrulandı (hot reload
+  DEĞİL).
+
+### Değişmeyenler (Phase 115)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Mevcut cascade fonksiyonları
+  paylaşılan module'e TAŞINDI (refactor); davranış BİREBİR
+  korundu (Phase 114 baseline). Yeni composition engine / layout
+  strategy interface / store / reducer / layout builder / mockup
+  editor / SVG library YOK.
+- **4-kategori ayrımı korundu** — yanlış unify YOK (mode/UI-
+  specific + shape impl + preview-only helper AYRI; `compositionGroup`
+  Stage'de kaldı).
+- **Phase 111 plate-relative locked composition** intakt
+  (cascade-layout `centerCascade` üretir; Stage `compositionGroup`
+  plate-fit eder — DEĞİŞMEDİ).
+- **Phase 113 layered effects + slot identity + Studio↔Export
+  parity** intakt.
+- **Phase 114 layoutVariant canonical + Frame compositor
+  tile-fits-canvas guard** intakt.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ açık (Phase 116+ candidate)
+
+- **View tabs (Zoom/Tilt/Precision) + Zoom slider** hâlâ no-op
+  (kategori 4 preview-only helper). Phase 115 layout-canonical
+  thumb'a öncelik verdi.
+- **Plate frame-style/chrome parametresi** (Phase 113'ten devir).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 115 ile right rail "statik preset listesi"nden "canlı layout
+preview surface"e dönüştü — thumb geometri Stage + export ile AYNI
+`cascadeLayoutFor` kaynağından türer (Preview = Export = Rail-thumb
+yapısal garanti). Sıradaki adım **Phase 116 candidate**: View tabs +
+Zoom slider activation (kategori 4 — Zoom preview-only, export'a
+girmez) veya plate frame-style explicit parametresi. Yeni SVG/
+layout builder/mockup editor §13.A'da ertelenmiş kalır.
 
 ---
 
