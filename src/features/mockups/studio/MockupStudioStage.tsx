@@ -24,6 +24,7 @@ import {
 import {
   resolveSceneStyle,
   resolvePlateEffects,
+  resolvePlateBackground,
   type SceneOverride,
 } from "./frame-scene";
 import {
@@ -54,42 +55,10 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-/* Phase 91 — Plate bg resolver.
- *
- * Stage'in ortasında bounded surface plate'in arka planını
- * sceneOverride + activePalette'ten hesaplar. Phase 88-90'da
- * resolveSceneStyle alpha < 1 ile stage-wide ambient tint
- * üretiyordu; Phase 91'de plate fully opaque surface (alpha 1.0)
- * — operatör için "objenin arkasında gerçek görünen plate" hissi.
- *
- *   - solid {color}      → solid color
- *   - gradient {from,to} → 135deg linear gradient
- *   - auto + palette     → palette[0] → palette[1] 135deg gradient
- *   - auto + no palette  → neutral cream/warm gradient (CSS fallback)
- *
- * Plate bg her iki modda da kullanılır (mode-AGNOSTIC). Phase 89
- * sceneOverride'ı plate'in bg'sini kontrol eder; ambient scene
- * (Phase 88-90) plate'in dışında padding alanı için subtle
- * vignette katmanı olarak yaşamaya devam eder. */
-function resolvePlateBackground(
-  override: SceneOverride,
-  activePalette: readonly [string, string] | undefined,
-): string | undefined {
-  if (override.mode === "solid" && override.color) {
-    return override.color;
-  }
-  if (override.mode === "gradient" && override.color && override.colorTo) {
-    return `linear-gradient(135deg, ${override.color} 0%, ${override.colorTo} 100%)`;
-  }
-  // auto mode
-  if (activePalette) {
-    return `linear-gradient(135deg, ${activePalette[0]} 0%, ${activePalette[1]} 100%)`;
-  }
-  // No palette → CSS default fallback (neutral cream). Return undefined
-  // so plate CSS fallback (background: linear-gradient(135deg, #f0e9d8...))
-  // takes over.
-  return undefined;
-}
+/* Phase 116 fu2 — `resolvePlateBackground` paylaşılan `frame-scene.ts`'e
+ * taşındı (canonical shared: Stage + rail thumb tek kaynak — "tek
+ * sahne çok ekran"). Buradan import edilir; lokal kopya kaldırıldı
+ * (sessiz drift YASAK §12 — tek tanım). */
 
 /* Phase 91 — Plate dimensions resolver (mode-aware).
  *

@@ -24538,10 +24538,198 @@ aile) + candidate-variant geometri; Preview = Export = Rail-thumb
 geometry + asset-identity + chrome-ratio seviyesinde holds.
 Generic-ikon hissi tam kapandı (kanıt: stage padRatio 0.045 ===
 thumb padRatio 0.045; her thumb 3 real `<image>`). Sıradaki adım
-**Phase 117 candidate**: plate/scene chrome thumb parity
-derinleştirme (gerek görülürse) veya View tabs/Zoom slider
-activation. Yeni SVG/layout builder/mockup editor §13.A'da
-ertelenmiş kalır.
+**Phase 116 fu2**: thumb hâlâ full-bleed bg (plate sınırı yok) →
+Stage scene→plate→cascade-in-plate yapısının minyatürü
+(mini-stage modeli).
+
+---
+
+## Phase 116 fu2 — Tek sahne çok ekran: thumb = orta panelin scene→plate→cascade-in-plate minyatürü (full-bleed bg → bounded plate + scene-padding)
+
+Phase 116 + fu thumb'ı `StageDeviceSVG` + real asset + proportional
+chrome'a bağladı. Bu fu2 turda kullanıcı net bir kalan ürün açığı
+bildirdi: **"right rail hâlâ ayrı thumb sistemi gibi; thumb full-
+bleed bg + cascade, Stage'de ise bounded plate (rounded surface +
+shadow + scene-bg) + cascade plate'in içinde + plate etrafında
+scene-padding var. İki ayrı görsel. İstediğim: tek sahne, çok
+ekran — thumb = orta panel başka layout ile render edilseydi."**
+
+### Kök neden (browser+DOM+code, iki screenshot yan yana)
+
+Stage render = **6 katman**: `stage-scene` (dark + asset-aware
+ambient tint) → `stage-amb` → `stage-floor` → `stage-plate`
+(bounded rounded surface: `border-radius:26px`, `box-shadow:0
+26px 51px rgba(0,0,0,.32)`, scene-aware bg `resolvePlateBackground`)
+→ `plate-surface`/`plate-glass` → `MockupComposition` (cascade
+plate'in İÇİNDE, `compositionGroup` PLATE_FILL_FRAC). Thumb ise
+**tek `<rect 184×88 fill={sceneFill}>` full-bleed + cascade tüm
+viewBox'a fit** → bg edge-to-edge, **plate sınırı YOK**, scene-
+padding YOK. Aynı kaynak (cascadeLayoutFor + StageDeviceSVG +
+real asset), **iki ayrı görsel render** — Madde #12 yapısal drift
+(thumb = "ayrı thumb sistemi", Stage'in küçültülmüş hali değil).
+`resolvePlateBackground` Stage-only idi (svg-art import edemezdi).
+
+### Net ürün/mimari kararı
+
+**Right rail thumb = orta panelin scene→plate→cascade-in-plate
+yapısının minyatürü.** "Ayrı thumb sistemi / generic ikon / özel
+thumb component" DEĞİL — **aynı renderer'ın küçük varyasyonu**.
+Tek fark: ölçek + candidate `layoutVariant`. bg/plate/scene/
+chrome AYNI canonical kaynak (§11.0 Preview = Export = Rail-thumb;
+Contract §6 "right rail = canlı mini middle-panel previews").
+Framework AÇILMADI — `resolvePlateBackground` paylaşılan module'e
+taşındı + thumb 3-katmanlı render'a yapılandırıldı (küçük/orta
+yapısal düzenleme, dev framework değil).
+
+### Uygulanan slice
+
+1. **`resolvePlateBackground` → `frame-scene.ts`** (canonical
+   shared). Phase 91-115 boyunca `MockupStudioStage.tsx` lokaldi
+   (Stage-only; svg-art circular import edemezdi: Stage zaten
+   svg-art'tan `StageDeviceSVG` import ediyor). Paylaşılan
+   `frame-scene.ts`'e taşındı — `resolveSceneStyle`/
+   `resolvePlateEffects`/`resolvePresetThumbScene` ile aynı
+   module. Stage local kopya silindi (tek tanım, sessiz drift
+   §12 YASAK). Stage import edip tüketir (kanıt: line 27 +
+   796).
+2. **`PresetThumbMockup` 3-katmanlı mini-stage**:
+   - **Layer 1 — scene backdrop**: `<rect 184×88 fill="#0C0B09">`
+     (Stage dark stage-tone) + `palette[1] opacity 0.10` tint
+     (Stage `stage-scene` asset-aware ambient parity).
+   - **Layer 2 — bounded plate**: inset rounded `<rect>`
+     (`THUMB_PLATE_FRAC=0.86` → plate stage'in ~%86'sı, etrafta
+     scene-padding = Stage stage-padding parity); `rx =
+     min(plateW,plateH)×0.075` (Stage `border-radius:26px`
+     plate-oranı paritesi → thumb ~5.7px); scene-aware fill
+     (`sceneFill` solid/gradient/glass; yoksa palette[0]→[1];
+     yoksa Stage CSS fallback `#f5b27d→#d97842` BİREBİR);
+     `<feDropShadow dy 2.4 blur 3.4>` (Stage plate box-shadow
+     offset≪blur simetrik yumuşak parity).
+   - **Layer 3 — cascade plate'in İÇİNDE**: `clipPath` plate
+     rect'e; `fitCascadeToThumb` artık plate iç alanına
+     (plate − inset) bbox-fit + plate merkezinde (Stage
+     `compositionGroup` cascade-in-plate parity). Glass overlay
+     da plate'e clip'li (Stage `.k-studio__plate-glass`
+     plate-local parity, stage-wide DEĞİL).
+   - Dead var temizlendi (`c`/`isGradient`/`bgFromPalette`/
+     `ks-ptmg1*` — full-bleed preset-bg kalktı; `MOCKUP_PRESETS`
+     hâlâ `PresetThumbFrame`'de). Generic `MockupPh` fallback
+     korundu (slots yoksa legacy/no-set).
+3. **Shared param doğrulama**: thumb `sceneBg`
+   (`resolvePresetThumbScene`'den) + Stage `resolvePlateBackground`
+   — ikisi de aynı `SceneOverride`+`palette` kaynağından
+   (PresetRail/Shell), artık aynı `frame-scene.ts` module'ünde
+   co-located sibling resolver. Ekstra prop EKLENMEDİ (redundancy
+   + SVG↔CSS gradient format mismatch riski yok); param-level
+   shared source yeterli.
+
+### Browser+DOM triangulation (fresh build, real asset)
+
+Test set `cmov0ia37` (4 real MinIO MJ asset), clipart→sticker,
+viewport 1600×1040, **clean restart** (`.next` silindi →
+`preview_start` reused:false → Studio fresh compile):
+
+| | Scene backdrop | Bounded plate | Cascade-in-plate | Real img |
+|---|---|---|---|---|
+| **Stage** | ✓ `stage-scene` | ✓ `border-radius:26px` + `box-shadow 0 26px 51px rgba(0,0,0,.32)` | ✓ in plate | 3 |
+| **Thumb 0 cascade** | ✓ `#0C0B09`+tint | ✓ inset `x12.88 y6.16 w158.2 h75.7 rx5.68` + drop-shadow | ✓ `clip-path` plate | 3 |
+| Thumb 1-5 (centered/tilted/stacked/fan/offset) | ✓ | ✓ rx 5.7 | ✓ | 3 |
+
+- **6 preset thumb HEPSI mini-stage** (scene + inset plate +
+  cascade-clipped + 3 real img); tek fark candidate variant
+  rotation: cascade `[0,-6,-12]`, centered `[0,0,0]`, tilted
+  `[-7,0,7]`, stacked `[0,0,0]`, fan `[-13,0,13]`, offset
+  `[0,-4,-8]` (= `applyLayoutVariant` formülleri BİREBİR).
+- **Plate ratio parity**: Stage `border-radius:26px` (plate
+  ~1000px → %2.6) ≈ thumb `rx 5.7` (plate 158px → %3.6) —
+  proportional aynı aile.
+- **Rail→Shell→Stage unity**: rail preset-4 (fan) click →
+  `shellLayoutVariant:"fan"`; stage cascade CSS rotate
+  `[-13,0,13]`; fan thumb `hasInsetPlate:true` + rot
+  `[-13,0,13]` + 3 real img + `pressed:true`. Thumb candidate
+  geometri = stage actual geometri (tek `cascadeLayoutFor`).
+- **Mode-AGNOSTIC**: Frame mode'a geçince `layoutVariant:"fan"`
+  korundu; fan thumb hâlâ mini-stage (`hasInsetPlate:true`,
+  scene `#0C0B09`, 3 real img); stage plate present + 3 real img.
+- **Product MockupsTab continuity**: `/products/cmor0wkjt...`
+  Mockups tab → **11 frame-export tile**, `naturalWidth
+  1920x1080`, `objectFit:contain` (Phase 101 baseline) — Product
+  detail/handoff/persistence dokunulmadı.
+- **Screenshot**: stage cream rounded plate + dark scene + 3
+  real sticker (PAS5/neon/car) cascade; 6 rail thumb HEPSI
+  AYNI cream plate + dark scene + 3 real sticker, farklı
+  candidate layout. Generic-ikon hissi YOK — her thumb "orta
+  panel bu layout'ta olsaydı" minyatürü.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **730/730 PASS** (59 files, zero regression)
+- `next build`: ✓ Compiled successfully
+
+### Değişmeyenler (Phase 116 fu2)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `resolvePlateBackground` module
+  taşıması (tek tanım) + thumb render yapılandırması.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Yeni framework/layout builder/
+  mockup editor/SVG library YOK. `resolvePlateBackground`
+  paylaşılan resolver (zaten vardı, yer değişti — canonical
+  co-location). Thumb 3-katman = Stage yapısının minyatürü
+  (yeni sistem değil, aynı renderer paterni). Generic `MockupPh`
+  fallback korundu.
+- **4-kategori ayrımı korundu** — scene/plate/cascade =
+  canonical shared (kategori 1); device shape = shape-specific
+  impl (kategori 3, `StageDeviceSVG`/`cascadeLayoutForRaw`);
+  selection ring/badge thumb'a GİRMEZ (kategori 4 — Phase 94);
+  mode/appState unify edilmedi (kategori 2).
+- **Preview = Export Truth korundu + güçlendi** — thumb artık
+  Stage'in scene→plate→cascade yapısının minyatürü; geometry +
+  asset identity + chrome-ratio + **plate/scene structure**
+  aynı canonical kaynak.
+- **Phase 113 slot identity + layered effects + Phase 114
+  layoutVariant canonical + Phase 115 cascade-layout.ts +
+  Phase 116/fu StageDeviceSVG+proportional chrome** hepsi
+  intakt.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ açık (Phase 117+ candidate)
+
+- **Stage placement-floor + ambient-glow thumb'da yok**: thumb
+  scene backdrop dark+tint ile Stage `stage-scene`'i yansıtır
+  ama `stage-floor` (placement floor) + `stage-amb` (ambient
+  glow radial) thumb'da render edilmez (184×88'de görsel
+  katkısı minimal; gerek görülürse Phase 117+). Plate + scene-
+  bg + cascade-in-plate ana yapısal parity sağlandı.
+- **Lens Blur thumb'da basit**: thumb `feGaussianBlur 2.2`;
+  Stage Phase 109 structured target (plate-only vs all). Thumb
+  scale'de fark görsel olarak ihmal edilebilir.
+- **View tabs (Zoom/Tilt/Precision) + Zoom slider** no-op
+  (kategori 4 preview-only helper; Phase 115'ten devir).
+- **Drop shadow softness fine-tune** (Phase 103/107/108'ten
+  devir).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 116 + fu + fu2 ile right rail tam **"tek sahne, çok
+ekran"**: thumb = orta panelin scene→plate→cascade-in-plate
+yapısının minyatürü (bounded plate + scene-padding + real
+asset + proportional chrome), tek fark candidate layoutVariant.
+"Ayrı thumb sistemi / generic ikon" tamamen bitti (kanıt: 6
+thumb HEPSI inset plate + 3 real img + scene backdrop; stage
+plate radius 26px ≈ thumb rx 5.7 proportional; fan rail→stage
+`[-13,0,13]` unity; mode-AGNOSTIC). Sıradaki adım **Phase 117
+candidate**: Stage placement-floor + ambient-glow thumb parity
+derinleştirme (gerek görülürse — mevcut yapısal parity yeterli)
+veya View tabs/Zoom slider activation. Yeni SVG/layout builder/
+mockup editor §13.A'da ertelenmiş kalır.
 
 ---
 

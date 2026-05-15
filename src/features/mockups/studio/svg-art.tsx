@@ -420,17 +420,41 @@ function MockupPhWithPalette({
 }
 
 /* Phase 115 — Thumb viewBox + canonical-cascade fit.
+ * Phase 116 fu2 — Mini-stage modeli: thumb = orta panelin küçük
+ *   ekranı (Stage scene→plate→cascade-in-plate yapısının minyatürü).
  *
- * `cascadeLayoutFor` Stage/Shell/export ile AYNI kaynak; çıktı
- * stage-inner (~572×504) merkez-hizalı koordinat uzayında. Thumb
- * 184×88 viewBox'a bbox-fit ile normalize edilir (aspect-locked
- * scale + center) — operator rail thumb'da "bu layout'u seçersem
- * mevcut sahnem (device shape + count) nasıl dizilir" yapısal
- * önizlemesini görür. Geometri artık hardcoded değil, candidate
- * variant türevi (Preview = Export = Rail-thumb §11.0). */
+ * Yanlış model (Phase 115-116): thumb full-bleed `<rect 184×88>`
+ * scene-fill + cascade tüm viewBox'a fit → bg edge-to-edge, plate
+ * sınırı YOK. Stage'de ise scene (dark+ambient) → bounded plate
+ * (rounded + shadow + scene-bg) → cascade plate'in İÇİNDE, plate
+ * etrafında scene-padding. İki ayrı görsel.
+ *
+ * Doğru model (Phase 116 fu2): thumb da Stage gibi 3 katman:
+ *   THUMB_SCENE  = dış dark backdrop (Stage `stage-scene` + dark tone)
+ *   THUMB_PLATE  = inset rounded plate (Stage `stage-plate`: scene-bg
+ *                  `resolvePlateBackground` + soft shadow + radius)
+ *   cascade      = plate'in İÇİNDE, candidate layout (Stage cascade-
+ *                  in-plate parity). Plate dışı = scene-padding.
+ * Fark yalnız ölçek + candidate layoutVariant; bg/plate/scene/chrome
+ * AYNI canonical kaynak (§11.0 Preview = Export = Rail-thumb;
+ * "ayrı thumb sistemi" DEĞİL aynı renderer'ın küçük varyasyonu). */
 const THUMB_VB_W = 184;
 const THUMB_VB_H = 88;
-const THUMB_PAD = 8;
+/* Plate stage'in ~%85'ini kaplar (Stage plateDimensionsFor avail
+ * %86-90 + CSS padding paritesi). Thumb'da plate-frac ile inset:
+ * etrafta scene-padding kalır (Stage stage-padding parity). */
+const THUMB_PLATE_FRAC = 0.86;
+const THUMB_PLATE_W = THUMB_VB_W * THUMB_PLATE_FRAC;
+const THUMB_PLATE_H = THUMB_VB_H * THUMB_PLATE_FRAC;
+const THUMB_PLATE_X = (THUMB_VB_W - THUMB_PLATE_W) / 2;
+const THUMB_PLATE_Y = (THUMB_VB_H - THUMB_PLATE_H) / 2;
+/* Plate radius: Stage `border-radius: 26px` plate boyutuna oranlı
+ * (Stage plate ~720-1080px → 26 ≈ %2.4-3.6). Thumb plate ~158px →
+ * ~5px. min(plateW,plateH)×0.075 ≈ Stage oranı. */
+const THUMB_PLATE_R = Math.min(THUMB_PLATE_W, THUMB_PLATE_H) * 0.075;
+/* Cascade plate'in İÇİNDE; plate kenarından küçük iç-pad (Stage
+ * compositionGroup PLATE_FILL_FRAC ≈ 0.84-0.86 paritesi). */
+const THUMB_CASCADE_INSET = 3;
 
 function fitCascadeToThumb(
   items: ReadonlyArray<{
@@ -465,15 +489,22 @@ function fitCascadeToThumb(
   }
   const bboxW = maxX - minX || 1;
   const bboxH = maxY - minY || 1;
-  const availW = THUMB_VB_W - THUMB_PAD * 2;
-  const availH = THUMB_VB_H - THUMB_PAD * 2;
+  /* Phase 116 fu2 — Cascade plate'in İÇİNE fit edilir (önceden tüm
+   * 184×88 viewBox'a). Stage'de cascade plate-relative LOCKED group
+   * (compositionGroup PLATE_FILL_FRAC); thumb da AYNI mantık:
+   * cascade bbox plate iç alanına (plate − cascade inset) aspect-
+   * locked bbox-fit + plate merkezinde. Plate dışı = scene-padding
+   * (Stage stage-padding parity). */
+  const availW = THUMB_PLATE_W - THUMB_CASCADE_INSET * 2;
+  const availH = THUMB_PLATE_H - THUMB_CASCADE_INSET * 2;
   // Aspect-locked bbox-fit (Phase 111 composition-group parity:
   // tek-eksen değil, en dar eksene min scale → aspect korunur).
   const scale = Math.min(availW / bboxW, availH / bboxH);
   const drawW = bboxW * scale;
   const drawH = bboxH * scale;
-  const offsetX = (THUMB_VB_W - drawW) / 2;
-  const offsetY = (THUMB_VB_H - drawH) / 2;
+  // Cascade plate'in merkezinde (Stage: group center = plate center).
+  const offsetX = THUMB_PLATE_X + (THUMB_PLATE_W - drawW) / 2;
+  const offsetY = THUMB_PLATE_Y + (THUMB_PLATE_H - drawH) / 2;
   // z-order: yüksek z arkada (Phase baseline z davranışı thumb'ta
   // da korunur — ilk slot en üstte). opacity z'ye göre derinlik.
   const maxZ = Math.max(...items.map((i) => i.z));
@@ -525,9 +556,12 @@ export function PresetThumbMockup({
    *  consumer). */
   slots?: ReadonlyArray<StudioSlotMeta>;
 }) {
-  const c = MOCKUP_PRESETS[idx] ?? MOCKUP_PRESETS[0]!;
   // Phase 115 — geometri canonical cascadeLayoutFor'dan (Stage/
   // Shell/export AYNI kaynak). idx → candidate layoutVariant.
+  // Phase 116 fu2 — MOCKUP_PRESETS[idx].bg / isGradient /
+  // bgFromPalette KALDIRILDI: thumb artık mini-stage (scene-aware
+  // plate bg, full-bleed preset-bg DEĞİL). MOCKUP_PRESETS hâlâ
+  // PresetThumbFrame'de kullanılır (ayrı component).
   const candidateVariant: StudioLayoutVariant =
     STUDIO_LAYOUT_VARIANTS[idx] ?? "cascade";
   const rawCascade = cascadeLayoutFor(
@@ -536,9 +570,7 @@ export function PresetThumbMockup({
     candidateVariant,
   );
   const phones = fitCascadeToThumb(rawCascade);
-  const isGradient = idx === 1;
   const hasPalette = !!palette;
-  const bgFromPalette = palette ? darkenForPresetBg(palette[1]) : null;
   // Phase 89 + 98 — Scene-aware bg override (solid / gradient / glass)
   const sceneGradientId =
     sceneBg?.kind === "gradient"
@@ -571,72 +603,98 @@ export function PresetThumbMockup({
     sceneBg?.kind === "glass" && sceneBg.lensBlur
       ? `ks-ptm-lens-${idx}`
       : null;
+  /* Phase 116 fu2 — Plate fill: Stage'in AYNI scene-aware bg'si.
+   * sceneFill (solid/gradient/glass) varsa o; yoksa palette
+   * gradient; yoksa Stage CSS default'una denk peach→amber
+   * (`#f5b27d→#d97842` — `.k-studio__stage-plate` fallback
+   * paritesi). Plate artık inset rounded rect; bg edge-to-edge
+   * DEĞİL (mini-stage: scene-padding + plate + cascade-in-plate). */
+  const plateGradId = `ks-ptm-plate-${idx}`;
+  const plateFill =
+    sceneFill ??
+    (hasPalette ? `url(#${plateGradId})` : `url(#${plateGradId})`);
+  const plateShadowId = `ks-ptm-pshadow-${idx}`;
+  const plateClipId = `ks-ptm-pclip-${idx}`;
   return (
     <svg viewBox="0 0 184 88" style={{ width: "100%", height: "100%", display: "block" }} aria-hidden>
-      {sceneBg?.kind === "gradient" ? (
-        <defs>
+      <defs>
+        {sceneBg?.kind === "gradient" ? (
           <linearGradient id={sceneGradientId!} x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor={sceneBg.from} />
             <stop offset="100%" stopColor={sceneBg.to} />
           </linearGradient>
-        </defs>
-      ) : null}
-      {sceneBg?.kind === "glass" && sceneBg.palette ? (
-        <defs>
+        ) : null}
+        {sceneBg?.kind === "glass" && sceneBg.palette ? (
           <linearGradient id={sceneGradientId!} x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor={sceneBg.palette[0]} />
             <stop offset="100%" stopColor={sceneBg.palette[1]} />
           </linearGradient>
-        </defs>
-      ) : null}
-      {lensBlurFilterId ? (
-        <defs>
+        ) : null}
+        {lensBlurFilterId ? (
           <filter id={lensBlurFilterId} x="-10%" y="-10%" width="120%" height="120%">
             <feGaussianBlur stdDeviation="2.2" />
           </filter>
-        </defs>
+        ) : null}
+        {/* Plate default bg gradient (sceneFill yoksa): palette
+            varsa palette[0]→[1], yoksa Stage CSS fallback peach→
+            amber. Stage `resolvePlateBackground` + `.k-studio__
+            stage-plate` fallback ile AYNI canonical sonuç. */}
+        <linearGradient id={plateGradId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={hasPalette ? palette![0] : "#f5b27d"} />
+          <stop offset="100%" stopColor={hasPalette ? palette![1] : "#d97842"} />
+        </linearGradient>
+        {/* Plate soft drop-shadow — Stage `.k-studio__stage-plate`
+            box-shadow paritesi (offset≪blur, simetrik yumuşak,
+            kenar-çizgisi YOK). Thumb ölçeğine oranlı. */}
+        <filter id={plateShadowId} x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="2.4" stdDeviation="3.4" floodColor="#000000" floodOpacity="0.34" />
+        </filter>
+        <clipPath id={plateClipId}>
+          <rect
+            x={THUMB_PLATE_X}
+            y={THUMB_PLATE_Y}
+            width={THUMB_PLATE_W}
+            height={THUMB_PLATE_H}
+            rx={THUMB_PLATE_R}
+          />
+        </clipPath>
+      </defs>
+      {/* Layer 1 — Scene backdrop (Stage `stage-scene` + dark stage
+          tone paritesi). Plate'in dışında padding alanı; dark
+          stage-tone + asset-aware subtle warm tint. */}
+      <rect width="184" height="88" fill="#0C0B09" />
+      {hasPalette ? (
+        <rect width="184" height="88" fill={palette![1]} opacity="0.10" />
       ) : null}
-      {isGradient && !hasPalette && !sceneBg ? (
-        <defs>
-          <linearGradient id="ks-ptmg1" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#181513" />
-            <stop offset="100%" stopColor="#0C0B09" />
-          </linearGradient>
-        </defs>
-      ) : null}
-      {isGradient && hasPalette && !sceneBg ? (
-        <defs>
-          <linearGradient id={`ks-ptmg1-p${idx}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={palette![0]} stopOpacity="0.18" />
-            <stop offset="100%" stopColor={palette![1]} stopOpacity="0.32" />
-          </linearGradient>
-        </defs>
-      ) : null}
+      {/* Layer 2 — Plate (Stage `stage-plate` paritesi): inset
+          rounded rect, scene-aware bg, soft drop-shadow. Cascade
+          plate'in İÇİNDE (clip). Mini-stage: bg edge-to-edge
+          DEĞİL, bounded plate + scene-padding. */}
       <rect
-        width="184"
-        height="88"
-        fill={
-          sceneFill ??
-          (isGradient
-            ? hasPalette
-              ? `url(#ks-ptmg1-p${idx})`
-              : "url(#ks-ptmg1)"
-            : (bgFromPalette ?? c.bg))
-        }
+        x={THUMB_PLATE_X}
+        y={THUMB_PLATE_Y}
+        width={THUMB_PLATE_W}
+        height={THUMB_PLATE_H}
+        rx={THUMB_PLATE_R}
+        fill={plateFill}
+        filter={`url(#${plateShadowId})`}
       />
-      <g filter={lensBlurFilterId ? `url(#${lensBlurFilterId})` : undefined}>
+      <g
+        clipPath={`url(#${plateClipId})`}
+        filter={lensBlurFilterId ? `url(#${lensBlurFilterId})` : undefined}
+      >
         {slots && slots.length > 0
           ? /* Phase 116 — Real scene-derived thumb: Stage'in AYNI
              *  StageDeviceSVG component'i + AYNI real slot.design
              *  (gerçek MinIO `<image>`), candidate-variant geometri
              *  ile dizilmiş. Generic MockupPh YERİNE — thumb artık
              *  orta panelin minyatür canlı türevi (Preview = Export
-             *  = Rail-thumb §11.0). Nested <svg> viewport her
-             *  device'ın kendi viewBox koordinat uzayını korur;
-             *  <g rotate> Stage'deki CSS `rotate(${r}deg)` parity.
-             *  Selection helper (ring/badge) thumb'a GİRMEZ
-             *  (kategori 4 — Phase 94 baseline; thumb yalnız final
-             *  visual chrome). */
+             *  = Rail-thumb §11.0). Phase 116 fu2 — cascade artık
+             *  plate'in İÇİNDE (clip), Stage cascade-in-plate
+             *  parity. Nested <svg> viewport her device'ın kendi
+             *  viewBox koordinat uzayını korur; <g rotate> Stage'deki
+             *  CSS `rotate(${r}deg)` parity. Selection helper
+             *  (ring/badge) thumb'a GİRMEZ (kategori 4 — Phase 94). */
             phones.map((p) => {
               const slot = slots[p.si];
               const cx = p.x + p.w / 2;
@@ -677,16 +735,19 @@ export function PresetThumbMockup({
               ),
             )}
       </g>
-      {/* Phase 98 — Glass overlay rect (variant-tinted). Operator rail'e
-       *  bakınca stage'in glass effect'ini görür: alt katmandaki
-       *  palette/gradient + üstüne variant-tone semi-transparent overlay
-       *  (cam-üstü hissi). */}
+      {/* Phase 98 — Glass overlay (variant-tinted). Operator rail'e
+       *  bakınca stage'in glass effect'ini görür.
+       *  Phase 116 fu2 — Glass artık PLATE'e clip'li (Stage'de glass
+       *  plate-local: `.k-studio__plate-glass` plate inset; stage-
+       *  wide DEĞİL). Plate rounded rect olarak çizilir, plate dışı
+       *  scene-padding glass ALMAZ (Stage parity §11.0). */}
       {glassOverlayColor ? (
         <rect
-          x="0"
-          y="0"
-          width="184"
-          height="88"
+          x={THUMB_PLATE_X}
+          y={THUMB_PLATE_Y}
+          width={THUMB_PLATE_W}
+          height={THUMB_PLATE_H}
+          rx={THUMB_PLATE_R}
           fill={glassOverlayColor}
         />
       ) : null}

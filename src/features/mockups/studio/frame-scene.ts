@@ -260,6 +260,40 @@ export function resolveSceneStyle(
   return undefined;
 }
 
+/* Phase 116 fu2 — Canonical plate background resolver (SHARED).
+ *
+ * Phase 91-115 boyunca bu helper `MockupStudioStage.tsx` içindeydi
+ * (Stage-only). Phase 116 fu2 "tek sahne çok ekran" modeli: right
+ * rail thumb = orta panelin küçük ekranı; thumb da plate render
+ * etmeli ve plate bg'si Stage ile AYNI kaynaktan gelmeli. svg-art
+ * (rail thumb) `MockupStudioStage`'ten import edemezdi (circular:
+ * Stage zaten svg-art'tan StageDeviceSVG import ediyor). Bu yüzden
+ * canonical resolver paylaşılan `frame-scene.ts`'e taşındı —
+ * `resolveSceneStyle` / `resolvePlateEffects` ile aynı module.
+ *
+ * Stage `MockupStudioStage` + rail thumb `PresetThumbMockup`
+ * ÜÇÜ DE buradan okur → plate bg tek canonical kaynak (Preview =
+ * Export = Rail-thumb §11.0; "ayrı thumb sistemi" değil aynı
+ * renderer'ın küçük varyasyonu). undefined → caller CSS fallback
+ * (plate `linear-gradient(135deg,#f5b27d,#d97842)`). */
+export function resolvePlateBackground(
+  override: SceneOverride,
+  activePalette: readonly [string, string] | undefined,
+): string | undefined {
+  if (override.mode === "solid" && override.color) {
+    return override.color;
+  }
+  if (override.mode === "gradient" && override.color && override.colorTo) {
+    return `linear-gradient(135deg, ${override.color} 0%, ${override.colorTo} 100%)`;
+  }
+  // auto mode
+  if (activePalette) {
+    return `linear-gradient(135deg, ${activePalette[0]} 0%, ${activePalette[1]} 100%)`;
+  }
+  // No palette → caller CSS default fallback takes over.
+  return undefined;
+}
+
 /** Phase 98 — Plate CSS filter chain resolver.
  *
  * Sözleşme #3 (Plate behavior) + #11 (Frame controls plate bg'sini
