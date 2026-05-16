@@ -50,6 +50,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 import { StageScene } from "./MockupStudioStage";
 import {
+  MEDIA_POSITION_NEUTRAL,
   normalizePadPointToPosition,
   type MediaPosition,
 } from "./media-position";
@@ -207,6 +208,25 @@ export function StageScenePreview({
   const PREVIEW_FILL = 1.0;
   const scale =
     Math.min(boxW / plateDims.w, boxH / plateDims.h) * PREVIEW_FILL;
+  /* Phase 129 — Rail-head live pad = navigator/control surface.
+   *
+   * Phase 128'de viewfinder GROUP doğru hareket etse de arka
+   * plandaki StageScene hâlâ canonical mediaPosition ile render
+   * oluyordu. Sonuç: kullanıcı pad içinde "görünür pencereyi
+   * navigator üzerinde taşıyorum" yerine "mini preview de onunla
+   * birlikte oynuyor" hissi alıyordu. Doğru model:
+   *   - rail-head live pad (onChangeMediaPosition VAR) = SABİT
+   *     full-extent navigator background
+   *   - onun üstünde hareket eden = viewfinder group
+   *   - candidate preset thumb'lar = canonical preview mantığına
+   *     devam eder, mediaPosition'ı yansıtır
+   *
+   * Bu yüzden yalnız interaktif rail-head pad'de StageScene arka
+   * planı neutral mediaPosition ile render edilir. Canonical state,
+   * export, resolver ve preset thumb mantığı DOKUNULMAZ. */
+  const stageMediaPosition = onChangeMediaPosition
+    ? MEDIA_POSITION_NEUTRAL
+    : mediaPosition;
 
   /* Phase 126 — Pad overlay pointer drag. Pure-math mapping
    * normalizePadPointToPosition'a delege (DOM-free; spec §5).
@@ -309,10 +329,10 @@ export function StageScenePreview({
           layoutCount={layoutCount}
           layoutVariant={layoutVariant}
           plateDims={plateDims}
-          /* Phase 126 — rail thumb canonical mediaPosition'ı
-             YANSITIR (zoom'un AKSİNE — zoom rail-independent,
-             media-position canonical). */
-          mediaPosition={mediaPosition}
+          /* Phase 129 — candidate preset thumb'lar canonical
+             mediaPosition'ı yansıtır; interaktif rail-head pad ise
+             stable navigator background için neutral render edilir. */
+          mediaPosition={stageMediaPosition}
           isPreview
           isRender={false}
           isEmpty={false}
