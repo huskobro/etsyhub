@@ -344,9 +344,11 @@ export function StageScenePreview({
              *  `.shadow-layer`). Viewfinder rectangle = görünür
              *  pencere (Shots.so `.viewfinder-div`):
              *
-             *  - BOYUT: pad × (1/zoom) — Shots.so birebir matematik
-             *    (zoom 146% → viewfinder 208×156'nın %68.5'i =
-             *    142×107, canlı browser ölçümüyle doğrulandı).
+             *  - BOYUT: BASE inset × (1/zoom) — Shots.so 1/zoom
+             *    davranışı (zoom artınca görünür pencere daralır;
+             *    canlı browser ölçümü: zoom 146% → pad'in ~%68'i).
+             *    BASE_FRAC zoom %100'de bile viewfinder'ı pad'den
+             *    küçük tutar (mediaPosition'a hareket alanı verir).
              *  - KONUM: mediaPosition'ın TERS izdüşümü — media sağa
              *    (+x) kaydıkça görünür pencere sola kayar (kamera/
              *    viewfinder metaforu). Viewfinder pad içinde
@@ -362,12 +364,28 @@ export function StageScenePreview({
             const z = Number.isFinite(previewZoomPct)
               ? previewZoomPct
               : 100;
-            const vfFrac = Math.max(0.2, Math.min(1, 100 / z));
+            /* Viewfinder boyut oranı = BASE inset × (1/zoom).
+             *  BASE_FRAC (0.78): viewfinder zoom %100'de bile pad'i
+             *  TAM kaplamaz → mediaPosition'ın her zaman (zoom
+             *  %100 dahil) viewfinder'ı kaydıracak hareket alanı
+             *  (travel>0) olur. Aksi halde zoom %100 → vfFrac=1 →
+             *  travel=0 → viewfinder media'ya göre HİÇ kaymaz
+             *  (kullanıcı "dikdörtgen hareket etsin" isteği
+             *  karşılanmaz). Zoom artınca viewfinder daha da
+             *  daralır (Shots.so 1/zoom davranışı korunur). */
+            const BASE_FRAC = 0.78;
+            const vfFrac = Math.max(
+              0.18,
+              Math.min(BASE_FRAC, BASE_FRAC * (100 / z)),
+            );
             const vfPct = vfFrac * 100;
             // serbest alan oranı (viewfinder pad içinde ne kadar
-            // gezinebilir) — vfFrac=1 iken 0 (tam kaplar, hareket yok)
+            // gezinebilir). vfFrac ≤ 0.78 olduğu için travel daima
+            // > 0 → media her zaman viewfinder'ı kaydırır.
             const travel = (1 - vfFrac) * 50;
-            // ters izdüşüm: media +x → viewfinder sol (− yön)
+            // ters izdüşüm: media +x → viewfinder sol (− yön;
+            // kamera/viewfinder metaforu — kompozisyon sağa giderse
+            // görünür pencere sola kayar).
             const vfCx = 50 - mediaPosition.x * travel;
             const vfCy = 50 - mediaPosition.y * travel;
             return (
