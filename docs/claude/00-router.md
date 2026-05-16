@@ -52,6 +52,13 @@ Stage doc'ları bu sıraya göre numaralandırılır.
 | 8 | Settings / Admin (panes, prompt/provider/template admin, negative library, cost) | `docs/claude/settings-admin.md` |
 | — | Açık item'lar / bilinçli erteleme / future direction (tüm modüller) | `docs/claude/known-issues-and-deferred.md` |
 
+> **Enforcement plan (policy → enforced adayları):** stage
+> #5/#3/#7/#8 doc'larında **§5.5 Enforcement plan** bölümü var
+> (hangi kural runtime KOD-ENFORCED, hangisi POLICY, hangisi
+> enforce adayı + öncelik P1/P2/P3 + somut mekanizma). Bir
+> policy'yi enforce'a yükseltmeden önce ilgili doc §5.5'i oku
+> (premature guard YASAK — değerlendirme orada).
+
 ## Sidebar surface → stage doc eşlemesi
 
 Operatör hangi sidebar öğesindeyse hangi doc'a bakacağı:
@@ -111,10 +118,16 @@ Detay + ihlal riskleri → `selection-library-products.md`.
 3. **Ürün anayasası / Canonical Surface / Review Freeze / Marka
    değişiyorsa** (nadir) → `CLAUDE.md` core.
 4. **Yeni açık item / erteleme** → `known-issues-and-deferred.md`.
-5. Asla yeni davranışı yalnız archive'a yazıp stage doc'u
+5. **Bir POLICY'yi runtime ENFORCE ettiysen** → ilgili stage
+   doc'un enforcement-tier bloğunda o kuralı POLICY'den
+   KOD-ENFORCED'a taşı (dosya:satır kanıtı ekle) + §5.5
+   Enforcement plan satırını "tamamlandı" olarak güncelle/çıkar.
+   Tier ↔ kod ayrışması (doc "enforced" der ama değil / tersi)
+   YASAK — code-grounding'in amacı buydu.
+6. Asla yeni davranışı yalnız archive'a yazıp stage doc'u
    güncellemeden bırakma (gelecek ajan archive'ı authoritative
    sanmaz; stage doc canonical kaynaktır).
-6. Yeni stage doc gerekirse `docs/claude/` altına ekle + bu
+7. Yeni stage doc gerekirse `docs/claude/` altına ekle + bu
    router tablolarına satır ekle + cross-ref ver (broken
    reference YOK). Çok sayıda küçük dosya AÇMA — pipeline-stage
    bazlı az sayıda doc; gerçekten karmaşık alt-alanlar 6 sabit

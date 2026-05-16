@@ -76,21 +76,17 @@ stage'inde. Batch detail variation üretir, mockup/listing
 - `Batch.id` + legacy `Job.metadata.batchId` **aynı cuid uzayı**;
   unified resolver (`getBatchSummary` AI önce dener, MJ fallback).
   Yeni pipeline batch.id'yi Job.metadata'ya yazar.
-- **`deriveBatchStage` 5 semantik ayrı değer** döndürür
-  (`BatchDetailClient.tsx:123-142` — **client component**, service
-  değil); `BatchStageCTA` yalnız render eder (re-derivation YOK).
-  Tek primary CTA per stage (KOD-DOĞRU).
-- **Decision gate (CLAUDE.md Madde H) = VISIBILITY gate (POLICY,
-  server enforcement YOK):** `deriveBatchStage` (BatchDetailClient.
-  tsx:123-142, **client component** — service değil) `kept-no-
-  selection`'ı yalnız `undecided=0 ∧ kept>0 ∧ set yok` koşulunda
-  döndürür → operatör doğru CTA'yı görür + `review-pending`
-  caption "X undecided · decide before next stage". **Ama POST
-  `/api/batches/[id]/create-selection` undecided check YAPMAZ**
-  (`createSelectionFromAiBatch` yalnız APPROVED+USER filter eder,
-  undecided'ı yok sayar — operator-trust). KeptNoSelectionCTA
-  yalnız `create.isPending` ile disabled (undecided>0 ile değil).
-  Yani gate UI-stage görünürlük; server-side hard enforcement yok.
+- **`deriveBatchStage` (KOD-DOĞRU):** 5 semantik ayrı değer,
+  `BatchDetailClient.tsx:123-142` (**client component**, service
+  değil); `BatchStageCTA` yalnız render (re-derivation YOK), tek
+  primary CTA per stage.
+- **Decision gate (Madde H) = VISIBILITY-only (POLICY, server
+  enforce YOK):** `kept-no-selection` yalnız `undecided=0 ∧
+  kept>0 ∧ set yok` iken render + "X undecided · decide before
+  next stage" caption. **Ama POST `/api/batches/[id]/create-
+  selection` undecided check YAPMAZ** (`createSelectionFromAiBatch`
+  yalnız APPROVED+USER filter; CTA `create.isPending` ile disabled,
+  undecided>0 ile değil). Operatör override edebilir → §5.5.
 - **Multi-reference launch:** her `BatchItem` ayrı
   `createVariationJobs`, tümü aynı `Batch.id`; partial-failure
   `perReference` array; ≥1 success → QUEUED (idempotent
@@ -138,6 +134,23 @@ stage'inde. Batch detail variation üretir, mockup/listing
 - Prompt template picker (v7 d2a/d2b PromptPreviewSection)
 - Per-reference post-launch toast queue panel'inde
 - Batches index DRAFT batch listeleme unification
+
+## 5.5 Enforcement plan (policy → enforced adayları)
+
+| Kural | Şu an | Enforce adayı? | Öncelik | Önerilen mekanizma |
+|---|---|---|---|---|
+| Decision gate (undecided=0 olmadan selection oluşturulmaz — Madde H) | POLICY (UI-stage görünürlük; server check YOK) | **Evet** | **P1** | `createSelectionFromBatch`/`createSelectionFromAiBatch` başına **server-side assert**: scope'ta `reviewStatusSource != USER` (undecided) sayımı > 0 ise `ValidationError` (operatör override istiyorsa explicit `?force=true` + audit — CLAUDE.md Madde H "override explicit + audit'lenebilir"). En kritik: şu an UI dışı bir POST gate'i tamamen bypass eder; downstream "kept" zincirinin bütünlüğü riskte. Ucuz (tek servis guard + 1 test). |
+| Batch = ana üretim birimi / Create Similar = trigger | POLICY (UI dili + primary CTA) | Hayır | P3 | Wording/CTA kararı; runtime guard anlamsız. Mevcut yapı yeterli. |
+| `defaultImageProvider` hardcoded YASAK | KOD-DOĞRU (settings resolve) | — | — | Korunmalı; regresyon testi. |
+| Multi-ref launch ≥1→QUEUED / atomik enqueue | KOD-DOĞRU (`launchBatch` + `enqueueReviewDesign` atomik) | — | — | Korunmalı. |
+| Schema-zero lineage (`WorkflowRun` eklenmez) | POLICY (mimari kısıt — IA Phase 11) | Hayır | P3 | Bilinçli erken-abstraction guard'ı (`known-issues` G). Açmak ayrı ürün kararı; runtime enforce konusu değil. |
+
+**Net öneri:** **P1 = decision gate server-side assert**
+(`createSelectionFromBatch` undecided>0 → 4xx + explicit
+`?force` audit). Bu, code-grounding'de bulunan en yüksek-risk
+POLICY açığı — UI-bypass eden bir API çağrısı operator-kept
+zincirini sessizce kırabilir. Tek servis guard + test, küçük
+scope. Diğer maddeler tasarım/wording — guard YAGNI.
 
 ## 6. Archive / Historical pointer
 

@@ -89,17 +89,13 @@ Etsy yalnız burada (Selection/Library'de değil).
   kalıcı kaynak `storageKey`.
 - **Frame compositor (`frame-compositor.ts`) canonical export
   motoru** (KOD-DOĞRU): `resolveMediaOffsetPx` canonical+export
-  AYNI fonksiyon (`frame-compositor.ts:34,468` — §11.0 parity);
-  plate-only Lens Blur type-enforced (`FrameLensBlurTarget
-  "plate"|"all"`, satır 127); ProductType-specific item shape
-  (`FrameDeviceShape` enum sticker/wall_art/phone/bookmark/
-  garment/garment-hooded, satır 80-119). **"zoom export'ta YOK"
-  = anlatımsal/provable-değil**: `FrameCompositorInput`'ta zoom
-  parametresi hiç yok (yapısal olarak zoom giremiyor) +
-  Phase 111 composition-group lock (satır 413-434) parity'yi
-  sağlıyor; "scale=1" enforce eden explicit kod değil, zoom'un
-  hiç var olmaması. Detay → `docs/claude/mockup-studio-
-  framing.md` + `mockup-studio-zoom-navigator.md` §5.
+  AYNI fonksiyon (`:34,468` — §11.0); plate-only Lens Blur
+  type-enforced (`FrameLensBlurTarget`, `:127`); ProductType
+  shape (`FrameDeviceShape` enum, `:80-119`). "zoom export'ta
+  YOK" = yapısal (input'ta zoom param hiç yok + Phase 111
+  composition-group lock parity) — enforce eden kod değil,
+  zoom'un var olmaması. Detay → `mockup-studio-framing.md` +
+  `mockup-studio-zoom-navigator.md` §5.
 - Digital-only listing — physical/shipping/made-to-order
   alanları YASAK (KOD-DOĞRU: `submit.service.ts:175-178`
   hardcoded `isDigital:true`, `whenMade:"made_to_order"`,
@@ -138,6 +134,25 @@ Etsy yalnız burada (Selection/Library'de değil).
 - Studio history viewer + FrameExport delete/archive UI
 - "Create new listing from Frame export" bypass
 - Listing builder field-level Kivasy DS migration
+
+## 5.5 Enforcement plan (policy → enforced adayları)
+
+| Kural | Şu an | Enforce adayı? | Öncelik | Önerilen mekanizma |
+|---|---|---|---|---|
+| Listing readiness checklist (13 tag/resolution/AI review/trademark/export) | POLICY soft-warn (submit yalnız title/desc/price blok eder) | **Kısmi/seçici** | **P2** | **Hepsini hard-gate ETME** (operatör bilinçli eksik draft göndermek isteyebilir — Etsy admin'de tamamlar). Yalnız **trademark/negative-library risk** bir blocker'a yükseltilebilir (telif riski = ürün için yüksek maliyet; CLAUDE.md Negative Library). Öneri: `submit.service` readiness'te `riskFlags.trademark` varsa **hard-block + explicit override audit**; geri kalan readiness soft-warn kalır (operatör autonomisi). Kapsam: tek conditional + audit. |
+| Etsy active publish YASAK | KOD-DOĞRU (`submit.service:175-178` isDigital/whenMade/whoMade hardcoded; status=PUBLISHED=admin'de yayınla) | — | — | Korunmalı; V1 lock. Active publish ileride ürün kararı olursa ayrı tur (şu an doğru). |
+| Preview = Export Truth (§11.0) | KOD-DOĞRU (resolveMediaOffsetPx canonical+export aynı fonksiyon; type-enforced lens/shape) | — | — | Korunmalı; pixel-parity regresyon testi (Mockup Studio doc §11.0). Yeni iş bunu zayıflatamaz. |
+| `ListingImageOrderEntry` backward-compat (kind-siz→mockup-render) | KOD-DOĞRU (discriminated union + helpers) | — | — | Korunmalı; migration yapılırsa union genişler, default korunur. |
+| Digital-only listing (physical alanları yok) | KOD-DOĞRU (hardcoded V1) | — | — | Korunmalı (CLAUDE.md Madde D scope). |
+| FrameExport cross-user isolation | KOD-DOĞRU (userId zorunlu + WHERE filter) | — | — | Korunmalı; regresyon testi. |
+
+**Net öneri:** Tek değerlendirilecek aksiyon = **P2 trademark/
+risk-flag selective hard-gate** (readiness'in TAMAMI değil, yalnız
+telif-riskli flag submit'i bloklasın + explicit override audit).
+Gerekçe: readiness'i topyekûn hard-gate yapmak operatör
+autonomisini kırar (Etsy admin'de tamamlama meşru akış); ama
+trademark riski ürün için orantısız maliyet — seçici enforce
+mantıklı. Diğer maddeler zaten KOD-ENFORCED; korunur.
 
 ## 6. Archive / Historical pointer
 

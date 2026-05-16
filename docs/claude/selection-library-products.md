@@ -105,42 +105,24 @@
 > - "State akışı tek yönlü" — endpoint sırası tasarımı net + geri-
 >   yazım kodu yok; schema-level cycle guard yok (tasarım kuralı).
 
-- **Library ≠ Selections ≠ Products — karıştırmak YASAK
-  (POLICY).** Sınır ihlali riskleri (CLAUDE.md):
-  - "Selection" denilip Library grid çizilirse → ihlal
-  - Products'a variation generate eklenirse → ihlal
-  - Library'de set CRUD yapılırsa → ihlal
-  - Etsy draft history Selections'ta tutulursa → ihlal
-  Yeni feature/migration/refactor sınırı bulanıklaştırırsa **iş
-  durdurulur**, sınır gözden geçirilir.
-- **State akışı TEK YÖNLÜ** — geri yazım yok; her ok action
-  (single primary CTA), sayfa değil.
-- **Operator-only kept downstream gate (Madde V''):** Library'den
-  selection'a ekleme operatör aksiyonu (silent auto-add YOK);
-  selection finalize + mockup apply `SelectionItem.status`'tan
-  gate'lenir; Etsy draft listing handoff'tan ilerler. AI
-  advisory hiçbir downstream gate'te "kept" saymaz
-  (`reviewStatus=APPROVED ∧ reviewStatusSource=USER` zorunlu).
-- **İki decision katmanı ayrı** (karıştırılmaz):
-  - **Operator decision** (downstream gate): `reviewStatus` +
-    `reviewStatusSource` (Review modülü; Madde V).
-  - **In-set curation:** `SelectionItem.status` (pending/selected/
-    rejected) — Selection içinde mockup'a girer/çıkar. Yeni isim
-    icat YASAK ("kept/selected/shortlisted" karışıklığı önlenir).
-- **SelectionSet finalize sonrası immutable** (Phase 7 Task 35) —
-  selection edit finalize sonrası dondurulur; Product detail yeni
-  mockup uygular ama Selection edit'i yapamaz.
-- **Selection → Product handoff:** SelectionSet → Mockup Apply →
-  MockupJob result → Listing draft → `/products/[id]`. Doğrudan
-  Selection → Product CTA YOK (mockup apply zorunlu ara durak).
-  Product = Listing (DB'de `Listing` tablosu, UI'da "Product"
-  branding).
-- **Lineage:** `SelectionSet.sourceMetadata.mjOrigin.batchIds` /
-  `kind:"variation-batch"` (schema-zero; Phase 1/50). Selection
-  card + detail batch lineage chip aynı resolver.
-- High-volume zorunlu (CLAUDE.md): Library/Selection items/Batch
-  items/Products virtualized grid + bulk floating bar + density
-  toggle persist.
+Yukarıdaki tier bloğu **tek otoriter referans** (kanıt:satır
+orada). Ek bağlam (tekrar değil):
+
+- **"Library ≠ Selections ≠ Products" ihlal örnekleri** (POLICY —
+  refactor/yeni feature bunlardan birini yaparsa **iş durdurulur**):
+  Selection'da Library grid · Products'a variation generate ·
+  Library'de set CRUD · Etsy draft history Selections'ta.
+- **İki decision katmanı isimlendirme kuralı:** operator decision
+  = `reviewStatus`+`reviewStatusSource` (Review/Madde V); in-set
+  curation = `SelectionItem.status` (pending/selected/rejected).
+  Yeni isim icat YASAK ("kept/selected/shortlisted" karışıklığı).
+- **Selection → Product handoff zinciri:** SelectionSet → Mockup
+  Apply → MockupJob result → Listing draft → `/products/[id]`.
+  Doğrudan Selection→Product CTA YOK (mockup apply zorunlu ara
+  durak; runtime guard değil — akış tasarımı). Product = Listing
+  (DB `Listing`, UI "Product").
+- High-volume zorunlu (CLAUDE.md ürün kuralı): virtualized grid +
+  bulk floating bar + density toggle persist.
 
 ## 4. Relevant files / Ownership
 
@@ -166,6 +148,34 @@
   QuickActions — Phase 15 visible parity scope dışı kalanlar;
   i18n katmanı turu)
 - Apply Mockups → Product handoff confidence polish
+
+## 5.5 Enforcement plan (policy → enforced adayları)
+
+POLICY/KONVANSİYON kuralların "should this become enforced?"
+değerlendirmesi. Öncelik: **P1** yakın (sınır erozyonu riski
+yüksek), **P2** orta, **P3** düşük (mevcut tasarım yeterince
+koruyor).
+
+| Kural | Şu an | Enforce adayı? | Öncelik | Önerilen mekanizma |
+|---|---|---|---|---|
+| Library≠Selections≠Products karıştırma | POLICY (UI ayrımı + code-review) | **Evet** | **P2** | Module-boundary lint (ESLint `no-restricted-imports`: products feature library/selection internal'ını import edemez) + route handler'da feature-scope assert. Tam runtime guard pahalı; lint + import-boundary %80 erozyon yakalar. |
+| Products'a variation generate eklenmez | POLICY (kod path yok) | Hayır | P3 | Mevcut: variation servisi yalnız Batch'te. Lint import-boundary (üstteki) bunu da kapsar; ayrı guard gereksiz. |
+| Library set CRUD eklenmez | POLICY (UI'da yok) | Hayır | P3 | Aynı import-boundary lint kapsamında; LibraryClient salt-filter. Ek mekanizma YAGNI. |
+| State akışı tek yönlü (geri yazım yok) | POLICY (tasarım + geri-yazım kodu yok) | Kısmi | P2 | Schema-level cycle guard pahalı/gereksiz. Bunun yerine handoff servislerine **tek-yön assert** (örn. `createSelectionFromBatch` yalnız Batch→Selection; ters fonksiyon yazılmasını engelleyen test + servis-katmanı invariant testi). |
+| Apply Mockups zorunlu ara durak (Selection→Product) | POLICY (akış tasarımı; doğrudan CTA yok) | Hayır | P3 | Product = Listing; listing draft yalnız MockupJob result'tan oluşur (`createListingDraftFromMockupJob`). Yapısal — guard'a gerek yok. |
+
+**KOD-ENFORCED kalan** (plan gerektirmez, korunmalı): finalize
+immutability (`assertSetMutable`), operator-kept gate (SQL
+`reviewStatusSource=USER`), 2-katman decision schema, finalize
+gate (`assertCanFinalize`), lineage resolver. Bunlar regresyon
+testi ile korunur; yeni iş bunları zayıflatamaz.
+
+**Net öneri:** Tek yüksek-değer aksiyon = **P2 module-boundary
+ESLint kuralı** (products↛library/selection internal import +
+handoff tek-yön servis testi). Bu, en kritik POLICY'yi (boundary
+karışması) ucuz şekilde yarı-enforce eder. Diğerleri mevcut
+tasarımla yeterince korunuyor — premature guard YASAK
+(CLAUDE.md erken-abstraction).
 
 ## 6. Archive / Historical pointer
 

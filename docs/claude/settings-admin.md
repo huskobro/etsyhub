@@ -111,46 +111,23 @@ mantığı stage modüllerinde; Settings onları konfigüre eder.
 >   (`criteria.ts` + `composeReviewSystemPrompt`) ama block
 >   CRUD/DB/admin-UI yok (builtin hardcoded).
 
-- **No Hidden Behavior — Admin Visibility (CLAUDE.md — ÜRÜN
-  KURALI; kısmî kod-enforced):** davranışı anlamlı etkileyen
-  her şey admin'de görünür+düzenlenebilir **olmalı**. Gerçek
-  durum: review scoring formül/threshold + ai-mode provider +
-  template ownership kod-enforced görünür; **negative library +
-  prompt-block selection + cost-limit henüz hidden/hardcoded**
-  (yukarıdaki tier + §5). Yeni feature bu kurala uymak zorunda
-  (her feature settings surface'iyle gelir — CLAUDE.md
-  checklist), ama mevcut 3 alan açık borç.
-- **Settings Registry pattern (Madde R — kısmî kod-enforced):**
-  hedef: değer kod'tan okunmaz, resolved config helper'ından
-  geçer + job başında policy snapshot. Kod-enforced: ai-mode
-  (encrypt+resolve), review threshold (resolved helper).
-  Henüz değil: negative-library, bazı prompt-default'lar.
-- **Prompt-block / criteria architecture (Madde O — kısmî):**
-  master prompt = core + active applicable blocks compose her
-  job'da (`criteria.ts` + `composeReviewSystemPrompt` —
-  KOD-DOĞRU); final skor matematiği open (kapalı kutu değil).
-  **Ama block = DB config payload + admin CRUD/override UI
-  henüz YOK** (builtin hardcoded; `ReviewCriterion` modeli yok).
-  Tek parça hardcoded prompt string YASAK kuralı = ürün hedefi;
-  block-level admin yönetimi incomplete (→ §5).
-- **Mockup template ownership cross-user isolation
-  hard-enforced** (4 katman — yukarıdaki tier bloğunda dosya:
-  satır; KOD-DOĞRU). User-scope write yalnız LOCAL_SHARP. Render
-  history `templateSnapshot` self-contained (silinen template
-  geçmiş render'ı bozmaz).
-- **Review modülü FROZEN (Madde Z):** Settings → Review pane
-  görünür ama scoring/automation sözleşmesi kilitli (değişiklik
-  3-koşul; bkz. `docs/claude/review.md`).
-- **API key plain text YASAK** — provider credential admin
-  scope'ta korunur; user key encrypt; tüm mutation
-  authorization + audit log.
-- **Every feature ships with its settings surface (CLAUDE.md):**
-  (1) KNOWN_SETTINGS'te key, (2) admin Settings'te görünür,
-  (3) prompt ise Master Prompt Editor'da, (4) wizard param ise
-  wizard governance, (5) module toggle ise `module.{id}.enabled`.
-- Core invariant'lar (state machine, security guard, pipeline
-  step order, validation enforcement) kodda kalır, admin'den
-  disable EDİLEMEZ.
+Yukarıdaki tier bloğu **tek otoriter referans** (kanıt:satır
+orada). Ek bağlam (tekrar değil):
+
+- **No Hidden Behavior / Settings Registry / Prompt-block (Madde
+  O+R)** = ürün hedefi; gerçek durum tier bloğunda (review
+  scoring/ai-mode/template ownership KOD-ENFORCED; negative-
+  library/prompt-block CRUD/cost-limit açık borç → §5/§5.5).
+  Yeni feature CLAUDE.md "settings surface checklist"e uymak
+  zorunda (1 key 2 admin-görünür 3 prompt-editor 4 wizard-gov
+  5 module-toggle); mevcut 3 alan istisna-borç, doc'larda
+  "yapıldı" gibi gösterilmez.
+- **Review modülü FROZEN (Madde Z):** Settings→Review pane
+  görünür ama scoring/automation kilitli (3-koşul; →
+  `docs/claude/review.md` §3 — %100 kod-enforced).
+- **Core invariant'lar admin'den disable EDİLEMEZ** (state
+  machine, security guard, pipeline step order, validation) —
+  kodda kalır (KOD-DOĞRU; tasarım kuralı).
 
 ## 4. Relevant files / Ownership
 
@@ -192,6 +169,36 @@ hedefiyle çelişen, henüz implement EDİLMEMİŞ):**
   PSD ETL (`ag-psd`), quota/limits, sharing
 - Admin "Soon" tab'ları (Users/Audit/Feature Flags/Theme/Dark
   mode — honest disclosure ile gizli; altyapı hazır)
+
+## 5.5 Enforcement plan (policy/incomplete → enforced adayları)
+
+Bu modülde 3 gerçek **kod-borcu** (CLAUDE.md "No Hidden
+Behavior" / Madde O+R hedefiyle çelişen, henüz implement
+edilmemiş). Önceliklendirme + somut plan:
+
+| Borç | Şu an | Enforce/tamamla adayı? | Öncelik | Önerilen mekanizma |
+|---|---|---|---|---|
+| **Negative library Settings'te değil** | hardcoded `negative-library.ts` (Phase 6+ defer) | **Evet** | **P1** | En düşük scope + yüksek ürün değeri: `UserSetting`/admin key `negative.terms[]` + resolved helper (ai-mode pattern parity); `negative-library.ts` builtin → fallback, override settings'ten. Risk-flag + negative-prompt + listing kontrol o helper'ı okur. Tek setting + 1 resolved fn + UI list (mevcut Settings pane pattern). "No Hidden Behavior" en görünür ihlali bu. |
+| **Prompt-block admin CRUD/override yok** | builtin `criteria.ts` hardcoded; `ReviewCriterion` DB modeli yok | Kısmi | **P2** | **TAM CRUD pahalı + Review FROZEN** (Madde Z — scoring sözleşmesi kilitli; criteria değişimi review davranışını etkiler → 3-koşul gerekir). Öneri: önce **read-only admin görünürlük** (builtin block listesi + weight/severity/applicability admin'de GÖRÜNÜR ama düzenlenemez — "No Hidden Behavior"in görünürlük yarısı ucuz, davranış değişmez, freeze güvenli). Edit/override (DB `ReviewCriterion` + builtin override katmanı) ayrı büyük tur + Madde Z onayı. |
+| **Cost limit job engeli yok** | `CostUsage` kaydı + dashboard; enqueue-öncesi check yok | Evet | **P2** | `enqueueReviewDesign` / variation enqueue başına **pre-check**: user/provider günlük-aylık `CostUsage` toplamı resolved limit'i aşıyorsa enqueue reddi + operatöre net mesaj (CLAUDE.md Cost Guardrails). Limit değeri Settings Registry'den (yeni `cost.limit.*` key). Scope: tek pre-check helper + settings key + 2 enqueue call-site. |
+| Settings Registry kısmî (negative/prompt-default builtin fallback) | KISMÎ | — | — | P1 (negative) + P2 (prompt-block read-only) tamamlanınca büyük ölçüde kapanır; ayrı aksiyon değil. |
+
+**KOD-ENFORCED kalan** (korunmalı, regresyon testi): ownership
+4-katman, user-write LOCAL_SHARP-only, API key encrypt,
+`defaultImageProvider` resolve, `PromptTemplate`+`PromptVersion`,
+3-step template API, Review FROZEN gate.
+
+**Net öneri (sıralı):**
+1. **P1 — negative library → Settings Registry** (en görünür
+   "No Hidden Behavior" ihlali; en küçük scope; tek setting +
+   resolved helper + UI list).
+2. **P2 — cost limit pre-check** (Cost Guardrails ürün kuralı
+   şu an hiç enforce değil; tek pre-check helper + settings key).
+3. **P2 — prompt-block READ-ONLY admin görünürlük** (full
+   CRUD DEĞİL — Review FROZEN; yalnız görünürlük yarısı,
+   davranış değişmez, freeze güvenli; edit ayrı tur + Madde Z).
+Üçü de küçük/orta scope, ürün anayasası borcunu kapatır.
+Premature full prompt-block CRUD YAPMA (freeze + scope).
 
 ## 6. Archive / Historical pointer
 
