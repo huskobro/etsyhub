@@ -339,60 +339,72 @@ export function StageScenePreview({
           onPointerCancel={onPadPointerUpCancel}
         >
           {(() => {
-            /* Phase 127 — Pad metaforu Shots.so-canonical (ters
-             *  çevrildi). Pad = sabit full media extent (Shots.so
-             *  `.shadow-layer`). Viewfinder rectangle = görünür
-             *  pencere (Shots.so `.viewfinder-div`):
+            /* Phase 128 — Pad = NAVIGATOR + VIEWFINDER GROUP
+             *  (Shots.so canonical, gerçek browser DOM ölçümüyle
+             *  doğrulandı).
              *
-             *  - BOYUT: BASE inset × (1/zoom) — Shots.so 1/zoom
-             *    davranışı (zoom artınca görünür pencere daralır;
-             *    canlı browser ölçümü: zoom 146% → pad'in ~%68'i).
-             *    BASE_FRAC zoom %100'de bile viewfinder'ı pad'den
-             *    küçük tutar (mediaPosition'a hareket alanı verir).
-             *  - KONUM: mediaPosition'ın TERS izdüşümü — media sağa
-             *    (+x) kaydıkça görünür pencere sola kayar (kamera/
-             *    viewfinder metaforu). Viewfinder pad içinde
-             *    gezinir, kenardan taşmaz (serbest alan = 1-vfFrac).
-             *  - HANDLE: pad MERKEZİNDE SABİT (anchor — kullanıcı
-             *    isteği). mediaPosition'a bağlı DEĞİL; media offset'in
-             *    referans noktası.
+             *  Shots.so yapısı (canlı kanıt):
+             *   - `.position-pad-safearea` = sabit navigator
+             *     surface (pad'in tamamı).
+             *   - `.pad-preview > .layout-item` = full-extent
+             *     background, `transform: none` SABİT (pad'i tam
+             *     doldurur — navigator'ın değişmeyen zemini).
+             *   - `.drag-handle` = hareket eden GROUP (`transform:
+             *     translate(...)`), pan'ı uygular.
+             *   - `.viewfinder-div` = `.drag-handle`'ın ÇOCUĞU →
+             *     handle ile AYNI center (canlı ölçüm: dx:0 dy:0).
+             *     Beyaz nokta + rectangle aynı GROUP, birlikte
+             *     hareket eder.
+             *   - zoom → viewfinder boyutu (1/zoom; canlı ölçüm
+             *     zoom %101 → pad'in %99'u).
+             *   - pan → handle GROUP translate (bg SABİT kalır;
+             *     "görünür pencereyi navigator üzerinde taşıyorum").
+             *
+             *  Phase 127 yanlıştı: handle pad'e sabit anchor +
+             *  viewfinder ayrı ters-izdüşüm idi (kullanıcı: "beyaz
+             *  nokta bağımsız sabit anchor değil — viewfinder
+             *  rectangle'ın merkez marker'ı; rectangle ile birlikte
+             *  hareket etmeli"). Phase 128: dot + rectangle TEK
+             *  GROUP (`.k-studio__pad-viewfinder`), AYNI center'da
+             *  birlikte hareket; pad arka planı (StageScene thumb
+             *  zaten arkada — navigator/full-extent) SABİT.
              *
              *  Yalnız pad overlay GÖSTERİMİ. Canonical mediaPosition
              *  state, shared resolver, export matematiği, composition
-             *  translate DEĞİŞMEZ (pad interaction hâlâ aynı
-             *  mediaPosition'ı yazar; spec §state-export bozma). */
+             *  translate, candidate thumb mantığı DEĞİŞMEZ (pad
+             *  interaction hâlâ aynı mediaPosition'ı yazar; spec
+             *  §state-export bozma; rail-head pad navigator semantiği
+             *  ile preset-thumb canonical preview AYRI). */
             const z = Number.isFinite(previewZoomPct)
               ? previewZoomPct
               : 100;
-            /* Viewfinder boyut oranı = BASE inset × (1/zoom).
-             *  BASE_FRAC (0.78): viewfinder zoom %100'de bile pad'i
-             *  TAM kaplamaz → mediaPosition'ın her zaman (zoom
-             *  %100 dahil) viewfinder'ı kaydıracak hareket alanı
-             *  (travel>0) olur. Aksi halde zoom %100 → vfFrac=1 →
-             *  travel=0 → viewfinder media'ya göre HİÇ kaymaz
-             *  (kullanıcı "dikdörtgen hareket etsin" isteği
-             *  karşılanmaz). Zoom artınca viewfinder daha da
-             *  daralır (Shots.so 1/zoom davranışı korunur). */
+            /* Viewfinder GROUP boyut oranı = BASE inset × (1/zoom).
+             *  BASE_FRAC (0.78): zoom %100'de bile viewfinder pad'i
+             *  TAM kaplamaz → mediaPosition'ın her zaman (zoom %100
+             *  dahil) viewfinder GROUP'u kaydıracak hareket alanı
+             *  (travel>0) olur. Zoom artınca viewfinder daralır
+             *  (Shots.so 1/zoom — canlı ölçüm zoom %101 → %99). */
             const BASE_FRAC = 0.78;
             const vfFrac = Math.max(
               0.18,
               Math.min(BASE_FRAC, BASE_FRAC * (100 / z)),
             );
             const vfPct = vfFrac * 100;
-            // serbest alan oranı (viewfinder pad içinde ne kadar
-            // gezinebilir). vfFrac ≤ 0.78 olduğu için travel daima
-            // > 0 → media her zaman viewfinder'ı kaydırır.
+            /* Serbest alan oranı: viewfinder GROUP pad içinde ne
+             *  kadar gezinebilir (kenardan taşmaz). vfFrac ≤ 0.78
+             *  → travel daima > 0. mediaPosition izdüşümü: media +x
+             *  → viewfinder GROUP +x (Shots.so `.drag-handle` media-
+             *  position anchor: handle/group media yönünde hareket;
+             *  kullanıcı "görünür pencereyi navigator alanı üzerinde
+             *  taşıyorum"). */
             const travel = (1 - vfFrac) * 50;
-            // ters izdüşüm: media +x → viewfinder sol (− yön;
-            // kamera/viewfinder metaforu — kompozisyon sağa giderse
-            // görünür pencere sola kayar).
-            const vfCx = 50 - mediaPosition.x * travel;
-            const vfCy = 50 - mediaPosition.y * travel;
+            const vfCx = 50 + mediaPosition.x * travel;
+            const vfCy = 50 + mediaPosition.y * travel;
             return (
               <>
-                {/* Dim: viewfinder DIŞINI karart (viewfinder ile
+                {/* Dim: viewfinder GROUP DIŞINI karart (group ile
                     hareket eder — Shots.so viewfinder dim paritesi).
-                    4 kenar bandı: üst/alt/sol/sağ. */}
+                    Navigator'ın "kapsam dışı" alanını gösterir. */}
                 <div
                   className="k-studio__pad-dim"
                   data-testid="studio-rail-pad-dim"
@@ -408,14 +420,17 @@ export function StageScenePreview({
                     )`,
                   }}
                 />
-                {/* Viewfinder rectangle: görünür pencere. Boyut
-                    zoom ile (1/zoom), konum mediaPosition ters
-                    izdüşümü. */}
+                {/* Viewfinder GROUP: rectangle + center dot TEK
+                    eleman, AYNI center'da (Shots.so `.drag-handle`
+                    > `.viewfinder-div` çocuk ilişkisi, dx:0 dy:0).
+                    Boyut zoom (1/zoom), konum mediaPosition. Dot,
+                    rectangle'ın geometrik merkez marker'ı (::after
+                    pseudo, studio.css) — bağımsız anchor DEĞİL. */}
                 <div
-                  className="k-studio__pad-safearea"
-                  data-testid="studio-rail-pad-safearea"
+                  className="k-studio__pad-viewfinder"
+                  data-testid="studio-rail-pad-viewfinder"
                   data-vf-frac={vfFrac.toFixed(4)}
-                  aria-hidden
+                  aria-label="Media viewfinder"
                   style={{
                     left: `${vfCx}%`,
                     top: `${vfCy}%`,
@@ -423,14 +438,6 @@ export function StageScenePreview({
                     height: `${vfPct}%`,
                     transform: "translate(-50%, -50%)",
                   }}
-                />
-                {/* Handle: pad MERKEZİNDE SABİT anchor (kullanıcı
-                    isteği — mediaPosition'a bağlı değil). */}
-                <div
-                  className="k-studio__pad-handle"
-                  data-testid="studio-rail-pad-handle"
-                  style={{ left: "50%", top: "50%" }}
-                  aria-label="Media position anchor"
                 />
               </>
             );

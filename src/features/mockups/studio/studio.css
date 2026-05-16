@@ -1392,9 +1392,12 @@
   margin: 0 2px;
 }
 
-/* Phase 126 — Global media-position pad overlay (Shots.so parity).
- * StageScenePreview canlı preview'ı boğmaz: overlay subtle, ayrı
- * UI slab değil — yalnız safe-area çerçevesi + küçük handle. */
+/* Phase 126/128 — Global media-position pad = NAVIGATOR.
+ * StageScenePreview canlı preview'ı (navigator/full-extent zemin)
+ * arkada gösterir; bu overlay onun üstüne viewfinder GROUP'u
+ * çizer. Pad arka planı (StageScene thumb) SABİT — hareket eden
+ * yalnız viewfinder group (Shots.so `.position-pad-safearea`
+ * navigator paritesi). */
 .k-studio__pad-overlay {
   position: absolute;
   inset: 0;
@@ -1402,53 +1405,58 @@
   pointer-events: auto;
   cursor: crosshair;
 }
-/* Phase 127 — Viewfinder rectangle (görünür pencere). Konum +
- * boyut INLINE style ile dinamik (mediaPosition ters izdüşümü +
- * previewZoom 1/zoom; Shots.so `.viewfinder-div` paritesi).
+/* Phase 128 — Viewfinder GROUP: rectangle + center dot TEK
+ * eleman, AYNI center'da (Shots.so `.drag-handle` >
+ * `.viewfinder-div` çocuk ilişkisi — canlı ölçüm dx:0 dy:0).
+ * Konum + boyut INLINE style ile dinamik (mediaPosition izdüşümü
+ * + previewZoom 1/zoom). Beyaz nokta = `::after` pseudo →
+ * rectangle'ın geometrik merkez marker'ı (bağımsız sabit anchor
+ * DEĞİL; group ile birlikte hareket eder — kullanıcı isteği).
  * Burada yalnız görsel stil — sabit left/top/width/height YOK
- * (inline override eder; specificity çakışması olmasın). */
-.k-studio__pad-safearea {
+ * (inline override eder). */
+.k-studio__pad-viewfinder {
   position: absolute;
-  border: 1px solid rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 6px;
   box-shadow:
-    0 1px 5px rgba(0, 0, 0, 0.32),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+    0 1px 6px rgba(0, 0, 0, 0.38),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.22);
   pointer-events: none;
+  z-index: 6;
   transition:
     width 90ms ease,
     height 90ms ease,
     left 90ms ease,
     top 90ms ease;
 }
-/* Phase 127 — Dim: viewfinder DIŞINI karart. clipPath inline
- * (viewfinder rectangle dışı; mediaPosition+zoom ile hareket).
- * Eski -webkit-mask/mask-composite KALDIRILDI — o sabit safe-area
- * içindi; artık dinamik clipPath polygon viewfinder'ı çıkarır. */
+/* Center dot = viewfinder rectangle'ın merkez marker'ı. Pseudo
+ * elemanı viewfinder'ın çocuğu → group ile BİREBİR aynı center'da
+ * hareket eder (Shots.so `.viewfinder-div` içindeki handle dot
+ * paritesi). */
+.k-studio__pad-viewfinder::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.42);
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.45),
+    0 0 0 3px rgba(255, 255, 255, 0.14);
+}
+/* Phase 127/128 — Dim: viewfinder GROUP DIŞINI karart. clipPath
+ * inline (viewfinder rectangle dışı; mediaPosition+zoom ile group
+ * olarak hareket eder). Navigator'ın "kapsam dışı" alanı. */
 .k-studio__pad-dim {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background: rgba(0, 0, 0, 0.18);
-}
-/* Phase 127 — Handle = SABİT center anchor (kullanıcı isteği).
- * mediaPosition'a bağlı DEĞİL; medya offset'inin referans
- * noktası. Drag pad-overlay'in kendisinde (crosshair) —
- * handle pointer-events:none (anchor göstergesi, sürüklenmez). */
-.k-studio__pad-handle {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  margin-left: -8px;
-  margin-top: -8px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(0, 0, 0, 0.4);
-  box-shadow:
-    0 1px 4px rgba(0, 0, 0, 0.45),
-    0 0 0 3px rgba(255, 255, 255, 0.14);
-  z-index: 6;
-  pointer-events: none;
 }
 .k-studio__view-tab-soon {
   font-size: 9px;

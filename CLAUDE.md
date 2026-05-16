@@ -26554,6 +26554,185 @@ kararıyla ayrı tur.
 
 ---
 
+## Phase 128 — Pad = navigator + viewfinder GROUP (Shots.so-canonical: stable full-extent bg, rectangle+center-dot tek group birlikte hareket; zoom→size, pan→position; canonical state/export/resolver dokunulmadı)
+
+Phase 127 pad metaforunu "handle = sabit pad-center anchor +
+viewfinder ayrı ters-izdüşüm" yapmıştı. Kullanıcı bunu da yanlış
+buldu — önceki yorum fazla literal alınmıştı: **"beyaz nokta pad'in
+merkezine sabit bir nokta değil; viewfinder rectangle'ın merkez
+marker'ı. Rectangle hareket ediyorsa nokta da onun merkezinde
+birlikte hareket etmeli."** Phase 128 doğru modeli uygular.
+
+### Shots.so gerçek browser analizi (Claude in Chrome, DOM ölçümü)
+
+Shots.so editor canlı incelendi (tab 314516105, kuş kafesi clipart
+template yüklü). Kesin DOM yapısı:
+
+| Eleman | Rol | Kanıt |
+|---|---|---|
+| `.position-pad-safearea` | Navigator surface (208×156 sabit) | parent=`.controls` |
+| `.pad-preview > .layout-item` | Full-extent background | `transform: none`, pad ile aynı boyut, **SABİT** |
+| `.drag-handle` | Hareket eden GROUP | `transform: matrix(1,0,0,1, 84.27, 64.87)` (translate ile pan) |
+| `.viewfinder-div` | `.drag-handle`'ın ÇOCUĞU | handle ile **AYNI center** (`handleVsViewfinderSameCenter: {dx:0, dy:0}`) |
+
+Zoom %101 → viewfinder pad'in %99'u (`wFracOfPad: 0.99` ≈ 1/zoom).
+Synthetic pointer event'ler Radix slider/handle'ı tetiklemiyordu
+(Phase 126 emsali test-aracı sınırı) ama **yapısal kanıt kesin**:
+`padPreviewStayedStatic: true`, `.pad-preview` transform:none.
+Doğrulanan model: **statik = navigator/full-extent bg; hareket eden
+= viewfinder GROUP (rectangle + onun çocuğu olan center dot, AYNI
+center, birlikte); zoom → viewfinder size (1/zoom); pan → handle
+GROUP translate (bg sabit)**.
+
+### Net ürün/mimari kararı
+
+- **Rail-head live pad = navigator/control surface**, orta panelin
+  küçültülmüş thumb'ı GİBİ DAVRANMAZ semantik olarak (görsel olarak
+  StageScene thumb arkada navigator/full-extent zemin; üstüne
+  viewfinder GROUP çizilir).
+- **Candidate preset thumb'lar AYRI** — canonical preview mantığını
+  yansıtmaya devam eder, pad overlay GÖSTERMEZ (yalnız rail-head
+  pad sürer). Kullanıcının kritik ayrımı: live-pad navigator
+  semantiği ≠ preset-thumb canonical preview.
+- **Beyaz nokta bağımsız sabit anchor DEĞİL** — viewfinder
+  rectangle'ın `::after` pseudo merkez marker'ı → group ile
+  BİREBİR aynı center'da hareket eder.
+- **Canonical mediaPosition state, shared resolver
+  (`media-position.ts`), export matematiği (`frame-compositor.ts`,
+  `frame-export.service.ts`, `api/frame/export/route.ts`),
+  composition translate, candidate thumb mantığı DOKUNULMADI** —
+  pad interaction hâlâ aynı mediaPosition'ı yazar; yalnız pad
+  overlay GÖSTERİMİ değişti (2 dosya: `StageScenePreview.tsx` pad
+  overlay JSX + `studio.css` pad recipe).
+
+### Uygulanan slice
+
+**`StageScenePreview.tsx` pad overlay** (Phase 127 ayrı handle +
+ters-izdüşüm viewfinder → Phase 128 tek viewfinder GROUP):
+- Phase 127 `.k-studio__pad-safearea` (ters-izdüşüm) +
+  `.k-studio__pad-handle` (sabit pad-center) KALDIRILDI.
+- Tek `.k-studio__pad-viewfinder` GROUP: konum + boyut inline
+  style dinamik. `vfFrac = clamp(0.18, BASE_FRAC × (100/z),
+  BASE_FRAC)`, BASE_FRAC=0.78 (zoom %100'de bile viewfinder
+  pad'i tam kaplamaz → mediaPosition'a travel>0). `travel =
+  (1-vfFrac)×50`; `vfCx = 50 + mediaPosition.x × travel` (DOĞRUDAN
+  izdüşüm — Shots.so `.drag-handle` media-position anchor: group
+  media yönünde hareket; kullanıcı "görünür pencereyi navigator
+  alanı üzerinde taşıyorum"). Phase 127 ters izdüşüm (`50 - …`)
+  düzeltildi.
+- `.k-studio__pad-dim` clipPath viewfinder GROUP'u takip eder
+  (group ile birlikte hareket — navigator "kapsam dışı" alanı).
+
+**`studio.css`**:
+- `.k-studio__pad-safearea` + `.k-studio__pad-handle` recipe'leri
+  KALDIRILDI.
+- `.k-studio__pad-viewfinder` recipe (rectangle: border + shadow +
+  radius + transition; sabit left/top/w/h YOK — inline override).
+- `.k-studio__pad-viewfinder::after` = center dot pseudo (50%/50%,
+  14×14, beyaz). Viewfinder'ın ÇOCUĞU → group ile BİREBİR aynı
+  center'da hareket (Shots.so `.viewfinder-div` içi dot paritesi;
+  bağımsız anchor DEĞİL).
+
+### Browser canlı doğrulama (fresh build, real asset set `cmov0ia37`)
+
+Clean restart (`.next` silindi + port 3000 kill + `preview_start
+reused:false`), Claude in Chrome real Studio (`/selection/sets/
+cmov0ia37.../mockup/studio`):
+
+- **Eski elemanlar yok**: `oldSafeareaPresent:false`,
+  `oldHandlePresent:false` (Phase 127 ayrı handle/safearea
+  kaldırıldı).
+- **Viewfinder GROUP**: `studio-rail-pad-viewfinder` rendered;
+  pad'in %78'i @ zoom %100 (`vfFracAttr:0.7800`).
+- **Center dot = ::after pseudo**: `afterContent:""`,
+  `afterW:14px`, `afterBg:rgba(255,255,255,0.95)` — viewfinder'ın
+  çocuğu, AYNI center.
+- **{0,0} no-op**: viewfinder `left:50% top:50%` (pad merkezi).
+- **Pan (mediaPosition {-0.56,-0.56})**: viewfinder inline
+  `left:50% → 43.84%` (`vfCx = 50 + (-0.56)×11 = 43.84` ✓
+  matematik birebir); dim clipPath `4.84%…82.84%` (= 43.84±39 ✓
+  — dim viewfinder GROUP'u takip etti). Görsel: viewfinder
+  rectangle + center dot BİRLİKTE sol-üste kaydı (önceki: merkez).
+- **Zoom (%100→%160)**: `vfFracAttr:0.7800 → 0.4875` = `0.78 ×
+  (100/160)` ✓ birebir 1/zoom (Shots.so canonical); navigator bg
+  (StageScene plate) **SABİT** (`dx:0 dy:0 wDelta:0 hDelta:0`);
+  viewfinder center'da kaldı.
+- **Pad overlay COUNT = 1** — yalnız rail-head; 6 preset card
+  (cascade/centered/tilted/stacked/fan/offset) pad overlay
+  GÖSTERMEZ (live-pad ≠ preset-thumb ayrımı korundu).
+- **8 StageScene instance** (1 middle + 7 rail) — Phase 117
+  single-renderer intakt; middle stage plate present (canonical
+  render mediaPosition prop'u hâlâ akıyor); 6 candidate variant
+  intakt.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **739 passed** (60 files, zero regression — eski
+  `studio-rail-pad-safearea`/`-handle` testid'leri hiçbir testte
+  yoktu)
+- `next build`: ✓ Compiled successfully (`NODE_OPTIONS=
+  --max-old-space-size=4096`)
+
+### Değişmeyenler (Phase 128)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** Yalnız pad overlay JSX + CSS recipe
+  (2 dosya: `StageScenePreview.tsx` + `studio.css`).
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Pad overlay yapısı yeniden
+  düzenlendi (ayrı handle+safearea → tek viewfinder group +
+  ::after dot); yeni component/route/service/state YOK.
+- **Canonical mediaPosition state + shared resolver
+  (`media-position.ts`) + export matematiği (`frame-compositor.ts`
+  + `frame-export.service.ts` + `api/frame/export/route.ts`) +
+  composition translate + Phase 126 export parity DOKUNULMADI.**
+  Pad interaction hâlâ aynı mediaPosition'ı yazar (drag handler
+  `normalizePadPointToPosition` çağrısı değişmedi).
+- **Candidate preset thumb mantığı DOKUNULMADI** — 6 variant
+  intakt, pad overlay göstermez (live-pad ≠ preset-thumb).
+- **Phase 117 single-renderer (8 StageScene instance) + Phase 118
+  chromeless/aspect-aware + Phase 125 zoom (plate sabit,
+  composition scale) + Phase 126 global media-position baseline'ları
+  intakt.**
+- **Middle stage canonical render bozulmadı** (mediaPosition prop
+  hâlâ StageScene'e akıyor — yalnız rail-head pad overlay GÖSTERİMİ
+  değişti).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ açık (Phase 129+ candidate)
+
+- **Per-slot media-position** — ayrı advanced/layout-editor modu
+  (bu tur global; kullanıcı kararı per-slot ileride).
+- **Tilt (media rotate)** — Phase 126'dan honest-disabled (`Tilt ·
+  Soon`); media-rotate ileride ayrı tur.
+- **Shift precision canlı browser e2e** — Chrome synthetic-drag
+  `shiftKey` iletmiyor (araç sınırı, Phase 126'da belgelendi);
+  unit-test + kod-zinciri kanıtlı.
+- **Full Remotion migration** — animate / Etsy video / motion
+  export (kullanıcı kararı, ayrı tur).
+- **View tabs (Tilt) + drop-zone gibi diğer no-op'lar** —
+  kategori 4 preview-only / honest-disabled.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 128 ile pad GERÇEKTEN navigator + viewfinder GROUP: stable
+full-extent bg (StageScene thumb arkada SABİT) + viewfinder
+rectangle ve center dot TEK group birlikte hareket (zoom→size
+1/zoom, pan→position doğrudan izdüşüm); canonical state/export/
+resolver/Phase 126 parity + candidate thumb'lar DOKUNULMADAN.
+Kullanıcının üç turda netleşen modeli (navigator + viewfinder
+group, dot = rectangle merkez marker'ı) birebir karşılandı.
+Sıradaki adım **Phase 129 candidate**: per-slot media-position
+(advanced mod) veya Tilt media-rotate (honest impl). Full
+Remotion migration kullanıcı kararıyla ayrı tur.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
