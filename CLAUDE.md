@@ -26385,6 +26385,175 @@ kullanıcı kararıyla ayrı tur.
 
 ---
 
+## Phase 127 — Pad metaforu tersine + zoom-framing (Shots.so-canonical: handle = sabit center anchor, viewfinder rectangle hareket eder + 1/zoom daralır; canonical state/export/resolver dokunulmadı)
+
+Phase 126 pad'i çalışıyordu ama metafor TERSTİ: mediaPosition değişince
+hem composition hem handle/nokta hareket ediyordu, safe-area sabit
+kalıyordu → operatör "nokta mockup item'lerine yapışık" hissediyordu.
+Ayrıca pad `previewZoom` framing'inden kopuktu (zoom orta paneli
+büyütüyordu ama rail-head pad'de hiçbir şey değişmiyordu). Kullanıcı
+net iki düzeltme istedi (state/export/resolver DOKUNULMADAN, yalnız
+pad overlay görsel temsili).
+
+### Shots.so canlı browser araştırması (Claude in Chrome, DOM ölçümü)
+
+shots.so editor'de pad DOM'u kod+ölçümle incelendi (kullanıcı kalıcı
+kuralı: Shots.so daima gerçek browser'dan):
+
+| Element | Rol | Davranış (ölçülen) |
+|---|---|---|
+| `.position-pad-safearea` (208×156) | Pad container | `position:relative`, sabit |
+| `.shadow-layer` (732×732) | Full media extent | sabit (Kivasy pad-overlay karşılığı) |
+| `.viewfinder-div` | **Görünür pencere/framing rectangle** | Boyut zoom ile: zoom **146% → 142×107** (208/1.46, 156/1.46 — `1/zoom` matematiği BİREBİR ölçüldü); konum mediaPosition offset (`left/top` negatif) |
+| `.drag-handle` | Viewfinder anchor noktası | mediaPosition {0,0} iken pad MERKEZİNDE (`vfCenterVsPadCenter: {dx:-1,dy:1}` ≈ 0) |
+
+Kesin matematik kanıt: zoom %146 → viewfinder 142×107 = pad'in
+%68.5'i = `1/1.46`. Yani Shots.so'da pad = sabit full extent +
+içinde **zoom-oranında küçülen + mediaPosition'a göre kayan
+viewfinder rectangle + merkez anchor**. Kullanıcının "merkezde
+anchor + hareket eden framing + zoom değişince framing değişimi"
+isteğinin TAM karşılığı. (Test-aracı sınırı: Shots.so custom slider
++ React state synthetic-drag/dispatchEvent ile tetiklenmedi; ama
+iki farklı zoom değerinde viewfinder boyut ölçümü 1/zoom'u
+matematiksel olarak kanıtladı — Phase 36/60 emsali dürüst rapor.)
+
+### Fix 1 — Pad metaforu tersine (handle sabit center)
+
+`StageScenePreview` pad overlay JSX yeniden yazıldı:
+- **Handle** → `left:50% top:50%` SABİT (mediaPosition'a bağlı
+  DEĞİL — kullanıcı isteği: medya offset'inin referans/anchor
+  noktası). `pointer-events:none` (anchor göstergesi, sürüklenmez;
+  drag pad-overlay'in kendisinde — crosshair).
+- **Viewfinder rectangle** (`.k-studio__pad-safearea`) → konum
+  mediaPosition'ın **TERS izdüşümü**: `vfCx = 50 − mediaPosition.x
+  × travel` (media sağa/+x → viewfinder sola; kamera/viewfinder
+  metaforu — kompozisyon sağa giderse görünür pencere sola kayar).
+  Browser kanıt: media.x=−0.5531 → vfLeft 56.08% (formül `50 −
+  (−0.5531)×11` BİREBİR; `inverseProjectionCorrect: true`).
+- **Dim** → `clipPath` polygon ile viewfinder DIŞINI karart
+  (viewfinder ile hareket eder; eski sabit `-webkit-mask`/
+  `mask-composite` KALDIRILDI — o sabit safe-area içindi).
+
+### Fix 2 — Viewfinder boyutu previewZoom ile (1/zoom)
+
+`StageScenePreviewProps.previewZoomPct` eklendi (Shell previewZoom,
+yüzde, 100=no-op; PresetRail rail-head render'ından iletilir —
+`zoom = previewZoom ?? localZoom`). Viewfinder boyut oranı:
+`vfFrac = clamp(0.18, BASE_FRAC × (100/zoom), BASE_FRAC)`,
+`BASE_FRAC = 0.78`. Browser kanıt: zoom %100 → vfFrac 0.78 (inline
+W/H 78%); zoom %200 → vfFrac **0.39** (inline 39%, `vfFracMatches:
+true` — 0.78×100/200). Shots.so 1/zoom davranışı (zoom artınca
+görünür pencere daralır) korundu; orta panel composition Phase
+125 canonical zoom ile scale'lendi (`innerScale matrix(2.91,...)`
+zoom %200 — Phase 125 baseline intakt).
+
+### BASE_FRAC bug fix (travel=0 — viewfinder kaymazdı)
+
+İlk implementasyon `vfFrac = min(1, 100/zoom)` idi → zoom %100'de
+vfFrac=1 → `travel = (1-1)×50 = 0` → viewfinder mediaPosition'a göre
+HİÇ kaymıyordu (kullanıcı "dikdörtgen hareket etsin" isteği
+karşılanmazdı; browser-kanıtlı: media değişti ama vfLeft hep 50%).
+Kök neden: viewfinder zoom %100'de pad'i TAM kaplarsa hareket alanı
+(travel) kalmaz. Fix: `BASE_FRAC = 0.78` — viewfinder zoom %100'de
+bile pad'in yalnız %78'i → `travel = (1-0.78)×50 = 11 > 0` → media
+her zaman (zoom %100 dahil) viewfinder'ı kaydırır. Bu **gerçek kod
+bug'ı** (test-aracı sınırı değil); ayrı fixup commit; fresh-build
+re-verify edildi.
+
+### State/export/resolver DOKUNULMADI (kullanıcının kesin kuralı)
+
+Phase 127 yalnız **3 dosya**: `StageScenePreview.tsx` (pad overlay
+JSX), `studio.css` (pad recipe'leri), `MockupStudioPresetRail.tsx`
+(previewZoomPct iletimi). `git diff HEAD~3` kanıtı:
+`frame-compositor.ts` / `frame-export.service.ts` /
+`media-position.ts` (shared resolver) / `api/frame/export/route.ts`
+= **0 değişiklik**. Pad interaction (`onPad*` handlers) hâlâ AYNI
+`mediaPosition` state'ini yazar (`normalizePadPointToPosition`
+değişmedi). Canonical mediaPosition + Sharp export + Phase 126
+parity + Product MockupsTab continuity TAMAMEN intakt — yalnız pad
+overlay GÖSTERİMİ değişti.
+
+### Kanıt özeti (fresh build, real asset, big screen — Claude in Chrome)
+
+Clean restart (`.next` silindi + port kill + `preview_start
+reused:false`), real MinIO MJ asset set `cmov0ia37`, Frame mode,
+DOM+screenshot:
+- **Initial ({0,0}, zoom %100)**: handle `dxFromPadCenter:0`
+  inline 50%/50% (`handleFixedCenter:true`); viewfinder vfFrac
+  0.78 inline W 78% (`viewfinderSmallerThanPad:true`) ✓
+- **mediaPosition drag** ({-0.5531,0.3317}): handle hâlâ
+  `dxFromPadCenter:0` (`handleStillFixed:true`); viewfinder inline
+  `left:56.08% top:46.35%` = formül `50−media×11` BİREBİR
+  (`inlineMatchesFormula:true`, `inverseProjectionCorrect:true`);
+  composition `matrix(...−249,84)` canonical kaydı ✓
+- **zoom %200**: viewfinder vfFrac **0.39** inline 39%
+  (`vfFracMatches:true`, 1/zoom); handle hâlâ center; orta panel
+  `innerScale matrix(2.91,...)` (Phase 125 zoom intakt) ✓
+- Screenshot: rail-head pad'de beyaz nokta MERKEZDE sabit + küçük
+  krem viewfinder rectangle sağda (media offset + zoom %200 daralma)
+  + dim viewfinder dışı; orta panel composition zoom %200 + media-
+  offset'li ✓
+- Continuity: export/state dosyaları 0 değişiklik (git diff kanıt)
+  → Phase 126 canonical/export/Product baseline intakt ✓
+
+### Quality gates
+
+- `npx tsc --noEmit`: clean
+- `npx vitest run tests/unit/{mockup,selection,selections,products,
+  listings}`: **739 passed** (Phase 126 baseline; zero regression —
+  state/export dokunulmadı)
+- `NODE_OPTIONS=--max-old-space-size=4096 npx next build`:
+  `✓ Compiled successfully`
+
+### Değişmeyenler (Phase 127)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** 3 dosya pad overlay görsel temsili
+  + 1 opsiyonel prop (`previewZoomPct`). Yeni component/route/
+  service/store YOK.
+- **Canonical mediaPosition state, shared resolver
+  (`media-position.ts`), Sharp export (`frame-compositor.ts`),
+  Phase 126 export parity + sceneSnapshot persist + stale
+  indicator + Product MockupsTab continuity** TAMAMEN intakt
+  (git diff: export/state dosyaları 0 değişiklik).
+- **Phase 125 canonical zoom (plate sabit, composition scale,
+  outer-translate/inner-zoom split) intakt** — Phase 127 yalnız
+  pad overlay'e previewZoom GÖSTERİM bağı ekledi (kategori 2
+  preview-only; export'a girmez).
+- **Composition translate mantığı aynı** — pad interaction hâlâ
+  aynı mediaPosition'ı yazar (`normalizePadPointToPosition`
+  değişmedi).
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ açık (Phase 128+ candidate)
+
+- **Per-slot media-position** — Phase 126'dan devir (ayrı
+  advanced/layout-editor modu).
+- **Tilt (media rotate)** — Phase 126 honest-disabled (`Tilt ·
+  Soon`).
+- **Shots.so live slider/state e2e** — Shots.so custom slider +
+  React synthetic-drag araç sınırı; viewfinder 1/zoom matematiği
+  iki zoom değerinde ölçümle + Kivasy fresh-build browser kanıtıyla
+  doğrulandı.
+- **Full Remotion migration** — Phase 126'dan devir (kullanıcı
+  kararıyla ayrı tur).
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 127 ile pad metaforu Shots.so-canonical: sabit center anchor
+(handle) + mediaPosition ters izdüşümüyle hareket eden + 1/zoom
+daralan viewfinder rectangle. Kullanıcının iki UX problemi
+(yanlış metafor + zoom-kopukluk) çözüldü; canonical state/export/
+resolver/Phase 126 parity dokunulmadan. Sıradaki adım **Phase 128
+candidate**: per-slot media-position (advanced mod) veya Tilt
+media-rotate (honest impl). Full Remotion migration kullanıcı
+kararıyla ayrı tur.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
