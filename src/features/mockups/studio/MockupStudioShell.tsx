@@ -737,6 +737,11 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     sceneOverride,
     activePalette,
     layoutVariant,
+    // Phase 126 — mediaPosition deps'e ZORUNLU: yoksa
+    // handleExportFrame stale closure ile eski mediaPosition'ı
+    // export eder (Phase 124 zoom stale-closure emsali). Body'de
+    // mediaPosition kullanılıyor → deps'te olmalı.
+    mediaPosition,
   ]);
 
   /* Phase 99 — Export disabled gate. Frame mode'da bile assigned
