@@ -476,6 +476,36 @@
   text-align: right;
 }
 
+/* Phase 131 — Zoom reset icon button. Rail diline uyumlu küçük
+ * icon-btn (tb-icon pattern paritesi, daha kompakt). Tek tık →
+ * canonical DEFAULT_PREVIEW_ZOOM. Disabled = zoom zaten default
+ * (görsel pasif + pointer-events:none → "resetlenecek bir şey yok"
+ * hissi). Yalnız zoom; pan/mediaPosition dokunulmaz. */
+.k-studio__zoom-reset {
+  width: 19px;
+  height: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ks-t3);
+  cursor: pointer;
+  opacity: 1;
+  transition: all 90ms;
+}
+.k-studio__zoom-reset:hover:not(:disabled) {
+  color: var(--ks-t1);
+  background: var(--ks-b1);
+}
+.k-studio__zoom-reset:disabled {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+
 /* ─── Stage ────────────────────────────────────────── */
 .k-studio__stage {
   flex: 1;

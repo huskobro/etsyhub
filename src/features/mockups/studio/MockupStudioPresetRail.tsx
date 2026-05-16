@@ -161,6 +161,15 @@ export interface MockupStudioPresetRailProps {
    * 100 = no-op. */
   previewZoom?: number;
   onChangePreviewZoom?: (next: number) => void;
+  /** Phase 131 — Canonical default/initial preview-zoom (Shell
+   *  DEFAULT_PREVIEW_ZOOM). Reset butonu zoom'u bu değere çeker
+   *  (hardcoded 100 DEĞİL — default değişirse takip eder). Disabled
+   *  state için de kullanılır (zoom === default → resetlenecek bir
+   *  şey yok). Undefined → 100 fallback. */
+  defaultPreviewZoom?: number;
+  /** Reset butonu callback'i (Shell setPreviewZoom(DEFAULT)). Yalnız
+   *  zoom resetlenir; pan/mediaPosition DOKUNULMAZ. */
+  onResetPreviewZoom?: () => void;
   /** Phase 126 — Global media-position (canonical). Rail head pad
    *  bunu sürer; StageScenePreview overlay'ine iletilir. Rail thumb
    *  candidate preview'ları da yansıtır (canonical — zoom'un
@@ -185,6 +194,8 @@ export function MockupStudioPresetRail({
   frameAspect = "16:9",
   previewZoom,
   onChangePreviewZoom,
+  defaultPreviewZoom = 100,
+  onResetPreviewZoom,
   mediaPosition = { x: 0, y: 0 },
   onChangeMediaPosition,
 }: MockupStudioPresetRailProps) {
@@ -196,6 +207,17 @@ export function MockupStudioPresetRail({
   const setZoom = (n: number) => {
     if (onChangePreviewZoom) onChangePreviewZoom(n);
     else setLocalZoom(n);
+  };
+  /* Phase 131 — Reset zoom: canonical default'a dön (hardcoded 100
+   * DEĞİL — Shell DEFAULT_PREVIEW_ZOOM). Yalnız zoom; pan/
+   * mediaPosition DOKUNULMAZ. Disabled = zoom zaten default
+   * (resetlenecek bir şey yok → görsel pasif + disabled attr).
+   * onResetPreviewZoom yoksa local fallback (setZoom default). */
+  const zoomAtDefault = zoom === defaultPreviewZoom;
+  const resetZoom = () => {
+    if (zoomAtDefault) return;
+    if (onResetPreviewZoom) onResetPreviewZoom();
+    else setZoom(defaultPreviewZoom);
   };
   /* Phase 96 — Layout count Shell state'ten geliyor; fallback local
    * state (legacy). Operator buttons → onChangeLayoutCount → Shell
@@ -438,6 +460,24 @@ export function MockupStudioPresetRail({
           >
             {zoom}%
           </span>
+          {/* Phase 131 — Reset zoom icon button (slider'a yakın,
+              rail diline uyumlu). Tek tık → canonical
+              DEFAULT_PREVIEW_ZOOM (hardcoded 100 DEĞİL). Disabled =
+              zoom zaten default (görsel pasif + disabled attr).
+              StudioIcon "retry" = dairesel reset oku (Studio icon
+              seti; yeni icon eklenmedi). Yalnız zoom; pan korunur. */}
+          <button
+            type="button"
+            className="k-studio__zoom-reset"
+            data-testid="studio-rail-zoom-reset"
+            data-at-default={zoomAtDefault ? "true" : "false"}
+            disabled={zoomAtDefault}
+            aria-label="Reset zoom"
+            title="Reset zoom"
+            onClick={resetZoom}
+          >
+            <StudioIcon name="retry" size={13} />
+          </button>
         </div>
       </div>
       <div className="k-studio__rail-scroll">

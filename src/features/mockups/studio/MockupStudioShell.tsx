@@ -68,6 +68,17 @@ import type {
 
 const SLOT_NAMES = ["Front View", "Side View", "Back View"];
 
+/* Phase 131 — Canonical başlangıç/default preview-zoom değeri.
+ *
+ * Zoom'un gerçek initial state'i = sayfa ilk render'da `previewZoom`
+ * state'inin başlangıç değeri (Phase 123 baseline `useState(100)`).
+ * Reset butonu HARDCODED 100'e değil, bu canonical sabite döner —
+ * default değişirse reset otomatik onu takip eder (tek kaynak).
+ * Hem rail slider hem stage zoom-pill aynı Shell `previewZoom`
+ * state'ini kullanır (zaten); reset de aynı state'i bu sabite çeker.
+ * Kategori 2 preview-only helper (zoom export'a girmez §11.0). */
+const DEFAULT_PREVIEW_ZOOM = 100;
+
 export interface MockupStudioShellProps {
   /**
    * Selection set id this studio session is anchored on. Phase 79'da
@@ -169,8 +180,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
    * (§11.0 Preview = Export Truth — zoom viewing aid), rail
    * candidate thumb'lara uygulanmaz (Phase 117-118 single-renderer
    * + chromeless baseline'ı bozulmaz). 100 = no-op (Phase 122
-   * davranışı BİREBİR). */
-  const [previewZoom, setPreviewZoom] = useState(100);
+   * davranışı BİREBİR). DEFAULT_PREVIEW_ZOOM = canonical initial
+   * state (reset butonu Phase 131 buna döner — hardcoded değil). */
+  const [previewZoom, setPreviewZoom] = useState(DEFAULT_PREVIEW_ZOOM);
 
   /* Phase 126 — Global canonical media-position (Shots.so pad).
    *  Kategori 1 shared visual param (zoom'un AKSİNE: zoom kat 2
@@ -931,6 +943,10 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
             frameAspect={frameAspect}
             previewZoom={previewZoom}
             onChangePreviewZoom={setPreviewZoom}
+            defaultPreviewZoom={DEFAULT_PREVIEW_ZOOM}
+            onResetPreviewZoom={() =>
+              setPreviewZoom(DEFAULT_PREVIEW_ZOOM)
+            }
             mediaPosition={mediaPosition}
             onChangeMediaPosition={setMediaPosition}
           />
