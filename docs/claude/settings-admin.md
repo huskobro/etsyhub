@@ -172,6 +172,12 @@ hedefiyle çelişen, henüz implement EDİLMEMİŞ):**
 
 ## 5.5 Enforcement plan (policy/incomplete → enforced adayları)
 
+> **Statü (2026-05-17):** P1 (negative library → Settings
+> Registry) + P2'ler **DEFERRED** — kullanıcı kararıyla şimdilik
+> ertelendi, yeni enforcement işi AÇILMADI. Takip:
+> `docs/claude/known-issues-and-deferred.md` §I (+ §H). Bu
+> turda uygulanmaz; ileride enforcement turunda buradan alınır.
+
 Bu modülde 3 gerçek **kod-borcu** (CLAUDE.md "No Hidden
 Behavior" / Madde O+R hedefiyle çelişen, henüz implement
 edilmemiş). Önceliklendirme + somut plan:

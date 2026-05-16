@@ -184,6 +184,43 @@ Registry (Madde R) / prompt-block (Madde O) hedefiyle çelişiyor
   resolved (kod-enforced); negative-library + bazı prompt-default
   builtin fallback (Madde R hedefine tam ulaşılmadı).
 
+## I. Enforcement borçları — DEFERRED (takip ediliyor; yeni iş AÇILMADI)
+
+> **Statü (2026-05-17):** Bu P1 borçları code-grounding'de
+> bulundu, kullanıcı kararıyla **şimdilik sonraya bırakıldı**.
+> Yeni enforcement işi AÇILMADI. Burası tek görünür takip
+> noktası; detay + somut mekanizma ilgili doc §5.5'te. Sonraki
+> enforcement turu bunları buradan alır.
+
+- **[P1 · batch-pipeline] Decision gate server-side assert** —
+  `createSelectionFromBatch`/`createSelectionFromAiBatch` POST
+  endpoint'i `undecided>0` (= `reviewStatusSource != USER`)
+  kontrolü YAPMIYOR; UI-stage görünürlük var ama API çağrısı
+  gate'i sessizce bypass edip downstream operator-kept zincirini
+  kırabilir. **En yüksek risk.** Önerilen: servis başı assert +
+  explicit `?force=true` audit (Madde H). Detay →
+  `docs/claude/batch-pipeline.md` §5.5.
+- **[P1 · settings-admin] Negative library → Settings Registry**
+  — `negative-library.ts` hardcoded; admin görünür/düzenlenebilir
+  değil ("No Hidden Behavior" en görünür ihlali). Önerilen:
+  `negative.terms[]` setting + resolved helper (ai-mode pattern),
+  builtin → fallback. Detay → `docs/claude/settings-admin.md`
+  §5.5 + bu doc §H.
+- **[P2 · settings-admin] Cost-limit pre-check** — Cost Guardrails
+  hiç enforce değil (monitoring-only); enqueue-öncesi limit
+  check yok. Detay → §H + settings-admin §5.5.
+- **[P2 · settings-admin] Prompt-block READ-ONLY admin görünürlük**
+  — full CRUD DEĞİL (Review FROZEN/Madde Z; görünürlük yarısı
+  güvenli). Detay → §H + settings-admin §5.5.
+- **[P2 · selection-library-products] Module-boundary ESLint** —
+  Library≠Selections≠Products yalnız konvansiyon; products↛
+  library/selection import-boundary lint + handoff tek-yön
+  test. Detay → `docs/claude/selection-library-products.md` §5.5.
+- **[P2 · product-etsy] Trademark/risk-flag selective hard-gate**
+  — readiness'in tamamı değil, yalnız telif-riskli flag submit'i
+  bloklasın + override audit. Detay →
+  `docs/claude/product-etsy.md` §5.5.
+
 ## G. Bilinçli mimari kısıtlar (erken-abstraction guard'ları)
 
 Yeni tur bunları AÇMADAN ÖNCE Contract + açık karar gerekir:

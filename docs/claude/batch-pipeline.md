@@ -137,6 +137,12 @@ stage'inde. Batch detail variation üretir, mockup/listing
 
 ## 5.5 Enforcement plan (policy → enforced adayları)
 
+> **Statü (2026-05-17):** Aşağıdaki P1 (decision gate server
+> assert) **DEFERRED** — kullanıcı kararıyla şimdilik
+> ertelendi, yeni enforcement işi AÇILMADI. Takip:
+> `docs/claude/known-issues-and-deferred.md` §I. Bu turda
+> uygulanmaz; ileride enforcement turunda buradan alınır.
+
 | Kural | Şu an | Enforce adayı? | Öncelik | Önerilen mekanizma |
 |---|---|---|---|---|
 | Decision gate (undecided=0 olmadan selection oluşturulmaz — Madde H) | POLICY (UI-stage görünürlük; server check YOK) | **Evet** | **P1** | `createSelectionFromBatch`/`createSelectionFromAiBatch` başına **server-side assert**: scope'ta `reviewStatusSource != USER` (undecided) sayımı > 0 ise `ValidationError` (operatör override istiyorsa explicit `?force=true` + audit — CLAUDE.md Madde H "override explicit + audit'lenebilir"). En kritik: şu an UI dışı bir POST gate'i tamamen bypass eder; downstream "kept" zincirinin bütünlüğü riskte. Ucuz (tek servis guard + 1 test). |
