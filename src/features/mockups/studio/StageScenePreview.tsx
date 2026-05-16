@@ -477,19 +477,36 @@ export function StageScenePreview({
             // Media pan'in full-comp uzayındaki normalize izdüşümü
             // (PLATE-relative). resolveMediaOffsetPx (shared) ile
             // middle panel AYNI formül: ofset = mediaPosition ×
-            // plateDims × MEDIA_K. Görünür pencere full-comp'a göre
-            // -ofset yönünde kayar → navigator viewfinder o yönde.
-            // no-pan (ox=oy=0) → vfCx=vfCy=50 (CENTER-PRESERVING:
-            // zoom değişse de merkez sabit, drift YOK).
+            // plateDims × MEDIA_K.
+            //
+            // Phase 135 — Middle panel pan artık ZOOM-AWARE
+            // (`.k-studio__media-pos` translate `ox × effectiveZoom`).
+            // Navigator viewfinder middle'ın görünür crop'unu BİREBİR
+            // yansıtmalı (§11.0) → numerator'a AYNI `previewZoom`
+            // faktörü: panOx = ox × previewZoom. Cebirsel olarak:
+            //   vfCx = 50 - (panOx/fullCompW)×compFrac×100
+            //        = 50 - ((ox×pz)/(bbox×grp.scale×pz))×compFrac×100
+            //        = 50 - (ox/(bbox×grp.scale))×compFrac×100
+            // → previewZoom SADELEŞİR → vfCx ZOOM-BAĞIMSIZ. Sonuç:
+            // mediaPos=±1 (MAX pan) her zoom seviyesinde vfCx'i
+            // KÖŞELERE (≈0/100%) ulaştırır (kullanıcı: "extreme pan
+            // köşelere gerçekten ulaşılabilsin"; zoom 400'de fazla
+            // kısıtlı / zoom 75'te aşırı taşma DÜZELİR). no-pan
+            // (ox=0) → vfCx=vfCy=50 (center-preserving, drift YOK).
+            // Rectangle overflow semantiği KORUNUR (vfCx 0/100
+            // dışına taşabilir = Shots.so canonical; marker ayrı
+            // clamp'lı — Phase 134, rectangle ≠ marker).
             const { ox, oy } = resolveMediaOffsetPx(
               mediaPosition,
               plateDims.w,
               plateDims.h,
             );
+            const panOx = ox * previewZoom;
+            const panOy = oy * previewZoom;
             const vfCx =
-              50 - (ox / fullCompW) * compFracOfPlateW * 100;
+              50 - (panOx / fullCompW) * compFracOfPlateW * 100;
             const vfCy =
-              50 - (oy / fullCompH) * compFracOfPlateH * 100;
+              50 - (panOy / fullCompH) * compFracOfPlateH * 100;
             const vfPct = vfPctW; // legacy data attr (≈ width frac)
             const vfFrac = vfPctW / 100;
             // PLATE-rect: StageScene-plate'in kart içindeki gerçek

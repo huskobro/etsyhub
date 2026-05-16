@@ -864,20 +864,54 @@ export function StageScene({
               plateDims.w,
               plateDims.h,
             );
+            /* Phase 135 — Pan reach ZOOM-AWARE (preview-only).
+             *
+             * Kök neden (browser+DOM kanıtlandı): `.k-studio__media-
+             * pos` translate `ox = mediaPos × plateW × MEDIA_K`
+             * ZOOM-BAĞIMSIZ sabit. `.k-studio__stage-inner`
+             * composition'ı `scale(grp.scale × effectiveZoom)` ile
+             * büyütüyor (Phase 125). Zoom %400'de composition 4×
+             * büyük ama pan sabit `plateW×0.5` → mediaPosition=±1
+             * (MAX) composition'ın yalnız ~%12.5'ini kaydırır →
+             * kullanıcı büyütülmüş composition'ın KÖŞELERİNE pan
+             * EDEMEZ ("zoom 400'de fazla kısıtlı"; zoom 75'te tersine
+             * aşırı taşar). Marker clamp (Phase 134) SORUN DEĞİL —
+             * altındaki pan-reach zaten bozuktu, clamp maskeliyordu.
+             *
+             * Fix: pan translate `× effectiveZoom`. Composition
+             * scale ile orantılı → zoom %400'de mediaPos=±1
+             * composition kenarını plate kenarına getirir (köşelere
+             * ulaşım korunur; Shots.so `.component` tek transform'da
+             * scale+translate birleşik davranışının preview-only
+             * eşdeğeri). `effectiveZoom = chromeless ? 1 :
+             * previewZoom` → rail thumb DAİMA 1 (Phase 117-118
+             * rail-bağımsız korunur). `resolveMediaOffsetPx`
+             * (canonical + Sharp export) DEĞİŞMEZ — zoom export'ta
+             * YOK (preview-only, Phase 125), export composition
+             * scale=1 → pan-reach orada zaten yeterli (§11.0
+             * Preview = Export Truth korunur). {0,0} → ox=0 →
+             * 0×zoom=0 → translate(0,0) byte-identical no-op
+             * (Phase 125/126 baseline). */
+            const panZoom = effectiveZoom;
+            const oxz = ox * panZoom;
+            const oyz = oy * panZoom;
             return (
               <div
                 className="k-studio__media-pos"
                 data-testid="studio-stage-media-pos"
                 data-media-x={mediaPosition.x}
                 data-media-y={mediaPosition.y}
+                data-pan-zoom={panZoom}
                 style={{
                   position: "absolute",
                   inset: 0,
                   // Phase 126 — canonical media-position translate
                   // (outer). Inner .k-studio__stage-inner zoom scale
-                  // AYRI (Phase 125 dokunulmaz). neutral → translate
-                  // (0,0) = DOM byte-identical no-op.
-                  transform: `translate(${ox}px, ${oy}px)`,
+                  // AYRI (Phase 125 dokunulmaz). Phase 135 — pan
+                  // reach × effectiveZoom (composition scale ile
+                  // orantılı → zoom yüksekken köşelere ulaşım).
+                  // neutral → 0×zoom=0 = DOM byte-identical no-op.
+                  transform: `translate(${oxz}px, ${oyz}px)`,
                   transformOrigin: "center center",
                   display: "flex",
                   alignItems: "center",
