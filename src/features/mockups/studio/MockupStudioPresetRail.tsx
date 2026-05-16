@@ -395,6 +395,11 @@ export function MockupStudioPresetRail({
             layoutCount={layout}
             mediaPosition={mediaPosition}
             onChangeMediaPosition={onChangeMediaPosition}
+            /* Phase 127 — Pad viewfinder rectangle boyutu zoom
+               ile ters orantılı (Shots.so 1/zoom). Yalnız pad
+               overlay gösterimi (canonical state/export DEĞİŞMEZ).
+               `zoom` = previewZoom ?? localZoom (yüzde, 100=no-op). */
+            previewZoomPct={zoom}
           />
           {/* Phase 121 — Live thumb head = aktif (selected)
               layoutVariant'ın canlı hali. Plate üstü overlay

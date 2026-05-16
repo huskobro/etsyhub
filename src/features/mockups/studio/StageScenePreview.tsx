@@ -94,6 +94,13 @@ export interface StageScenePreviewProps {
    *  pad overlay görünmez (rail candidate thumb'lar yalnız
    *  yansıtır, sürmez — yalnız rail-head pad sürer). */
   onChangeMediaPosition?: (next: MediaPosition) => void;
+  /** Phase 127 — Preview zoom yüzdesi (Shell previewZoom, 100 =
+   *  no-op). Pad overlay viewfinder rectangle'ının BOYUTU bununla
+   *  ters orantılı (Shots.so canonical: zoom artınca görünür
+   *  pencere daralır, `1/zoom` — 146% → pad×0.685). Yalnız pad
+   *  overlay GÖSTERİMİ; canonical mediaPosition/export/composition
+   *  DEĞİŞMEZ (kategori 2 preview-only helper). */
+  previewZoomPct?: number;
 }
 
 export function StageScenePreview({
@@ -107,6 +114,7 @@ export function StageScenePreview({
   layoutCount,
   mediaPosition = { x: 0, y: 0 },
   onChangeMediaPosition,
+  previewZoomPct = 100,
 }: StageScenePreviewProps) {
   /* Phase 119 — Self-measuring box (gerçek render boyutu).
    *
@@ -330,21 +338,85 @@ export function StageScenePreview({
           onPointerUp={onPadPointerUpCancel}
           onPointerCancel={onPadPointerUpCancel}
         >
-          <div className="k-studio__pad-dim" aria-hidden />
-          <div
-            className="k-studio__pad-safearea"
-            data-testid="studio-rail-pad-safearea"
-            aria-hidden
-          />
-          <div
-            className="k-studio__pad-handle"
-            data-testid="studio-rail-pad-handle"
-            style={{
-              left: `${50 + mediaPosition.x * 50}%`,
-              top: `${50 + mediaPosition.y * 50}%`,
-            }}
-            aria-label="Media position handle"
-          />
+          {(() => {
+            /* Phase 127 — Pad metaforu Shots.so-canonical (ters
+             *  çevrildi). Pad = sabit full media extent (Shots.so
+             *  `.shadow-layer`). Viewfinder rectangle = görünür
+             *  pencere (Shots.so `.viewfinder-div`):
+             *
+             *  - BOYUT: pad × (1/zoom) — Shots.so birebir matematik
+             *    (zoom 146% → viewfinder 208×156'nın %68.5'i =
+             *    142×107, canlı browser ölçümüyle doğrulandı).
+             *  - KONUM: mediaPosition'ın TERS izdüşümü — media sağa
+             *    (+x) kaydıkça görünür pencere sola kayar (kamera/
+             *    viewfinder metaforu). Viewfinder pad içinde
+             *    gezinir, kenardan taşmaz (serbest alan = 1-vfFrac).
+             *  - HANDLE: pad MERKEZİNDE SABİT (anchor — kullanıcı
+             *    isteği). mediaPosition'a bağlı DEĞİL; media offset'in
+             *    referans noktası.
+             *
+             *  Yalnız pad overlay GÖSTERİMİ. Canonical mediaPosition
+             *  state, shared resolver, export matematiği, composition
+             *  translate DEĞİŞMEZ (pad interaction hâlâ aynı
+             *  mediaPosition'ı yazar; spec §state-export bozma). */
+            const z = Number.isFinite(previewZoomPct)
+              ? previewZoomPct
+              : 100;
+            const vfFrac = Math.max(0.2, Math.min(1, 100 / z));
+            const vfPct = vfFrac * 100;
+            // serbest alan oranı (viewfinder pad içinde ne kadar
+            // gezinebilir) — vfFrac=1 iken 0 (tam kaplar, hareket yok)
+            const travel = (1 - vfFrac) * 50;
+            // ters izdüşüm: media +x → viewfinder sol (− yön)
+            const vfCx = 50 - mediaPosition.x * travel;
+            const vfCy = 50 - mediaPosition.y * travel;
+            return (
+              <>
+                {/* Dim: viewfinder DIŞINI karart (viewfinder ile
+                    hareket eder — Shots.so viewfinder dim paritesi).
+                    4 kenar bandı: üst/alt/sol/sağ. */}
+                <div
+                  className="k-studio__pad-dim"
+                  data-testid="studio-rail-pad-dim"
+                  aria-hidden
+                  style={{
+                    clipPath: `polygon(
+                      0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%,
+                      ${vfCx - vfPct / 2}% ${vfCy - vfPct / 2}%,
+                      ${vfCx - vfPct / 2}% ${vfCy + vfPct / 2}%,
+                      ${vfCx + vfPct / 2}% ${vfCy + vfPct / 2}%,
+                      ${vfCx + vfPct / 2}% ${vfCy - vfPct / 2}%,
+                      ${vfCx - vfPct / 2}% ${vfCy - vfPct / 2}%
+                    )`,
+                  }}
+                />
+                {/* Viewfinder rectangle: görünür pencere. Boyut
+                    zoom ile (1/zoom), konum mediaPosition ters
+                    izdüşümü. */}
+                <div
+                  className="k-studio__pad-safearea"
+                  data-testid="studio-rail-pad-safearea"
+                  data-vf-frac={vfFrac.toFixed(4)}
+                  aria-hidden
+                  style={{
+                    left: `${vfCx}%`,
+                    top: `${vfCy}%`,
+                    width: `${vfPct}%`,
+                    height: `${vfPct}%`,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                />
+                {/* Handle: pad MERKEZİNDE SABİT anchor (kullanıcı
+                    isteği — mediaPosition'a bağlı değil). */}
+                <div
+                  className="k-studio__pad-handle"
+                  data-testid="studio-rail-pad-handle"
+                  style={{ left: "50%", top: "50%" }}
+                  aria-label="Media position anchor"
+                />
+              </>
+            );
+          })()}
         </div>
       ) : null}
     </div>

@@ -1402,49 +1402,53 @@
   pointer-events: auto;
   cursor: crosshair;
 }
+/* Phase 127 — Viewfinder rectangle (görünür pencere). Konum +
+ * boyut INLINE style ile dinamik (mediaPosition ters izdüşümü +
+ * previewZoom 1/zoom; Shots.so `.viewfinder-div` paritesi).
+ * Burada yalnız görsel stil — sabit left/top/width/height YOK
+ * (inline override eder; specificity çakışması olmasın). */
 .k-studio__pad-safearea {
   position: absolute;
-  left: 14%;
-  top: 14%;
-  width: 72%;
-  height: 72%;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 6px;
   box-shadow:
-    0 1px 4px rgba(0, 0, 0, 0.28),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+    0 1px 5px rgba(0, 0, 0, 0.32),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.2);
   pointer-events: none;
+  transition:
+    width 90ms ease,
+    height 90ms ease,
+    left 90ms ease,
+    top 90ms ease;
 }
+/* Phase 127 — Dim: viewfinder DIŞINI karart. clipPath inline
+ * (viewfinder rectangle dışı; mediaPosition+zoom ile hareket).
+ * Eski -webkit-mask/mask-composite KALDIRILDI — o sabit safe-area
+ * içindi; artık dinamik clipPath polygon viewfinder'ı çıkarır. */
 .k-studio__pad-dim {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  /* safe-area dışını hafif karart (Shots.so viewfinder dim
-   * rgba(100,100,100,0.2) paritesi) — preview'ı boğmadan. */
-  background:
-    linear-gradient(rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.16));
-  -webkit-mask:
-    linear-gradient(#000 0 0) padding-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
+  background: rgba(0, 0, 0, 0.18);
 }
+/* Phase 127 — Handle = SABİT center anchor (kullanıcı isteği).
+ * mediaPosition'a bağlı DEĞİL; medya offset'inin referans
+ * noktası. Drag pad-overlay'in kendisinde (crosshair) —
+ * handle pointer-events:none (anchor göstergesi, sürüklenmez). */
 .k-studio__pad-handle {
   position: absolute;
-  width: 18px;
-  height: 18px;
-  margin-left: -9px;
-  margin-top: -9px;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  margin-top: -8px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(0, 0, 0, 0.35);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-  cursor: grab;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.45),
+    0 0 0 3px rgba(255, 255, 255, 0.14);
   z-index: 6;
-  pointer-events: auto;
-  touch-action: none;
-}
-.k-studio__pad-handle:active {
-  cursor: grabbing;
+  pointer-events: none;
 }
 .k-studio__view-tab-soon {
   font-size: 9px;
