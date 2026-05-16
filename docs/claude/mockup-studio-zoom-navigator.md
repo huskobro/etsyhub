@@ -20,6 +20,46 @@
 
 ---
 
+## 0. Çekirdek (6-başlık özeti)
+
+> Hibrit şablon: çekirdek 6 başlık burada; **detay/derinleştirme
+> aşağıdaki modül-spesifik §1–10'da** (zoom bounds/semantik,
+> media-position, zoom-aware pan reach, navigator viewfinder,
+> marker, pad interaction).
+
+1. **Kapsam / Rol / Boundary:** Mockup Studio zoom, navigator pad,
+   viewfinder rectangle, center marker, media-position (global
+   pan). Boundary: zoom kategori 2 preview-only (export-bağımsız);
+   media-position kategori 1 canonical (export'a yansır). Geometri
+   §6b'de, rail §6c'de.
+2. **Current behavior:** `zoom-bounds.ts` tek kaynak (75-400);
+   zoom = composition scale (plate sabit); translate/scale ayrı
+   katman; `effectiveZoom` chromeless guard; `media-position.ts`
+   shared resolver; zoom-aware pan reach (`× effectiveZoom`); vfCx
+   zoom-bağımsız (cebirsel sadeleşme); navigator viewfinder = orta
+   panel görünür crop izdüşümü. Detay → §1–9.
+3. **Invariants:** → §10 "Değişmez sözleşme" (zoom-bounds tek
+   kaynak; zoom kategori 2 export-bağımsız; resolveMediaOffsetPx
+   canonical+export değişmez; 3 kavram ayrı — rectangle overflow/
+   marker visibility/pan reach; `{0,0}` sacred no-op).
+4. **Relevant files / Ownership:** `src/features/mockups/studio/
+   zoom-bounds.ts` (ZOOM_MIN/MAX/STEP/DEFAULT/clampZoom),
+   `media-position.ts` (resolveMediaOffsetPx, clampMediaPosition,
+   normalizePadPointToPosition, mediaPositionsEqual — pure-TS
+   client+server), `MockupStudioStage.tsx` (`.k-studio__media-pos`
+   translate × effectiveZoom; zoom-pill), `StageScenePreview.tsx`
+   (vfCx/vfCy numerator × previewZoom; navigator viewfinder +
+   marker clamp), `MockupStudioShell.tsx` (previewZoom +
+   mediaPosition state), `frame-compositor.ts` (export aynı
+   resolveMediaOffsetPx; zoom YOK).
+5. **Open issues / Deferred:** → `docs/claude/known-issues-and-
+   deferred.md` A (Tilt/Precision, per-slot media-position,
+   mount-time viewfinder timing).
+6. **Archive / Historical pointer:** → `docs/claude/archive/
+   phase-log-97-135.md` (NOT authoritative; Phase 123-135).
+
+---
+
 ## 1. Zoom bounds — tek kaynak
 
 - `src/features/mockups/studio/zoom-bounds.ts` tek canonical kaynak:

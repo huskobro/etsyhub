@@ -2540,73 +2540,46 @@ Reference  →  Batch  →  Library  →  Selection  →  Product  →  Etsy Dra
 
 ## Authoritative Doc Router — READ THIS FIRST
 
-> Bu CLAUDE.md **router + ürün anayasası core**'dur. Güncel
-> davranış / canonical invariant aşağıdaki topic doc'lardadır.
-> Phase tarihsel anlatısı **archive**'dadır (authoritative DEĞİL).
-> Bir konuya dokunmadan önce ilgili authoritative doc'u oku.
+> **Bu CLAUDE.md = ürün anayasası core** (scope, roller, güvenlik,
+> Canonical Surface İlkeleri A–Y, Library/Selections/Products
+> boundary, Mockup 3-tip, Mobile/Native, Madde Z Review Freeze,
+> Marka). Bir modül/surface'in **GÜNCEL davranışı + invariant'ı**
+> için tek giriş noktası:
+>
+> ### → `docs/claude/00-router.md` (READ THIS FIRST)
+>
+> Pipeline-stage bazlı yaşayan authoritative doc sistemi orada:
+> app-shell → references-intake → batch-pipeline → review →
+> selection-library-products → mockup-studio-* (contract/zoom/
+> framing/rail) → product-etsy → settings-admin + known-issues.
+> Sidebar surface → stage doc eşlemesi, archive ilişkisi ve
+> "CRITICAL DOCUMENTATION PATTERN" (yeni iş nereye yazılır) de
+> 00-router.md'dedir.
 
-### Bu dosya (CLAUDE.md core) NEYİ tutar — AUTHORITATIVE
+### Canonical pipeline (ürün omurgası)
 
-- Ürün tanımı / scope / roller / stack / güvenlik / test stratejisi
-  (yukarıdaki bölümler)
-- **Canonical Surface İlkeleri (Madde A–Y)** + Library/Selections/
-  Products boundary invariant'ları + Mockup 3-tip + Mobile/Native/
-  high-volume gereksinimleri
-- **Madde Z — Review Modülü Freeze** (kilitli sözleşmeler;
-  değişiklik kuralı)
-- **Marka Kullanımı** (dosya sonunda)
+```
+References → Batch → Review → Selection → Library → Products → Etsy Draft
+```
+Her ok bir **action** (single primary CTA), sayfa zinciri değil.
 
-### Topic docs — AUTHORITATIVE (güncel davranış / canonical invariant)
+### En kritik boundary (özet — detay 00-router + selection-library-products.md)
 
-| Konu | Authoritative dosya |
-|---|---|
-| Mockup Studio genel davranış sözleşmesi (§1–13) | `docs/claude/mockup-studio-contract.md` |
-| Zoom / navigator pad / viewfinder / marker / pan-reach | `docs/claude/mockup-studio-zoom-navigator.md` |
-| Plate / composition / cascade / aspect-fit / rotated-AABB | `docs/claude/mockup-studio-framing.md` |
-| Right rail thumb / chrome / aspect / single-renderer | `docs/claude/mockup-studio-rail-preview.md` |
-| Açık item'lar / bilinçli erteleme / future direction | `docs/claude/known-issues-and-deferred.md` |
-| MVP acceptance + readiness | `docs/MVP_ACCEPTANCE.md` |
-| Production shakedown (release günü) | `docs/PRODUCTION_SHAKEDOWN.md` |
-| Implementation handoff (rollout sırası, invariant) | `docs/IMPLEMENTATION_HANDOFF.md` |
-| Design parity checkpoint (her rollout sonu) | `docs/DESIGN_PARITY_CHECKPOINT.md` |
-| Review modülü detay paketi | `docs/review/` |
-| Design system | `docs/design-system/kivasy/` |
+```
+Library ≠ Selections ≠ Products   — KARIŞTIRILMAZ
+State akışı TEK YÖNLÜ (geri yazım yok):
+Reference → Batch → Library asset → Selection set → Product → Etsy draft
+```
 
-### Archive — NOT AUTHORITATIVE (yalnız tarihsel bağlam)
+### Bu core'a NE yazılır
 
-| Dosya | İçerik |
-|---|---|
-| `docs/claude/archive/phase-log-12-96.md` | Batch-First Phase 1 → Mockup Studio Phase ~96 anlatısı |
-| `docs/claude/archive/phase-log-97-135.md` | Phase 97 → 135 (framing/zoom/rail/Frame export) anlatısı |
-
-Archive dosyaları "neden bu karar verildi" tarihsel bağlamı içindir.
-**Güncel davranış archive'dan okunmaz** — karar mantığı topic
-doc'lara invariant olarak özetlenmiştir.
-
-### CRITICAL DOCUMENTATION PATTERN — yeni iş bitince NEREYE yazılır
-
-Yeni bir Phase / refactor / bug fix tamamlandığında:
-
-1. **Davranış değişikliği canonical invariant ise** → ilgili topic
-   doc'a (`docs/claude/mockup-studio-*.md`) **kural olarak** yaz
-   (Phase narrative DEĞİL — "şu değişmez" özeti) + "Son güncelleme:
-   Phase N" satırını güncelle.
-2. **Tarihsel anlatı / "neden" gerekçesi** → ilgili archive phase-log
-   dosyasının SONUNA Phase N entry'si ekle (`## Phase N — başlık`).
-3. **Ürün anayasası / Canonical Surface / boundary / Review Freeze /
-   Marka değişiyorsa** (nadir) → bu CLAUDE.md core'da ilgili maddeyi
-   güncelle.
-4. **Yeni açık item / erteleme** → `docs/claude/known-issues-and-
-   deferred.md`'ye ekle.
-5. Asla yeni davranışı yalnız archive'a yazıp topic doc'u
-   güncellemeden bırakma (gelecek ajan archive'ı authoritative
-   sanmaz; topic doc canonical kaynaktır).
-6. Yeni topic doc gerekirse `docs/claude/` altına ekle + bu router
-   tablosuna satır ekle + ilgili contract doc'tan cross-ref ver
-   (broken reference bırakma). Çok sayıda küçük dosya açma — modül
-   bazlı az sayıda doc tercih edilir.
-
----
+Yalnız ürün anayasası / Canonical Surface (Madde A–Y) /
+Library-Selections-Products boundary / Madde Z Review Freeze /
+Marka değişiyorsa burada güncellenir (nadir). Modül davranış
+değişikliği → ilgili `docs/claude/` stage doc'a (kural olarak) +
+tarihsel "neden" → `docs/claude/archive/phase-log-*.md` (NOT
+authoritative). Tam kural → `docs/claude/00-router.md` "CRITICAL
+DOCUMENTATION PATTERN".
 
 ## Phase 135 — Zoom-aware pan reach (kök neden + canonical fix) + dokümantasyon refactor
 

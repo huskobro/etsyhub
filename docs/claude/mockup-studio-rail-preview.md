@@ -20,6 +20,44 @@
 
 ---
 
+## 0. Çekirdek (6-başlık özeti)
+
+> Hibrit şablon: çekirdek 6 başlık burada; **detay/derinleştirme
+> aşağıdaki modül-spesifik §1–9'da** (single render path,
+> chromeless, aspect-reactive, containerless, scene-derived thumb,
+> proportional chrome, selection ring/badge).
+
+1. **Kapsam / Rol / Boundary:** Mockup Studio sağ rail thumb /
+   navigator pad bg / preset chrome / aspect. Boundary: rail =
+   candidate layout preview (viewing aid değil); orta panelin AYNI
+   StageScene'i (ayrı SVG renderer YASAK). Geometri §6b, zoom
+   §6a'da.
+2. **Current behavior:** rail thumb = orta panelin AYNI StageScene
+   (single render path; Phase 117); `chromeless` stage-padding'siz;
+   middle ile canlı bağlı (derived; aspect-reactive); containerless
+   aspect-adaptive (`boxW`/`boxH` prop deterministik); scene-derived
+   (gerçek asset + StageDeviceSVG); proportional device chrome;
+   selection slot-ring + overlay badge (orta panel parity). Detay
+   → §1–8.
+3. **Invariants:** → §9 "Değişmez sözleşme" (single render path;
+   chromeless `effectiveZoom` guard; derived/canlı-bağlı; scaleWrap
+   YASAK; scene-derived; proportional chrome; selection ring/badge;
+   kategori 4 helper Stage-preview'da gizli rail'de görünür).
+4. **Relevant files / Ownership:** `src/features/mockups/studio/
+   StageScene` (export — orta panel + rail ortak component),
+   `StageScenePreview.tsx` (rail thumb scaled wrapper; chromeless),
+   `MockupStudioPresetRail.tsx` (preset thumb + boxW/boxH +
+   slot-ring/badge), `svg-art.tsx` (StageDeviceSVG real asset;
+   `PresetThumbMockup` legacy fallback), `MockupStudioShell.tsx`
+   (slots + layoutVariant + deviceKind prop chain).
+5. **Open issues / Deferred:** → `docs/claude/known-issues-and-
+   deferred.md` C (ölü kod `PresetThumbMockup`/`fitCascadeToThumb`
+   güvenli silme).
+6. **Archive / Historical pointer:** → `docs/claude/archive/
+   phase-log-97-135.md` (NOT authoritative; Phase 117-134).
+
+---
+
 ## 1. Single render path — rail thumb = orta panelin AYNI StageScene'i (Phase 117)
 
 - Rail thumb / live-thumb / navigator pad bg HEPSİ orta panelin

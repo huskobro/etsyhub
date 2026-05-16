@@ -16,6 +16,36 @@
 
 ---
 
+## 0. Çekirdek (6-başlık özeti)
+
+> Bu doc bir **cross-cutting açık-item katalog**u (tüm modüllerin
+> "Open issues" başlığı buraya pointer verir — tek consolidated
+> kaynak). Çekirdek 6 başlık burada; **modül-bazlı açık item'lar
+> aşağıdaki §A–G'de**.
+
+1. **Kapsam / Rol / Boundary:** Tüm modüllerin açık item'ları +
+   bilinçli ertelemeler + future direction (§13 Behavior Contract
+   operasyonel özeti) + erken-abstraction guard'ları. Boundary:
+   yalnız "ne açık / ne ertelendi / neden"; canonical güncel
+   davranış ilgili stage doc'ta.
+2. **Current behavior:** §A (zoom/navigator), §B (framing), §C
+   (rail), §D (Frame export/Etsy V3 e2e), §E (future §13.A-B +
+   Remotion), §F (pre-existing limitations), §G (erken-abstraction
+   guard'ları). Her item: ne açık + neden ertelendi + ilgili
+   stage doc.
+3. **Invariants:** Future direction item'ı **Contract + Phase
+   entry'siyle açılır** (sessiz drift YASAK — §E). Erken-
+   abstraction guard'ları (§G) AÇILMADAN ÖNCE açık karar gerekir.
+4. **Relevant files / Ownership:** Yok (katalog doc); her item
+   ilgili stage doc'un "Relevant files"ına işaret eder
+   (`docs/claude/00-router.md` üzerinden).
+5. **Open issues / Deferred:** Bu doc'un kendisi (§A–G).
+6. **Archive / Historical pointer:** Her item'ın tarihsel "Phase
+   N candidate" gerekçesi → `docs/claude/archive/phase-log-*.md`
+   (NOT authoritative).
+
+---
+
 ## A. Mockup Studio — zoom / navigator / marker
 
 - **Tilt (media rotate)** — honest-disabled (`Tilt · Soon`,

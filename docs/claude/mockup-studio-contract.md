@@ -24,6 +24,46 @@
 > Shots.so + MockupViews live davranış araştırması + Kivasy-superior
 > denge kararlarına dayanır.
 
+## 0. Çekirdek (6-başlık özeti)
+
+> Hibrit şablon: çekirdek 6 başlık burada; **detay/derinleştirme
+> aşağıdaki §1–13'te** (Behavior Contract maddeleri — Mockup/Frame
+> ilişkisi, stage continuity, plate, aspect, scroll, rail,
+> selection, layout count, real asset, productType, §11.0
+> Preview = Export Truth, handoff, future direction).
+
+1. **Kapsam / Rol / Boundary:** Mockup Studio'nun genel davranış
+   sözleşmesi (§1–13) — Mockup mode (object surface) + Frame mode
+   (presentation surface), stage/plate/composition continuity,
+   Preview = Export Truth. Boundary: zoom/navigator detay → §6a,
+   geometri → §6b, rail → §6c, açık/future → known-issues.
+2. **Current behavior:** §1–13 maddeleri (her biri kendi current
+   behavior + invariant + Phase fulfilled durumunu taşır). En
+   kritik: §11.0 Preview = Export Truth (exported PNG canonical
+   truth; preview onun authoring önizlemesi; editing helper'lar
+   hariç birebir).
+3. **Invariants:** Tüm §1–13 maddeleri canonical invariant
+   (özellikle §11.0 Preview = Export Truth, §12 No silent magic,
+   §2 stage continuity, 4-kategori parametre ayrımı). Sözleşme
+   değişikliği açık karar + Phase entry gerektirir (sessiz
+   override YASAK).
+4. **Relevant files / Ownership:** `src/features/mockups/studio/`
+   (StageScene, MockupStudioStage, StageScenePreview,
+   MockupStudioShell, MockupStudioPresetRail, cascade-layout,
+   media-position, zoom-bounds, frame-scene, svg-art),
+   `src/providers/mockup/local-sharp/frame-compositor.ts`
+   (canonical export), `src/server/services/frame/
+   frame-export.service.ts`, `src/app/(studio)/`. Companion
+   doc'lar: §6a `mockup-studio-zoom-navigator.md`, §6b
+   `mockup-studio-framing.md`, §6c `mockup-studio-rail-preview.md`.
+5. **Open issues / Deferred:** → `docs/claude/known-issues-and-
+   deferred.md` (A-G; §13 future direction operasyonel özeti).
+6. **Archive / Historical pointer:** → `docs/claude/archive/
+   phase-log-97-135.md` (NOT authoritative; Phase 77-135 Mockup
+   Studio anlatısı). Günlük çalışmada inilmez.
+
+---
+
 ### 1. Mockup vs Frame mode ilişkisi
 
 - Mockup mode = **object surface authoring** ("how it looks"). Operator

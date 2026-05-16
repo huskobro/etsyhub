@@ -20,6 +20,41 @@
 
 ---
 
+## 0. Çekirdek (6-başlık özeti)
+
+> Hibrit şablon: çekirdek 6 başlık burada; **detay/derinleştirme
+> aşağıdaki modül-spesifik §1–9'da** (geometri kaynağı, resolvePlateBox,
+> compositionGroup, plate chrome, layout variant, primitive sınırı).
+
+1. **Kapsam / Rol / Boundary:** Mockup Studio orta panel + Frame
+   export'un plate boyutlandırma, composition grup kilitleme,
+   cascade layout, aspect-locked bbox-fit geometrisi. Boundary:
+   yalnız geometri katmanı — zoom/scene §6a, rail §6c'de; zoom
+   composition scale'i bu geometrinin ÜZERİNE biner.
+2. **Current behavior:** `cascade-layout.ts` tek canonical kaynak
+   (Stage+export+rail+navigator hepsi buradan). `resolvePlateBox`
+   container-agnostic aspect-locked fit; `compositionGroup`
+   rotated-AABB plate-relative locked group (clamp YOK);
+   proportional plate chrome; `applyLayoutVariant` 6 variant.
+   Detay → §1–8.
+3. **Invariants:** → §9 "Değişmez sözleşme" (tek kaynak; aspect/
+   container/layout-agnostic; rotated-AABB görsel bbox; chrome
+   proportional; N×M grid YASAK; Preview = Export Truth).
+4. **Relevant files / Ownership:** `src/features/mockups/studio/
+   cascade-layout.ts` (resolvePlateBox, compositionGroup,
+   PLATE_FILL_FRAC, plateRadiusForWidth, cascadeLayoutFor,
+   applyLayoutVariant, centerCascade), `MockupStudioStage.tsx`
+   (plateDimensionsFor → resolvePlateBox; MockupComposition/
+   FrameComposition), `frame-compositor.ts` (export aynı
+   compositionGroup tüketir).
+5. **Open issues / Deferred:** → `docs/claude/known-issues-and-
+   deferred.md` B (residual ~3-9px rotation görsel offset).
+6. **Archive / Historical pointer:** → §"... Archive / Historical
+   pointer" (aşağıda) → `docs/claude/archive/phase-log-97-135.md`
+   (NOT authoritative; Phase 111-133).
+
+---
+
 ## 1. Tek canonical geometri kaynağı
 
 - `src/features/mockups/studio/cascade-layout.ts` tek modül:
