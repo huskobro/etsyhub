@@ -116,15 +116,33 @@ büyük ekranda incelenir.
 
 1. **Intensity gerçekten görsel ayrışsın, agresif olmasın:**
    soft/medium/strong yalnız isimsel kalmaz; browser'da kalibre
-   edilir. Grain tavanı `strong ≈ 0.11 opacity` (mockup
-   kirletmez); vignette tavanı `strong ≈ 0.42 alpha` (ürün
-   fotoğrafını öldürmez). Final'de 3 intensity görsel kanıtı
+   edilir. Grain tavanı `strong ≈ 0.11 opacity`; vignette tavanı
+   `strong ≈ 0.42 alpha`. Final'de 3 intensity görsel kanıtı
    yazılır; gerekirse map yumuşatılır.
-2. **Kombinasyon çamurlaşması:** grain+glass / grain+lensBlur /
-   vignette+glass kombinasyonları browser'da incelenir; final
-   raporda her birinin görsel sonucu yazılır; muddy/noisy ise
-   intensity mapping yumuşatılır.
-3. **Behavior Contract kuralı kısa+normatif** (prose yok — §7).
+2. **Grain = film-grain hissi, dijital gürültü DEĞİL:** noise
+   monokrom + ince taneli (renkli RGB noise değil); turbulence
+   `baseFrequency` film-grain dokusuna yakın (çok yüksek freq =
+   dijital kar). Strong'da bile ürün fotoğrafını kirletmez.
+   Browser doğrulamasında özellikle buna bakılır.
+3. **Vignette merkez subject'i boğmaz:** radial falloff GEÇ
+   başlar — merkez ~%60 yarıçap tam şeffaf (`transparent 60%` →
+   alpha sadece dış kenarda). Portrait/vertical kompozisyonda
+   ortadaki subject güvenli (dikey eksende de merkez korunur,
+   ellipse-fit). Browser doğrulamasında portrait mockup'ta
+   merkez kararması kontrol edilir.
+4. **Kombinasyon çamurlaşması:** grain+glass / grain+lensBlur /
+   vignette+glass browser'da incelenir; final raporda her
+   birinin görsel sonucu yazılır; muddy/noisy ise intensity
+   yumuşatılır.
+5. **Behavior Contract kuralı kısa+normatif** (prose yok — §7).
+6. **Snapshot/persistence zinciri (kritik — §8'de dosya
+   listesinde):** `bgEffect` yalnız Stage+Sidebar+compositor
+   değil; `sceneSnapshot` (export payload), `FrameExportResult
+   Snapshot` type, `FrameExportResultBanner` "scene changed?"
+   (`isStale`) karşılaştırması, persisted scene state zincirinde
+   de görünür — glass/lensBlur ile birebir. Export sonrası
+   `bgEffect` değişirse banner "Preview changed — re-export?"
+   göstermeli.
 
 ## 7. Behavior Contract eklemesi (normatif, kısa)
 
@@ -135,27 +153,49 @@ büyük ekranda incelenir.
 > - `SceneOverride.bgEffect?` — tek-seçimli (`vignette`|`grain` ×
 >   `soft/medium/strong`); undefined = none.
 > - **Frame-only**: Mockup mode'a sızmaz (Frame scene kararı).
-> - **Export'a yansır**: canonical kategori 1; job snapshot'lanır.
+> - **Export'a yansır + snapshot'lanır**: canonical kategori 1;
+>   `sceneSnapshot`'a girer ve `FrameExportResultBanner` "scene
+>   changed?" (`isStale`) karşılaştırmasına dahildir (glass/
+>   lensBlur ile birebir — değişirse "re-export?").
 > - `mode`/`glassVariant`/`lensBlur`'dan **bağımsız eksen**:
 >   kombinlenebilir, mutual-exclusion yok.
 > - **Compositing order SABİT**: scene bg → grain → glass →
 >   lens blur → vignette (preview CSS layer-order = Sharp
 >   composite order).
 > - **Preview=Export parity zorunlu** (§11.0): deterministik
->   (vignette gradient formülü, grain sabit-seed turbulence).
+>   (vignette gradient formülü, grain sabit-seed monokrom
+>   turbulence). Vignette merkez ~%60 şeffaf (subject boğmaz);
+>   grain film-grain hissi (dijital gürültü değil).
 
-## 8. Değişecek dosyalar (~5; Glass/Lens Blur ile aynı katmanlar)
+## 8. Değişecek dosyalar (~7; Glass/Lens Blur ile aynı katmanlar + snapshot zinciri)
+
+**Core (effect mantığı):**
 
 | Dosya | Değişiklik |
 |---|---|
 | `src/features/mockups/studio/frame-scene.ts` | `BgEffectKind/Intensity/Config` type + `BG_VIGNETTE_ALPHA`/`BG_GRAIN_OPACITY` map + `SceneOverride.bgEffect` field + `resolvePlateEffects` `bgEffect` çözümü |
-| `src/providers/mockup/local-sharp/frame-compositor.ts` | type mirror + Sharp vignette gradient composite + grain noise composite (compositing order'a göre) |
-| `src/features/mockups/studio/MockupStudioStage.tsx` | preview plate CSS: vignette radial-gradient layer + grain SVG turbulence layer (compositing order) |
-| `src/features/mockups/studio/MockupStudioSidebar.tsx` | `bgfx` tile `isWired=true` + popover/control (kind seç + intensity) + `onChangeSceneOverride` |
+| `src/providers/mockup/local-sharp/frame-compositor.ts` | type mirror + Sharp vignette radial-gradient composite + grain monokrom noise composite (compositing order §4) |
+| `src/features/mockups/studio/MockupStudioStage.tsx` | preview plate CSS: vignette `radial-gradient(... transparent 60% ...)` layer + grain monokrom SVG turbulence layer (compositing order §4) |
+| `src/features/mockups/studio/MockupStudioSidebar.tsx` | `bgfx` tile `isWired=true` + popover/control (kind seç + 3 intensity) + `onChangeSceneOverride` |
+
+**Snapshot/persistence zinciri (guardrail 6 — KOD-GROUNDED):**
+
+| Dosya | Değişiklik | Kanıt |
+|---|---|---|
+| `src/features/mockups/studio/MockupStudioShell.tsx` | `sceneSnapshot` objesine `bgEffect` ekle (export payload — :133 + :730 iki yer) | lensBlur/glassVariant orada |
+| `src/features/mockups/studio/FrameExportResultBanner.tsx` | `FrameExportResultSnapshot` type'a `bgEffect`; `isStale` karşılaştırmasına `bgEffectChanged` ekle (`:90-95` — mode/glassVariant/lensBlur yanına) | export sonrası bgEffect değişirse "Preview changed" |
+| `src/server/services/frame/frame-export.service.ts` + `src/app/api/frame/export/route.ts` | persist edilen scene snapshot'a `bgEffect` aktar (glass/lensBlur ile aynı yol) | sceneSnapshot persistence |
+| `src/features/mockups/studio/svg-art.tsx` | rail thumb scene `bgEffect` yansıtır (gerekiyorsa — lensBlur/glassVariant orada geçiyor; rail single-renderer §11.0 parity) | scene-derived thumb |
+
+**Doc:**
+
+| Dosya | Değişiklik |
+|---|---|
 | `docs/claude/mockup-studio-contract.md` | §7.7 normatif kural (§7) |
 
 **Dokunulmaz:** `media-position.ts`, `cascade-layout.ts`,
-`zoom-bounds.ts`, navigator/viewfinder, rail single-renderer,
+`zoom-bounds.ts`, navigator/viewfinder math, rail single-renderer
+*mimarisi* (yalnız scene-derive yoluna bgEffect eklenir),
 Portrait/Watermark/Tilt/VFX tile'ları.
 
 ## 9. Test stratejisi
