@@ -411,16 +411,26 @@ export function StageScenePreview({
               Math.min(BASE_FRAC, BASE_FRAC * (100 / z)),
             );
             const vfPct = vfFrac * 100;
-            /* Serbest alan oranı: viewfinder GROUP pad içinde ne
-             *  kadar gezinebilir (kenardan taşmaz). vfFrac ≤ 0.78
-             *  → travel daima > 0. Navigator bg artık neutral full-
-             *  extent olduğu için viewfinder middle-stage'de GÖRÜLEN
-             *  crop'u temsil eder: media +x ile içerik sağa kayarsa
-             *  görünür pencere full-extent üstünde sola kayar. Yani
-             *  viewfinder = canonical mediaPosition'ın TERS izdüşümü. */
-            const travel = (1 - vfFrac) * 50;
-            const vfCx = 50 - mediaPosition.x * travel;
-            const vfCy = 50 - mediaPosition.y * travel;
+            /* Shots.so click/drag davranışındaki kritik fark:
+             *  beyaz nokta (viewfinder center marker) doğrudan
+             *  tıklanan noktaya gider; rectangle gerekirse pad'in
+             *  dışına taşar. Yani center'ı "viewfinder pad içinde
+             *  kalsın" diye `(1-vfFrac)` travel alanına sıkıştırmak
+             *  yanlış. Doğru model:
+             *   - pad merkezi = canonical {0,0}
+             *   - pad sağı = canonical {-1,0} için görünür pencere
+             *     sağa gider (neutral full-extent background
+             *     üstünde crop temsil edilir)
+             *   - pad solu = canonical {+1,0} için görünür pencere
+             *     sola gider
+             *
+             *  Bu yüzden center doğrudan normalized aralığın tam
+             *  izdüşümüyle çizilir: `[-1,+1] -> [0%,100%]`.
+             *  Rectangle boyutu zoom ile küçülür ama center clamp'i
+             *  yoktur; overflow görsel olarak kırpılabilir, crop
+             *  anlamı yine korunur. */
+            const vfCx = 50 - mediaPosition.x * 50;
+            const vfCy = 50 - mediaPosition.y * 50;
             return (
               <>
                 {/* Dim: viewfinder GROUP DIŞINI karart (group ile
