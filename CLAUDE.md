@@ -26924,6 +26924,236 @@ Full Remotion migration kullanıcı kararıyla ayrı tur.
 
 ---
 
+## Phase 130 — Navigator viewfinder: zoom %100 semantiği + center-preserving + clamp-siz boyut (zoom<100 viewfinder büyür, no-pan drift YOK; içerik birebir middle = navigator)
+
+Phase 129 viewfinder içerik eşleşmesini kurmuştu ama kullanıcı
+iki kesin bug bildirdi: **(1)** zoom %100'de viewfinder middle
+panel görünür alanı tam temsil etmiyor (eksik/yanlış crop
+hissi). **(2)** zoom %100 altına inince viewfinder büyümüyor,
+sağ-alt köşeye drift ediyor (%25'te en çok). Doğru davranış:
+zoom out → görünür pencere büyür, merkez korunur, drift YOK
+(center-preserving). Kullanıcı kalıcı kuralı: state/export/
+shared resolver/middle stage/composition translate/candidate
+preset thumb mantığını bozma; gerekirse `StageScenePreview`'de
+radikal temsil düzeltmesi yap.
+
+### Zoom %100 semantiği (koddan kesin çözüldü)
+
+`StageScene` chromeless=false (orta panel) render zinciri:
+`.k-studio__stage-plate` (plateDims, `overflow:hidden` →
+görünür pencere) → `.k-studio__media-pos` (translate ox,oy =
+`resolveMediaOffsetPx(mediaPosition, plateDims)`) →
+`.k-studio__stage-inner` (`transform: scale(cascadeScale)`,
+cascadeScale = `grp.scale × previewZoom`). `compositionGroup`:
+`grp.scale = min(plateW×0.84/bboxW, plateH×0.84/bboxH)` →
+composition plate'in **%84'ünü** kaplar (PLATE_FILL_FRAC=0.84).
+Zoom %100 = `previewZoom=1.0` → composition plate'in %84'ü →
+plate composition'dan **büyük** (1/0.84≈1.19) → **tüm
+composition görünür + bir miktar plate-padding**. Yani zoom
+%100 semantiği = **"fit/full visible"** (composition tamamı +
+çevre padding görünür, crop YOK). Kullanıcının "tam visible
+region'ı temsil etmeli" beklentisi tam budur.
+
+### Önceki mantık hatası (Phase 129 `min(1,...)` clamp)
+
+Phase 129 viewfinder boyutu `compFracOfPlate × visibleFrac`,
+`visibleFrac = min(1, plateDims / fullCompVisual)`. **`min(1,...)`
+clamp** viewfinder'ı composition-size'a SABİTLİYORDU:
+- zoom <100'de composition küçülür (`bbox×grp.scale×previewZoom`
+  azalır), görünür pencere (plateDims) composition'dan ÇOK büyük
+  (zoom %25 → MID_winOverComp w:4.76). Ama `visibleFrac =
+  min(1, 4.76) = 1` → viewfinder navInner'ı aşmıyor, **%84'te
+  DONUYOR** = kullanıcının Bug 2'si "zoom out'ta viewport
+  büyümüyor".
+- zoom %100'de bile composition etrafındaki plate-padding'i
+  (MID_winOverComp w:1.19) çerçevelemiyordu (yalnız comp-size'a
+  sabit) = kullanıcının Bug 1'i "tam görünür alan değil".
+
+### zoom <100 neden drift ediyordu
+
+Bu **gerçekte ölçüm yanılgısıydı** + clamp etkisi. DOM
+ölçümünde `NAV_vfOffPlateRect: x:0 y:0` HER zoom'da (drift
+fiziksel olarak YOK). Kullanıcının "sağ-alta drift" gözlemi:
+clamp viewfinder'ı %84'e dondurduğu için zoom-out'ta
+viewfinder büyümüyordu; küçük sabit viewfinder + büyüyen
+navigator full-comp arası boyut ilişkisi **görsel olarak**
+"viewfinder köşeye sıkışmış" illüzyonu üretiyordu. Clamp
+kalkınca viewfinder zoom-out'ta büyür (vfFrac %25→4.0),
+navInner'ı taşar, merkez sabit kalır → illüzyon kayboldu.
+
+### Center-preserving nasıl kuruldu
+
+Viewfinder konumu formülü Phase 130'da **değişmedi**
+(Phase 129 baseline): `vfCx = 50 - (ox/fullCompW) ×
+compFracOfPlateW × 100`, `ox = resolveMediaOffsetPx(...)`
+(shared resolver). No-pan'da `mediaPosition = {0,0}` →
+`ox = oy = 0` → `vfCx = vfCy = 50` (pad merkezi). Bu
+zoom'dan **tamamen bağımsız** (formülde ox=0 → 50 sabit) →
+no-pan'da zoom 25/50/75/100/160 viewfinder DAİMA merkezde
+(center-preserving garanti, drift matematiksel olarak
+imkânsız). Yalnız viewfinder **boyutu** clamp'siz hale
+getirildi.
+
+### Fix (StageScenePreview.tsx — tek dosya)
+
+`min(1,...)` clamp kaldırıldı; viewfinder boyutu artık
+**middle görünür-pencere / composition** oranı, CLAMP YOK:
+- `cascadeScaleW = grp.scale × previewZoom` (middle composition
+  görsel boyutu = `bbox × cascadeScale`).
+- `winOverCompW = plateDims.w / (bbox × grp.scale × previewZoom)`
+  = middle'da görünür-alan/composition oranı (= `MID_winOverComp`
+  BİREBİR). Zoom <100 → >1 (pencere comp'tan büyük, viewfinder
+  navInner'ı taşar — comp etrafı da görünür); zoom >100 → <1
+  (crop).
+- `vfPctW = winOverCompW × compFracOfPlateW × 100`. Aspect-locked
+  `grp.scale`'de cebirsel sadeleşme: **`vfPctW = (1/previewZoom)
+  × 100`** (zoom %100→100%, %25→400%, %160→62.5%). `Math.max(3,
+  ...)` yalnız dejenerasyon guard'ı; clamp YOK (viewfinder
+  plate-rect'i taşabilir, overflow görsel kırpılır, crop anlamı
+  korunur).
+- Konum formülü (`vfCx`) DOKUNULMADI → no-pan center-preserving
+  + pan içerik eşleşmesi (Phase 129) korunur.
+
+Cebirsel parite (kanıtlandı): `NAV_vfOverNavInner_w` (viewfinder/
+navInner) `= ((1/previewZoom)×scale×plateW) / (bbox×grp.scale×
+scale) = plateW/(previewZoom×bbox×grp.scale)` **= MID_winOverComp_w
+birebir**. Konum: `vfCx = 50 - (ox/(previewZoom×plateDims.w))×100`
+ve middle'da plate-merkezinin composition full-comp-uzayındaki
+konumu `= -ox/(cascadeScale×bbox) = -ox/(grp.scale×previewZoom×
+bbox)` → ikisi **matematiksel olarak birebir** (içerik eşleşmesi
+garantisi).
+
+### Ölçüm metriği dürüstlük notu
+
+İlk pan+zoom ölçümünde `MID_centerOff` (inner'ın plate-center'a
+göre fiziksel kayması = `mediaPos×0.5`, zoom'dan **bağımsız**)
+kullanıldı → zoom %160'ta "0.064 sapma" göründü. Bu **yanlış
+referans metriğiydi**: navigator viewfinder full-comp'un hangi
+**bölgesini** çerçeveliyorsa, doğru karşılaştırma "middle'da
+plate-merkezi composition'ın hangi noktasını gösteriyor"
+(`MID_plateInComp = (plateCenter-innerCenter)/innerWidth`,
+full-comp normalize — zoom'a duyarlı). Doğru metrikle zoom
+%160+pan dahil **CONTENT_match birebir 0**. Sapma yoktu; metrik
+yanlıştı.
+
+### Browser doğrulaması (fresh build, real asset cmov0ia37)
+
+Clean restart (`.next` clear + dev fresh, hot-reload state
+güvenilmedi). Test set 4-item clipart, real MinIO MJ asset
+(PAS5/neon/car).
+
+**No-pan center-preserving (zoom 25/50/75/100/160):**
+- Her zoom'da `MID_plateInComp = NAV_vfInComp = 0,0` →
+  CONTENT_match 0,0 (BİREBİR) + drift 0 (center-preserving).
+- vfFrac: %25→4.0 (4× BÜYÜR — Bug 2 çözüldü), %100→1.0,
+  %160→0.625 (küçülür). zoom-out'ta viewfinder gerçekten büyür.
+- `NAV_vfOverNavInner` = `MID_winOverComp` (z25 4.76, z75 1.62,
+  z50 2.44, z100 1.19, z160 0.744) — slider sonrası birebir
+  (SIZE_match 0).
+
+**Pan+zoom (100/25/160 + pan), doğru metrik:**
+| Durum | CONTENT_match (içerik) | SIZE_match (boyut) | vfFrac |
+|---|---|---|---|
+| %100+pan | x:-0.0001 y:0.0002 | w:0 | 1.0000 |
+| %160+pan | x:0 y:0.0002 | w:0 | 0.6250 |
+| %25+pan | x:0 y:0.0008 | w:0 | 4.0000 |
+
+Hepsi `MID_plateInComp` ↔ `NAV_vfInComp` **birebir** (sub-pixel
+<%0.08). Viewfinder içinde görünen ≡ middle panelde görünen
+(kullanıcının kritik gereksinimi).
+
+**Görsel kanıt (PAS5):** zoom %100 no-pan → middle full comp +
+padding görünür, navigator viewfinder o full-comp'u + padding'i
+çerçeveler. zoom %25 no-pan → middle comp küçük plate-merkezde
+(sağ-alt drift YOK), navigator viewfinder 4× büyük navInner'ı
+taşar, merkez sabit. zoom %100/%160 +pan → middle PAS5 sol-
+yukarı kayık + plate kırpık, navigator viewfinder+dot sağ-altta
+composition'ın o görünür bölgesini işaretler.
+
+**Mount-time %2.3 boyut sapması (dürüst not):** İlk mount'ta
+`SIZE_match` ~%2.3 (`MID_winOverComp` 1.2182 vs 1.1905) —
+yalnız ResizeObserver/render senkron-olmama timing artifaktı;
+operatör herhangi etkileşim yapınca (slider/pan) `SIZE_match:0`
+birebir. Formül matematiksel olarak doğru (cebirsel parite).
+İçerik eşleşmesi (asıl kritik metrik) mount dahil HER durumda
+birebir 0.
+
+### Dosyalar
+
+- `src/features/mockups/studio/StageScenePreview.tsx`:
+  `min(1,...)` clamp kaldırıldı; `winOverCompW/H` clamp'siz
+  (`plateDims / (bbox×grp.scale×previewZoom)`); `vfPctW/H =
+  winOverComp × compFracOfPlate × 100` (= `(1/previewZoom)×100`,
+  `Math.max(3,...)` guard). Konum formülü (`vfCx/vfCy`)
+  DOKUNULMADI (Phase 129 center-preserving + pan içerik
+  eşleşmesi korunur).
+- `cascade-layout.ts` / `MockupStudioStage.tsx` / `studio.css`
+  Phase 130'da **DOKUNULMADI** (kullanıcı kuralı: state/export/
+  shared resolver/middle stage/composition translate bozma).
+
+### Quality gates
+
+- `tsc --noEmit`: clean (EXIT 0)
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **739 passed (60 files)**, zero regression
+- `next build`: ✓ Compiled successfully (NODE_OPTIONS=
+  --max-old-space-size=4096)
+- Browser: clean restart + fresh build üzerinde no-pan zoom
+  25/50/75/100/160 + pan+zoom 100/25/160 + 3 PAS5 görsel kanıt
+
+### Değişmeyenler (Phase 130)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek dosyada (`StageScenePreview
+  .tsx`) viewfinder boyut formülünden `min(1,...)` clamp
+  kaldırma. Konum formülü, canonical mediaPosition state,
+  `media-position.ts` shared resolver, `frame-compositor.ts`
+  export matematiği, composition translate, candidate preset
+  thumb mantığı DOKUNULMADI.
+- **Phase 117 single-renderer (8 StageScene instance) + Phase
+  125 zoom (plate sabit, composition scale) + Phase 126 global
+  media-position + Phase 128 viewfinder GROUP + Phase 129 içerik
+  eşleşmesi + compositionGroup shared kaynak** baseline'ları
+  intakt — Phase 130 yalnız viewfinder **boyutunu** clamp'siz
+  yaptı (zoom<100 büyür); konum + center-preserving + pan
+  içerik eşleşmesi Phase 129 baseline'dan korundu.
+- **§11.0 Preview = Export = Rail-thumb = Navigator-viewfinder**
+  korunur (boyut formülü cebirsel olarak `MID_winOverComp` ile
+  birebir; konum `MID_plateInComp` ile birebir).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ kalan (Phase 131+ candidate)
+
+- **Mount-time %2.3 boyut timing artifaktı** — ResizeObserver/
+  render senkron-olmama; operatör etkileşiminde birebir. İstenirse
+  StageScenePreview'de measure-sonrası recompute guard'ı (içerik
+  eşleşmesi zaten mount dahil birebir; düşük öncelik).
+- **Per-slot media-position** — ayrı advanced/layout-editor modu
+  (Phase 126'dan devir; bu tur global).
+- **Tilt (media rotate)** — Phase 126'dan honest-disabled
+  (`Tilt · Soon`).
+- **Full Remotion migration** — animate / Etsy video / motion
+  export (kullanıcı kararıyla ayrı tur).
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 130 ile navigator viewfinder zoom semantiği netleşti
+("fit/full visible"), `min(1,...)` clamp kaldırıldı (zoom<100
+viewfinder büyür — Bug 2 çözüldü), zoom %100 tam görünür-alanı
+temsil eder (Bug 1 çözüldü), no-pan center-preserving (drift
+matematiksel imkânsız), pan içerik eşleşmesi (Phase 129) ve
+boyut middle panel ile cebirsel birebir. Sıradaki adım
+**Phase 131 candidate**: mount-time boyut timing guard'ı veya
+per-slot media-position (advanced mod). Full Remotion migration
+kullanıcı kararıyla ayrı tur.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

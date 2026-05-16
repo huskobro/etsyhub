@@ -426,42 +426,80 @@ export function StageScenePreview({
               plateDims.w,
               plateDims.h,
             );
-            // Full composition GÖRSEL boyutu middle panel'de
-            // (cascadeScale × previewZoom — Phase 125 zoom).
-            const fullCompW = grp.bboxW * grp.scale * previewZoom;
-            const fullCompH = grp.bboxH * grp.scale * previewZoom;
-            // Görünür pencere = plate; görünür crop oranı (full
-            // comp'a göre). plate full-comp'tan büyükse tamamı
-            // görünür (min(1,...) — Phase 95-110 plate>comp case).
-            const visibleFracW = Math.min(1, plateDims.w / fullCompW);
-            const visibleFracH = Math.min(1, plateDims.h / fullCompH);
+            /* Phase 130 — Viewfinder = middle panel GÖRÜNÜR
+             * PENCERESİ'nin (plate) navigator full-comp uzayındaki
+             * izdüşümü. Composition DEĞİL — görünür pencere.
+             *
+             * Phase 129 BUG: viewfinder boyutu `compFracOfPlate ×
+             * visibleFrac`, visibleFrac = `min(1, plateDims/
+             * fullCompVisual)`. `min(1,...)` clamp viewfinder'ı
+             * composition-size'a SABİTLİYORDU: zoom<100'de comp
+             * küçülür, görünür pencere comp'tan ÇOK büyük (zoom
+             * %25 → MID_plateOverComp w:4.76 — middle'da comp + 4.76×
+             * padding görünür), ama visibleFrac=min(1,4.76)=1 →
+             * viewfinder navInner'ı aşmıyor, %84'te DONUYOR
+             * (kullanıcı: "zoom out'ta viewport büyümüyor").
+             * Ayrıca zoom %100'de bile comp etrafındaki plate-
+             * padding'i (MID_plateOverComp w:1.19) çerçevelemiyor
+             * (kullanıcı: "tam görünür alan değil").
+             *
+             * Phase 130 fix: viewfinder = middle görünür pencere /
+             * composition oranı, CLAMP YOK. Middle composition
+             * görsel boyutu = bbox × grp.scale × previewZoom
+             * (cascadeScale). Görünür pencere = plateDims.
+             * winOverCompW = plateDims.w / (bbox × grp.scale ×
+             * previewZoom) = middle'da görünür-alan/comp oranı
+             * (MID_plateOverComp ile BİREBİR — DOM kanıt: zoom100
+             * 1.19, zoom25 4.76, zoom160 0.744). Bu navInner'a
+             * (full-comp, navigator) göre viewfinder size:
+             * zoom<100 >1 (navInner'ı taşar — comp etrafındaki
+             * boşluk da görünür), zoom>100 <1 (crop). Center-
+             * preserving: no-pan'da winOverComp eksen-bağımsız,
+             * vfCx=50 sabit (drift yok). */
+            const cascadeScaleW = grp.scale * previewZoom;
+            const cascadeScaleH = grp.scale * previewZoom;
+            const fullCompW = grp.bboxW * cascadeScaleW;
+            const fullCompH = grp.bboxH * cascadeScaleH;
+            // Görünür pencere (plate) / composition görsel boyutu.
+            // CLAMP YOK — zoom<100'de >1 (pencere comp'tan büyük,
+            // viewfinder navInner'ı taşar; comp etrafı da görünür).
+            const winOverCompW = plateDims.w / fullCompW;
+            const winOverCompH = plateDims.h / fullCompH;
             // Navigator background = StageScene chromeless plate
-            // (zoom-suz, pan-suz full-comp). grp.scale plate'in
-            // PLATE_FILL_FRAC'ini kaplar → comp PLATE-relative oranı.
-            // Viewfinder PLATE-rect wrapper içinde plate-relative %
-            // konumlanır (aşağıda navPlateRect — px sabit, kart-
-            // merkezli, StageScene-plate ile birebir). cardW=box
-            // belirsizliği YOK: viewfinder px-sabit plate-rect'e
-            // göre, ResizeObserver `box` bağımsız.
+            // (zoom-suz, pan-suz full-comp = navInner). grp.scale
+            // plate'in PLATE_FILL_FRAC'ini kaplar → navInner plate-
+            // relative oranı (compFracOfPlate).
             const compFracOfPlateW =
               (grp.bboxW * grp.scale) / plateDims.w;
             const compFracOfPlateH =
               (grp.bboxH * grp.scale) / plateDims.h;
-            // Viewfinder boyutu (PLATE-relative %): full-comp'un
-            // içindeki görünür crop. compFracOfPlate × visibleFrac.
+            // Viewfinder PLATE-rect-relative %: navInner'a göre
+            // winOverComp, sonra navInner'ın plate-rect'teki yeri
+            // (compFracOfPlate) ile çarp. = winOverComp ×
+            // compFracOfPlate. Aspect-locked grp.scale'de bu ≈
+            // 1/previewZoom (zoom100→%84·1.19=100%? hayır: 1.19×
+            // 0.84=1.0 → viewfinder plate-rect'in TAMAMI = tüm
+            // görünür alan ✓; zoom25→4.76×0.84=4.0 → %400 plate-
+            // rect taşar ✓; zoom160→0.744×0.84=0.625 → %62.5 crop
+            // ✓). Math.max(3,...) yalnız dejenerasyon guard'ı;
+            // clamp YOK (>100 izinli — viewfinder plate-rect'i
+            // taşabilir, overflow görsel kırpılır, crop anlamı
+            // korunur).
             const vfPctW = Math.max(
               3,
-              compFracOfPlateW * visibleFracW * 100,
+              winOverCompW * compFracOfPlateW * 100,
             );
             const vfPctH = Math.max(
               3,
-              compFracOfPlateH * visibleFracH * 100,
+              winOverCompH * compFracOfPlateH * 100,
             );
             // Media pan'in full-comp uzayındaki normalize izdüşümü
             // (PLATE-relative). resolveMediaOffsetPx (shared) ile
             // middle panel AYNI formül: ofset = mediaPosition ×
             // plateDims × MEDIA_K. Görünür pencere full-comp'a göre
             // -ofset yönünde kayar → navigator viewfinder o yönde.
+            // no-pan (ox=oy=0) → vfCx=vfCy=50 (CENTER-PRESERVING:
+            // zoom değişse de merkez sabit, drift YOK).
             const { ox, oy } = resolveMediaOffsetPx(
               mediaPosition,
               plateDims.w,
