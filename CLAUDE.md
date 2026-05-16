@@ -26147,6 +26147,244 @@ ertelenmiş kalır.
 
 ---
 
+## Phase 126 — Global media-position pad (Shots.so-canonical: drag handle media pan, fixed plate window, Shift precision; canonical mediaPosition param + shared resolver + export parity)
+
+Shots.so'da zoom slider'ın üstündeki "pad" canlı browser'da (Claude in
+Chrome, kod+görsel+etkileşim) incelendi: `.position-pad-safearea`
+media-position/zoom/tilt pad'i; `.drag-handle` media-position anchor'ı
+(handle media'yı plate içinde pan eder); `.shadow-layer` plate'in
+**sabit görünür alanı** (media içeride hareket eder, plate sabit kalır);
+`.viewfinder-div` framing; Zoom/Tilt toggle + "Hold ⇧ for precision".
+Shots.so **tamamen Remotion** üzerine kurulu (sadece animate değil —
+stage/composition/export hepsi Remotion). **Full Remotion migration
+YAPILMADI** (kullanıcı kararı): Kivasy'nin StageScene/Sharp/parity
+zinciri (Phase 117-125) korunmalı; Remotion ileride animate / Etsy
+video / motion export için ayrı tur. Bu turda Shots.so'nun pad
+**davranışı/semantiği** Kivasy'nin mevcut single-renderer + Sharp
+mimarisine **global media-position** olarak getirildi.
+
+### Neden global media-position (per-slot değil)
+
+Kullanıcı net karar verdi: **B kapsamı + GLOBAL model**. Bu turda tek
+canonical `mediaPosition: {x,y}` (normalized [-1,+1], pad center = {0,0})
+tüm composition'ı topluca pan eder. Per-slot media-position ileride
+**ayrı bir advanced/layout-editor modunun** işi (bu tur scope dışı —
+erken abstraction §7.6 dead-code dersi). Tilt bu turda **honest
+disabled** (`Tilt · Soon`, no-op sahte kontrol YOK); "Precision" ayrı
+mode/tab DEĞİL — yalnız Shift modifier (delta ÷4). Pan-range sabiti
+`K = 0.5` (kullanıcı onayı; Approach A).
+
+### Canonical 4-kategori ayrımı (zoom ile kesin sınır)
+
+| Param | Kategori | Export'a girer? | Rail thumb yansıtır? |
+|---|---|---|---|
+| **mediaPosition** | **1 — canonical shared visual** | **EVET** (§11.0 Preview=Export) | **EVET** (canonical) |
+| previewZoom (Phase 125) | 2 — preview-only helper | HAYIR | HAYIR (rail-independent) |
+
+mediaPosition canonical: stage preview + Sharp export + rail candidate
+thumb'lar **aynı** `mediaPosition`'dan beslenir. previewZoom (Phase
+124-125) preview-only viewing aid — export'a girmez, rail thumb'lara
+uygulanmaz. İki param **aynı element/transform string'inde
+birleştirilmez**: **outer wrapper** (`.k-studio__media-pos`) =
+`translate(mediaPosition)` (pure pan, scale=1); **inner wrapper**
+(`.k-studio__stage-inner`) = `scale(previewZoom × cascadeScale)` (pure
+scale, translate=0). Browser DOM ölçümü ile kanıtlandı: middle panel
+outer `matrix(1,0,0,1,359.897,-1.25)` ↔ inner `matrix(2.18319,...)` —
+`outerInnerSameElement: false` (iki ayrı element, iki ayrı transform).
+Rail thumb outer translate(305) [aynı mediaPosition'ı yansıtır] +
+inner scale **1.235** (zoom 150 YOK — rail-independent; mediaPosition
+VAR — canonical).
+
+### Tek shared resolver / drift YASAK
+
+`src/features/mockups/studio/media-position.ts` — **pure-TS**
+(DOM/React/sharp import YOK → CLAUDE.md Madde V build-boundary: client
+preview/rail + server Sharp compositor üçü de bu TEK modülü import
+eder). `resolveMediaOffsetPx(pos, renderW, renderH)` = `{ ox: pos.x ×
+renderW × K, oy: pos.y × renderH × K }` — preview outer-wrapper +
+rail thumb + Sharp export hepsi bu tek formülü çağırır (drift
+imkânsız). `normalizePadPointToPosition` pure-math (DOM/event objesi
+YOK — kolay test); Shift → `prev + (raw−prev)/4` precision.
+`mediaPositionsEqual` epsilon `1e-3` (float drift'ten sahte stale
+üretmez). `{x:0,y:0}` **sacred no-op**: `resolveMediaOffsetPx`
+`{ox:0,oy:0}` → outer `translate(0,0)` → Phase 125 byte-identical
+(browser kanıtı: `data-media-x="0" data-media-y="0"`, computed
+`matrix(1,0,0,1,0,0)`; export `cascadeOffset*Final === cascadeOffset*`).
+Canonical state **yalnız normalized** (px/plateDims state'e GİRMEZ —
+her render kendi boyutundan türetir: middle plate px ↔ rail thumb
+küçük px ↔ Sharp `plateLayout.plateW/plateH`; resolution-independent).
+
+### Pad UI (preview'ı boğmaz)
+
+`StageScenePreview` rail-head live thumb'a subtle overlay
+(`.k-studio__pad-overlay`): safe-area çerçevesi
+(`.k-studio__pad-safearea`) + framing dim (`.k-studio__pad-dim`,
+mask-composite exclude) + küçük handle (`.k-studio__pad-handle` 18×18).
+Ayrı UI slab DEĞİL — yalnız çerçeve + handle (kullanıcı: "preview'ı
+boğmasın"). Overlay yalnız `onChangeMediaPosition` verildiğinde
+(rail-head pad); preset thumb'lar overlay GÖSTERMEZ, sadece
+mediaPosition'ı yansıtır (sürmez — pad yalnız rail-head'de). Pointer
+drag temiz: `setPointerCapture` (pointerdown) + `buttons===0` guard
+(pointermove) + `releasePointerCapture` (pointerup + pointercancel).
+Click-to-jump (handle dışı pad click → handle atlar) + clamp (±1, asla
+aşmaz) + Shift precision pure-math.
+
+### Sharp export parity (§11.0 Preview=Export Truth)
+
+`frame-compositor.ts`: `cascadeOffsetXFinal/YFinal = cascadeOffset*
++ resolveMediaOffsetPx(input.mediaPosition, plateLayout.plateW,
+plateLayout.plateH)` — **AYNI** resolver, **AYNI** K=0.5, render-space
+= plate px (preview outer-wrapper plateDims ile orantısal parity).
+Plate-area mask (mevcut) media taşmasını preview `overflow:hidden`
+ile aynı şekilde kırpar. `route.ts` Zod `MediaPositionSchema`
+(x/y min -1 max 1 clamp guard) + body optional + service forward.
+`frame-export.service.ts` `ExportFrameInput.mediaPosition` + compositor
+forward + `sceneSnapshot.mediaPosition` persist (re-export kaynağı +
+stale-indicator karşılaştırması). Browser+DB kanıt: export request
+body `mediaPosition` taşıyor (DOM ile BİREBİR — `matchesDom: true`),
+`FrameExport.sceneSnapshot.mediaPosition` DB'ye persisted (eski
+export'lar `undefined` → backward-compat neutral). **Pixel parity
+görsel kanıt**: baseline {0,0} export ↔ media-positioned {x:0.709,
+y:0.649} export side-by-side — composition exported PNG'de **belirgin
+sağ-alta kaymış** (preview kayması ↔ PNG kayması aynı yön+orantı,
+plate-clip dahil). (Sayısal bbox metodu plate-dominant olduğu için
+yetersiz kaldı — görsel + kod + DB üçlü kanıt; Phase 36/60 emsali.)
+
+### Stale indicator (epsilon, no false stale)
+
+`FrameExportResultBanner` `FrameExportResultSnapshot.mediaPosition` +
+`mediaPositionsEqual` epsilon term `isStale`'e eklendi. Shell hem
+`currentSceneSnapshot.mediaPosition` (şu anki) hem export
+`sceneSnapshot.mediaPosition` (export anı) geçer; `undefined → {0,0}`
+(eski export pad'siz neutral). Browser kanıt: {0,0} export → banner
+`data-stale="false"` ("FRAME EXPORTED · READY"); mediaPosition
+{0.832,0.708}'e değişti → `data-stale="true"` ("PREVİEW CHANGED ·
+RE-EXPORT?") + RE-EXPORT button; {0.0056,-0.005}'e geri (export
+{0,0}'dan 0.0056 = epsilon 1e-3'ten büyük **gerçek** fark) → doğru
+şekilde hâlâ stale (false-stale DEĞİL — epsilon dürüst ayrım; Task 1
+unit-test: 0.0000004 fark→equal, 0.05 fark→not-equal PASS).
+
+### Bug fix — handleExportFrame stale closure
+
+Task 3'te export body'sine `mediaPosition` eklendi ama
+`handleExportFrame` `useCallback` deps array'inde **YOKtu** → stale
+closure (Phase 124 zoom emsali): DOM mediaPosition {0,0} ama export
+body 0.397 (eski yakalanan değer). Browser+fresh-build ile kök neden
+kanıtlandı, deps'e `mediaPosition` eklendi. Fresh-build re-verify:
+export request body `{x:0.7094972,y:0.6485148}` ↔ DOM **BİREBİR**
+(`matchesDom: true`). Bu **gerçek kod bug'ı** (test-aracı sınırı
+değil) — ayrı fixup commit.
+
+### Test-aracı sınırı (dürüst rapor)
+
+Chrome `left_click_drag` `modifiers="shift"` pointer event'lere
+`shiftKey` **iletmiyor** (capture probe: 4 gerçek event hepsi
+`shiftKey:false`) — Chrome MCP synthetic-drag kısıtı, **kod bug'ı
+DEĞİL**. Shift precision doğruluğu Task 1 unit-test (`normalizePad
+PointToPosition` Shift ÷4 → 0.25 PASS) + kod-zinciri grep
+(`onPadPointerDown/Move` → `e.shiftKey` → `applyFromEvent` →
+`normalizePadPointToPosition` shiftKey) ile kanıtlandı. Native
+`dispatchEvent(PointerEvent)` React 17+ root-listener'ı tetiklemiyor
+(başka bir test-aracı sınırı) — ama Chrome `left_click_drag`/click'in
+ÇALIŞMASI (drag pan, click-jump, clamp DOM-kanıtlı) React handler'ların
+doğru olduğunu zaten kanıtlıyor. Pixel-parity sayısal diff plate-
+dominant bbox nedeniyle {dx:0} verdi → görsel side-by-side ile
+kesin kanıtlandı.
+
+### Kanıt özeti (fresh build, real asset, big screen)
+
+Clean restart (`.next` silindi + port kill + `preview_start
+reused:false`), Claude in Chrome büyük ekran (real MinIO MJ asset set
+`cmov0ia37`), DOM+screenshot:
+- `{0,0}` sacred no-op: 8 `studio-stage-media-pos` (1 middle + 7
+  rail), computed `matrix(1,0,0,1,0,0)`, Phase 125 baseline ✓
+- Pad drag pan: mediaPosition {0,0}→{0.553,0.589}, middle
+  translate(249,149) + **rail thumb translate(211,127)** (canonical
+  sync, `allSameX:true` 8 instance) — görsel: composition + rail
+  thumb birlikte sağ-alta kaydı ✓
+- Click-to-jump: pad center click → {0.0056,-0.005} (`nearZero`),
+  handle 50%/50% ✓
+- Clamp: pad çok dışına drag → {x:1,y:1} (`xAtMax/yAtMax`, asla
+  aşmadı) ✓
+- Zoom×media ayrı katman: outer translate vs inner scale `same
+  Element:false`, rail thumb mediaPosition VAR + zoom YOK ✓
+- Tilt honest-disabled: 2 view-tab (Zoom enabled / `Tilt · Soon`
+  disabled+aria-disabled), **Precision tab YOK** ✓
+- Frame export: request body mediaPosition ↔ DOM BİREBİR
+  (stale-closure fix sonrası), `sceneSnapshot.mediaPosition` DB
+  persist, pixel side-by-side görsel parity ✓
+- Product MockupsTab continuity: "Frame Exports" 11 tile, Phase 101
+  `aspect-[4/3] bg-ink object-contain` class'lar intakt ✓
+- Stale indicator: {0,0}→değişti→geri, epsilon doğru ayrım ✓
+- Shots.so re-check: `.drag-handle`/`.shadow-layer`/
+  `.position-pad-safearea`/`.viewfinder-div` semantiği bu tasarımla
+  birebir tutarlı (handle media pan, plate sabit visible-area) ✓
+
+### Quality gates
+
+- `npx tsc --noEmit`: clean
+- `npx vitest run tests/unit/{mockup,selection,selections,products,
+  listings}`: **739 passed** (730 baseline + 9 Task 1 media-position
+  test; zero regression — `{0,0}` byte-identical no-op)
+- `NODE_OPTIONS=--max-old-space-size=4096 npx next build`:
+  `✓ Compiled successfully` (Step 1 + stale-closure fix sonrası
+  rebuild; default heap OOM exit 137 — kod hatası değil)
+
+### Değişmeyenler (Phase 126)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.** `FrameExport.sceneSnapshot` Prisma JSON
+  field zaten esnek; mediaPosition serialize, migration yok.
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** Tek pure-TS shared resolver modül +
+  Shell `useState` + prop iletimi (store/reducer/context DEĞİL —
+  Phase 114 layoutVariant pattern parity). Yeni component / route /
+  layout builder / mockup editor / SVG library YOK.
+- **Full Remotion migration YOK** — Shots.so davranışı/semantiği
+  Kivasy'nin StageScene/Sharp/parity zincirine getirildi; Remotion
+  ileride animate/video/motion ayrı tur (kullanıcı kararı).
+- **4-kategori ayrımı korundu** — mediaPosition kategori 1 canonical;
+  previewZoom (Phase 124-125) kategori 2 preview-only DEĞİŞMEDİ
+  (zoom×media kesin ayrı katman, browser-kanıtlı).
+- **Preview = Export Truth (§11.0) genişledi** — geometry + asset
+  identity + layered effects + shared canonical parameter + **global
+  media-position**.
+- **Phase 117 single-renderer + Phase 118 chromeless + Phase 125
+  zoom (plate sabit, composition scale) baseline'ları intakt** —
+  mediaPosition outer-wrapper Phase 125 inner-zoom'a dokunmadan
+  eklendi (DOM byte-identical {0,0} no-op).
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **3. taraf mockup API path** ana akışa girmedi.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ açık (Phase 127+ candidate)
+
+- **Per-slot media-position** — ayrı advanced/layout-editor modu
+  (bu tur global; kullanıcı kararı per-slot ileride).
+- **Tilt (media rotate)** — Phase 126 honest-disabled (`Tilt ·
+  Soon`); media-rotate ileride ayrı tur (no-op sahte kontrol yok).
+- **Shift precision canlı browser e2e** — Chrome synthetic-drag
+  `shiftKey` iletmiyor (araç sınırı); unit-test + kod-zinciri
+  kanıtlı. Gerçek kullanıcı Shift-drag'inde çalışır.
+- **Full Remotion migration** — animate / Etsy video / motion
+  export (Phase 126 scope dışı, kullanıcı kararı).
+- **View tabs (Tilt) + drop-zone gibi diğer Phase 125'ten devir
+  no-op'lar** — kategori 4 preview-only / honest-disabled.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 126 ile Shots.so-canonical global media-position pad tam:
+canonical normalized `mediaPosition` + tek pure-TS shared resolver
+(drift yok) + outer-translate/inner-zoom split + preview/export/rail
+parity + epsilon stale + honest-disabled Tilt + sacred {0,0} no-op.
+Sıradaki adım **Phase 127 candidate**: per-slot media-position
+(ayrı advanced/layout-editor modu) veya Tilt media-rotate (honest
+implementation). Full Remotion migration (animate/video/motion)
+kullanıcı kararıyla ayrı tur.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
