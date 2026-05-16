@@ -50,8 +50,13 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 import { StageScene } from "./MockupStudioStage";
 import {
+  cascadeLayoutFor,
+  compositionGroup,
+} from "./cascade-layout";
+import {
   MEDIA_POSITION_NEUTRAL,
   normalizePadPointToPosition,
+  resolveMediaOffsetPx,
   type MediaPosition,
 } from "./media-position";
 import {
@@ -360,116 +365,186 @@ export function StageScenePreview({
           onPointerCancel={onPadPointerUpCancel}
         >
           {(() => {
-            /* Phase 128 — Pad = NAVIGATOR + VIEWFINDER GROUP
-             *  (Shots.so canonical, gerçek browser DOM ölçümüyle
-             *  doğrulandı).
+            /* Phase 129 — Viewfinder = middle panel görünür
+             *  penceresinin navigator-uzayındaki GERÇEK izdüşümü.
              *
-             *  Shots.so yapısı (canlı kanıt):
-             *   - `.position-pad-safearea` = sabit navigator
-             *     surface (pad'in tamamı).
-             *   - `.pad-preview > .layout-item` = full-extent
-             *     background, `transform: none` SABİT (pad'i tam
-             *     doldurur — navigator'ın değişmeyen zemini).
-             *   - `.drag-handle` = hareket eden GROUP (`transform:
-             *     translate(...)`), pan'ı uygular.
-             *   - `.viewfinder-div` = `.drag-handle`'ın ÇOCUĞU →
-             *     handle ile AYNI center (canlı ölçüm: dx:0 dy:0).
-             *     Beyaz nokta + rectangle aynı GROUP, birlikte
-             *     hareket eder.
-             *   - zoom → viewfinder boyutu (1/zoom; canlı ölçüm
-             *     zoom %101 → pad'in %99'u).
-             *   - pan → handle GROUP translate (bg SABİT kalır;
-             *     "görünür pencereyi navigator üzerinde taşıyorum").
+             *  Phase 126-128 BUG (kök neden): viewfinder boyutu
+             *  keyfi `BASE_FRAC(0.78) × 100/zoom`, konumu keyfi
+             *  `50 - media×50` idi — navigator background'daki full
+             *  composition ile HİÇBİR matematiksel bağ yoktu.
+             *  Sonuç: zoom %100'de middle panel'de TÜM composition
+             *  görünürken (plate full-comp'tan büyük, crop yok)
+             *  viewfinder pad'in yalnız %78'ini kaplıyordu →
+             *  viewfinder middle görünür alandan KÜÇÜK → kenar
+             *  içerik (PAS5) viewfinder dışında. "Viewfinder içinde
+             *  ne görüyorsam middle panel'de onu görmeliyim"
+             *  garantisi YOKtu.
              *
-             *  Phase 127 yanlıştı: handle pad'e sabit anchor +
-             *  viewfinder ayrı ters-izdüşüm idi (kullanıcı: "beyaz
-             *  nokta bağımsız sabit anchor değil — viewfinder
-             *  rectangle'ın merkez marker'ı; rectangle ile birlikte
-             *  hareket etmeli"). Phase 128: dot + rectangle TEK
-             *  GROUP (`.k-studio__pad-viewfinder`), AYNI center'da
-             *  birlikte hareket; pad arka planı (StageScene thumb
-             *  zaten arkada — navigator/full-extent) SABİT.
+             *  Doğru model (Shots.so canlı DOM ölçümüyle kanıtlandı:
+             *  viewfinderFracOfPad === visibleWindow/fullComp her
+             *  zoom'da): navigator background = full composition
+             *  (zoom/pan UYGULANMAMIŞ; StageScene chromeless +
+             *  stageMediaPosition NEUTRAL + effectiveZoom 1 zaten
+             *  bunu render eder). Viewfinder, o full-comp'un içinde
+             *  middle panel'in görünür crop'unu çerçeveler.
              *
-             *  Yalnız pad overlay GÖSTERİMİ. Canonical mediaPosition
-             *  state, shared resolver, export matematiği, composition
-             *  translate, candidate thumb mantığı DEĞİŞMEZ (pad
-             *  interaction hâlâ aynı mediaPosition'ı yazar; spec
-             *  §state-export bozma; rail-head pad navigator semantiği
-             *  ile preset-thumb canonical preview AYRI). */
-            const z = Number.isFinite(previewZoomPct)
+             *  Middle panel render uzayı (StageScene chromeless=false):
+             *    grp = compositionGroup(cascadeLayoutFor(...),
+             *      plateDims) → fullCompVisual = grp.bbox × grp.scale
+             *      × previewZoom; görünür pencere = plateDims
+             *      (overflow:hidden); media pan = mediaPosition ×
+             *      plateDims × MEDIA_K (resolveMediaOffsetPx).
+             *  Navigator uzayı: full-comp = grp.bbox × grp.scale
+             *      (zoom-suz); navigator-plate ≈ pad (StageScene
+             *      plate FILL=1.0 + aspect-match → pad-frac =
+             *      plate-frac). compFracOfPad = grp.bbox×grp.scale /
+             *      plateDims.
+             *
+             *  → viewfinder boyutu (pad-frac) = compFracOfPad ×
+             *    visibleFrac, visibleFrac = min(1, plateDims /
+             *    fullCompVisual) per eksen.
+             *  → viewfinder konumu = full-comp merkezinden media
+             *    pan'in full-comp uzayındaki normalize izdüşümü
+             *    (composition +x pan → middle içerik sağa → görünür
+             *    pencere full-comp'un SOL kısmını gösterir →
+             *    navigator viewfinder SOLA).
+             *
+             *  Aynı `compositionGroup` + `cascadeLayoutFor`
+             *  (cascade-layout.ts tek kaynak) Stage/export/rail-thumb
+             *  ile birebir → §11.0 Preview = Export = Rail-thumb =
+             *  Navigator-viewfinder yapısal garanti. Canonical
+             *  mediaPosition state, shared resolver, export
+             *  matematiği, composition translate, candidate thumb
+             *  mantığı DEĞİŞMEZ (yalnız pad overlay GÖSTERİMİ;
+             *  pad interaction hâlâ aynı mediaPosition'ı yazar). */
+            const zPct = Number.isFinite(previewZoomPct)
               ? previewZoomPct
               : 100;
-            /* Viewfinder GROUP boyut oranı = BASE inset × (1/zoom).
-             *  BASE_FRAC (0.78): zoom %100'de bile viewfinder pad'i
-             *  TAM kaplamaz → mediaPosition'ın her zaman (zoom %100
-             *  dahil) viewfinder GROUP'u kaydıracak hareket alanı
-             *  (travel>0) olur. Zoom artınca viewfinder daralır
-             *  (Shots.so 1/zoom — canlı ölçüm zoom %101 → %99). */
-            const BASE_FRAC = 0.78;
-            const vfFrac = Math.max(
-              0.18,
-              Math.min(BASE_FRAC, BASE_FRAC * (100 / z)),
+            const previewZoom = zPct / 100;
+            const grp = compositionGroup(
+              cascadeLayoutFor(deviceKind, layoutCount, layoutVariant),
+              plateDims.w,
+              plateDims.h,
             );
-            const vfPct = vfFrac * 100;
-            /* Shots.so click/drag davranışındaki kritik fark:
-             *  beyaz nokta (viewfinder center marker) doğrudan
-             *  tıklanan noktaya gider; rectangle gerekirse pad'in
-             *  dışına taşar. Yani center'ı "viewfinder pad içinde
-             *  kalsın" diye `(1-vfFrac)` travel alanına sıkıştırmak
-             *  yanlış. Doğru model:
-             *   - pad merkezi = canonical {0,0}
-             *   - pad sağı = canonical {-1,0} için görünür pencere
-             *     sağa gider (neutral full-extent background
-             *     üstünde crop temsil edilir)
-             *   - pad solu = canonical {+1,0} için görünür pencere
-             *     sola gider
-             *
-             *  Bu yüzden center doğrudan normalized aralığın tam
-             *  izdüşümüyle çizilir: `[-1,+1] -> [0%,100%]`.
-             *  Rectangle boyutu zoom ile küçülür ama center clamp'i
-             *  yoktur; overflow görsel olarak kırpılabilir, crop
-             *  anlamı yine korunur. */
-            const vfCx = 50 - mediaPosition.x * 50;
-            const vfCy = 50 - mediaPosition.y * 50;
+            // Full composition GÖRSEL boyutu middle panel'de
+            // (cascadeScale × previewZoom — Phase 125 zoom).
+            const fullCompW = grp.bboxW * grp.scale * previewZoom;
+            const fullCompH = grp.bboxH * grp.scale * previewZoom;
+            // Görünür pencere = plate; görünür crop oranı (full
+            // comp'a göre). plate full-comp'tan büyükse tamamı
+            // görünür (min(1,...) — Phase 95-110 plate>comp case).
+            const visibleFracW = Math.min(1, plateDims.w / fullCompW);
+            const visibleFracH = Math.min(1, plateDims.h / fullCompH);
+            // Navigator background = StageScene chromeless plate
+            // (zoom-suz, pan-suz full-comp). grp.scale plate'in
+            // PLATE_FILL_FRAC'ini kaplar → comp PLATE-relative oranı.
+            // Viewfinder PLATE-rect wrapper içinde plate-relative %
+            // konumlanır (aşağıda navPlateRect — px sabit, kart-
+            // merkezli, StageScene-plate ile birebir). cardW=box
+            // belirsizliği YOK: viewfinder px-sabit plate-rect'e
+            // göre, ResizeObserver `box` bağımsız.
+            const compFracOfPlateW =
+              (grp.bboxW * grp.scale) / plateDims.w;
+            const compFracOfPlateH =
+              (grp.bboxH * grp.scale) / plateDims.h;
+            // Viewfinder boyutu (PLATE-relative %): full-comp'un
+            // içindeki görünür crop. compFracOfPlate × visibleFrac.
+            const vfPctW = Math.max(
+              3,
+              compFracOfPlateW * visibleFracW * 100,
+            );
+            const vfPctH = Math.max(
+              3,
+              compFracOfPlateH * visibleFracH * 100,
+            );
+            // Media pan'in full-comp uzayındaki normalize izdüşümü
+            // (PLATE-relative). resolveMediaOffsetPx (shared) ile
+            // middle panel AYNI formül: ofset = mediaPosition ×
+            // plateDims × MEDIA_K. Görünür pencere full-comp'a göre
+            // -ofset yönünde kayar → navigator viewfinder o yönde.
+            const { ox, oy } = resolveMediaOffsetPx(
+              mediaPosition,
+              plateDims.w,
+              plateDims.h,
+            );
+            const vfCx =
+              50 - (ox / fullCompW) * compFracOfPlateW * 100;
+            const vfCy =
+              50 - (oy / fullCompH) * compFracOfPlateH * 100;
+            const vfPct = vfPctW; // legacy data attr (≈ width frac)
+            const vfFrac = vfPctW / 100;
+            // PLATE-rect: StageScene-plate'in kart içindeki gerçek
+            // px dikdörtgeni (kart-merkezli, scale × plateDims).
+            // Viewfinder/dim bu px-sabit wrapper içinde plate-rel %
+            // → navigator background (StageScene-plate) ile BİREBİR
+            // overlap (ResizeObserver box bağımsız; §11.0 Preview =
+            // Export = Navigator-viewfinder).
+            const plateRectW = scale * plateDims.w;
+            const plateRectH = scale * plateDims.h;
             return (
               <>
                 {/* Dim: viewfinder GROUP DIŞINI karart (group ile
                     hareket eder — Shots.so viewfinder dim paritesi).
                     Navigator'ın "kapsam dışı" alanını gösterir. */}
+                {/* PLATE-rect wrapper: pad-overlay (host=card) içinde
+                    kart-merkezli, px-sabit (scale×plateDims) — Stage-
+                    Scene-plate ile BİREBİR overlap. Viewfinder + dim
+                    bu wrapper içinde PLATE-relative % → navigator
+                    background full-comp ile aynı uzay (cardW=box
+                    belirsizliği YOK; §11.0 Preview = Navigator-
+                    viewfinder). */}
                 <div
-                  className="k-studio__pad-dim"
-                  data-testid="studio-rail-pad-dim"
+                  data-testid="studio-rail-pad-platerect"
                   aria-hidden
                   style={{
-                    clipPath: `polygon(
-                      0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%,
-                      ${vfCx - vfPct / 2}% ${vfCy - vfPct / 2}%,
-                      ${vfCx - vfPct / 2}% ${vfCy + vfPct / 2}%,
-                      ${vfCx + vfPct / 2}% ${vfCy + vfPct / 2}%,
-                      ${vfCx + vfPct / 2}% ${vfCy - vfPct / 2}%,
-                      ${vfCx - vfPct / 2}% ${vfCy - vfPct / 2}%
-                    )`,
-                  }}
-                />
-                {/* Viewfinder GROUP: rectangle + center dot TEK
-                    eleman, AYNI center'da (Shots.so `.drag-handle`
-                    > `.viewfinder-div` çocuk ilişkisi, dx:0 dy:0).
-                    Boyut zoom (1/zoom), konum mediaPosition. Dot,
-                    rectangle'ın geometrik merkez marker'ı (::after
-                    pseudo, studio.css) — bağımsız anchor DEĞİL. */}
-                <div
-                  className="k-studio__pad-viewfinder"
-                  data-testid="studio-rail-pad-viewfinder"
-                  data-vf-frac={vfFrac.toFixed(4)}
-                  aria-label="Media viewfinder"
-                  style={{
-                    left: `${vfCx}%`,
-                    top: `${vfCy}%`,
-                    width: `${vfPct}%`,
-                    height: `${vfPct}%`,
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    width: `${plateRectW}px`,
+                    height: `${plateRectH}px`,
                     transform: "translate(-50%, -50%)",
+                    pointerEvents: "none",
                   }}
-                />
+                >
+                  <div
+                    className="k-studio__pad-dim"
+                    data-testid="studio-rail-pad-dim"
+                    aria-hidden
+                    style={{
+                      clipPath: `polygon(
+                        0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%,
+                        ${vfCx - vfPctW / 2}% ${vfCy - vfPctH / 2}%,
+                        ${vfCx - vfPctW / 2}% ${vfCy + vfPctH / 2}%,
+                        ${vfCx + vfPctW / 2}% ${vfCy + vfPctH / 2}%,
+                        ${vfCx + vfPctW / 2}% ${vfCy - vfPctH / 2}%,
+                        ${vfCx - vfPctW / 2}% ${vfCy - vfPctH / 2}%
+                      )`,
+                    }}
+                  />
+                  {/* Viewfinder GROUP: rectangle + center dot TEK
+                      eleman, AYNI center'da (Shots.so `.drag-handle`
+                      > `.viewfinder-div` çocuk ilişkisi, dx:0 dy:0).
+                      Boyut = compFracOfPlate × visibleFrac (middle
+                      görünür crop'un navigator full-comp izdüşümü;
+                      zoom artınca daralır — gerçek crop oranı), konum
+                      = media pan full-comp izdüşümü. Dot, rectangle'ın
+                      geometrik merkez marker'ı (::after pseudo,
+                      studio.css) — bağımsız anchor DEĞİL. */}
+                  <div
+                    className="k-studio__pad-viewfinder"
+                    data-testid="studio-rail-pad-viewfinder"
+                    data-vf-frac={vfFrac.toFixed(4)}
+                    data-vf-frac-h={(vfPctH / 100).toFixed(4)}
+                    aria-label="Media viewfinder"
+                    style={{
+                      left: `${vfCx}%`,
+                      top: `${vfCy}%`,
+                      width: `${vfPctW}%`,
+                      height: `${vfPctH}%`,
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  />
+                </div>
               </>
             );
           })()}

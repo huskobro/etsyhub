@@ -26733,6 +26733,197 @@ Remotion migration kullanıcı kararıyla ayrı tur.
 
 ---
 
+## Phase 129 — Viewfinder İÇERİK eşleşmesi: navigator viewfinder = middle panel görünür crop'unun GERÇEK izdüşümü (compositionGroup shared, keyfi 1/zoom formülü kaldırıldı, transition bug fix)
+
+Phase 128 viewfinder GROUP'u doğru hareket ettirdi ama
+kullanıcı kritik bir hata gördü: **viewfinder rectangle'ın
+KONUMU doğru ama İÇERİĞİ middle panel crop'unu temsil
+etmiyor**. Somut: middle panel Front View'da "PAS5" görünür
+ama navigator viewfinder içinde görünmüyor. "Viewfinder içinde
+ne görüyorsam middle panel'de onu görmeliyim" garantisi
+yoktu. Phase 129 bu içerik-eşleşmesini kurar.
+
+### Kök neden (browser+DOM+code triangulation, kesin)
+
+Phase 126-128 viewfinder boyutu **keyfi `BASE_FRAC(0.78) ×
+100/zoom`**, konumu **keyfi `50 - media×50`** idi — navigator
+background'daki full composition ile **HİÇBİR matematiksel
+bağ yoktu**. Kanıt: zoom %100'de middle panel'de TÜM
+composition görünür (`MID_visFrac w:1.0` — plate full-comp'tan
+büyük, `PLATE_FILL_FRAC=0.84` → plate/comp ≈ 1.19, crop YOK)
+ama viewfinder pad'in yalnız %78'ini kaplıyordu → viewfinder
+middle görünür alandan KÜÇÜK → kenar içerik (PAS5)
+viewfinder dışında.
+
+### Shots.so navigator modeli (canlı DOM ölçümüyle kanıtlandı)
+
+- `.pad-preview > .layout-item` = full composition, `transform:
+  none` SABİT (zoom/pan UYGULANMAMIŞ — pad'i tam doldurur)
+- `.viewfinder-div` = **boş çerçeve** (`innerHTML=""`,
+  `hasChildren:0`) — içinde ayrı render YOK
+- **viewfinderFracOfPad === editArea/component** her zoom'da
+  (zoom %101 → vf %99 = visible/full %99; zoom %102 → vf %98
+  = %98). Yani **viewfinder boyutu = görünür-pencere ÷
+  full-composition oranı**, keyfi 1/zoom değil.
+- Operatör viewfinder'ın **arkasındaki** full-comp
+  background'unu görür; viewfinder o sabit background üzerinde
+  middle panel'in görünür crop'unu **işaretler** → içerik
+  eşleşmesi GARANTİ (tek kaynak: full composition).
+
+### Doğru model (Phase 129)
+
+Navigator background = StageScene chromeless + `stageMediaPosition
+NEUTRAL` + `effectiveZoom 1` → full composition (zoom/pan
+UYGULANMAMIŞ; bu zaten Phase 128'de doğruydu, dokunulmadı).
+Viewfinder = middle panel görünür penceresinin navigator
+full-comp uzayındaki **gerçek izdüşümü**:
+
+- **boyut (plate-relative %)** = `compFracOfPlate × visibleFrac`
+  - `compFracOfPlate = (grp.bboxW × grp.scale) / plateDims.w`
+    (full-comp'un plate'e oranı; grp.scale plate'in
+    PLATE_FILL_FRAC'ini kaplar)
+  - `visibleFrac = min(1, plateDims / (grp.bboxW × grp.scale ×
+    previewZoom))` (middle panel görünür crop oranı; plate
+    full-comp'tan büyükse tamamı görünür → min(1,...))
+- **konum** = media pan'in full-comp uzayındaki normalize
+  izdüşümü: `vfCx = 50 - (ox / fullCompVisual) × compFracOfPlate
+  × 100`, `{ox,oy}` = `resolveMediaOffsetPx(mediaPosition,
+  plateDims)` (middle panel ile AYNI shared resolver). Görünür
+  pencere full-comp'a göre -ofset yönünde kayar → viewfinder
+  o yönde.
+
+### compositionGroup paylaşılan kaynağa taşındı
+
+Phase 111-128 `compositionGroup` + `PLATE_FILL_FRAC`
+`MockupStudioStage.tsx` içinde private idi. Phase 129 navigator
+viewfinder de AYNI full-composition geometrisini kullanmak
+zorunda → `cascade-layout.ts`'e taşındı (export). Artık Stage
+(preview) + Shell (export) + rail thumb + **navigator
+viewfinder** HEPSİ tek canonical composition geometrisinden
+okur (§11.0 Preview = Export = Rail-thumb = Navigator-viewfinder
+yapısal garanti). Stage davranışı BİREBİR korunur (import edip
+aynen çağırır; regression 739/739).
+
+### plate-rect wrapper (cardW=box belirsizliği çözüldü)
+
+StageScene-plate kart-merkezli `scale × plateDims` px; pad-
+overlay = host (kart). Viewfinder pad-relative % iken navigator
+background plate-frac'ta → uyumsuzluk. Phase 129: viewfinder +
+dim, **plate-rect wrapper** (kart-merkezli, px-sabit `scale ×
+plateDims`, StageScene-plate ile BİREBİR overlap — DOM kanıt
+`dw:0 dh:0 dx:0 dy:0`) içinde plate-relative %. ResizeObserver
+`box` belirsizliğine bağımlı değil.
+
+### Kritik bug: transition viewfinder boyutunu donduruyordu
+
+`.k-studio__pad-viewfinder` CSS'inde `transition: width/height/
+left/top 90ms` (Phase 128). Viewfinder boyut/konum media+zoom+
+box ile sürekli değişir; her parent re-render transition'ı
+yeniden tetikliyor → **height ara-değerde DONUYORDU** (canlı
+kanıt: `inlineH 63.18%` ama `renderH 77px` = 0.82 plate-frac;
+`transition:none` → anında DOĞRU 59.3px = 0.632). Phase 129
+transition KALDIRILDI (viewfinder gerçek visible-crop'u
+temsil etmeli; animasyon doğruluğu bozamaz — §11.0).
+
+### Browser kanıt (fresh build, real asset set `cmov0ia37`)
+
+İçerik-eşleşmesi 3 case'te DOM-ölçümle kanıtlandı (NAV viewfinder/
+navInner === MID plate/inner):
+
+| Case | MID görünür crop | NAV viewfinder | Eşleşme |
+|---|---|---|---|
+| media0 zoom100 | visFrac w:1.0 h:1.0 / off 0,0 | vfSize w:0.9999 h:0.9998 / off 0,0 | BİREBİR |
+| media0 zoom160 | visFrac w:0.7614 h:1.0 | vfSize w:0.7441 h:0.9892 | ~birebir (%2 ölçüm tol.) |
+| zoom160 panBR | centerOff x:0.1637 y:0.1781 | vfOff x:0.1637 y:0.1779 | BİREBİR (konum mükemmel) |
+
+`plateRectOverlapsNavPlate: dw:0 dh:0 dx:0 dy:0` (plate-rect =
+StageScene-plate birebir). **Görsel kanıt**: zoom %100 +
+media{0,0} navigator pad'inde Front View "PAS5" yazısı NET
+görünür + viewfinder full-comp'u çevreliyor + center dot
+merkezde → PAS5 hem middle panel'de hem viewfinder içinde
+(kullanıcının şikayeti çözüldü). Zoom %160'ta viewfinder
+yatayda %74 daralır (= middle %76 görünür crop; cascade
+landscape olduğu için dikeyde crop yok, h:0.99).
+
+### Shots.so click/drag davranışı
+
+- click sonrası beyaz nokta (viewfinder center marker) =
+  viewfinder rectangle'ın geometrik merkezi (::after pseudo,
+  Phase 128 baseline korundu — bağımsız anchor DEĞİL)
+- click + drag AYNI `normalizePadPointToPosition` shared
+  mapping'i kullanır (Phase 126 baseline; pad interaction
+  canonical mediaPosition'ı yazar, değişmedi)
+- viewfinder gerekirse plate-rect dışına taşar (overflow
+  görsel kırpılır, crop anlamı korunur)
+- zoom artınca viewfinder visibleFrac ile küçülür (gerçek
+  crop oranı, keyfi 1/zoom değil)
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **739 passed** (60 files, zero regression —
+  compositionGroup taşıması + viewfinder rewrite davranış
+  bozmadı)
+- `next build`: ✓ Compiled successfully (`NODE_OPTIONS=
+  --max-old-space-size=4096`)
+- Fresh build (`.next` silindi + port kill + `preview_start
+  reused:false`) üzerinde 3-case DOM içerik-eşleşme + PAS5
+  görsel kanıtı canlı doğrulandı
+
+### Değişmeyenler (Phase 129)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Canonical mediaPosition state + shared resolver
+  (`media-position.ts`) + export matematiği (`frame-compositor
+  .ts`, `frame-export.service.ts`, `api/frame/export/route.ts`)
+  + composition translate DOKUNULMADI** — pad interaction hâlâ
+  aynı mediaPosition'ı yazar; yalnız navigator viewfinder
+  GÖSTERİM matematiği düzeltildi.
+- **Candidate preset thumb mantığı DOKUNULMADI** — overlay
+  yalnız rail-head pad'de (onChangeMediaPosition VAR); preset
+  thumb'lar yalnız mediaPosition'ı yansıtır (Phase 128
+  baseline).
+- **Single render path korundu** — StageScene chromeless
+  navigator bg = orta panelin AYNI component'i (Phase 117);
+  compositionGroup taşıması yalnız module konumu (Stage import
+  edip aynen çağırır, Phase 111 davranışı BİREBİR).
+- **Yeni big abstraction yok.** compositionGroup + PLATE_FILL_FRAC
+  zaten var olan tek fonksiyon; paylaşılan module'e taşındı
+  (Phase 115 cascade-layout.ts pattern parity). plate-rect
+  wrapper tek div; viewfinder math shared resolver kullanır.
+- **Phase 125 zoom (plate sabit, composition scale) + Phase 126
+  global media-position + Phase 128 viewfinder GROUP +
+  ::after dot baseline'ları intakt** — Phase 129 yalnız
+  viewfinder boyut/konum **matematiğini** keyfi formülden
+  gerçek visible-crop izdüşümüne çevirdi + transition bug fix.
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ açık (Phase 130+ candidate)
+
+- **Zoom160 genişlik %2 sapması** (vfSize w:0.7441 vs middle
+  0.7614) — `Math.max(3,...)` clamp veya sub-pixel; operatör
+  için imperceptible, içerik eşleşmesi ve konum birebir.
+- **Per-slot media-position** — Phase 126'dan devir (ayrı
+  advanced/layout-editor modu).
+- **Tilt (media rotate)** — Phase 126'dan honest-disabled.
+- **Full Remotion migration** — kullanıcı kararıyla ayrı tur.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 129 ile navigator viewfinder içeriği middle panel
+görünür crop'u ile **birebir eşleşir** (DOM 3-case kanıt +
+PAS5 görsel): operatör viewfinder içinde ne görüyorsa middle
+panel'de onu görür. compositionGroup tek canonical kaynağa
+taşındı (Preview = Export = Rail-thumb = Navigator-viewfinder).
+Sıradaki adım **Phase 130 candidate**: zoom genişlik %2
+sapması ince-ayar veya per-slot media-position (advanced mod).
+Full Remotion migration kullanıcı kararıyla ayrı tur.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

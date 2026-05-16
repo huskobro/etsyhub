@@ -1423,11 +1423,15 @@
     inset 0 0 0 1px rgba(0, 0, 0, 0.22);
   pointer-events: none;
   z-index: 6;
-  transition:
-    width 90ms ease,
-    height 90ms ease,
-    left 90ms ease,
-    top 90ms ease;
+  /* Phase 129 — transition KALDIRILDI. width/height/left/top
+   * transition'ı (Phase 128) viewfinder içerik-eşleşmesini
+   * BOZUYORDU: viewfinder boyut/konum media+zoom+box(ResizeObserver)
+   * ile sürekli değişir; her parent re-render transition'ı yeniden
+   * tetikliyor, height ara-değerde DONUYORDU (canlı kanıt:
+   * inlineH 63.18% ama renderH 77px = 0.82 plate-frac; transition:
+   * none → anında doğru 59.3px = 0.632). Viewfinder navigator'daki
+   * gerçek visible-crop'u temsil etmeli (§11.0); animasyon
+   * doğruluğu bozamaz. Snap (transition yok) = doğru crop. */
 }
 /* Center dot = viewfinder rectangle'ın merkez marker'ı. Pseudo
  * elemanı viewfinder'ın çocuğu → group ile BİREBİR aynı center'da

@@ -235,3 +235,66 @@ export function cascadeLayoutForRaw(
       ];
   }
 }
+
+/* Phase 111 — Plate-relative LOCKED composition group geometry.
+ *
+ * Phase 111-128 boyunca `MockupStudioStage.tsx` içinde private idi
+ * (Stage MockupComposition/FrameComposition + Shell export onu
+ * tüketiyordu). Phase 129: navigator viewfinder matematiği de
+ * AYNI full-composition geometrisini kullanmak zorunda (viewfinder
+ * = middle panel görünür penceresinin navigator-uzayındaki gerçek
+ * izdüşümü; keyfi 1/zoom formülü DEĞİL). cascade-layout.ts'e
+ * taşındı → Stage (preview) + Shell (export) + rail thumb + navigator
+ * viewfinder HEPSİ tek canonical composition geometrisinden okur
+ * (§11.0 Preview = Export = Rail-thumb = Navigator-viewfinder
+ * yapısal garanti). Davranış BİREBİR korunur (Phase 111 baseline;
+ * Stage taraf import edip aynen çağırır).
+ *
+ * Geometri: gerçek bbox + plate-fit scale (PLATE_FILL_FRAC,
+ * aspect-locked, clamp YOK — plate büyürse group orantılı) +
+ * items 0-origin normalize (relative offset korunur). stage-inner
+ * BBOX-TIGHT → CSS plate-center → group center = plate center
+ * (drift sıfır, rotation simetrik). */
+export const PLATE_FILL_FRAC = 0.84;
+
+export function compositionGroup(
+  items: CascadeItem[],
+  plateW: number,
+  plateH: number,
+): {
+  scale: number;
+  bboxW: number;
+  bboxH: number;
+  items: CascadeItem[];
+} {
+  if (items.length === 0) {
+    return { scale: 1, bboxW: 1, bboxH: 1, items };
+  }
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const it of items) {
+    minX = Math.min(minX, it.x);
+    minY = Math.min(minY, it.y);
+    maxX = Math.max(maxX, it.x + it.w);
+    maxY = Math.max(maxY, it.y + it.h);
+  }
+  const bboxW = Math.max(1, maxX - minX);
+  const bboxH = Math.max(1, maxY - minY);
+  // Plate'in hedef iç alanı (border + breathing). bbox bu alana
+  // her iki eksende sığacak şekilde aspect-locked fit. CLAMP YOK:
+  // plate büyürse scale > 1 (group orantılı büyür — preview parity).
+  const targetW = plateW * PLATE_FILL_FRAC;
+  const targetH = plateH * PLATE_FILL_FRAC;
+  const scale = Math.min(targetW / bboxW, targetH / bboxH);
+  // 0-origin normalize: items birbirlerine göre aynı (relative
+  // offset korunur), bbox 0..bboxW × 0..bboxH → stage-inner =
+  // bbox boyutu → CSS center = group center = plate center.
+  const normalized = items.map((it) => ({
+    ...it,
+    x: it.x - minX,
+    y: it.y - minY,
+  }));
+  return { scale, bboxW, bboxH, items: normalized };
+}

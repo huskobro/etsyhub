@@ -33,7 +33,10 @@ import {
   STUDIO_SAMPLE_DESIGNS,
   type StudioStageDeviceKind,
 } from "./svg-art";
-import { cascadeLayoutFor } from "./cascade-layout";
+import {
+  cascadeLayoutFor,
+  compositionGroup,
+} from "./cascade-layout";
 import {
   resolveMediaOffsetPx,
   type MediaPosition,
@@ -189,107 +192,23 @@ interface MockupCompositionProps {
   deviceKind: StudioStageDeviceKind;
 }
 
-/* Phase 115 — `centerCascade` + `cascadeLayoutFor` +
- * `applyLayoutVariant` + `cascadeLayoutForRaw` `./cascade-layout`
- * paylaşılan module'üne taşındı. Sebep: rail thumb (svg-art
- * `PresetThumbMockup`) bunları Stage'ten import edemezdi (circular:
- * Stage zaten svg-art'tan StageDeviceSVG/StudioStageDeviceKind
- * import ediyor). Ayrı module: Stage (preview) + Shell/export +
- * rail thumb ÜÇÜ DE buradan okur → TEK canonical geometri kaynağı
- * (Preview = Export = Rail-thumb §11.0). compositionGroup +
- * PLATE_FILL_FRAC Stage'de KALIR (plate-relative locking =
- * shape/layout impl detail, stage-specific). Davranış BİREBİR
- * korunur (Phase 114 baseline). */
-
-/* Phase 111 — Plate-relative locked composition group scale.
+/* Phase 115/129 — `centerCascade` + `cascadeLayoutFor` +
+ * `applyLayoutVariant` + `cascadeLayoutForRaw` + `compositionGroup`
+ * + `PLATE_FILL_FRAC` `./cascade-layout` paylaşılan module'ünde.
  *
- * Sorun (browser+DOM+code triangulation): cascade `stage-inner`
- * (572×504, centerCascade ile bbox merkezli) zaten bir group
- * transform. Drift'in kök nedeni `cascadeScale = Math.min(
- * innerW/572, innerH/504, 1.0)`:
- *   1. `Math.min(..., 1.0)` clamp → plate group'tan büyükse
- *      (1:1 plate 633: inner 601, 601/572=1.05) scale 1.0'da
- *      takılır; group plate'e göre küçük kalmaz (%84 width
- *      kaplar, taşma).
- *   2. Tek-eksen `min` + sabit 572×504 → plate aspect değişince
- *      group dar eksene fit; geniş eksende büyük boşluk → group
- *      bbox/plate oranı aspect'e göre dramatik değişir (16:9
- *      %55.5 → 1:1 %84.1 width). Group plate'e KİLİTLİ DEĞİL.
+ * Phase 115: cascade layout fn'leri taşındı (rail thumb svg-art
+ * circular import edemezdi; ayrı module → Stage + Shell/export +
+ * rail thumb tek kaynak). compositionGroup Stage'de kalmıştı.
  *
- * Phase 111: cascade'in GERÇEK bbox'ını al (572×504 sabit
- * değil), plate'in hedef iç alanının (PLATE_FILL_FRAC) içine
- * aspect-locked bbox-fit scale hesapla — `Math.min(..., 1.0)`
- * clamp YOK (plate büyürse group ORANTILI büyür, küçülürse
- * küçülür). Group merkezi plate merkezinde (centerCascade
- * bbox'ı 572×504 ortasına hizalı + stage-inner plate ortasında
- * → group center = plate center). Items group içinde sabit
- * relative offset'lerde (centerCascade local koordinat). Sonuç:
- * plate-relative LOCKED composition — aspect/viewport ne olursa
- * olsun group plate'in sabit oranını kaplar, drift sıfır.
- *
- * Preview = Export Truth (§11.0): frame-compositor.ts aynı
- * PLATE_FILL_FRAC + bbox-fit mantığını uygular. */
-const PLATE_FILL_FRAC = 0.84;
-
-/* Phase 111 — Composition group geometry: gerçek bbox + plate-fit
- * scale + 0-origin normalize edilmiş items.
- *
- * Phase 95-110 baseline stage-inner sabit 572×504 idi: cascade
- * `centerCascade` ile 572×504 ortasına hizalanıyor, sonra
- * `transform:scale` 572×504 box center'ından uygulanıyordu. Ama
- * 572×504 aspect ≠ plate aspect → plate-center'da olan 572×504
- * box içinde group bbox dikey/yatay offsetli kalıyor + rotation'lı
- * item'larda görsel bbox ≠ layout bbox → centerDy drift (16:9 @1440
- * dy:22). Group plate'e KİLİTLİ değildi.
- *
- * Phase 111 fix: stage-inner artık BBOX-TIGHT (572×504 sabit değil).
- * Items 0-origin'e normalize edilir (minX/minY çıkarılır), bbox =
- * stage-inner boyutu. stage-inner CSS ile plate-center'da
- * (transformOrigin center + plate flex/absolute center) → group
- * center = plate center otomatik (drift sıfır, rotation simetrik
- * dağılır). Scale = plate hedef iç alanına (PLATE_FILL_FRAC)
- * aspect-locked bbox-fit; clamp YOK (plate büyürse group orantılı).
- * Items relative offset'leri korunur (0-origin normalize sonrası
- * birbirlerine göre aynı). Sonuç: aspect/viewport ne olursa olsun
- * plate-relative LOCKED composition. */
-function compositionGroup(
-  items: { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[],
-  plateW: number,
-  plateH: number,
-): {
-  scale: number;
-  bboxW: number;
-  bboxH: number;
-  items: { si: number; x: number; y: number; w: number; h: number; r: number; z: number }[];
-} {
-  if (items.length === 0) {
-    return { scale: 1, bboxW: 1, bboxH: 1, items };
-  }
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const it of items) {
-    minX = Math.min(minX, it.x);
-    minY = Math.min(minY, it.y);
-    maxX = Math.max(maxX, it.x + it.w);
-    maxY = Math.max(maxY, it.y + it.h);
-  }
-  const bboxW = Math.max(1, maxX - minX);
-  const bboxH = Math.max(1, maxY - minY);
-  // Plate'in hedef iç alanı (border + breathing). bbox bu alana
-  // her iki eksende sığacak şekilde aspect-locked fit. CLAMP YOK:
-  // plate büyürse scale > 1 (group orantılı büyür — preview parity).
-  const targetW = plateW * PLATE_FILL_FRAC;
-  const targetH = plateH * PLATE_FILL_FRAC;
-  const scale = Math.min(targetW / bboxW, targetH / bboxH);
-  // 0-origin normalize: items birbirlerine göre aynı (relative
-  // offset korunur), bbox 0..bboxW × 0..bboxH → stage-inner =
-  // bbox boyutu → CSS center = group center = plate center.
-  const normalized = items.map((it) => ({
-    ...it,
-    x: it.x - minX,
-    y: it.y - minY,
-  }));
-  return { scale, bboxW, bboxH, items: normalized };
-}
+ * Phase 129: navigator viewfinder matematiği de AYNI full-
+ * composition geometrisini kullanmak zorunda (viewfinder = middle
+ * panel görünür penceresinin navigator-uzayındaki gerçek izdüşümü;
+ * keyfi 1/zoom DEĞİL). compositionGroup + PLATE_FILL_FRAC da
+ * cascade-layout.ts'e taşındı → Stage (preview) + Shell (export) +
+ * rail thumb + navigator viewfinder HEPSİ tek canonical composition
+ * geometrisinden okur (§11.0 Preview = Export = Rail-thumb =
+ * Navigator-viewfinder yapısal garanti). Stage davranışı BİREBİR
+ * korunur (import edip aynen çağırır; Phase 111 baseline). */
 
 function MockupComposition({
   slots,
