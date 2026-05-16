@@ -404,3 +404,21 @@ export function resolvePlateBox(
   }
   return { w: Math.round(availH * ratio), h: Math.round(availH) };
 }
+
+/* Phase 134 — Plate corner radius, plate genişliğine ORANSAL
+ * (tek chrome-radius kaynağı).
+ *
+ * studio.css `border-radius: 26px` SABİT'ti: middle plate ~1080px
+ * → %2.4 (subtle), rail thumb plate ~146px → %18 (çok yuvarlak)
+ * = "preview kartlar daha yuvarlatılmış" bug'ı. Bu helper TEK
+ * formül: Stage `plateStyle.borderRadius`, rail selection-ring
+ * radius hepsi buradan → middle ile AYNI görsel oran ("aynı
+ * sahnenin küçük versiyonu"; sessiz drift §12 YASAK). 0.024 ≈
+ * eski 26px @ ~1080px (middle regression yok); rail @~146px →
+ * ~3.5px (proportional, subtle). min 4px (çok küçük thumb'da
+ * köşe tamamen kaybolmasın). */
+export const PLATE_RADIUS_FRAC = 0.024;
+
+export function plateRadiusForWidth(plateW: number): number {
+  return Math.max(4, Math.round(plateW * PLATE_RADIUS_FRAC));
+}

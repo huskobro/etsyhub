@@ -23,7 +23,18 @@ import type { SceneOverride } from "./frame-scene";
  * kullanım için kalır). */
 import { type StudioStageDeviceKind } from "./svg-art";
 import { StageScenePreview } from "./StageScenePreview";
+import {
+  plateRadiusForWidth,
+  resolvePlateBox,
+} from "./cascade-layout";
 import { FRAME_ASPECT_CONFIG, type FrameAspectKey } from "./frame-aspects";
+import {
+  ZOOM_DEFAULT,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP,
+  clampZoom,
+} from "./zoom-bounds";
 import {
   STUDIO_LAYOUT_VARIANTS,
   STUDIO_LAYOUT_VARIANT_LABELS,
@@ -194,19 +205,24 @@ export function MockupStudioPresetRail({
   frameAspect = "16:9",
   previewZoom,
   onChangePreviewZoom,
-  defaultPreviewZoom = 100,
+  defaultPreviewZoom = ZOOM_DEFAULT,
   onResetPreviewZoom,
   mediaPosition = { x: 0, y: 0 },
   onChangeMediaPosition,
 }: MockupStudioPresetRailProps) {
   /* Phase 123 — Zoom slider Shell state'ten (canonical). Fallback
    * local state (legacy / Shell prop yoksa). Slider → setZoom →
-   * onChangePreviewZoom → Shell → orta panel plate scale. */
-  const [localZoom, setLocalZoom] = useState(100);
+   * onChangePreviewZoom → Shell → orta panel plate scale.
+   * Phase 134 — Hardcoded 100 KALDIRILDI; shared ZOOM_DEFAULT. */
+  const [localZoom, setLocalZoom] = useState(ZOOM_DEFAULT);
   const zoom = previewZoom ?? localZoom;
   const setZoom = (n: number) => {
-    if (onChangePreviewZoom) onChangePreviewZoom(n);
-    else setLocalZoom(n);
+    /* Phase 134 — shared clampZoom (zoom-bounds.ts). Slider min/max
+       zaten sınırlar; clamp keyboard/programatik girişe karşı
+       savunmacı + Stage pill ile AYNI clamp (tek kaynak). */
+    const z = clampZoom(n);
+    if (onChangePreviewZoom) onChangePreviewZoom(z);
+    else setLocalZoom(z);
   };
   /* Phase 131 — Reset zoom: canonical default'a dön (hardcoded 100
    * DEĞİL — Shell DEFAULT_PREVIEW_ZOOM). Yalnız zoom; pan/
@@ -322,6 +338,17 @@ export function MockupStudioPresetRail({
   const cardW =
     cardH < idealH ? Math.round(cardH * plateAspect) : Math.round(idealW);
   const cardHr = Math.round(cardH);
+  /* Phase 134 — Selection-ring radius, plate radius'una uyumlu
+   * (kullanıcı: unify). `.k-studio__preset-ring` `border-radius:
+   * 14px` SABİT'ti; plate radius artık plateW'ye oransal (rail
+   * thumb @~146px → ~3.5px) → ring 14px ile plate'ten DAHA
+   * yuvarlak görünüyordu (chrome unify bozuluyordu). StageScene-
+   * Preview ile AYNI resolvePlateBox + plateRadiusForWidth (tek
+   * chrome-radius kaynağı, cascade-layout.ts). Ring plate'in
+   * 6px dışında (inset:-6px) → ring radius = plateRadius + 6
+   * (köşe plate köşesiyle konsantrik). */
+  const railPlateW = resolvePlateBox(plateAspect, cardW, cardHr).w;
+  const railRingRadius = plateRadiusForWidth(railPlateW) + 6;
   /* Phase 96 — Unified rail: Mockup ve Frame için tek preset family
    * + tek thumb component. Phase 95 aspect SHARED state ile Mockup ↔
    * Frame plate aynı aspect taşıyor; Phase 96 rail thumb da aynı
@@ -451,9 +478,13 @@ export function MockupStudioPresetRail({
           <input
             type="range"
             className="k-studio__range"
-            min={25}
-            max={200}
-            step={5}
+            /* Phase 134 — Hardcoded min=25/max=200/step=5 KALDIRILDI;
+               shared zoom-bounds.ts (min 75 / max 400 / step 25)
+               tek kaynak. Stage zoom-pill + reset + viewfinder math
+               AYNI modül → slider ve pill aynı clamp. */
+            min={ZOOM_MIN}
+            max={ZOOM_MAX}
+            step={ZOOM_STEP}
             value={zoom}
             onChange={(e) => setZoom(Number(e.target.value))}
             aria-label="Zoom"
@@ -578,6 +609,7 @@ export function MockupStudioPresetRail({
                   className="k-studio__preset-ring"
                   data-on="true"
                   aria-hidden
+                  style={{ borderRadius: `${railRingRadius}px` }}
                 />
               ) : null}
               <div

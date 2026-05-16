@@ -502,6 +502,41 @@ export function StageScenePreview({
             // = Export = Navigator-viewfinder; ek scale çarpanı YOK).
             const plateRectW = plateDims.w;
             const plateRectH = plateDims.h;
+            /* Phase 134 — Center marker CLAMP (kullanıcı: "white
+             * center dot zoom panelin DIŞINA çıkamasın; viewfinder
+             * büyüyüp taşabilir ama marker panel içinde kalmalı —
+             * Shots.so davranışı"). Rectangle vs marker semantiği
+             * AYRILDI:
+             *   - viewfinder rectangle (vfCx/vfCy) SERBEST: media
+             *     pan büyükse plate-rect dışına taşabilir (görünür
+             *     pencere overflow — Shots.so canonical, navigator
+             *     "kapsam dışı" sinyali; DEĞİŞMEZ).
+             *   - center dot AYRI element, konumu plate-rect içine
+             *     CLAMP. Dot ~14px (radius 7px) → merkezi ∈ [7px,
+             *     plateRectW-7px] → % cinsinden marginX/Y. Dot
+             *     rectangle'ın ÇOCUĞU DEĞİL (Phase 128 `::after`
+             *     pseudo KALDIRILDI) → plate-rect'in doğrudan
+             *     çocuğu, rectangle taşsa bile bağımsız clamp'lı.
+             *     Marker daima panel içinde = control affordance
+             *     kaybolmaz. Canonical mediaPosition/export DEĞİŞMEZ
+             *     (yalnız dot GÖSTERİM konumu clamp'lı). */
+            const DOT_PX = 14;
+            const dotMarginXPct =
+              plateRectW > 0
+                ? ((DOT_PX / 2) / plateRectW) * 100
+                : 0;
+            const dotMarginYPct =
+              plateRectH > 0
+                ? ((DOT_PX / 2) / plateRectH) * 100
+                : 0;
+            const dotCx = Math.max(
+              dotMarginXPct,
+              Math.min(100 - dotMarginXPct, vfCx),
+            );
+            const dotCy = Math.max(
+              dotMarginYPct,
+              Math.min(100 - dotMarginYPct, vfCy),
+            );
             return (
               <>
                 {/* Dim: viewfinder GROUP DIŞINI karart (group ile
@@ -542,15 +577,16 @@ export function StageScenePreview({
                       )`,
                     }}
                   />
-                  {/* Viewfinder GROUP: rectangle + center dot TEK
-                      eleman, AYNI center'da (Shots.so `.drag-handle`
-                      > `.viewfinder-div` çocuk ilişkisi, dx:0 dy:0).
-                      Boyut = compFracOfPlate × visibleFrac (middle
-                      görünür crop'un navigator full-comp izdüşümü;
-                      zoom artınca daralır — gerçek crop oranı), konum
-                      = media pan full-comp izdüşümü. Dot, rectangle'ın
-                      geometrik merkez marker'ı (::after pseudo,
-                      studio.css) — bağımsız anchor DEĞİL. */}
+                  {/* Phase 134 — Viewfinder rectangle: konum/boyut
+                      SERBEST (vfCx/vfCy plate-rect dışına taşabilir
+                      = görünür pencere overflow, Shots.so canonical;
+                      navigator "kapsam dışı" sinyali). Center dot
+                      ARTIK ayrı element (aşağıda, clamp'lı) — Phase
+                      128 `::after` pseudo KALDIRILDI. Boyut =
+                      compFracOfPlate × visibleFrac (middle görünür
+                      crop'un navigator full-comp izdüşümü; zoom
+                      artınca daralır — gerçek crop oranı), konum =
+                      media pan full-comp izdüşümü. */}
                   <div
                     className="k-studio__pad-viewfinder"
                     data-testid="studio-rail-pad-viewfinder"
@@ -562,6 +598,28 @@ export function StageScenePreview({
                       top: `${vfCy}%`,
                       width: `${vfPctW}%`,
                       height: `${vfPctH}%`,
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  />
+                  {/* Phase 134 — Center marker AYRI element, plate-
+                      rect'in DOĞRUDAN çocuğu (viewfinder'ın değil).
+                      Konum dotCx/dotCy = vfCx/vfCy'nin plate-rect
+                      içine CLAMP'lı hali → marker viewfinder taşsa
+                      bile DAİMA panel içinde (kullanıcı: control
+                      affordance kaybolmasın). Rectangle overflow ≠
+                      marker visibility (ayrım net). */}
+                  <div
+                    className="k-studio__pad-marker"
+                    data-testid="studio-rail-pad-marker"
+                    data-clamped={
+                      dotCx !== vfCx || dotCy !== vfCy
+                        ? "true"
+                        : "false"
+                    }
+                    aria-hidden
+                    style={{
+                      left: `${dotCx}%`,
+                      top: `${dotCy}%`,
                       transform: "translate(-50%, -50%)",
                     }}
                   />

@@ -797,6 +797,13 @@
    * sabit (Shots.so canonical). overflow guard: aşırı dar
    * viewport zaten Phase 110 larger-screen intercept'e düşer
    * (<880px), o yüzden CSS clamp gereksiz. */
+  /* Phase 134 — radius PLATE GENİŞLİĞİNE ORANSAL (inline
+   * `plateStyle.borderRadius` Stage'de, ≈ plateW × 0.024). Bu
+   * 26px yalnızca FALLBACK (inline her zaman override eder; middle
+   * @~1080px → ~26px ≈ eski sabit, rail @~146px → ~3.5px subtle —
+   * middle ile AYNI görsel oran). Sabit 26px rail thumb'da %18
+   * köşe = "preview kartlar daha yuvarlak" bug'ının kaynağıydı;
+   * artık tek formül iki ölçek (MockupStudioStage.tsx). */
   border-radius: 26px;
   /* Phase 113 — Plate border KALDIRILDI (kullanıcı notu + glow/
    * inner-border cleanup #7).
@@ -867,7 +874,16 @@
    * @1080 ≈ dy 26 / blur 51 / op 0.32 + dy 51 / blur 82 / op 0.30
    * oranları CSS px'e uyarlandı. Plate dark padding'den yumuşakça
    * "yüzer"; kenar çizgisi / açık rim YOK; export ile birebir
-   * (Preview = Export Truth §11.0). */
+   * (Preview = Export Truth §11.0).
+   *
+   * Phase 134 — box-shadow PLATE GENİŞLİĞİNE ORANSAL (inline
+   * `plateStyle.boxShadow` Stage'de, ≈ sW×0.024/0.047 offset,
+   * sW×0.047/0.076 blur). Bu sabit chain yalnız FALLBACK (inline
+   * override eder; middle @~1080px ≈ eski sabit, rail @~146px →
+   * küçük yumuşak gölge — kartı saran DEVASA siyah halka YOK).
+   * Sabit 26-51px offset rail thumb'ın küçük alanına oranla
+   * "koyu gri → siyah halka → sarı kart" stacking'in kaynağıydı;
+   * artık tek formül iki ölçek (MockupStudioStage.tsx). */
   box-shadow:
     0 26px 51px 0 rgba(0, 0, 0, 0.32),
     0 51px 82px 0 rgba(0, 0, 0, 0.30);
@@ -1392,6 +1408,12 @@
 .k-studio__preset-ring {
   position: absolute;
   inset: -6px;
+  /* Phase 134 — radius FALLBACK; inline `style.borderRadius`
+   * (MockupStudioPresetRail, plateRadiusForWidth(railPlateW)+6)
+   * override eder. Sabit 14px plate radius oransal olunca
+   * (rail thumb ~3.5px) ring plate'ten daha yuvarlak görünüp
+   * chrome unify'ı bozuyordu; artık plate köşesiyle konsantrik
+   * (tek chrome-radius kaynağı). */
   border-radius: 14px;
   pointer-events: none;
   transition: box-shadow 200ms;
@@ -1520,25 +1542,31 @@
    * gerçek visible-crop'u temsil etmeli (§11.0); animasyon
    * doğruluğu bozamaz. Snap (transition yok) = doğru crop. */
 }
-/* Center dot = viewfinder rectangle'ın merkez marker'ı. Pseudo
- * elemanı viewfinder'ın çocuğu → group ile BİREBİR aynı center'da
- * hareket eder (Shots.so `.viewfinder-div` içindeki handle dot
- * paritesi). */
-.k-studio__pad-viewfinder::after {
-  content: "";
+/* Phase 134 — Center marker AYRI element (Phase 128 `::after`
+ * pseudo KALDIRILDI).
+ *
+ * Kullanıcı: "white center dot zoom panelin DIŞINA çıkamasın;
+ * viewfinder büyüyüp taşabilir ama marker panel içinde kalmalı
+ * (Shots.so davranışı; control affordance kaybolmasın)". Pseudo
+ * viewfinder'ın çocuğuydu → viewfinder plate-rect dışına taşınca
+ * dot da panel dışına çıkıyordu (rectangle overflow = marker
+ * overflow, ayrım YOK). Phase 134: marker plate-rect'in DOĞRUDAN
+ * çocuğu, konumu StageScenePreview'de dotCx/dotCy ile plate-rect
+ * içine CLAMP. Viewfinder rectangle overflow semantiği DEĞİŞMEZ
+ * (serbest); yalnız marker bağımsız clamp'lı (rectangle ≠ marker).
+ * 14px = DOT_PX (StageScenePreview clamp margin'i bu px'e göre). */
+.k-studio__pad-marker {
   position: absolute;
-  left: 50%;
-  top: 50%;
   width: 14px;
   height: 14px;
-  margin-left: -7px;
-  margin-top: -7px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(0, 0, 0, 0.42);
   box-shadow:
     0 1px 4px rgba(0, 0, 0, 0.45),
     0 0 0 3px rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+  z-index: 7;
 }
 /* Phase 127/128 — Dim: viewfinder GROUP DIŞINI karart. clipPath
  * inline (viewfinder rectangle dışı; mediaPosition+zoom ile group

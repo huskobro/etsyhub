@@ -36,12 +36,20 @@ import {
 import {
   cascadeLayoutFor,
   compositionGroup,
+  plateRadiusForWidth,
   resolvePlateBox,
 } from "./cascade-layout";
 import {
   resolveMediaOffsetPx,
   type MediaPosition,
 } from "./media-position";
+import {
+  ZOOM_DEFAULT,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP,
+  clampZoom,
+} from "./zoom-bounds";
 import type {
   StudioAppState,
   StudioLayoutVariant,
@@ -723,9 +731,40 @@ export function StageScene({
    * iletilir; plate transform/CSS-var YOK (export Sharp bu
    * değeri ASLA görmez §11.0). */
   const effectiveZoom = chromeless ? 1 : previewZoom;
+  /* Phase 134 — Plate radius + drop shadow PLATE GENİŞLİĞİNE
+   * ORANSAL (kullanıcı: "right rail preview kartların köşeleri
+   * middle paneldekinden daha yuvarlatılmış + koyu gri → siyah →
+   * sarı kart stacking").
+   *
+   * Kök neden: studio.css `.k-studio__stage-plate` `border-radius:
+   * 26px` + `box-shadow: 0 26px 51px..., 0 51px 82px...` SABİT px.
+   * Middle plate ~900-1180px → 26/1080 ≈ %2.4 (subtle köşe; geniş
+   * gölge alana yumuşak yayılır). Rail/zoom thumb plate ~146px →
+   * 26/146 ≈ %18 (ÇOK yuvarlak köşe) + 26-51px offset / 51-82px
+   * blur SABİT gölge küçük karta oranla DEVASA → kartı saran
+   * belirgin siyah halka (rail dark bg `--ks-sh #1C1916` üzerinde
+   * "koyu gri → siyah halka → sarı kart" stacking hissi).
+   *
+   * Fix: radius + shadow plate genişliğine ORANLI (tek formül,
+   * iki ölçek — middle ile AYNI görsel oran = "aynı sahnenin
+   * küçük versiyonu"). Middle @~1080px → ~26px radius (eski sabit
+   * BİREBİR, regression yok); rail @~146px → ~3.5px (proportional,
+   * subtle — middle ile aynı görünüm). Inline > stylesheet sabit;
+   * CSS recipe fallback olarak proportional baseline'a güncellendi.
+   * Tek render path + Phase 133 shared framing DOKUNULMAZ
+   * (plateDims/compositionGroup değişmez; yalnız görsel chrome). */
+  const plateRadius = plateRadiusForWidth(plateDims.w);
+  const sW = plateDims.w;
+  const plateBoxShadow = `0 ${Math.round(sW * 0.024)}px ${Math.round(
+    sW * 0.047,
+  )}px 0 rgba(0,0,0,0.32), 0 ${Math.round(sW * 0.047)}px ${Math.round(
+    sW * 0.076,
+  )}px 0 rgba(0,0,0,0.30)`;
   const plateStyle: React.CSSProperties = {
     width: plateDims.w,
     height: plateDims.h,
+    borderRadius: `${plateRadius}px`,
+    boxShadow: plateBoxShadow,
     ...(plateBgRaw && !blurPlateOnly ? { background: plateBgRaw } : {}),
     ...(blurAll
       ? { filter: `blur(${plateEffects.filterBlurPx}px)` }
@@ -1082,15 +1121,15 @@ function StageSceneOverlays({
   previewZoomPct: number;
   onChangePreviewZoom: (next: number | ((prev: number) => number)) => void;
 }) {
-  /* Phase 124 — Zoom step/fit (Shots.so canonical): ±10 adım,
-   * 25–200 clamp, Fit = 100 reset. Rail slider step 5 ile uyumlu
-   * (ikisi aynı Shell state'i sürer; pill ±10 daha hızlı
-   * inspection). −/+ React functional updater kullanır →
-   * rapid-click accumulate (stale-closure batching fix). */
-  const ZOOM_MIN = 25;
-  const ZOOM_MAX = 200;
-  const clampZoom = (n: number) =>
-    Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(n)));
+  /* Phase 124 — Zoom step/fit (Shots.so canonical): ±ZOOM_STEP
+   * adım, ZOOM_MIN–ZOOM_MAX clamp, Fit = ZOOM_DEFAULT reset.
+   * −/+ React functional updater kullanır → rapid-click
+   * accumulate (stale-closure batching fix).
+   *
+   * Phase 134 — Lokal ZOOM_MIN=25/ZOOM_MAX=200/clampZoom KALDIRILDI;
+   * shared zoom-bounds.ts (min 75 / max 400 / default 100) tek
+   * kaynak. Rail slider, reset, viewfinder math AYNI modül →
+   * pill ve slider aynı clamp ("hidden eski değer" YOK §12). */
   const stepZoom = (delta: number) =>
     onChangePreviewZoom((prev) => clampZoom(prev + delta));
   return (
@@ -1177,14 +1216,14 @@ function StageSceneOverlays({
         </button>
       ) : null}
 
-      {/* Phase 124 — Zoom-pill artık çalışıyor (Phase 123 öncesi
-          + Phase 123'te de NO-OP idi: static "50%", handler yok).
-          Rail slider (Phase 123) ile AYNI Shell previewZoom
-          state'i sürer → iki kontrol yüzeyi senkron, % her yerde
-          aynı (Shots.so canonical). −/+ ±10 step, Fit = 100
-          reset. Preview-only helper: export'a girmez (§11.0),
-          rail candidate thumb'lara uygulanmaz. Mode-AGNOSTIC
-          (Mockup + Frame aynı davranış). */}
+      {/* Phase 124 — Zoom-pill çalışıyor; rail slider (Phase 123)
+          ile AYNI Shell previewZoom state'i sürer → iki kontrol
+          yüzeyi senkron, % her yerde aynı (Shots.so canonical).
+          Phase 134 — −/+ ±ZOOM_STEP, Fit = ZOOM_DEFAULT, disabled
+          eşikleri shared ZOOM_MIN/ZOOM_MAX (zoom-bounds.ts tek
+          kaynak; min 75 / max 400). Preview-only helper: export'a
+          girmez (§11.0), rail candidate thumb'lara uygulanmaz.
+          Mode-AGNOSTIC (Mockup + Frame aynı davranış). */}
       {!isRender ? (
         <div
           className="k-studio__zoom-pill"
@@ -1197,7 +1236,7 @@ function StageSceneOverlays({
             aria-label="Zoom out"
             data-testid="studio-stage-zoom-out"
             disabled={previewZoomPct <= ZOOM_MIN}
-            onClick={() => stepZoom(-10)}
+            onClick={() => stepZoom(-ZOOM_STEP)}
           >
             −
           </button>
@@ -1213,7 +1252,7 @@ function StageSceneOverlays({
             aria-label="Zoom in"
             data-testid="studio-stage-zoom-in"
             disabled={previewZoomPct >= ZOOM_MAX}
-            onClick={() => stepZoom(10)}
+            onClick={() => stepZoom(ZOOM_STEP)}
           >
             +
           </button>
@@ -1221,9 +1260,9 @@ function StageSceneOverlays({
             type="button"
             className="k-studio__zp-fit"
             data-testid="studio-stage-zoom-fit"
-            aria-label="Fit (reset zoom to 100%)"
-            disabled={previewZoomPct === 100}
-            onClick={() => onChangePreviewZoom(100)}
+            aria-label="Fit (reset zoom to default)"
+            disabled={previewZoomPct === ZOOM_DEFAULT}
+            onClick={() => onChangePreviewZoom(ZOOM_DEFAULT)}
           >
             <StudioIcon name="mountain" size={10} />
             Fit

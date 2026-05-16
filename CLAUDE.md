@@ -27418,6 +27418,267 @@ kararıyla ayrı tur.
 
 ---
 
+## Phase 134 — Visual chrome unify (proportional radius+shadow tek kaynak) + zoom bounds 75-400 shared source + center marker clamp (rectangle overflow ≠ marker visibility)
+
+Phase 133 rail/zoom framing+visibility'i (3-katmanlı kök neden:
+PREVIEW_BASE scaleWrap + width-transition + flex-shrink → tek
+shared resolvePlateBox + boxW/boxH prop + rotated-AABB) çözdü.
+Phase 134 kullanıcının 3 net görsel/davranış sorununu kapatır.
+Stabilization turu — yeni feature/layout builder/mockup editor/
+SVG library YOK; Phase 133 shared framing + export/state/shared
+resolver DOKUNULMADI (kullanıcı kuralı).
+
+### Kök nedenler (browser+DOM+code triangulation, kanıtlı)
+
+| # | Sorun | Kök neden | Yer |
+|---|---|---|---|
+| 1 | "koyu gri → siyah → sarı kart" stacking | `.k-studio__stage-plate` `box-shadow: 0 26px 51px rgba(0,0,0,0.32), 0 51px 82px rgba(0,0,0,0.30)` SABİT px. Middle plate ~900px (gölge geniş alana yumuşak yayılır), rail thumb plate ~146px (26-51px offset + 51-82px blur SABİT → küçük karta oranla DEVASA siyah halka). Rail dark bg `--ks-sh #1C1916` üzerinde "koyu gri → siyah halka → sarı kart" | studio.css `.k-studio__stage-plate` |
+| 2 | preview kartlar daha yuvarlatılmış | `.k-studio__stage-plate` `border-radius: 26px` SABİT px. Middle ~900px → 26/900≈%2.9 (subtle). Rail ~146px → 26/146≈%18 (çok yuvarlak) | studio.css `.k-studio__stage-plate` + `.k-studio__preset-ring` 14px sabit |
+| 3 | zoom bounds dağınık | 3 ayrı hardcoded: Stage `StageSceneOverlays` `ZOOM_MIN=25 ZOOM_MAX=200`, PresetRail slider `min={25} max={200} step={5}`, fallback `useState(100)`. Senkron değil ("hidden eski değer" riski) | MockupStudioStage.tsx + MockupStudioPresetRail.tsx |
+| 4 | center dot panel dışına taşıyor | `.k-studio__pad-viewfinder` `left:${vfCx}% top:${vfCy}%` (pan büyükse vfCx 0-100 dışı) + center dot `::after` pseudo viewfinder'ın ÇOCUĞU (`left:50%`) → rectangle taşınca dot da panel dışına (rectangle overflow = marker overflow, ayrım YOK) | StageScenePreview.tsx + studio.css `::after` |
+
+### Fix 1 — Visual chrome unify (proportional radius + shadow, tek kaynak)
+
+Yeni shared helper `cascade-layout.ts` `plateRadiusForWidth(plateW)`
++ `PLATE_RADIUS_FRAC = 0.024` (geometri modülü; tek chrome-radius
+kaynağı — Phase 133 `resolvePlateBox` yanına). `MockupStudioStage`
+`plateStyle`'a inline `borderRadius = plateRadiusForWidth(plateDims.w)`
++ `boxShadow` plate genişliğine ORANLI (`sW×0.024/0.047` offset,
+`sW×0.047/0.076` blur). Tek formül, iki ölçek:
+- Middle @~900px → radius ~22px ≈ eski sabit 26px (görünüm
+  korundu, regression yok), shadow geniş yumuşak
+- Rail/zoom @~146-179px → radius ~4px (min 4 clamp), shadow
+  küçük yumuşak (kartı saran DEVASA siyah halka YOK)
+- **Oran tutarlı:** middle radiusFrac %2.4 ≈ rail %2.4-2.7
+  ("aynı sahnenin küçük versiyonu"; önceki: %2.9 vs %18 ayrışma)
+
+`.k-studio__preset-ring` radius da plate köşesiyle KONSANTRİK:
+PresetRail `resolvePlateBox(plateAspect, cardW, cardHr).w` →
+`plateRadiusForWidth(railPlateW) + 6` (ring inset:-6px) inline.
+CSS sabit 26px/14px/box-shadow → FALLBACK comment (inline her
+zaman override; dürüstlük + tutarlılık). chromeless rail stage
+zaten bg transparent + dot-grid `::before display:none` (Phase
+118 baseline — koyu/siyah ara katman'ın ikinci kaynağı zaten
+yoktu; asıl kaynak SABİT box-shadow + radius idi).
+
+### Fix 2 — Zoom bounds 75-400 shared source
+
+Yeni `zoom-bounds.ts` (media-position.ts deseni: pure-TS,
+DOM/React import YOK — client+server güvenli, tek kaynak):
+`ZOOM_MIN=75`, `ZOOM_MAX=400`, `ZOOM_DEFAULT=100`, `ZOOM_STEP=25`,
+`clampZoom(n)`. 3 dağınık hardcoded KALDIRILDI:
+- `MockupStudioShell` `DEFAULT_PREVIEW_ZOOM = ZOOM_DEFAULT`
+- `MockupStudioStage` `StageSceneOverlays`: lokal `ZOOM_MIN=25/
+  ZOOM_MAX=200/clampZoom` silindi → shared import; pill `−/+`
+  `stepZoom(±ZOOM_STEP)`, Fit `onChangePreviewZoom(ZOOM_DEFAULT)`,
+  disabled `=== ZOOM_DEFAULT`
+- `MockupStudioPresetRail` slider `min={ZOOM_MIN} max={ZOOM_MAX}
+  step={ZOOM_STEP}`, `useState(ZOOM_DEFAULT)`, `setZoom`
+  shared `clampZoom` (slider 500 → 400'e clamp; keyboard/
+  programatik savunmacı)
+- Navigator viewfinder math (StageScenePreview `previewZoomPct`)
+  shared bounds'tan beslenir → otomatik tutarlı (zoom 75 → vf
+  `1/0.75=1.333` büyür, zoom 400 → vf `1/4=0.25` küçülür;
+  Shots.so canonical 1/zoom). Ekstra değişiklik gerekmedi.
+
+UI + davranış AYNI sınırlar; "hidden eski değer" §12 YASAK
+(slider ve pill aynı clamp).
+
+### Fix 3 — Center marker clamp (rectangle overflow ≠ marker visibility)
+
+Phase 128 `.k-studio__pad-viewfinder::after` center dot pseudo
+(viewfinder'ın çocuğu) KALDIRILDI. Yeni `.k-studio__pad-marker`
+AYRI element, plate-rect'in DOĞRUDAN çocuğu. StageScenePreview:
+- **Viewfinder rectangle SERBEST:** `vfCx/vfCy` plate-rect
+  dışına taşabilir = görünür pencere overflow (Shots.so
+  canonical, navigator "kapsam dışı" sinyali — DEĞİŞMEZ)
+- **Marker CLAMP'LI:** `dotCx = clamp(dotMarginXPct, 100-
+  dotMarginXPct, vfCx)`, `dotCy` benzer. `DOT_PX=14`,
+  marginX/Y = `(7/plateRectW)×100%` → dot tamamen plate-rect
+  içinde. `data-clamped` attr (vfCx≠dotCx ise true)
+- Rectangle ile marker bağımsız: viewfinder %98 (overflow)
+  iken marker %96.08/%93.07 (clamp'lı, panel içinde) — ayrım
+  net. Canonical mediaPosition/export DEĞİŞMEZ (yalnız dot
+  GÖSTERİM konumu clamp'lı; control affordance kaybolmaz)
+
+### Browser doğrulama (canlı, fresh build, real asset)
+
+Clean restart (`.next` clear + dev fresh), Chrome büyük ekran
+(viewport ~1417×1042), real MinIO MJ asset set `cmov0ia37`
+(PAS5/neon/car), DOM ölçüm + screenshot:
+
+**16:9 (default):**
+- mid plate w=901 radius **22px** shadow `22px 42px/42px 68px`;
+  rail0 plate w=179 radius **4px** shadow `4px 8px/8px 14px`;
+  oran %2.4≈%2.2 (radiusUnified)
+- chromeless rail: bg `rgba(0,0,0,0)`, dot-grid `::before
+  display:none`; mid bg `rgb(17,16,9)` (korundu)
+- ring inline radius 10px (railPlateW + 6, plate köşesiyle
+  konsantrik); eski `::after` pseudo content `none` (kaldırıldı)
+- slider **min=75 max=400 step=25 value=100**; pill val=100%
+  Fit disabled@default
+- screenshot: middle + 6 rail thumb (Cascade/Centered/Tilted/
+  Stacked/Fan/Offset) AYNI cream/peach plate, subtle köşe,
+  kartı saran siyah halka YOK ("aynı sahnenin küçük versiyonu")
+
+**Marker clamp (big pan {x:-0.96,y:-0.96}):**
+- viewfinder `left:98% top:98%` → `vfOverflowsPlateRect: true`
+  (SERBEST overflow korundu)
+- marker `left:96.0894% top:93.0693%` `data-clamped="true"`
+  → `markerInsidePanel: true` (panel DIŞINA çıkmadı)
+
+**Zoom 75:** railZoomVal=pillVal=75% (senkron); mid composition
+`matrix(1.06679)`; vf `vfFrac=1.333 w/h:133%` (1/0.75); marker
+no-pan center, markerInsidePanel=true (vf %133 taşsa bile)
+
+**Zoom 400 + clamp:** slider 500 → `clampedTo400: true` (rail/
+pill/slider hepsi 400); mid composition `matrix(5.68952)` (4×);
+vf `vfFrac=0.25 w/h:25%` (1/4); pill zoom-in disabled@max;
+marker panel içinde
+
+**9:16 portrait:** mid 492×875 radius 12px frac 0.0244; rail
+146×260 radius 4px frac 0.0274; **radiusUnified: true**;
+aspectPortrait=true (Phase 133 shared framing korundu); rail
+bg transparent; markerInsidePanel=true; screenshot: middle +
+rail AYNI portrait cream plate subtle köşe (stacking YOK)
+
+### Quality gates
+
+- `tsc --noEmit`: clean (EXIT=0, 0 satır)
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **739/739 PASS** (60 files, zero regression —
+  yeni zoom-bounds.ts + helper test fixture'ları etkilemedi)
+- `next build`: ✓ Compiled successfully (`NODE_OPTIONS=
+  --max-old-space-size=4096`; "Dynamic server usage" log'ları
+  pre-existing auth-route prerender uyarısı — Phase 134 ile
+  ilgisiz, build başarılı)
+- Browser: 16:9 + 9:16 × zoom 75/100/400 + big-pan marker
+  clamp + clamp 500→400 (canlı DOM + screenshot KANITLANDI)
+
+### Final cevap (kullanıcının 11 maddesi)
+
+1. **siyah/koyu ara katman hissinin kök nedeni:** `.k-studio__
+   stage-plate` `box-shadow: 0 26px 51px..., 0 51px 82px...`
+   SABİT px. Middle plate ~900px → gölge geniş alana yumuşak;
+   rail thumb plate ~146px → SABİT 26-51px offset + 51-82px
+   blur küçük karta oranla DEVASA siyah halka. Rail dark bg
+   `--ks-sh #1C1916` üzerinde "koyu gri → siyah halka → sarı
+   kart" stacking illüzyonu. (chromeless bg/dot-grid Phase 118'de
+   zaten gizliydi — o kaynak değildi).
+2. **hangi layer/wrapper:** `.k-studio__stage-plate` (plate'in
+   kendisi) box-shadow + radius; ek olarak `.k-studio__preset-
+   ring` `border-radius: 14px` sabit (plate köşesiyle uyumsuz).
+3. **radius farkı neden:** `border-radius: 26px` SABİT px iki
+   farklı plate genişliğinde farklı oran üretiyordu — middle
+   ~900px (26/900≈%2.9 subtle) vs rail ~146px (26/146≈%18 çok
+   yuvarlak). Sabit px ≠ oransal.
+4. **nasıl unify ettim:** radius + shadow plate genişliğine
+   ORANSAL (shared `plateRadiusForWidth` helper, tek formül
+   `plateW×0.024`; shadow `sW×0.024/0.047/0.076`). Middle ile
+   AYNI görsel oran (%2.4) iki ölçekte → "aynı sahnenin küçük
+   versiyonu". CSS sabitler fallback comment'e indirildi (inline
+   override). ring radius `plateRadiusForWidth(railPlateW)+6`
+   plate köşesiyle konsantrik.
+5. **zoom min/max kaynak:** yeni `zoom-bounds.ts` (pure-TS,
+   media-position.ts deseni) — `ZOOM_MIN=75 ZOOM_MAX=400
+   ZOOM_DEFAULT=100 ZOOM_STEP=25 clampZoom`. Tek kaynak.
+6. **75-400 her yerde tutarlı:** Shell DEFAULT, Stage pill
+   (stepZoom/Fit/disabled), PresetRail slider (min/max/step/
+   useState/setZoom clamp), navigator viewfinder math HEPSİ
+   bu modülden import — 3 dağınık hardcoded silindi; "hidden
+   eski değer" §12 YASAK (DOM kanıt: slider min=75 max=400
+   step=25, slider 500→400 clamp, pill ↔ slider senkron).
+7. **center marker clamp:** `.k-studio__pad-viewfinder::after`
+   pseudo KALDIRILDI; yeni `.k-studio__pad-marker` AYRI element
+   plate-rect'in doğrudan çocuğu. Konum `dotCx/dotCy =
+   clamp(margin, 100-margin, vfCx/vfCy)` (DOT_PX=14, margin =
+   dot-radius/plateRect %); marker daima plate-rect (≈ panel)
+   içinde.
+8. **rectangle overflow ↔ marker clamp ayrımı:** viewfinder
+   rectangle `vfCx/vfCy` SERBEST (plate-rect dışına taşar =
+   görünür pencere overflow, Shots.so canonical — DEĞİŞMEDİ).
+   Marker AYRI element (viewfinder'ın çocuğu DEĞİL artık) →
+   bağımsız clamp'lı. DOM kanıt: vf %98 overflow iken marker
+   %96.08 clamp'lı panel içinde.
+9. **değiştirdiğim dosyalar:** `zoom-bounds.ts` (YENİ),
+   `cascade-layout.ts` (plateRadiusForWidth + PLATE_RADIUS_FRAC),
+   `MockupStudioStage.tsx` (inline radius/shadow + shared zoom),
+   `MockupStudioPresetRail.tsx` (shared zoom slider + ring
+   radius), `MockupStudioShell.tsx` (DEFAULT=ZOOM_DEFAULT),
+   `StageScenePreview.tsx` (ayrı clamp'lı marker), `studio.css`
+   (radius/shadow/ring FALLBACK comment + `::after`→`.k-studio__
+   pad-marker`).
+10. **browser'da doğrulanan state'ler:** 16:9 (mid 901 / rail
+    179, radius+shadow oran, chromeless, slider 75-400, marker
+    center), big-pan {-0.96,-0.96} (vf overflow + marker
+    clamp'lı), zoom 75 (vf 1.333), zoom 400 + clamp 500→400
+    (vf 0.25, pill disabled@max), 9:16 portrait (mid 492 / rail
+    146, radiusUnified, aspectPortrait, marker içinde) — +2
+    screenshot (16:9 + 9:16 stacking YOK).
+11. **neden yeni divergence yok:** Phase 133 shared framing
+    (resolvePlateBox/compositionGroup/plateDims) DOKUNULMADI;
+    middle/rail/zoom içerik eşleşmesi DOM kanıtla korundu
+    (aspectPortrait, radiusUnified, composition matrix). Radius/
+    shadow tek shared helper (her yerde aynı formül — drift
+    imkânsız). Zoom tek shared modül (3 hardcoded → 1 kaynak).
+    Marker ayrı element ama mediaPosition/export/canonical
+    state/composition translate DEĞİŞMEDİ (yalnız dot GÖSTERİM
+    konumu). vitest 739/739 (zero regression) + Phase 133
+    davranışı browser'da BİREBİR.
+
+### Değişmeyenler (Phase 134)
+
+- **Review freeze (Madde Z) korunur.**
+- **Schema migration yok.**
+- **WorkflowRun eklenmez.**
+- **Yeni big abstraction yok.** `zoom-bounds.ts` (3 sabit +
+  clamp) + `plateRadiusForWidth` (tek formül) — media-position.ts
+  deseni; yeni component/route/service/state YOK.
+- **Phase 133 shared framing** (resolvePlateBox + boxW/boxH +
+  rotated-AABB + compositionGroup) DOKUNULMADI; middle/rail/zoom
+  içerik eşleşmesi korundu (DOM kanıt: radiusUnified +
+  aspectPortrait + composition matrix tutarlı).
+- **Canonical mediaPosition state + media-position.ts shared
+  resolver + frame-compositor.ts export + composition translate
+  + candidate preset thumb mantığı** DOKUNULMADI (Fix 3 yalnız
+  marker GÖSTERİM konumu clamp'lı; viewfinder rectangle
+  semantiği değişmedi).
+- **Phase 125 zoom (plate sabit, composition scale) + Phase 128
+  viewfinder GROUP + Phase 130 viewfinder math + Phase 131
+  zoom-reset (fcb2663 kodu) baseline'ları intakt** (Phase 134
+  yalnız bounds'ı tek kaynağa çekti + marker'ı ayrı element
+  yaptı; viewfinder boyut/konum formülü DEĞİŞMEDİ).
+- **3. taraf mockup API path** ana akışa girmedi.
+- **References / Batch / Review / Selection / Mockup Studio /
+  Product / Etsy Draft canonical akışları intakt.**
+- **Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.**
+
+### Hâlâ kalan (Phase 135+ candidate)
+
+- **Residual rotation görsel offset** (Phase 111/133'ten devir)
+  — MID'de ~0; matematiksel mükemmellik için per-item rotated
+  görsel-center (Preview=Export riski yüksek, ertelenmiş).
+- **Per-slot media-position** — ayrı advanced/layout-editor modu
+  (Phase 126'dan devir; bu tur global).
+- **Tilt (media rotate)** — Phase 126'dan honest-disabled
+  (`Tilt · Soon`).
+- **Gerçek Etsy V3 API POST e2e** — production credential.
+- **Yeni SVG/layout builder/mockup editor** — §13.A ertelenmiş.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 134 ile visual chrome unify (proportional radius+shadow
+tek shared helper), zoom bounds 75-400 (tek shared modül), center
+marker clamp (rectangle overflow ≠ marker visibility) tamam.
+Kullanıcının 3 sorunu da 16:9 + 9:16 + zoom 75/400 + big-pan
+browser kanıtıyla çözüldü; Phase 133 shared framing + canonical
+state/export DOKUNULMADI. Sıradaki adım **Phase 135 candidate**:
+residual rotation görsel offset fine-tune veya per-slot media-
+position (advanced mod). Full Remotion migration / yeni SVG /
+layout builder / mockup editor §13.A'da ertelenmiş kalır.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.

@@ -41,6 +41,7 @@ import { MockupStudioSidebar } from "./MockupStudioSidebar";
 import { MockupStudioStage } from "./MockupStudioStage";
 import { cascadeLayoutFor } from "./cascade-layout";
 import type { MediaPosition } from "./media-position";
+import { ZOOM_DEFAULT } from "./zoom-bounds";
 import { FrameExportResultBanner } from "./FrameExportResultBanner";
 import { MockupStudioToolbar } from "./MockupStudioToolbar";
 import {
@@ -76,8 +77,13 @@ const SLOT_NAMES = ["Front View", "Side View", "Back View"];
  * default değişirse reset otomatik onu takip eder (tek kaynak).
  * Hem rail slider hem stage zoom-pill aynı Shell `previewZoom`
  * state'ini kullanır (zaten); reset de aynı state'i bu sabite çeker.
- * Kategori 2 preview-only helper (zoom export'a girmez §11.0). */
-const DEFAULT_PREVIEW_ZOOM = 100;
+ * Kategori 2 preview-only helper (zoom export'a girmez §11.0).
+ *
+ * Phase 134 — Hardcoded 100 KALDIRILDI; shared `ZOOM_DEFAULT`
+ * (zoom-bounds.ts) tek kaynak. Rail slider min/max, stage pill
+ * clamp, reset, viewfinder math HEPSİ aynı modülden okur (min 75
+ * / max 400 / default 100; "hidden eski değer" riski YOK). */
+const DEFAULT_PREVIEW_ZOOM = ZOOM_DEFAULT;
 
 export interface MockupStudioShellProps {
   /**
