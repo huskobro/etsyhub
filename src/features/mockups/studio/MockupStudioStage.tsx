@@ -36,6 +36,7 @@ import {
 import {
   cascadeLayoutFor,
   compositionGroup,
+  resolvePlateBox,
 } from "./cascade-layout";
 import {
   resolveMediaOffsetPx,
@@ -155,28 +156,28 @@ function plateDimensionsFor(
    * kullandığı için otomatik düzelir (plate küçülünce cascade de
    * orantılı = birlikte zoom-out). railCollapsed → rail alanı
    * stage'e geçer (Shots ara aşaması parity). */
+  /* Phase 133 — Tek canonical `resolvePlateBox` (cascade-layout.ts).
+   *
+   * Phase 95-110 manuel hesabı (availW=stage×0.9, availH=stage×0.86,
+   * capW=min(.,1180), capH=min(.,880), aspect-locked bbox-fit)
+   * resolvePlateBox'ın container-agnostic genelleştirmesinin TAM
+   * özel hâli → davranış BİREBİR (viewport-aware + aspect SHARED +
+   * cap korunur; regression yok). Tek fark: artık StageScenePreview
+   * (rail/zoom) AYNI fonksiyonu kendi ölçülen kart box'ıyla çağırır
+   * → "görünüşte tek render path" GERÇEKTEN tek (Preview = Export =
+   * Rail-thumb = Navigator-viewfinder §11.0; PREVIEW_BASE+scale
+   * sahte sarmalama KALDIRILDI). */
   const cfg = FRAME_ASPECT_CONFIG[frameAspect];
-  const ratio = cfg.ratio; // w/h
   const SIDEBAR_W = 214;
   const RAIL_W = railCollapsed ? 0 : 202;
-  // Stage available alanı: viewport - sidebar - rail - stage padding.
-  // Plate stage'in ~%85'ini hedefler (Shots %57-66 vw paritesi:
-  // stage padding korunur ama plate dominant).
   const stageW = Math.max(280, viewportW - SIDEBAR_W - RAIL_W);
   const stageH = Math.max(220, viewportH - 24); // toolbar/padding payı
-  const availW = stageW * 0.9;
-  const availH = stageH * 0.86;
-  // Geniş viewport'ta plate sınırsız büyümesin (Shots'ta da plate
-  // mutlak ~700-900px civarı kalır; çok geniş ekranda dev plate
-  // operatör için kötü). Üst sınır viewport-aware ama capped.
-  const capW = Math.min(availW, 1180);
-  const capH = Math.min(availH, 880);
-  // Aspect-locked bbox-fit: hem capW hem capH'a sığ, aspect SABİT.
-  const fitByWidth = { w: capW, h: capW / ratio };
-  if (fitByWidth.h <= capH) {
-    return { w: Math.round(capW), h: Math.round(capW / ratio) };
-  }
-  return { w: Math.round(capH * ratio), h: Math.round(capH) };
+  return resolvePlateBox(cfg.ratio, stageW, stageH, {
+    fillW: 0.9,
+    fillH: 0.86,
+    capW: 1180,
+    capH: 880,
+  });
 }
 
 interface MockupCompositionProps {

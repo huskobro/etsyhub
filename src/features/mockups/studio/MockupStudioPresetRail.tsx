@@ -422,6 +422,12 @@ export function MockupStudioPresetRail({
                overlay gösterimi (canonical state/export DEĞİŞMEZ).
                `zoom` = previewZoom ?? localZoom (yüzde, 100=no-op). */
             previewZoomPct={zoom}
+            /* Phase 133 — BİLİNEN kart px boyutu (deterministik):
+               StageScenePreview ResizeObserver `box` stale-init
+               bug'ını bypass eder. cardW/cardHr zaten plate aspect
+               ile hesaplı (idealW/plateAspect). */
+            boxW={cardW}
+            boxH={cardHr}
           />
           {/* Phase 121 — Live thumb head = aktif (selected)
               layoutVariant'ın canlı hali. Plate üstü overlay
@@ -550,6 +556,12 @@ export function MockupStudioPresetRail({
                    onChangeMediaPosition GEÇİLMEZ → read-only
                    candidate preview (pad yalnız rail-head'de). */
                 mediaPosition={mediaPosition}
+                /* Phase 133 — BİLİNEN kart px boyutu (deterministik):
+                   ResizeObserver `box` stale-init bug'ını bypass.
+                   Tüm preset kartlar aynı cardW/cardHr (plate aspect
+                   tight) → birebir tutarlı. */
+                boxW={cardW}
+                boxH={cardHr}
               />
               {/* Phase 121 — Seçili layout slot-ring (orta panel
                   parity) + isim alt-caption yerine plate üstü

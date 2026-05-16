@@ -270,15 +270,57 @@ export function compositionGroup(
   if (items.length === 0) {
     return { scale: 1, bboxW: 1, bboxH: 1, items };
   }
+  /* Phase 133 — ROTATED-AABB bbox (görsel sınır, layout-bbox DEĞİL).
+   *
+   * KÖK NEDEN (canlı browser + pixel ölçümüyle KANITLANDI): Phase
+   * 111-132 bbox layout-bbox idi (item.x..x+w, rotation YOK
+   * sayılıyordu). Ama slot CSS `transform:rotate(${r}deg)`
+   * (transform-origin center) ile item-merkezi etrafında dönüyor →
+   * cascade'in -6°/-12° kartları GÖRSEL olarak layout-bbox dışına
+   * taşıyor. stage-inner BBOX-TIGHT layout-bbox merkezli; görsel-
+   * bbox değil. MID'de plate büyük → fark ~%1 (göz ardı); rail
+   * thumb plate küçük → AYNI rotated-taşma plate'in %29'u (DOM
+   * kanıt: P0 compCxOffsetFrac 0.285) → composition sağa kayık +
+   * sağdan kart dışına taşıp clip (kullanıcı "sağdan kesik"
+   * şikayetinin KALAN kaynağı).
+   *
+   * Phase 133 fix: bbox = her item'ın `r` açısıyla item-merkezi
+   * etrafında döndürülmüş 4 köşesinin gerçek min/max'ı (rotated-
+   * AABB = görsel sınır). stage-inner görsel-bbox-tight → composition
+   * görsel center = plate center HEM MID HEM rail'de (oransal
+   * tutarlı, clip YOK). slot render DEĞİŞMEZ (x/y/w/h/r aynı; CSS
+   * rotate item-center etrafında — görsel parity korunur). Stage +
+   * Shell export AYNI compositionGroup → export offset de rotated-
+   * AABB (Preview = Export Truth §11.0; divergence YOK). Rotasyonsuz
+   * (r=0) item'da rotated-AABB = layout-bbox (regression yok). */
+  const deg2rad = Math.PI / 180;
   let minX = Infinity,
     minY = Infinity,
     maxX = -Infinity,
     maxY = -Infinity;
   for (const it of items) {
-    minX = Math.min(minX, it.x);
-    minY = Math.min(minY, it.y);
-    maxX = Math.max(maxX, it.x + it.w);
-    maxY = Math.max(maxY, it.y + it.h);
+    const cx = it.x + it.w / 2;
+    const cy = it.y + it.h / 2;
+    const rad = (it.r || 0) * deg2rad;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    // 4 köşe item-merkezine göre, rotate, sonra dünya koordinatı.
+    const hw = it.w / 2;
+    const hh = it.h / 2;
+    const corners: ReadonlyArray<readonly [number, number]> = [
+      [-hw, -hh],
+      [hw, -hh],
+      [hw, hh],
+      [-hw, hh],
+    ];
+    for (const [dx, dy] of corners) {
+      const wx = cx + dx * cos - dy * sin;
+      const wy = cy + dx * sin + dy * cos;
+      minX = Math.min(minX, wx);
+      minY = Math.min(minY, wy);
+      maxX = Math.max(maxX, wx);
+      maxY = Math.max(maxY, wy);
+    }
   }
   const bboxW = Math.max(1, maxX - minX);
   const bboxH = Math.max(1, maxY - minY);
@@ -297,4 +339,68 @@ export function compositionGroup(
     y: it.y - minY,
   }));
   return { scale, bboxW, bboxH, items: normalized };
+}
+
+/* Phase 133 — Tek canonical plate-box çözücü (container-agnostic
+ * aspect-locked bbox-fit).
+ *
+ * KÖK NEDEN (Phase 133 canlı browser + pixel ölçümüyle KANITLANDI):
+ * `StageScenePreview` (rail thumb + zoom panel) iki katmanlı SAHTE
+ * boyutlandırma yapıyordu:
+ *   (1) dış wrapper `width: PREVIEW_BASE_W(900) height:
+ *       PREVIEW_BASE_H(506)` SABİT 16:9-ish + `transform:scale(s)`
+ *   (2) içindeki `StageScene` plate'i `plateDims` (aspect-aware)
+ *       ile render ediyordu
+ * İki katman uyumsuz: scaleWrap sabit 900×506 oranlı, plate aspect
+ * değişiyor → 9:16 portrait'te plate scaleWrap'in yalnız %39'unu
+ * kaplıyor (DOM kanıt: cardW 146, plateW 57), kalan boş +
+ * previewWrap/stageRoot/plate 3 `overflow:hidden` clip ediyor.
+ * Middle panel ise plate'i DOĞRUDAN stage'e flex-fill ediyor
+ * (scaleWrap YOK) → composition plate'i PLATE_FILL_FRAC ile dengeli
+ * dolduruyor. İki yüzey AYNI `StageScene` ama farklı dış sarmalama
+ * → "görünüşte tek render path, pratikte değil" (kullanıcı hipotezi
+ * doğrulandı: math + visibility birlikte).
+ *
+ * Phase 133 fix: `PREVIEW_BASE × transform:scale` modeli TAMAMEN
+ * KALDIRILDI. Her yüzey kendi container box'ını geçirir; plate
+ * DOĞRUDAN o box'a aspect-locked fit edilir (scaleWrap YOK). Middle
+ * = viewport-türevli box, rail/zoom = ölçülen kart box → ikisi de
+ * AYNI `resolvePlateBox`. frameAspect SHARED state (Phase 95) →
+ * 3 yüzeyde plate aspect aynı; composition `compositionGroup`
+ * PLATE_FILL_FRAC ile her yüzeyde dengeli (Preview = Export =
+ * Rail-thumb = Navigator-viewfinder §11.0; tek render path GERÇEKTEN
+ * tek). aspect-agnostic (ratio param) + container-agnostic
+ * (containerW/H param) + layout-agnostic (compositionGroup ayrı
+ * katman) → custom resolution gelirse yeni aspect tek kaynaktan
+ * otomatik tutarlı. */
+export interface PlateBoxOpts {
+  /** Container'ın kaçını plate hedefler (Stage: viewport padding
+   *  payı; rail/zoom: kart kutusu zaten plate-tight → 1.0). */
+  fillW?: number;
+  fillH?: number;
+  /** Üst sınır (Stage: çok geniş ekranda dev plate kötü; rail/zoom:
+   *  sınır gereksiz). */
+  capW?: number;
+  capH?: number;
+}
+
+export function resolvePlateBox(
+  aspectRatio: number, // w / h (> 0)
+  containerW: number,
+  containerH: number,
+  opts: PlateBoxOpts = {},
+): { w: number; h: number } {
+  const ratio = aspectRatio > 0 ? aspectRatio : 1;
+  const fillW = opts.fillW ?? 1;
+  const fillH = opts.fillH ?? 1;
+  let availW = Math.max(1, containerW) * fillW;
+  let availH = Math.max(1, containerH) * fillH;
+  if (opts.capW != null) availW = Math.min(availW, opts.capW);
+  if (opts.capH != null) availH = Math.min(availH, opts.capH);
+  // Aspect-locked bbox-fit: hem availW hem availH'a sığ, oran SABİT.
+  const byWidth = { w: availW, h: availW / ratio };
+  if (byWidth.h <= availH) {
+    return { w: Math.round(availW), h: Math.round(availW / ratio) };
+  }
+  return { w: Math.round(availH * ratio), h: Math.round(availH) };
 }

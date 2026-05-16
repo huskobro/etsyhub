@@ -878,7 +878,32 @@
    * peach→amber gradient (Shots Magic Preset default canlılık
    * paritesi ama Kivasy-rafine — agresif değil). */
   background: linear-gradient(135deg, #f5b27d 0%, #d97842 100%);
-  transition: background 320ms ease, width 220ms ease, height 220ms ease;
+  /* Phase 133 — width/height transition KALDIRILDI (KÖK NEDEN, canlı
+   * browser + pixel ölçümüyle KANITLANDI; Phase 129 viewfinder
+   * transition-donma emsali).
+   *
+   * Phase 91-132 `transition: ... width 220ms, height 220ms` plate
+   * boyutunu ANİME ediyordu. Rail thumb plate'i her render'da
+   * recompute oluyor (candidate variant + aspect-resolve + box
+   * ResizeObserver) → her geçişte 220ms width/height transition
+   * tetikleniyor; React re-render + ResizeObserver transition'ı
+   * sürekli yeniden başlatıyor → plate gerçek plateDims'ine HİÇ
+   * ulaşmıyor, ARA DEĞERDE donuyor (DOM kanıt: plateDims fiber
+   * {179,101}, inline "179px", ama computed/offset 167 → transition
+   * mid-değer; `transition:none` enjekte → ANINDA 179). 9:16 rail
+   * thumb'da plate kartın %39'u kalmasının (kullanıcı "küçük +
+   * boş alan + sağdan kesik") asıl kalan kaynağı buydu. Middle
+   * panel'de aspect nadiren değişince görünmüyordu (orada da
+   * aspect değişince aynı donma).
+   *
+   * Plate boyutu GÖRSEL SURFACE'in kendisi — composition +
+   * navigator viewfinder + clip + Preview=Export HEPSİ plateDims'e
+   * bağlı; ara-değer = bozuk render (§11.0). Animate EDİLEMEZ
+   * (Phase 129'da `.k-studio__pad-viewfinder` transition'ı aynı
+   * sebeple tamamen kaldırılmıştı — aynı disiplin). `background`
+   * transition KORUNDU (scene/glass yumuşak geçişi; boyut değil
+   * — donma yaratmaz). */
+  transition: background 320ms ease;
   overflow: hidden;
   /* Plate kendi içinde cascade taşır; cascade plate'in merkezinde.
    *
@@ -914,6 +939,38 @@
 .k-studio__stage-inner {
   position: relative;
   z-index: 1;
+  /* Phase 133 — flex-shrink:0 (KÖK NEDEN, canlı browser + pixel
+   * ölçümüyle KANITLANDI).
+   *
+   * `.k-studio__stage-plate` `display:flex; flex-direction:column;
+   * align-items:center; justify-content:center`. stage-inner
+   * flex-item, inline `width: grp.bboxW` (BBOX-TIGHT, Phase 111) +
+   * `transform: scale(cascadeScale)`. transform DOM layout box'ı
+   * DEĞİŞTİRMEZ → flex layout `width:bboxW`'i (örn. 532px) görür.
+   * MID'de plate geniş (901) → bboxW(532) < plate → shrink YOK.
+   * RAIL thumb'da plate küçük (179) → bboxW(532) >> plate →
+   * flex-shrink:1 (default) stage-inner'ı plate'e SIKIŞTIRIYOR
+   * (DOM kanıt: innerMeasW 50.58 ≠ 532×scale 150.6 → effective
+   * width ~178 = plate'e sığdırılmış). Composition koordinatları
+   * 532-uzayında 0-origin normalize ama box 178'e sıkışınca
+   * scale yanlış referansla uygulanıyor → composition stage-inner
+   * içinde %28 sağa kayık + plate dışına taşıp clip (kullanıcı
+   * "sağdan kesik" şikayetinin KALAN kök nedeni; MID'de plate
+   * büyük olduğu için görünmüyordu).
+   *
+   * Fix: flex-shrink:0 + min-width:0 → stage-inner gerçek bboxW
+   * box'ını KORUR (flex sıkıştıramaz). transform:scale görsel
+   * ölçek; plate `overflow:hidden` taşmayı zaten yönetir (Phase
+   * 125 zoom-inspection tasarımı — composition plate dışına
+   * taşabilir, görsel kırpılır, geometri doğru). MID DEĞİŞMEZ
+   * (orada zaten shrink yoktu — regression yok); rail'de
+   * composition plate-merkezli olur (compCxOffsetFrac 0.28→~0,
+   * clip yok). Phase 111 BBOX-TIGHT + CSS plate-center mantığı
+   * artık her plate boyutunda tutarlı (§11.0 Preview = Export =
+   * Rail-thumb; Stage + export aynı compositionGroup → divergence
+   * YOK). */
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 /* Slot wrap + ring (mockup mode device cascade) */

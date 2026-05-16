@@ -27154,6 +27154,270 @@ kullanıcı kararıyla ayrı tur.
 
 ---
 
+## Phase 131-132 — revert notu
+
+Phase 131 (zoom reset icon button — canonical DEFAULT_PREVIEW_ZOOM)
+KOD olarak commit `fcb2663`'te canlıdır (Shell DEFAULT_PREVIEW_ZOOM
+sabiti + PresetRail reset button + studio.css `.k-studio__zoom-reset`).
+Phase 132 (resolvePlateBox ilk denemesi) `9f2b5f2`'de yapıldı ama
+yetersiz kaldı (StageScenePreview'de PREVIEW_BASE+scale modeli
+kalmıştı, kullanıcı "bir sürü yeri bozdun" dedi) → `8783b32` ile
+**revert** edildi. Phase 131 dokümantasyon entry'si Phase 132 ile
+aynı commit'te yazıldığı için revert onu da geri çekti; Phase 131
+zoom-reset DAVRANIŞI fcb2663'te çalışır durumda kalır (regression
+yok). Phase 133 doğru yapısal çözümü temiz `fcb2663` baz alarak
+sıfırdan kurar.
+
+---
+
+## Phase 133 — Rail/zoom framing: 3-katmanlı kök neden (PREVIEW_BASE scaleWrap + width-transition + flex-shrink) + tek shared resolvePlateBox + boxW/boxH prop + rotated-AABB
+
+Kullanıcı hipotezi: sorun yalnız geometry değil, aynı zamanda
+**visibility/clipping/overflow** — middle panelde içerik var, rail
+thumb / zoom panelde eksik/kesik hissediliyor; "orada veri var ama
+bir katman gizliyor". 16:9 tolere ediliyor, 9:16'da dramatik. Phase
+132 yaklaşımı doğru varsayılmadı; temiz `fcb2663` baz alınarak
+sıfırdan, **diagnose-first** (kod + canlı browser pixel ölçümü)
+ele alındı.
+
+### Kök neden — 3 ayrı katman (canlı browser + DOM/pixel KANITI)
+
+`StageScene` render zinciri (3 yüzey de AYNI component, Phase 117
+single-renderer): `.k-studio__stage` (`overflow:hidden`) →
+`.k-studio__stage-plate` (`overflow:hidden`, inline `width=plateDims`)
+→ `.k-studio__media-pos` (`inset:0`, translate) →
+`.k-studio__stage-inner` (`width=grp.bboxW`, `transform:scale`).
+"Görünüşte tek render path" idi ama **3 ayrı bug birikmişti**:
+
+1. **PREVIEW_BASE 900×506 + scaleWrap + transform:scale (kök).**
+   `StageScenePreview` iki katmanlı sahte boyutlandırma: dış wrapper
+   `width:PREVIEW_BASE_W(900) height:PREVIEW_BASE_H(506)` SABİT
+   16:9-ish + `transform:scale(s)`; içindeki StageScene plate'i
+   aspect-aware `plateDims` ile. İki katman uyumsuz. DOM kanıt
+   (9:16 rail P0): cardW 146, scaleWrap 211 (karttan +65 taşıyor),
+   plate 57 (kartın **%39'u**), `previewWrap overflow:hidden`
+   scaleWrap'i + plate'in scaleWrap-içi konumunu birlikte clip
+   ediyor → "thumb'da küçük görüntü + bol boş alan + sağdan kesik".
+   Middle panel `plateDimensionsFor` viewport-aware (scaleWrap YOK,
+   plate stage'e flex-fill) → composition plate'i PLATE_FILL_FRAC
+   ile dengeli dolduruyor → iki yüzey farklı dış sarmalama.
+
+2. **`.k-studio__stage-plate` `transition: width 220ms, height
+   220ms`.** Plate boyutu ANİME ediliyordu. Rail thumb plate'i her
+   render'da recompute (candidate variant + aspect-resolve + box
+   ResizeObserver) → her geçişte width/height transition tetikleniyor,
+   React re-render + ResizeObserver sürekli yeniden başlatıyor →
+   plate gerçek plateDims'ine HİÇ ulaşmıyor, ARA DEĞERDE donuyor
+   (DOM kanıt: fiber `plateDims {179,101}`, inline "179px", ama
+   computed/offset **167** → `transition:none` enjekte → ANINDA 179).
+   9:16 rail'de plate kartın %39'u kalmasının ASIL kalan kaynağı.
+   Phase 129 `.k-studio__pad-viewfinder` transition-donma bug'ının
+   AYNISI (emsal).
+
+3. **`.k-studio__stage-inner` flex-shrink.** Plate `display:flex;
+   flex-direction:column; align-items:center; justify-content:center`.
+   stage-inner flex-item, inline `width:grp.bboxW(532)` +
+   `transform:scale`. transform DOM layout box'ı DEĞİŞTİRMEZ → flex
+   layout 532px'i görür. MID'de plate geniş (901) → 532 < plate →
+   shrink YOK. Rail'de plate küçük (179) → 532 >> 179 → flex-shrink:1
+   (default) stage-inner'ı plate'e SIKIŞTIRIYOR (DOM kanıt:
+   `innerMeasW 50.58` ≠ 532×scale 150.6 → effective ~178). Composition
+   532-uzayında 0-origin normalize ama box 178'e sıkışınca scale
+   yanlış referansla → composition stage-inner içinde **%28 sağa
+   kayık + plate dışına taşıp clip** (`compCxOffsetFrac 0.28`,
+   `clipped:true`; MID'de plate büyük → görünmüyordu).
+
+### Yapısal çözüm (aspect/layout/container-agnostic)
+
+Kullanıcı "tek shared framing + visibility sistemi, çoklu görünüm;
+future-proof custom resolution" istedi. Middle panel zaten doğru
+(`plateDimensionsFor` viewport-aware → plate flex-fill, composition
+PLATE_FILL_FRAC dengeli). Rail/zoom AYNI modele bağlandı:
+
+- **`cascade-layout.ts` yeni `resolvePlateBox(aspectRatio,
+  containerW, containerH, opts)`** — container-agnostic aspect-locked
+  bbox-fit. Stage `plateDimensionsFor` artık bunu çağırır (davranış
+  BİREBİR — eski manuel availW/availH/cap algoritması bunun özel
+  hâli; viewport-aware + aspect SHARED + cap korunur, regression
+  yok). StageScenePreview de AYNI fonksiyonu kullanır → "görünüşte
+  tek" GERÇEKTEN tek.
+- **StageScenePreview `PREVIEW_BASE + scaleWrap + transform:scale`
+  modeli TAMAMEN KALDIRILDI.** Host `width:100% height:100%
+  overflow:hidden display:flex`; StageScene DOĞRUDAN host'u doldurur
+  (`.k-studio__stage` `flex:1`); plate o box içinde `resolvePlateBox`
+  boyutunda render. Viewfinder plate-rect = `plateDims` (ek scale
+  çarpanı YOK).
+- **StageScenePreview opsiyonel `boxW`/`boxH` prop.** PresetRail
+  zaten kartın px boyutunu hesaplıyor (`railInnerW → cardW/cardHr`,
+  `idealW/plateAspect`). Bu prop geçilir → ResizeObserver `box`
+  state TAMAMEN bypass. Phase 119 `box` init `{167,90}` (16:9-ish)
+  + getBoundingClientRect mount-stale → 9:16 kartta state init'te
+  takılıp `resolvePlateBox(0.5625,167,90)={51,90}` → plate %39
+  bug'ı **kökten** çözülür (deterministik; prop yoksa eski
+  self-measure fallback — geriye uyum).
+- **`compositionGroup` ROTATED-AABB bbox.** Phase 111-132 bbox
+  layout-bbox (rotation yok sayılıyordu) idi; slot CSS
+  `transform:rotate(r)` (item-center) ile cascade -6°/-12° kartları
+  görsel olarak layout-bbox dışına taşıyordu → stage-inner
+  layout-bbox-merkezli, görsel değil (MID'de ~%1 göz ardı, rail
+  küçük plate'de orantısal büyük). Phase 133: bbox = her item'ın
+  `r` ile item-merkezi etrafında döndürülmüş 4 köşesinin gerçek
+  min/max'ı (görsel sınır). slot render DEĞİŞMEZ (x/y/w/h/r aynı;
+  CSS rotate item-center — görsel parity korunur). r=0'da
+  rotated-AABB = layout-bbox (regression yok). Stage + Shell export
+  AYNI `compositionGroup` → export offset de rotated-AABB
+  (Preview = Export Truth §11.0; divergence YOK).
+- **`.k-studio__stage-plate` `transition: width/height`
+  KALDIRILDI**, `background 320ms` korundu (scene/glass yumuşak
+  geçişi — boyut değil, donma yaratmaz). Plate boyutu görsel
+  surface'in kendisi; ara-değer = bozuk render (Phase 129
+  viewfinder-transition emsali).
+- **`.k-studio__stage-inner` `flex-shrink:0; min-width:0`** —
+  stage-inner gerçek `grp.bboxW` box'ını KORUR (flex sıkıştıramaz).
+  transform:scale görsel ölçek; plate `overflow:hidden` taşmayı
+  zaten yönetir (Phase 125 zoom-inspection). MID değişmez (orada
+  shrink yoktu); rail'de composition plate-merkezli (offset 0,
+  clip yok).
+
+### Browser görsel + pixel doğrulama (canlı, fresh build)
+
+3 fix kümülatif. Her fix sonrası dev clean restart + DOM/pixel
+ölçümü + görsel screenshot (`getBoundingClientRect` extension-stale
+emsali nedeniyle inline style + fiber `memoizedProps` +
+`data-cascade-scale` + screenshot triangülasyonu):
+
+| Metrik | Phase 132-öncesi (9:16, en kötü) | Phase 133 (16:9 + 9:16) |
+|---|---|---|
+| `plateFracOfCardW` | **0.39** (kartın %39'u) | **1.0** (kartı birebir doldurur) |
+| `compCxOffsetFrac` (görsel center) | ~0.29 (rail) | **0** (MID = rail) |
+| `compFracW` (içerik/plate) | yüzeyler ayrışıyor | **0.84** (4 yüzey BİREBİR) |
+| `clipped` | **true** | **false** (clip yok) |
+
+- **16:9 Mockup + Frame:** MID = P0 = P4 = P3 = ZOOM birebir
+  (`plateFracOfCardW:1, compFracW:0.84, compCxOffsetFrac:0,
+  clipped:false`). Görsel: tüm rail thumb'lar composition'ı plate
+  içinde tam + ortalı; Phase-öncesi "sağdan kesik/minik/boş alan"
+  TAMAMEN kalktı.
+- **9:16 (asıl kritik, Phase 132-öncesi %39):** plate kartı
+  birebir dolduruyor (`pa 0.562, cardPA 0.562`), composition
+  plate-merkezli, content/plate oranı 4 yüzeyde aynı (0.84), clip
+  yok. Görsel: middle/zoom/preset thumb 9:16 portrait plate AYNI
+  composition + framing.
+- **Variant'lar (Cascade/Centered/Tilted):** 9:16'da her variant'ta
+  MID = P0 = P1 = P2 = ZOOM birebir; variant değişimi tüm yüzeylerde
+  tutarlı (görsel screenshot ile Centered/Tilted variant farkı
+  doğrulandı).
+
+Kullanıcının başarı ölçütü ("aynı içerik uzayı; birebir crop/fit/
+aspect/visibility; aynı sistemden türemiş hissi") **9:16 dahil tam
+sağlandı**.
+
+### Future-proof
+
+`resolvePlateBox` aspect-agnostic (ratio param) + container-agnostic
+(containerW/H param) + layout-agnostic (`compositionGroup` ayrı
+katman). Custom resolution / serbest aspect / farklı canvas size →
+yeni aspect `FRAME_ASPECT_CONFIG`'e eklenir, 3 yüzey AYNI fonksiyondan
+otomatik tutarlı (yeni yüzey de container box'ını geçirip aynı
+zincire girer). `boxW/boxH` prop deterministik (ölçüm-stale
+bağımsız). 16:9'a özel yama YOK.
+
+### Final cevap (kullanıcının 12 maddesi)
+
+1. **math mı clipping mi:** İKİSİ BİRDEN — (a) math: scaleWrap+
+   plateDims uyumsuzluğu + rotated-AABB eksikliği + flex-shrink
+   yanlış scale referansı; (b) visibility: 3 iç içe `overflow:hidden`
+   (previewWrap + stageRoot + plate) + transition-donma. Kullanıcı
+   hipotezi doğru: içerik render ediliyordu, katmanlar gizliyordu.
+2. **hangi wrapper:** StageScenePreview scaleWrap (PREVIEW_BASE×scale)
+   + `.k-studio__stage-plate` width-transition + `.k-studio__stage-
+   inner` flex-shrink. Üçü birlikte.
+3. **içerik render edilip gizleniyor muydu:** EVET — DOM kanıt:
+   slot'lar/composition render ediliyordu (compFracW doğru), plate
+   matematik clip etmiyordu (`slotClipped:false` plate-level), ama
+   scaleWrap-vs-plate boyut farkı + transition-donma + flex-shrink
+   composition'ı kart içinde minik/kayık/clipli yapıyordu.
+4. **middle vs rail neden ayrışıyordu:** middle `plateDimensionsFor`
+   viewport-aware plate flex-fill (scaleWrap yok); rail
+   `PREVIEW_BASE×scale` sahte sarmalama + küçük plate'de flex-shrink
+   + transition-donma. Aynı StageScene, farklı dış boyutlandırma.
+5. **zoom panel neden aynı hata:** zoom panel = rail-head
+   `StageScenePreview` (rail thumb ile AYNI kod yolu) → aynı 3
+   katman bug'ı.
+6. **gerçekten tek render path mı:** Phase 117'den beri "görünüşte
+   tek" (aynı StageScene component) ama "pratikte farklı" (plateDims
+   3 farklı kaynaktan + scaleWrap). Phase 133'te GERÇEKTEN tek:
+   plateDims tek `resolvePlateBox`, scaleWrap kaldırıldı, boxW/boxH
+   deterministik.
+7. **hangi shared sistem:** `resolvePlateBox` (container-agnostic
+   aspect-locked fit) + `compositionGroup` rotated-AABB (görsel
+   bbox) — middle/rail/zoom + export tek kaynak (§11.0).
+8. **hangi dosyalar:** `cascade-layout.ts` (resolvePlateBox +
+   rotated-AABB), `MockupStudioStage.tsx` (plateDimensionsFor →
+   resolvePlateBox), `StageScenePreview.tsx` (scaleWrap kaldır +
+   boxW/boxH prop), `MockupStudioPresetRail.tsx` (boxW/boxH geçir),
+   `studio.css` (plate width-transition kaldır + stage-inner
+   flex-shrink:0).
+9. **hangi aspect:** 16:9 + 9:16 (asıl kritik). pa/cardPA/
+   plateFracOfCardW/compFracW/compCxOffsetFrac/clipped ölçüldü;
+   ikisinde de MID=rail=zoom birebir.
+10. **hangi layout:** Cascade, Centered, Tilted (9:16'da
+    variant-by-variant DOM + görsel; hepsi birebir).
+11. **browser görsel doğrulama:** 16:9 Mockup screenshot (rail
+    thumb'lar tam+ortalı), 9:16 Cascade screenshot (plate kartı
+    dolu), 9:16 Centered screenshot (variant farkı + plate dolu);
+    DOM pixel triangülasyonu (stale-free).
+12. **custom resolution future-proof:** resolvePlateBox
+    aspect/container/layout-agnostic; boxW/boxH deterministik;
+    yeni aspect tek kaynaktan tutarlı; 16:9'a özel yama yok.
+
+### Quality gates
+
+- `tsc --noEmit`: clean
+- `vitest tests/unit/{mockup,selection,selections,products,
+  listings}`: **739 passed (60 files)**, zero regression
+- `next build`: ✓ Compiled successfully
+- Browser: 16:9 + 9:16 × Cascade/Centered/Tilted, 3 yüzey birebir
+  + clip-yok (canlı pixel + görsel KANITLANDI)
+
+### Değişmeyenler (Phase 133)
+
+- **Review freeze (Madde Z) korunur.** Schema migration yok.
+  WorkflowRun eklenmez.
+- **Yeni big abstraction yok.** `resolvePlateBox` tek pure
+  fonksiyon (container-agnostic genelleştirme); `compositionGroup`
+  rotated-AABB aynı fonksiyon içinde (bbox hesabı 4-köşe rotate);
+  `boxW/boxH` opsiyonel prop. Yeni component/route/service/state
+  YOK.
+- **Canonical mediaPosition state + shared resolver
+  (`media-position.ts`) + export pipeline + composition translate
+  + candidate preset thumb mantığı DOKUNULMADI** — yalnız framing/
+  visibility (plateDims kaynağı + scaleWrap kaldır + transition +
+  flex-shrink + bbox görsel).
+- **Phase 125 zoom (plate sabit, composition scale) + Phase 126
+  global media-position + Phase 128 viewfinder GROUP + Phase 130
+  zoom semantiği + Phase 131 zoom-reset (fcb2663 kodu) +
+  Phase 117 single-renderer baseline'ları intakt.**
+- **slot render geometrisi (x/y/w/h/r) DEĞİŞMEDİ** — CSS rotate
+  item-center; görsel parity korunur (yalnız bbox/normalize görsel
+  referansa geçti). Stage + export aynı compositionGroup →
+  Preview = Export Truth §11.0 korunur.
+- Kivasy v4 tokens + Studio `--ks-*` namespace bozulmadı.
+
+### Bundan sonra en doğru sonraki adım
+
+Phase 133 ile rail/zoom framing+visibility yapısal olarak çözüldü:
+middle = rail = zoom 3 yüzey tek `resolvePlateBox` + rotated-AABB
+`compositionGroup` → birebir aynı içerik uzayı/crop/fit/aspect/
+visibility (9:16 plate %39→%100, clip yok, "aynı sistemden
+türemiş"). Sıradaki adım **Phase 134 candidate**: residual
+rotation görsel offset fine-tune (MID'de ~0 ama matematiksel
+mükemmellik için per-item rotated görsel-center) veya per-slot
+media-position (advanced mod). Full Remotion migration kullanıcı
+kararıyla ayrı tur.
+
+---
+
 ## Marka Kullanımı
 
 - Public-facing ürün adı **Kivasy**'dir.
