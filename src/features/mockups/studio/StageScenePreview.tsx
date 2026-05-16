@@ -250,10 +250,11 @@ export function StageScenePreview({
       clientY,
       { left: r.left, top: r.top, width: r.width, height: r.height },
       shift,
-      prevPosRef.current,
+      { x: -prevPosRef.current.x, y: -prevPosRef.current.y },
     );
-    prevPosRef.current = next;
-    onChangeMediaPosition(next);
+    const canonicalNext = { x: -next.x, y: -next.y };
+    prevPosRef.current = canonicalNext;
+    onChangeMediaPosition(canonicalNext);
   };
 
   const onPadPointerDown = (
@@ -412,14 +413,14 @@ export function StageScenePreview({
             const vfPct = vfFrac * 100;
             /* Serbest alan oranı: viewfinder GROUP pad içinde ne
              *  kadar gezinebilir (kenardan taşmaz). vfFrac ≤ 0.78
-             *  → travel daima > 0. mediaPosition izdüşümü: media +x
-             *  → viewfinder GROUP +x (Shots.so `.drag-handle` media-
-             *  position anchor: handle/group media yönünde hareket;
-             *  kullanıcı "görünür pencereyi navigator alanı üzerinde
-             *  taşıyorum"). */
+             *  → travel daima > 0. Navigator bg artık neutral full-
+             *  extent olduğu için viewfinder middle-stage'de GÖRÜLEN
+             *  crop'u temsil eder: media +x ile içerik sağa kayarsa
+             *  görünür pencere full-extent üstünde sola kayar. Yani
+             *  viewfinder = canonical mediaPosition'ın TERS izdüşümü. */
             const travel = (1 - vfFrac) * 50;
-            const vfCx = 50 + mediaPosition.x * travel;
-            const vfCy = 50 + mediaPosition.y * travel;
+            const vfCx = 50 - mediaPosition.x * travel;
+            const vfCy = 50 - mediaPosition.y * travel;
             return (
               <>
                 {/* Dim: viewfinder GROUP DIŞINI karart (group ile
