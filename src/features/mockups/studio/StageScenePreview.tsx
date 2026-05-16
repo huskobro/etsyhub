@@ -52,6 +52,7 @@ import { StageScene } from "./MockupStudioStage";
 import {
   cascadeLayoutFor,
   compositionGroup,
+  resolvePlateBox,
 } from "./cascade-layout";
 import {
   MEDIA_POSITION_NEUTRAL,
@@ -71,15 +72,33 @@ import type {
   StudioSlotMeta,
 } from "./types";
 
-/* Thumb iç sahne "büyük ekran" koordinat uzayında (StageScene'in
- * gerçek plate/cascade boyutları), sonra CSS transform: scale ile
- * thumb kutusuna küçültülür → orta panelin BİREBİR minyatürü
- * (aynı plate/scene/cascade chrome, ölçek farkı). Sabit referans
- * boyut: Stage'in tipik 16:9-ish plate alanına yakın bir base;
- * gerçek plate aspect StageScene plateDims'ten gelir, scale onu
- * thumb kutusuna oturtur. */
-const PREVIEW_BASE_W = 900;
-const PREVIEW_BASE_H = 506;
+/* Phase 132 — Tek shared framing model (KÖK NEDEN düzeltmesi).
+ *
+ * Phase 117-131 BUG: StageScenePreview StageScene'i SABİT
+ * PREVIEW_BASE (900×506) boyutta render edip üstüne wrapper
+ * `transform: scale(min(boxW/plateW, boxH/plateH))` uyguluyordu;
+ * `plateDims` da PREVIEW_BASE-türevi (`{maxW:900*0.85,
+ * maxH:506*0.85}`) idi. Middle panel ise `plateDimensionsFor`
+ * (viewport-türevi) plateDims kullanıyordu. `compositionGroup`'a
+ * giren `plateDims` MUTLAK boyutu iki yüzeyde farklı (+ Preview'da
+ * ekstra wrapper scale) → `grp.scale = min(plateW×F/bboxW,
+ * plateH×F/bboxH)` farklı → composition'ın plate-içi oranı
+ * (compFracOfPlate) ayrışıyor (9:16'da %40, kullanıcı: "çok
+ * bariz").
+ *
+ * Phase 132 fix: PREVIEW_BASE + wrapper-scale modeli KALDIRILDI.
+ * StageScenePreview artık Middle ile AYNI `resolvePlateBox`
+ * (cascade-layout.ts shared helper) çağrısını kullanır —
+ * container = measured card/pad box. StageScene plate'i doğrudan
+ * bu plateDims'e fit eder (Middle'da olduğu gibi); ayrı wrapper
+ * scale YOK. 3 yüzey de:
+ *   container → resolvePlateBox(aspect, cW, cH) → plateDims
+ *   → compositionGroup → scale + bbox
+ * AYNI zincir. frameAspect SHARED state olduğundan
+ * compFracOfPlate plate MUTLAK boyutundan BAĞIMSIZ birebir
+ * (aspect-locked). "Tek görsel mantık, çoklu görünüm."
+ * future-proof: aspectRatio + container parametre — custom
+ * resolution geldiğinde sistem yeniden ayrışmaz. */
 
 export interface StageScenePreviewProps {
   /** Candidate layout variant (rail preset). Stage selected
@@ -153,66 +172,29 @@ export function StageScenePreview({
   }, []);
   const boxW = box.w;
   const boxH = box.h;
-  /* Phase 118 — Plate dims ASPECT-AWARE (reactive to frameAspect).
+  /* Phase 132 — plateDims = Middle ile AYNI `resolvePlateBox`
+   * (cascade-layout.ts shared helper). Container = measured
+   * card/pad box (boxW × boxH); Stage'de container = viewport-
+   * türevi stageW/stageH. AYNI aspect-locked bbox-fit algoritması,
+   * AYNI fillW/fillH (rail thumb için cap YOK — küçük container'da
+   * dev plate riski yok). frameAspect SHARED state (Stage ile aynı
+   * kaynak — Shell). Sonuç: 3 yüzey de
+   *   container → resolvePlateBox(aspect, cW, cH) → plateDims
+   *   → compositionGroup → scale + bbox
+   * AYNI zincir; compFracOfPlate plate MUTLAK boyutundan BAĞIMSIZ
+   * birebir (aspect-locked). Eski PREVIEW_BASE-türevi plate +
+   * wrapper-scale modeli KALDIRILDI (ayrışma kök nedeni).
    *
-   * Phase 117 BUG: plateDims `{ w: PREVIEW_BASE_W*0.85, h:
-   * PREVIEW_BASE_H*0.85 }` SABİT 16:9-ish oran idi → operatör
-   * Frame mode'da aspect (9:16 / 1:1 / 4:5 / 3:4) değiştirdiğinde
-   * `frameAspect` prop reaktif akıyordu (data-frame-aspect doğru
-   * güncelleniyordu) AMA plate boyutu hiç recompute edilmiyordu
-   * → rail thumb aspect STALE (orta panel 9:16 portrait, rail
-   * thumb hâlâ 16:9 landscape). Kullanıcı bug "right rail aspect
-   * ratio değişince güncellenmiyor" tam bu.
-   *
-   * Phase 118 fix: Stage `plateDimensionsFor`'un aspect-locked
-   * bbox-fit mantığını PREVIEW_BASE ölçeğinde uygula. ratio =
-   * FRAME_ASPECT_CONFIG[frameAspect].ratio (w/h, Shell SHARED
-   * state — Stage ile AYNI kaynak). Plate PREVIEW_BASE'in ~%85'i
-   * (Stage avail %86-90 paritesi); aspect-locked: hem maxW hem
-   * maxH'a sığ, oran SABİT. Sonuç: aspect değişince rail thumb
-   * plate de orta panelle AYNI oranda recompute (Preview = Export
-   * = Rail-thumb §11.0; canlı bağlı çok-ekran). */
+   * fillW/fillH 1.0: rail kartı Phase 120'den beri plate ile
+   * aspect-match (MockupStudioPresetRail card aspect = plate
+   * aspect); container'ı edge-to-edge doldur (Middle stage padding
+   * için 0.9/0.86 kullanır — kart zaten plate-aspect, ek padding
+   * gereksiz). overflow:hidden sub-pixel taşmayı kırpar. */
   const ratio = FRAME_ASPECT_CONFIG[frameAspect].ratio; // w/h
-  const maxW = PREVIEW_BASE_W * 0.85;
-  const maxH = PREVIEW_BASE_H * 0.85;
-  const fitByWidth = { w: maxW, h: maxW / ratio };
-  const plateDims =
-    fitByWidth.h <= maxH
-      ? { w: maxW, h: maxW / ratio }
-      : { w: maxH * ratio, h: maxH };
-
-  /* Phase 119 — Preview-first framing (Shots.so parity).
-   *
-   * Phase 117/118 BUG: `scale = Math.min(boxW/PREVIEW_BASE_W,
-   * boxH/PREVIEW_BASE_H)` TÜM 900×506 PREVIEW_BASE canvas'ını
-   * box'a sığdırıyordu. Ama plate canvas'ın yalnız ~%85'i +
-   * portrait aspect'lerde çok daha dar (`maxH*ratio`) → box'ta
-   * plate %80 width / %85 height kaplıyor, çevresinde transparent
-   * stage-padding kalıyor. Kullanıcı "thumb içinde küçük görüntü,
-   * etrafında fazla siyah/boş alan, preview küçük görünüyor"
-   * şikayeti tam bu (chromeless ile stage bg kalktı ama scale
-   * hâlâ tüm canvas'a göre → plate küçük + boş çevre).
-   *
-   * Phase 119 fix: scale'i **plate**'in box'a sığması için hesapla
-   * (full canvas değil). Plate PREVIEW_BASE merkezinde; plateDims
-   * biliniyor. Box'a plate-fit: `min(boxW/plateW, boxH/plateH) ×
-   * FILL`. overflow:hidden çevredeki transparent stage-padding'i
-   * KIRPAR (crop) → preview box'ı doldurur. Tek render path
-   * KORUNUR (aynı StageScene, candidate layout mantığı bozulmaz
-   * — yalnız framing/crop/scale değişir).
-   *
-   * Phase 120 — FILL 0.96 → 1.0. Phase 119'da 0.96 küçük
-   * breathing-room inset bırakıyordu (kart aspect ≠ plate aspect
-   * iken void zaten vardı, inset onu artırıyordu). Phase 120 rail
-   * kartı artık plate ile TRUE aspect-match (MockupStudioPresetRail
-   * previewCardH = railContentW / plateAspect) → kart aspect ≈
-   * plate aspect. FILL=1.0 + aspect-match → plate kartı EDGE-TO-EDGE
-   * doldurur (her iki eksende ~%100): "layout container ile AYNI
-   * boyut, küçük kalmaz" (kullanıcı talebi). overflow:hidden
-   * sub-pixel taşmayı güvenle kırpar. */
-  const PREVIEW_FILL = 1.0;
-  const scale =
-    Math.min(boxW / plateDims.w, boxH / plateDims.h) * PREVIEW_FILL;
+  const plateDims = resolvePlateBox(ratio, boxW, boxH, {
+    fillW: 1.0,
+    fillH: 1.0,
+  });
   /* Phase 129 — Rail-head live pad = navigator/control surface.
    *
    * Phase 128'de viewfinder GROUP doğru hareket etse de arka
@@ -293,10 +275,11 @@ export function StageScenePreview({
       data-layout-variant={layoutVariant}
       data-frame-aspect={frameAspect}
       style={{
-        /* Phase 119 — Kartı %100 doldur (hardcoded box DEĞİL).
-         * Gerçek render boyutu ResizeObserver ile ölçülür → scale
-         * exact + responsive-safe. overflow:hidden çevre transparent
-         * stage-padding'i crop eder (preview-first Shots.so). */
+        /* Phase 132 — Dış div = measured card/pad CONTAINER kutusu
+         * (ResizeObserver: boxW × boxH). resolvePlateBox bu
+         * container'a aspect-fit edilmiş plateDims döndürür (Middle
+         * ile AYNI helper). overflow:hidden sub-pixel taşmayı
+         * kırpar. */
         width: "100%",
         height: "100%",
         overflow: "hidden",
@@ -306,19 +289,20 @@ export function StageScenePreview({
     >
       <div
         style={{
+          /* Phase 132 — StageScene host'u measured box'ı doldurur
+           * (PREVIEW_BASE + wrapper-scale modeli KALDIRILDI). Middle
+           * panel `.k-studio__stage` `flex:1` ile stage alanını
+           * doldurup plate'i merkeze koyar; burada da AYNI: wrapper
+           * box'ı doldurur, StageScene plate'i `plateDims`
+           * (resolvePlateBox ile box'a aspect-fit edilmiş, Middle
+           * ile AYNI semantik) boyutunda merkezde render eder.
+           * Ayrı wrapper scale YOK → compositionGroup'a giren
+           * plateDims = gerçek render plate (Middle ile aynı zincir
+           * → compFracOfPlate birebir). StageScene root flex:1 için
+           * bu wrapper flex container. chromeless: stage bg/
+           * dot-grid/scene/floor render edilmez. */
           position: "absolute",
-          left: "50%",
-          top: "50%",
-          width: PREVIEW_BASE_W,
-          height: PREVIEW_BASE_H,
-          transform: `translate(-50%, -50%) scale(${scale})`,
-          transformOrigin: "center center",
-          /* StageScene root `.k-studio__stage` CSS `flex:1` — flex
-           * parent gerekir yoksa height 0 collapse (plate center
-           * kaybolur). Bu wrapper flex container yaparak stage'i
-           * PREVIEW_BASE boyutuna doldurur (Stage'de stage alanı
-           * flex-fill ettiği gibi). chromeless: stage bg/dot-grid/
-           * scene/floor render edilmez — yalnız plate görünür. */
+          inset: 0,
           display: "flex",
         }}
       >
@@ -512,13 +496,16 @@ export function StageScenePreview({
             const vfPct = vfPctW; // legacy data attr (≈ width frac)
             const vfFrac = vfPctW / 100;
             // PLATE-rect: StageScene-plate'in kart içindeki gerçek
-            // px dikdörtgeni (kart-merkezli, scale × plateDims).
-            // Viewfinder/dim bu px-sabit wrapper içinde plate-rel %
-            // → navigator background (StageScene-plate) ile BİREBİR
-            // overlap (ResizeObserver box bağımsız; §11.0 Preview =
-            // Export = Navigator-viewfinder).
-            const plateRectW = scale * plateDims.w;
-            const plateRectH = scale * plateDims.h;
+            // px dikdörtgeni. Phase 132: wrapper-scale KALDIRILDI;
+            // StageScene plate'i doğrudan `plateDims` (resolvePlateBox
+            // ile measured box'a aspect-fit edilmiş, Middle ile AYNI
+            // semantik) boyutunda render edilir → plate-rect =
+            // plateDims (ek scale çarpanı YOK). Viewfinder/dim bu
+            // px-sabit wrapper içinde plate-rel % → navigator
+            // background (StageScene-plate) ile BİREBİR overlap
+            // (§11.0 Preview = Export = Navigator-viewfinder). */
+            const plateRectW = plateDims.w;
+            const plateRectH = plateDims.h;
             return (
               <>
                 {/* Dim: viewfinder GROUP DIŞINI karart (group ile
