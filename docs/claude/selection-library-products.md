@@ -45,16 +45,23 @@
   Mockups primary CTA.
 - **Selection detail (StudioShell):** Designs/Edits/Mockups/
   History tab.
-  - **DesignsTab (Phase 51):** per-tile status badge (selected/
-    rejected/pending) + status filter chip strip + bulk-bar
-    (Promote/Move-to-pending/Reject; `PATCH /items/bulk`) +
-    count caption.
+  - **DesignsTab (Phase 51):** status filter chip strip +
+    bulk-bar (Promote/Move-to-pending/Reject; `PATCH /items/bulk`
+    KOD-DOĞRU — `items/bulk/route.ts` `bulkUpdateStatus`) +
+    count caption. Per-tile status badge (selected/rejected/
+    pending) — filter/state KOD-DOĞRU; tile-level görsel badge
+    render'ı kod-grounding'de net doğrulanamadı (Filmstrip/
+    PreviewCard filter mantığı var, ayrı badge render'ı belirsiz —
+    UI doğrulaması gerekirse browser ile teyit).
   - **Finalize (Phase 51-52):** stage-aware header CTA. Curating/
     Edits + selectedCount>0 → "Finalize selection · N" + "Next ·
-    Apply Mockups". `POST /finalize` → status `ready`. Finalize
-    success → sessionStorage one-shot → `selection-finalize-banner`
-    ("N items finalized · set ready for mockups" + Apply Mockups
-    CTA).
+    Apply Mockups". `POST /finalize` → status `ready`
+    (`state.ts:140-146`). Finalize success → banner
+    `selection-finalize-banner` ("N items finalized · set ready
+    for mockups" + Apply Mockups CTA). **Düzeltme:** banner
+    sessionStorage one-shot DEĞİL — local state `bannerDismissed`
+    (`SelectionDetailClient.tsx:431`; refresh banner'ı sıfırlar,
+    one-shot persist yok).
   - **Apply Mockups handoff:** finalized → header primary
     "Open in Studio" → `/selection/sets/[id]/mockup/studio`
     (Phase 78 canonical).
@@ -68,8 +75,38 @@
 
 ## 3. Invariants (değişmez — Madde Z üstü en kritik boundary)
 
-- **Library ≠ Selections ≠ Products — karıştırmak YASAK.** Sınır
-  ihlali riskleri (CLAUDE.md):
+> **Enforcement-tier ayrımı (kod-grounding 2026-05-17):** Bu
+> doc'taki invariant'lar iki sınıf — karıştırma:
+>
+> **KOD-ENFORCED** (runtime mekanizma var, dosya:satır):
+> - SelectionSet finalize immutability — `assertSetMutable`
+>   (`services/selection/state.ts`) tüm item mutation'ında;
+>   ready/archived → `SetReadOnlyError`.
+> - Operator-only kept downstream gate — `reviewStatus="APPROVED"
+>   ∧ reviewStatusSource="USER"` Prisma WHERE filter
+>   (`kept.ts:783-784`, `review/queue/route.ts:302,611`).
+> - İki decision katmanı ayrı — `SelectionItem.status` vs
+>   `GeneratedDesign.reviewStatus`+`reviewStatusSource` schema-distinct.
+> - Finalize gate selected≥1 — `assertCanFinalize` (`state.ts:87-92`)
+>   + UI gate.
+> - Lineage resolver — `selection-lineage.ts:30-62` schema-zero
+>   dual-path (`mjOrigin.batchIds` / `kind:"variation-batch"`).
+>
+> **POLICY / KONVANSİYON** (kod enforce ETMEZ; UI ayrımı +
+> code-review disiplini):
+> - "Library ≠ Selections ≠ Products karıştırmak YASAK" — route
+>   guard/middleware/service validation **YOK**; yalnız endpoint'ler
+>   fiziksel ayrı + boundary discipline comment'ler (`Products
+>   IndexClient.tsx:40-44`, `AddToSelectionModal.tsx:11`). Refactor/
+>   yeni feature'da sınır erode olabilir → iş durdurulup gözden
+>   geçirilir (ürün kuralı, runtime değil).
+> - "Products'a variation generate / Library set CRUD eklenmez" —
+>   kod path'i yok ama engelleyen guard da yok (konvansiyon).
+> - "State akışı tek yönlü" — endpoint sırası tasarımı net + geri-
+>   yazım kodu yok; schema-level cycle guard yok (tasarım kuralı).
+
+- **Library ≠ Selections ≠ Products — karıştırmak YASAK
+  (POLICY).** Sınır ihlali riskleri (CLAUDE.md):
   - "Selection" denilip Library grid çizilirse → ihlal
   - Products'a variation generate eklenirse → ihlal
   - Library'de set CRUD yapılırsa → ihlal

@@ -43,20 +43,33 @@ worker auto-start (`instrumentation.ts`).
 
 ## 3. Invariants (değişmez — Madde Z kilitli sözleşmeler)
 
-- **Operator truth vs AI advisory:** `reviewStatus` = operatör
-  damgası (worker ASLA dokunmaz); `reviewSuggestedStatus` = AI
-  advisory (worker yazar; operatörü bağlamaz).
-- **Score modeli:** `finalScore = clamp(0,100,100−Σ weight(failed))`.
-  Blocker auto-zero YOK (admin `weight=100` ile sağlanır);
-  "hidden auto-zero" geri eklenemez.
-- **Downstream gate:** `reviewStatus=APPROVED ∧ reviewStatusSource=
-  USER` olmadan hiçbir pipeline (Library→Selection→Product→Etsy)
-  bir design'ı "kept" saymaz. AI advisory gate geçemez.
-- **Scope count invariant:** `total = kept + rejected + undecided`;
-  `undecided = reviewStatusSource != USER` (ghost-free axis).
-- **UI semantics kilitli:** topbar hiyerarşi, batch>reference
-  scope priority, klavye sözleşmesi (`K/D/U/←/→/,/.`), progress
-  bar, lifecycle gösterimi.
+> **Enforcement-tier (kod-grounding 2026-05-17):** Aşağıdaki
+> çekirdek sözleşmelerin tamamı **KOD-ENFORCED** doğrulandı —
+> doc %100 koda dayalı (tarihsel niyet değil). UI-layout maddesi
+> tek POLICY istisnası (component layer; aşağıda işaretli).
+
+- **Operator truth vs AI advisory (KOD-ENFORCED):** `reviewStatus`
+  = operatör damgası — worker ASLA dokunmaz (`review-design.
+  worker.ts:343,571` yalnız `reviewSuggestedStatus` yazar;
+  `sticky.ts:181-191` USER-source iken `reviewStatus` update'i
+  bloklar). `reviewSuggestedStatus` = AI advisory.
+- **Score modeli (KOD-ENFORCED):** `finalScore = clamp(0,100,
+  100−Σ weight(failed))` (`decision.ts:204-207` birebir; blocker
+  severity yalnız UI presentation, score'a girmez — eski
+  blockerForce kaldırıldı). "hidden auto-zero" geri eklenemez.
+- **Downstream gate (KOD-ENFORCED):** `reviewStatus=APPROVED ∧
+  reviewStatusSource=USER` SQL filter (`queue/route.ts:302`,
+  `kept.ts:783-784`) olmadan hiçbir pipeline "kept" saymaz. AI
+  advisory gate geçemez.
+- **Scope count invariant (KOD-ENFORCED):** `total = kept +
+  rejected + undecided`; `undecided = reviewStatusSource != USER`
+  (`queue/route.ts:293-305` count query'leri bu axis; ghost-free).
+- **UI semantics (POLICY — component layer):** topbar hiyerarşi,
+  batch>reference scope priority, klavye sözleşmesi
+  (`K/D/U/←/→/,/.`), progress bar, lifecycle gösterimi —
+  `REVIEW_USER_GUIDE.md` + component'lerde; structural lock
+  runtime-enforced DEĞİL (component değiştirilebilir; Madde Z
+  3-koşul kuralı + code-review disiplini korur).
 - **Automation contract kilitli:** 3 toggle + 7-kod `not_queued`
   reason taxonomy (`pending_mapping`/`ignored`/`auto_enqueue_
   disabled`/`discovery_not_run`/`design_pending_worker`/`legacy`/

@@ -88,17 +88,29 @@ Etsy yalnız burada (Selection/Library'de değil).
   nullable; `deletedAt` soft-delete). Signed URL 5dk TTL geçici;
   kalıcı kaynak `storageKey`.
 - **Frame compositor (`frame-compositor.ts`) canonical export
-  motoru** — preview render sözleşmesini birebir izler; zoom
-  export'ta YOK (composition scale=1); `resolveMediaOffsetPx`
-  canonical+export aynı (§11.0). ProductType-specific item shape
-  (sticker/wall_art/phone/bookmark/garment/garment-hooded) +
-  item chrome (rounded+outline+shadow+tilt) + plate chrome
-  (rounded+border+shadow+stage-padding) + plate-only Lens Blur.
-  Detay → `docs/claude/mockup-studio-framing.md`.
+  motoru** (KOD-DOĞRU): `resolveMediaOffsetPx` canonical+export
+  AYNI fonksiyon (`frame-compositor.ts:34,468` — §11.0 parity);
+  plate-only Lens Blur type-enforced (`FrameLensBlurTarget
+  "plate"|"all"`, satır 127); ProductType-specific item shape
+  (`FrameDeviceShape` enum sticker/wall_art/phone/bookmark/
+  garment/garment-hooded, satır 80-119). **"zoom export'ta YOK"
+  = anlatımsal/provable-değil**: `FrameCompositorInput`'ta zoom
+  parametresi hiç yok (yapısal olarak zoom giremiyor) +
+  Phase 111 composition-group lock (satır 413-434) parity'yi
+  sağlıyor; "scale=1" enforce eden explicit kod değil, zoom'un
+  hiç var olmaması. Detay → `docs/claude/mockup-studio-
+  framing.md` + `mockup-studio-zoom-navigator.md` §5.
 - Digital-only listing — physical/shipping/made-to-order
-  alanları YASAK (CLAUDE.md Madde D + Listing Builder scope).
-- Listing readiness checklist zorunlu (title/13 tag/desc/
-  resolution/AI review/trademark/export/Etsy zorunlu alan).
+  alanları YASAK (KOD-DOĞRU: `submit.service.ts:175-178`
+  hardcoded `isDigital:true`, `whenMade:"made_to_order"`,
+  `whoMade:"i_did"` V1 lock).
+- **Listing readiness checklist = SOFT-WARN (POLICY, submit'i
+  BLOKLAMAZ):** submit pipeline yalnız **title/description/price**
+  zorunlu blok eder (`submit.service.ts:187-202`); readiness
+  checks (13 tag/resolution/AI review/trademark/export/Etsy
+  zorunlu alan) operatöre **uyarı** gösterir ama submit'i
+  durdurmaz (K3 ürün kuralı; runtime hard-gate değil). Doc'taki
+  "zorunlu" = ürün kuralı; kod-enforced blok yalnız 3 alan.
 
 ## 4. Relevant files / Ownership
 

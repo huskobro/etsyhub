@@ -76,13 +76,21 @@ stage'inde. Batch detail variation üretir, mockup/listing
 - `Batch.id` + legacy `Job.metadata.batchId` **aynı cuid uzayı**;
   unified resolver (`getBatchSummary` AI önce dener, MJ fallback).
   Yeni pipeline batch.id'yi Job.metadata'ya yazar.
-- **`deriveBatchStage` 5 semantik ayrı değer** döndürür;
-  `BatchStageCTA` yalnız render eder (re-derivation YOK). Tek
-  primary CTA per stage.
-- **Decision gate (CLAUDE.md Madde H):** `undecided > 0` iken
-  selection creation tetiklenemez (`kept-no-selection` yalnız
-  `undecided=0 ∧ kept>0 ∧ set yok`). Gate hem görünürlük hem
-  davranış (CTA disabled).
+- **`deriveBatchStage` 5 semantik ayrı değer** döndürür
+  (`BatchDetailClient.tsx:123-142` — **client component**, service
+  değil); `BatchStageCTA` yalnız render eder (re-derivation YOK).
+  Tek primary CTA per stage (KOD-DOĞRU).
+- **Decision gate (CLAUDE.md Madde H) = VISIBILITY gate (POLICY,
+  server enforcement YOK):** `deriveBatchStage` (BatchDetailClient.
+  tsx:123-142, **client component** — service değil) `kept-no-
+  selection`'ı yalnız `undecided=0 ∧ kept>0 ∧ set yok` koşulunda
+  döndürür → operatör doğru CTA'yı görür + `review-pending`
+  caption "X undecided · decide before next stage". **Ama POST
+  `/api/batches/[id]/create-selection` undecided check YAPMAZ**
+  (`createSelectionFromAiBatch` yalnız APPROVED+USER filter eder,
+  undecided'ı yok sayar — operator-trust). KeptNoSelectionCTA
+  yalnız `create.isPending` ile disabled (undecided>0 ile değil).
+  Yani gate UI-stage görünürlük; server-side hard enforcement yok.
 - **Multi-reference launch:** her `BatchItem` ayrı
   `createVariationJobs`, tümü aynı `Batch.id`; partial-failure
   `perReference` array; ≥1 success → QUEUED (idempotent
@@ -105,11 +113,14 @@ stage'inde. Batch detail variation üretir, mockup/listing
 
 ## 4. Relevant files / Ownership
 
-- `src/features/batches/` — BatchesIndexClient, BatchDetailClient,
-  BatchQueuePanel (compose mode), BatchComposeClient
+- `src/features/batches/` — BatchesIndexClient, **BatchDetailClient
+  (`deriveBatchStage` 5-stage burada — client-side)**, BatchQueuePanel
+  (compose mode), BatchComposeClient
 - `src/features/batches/server/batch-service.ts` — createDraftBatch,
   addReferencesToCurrentDraft, launchBatch, getBatchSummary,
-  deriveBatchStage, createSelectionFromBatch, removeBatchItem
+  createSelectionFromBatch, removeBatchItem
+- `src/server/services/.../kept.ts` — `createSelectionFromAiBatch`
+  (APPROVED+USER filter; undecided check YOK — bkz. §3 decision gate)
 - `src/features/variation-generation/` — provider-capabilities,
   ai-mode-form, AiModePanel
 - `src/server/services/ai-generation.service.ts` —

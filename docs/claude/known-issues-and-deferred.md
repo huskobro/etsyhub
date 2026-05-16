@@ -163,6 +163,27 @@ Phase entry'siyle açılır (sessiz drift YASAK):
   ayrı test-EN-parity turu (Phase 33-34'te belgelendi;
   regression değil).
 
+## H. Settings / Admin — kod-borçları ("No Hidden Behavior" ile çelişen, implement edilmemiş)
+
+Kaynak: `docs/claude/settings-admin.md` §5 kod-grounding
+(2026-05-17). Bunlar CLAUDE.md "No Hidden Behavior" / Settings
+Registry (Madde R) / prompt-block (Madde O) hedefiyle çelişiyor
+— **henüz açık borç, doc'larda "yapıldı" gibi anlatılmamalı**:
+
+- **Negative library Settings Registry'ye taşınmadı** —
+  `variation-generation/negative-library.ts` hardcoded (Phase 6+
+  defer marker). Admin görünür/düzenlenebilir değil.
+- **Prompt-block admin CRUD/override UI yok** — `criteria.ts`
+  builtin hardcoded; `ReviewCriterion` DB modeli yok; block
+  weight/severity/applicability admin'den düzenlenemez (Madde O
+  architecture tasarlandı, admin-managed kısmı incomplete).
+- **Cost limit job engeli yok** — `CostUsage` kaydı + dashboard
+  var; enqueue-öncesi cost-check (limit aşımı engeli) implement
+  değil (monitoring-only).
+- **Settings Registry kısmî** — ai-mode + review threshold
+  resolved (kod-enforced); negative-library + bazı prompt-default
+  builtin fallback (Madde R hedefine tam ulaşılmadı).
+
 ## G. Bilinçli mimari kısıtlar (erken-abstraction guard'ları)
 
 Yeni tur bunları AÇMADAN ÖNCE Contract + açık karar gerekir:

@@ -33,8 +33,12 @@ doğrudan Product/Mockup'a geçilmez.
   - **URL tab:** multi-URL queue (paste-split, per-row pre-fetch
     `<img>` preview, source detection Etsy/Pinterest/Creative
     Fabrica/direct/unknown, server-side title fallback). Etsy/CF
-    listing-URL detection → "View all images" (Phase 38'de
-    pasifleştirildi — WAF; passive disclosure, request atmaz).
+    listing-URL: scraper service **fetch'i dener**
+    (`etsy-listing-images.ts:119 fetchOnce`) ama WAF (Datadome/
+    Cloudflare) bloklar → Phase 38 UI **graceful**: "View all
+    images" CTA yerine "Etsy is blocking" + offline alternatif
+    gösterir (request atılır ama operatöre actionable bulk-pull
+    sunulmaz).
   - **Upload tab:** drop-zone + multi-file + folder-mode
     (`webkitdirectory`) + multi-folder grouping + aggregate
     progress.
@@ -47,9 +51,11 @@ doğrudan Product/Mockup'a geçilmez.
     bookmark / sticker / printable) + last-used persistence
     (localStorage) + collection optional. Duplicate dedup
     (intake-level; mevcut entity reuse, replace YOK).
-- **Bookmark Inbox:** ham intake tampon; B1 SubInbox **table**
-  layout (triage; Pool grid değil) + hover preview popover.
-  Promote to Reference → REFERENCED status.
+- **Bookmark Inbox:** ham intake tampon; **7-column `<table>`**
+  layout (checkbox/thumb/Title/Source/Status/Added/actions —
+  `bookmarks-page.tsx:284`; B1 demo'dan Status sütunu eklenmiş;
+  triage, Pool grid değil) + hover preview popover. Promote to
+  Reference → REFERENCED status.
 - **Competitor Analysis:** shop URL/name → review-based ranking
   (satış sinyali olarak review count; "kesin satış" gibi
   gösterilmez). Promote to Reference.
@@ -82,10 +88,12 @@ doğrudan Product/Mockup'a geçilmez.
   extraction YOK; title fallback `deriveTitleFromUrl` shared lib
   client+server aynı).
 - **Page-level scraping (Etsy listing / CF product / Pinterest)
-  pasif** — Datadome/Cloudflare WAF; passive detection korunur,
-  request atılmaz (Phase 38; future companion backlog). Local
+  efektif olarak pasif** — scraper service fetch'i **dener** ama
+  Datadome/Cloudflare WAF bloklar; UI graceful disclosure
+  ("blocking" + offline alternatif), actionable bulk-pull
+  **sunulmaz** (Phase 38; future companion backlog). Local
   Library + direct image URL + Upload + From Bookmark = aktif
-  canonical.
+  canonical intake.
 - Inbox = **table** (triage), Pool = **grid** (browse) — B1
   SubInbox vs SubPool layout ayrımı (Phase 21; karıştırılmaz).
 - 5 sub-view tek `ReferencesShellTabs` shell; tüm topbar'da aynı

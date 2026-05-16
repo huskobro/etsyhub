@@ -41,15 +41,22 @@ stage'in işini yapmaz.
 - **Mobile:** sidebar → bottom-tab (4 slot: Overview/References/
   Batches/Library) + "More" kebab. Tablo → kart liste, grid →
   2 sütun, split modal → full-screen bottom sheet.
-- **Live updates:** server-rendered surface'ler visibility-aware
-  polling (8s `router.refresh`; tab hidden → pause). Review queue
-  5s. Manuel refresh gerektirmez.
+- **Live updates (KOD-DOĞRU, scope sınırlı):** **Library** client-side
+  8s `router.refresh` + tab-hidden pause (`LibraryClient.tsx:87,95`);
+  **Review queue** 5s React Query refetchInterval
+  (`review/queries.ts:282`, unsettled item varken). **Overview/
+  Dashboard polling YOK** — `force-dynamic` server-rendered
+  (`overview/page.tsx:17`), client polling değil. Pattern Library
+  baseline; yeni server-rendered surface aynı pattern'i alır.
 
 ## 3. Invariants (değişmez)
 
-- Top-level sidebar **9 öğe / 2 grup closed-list** — yeni
-  top-level YASAK (CLAUDE.md IA bölümü; closed-list istisnası
-  Review için zaten uygulandı, yeniden kilitli).
+- Top-level sidebar **9 öğe / 2 grup** (KOD-DOĞRU:
+  `nav-config.ts:53-66` PRODUCE 7 + SYSTEM 2). **Closed-list =
+  POLICY** (sabit array konvansiyonu — yeni öğe eklemeyi engelleyen
+  runtime guard YOK; CLAUDE.md IA kuralı + code-review disiplini).
+  Not: `Sidebar.tsx:23` yorumu "8 items" der (kod 9; yorum stale,
+  davranışı etkilemez).
 - Yeni ekran/feature ilgili stage'in **alt-akışına** yerleşir
   (Batch Run → Batches "+ New Batch", Review Studio → `/review`,
   Job Detail → Batches/Logs + Active Tasks, Mockup Apply →
@@ -64,9 +71,11 @@ stage'in işini yapmaz.
 - Cross-surface metric tutarlılığı: aynı kavram iki yüzeyde
   gösteriliyorsa **tek helper'dan** beslenir veya **açık farklı
   etiketlenir** (CLAUDE.md Cross-surface Metric Consistency).
-- Live update pattern: server-rendered surface eklenince
-  visibility-aware polling (`router.refresh` interval + tab-hidden
-  pause); SSE/WebSocket ileride eklenebilir, pattern bozulmaz.
+- Live update pattern (POLICY, şu an Library-only enforced):
+  yeni server-rendered surface eklenince visibility-aware polling
+  (`router.refresh` interval + tab-hidden pause) **uygulanmalı**;
+  şu an yalnız Library bunu taşır (Overview/Dashboard force-dynamic,
+  polling yok). SSE/WebSocket ileride eklenebilir, pattern bozulmaz.
 - Mobile responsive + Tauri-ready: app shell (sidebar+main+
   Active Tasks) olduğu gibi taşınır; local file actions
   browser-only assumption yapmaz.
