@@ -86,6 +86,11 @@ const SLOT_NAMES = ["Front View", "Side View", "Back View"];
  * / max 400 / default 100; "hidden eski değer" riski YOK). */
 const DEFAULT_PREVIEW_ZOOM = ZOOM_DEFAULT;
 
+/** Phase 137 — Effect Settings Flyout: ayarlı effect panel
+ *  kimliği. Shell + Sidebar + EffectFlyout ortak (drift
+ *  önleme — StudioMode/SceneOverride paylaşılan-tip pattern'i). */
+export type EffectPanelKey = "lens" | "bgfx";
+
 export interface MockupStudioShellProps {
   /**
    * Selection set id this studio session is anchored on. Phase 79'da
@@ -224,9 +229,8 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
   /* Phase 137 — Effect Settings Flyout: aktif secondary panel.
    *  Transient UI state (sceneOverride'a GİRMEZ). Exclusive —
    *  en fazla 1 flyout açık. null = kapalı. */
-  const [activeEffectPanel, setActiveEffectPanel] = useState<
-    "lens" | "bgfx" | null
-  >(null);
+  const [activeEffectPanel, setActiveEffectPanel] =
+    useState<EffectPanelKey | null>(null);
 
   /* Phase 137 — Mode değişiminde (Mockup↔Frame) flyout TAM
    *  kapanır: state null + flyout unmount (DOM'dan kalkar →
