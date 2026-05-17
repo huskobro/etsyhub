@@ -141,6 +141,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       /** Phase 126 — canonical media-position (export anı; banner
        *  stale karşılaştırması epsilon ile). */
       mediaPosition?: MediaPosition;
+      /** Phase 136 — BG Effects (export anı; banner stale
+       *  karşılaştırması — §11.0). undefined = none. */
+      bgEffect?: import("@/features/mockups/studio/frame-scene").BgEffectConfig;
     };
   } | null>(null);
   /* Phase 83 — Frame mode aspect ratio (presentation surface).
@@ -655,6 +658,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
         colorTo: sceneOverride.colorTo,
         glassVariant: sceneOverride.glassVariant,
         lensBlur: sceneOverride.lensBlur,
+        // Phase 136 — BG Effects → export payload (uçtan-uca;
+        // undefined = none → server resolvePlateEffects no-op).
+        bgEffect: sceneOverride.bgEffect,
         palette: activePalette ?? null,
       };
 
@@ -735,6 +741,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           // Phase 126 — export anındaki canonical media-position
           // (banner stale: sonra pad sürülürse "re-export?").
           mediaPosition,
+          // Phase 136 — export anındaki BG Effects (banner stale:
+          // sonra vignette/grain değişirse "re-export?").
+          bgEffect: sceneOverride.bgEffect,
         },
       });
     } catch (err) {
@@ -985,6 +994,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
             // Phase 126 — şu anki canonical media-position; export
             // snapshot'tan epsilon farklıysa banner stale gösterir.
             mediaPosition,
+            // Phase 136 — şu anki BG Effects; export snapshot'tan
+            // farklıysa banner stale gösterir (§11.0).
+            bgEffect: sceneOverride.bgEffect,
           }}
           onClose={() => setFrameExportResult(null)}
           onReexport={handleExportFrame}

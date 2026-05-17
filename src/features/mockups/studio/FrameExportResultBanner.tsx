@@ -30,6 +30,10 @@ export interface FrameExportResultSnapshot {
    *  ile (float drift'ten sahte stale üretmez). undefined →
    *  {0,0} (eski export'lar pad'siz — neutral backward-compat). */
   mediaPosition?: MediaPosition;
+  /** Phase 136 — BG Effects (vignette/grain); kind+intensity
+   *  export'a yansır (§11.0). undefined = none (eski export'lar
+   *  efektsiz — neutral backward-compat). */
+  bgEffect?: import("@/features/mockups/studio/frame-scene").BgEffectConfig;
 }
 
 export interface FrameExportResultBannerProps {
@@ -87,11 +91,20 @@ export function FrameExportResultBanner({
     currentSceneSnapshot.mediaPosition ?? { x: 0, y: 0 },
     result.sceneSnapshot.mediaPosition ?? { x: 0, y: 0 },
   );
+  /* Phase 136 — BG Effects stale: kind/intensity export'a yansır
+   *  (§11.0) → değişirse "Preview changed — re-export?".
+   *  undefined↔config geçişi de stale (none → vignette vb.). */
+  const curBg = currentSceneSnapshot.bgEffect;
+  const snapBg = result.sceneSnapshot.bgEffect;
+  const bgEffectChanged =
+    (curBg?.kind ?? null) !== (snapBg?.kind ?? null) ||
+    (curBg?.intensity ?? null) !== (snapBg?.intensity ?? null);
   const isStale =
     currentSceneSnapshot.mode !== result.sceneSnapshot.mode ||
     currentSceneSnapshot.glassVariant !== result.sceneSnapshot.glassVariant ||
     lensBlurChanged ||
     mediaPositionChanged ||
+    bgEffectChanged ||
     currentSceneSnapshot.frameAspect !== result.sceneSnapshot.frameAspect;
   const filename = `kivasy-frame-${result.exportId.slice(0, 8)}-${result.width}x${result.height}.png`;
 
