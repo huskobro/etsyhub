@@ -25,6 +25,7 @@
 
 import { useState } from "react";
 import { StudioIcon } from "./icons";
+import { EffectFlyout } from "./EffectFlyout";
 import {
   FRAME_ASPECT_CONFIG,
   FRAME_ASPECT_KEYS,
@@ -33,10 +34,6 @@ import {
 import {
   deviceKindToShape,
   GRADIENT_PRESETS,
-  LENS_BLUR_DEFAULT,
-  type LensBlurConfig,
-  type LensBlurIntensity,
-  type LensBlurTarget,
   normalizeLensBlur,
   SCENE_AUTO,
   SOLID_PRESETS,
@@ -912,6 +909,9 @@ function FrameBody({
   onChangeFrameAspect,
   sceneOverride,
   onChangeSceneOverride,
+  activeEffectPanel,
+  onOpenEffectPanel,
+  onCloseEffectPanel,
   deviceKind,
 }: {
   frameAspect?: FrameAspectKey;
@@ -919,6 +919,12 @@ function FrameBody({
   /** Phase 89 — Frame scene control state (Shell). */
   sceneOverride?: SceneOverride;
   onChangeSceneOverride?: (next: SceneOverride) => void;
+  /** Phase 137 — Effect Settings Flyout panel state (Shell-owned).
+   *  Tile click flyout açar (cycle/toggle YOK); sceneOverride
+   *  değişimi flyout'tan gelir. */
+  activeEffectPanel?: "lens" | "bgfx" | null;
+  onOpenEffectPanel?: (panel: "lens" | "bgfx" | null) => void;
+  onCloseEffectPanel?: () => void;
   /** Phase 112 — Capability gating (deviceKind → shape →
    *  supportsLensBlurTargeting). Dead STUDIO_DEVICE_CAPABILITIES
    *  fiilen tüketilir; tek tek hack yerine tek kapı. */
@@ -1221,45 +1227,15 @@ function FrameBody({
                 className="k-studio__tile"
                 aria-pressed={on}
                 onClick={() => {
-                  if (isLens) {
-                    if (onChangeSceneOverride) {
-                      // Phase 109 — toggle: kapat → enabled:false;
-                      // aç → LENS_BLUR_DEFAULT (target "plate",
-                      // intensity medium — items NET default).
-                      const next: LensBlurConfig = lensCfg.enabled
-                        ? { ...lensCfg, enabled: false }
-                        : { ...LENS_BLUR_DEFAULT };
-                      onChangeSceneOverride({
-                        ...activeScene,
-                        lensBlur: next,
-                      });
-                    }
-                    return;
-                  }
-                  if (isBgfx) {
-                    if (onChangeSceneOverride) {
-                      // Phase 136 — Tek-seçim cycle: none →
-                      // vignette·medium → grain·medium → none
-                      // (Shots.so popover yerine sade toggle-cycle;
-                      // CLAUDE.md sade-güçlü). bgEffect undefined =
-                      // none → resolvePlateEffects no-op.
-                      const cur = activeScene.bgEffect?.kind ?? null;
-                      const next =
-                        cur === null
-                          ? ({
-                              kind: "vignette",
-                              intensity: "medium",
-                            } as const)
-                          : cur === "vignette"
-                            ? ({
-                                kind: "grain",
-                                intensity: "medium",
-                              } as const)
-                            : undefined;
-                      onChangeSceneOverride({
-                        ...activeScene,
-                        bgEffect: next,
-                      });
+                  // Phase 137 — tile artık cycle/toggle YAPMAZ.
+                  // Wired effect (lens/bgfx) → flyout aç (exclusive
+                  // toggle: aynı panel açıksa kapat). Honest-disabled
+                  // (portrait/watermark/vfx) → flyout açmaz, no-op.
+                  if (k === "lens" || k === "bgfx") {
+                    if (onOpenEffectPanel) {
+                      onOpenEffectPanel(
+                        activeEffectPanel === k ? null : k,
+                      );
                     }
                     return;
                   }
@@ -1277,139 +1253,39 @@ function FrameBody({
                 data-testid={`studio-frame-effect-${k}`}
                 data-active={on ? "true" : "false"}
                 data-wired={isWired ? "true" : "false"}
+                data-effect-tile={k}
+                aria-expanded={
+                  k === "lens" || k === "bgfx"
+                    ? activeEffectPanel === k
+                    : undefined
+                }
               >
                 <StudioIcon
                   name={n}
                   size={16}
                   color={on ? "rgba(232,93,37,0.8)" : "rgba(255,255,255,0.3)"}
                 />
-                <span className="k-studio__tile-label">{l}</span>
+                <span className="k-studio__tile-label">
+                  {k === "lens" && lensCfg.enabled
+                    ? `Blur · ${
+                        normalizeLensBlur(activeScene.lensBlur).target ===
+                        "plate"
+                          ? "Plate"
+                          : "All"
+                      }`
+                    : k === "bgfx" && bgKind === "vignette"
+                      ? "Vignette"
+                      : k === "bgfx" && bgKind === "grain"
+                        ? "Grain"
+                        : l}
+                </span>
               </button>
             );
           })}
         </div>
-        {/* Phase 109 — Lens Blur target + intensity (yalnız lens
-         *  aktif). Shared model: target "plate" (cascade items NET,
-         *  default — operatör eğilimi + Preview = Export Truth) /
-         *  "all" (items dahil, legacy). intensity soft/med/strong
-         *  → 4/8/14px. Tek tek mockup hack'i yok; structured
-         *  SceneOverride.lensBlur config. */}
-        {normalizeLensBlur(activeScene.lensBlur).enabled &&
-        onChangeSceneOverride &&
-        lensTargetingSupported ? (
-          <div
-            data-testid="studio-lens-blur-controls"
-            style={{ marginTop: 8, display: "grid", gap: 6 }}
-          >
-            <div>
-              <div
-                style={{
-                  fontSize: 9.5,
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  color: "var(--ks-t3)",
-                  marginBottom: 4,
-                }}
-              >
-                Blur target
-              </div>
-              <div style={{ display: "flex", gap: 4 }}>
-                {(
-                  [
-                    ["plate", "Plate only"],
-                    ["all", "Plate + items"],
-                  ] as [LensBlurTarget, string][]
-                ).map(([t, lbl]) => {
-                  const cfg = normalizeLensBlur(activeScene.lensBlur);
-                  const active = cfg.target === t;
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      className="k-studio__tile"
-                      data-testid={`studio-lens-target-${t}`}
-                      data-active={active ? "true" : "false"}
-                      aria-pressed={active}
-                      onClick={() =>
-                        onChangeSceneOverride({
-                          ...activeScene,
-                          lensBlur: { ...cfg, target: t },
-                        })
-                      }
-                      style={{
-                        flex: 1,
-                        minHeight: 30,
-                        fontSize: 10.5,
-                        color: active
-                          ? "var(--ks-or-bright)"
-                          : "var(--ks-t2)",
-                        borderColor: active
-                          ? "var(--ks-orb)"
-                          : "rgba(255,255,255,0.12)",
-                      }}
-                    >
-                      {lbl}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <div
-                style={{
-                  fontSize: 9.5,
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  color: "var(--ks-t3)",
-                  marginBottom: 4,
-                }}
-              >
-                Intensity
-              </div>
-              <div style={{ display: "flex", gap: 4 }}>
-                {(
-                  [
-                    ["soft", "Soft"],
-                    ["medium", "Medium"],
-                    ["strong", "Strong"],
-                  ] as [LensBlurIntensity, string][]
-                ).map(([iv, lbl]) => {
-                  const cfg = normalizeLensBlur(activeScene.lensBlur);
-                  const active = cfg.intensity === iv;
-                  return (
-                    <button
-                      key={iv}
-                      type="button"
-                      className="k-studio__tile"
-                      data-testid={`studio-lens-intensity-${iv}`}
-                      data-active={active ? "true" : "false"}
-                      aria-pressed={active}
-                      onClick={() =>
-                        onChangeSceneOverride({
-                          ...activeScene,
-                          lensBlur: { ...cfg, intensity: iv },
-                        })
-                      }
-                      style={{
-                        flex: 1,
-                        minHeight: 30,
-                        fontSize: 10.5,
-                        color: active
-                          ? "var(--ks-or-bright)"
-                          : "var(--ks-t2)",
-                        borderColor: active
-                          ? "var(--ks-orb)"
-                          : "rgba(255,255,255,0.12)",
-                      }}
-                    >
-                      {lbl}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        ) : null}
+        {/* Phase 137 — Lens Blur target + intensity kontrolleri
+         *  EffectFlyout'a devredildi (Task 3). Tile click flyout
+         *  açar; inline blok silindi. Bkz. EffectFlyout.tsx. */}
       </div>
 
       {/* SCENE */}
@@ -1679,6 +1555,20 @@ function FrameBody({
           })}
         </div>
       </div>
+      {/* Phase 137 — Effect Settings Flyout (Task 3). Tile click
+       *  flyout açar; sceneOverride değişimi buradan gelir (inline
+       *  Lens blok devredildi). Yalnız wired panel + callback
+       *  varsa render — honest-disabled effect flyout açmaz. */}
+      {(activeEffectPanel === "lens" || activeEffectPanel === "bgfx") &&
+      onChangeSceneOverride ? (
+        <EffectFlyout
+          panel={activeEffectPanel}
+          activeScene={activeScene}
+          lensTargetingSupported={lensTargetingSupported}
+          onChangeSceneOverride={onChangeSceneOverride}
+          onClose={onCloseEffectPanel ?? (() => undefined)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1721,6 +1611,13 @@ export interface MockupStudioSidebarProps {
    * swatch click handler'ı Shell state'i günceller. */
   sceneOverride?: SceneOverride;
   onChangeSceneOverride?: (next: SceneOverride) => void;
+  /** Phase 137 — Effect Settings Flyout panel state (Shell-owned).
+   *  Tile click artık cycle/toggle yapmaz; wired effect (lens/bgfx)
+   *  flyout açar (exclusive). sceneOverride değişimi flyout'tan
+   *  gelir; tile yalnız onOpenEffectPanel çağırır. */
+  activeEffectPanel?: "lens" | "bgfx" | null;
+  onOpenEffectPanel?: (panel: "lens" | "bgfx" | null) => void;
+  onCloseEffectPanel?: () => void;
   /** Phase 112 — Device shape capability gating (Shell zaten
    *  `deviceKind={deviceKind}` geçiriyordu ama prop tanımsızdı →
    *  ignore ediliyordu). Lens Blur targeting UI'ı
@@ -1748,6 +1645,9 @@ export function MockupStudioSidebar({
   activePalette,
   sceneOverride,
   onChangeSceneOverride,
+  activeEffectPanel,
+  onOpenEffectPanel,
+  onCloseEffectPanel,
   deviceKind,
 }: MockupStudioSidebarProps) {
   void STUDIO_SAMPLE_DESIGNS; // imported for slot defaults usage in tests
@@ -1793,6 +1693,9 @@ export function MockupStudioSidebar({
           onChangeFrameAspect={onChangeFrameAspect}
           sceneOverride={sceneOverride}
           onChangeSceneOverride={onChangeSceneOverride}
+          activeEffectPanel={activeEffectPanel}
+          onOpenEffectPanel={onOpenEffectPanel}
+          onCloseEffectPanel={onCloseEffectPanel}
           deviceKind={deviceKind}
         />
       )}
