@@ -110,6 +110,22 @@ const [activeEffectPanel, setActiveEffectPanel] =
 1. **Tile current-selection etiketi çok kısa + taranabilir:** `Blur · Plate` / `Blur · All` / `Vignette` / `Grain` — uzun açıklama YASAK, active state ile hızlı okunur, mevcut tile-label yapısı.
 2. **Flyout disabled state net:** Lens Blur off → flyout'ta segment'ler disabled + açık tek-satır mesaj; BG None → intensity segment disabled (gizleme değil — layout zıplamasın). Kullanıcı "niye bir şey olmuyor" dememeli.
 3. **Positioning/dismissal polished:** sidebar'a gerçekten bitişik, kaba-modal hissi yok, dışarı-tık+Esc+aynı-tile+mode-değişimi temiz kapanır.
+4. **Flyout genişliği/yoğunluğu kontrollü:** sabit dar genişlik (~240-280px civarı, sidebar genişliğine yakın — stage'i gereksiz örtmez). Segment kontroller satır kırmaz: her segment grubu tek satır (2-3 buton), buton min-width yeterli + font half-pixel (`text-[10.5px]`/`12.5px` Kivasy DS); sıkışık ama okunabilir. İçerik dikey kısa (Lens: enable+target+intensity = 3 satır grup; BG: kind+intensity = 2 satır grup) — flyout yüksekliği stage'i boğmaz.
+5. **Selected state ≠ Open state (görsel net ayrım):** bkz. §10.1 — feature-seçili (tile) ile panel-açık (flyout) AYRI görsel dil; karışmaz.
+6. **Mode değişiminde TAM temizlik:** yalnız `activeEffectPanel=null` değil — flyout DOM unmount + içindeki Esc/dışarı-tık listener'ları cleanup (useEffect return) + flyout içi focus varsa blur (focus trap sızıntısı yok) + aria-expanded tile'da false. Mode değişiminde eski panel state/focus/listener sızıntısı KALMAZ.
+
+## 10.1 Selected state ≠ Open state — UX ayrımı (guardrail 5)
+
+İki bağımsız kavram, **görsel olarak net ayrı** (kullanıcı "feature seçili mi?" ile "panel açık mı?"yı karıştırmamalı):
+
+- **Selected (feature aktif):** `sceneOverride`'da effect var (lensBlur.enabled / bgEffect.kind≠none). Göstergesi: **tile'da turuncu active state + kısa etiket** (`Blur · Plate` / `Vignette`). Flyout KAPALI olsa bile görünür — operatör panele bakmadan ne seçili anlar.
+- **Open (panel açık):** `activeEffectPanel === k`. Göstergesi: **flyout görünür + tile'da AYRI bir "panel açık" işareti** (örn. tile sağ kenarında küçük chevron/caret yön değişimi veya ince outline-ring — active turuncu fill'den FARKLI bir sinyal). `aria-expanded={open}` tile'da.
+- **4 kombinasyon hepsi net:**
+  - seçili + kapalı → tile turuncu + etiket, flyout yok (en sık durum: ayar yaptın, paneli kapattın).
+  - seçili + açık → tile turuncu + etiket + panel-açık işareti, flyout görünür.
+  - seçilmemiş + açık → tile turuncu DEĞİL (None/disabled) + panel-açık işareti, flyout görünür (BG `None` seçiliyken panel açık — ayar yapmaya hazır).
+  - seçilmemiş + kapalı → nötr tile.
+- **Flyout = "yalnız ayar yüzeyi" hissi:** flyout başlığı feature adını taşır ("Lens Blur" / "BG Effects") + içerik yalnız segment kontroller; flyout kendisi "seçim" değil "ayarlama" yapar (seçim sceneOverride'a yazılır, tile yansıtır). Flyout kapanınca seçim KAYBOLMAZ (tile etiketi kanıt). Bu, panelin geçici/yardımcı olduğunu hissettirir — kaba modal/kalıcı sekme değil.
 
 ## 11. Scope dışı (bilinçli)
 
@@ -123,9 +139,31 @@ const [activeEffectPanel, setActiveEffectPanel] =
 
 - **Unit:** Yeni UI mantığı (tile→panel-open, exclusive toggle, disabled-state derivation) saf-fonksiyon test edilebilir kısımları (örn. current-selection etiket türetme helper'ı varsa). sceneOverride resolver testleri DEĞİŞMEZ (model aynı).
 - **Quality gates:** `tsc --noEmit` + `vitest run tests/unit/mockup` (mevcut 284 + bg-effects 8 — regresyon yok, model değişmedi) + `next build`.
-- **Browser (zorunlu, guardrail 1+2+3):** clean restart + fresh build → Frame mode → (a) Lens Blur tile → flyout açılır (sidebar-bitişik), enable/target/intensity çalışır, disabled-state net; (b) BG Effects tile → flyout, kind+intensity segment, None→intensity disabled; (c) exclusive toggle (lens açıkken bgfx tıkla → lens kapanır); (d) dışarı-tık/Esc/aynı-tile/mode-değişimi kapanma; (e) tile current-selection etiket (`Blur · Plate` vb.); (f) sol panel scroll azaldı mı (Lens kontrolleri artık inline değil); (g) Shots.so hissine yakın ama Kivasy DS. Büyük ekran.
+- **Browser (zorunlu, guardrail 1-6):** clean restart + fresh build → Frame mode, büyük ekran:
+  - (a) Lens Blur tile → flyout açılır (sidebar-bitişik), enable/target/intensity çalışır, disabled-state net (Lens off → segment'ler disabled + mesaj).
+  - (b) BG Effects tile → flyout, kind+intensity segment, None→intensity disabled (layout zıplamaz).
+  - (c) Exclusive toggle (lens açıkken bgfx tıkla → lens kapanır, bgfx açılır).
+  - (d) Kapanma: dışarı-tık + Esc + aynı-tile + mode-değişimi — hepsi temiz.
+  - (e) **Selected≠Open (guardrail 5):** BG `Vignette` seç + paneli kapat → tile turuncu+`Vignette` etiket, flyout YOK; sonra tile aç → panel-açık işareti AYRI görünür; BG `None` iken panel aç → tile turuncu DEĞİL ama panel-açık işareti var. 4 kombinasyon görsel net.
+  - (f) **Flyout genişlik/yoğunluk (guardrail 4):** flyout dar (~240-280px), stage'i boğmuyor, segment'ler satır kırmıyor, okunabilir.
+  - (g) **Mode değişimi tam temizlik (guardrail 6):** flyout açıkken Mockup↔Frame → flyout unmount, listener sızıntısı yok (console error yok), tile aria-expanded false.
+  - (h) Sol panel scroll azaldı mı (Lens kontrolleri artık inline değil — şişme gitti).
+  - (i) Shots.so hissine yakın ama Kivasy DS (token/recipe/half-pixel).
 
 ## 13. Riskler
 
 - **Flyout konumlama (absolute) layout taşması:** sidebar container overflow/z-index dikkat; sağ rail/stage ile çakışma olmamalı (browser doğrulama kritik). Risk düşük — yalnız sol-sidebar-bitişik, sağ tarafa uzanmaz.
 - **Lens inline → flyout taşıma sırasında davranış kayması:** JSX birebir taşınmalı (yalnız wrapper); testid'ler (`studio-lens-target-*`, `studio-lens-blur-controls`) korunmalı. Davranış değişmemeli — yalnız konum.
+
+## 14. Final raporda zorunlu (kullanıcı isteği)
+
+1. UX olarak hangi model seçildi.
+2. Hangi feature'lar flyout'a taşındı / hangileri bilerek taşınmadı.
+3. BG Effects artık nasıl seçiliyor + ayarlanıyor.
+4. Lens Blur nasıl değişti (inline → flyout).
+5. **Selected state ile Open state ayrımını UX'te nasıl çözdün** (görsel sinyal farkı — tile turuncu+etiket vs panel-açık işareti).
+6. **Flyout kapalıyken kullanıcı hangi effect'in seçili olduğunu nasıl anlıyor** (tile etiketi + active state).
+7. **Panel açıkken bunun yalnız "ayar yüzeyi" olduğu nasıl hissediliyor** (flyout başlık + segment-only + kapanınca seçim kaybolmaz).
+8. Scroll/yoğunluk problemi nasıl düzeldi (Lens inline kontroller sol panelden çıktı).
+9. Değişen dosyalar.
+10. Browser'da hangi state'lerde doğrulandı (guardrail 1-6 + 4-kombinasyon + mode-değişimi temizliği).
