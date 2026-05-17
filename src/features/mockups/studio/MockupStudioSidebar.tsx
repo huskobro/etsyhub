@@ -34,6 +34,7 @@ import {
   type EffectPanelKey,
   GRADIENT_PRESETS,
   normalizeLensBlur,
+  normalizeWatermark,
   SCENE_AUTO,
   SOLID_PRESETS,
   type SceneOverride,
@@ -1181,17 +1182,16 @@ function FrameBody({
        *
        * Sözleşme #11 + #1 ("Frame = scene + effects ile composition").
        * Phase 89'a kadar Effects tile'ları local `useState` ile sadece
-       * active state'i tutuyor, plate'e hiç bağlanmıyordu. Phase 98:
-       *   - Lens Blur tile → sceneOverride.lensBlur toggle (plate
-       *     CSS filter blur applied; mode-AGNOSTIC continuity).
-       *   - Portrait / Watermark / BG Effects: honest disclosure —
-       *     görünür ama Phase 99+ candidate (operator için "var ama
-       *     henüz aktif değil" şeffaflık; sözleşme #12 silent magic
-       *     yasağına uyum).
-       *
-       * BG Effects ileride noise/grain/vignette pattern overlay
-       * eklendiğinde sceneOverride'a `bgEffect` field ile bağlanır
-       * (Phase 99 candidate; sözleşmede roadmap notu var). */}
+       * active state'i tutuyor, plate'e hiç bağlanmıyordu. Wired tile'lar:
+       *   - Lens Blur → sceneOverride.lensBlur toggle (plate CSS
+       *     filter blur applied; mode-AGNOSTIC continuity; Phase 98).
+       *   - BG Effects → sceneOverride.bgEffect (vignette/grain tek
+       *     seçim; Phase 136).
+       *   - Watermark (text) → sceneOverride.watermark; tile flyout
+       *     açar (onOpenEffectPanel).
+       * Honest disclosure — Portrait hâlâ görünür ama henüz wired
+       * değil (operator için "var ama henüz aktif değil" şeffaflık;
+       * sözleşme #12 silent magic yasağına uyum). */}
       <div style={{ padding: "0 10px", marginTop: 10 }}>
         <SectionLabel>Effects &amp; Watermark</SectionLabel>
         <div
@@ -1205,17 +1205,25 @@ function FrameBody({
             const isLens = k === "lens";
             // Phase 136 — BG Effects wired (vignette/grain tek-seçim).
             const isBgfx = k === "bgfx";
-            const isWired = isLens || isBgfx;
+            // Watermark (text) — Sidebar tile wired (flyout devri).
+            const isWm = k === "watermark";
+            const isWired = isLens || isBgfx || isWm;
             // Phase 109 — structured Lens Blur (backward-compat).
             const lensCfg = normalizeLensBlur(activeScene.lensBlur);
             const lensActive = isLens && lensCfg.enabled;
             // Phase 136 — bgEffect set → tile active (kind !== null).
             const bgKind = activeScene.bgEffect?.kind ?? null;
+            // Watermark active = enabled && non-empty trimmed text.
+            const wmCfg = normalizeWatermark(activeScene.watermark);
+            const wmActive =
+              isWm && wmCfg.enabled && wmCfg.text.trim().length > 0;
             const on = isLens
               ? lensActive
               : isBgfx
                 ? bgKind !== null
-                : effect === k;
+                : isWm
+                  ? wmActive
+                  : effect === k;
             return (
               <button
                 key={k}
@@ -1224,10 +1232,15 @@ function FrameBody({
                 aria-pressed={on}
                 onClick={() => {
                   // Phase 137 — tile artık cycle/toggle YAPMAZ.
-                  // Wired effect (lens/bgfx) → flyout aç (exclusive
-                  // toggle: aynı panel açıksa kapat). Honest-disabled
-                  // (portrait/watermark/vfx) → flyout açmaz, no-op.
-                  if (k === "lens" || k === "bgfx") {
+                  // Wired effect (lens/bgfx/watermark) → flyout aç
+                  // (exclusive toggle: aynı panel açıksa kapat).
+                  // Honest-disabled (portrait/vfx) → flyout açmaz,
+                  // no-op.
+                  if (
+                    k === "lens" ||
+                    k === "bgfx" ||
+                    k === "watermark"
+                  ) {
                     if (onOpenEffectPanel) {
                       onOpenEffectPanel(
                         activeEffectPanel === k ? null : k,
@@ -1251,7 +1264,7 @@ function FrameBody({
                 data-wired={isWired ? "true" : "false"}
                 data-effect-tile={k}
                 aria-expanded={
-                  k === "lens" || k === "bgfx"
+                  k === "lens" || k === "bgfx" || k === "watermark"
                     ? activeEffectPanel === k
                     : undefined
                 }
@@ -1271,7 +1284,9 @@ function FrameBody({
                       ? "Vignette"
                       : k === "bgfx" && bgKind === "grain"
                         ? "Grain"
-                        : l}
+                        : k === "watermark" && wmActive
+                          ? "On"
+                          : l}
                 </span>
               </button>
             );
