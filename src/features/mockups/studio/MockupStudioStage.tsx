@@ -26,6 +26,7 @@ import {
   resolvePlateEffects,
   resolvePlateBackground,
   resolveLensBlurLayout,
+  resolveWatermarkLayout,
   type SceneOverride,
 } from "./frame-scene";
 import {
@@ -790,6 +791,34 @@ export function StageScene({
    *  (item-izolasyonu zoom/framing'i bozmadan;
    *  known-issues-and-deferred.md). */
   const lensLayout = resolveLensBlurLayout(plateEffects);
+  /* Phase 140 — Watermark layout (preview = export AYNI resolver
+   * §11.0 Preview = Export Truth).
+   *
+   * Frame arg = `plateDims` (plate'in GERÇEK render boyutu, ör.
+   * 901×507) — `computeFrameCanvasDims` (580×326 cap) DEĞİL.
+   *
+   * Kök neden: §11.0 sözleşmesi "watermark frame'in AYNI yüzdesel
+   * alanını kaplar" demek. Font formülü iki tarafta da
+   * `min(dims) × fontPctOfMin`:
+   *   - Export (Task 7): min(outputW,outputH) × pct  (16:9 →
+   *     min(1920,1080)×0.035 = 37.8px = output yüksekliğinin %3.5'i)
+   *   - Preview plateDims ile: min(901,507) × 0.035 = 17.7px =
+   *     plate yüksekliğinin %3.5'i  → PARİTE ✓
+   *   - Preview computeFrameCanvasDims ile: min(580,326)×0.035 =
+   *     11.4px ama plate 507px → %2.25  → ~%36 KÜÇÜK (parite KIRIK)
+   * `.k-studio__stage-plate` `computeFrameCanvasDims` boyutunda
+   * DEĞİL render ediliyor (browser-DOM: rendered 901×507 =
+   * plateDims, inline-style ile birebir). plateDims viewport-aware
+   * ama aspect-LOCKED (`FRAME_ASPECT_CONFIG[frameAspect].ratio` —
+   * export outputW/outputH ile AYNI oran) → glyph yüzde geometrisi
+   * (ratio-invariant, unit-test-kanıtlı) değişmez; yalnız font px
+   * doğru ölçeğe oturur. ResizeObserver gerekmez: plateDims zaten
+   * deterministik gerçek plate boyutu (DOM ölçümü teyitli).
+   * inactive → hiçbir DOM (byte-identical no-op). */
+  const wmLayout = resolveWatermarkLayout(
+    (sceneOverride ?? { mode: "auto" }).watermark,
+    plateDims,
+  );
   const plateStyle: React.CSSProperties = {
     width: plateDims.w,
     height: plateDims.h,
@@ -1002,6 +1031,61 @@ export function StageScene({
                 zIndex: 9,
               }}
             />
+          ) : null}
+          {/* Phase 140 — Watermark overlay EN ÜSTTE (vignette z:9'dan
+              SONRA DOM'da; zIndex:10). resolveWatermarkLayout AYNI
+              resolver export (Task 7 Sharp SVG) ile → §11.0 Preview =
+              Export Truth. Font px = min(plateDims.w,plateDims.h) ×
+              fontPctOfMin (export min(outputW,outputH) × fontPctOfMin
+              ile AYNI formül; plateDims export output ile AYNI oran →
+              font frame'in AYNI yüzdesi = parite). transform anchor
+              map = SVG text-anchor (start/middle/end) + dominant-
+              baseline:middle eşdeğeri. inactive → hiçbir DOM
+              (byte-identical no-op). */}
+          {wmLayout.active ? (
+            <div
+              aria-hidden
+              data-wm-overlay
+              data-testid="studio-stage-watermark"
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                overflow: "hidden",
+                zIndex: 10,
+              }}
+            >
+              {wmLayout.glyphs.map((g, i) => (
+                <span
+                  key={i}
+                  style={{
+                    position: "absolute",
+                    left: `${g.xPct}%`,
+                    top: `${g.yPct}%`,
+                    transform:
+                      `translate(${
+                        wmLayout.anchor === "end"
+                          ? "-100%"
+                          : wmLayout.anchor === "middle"
+                            ? "-50%"
+                            : "0"
+                      }, -50%) rotate(${g.rotateDeg}deg)`,
+                    transformOrigin: "center",
+                    whiteSpace: "nowrap",
+                    fontFamily: "sans-serif",
+                    fontWeight: 600,
+                    fontSize: `${
+                      Math.min(plateDims.w, plateDims.h) *
+                      wmLayout.fontPctOfMin
+                    }px`,
+                    color: `rgba(255,255,255,${wmLayout.opacity})`,
+                    userSelect: "none",
+                  }}
+                >
+                  {g.text}
+                </span>
+              ))}
+            </div>
           ) : null}
         </div>
       ) : null}
