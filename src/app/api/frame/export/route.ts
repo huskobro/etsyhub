@@ -44,6 +44,19 @@ const SceneSchema = z.object({
       intensity: z.enum(["soft", "medium", "strong"]),
     })
     .optional(),
+  // Watermark (7/12) — text overlay. frame-scene.ts WatermarkConfig
+  // mirror. Optional/nullable → no watermark (resolveWatermarkLayout
+  // active=false no-op). normalizeWatermark server-side text clamp +
+  // enum guard yapar (resolver içinde).
+  watermark: z
+    .object({
+      enabled: z.boolean(),
+      text: z.string(),
+      opacity: z.enum(["soft", "medium", "strong"]),
+      placement: z.enum(["br", "center", "tile"]),
+    })
+    .optional()
+    .nullable(),
   palette: z
     .tuple([z.string(), z.string()])
     .optional()
@@ -113,6 +126,10 @@ export const POST = withErrorHandling(async (req: Request) => {
       lensBlur: parsed.data.scene.lensBlur,
       // Phase 136 — BG Effects → compositor (resolvePlateEffects).
       bgEffect: parsed.data.scene.bgEffect,
+      // Watermark (7/12) → compositor (resolveWatermarkLayout
+      // Phase 7c). null → undefined (FrameSceneInput.watermark
+      // optional; resolver normalize eder). §11.0 parity.
+      watermark: parsed.data.scene.watermark ?? undefined,
       palette: parsed.data.scene.palette ?? undefined,
     },
     slots: parsed.data.slots,

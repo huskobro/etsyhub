@@ -32,7 +32,10 @@
 import sharp from "sharp";
 
 import { resolveMediaOffsetPx } from "@/features/mockups/studio/media-position";
-import { resolvePlateEffects } from "@/features/mockups/studio/frame-scene";
+import {
+  resolvePlateEffects,
+  resolveWatermarkLayout,
+} from "@/features/mockups/studio/frame-scene";
 
 export interface FrameSlotInput {
   /** Slot index (0..N). */
@@ -175,6 +178,13 @@ export interface FrameSceneInput {
    *  (preview = export aynı pure-TS resolver §11.0). undefined →
    *  no-op (vignetteAlpha=0 && grainOpacity=0). */
   bgEffect?: import("@/features/mockups/studio/frame-scene").BgEffectConfig;
+  /** Phase 140 — Watermark (text). frame-scene.ts WatermarkConfig
+   *  mirror; resolveWatermarkLayout ile çözülür (preview = export
+   *  §11.0). undefined/null → no-op (active=false). EN ÜST katman
+   *  (vignette 7b sonrası — Phase 7c). */
+  watermark?:
+    | import("@/features/mockups/studio/frame-scene").WatermarkConfig
+    | null;
   /** auto mode fallback (activePalette[0], activePalette[1]). */
   palette?: readonly [string, string];
 }
@@ -1366,6 +1376,51 @@ export async function composeFrameOutput(
       .composite([{ input: Buffer.from(vignetteSvg), top: 0, left: 0 }])
       .png()
       .toBuffer();
+  }
+
+  /* 7c) Layer 5 — Watermark (text) EN ÜSTTE: vignette (7b)
+   *      sonrası, cascade + tüm layer'ların üstünde. Preview
+   *      MockupStudioStage watermark overlay (z:10) ile AYNI
+   *      resolveWatermarkLayout → §11.0 Preview = Export Truth.
+   *
+   *  KRİTİK PARİTE: preview overlay `.k-studio__stage-plate`
+   *  ELEMENT'inin İÇİNDE (`position:absolute; inset:0`,
+   *  `overflow:hidden`) — glyph `left/top` % = PLATE
+   *  dikdörtgeninin yüzdesi, font = min(plateDims.w,plateDims.h)
+   *  × fontPctOfMin. Plate canvas'ı DOLDURMAZ (PLATE_FILL_RATIO
+   *  < 1; stage padding var → plateX/plateY offset). Bu yüzden
+   *  export'ta glyph konumu + font, FULL canvas (outputW/outputH)
+   *  DEĞİL `plateLayout.plate{X,Y,W,H}` PLATE bölgesine map
+   *  edilir (vignette 7b + grain 4b ile AYNI plate koordinatları).
+   *  Aksi halde yPct:93 → 93% × 1080 ≈ plate ALTINDA (dark stage
+   *  padding) = preview ile STRÜKTÜREL ayrışma. computeFrameCanvasDims
+   *  KULLANILMAZ — plateLayout zaten bu fn'de resolvePlateLayout(
+   *  outputW,outputH) ile çözülmüş canonical plate geometrisi
+   *  (preview plateDims ile AYNI FRAME_ASPECT_CONFIG aspect-kilit
+   *  → glyph yüzde geometrisi ratio-invariant). tile placement
+   *  off-plate glyph üretir → preview `overflow:hidden` eşdeğeri
+   *  clipPath ile plate'e kırpılır. */
+  {
+    const { plateX, plateY, plateW, plateH, plateRadius } = plateLayout;
+    const wmLayout = resolveWatermarkLayout(scene.watermark, {
+      w: plateW,
+      h: plateH,
+    });
+    if (wmLayout.active) {
+      const fontPx = Math.min(plateW, plateH) * wmLayout.fontPctOfMin;
+      const texts = wmLayout.glyphs
+        .map((g) => {
+          const x = plateX + (g.xPct / 100) * plateW;
+          const y = plateY + (g.yPct / 100) * plateH;
+          return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="${wmLayout.anchor}" dominant-baseline="middle" font-family="sans-serif" font-weight="600" font-size="${fontPx.toFixed(2)}" fill="rgba(255,255,255,${wmLayout.opacity})" transform="rotate(${g.rotateDeg} ${x.toFixed(2)} ${y.toFixed(2)})">${escapeXml(g.text)}</text>`;
+        })
+        .join("");
+      const wmSvg = `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="wmclip"><rect x="${plateX}" y="${plateY}" width="${plateW}" height="${plateH}" rx="${plateRadius}" ry="${plateRadius}"/></clipPath></defs><g clip-path="url(#wmclip)">${texts}</g></svg>`;
+      canvasBuffer = await sharp(canvasBuffer)
+        .composite([{ input: Buffer.from(wmSvg), top: 0, left: 0 }])
+        .png()
+        .toBuffer();
+    }
   }
 
   /* 8) Final PNG encode. */

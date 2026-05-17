@@ -686,6 +686,10 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
         // Phase 136 — BG Effects → export payload (uçtan-uca;
         // undefined = none → server resolvePlateEffects no-op).
         bgEffect: sceneOverride.bgEffect,
+        // Watermark (7/12) — export payload (uçtan-uca; undefined/
+        // null = no watermark → server resolveWatermarkLayout
+        // active=false no-op). Preview = Export Truth §11.0.
+        watermark: sceneOverride.watermark,
         palette: activePalette ?? null,
       };
 

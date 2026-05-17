@@ -280,6 +280,18 @@ export async function exportFrameComposition(
                 intensity: input.scene.bgEffect.intensity,
               }
             : null,
+          // Watermark (7/12) — JSON-safe plain shape (Prisma
+          // InputJsonValue; bgEffect ile aynı plain-obje pattern).
+          // undefined/null → null (eski export'lar watermark'sız —
+          // backward-compat; re-export kaynağı + stale karşılaştırma).
+          watermark: input.scene.watermark
+            ? {
+                enabled: input.scene.watermark.enabled,
+                text: input.scene.watermark.text,
+                opacity: input.scene.watermark.opacity,
+                placement: input.scene.watermark.placement,
+              }
+            : null,
         },
       },
       select: { id: true },
