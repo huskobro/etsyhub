@@ -246,6 +246,11 @@ export interface SceneOverride {
    *  Compositing order SABİT: bg → grain → glass → lensBlur →
    *  vignette (bkz. resolvePlateEffects + frame-compositor). */
   bgEffect?: BgEffectConfig;
+  /** Phase 140 — Watermark (text). Frame-only; mode/glass/
+   *  lensBlur/bgEffect'ten bağımsız. undefined/null = no watermark.
+   *  resolveWatermarkLayout ile preview+export aynı geometri (§11.0).
+   *  EN ÜST katman (vignette'den sonra composite). */
+  watermark?: WatermarkConfig | null;
 }
 
 /** Phase 89 — Auto mode default (Phase 88 baseline parity). */
@@ -518,6 +523,28 @@ export interface LensBlurLayout {
   plateFilter: string | null;
 }
 
+export interface WatermarkGlyph {
+  /** Daima normalize edilmiş config.text. */
+  text: string;
+  /** 0..100 — frame genişliğinin yüzdesi. */
+  xPct: number;
+  /** 0..100 — frame yüksekliğinin yüzdesi. */
+  yPct: number;
+  rotateDeg: number;
+}
+
+export interface WatermarkLayout {
+  /** false → preview/export hiçbir şey çizmez. */
+  active: boolean;
+  glyphs: WatermarkGlyph[];
+  /** WM_OPACITY[config.opacity] veya 0 (inactive). */
+  opacity: number;
+  /** font-size = min(frameW,frameH) * fontPctOfMin. */
+  fontPctOfMin: number;
+  /** Tüm glyph'ler için ortak text-anchor. */
+  anchor: WmAnchor;
+}
+
 export function resolveLensBlurLayout(
   effects: PlateEffectStyle,
 ): LensBlurLayout {
@@ -525,6 +552,75 @@ export function resolveLensBlurLayout(
     return { plateFilter: null };
   }
   return { plateFilter: `blur(${effects.filterBlurPx}px)` };
+}
+
+/** Pure-TS, DOM/zoom/bg-bağımsız. Preview (React overlay z:10) ve
+ *  export (Sharp SVG buffer composite, vignette sonrası) BU
+ *  fonksiyondan beslenir — §11.0 Preview = Export Truth tek yer.
+ *  Geometri yüzde tabanlı → frame boyutundan bağımsız. */
+export function resolveWatermarkLayout(
+  config: WatermarkConfig | null | undefined,
+  frame: { w: number; h: number },
+): WatermarkLayout {
+  const cfg = normalizeWatermark(config);
+  if (!cfg.enabled || cfg.text.length === 0) {
+    return {
+      active: false,
+      glyphs: [],
+      opacity: 0,
+      fontPctOfMin: 0,
+      anchor: "middle",
+    };
+  }
+  const opacity = WM_OPACITY[cfg.opacity];
+
+  if (cfg.placement === "br") {
+    return {
+      active: true,
+      glyphs: [{ text: cfg.text, xPct: 95, yPct: 93, rotateDeg: 0 }],
+      opacity,
+      fontPctOfMin: 0.035,
+      anchor: "end",
+    };
+  }
+
+  if (cfg.placement === "center") {
+    // Spec §5.2 — uzun metin font kademesi (taşma engelle, parity korunur)
+    const len = cfg.text.length;
+    const fontPctOfMin = len <= 16 ? 0.06 : len <= 32 ? 0.045 : 0.034;
+    return {
+      active: true,
+      glyphs: [{ text: cfg.text, xPct: 50, yPct: 50, rotateDeg: 0 }],
+      opacity,
+      fontPctOfMin,
+      anchor: "middle",
+    };
+  }
+
+  // placement === "tile" — deterministik rotated grid (spec §4.2)
+  const minDim = Math.min(frame.w, frame.h);
+  // Yüzde-uzayda step: px-step / frame-dim * 100. Step px = minDim * çarpan.
+  const stepXPct = ((minDim * 0.42) / frame.w) * 100;
+  const stepYPct = ((minDim * 0.16) / frame.h) * 100;
+  const glyphs: WatermarkGlyph[] = [];
+  // Negatif offset'ten başla ki köşeler boş kalmasın; +step buffer.
+  for (let yPct = -stepYPct * 0.5; yPct <= 100 + stepYPct; yPct += stepYPct) {
+    for (let xPct = -stepXPct * 0.5; xPct <= 100 + stepXPct; xPct += stepXPct) {
+      glyphs.push({
+        text: cfg.text,
+        xPct: Math.round(xPct * 100) / 100,
+        yPct: Math.round(yPct * 100) / 100,
+        rotateDeg: -30,
+      });
+    }
+  }
+  return {
+    active: true,
+    glyphs,
+    opacity,
+    fontPctOfMin: 0.026,
+    anchor: "middle",
+  };
 }
 
 /** Phase 109 — Shared device capability model.

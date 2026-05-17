@@ -4,7 +4,9 @@ import {
   WM_DEFAULT,
   WM_TEXT_MAX,
   normalizeWatermark,
+  resolveWatermarkLayout,
   type WatermarkConfig,
+  type WatermarkLayout,
 } from "@/features/mockups/studio/frame-scene";
 
 describe("normalizeWatermark", () => {
@@ -65,5 +67,129 @@ describe("normalizeWatermark", () => {
   it("WM_OPACITY maps soft<medium<strong", () => {
     expect(WM_OPACITY.soft).toBeLessThan(WM_OPACITY.medium);
     expect(WM_OPACITY.medium).toBeLessThan(WM_OPACITY.strong);
+  });
+});
+
+describe("resolveWatermarkLayout — active gating", () => {
+  const FRAME = { w: 1080, h: 1080 };
+
+  it("null config → inactive (no glyphs)", () => {
+    const r: WatermarkLayout = resolveWatermarkLayout(null, FRAME);
+    expect(r.active).toBe(false);
+    expect(r.glyphs).toEqual([]);
+    expect(r.opacity).toBe(0);
+  });
+
+  it("enabled=false → inactive", () => {
+    const r = resolveWatermarkLayout(
+      { enabled: false, text: "Shop", opacity: "medium", placement: "br" },
+      FRAME,
+    );
+    expect(r.active).toBe(false);
+  });
+
+  it("empty/whitespace text → inactive even if enabled", () => {
+    const r = resolveWatermarkLayout(
+      { enabled: true, text: "   ", opacity: "medium", placement: "center" },
+      FRAME,
+    );
+    expect(r.active).toBe(false);
+    expect(r.glyphs).toEqual([]);
+  });
+});
+
+describe("resolveWatermarkLayout — placement geometry", () => {
+  const FRAME = { w: 1080, h: 1080 };
+
+  it("br → single glyph, anchor 'end', bottom-right percentages, no rotation", () => {
+    const r = resolveWatermarkLayout(
+      { enabled: true, text: "© Kivasy", opacity: "soft", placement: "br" },
+      FRAME,
+    );
+    expect(r.active).toBe(true);
+    expect(r.anchor).toBe("end");
+    expect(r.glyphs).toHaveLength(1);
+    expect(r.glyphs[0]!.xPct).toBe(95);
+    expect(r.glyphs[0]!.yPct).toBe(93);
+    expect(r.glyphs[0]!.rotateDeg).toBe(0);
+    expect(r.glyphs[0]!.text).toBe("© Kivasy");
+    expect(r.opacity).toBe(WM_OPACITY.soft);
+  });
+
+  it("center → single glyph, anchor 'middle', centered, no rotation", () => {
+    const r = resolveWatermarkLayout(
+      { enabled: true, text: "PROOF", opacity: "strong", placement: "center" },
+      FRAME,
+    );
+    expect(r.anchor).toBe("middle");
+    expect(r.glyphs).toHaveLength(1);
+    expect(r.glyphs[0]!.xPct).toBe(50);
+    expect(r.glyphs[0]!.yPct).toBe(50);
+    expect(r.glyphs[0]!.rotateDeg).toBe(0);
+    expect(r.opacity).toBe(WM_OPACITY.strong);
+  });
+
+  it("center → font scales DOWN for long text (spec §5.2 ladder)", () => {
+    const short = resolveWatermarkLayout(
+      { enabled: true, text: "x".repeat(10), opacity: "medium", placement: "center" },
+      FRAME,
+    );
+    const mid = resolveWatermarkLayout(
+      { enabled: true, text: "x".repeat(28), opacity: "medium", placement: "center" },
+      FRAME,
+    );
+    const long = resolveWatermarkLayout(
+      { enabled: true, text: "x".repeat(40), opacity: "medium", placement: "center" },
+      FRAME,
+    );
+    expect(short.fontPctOfMin).toBeGreaterThan(mid.fontPctOfMin);
+    expect(mid.fontPctOfMin).toBeGreaterThan(long.fontPctOfMin);
+  });
+
+  it("tile → multiple glyphs, anchor 'middle', all rotated -30, all same text", () => {
+    const r = resolveWatermarkLayout(
+      { enabled: true, text: "© Kivasy", opacity: "medium", placement: "tile" },
+      FRAME,
+    );
+    expect(r.anchor).toBe("middle");
+    expect(r.glyphs.length).toBeGreaterThan(4);
+    expect(r.glyphs.every((g) => g.rotateDeg === -30)).toBe(true);
+    expect(r.glyphs.every((g) => g.text === "© Kivasy")).toBe(true);
+  });
+
+  it("tile → grid covers frame edges (some glyphs near/below 0 and above 100 pct after offset)", () => {
+    const r = resolveWatermarkLayout(
+      { enabled: true, text: "WM", opacity: "soft", placement: "tile" },
+      FRAME,
+    );
+    const minX = Math.min(...r.glyphs.map((g) => g.xPct));
+    const maxX = Math.max(...r.glyphs.map((g) => g.xPct));
+    expect(minX).toBeLessThanOrEqual(5); // starts at/before left edge
+    expect(maxX).toBeGreaterThanOrEqual(95); // reaches right edge
+  });
+
+  it("tile glyph count is deterministic for a given frame (stable across calls)", () => {
+    const a = resolveWatermarkLayout(
+      { enabled: true, text: "WM", opacity: "soft", placement: "tile" },
+      FRAME,
+    );
+    const b = resolveWatermarkLayout(
+      { enabled: true, text: "WM", opacity: "soft", placement: "tile" },
+      FRAME,
+    );
+    expect(a.glyphs.length).toBe(b.glyphs.length);
+  });
+
+  it("tile on portrait frame stays consistent density (min-dimension based steps)", () => {
+    const square = resolveWatermarkLayout(
+      { enabled: true, text: "WM", opacity: "soft", placement: "tile" },
+      { w: 1080, h: 1080 },
+    );
+    const portrait = resolveWatermarkLayout(
+      { enabled: true, text: "WM", opacity: "soft", placement: "tile" },
+      { w: 1080, h: 1920 },
+    );
+    // portrait taller → more rows → more glyphs than square
+    expect(portrait.glyphs.length).toBeGreaterThan(square.glyphs.length);
   });
 });
