@@ -221,6 +221,22 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
     SCENE_AUTO,
   );
 
+  /* Phase 137 — Effect Settings Flyout: aktif secondary panel.
+   *  Transient UI state (sceneOverride'a GİRMEZ). Exclusive —
+   *  en fazla 1 flyout açık. null = kapalı. */
+  const [activeEffectPanel, setActiveEffectPanel] = useState<
+    "lens" | "bgfx" | null
+  >(null);
+
+  /* Phase 137 — Mode değişiminde (Mockup↔Frame) flyout TAM
+   *  kapanır: state null + flyout unmount (DOM'dan kalkar →
+   *  içindeki Esc/dışarı-tık listener'ları + focus cleanup
+   *  EffectFlyout useEffect return'ünde). Eski panel sızıntısı
+   *  kalmaz (spec guardrail 6). */
+  useEffect(() => {
+    setActiveEffectPanel(null);
+  }, [mode]);
+
   // Phase 79 — Real selection set hydrate.
   const { data: set, isLoading: setLoading } = useSelectionSet(setId);
 
@@ -917,6 +933,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           activePalette={activePalette}
           sceneOverride={sceneOverride}
           onChangeSceneOverride={setSceneOverride}
+          activeEffectPanel={activeEffectPanel}
+          onOpenEffectPanel={setActiveEffectPanel}
+          onCloseEffectPanel={() => setActiveEffectPanel(null)}
         />
         <MockupStudioStage
           mode={mode}
