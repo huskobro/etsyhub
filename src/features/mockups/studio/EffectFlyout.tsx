@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import {
   type BgEffectIntensity,
   type BgEffectKind,
+  type EffectPanelKey,
   LENS_BLUR_DEFAULT,
   type LensBlurIntensity,
   type LensBlurTarget,
@@ -12,7 +13,7 @@ import {
 } from "./frame-scene";
 
 interface EffectFlyoutProps {
-  panel: "lens" | "bgfx";
+  panel: EffectPanelKey;
   activeScene: SceneOverride;
   lensTargetingSupported: boolean;
   onChangeSceneOverride: (next: SceneOverride) => void;

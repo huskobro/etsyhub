@@ -50,6 +50,7 @@ import {
 } from "./frame-aspects";
 import {
   type BgEffectConfig,
+  type EffectPanelKey,
   type LensBlurConfig,
   SCENE_AUTO,
   type SceneOverride,
@@ -85,11 +86,6 @@ const SLOT_NAMES = ["Front View", "Side View", "Back View"];
  * clamp, reset, viewfinder math HEPSİ aynı modülden okur (min 75
  * / max 400 / default 100; "hidden eski değer" riski YOK). */
 const DEFAULT_PREVIEW_ZOOM = ZOOM_DEFAULT;
-
-/** Phase 137 — Effect Settings Flyout: ayarlı effect panel
- *  kimliği. Shell + Sidebar + EffectFlyout ortak (drift
- *  önleme — StudioMode/SceneOverride paylaşılan-tip pattern'i). */
-export type EffectPanelKey = "lens" | "bgfx";
 
 export interface MockupStudioShellProps {
   /**

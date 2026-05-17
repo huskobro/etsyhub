@@ -33,6 +33,7 @@ import {
 } from "./frame-aspects";
 import {
   deviceKindToShape,
+  type EffectPanelKey,
   GRADIENT_PRESETS,
   normalizeLensBlur,
   SCENE_AUTO,
@@ -52,6 +53,10 @@ import type {
   StudioSlotAssignmentMap,
   StudioSlotMeta,
 } from "./types";
+
+/** Phase 137 — EffectFlyout onClose fallback. Modül-seviye sabit:
+ *  her render yeni inline `() => undefined` üretmez (stabil ref). */
+const EFFECT_FLYOUT_NOOP = () => undefined;
 
 interface SectionLabelProps {
   children: React.ReactNode;
@@ -922,8 +927,8 @@ function FrameBody({
   /** Phase 137 — Effect Settings Flyout panel state (Shell-owned).
    *  Tile click flyout açar (cycle/toggle YOK); sceneOverride
    *  değişimi flyout'tan gelir. */
-  activeEffectPanel?: "lens" | "bgfx" | null;
-  onOpenEffectPanel?: (panel: "lens" | "bgfx" | null) => void;
+  activeEffectPanel?: EffectPanelKey | null;
+  onOpenEffectPanel?: (panel: EffectPanelKey | null) => void;
   onCloseEffectPanel?: () => void;
   /** Phase 112 — Capability gating (deviceKind → shape →
    *  supportsLensBlurTargeting). Dead STUDIO_DEVICE_CAPABILITIES
@@ -1267,12 +1272,7 @@ function FrameBody({
                 />
                 <span className="k-studio__tile-label">
                   {k === "lens" && lensCfg.enabled
-                    ? `Blur · ${
-                        normalizeLensBlur(activeScene.lensBlur).target ===
-                        "plate"
-                          ? "Plate"
-                          : "All"
-                      }`
+                    ? `Blur · ${lensCfg.target === "plate" ? "Plate" : "All"}`
                     : k === "bgfx" && bgKind === "vignette"
                       ? "Vignette"
                       : k === "bgfx" && bgKind === "grain"
@@ -1566,7 +1566,7 @@ function FrameBody({
           activeScene={activeScene}
           lensTargetingSupported={lensTargetingSupported}
           onChangeSceneOverride={onChangeSceneOverride}
-          onClose={onCloseEffectPanel ?? (() => undefined)}
+          onClose={onCloseEffectPanel ?? EFFECT_FLYOUT_NOOP}
         />
       ) : null}
     </div>
@@ -1615,8 +1615,8 @@ export interface MockupStudioSidebarProps {
    *  Tile click artık cycle/toggle yapmaz; wired effect (lens/bgfx)
    *  flyout açar (exclusive). sceneOverride değişimi flyout'tan
    *  gelir; tile yalnız onOpenEffectPanel çağırır. */
-  activeEffectPanel?: "lens" | "bgfx" | null;
-  onOpenEffectPanel?: (panel: "lens" | "bgfx" | null) => void;
+  activeEffectPanel?: EffectPanelKey | null;
+  onOpenEffectPanel?: (panel: EffectPanelKey | null) => void;
   onCloseEffectPanel?: () => void;
   /** Phase 112 — Device shape capability gating (Shell zaten
    *  `deviceKind={deviceKind}` geçiriyordu ama prop tanımsızdı →

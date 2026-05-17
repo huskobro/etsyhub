@@ -89,6 +89,12 @@ export const LENS_BLUR_DEFAULT: LensBlurConfig = {
  *  (Etsy hero değeri), tek-seçim (sade). */
 export type BgEffectKind = "vignette" | "grain";
 export type BgEffectIntensity = "soft" | "medium" | "strong";
+
+/** Phase 137 — Effect Settings Flyout: ayarlı effect panel
+ *  kimliği. Shell + Sidebar + EffectFlyout ortak tek kaynak
+ *  (drift önleme — SceneOverride/LensBlurConfig paylaşılan-tip
+ *  pattern'i). */
+export type EffectPanelKey = "lens" | "bgfx";
 export interface BgEffectConfig {
   kind: BgEffectKind;
   intensity: BgEffectIntensity;
