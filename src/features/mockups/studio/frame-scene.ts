@@ -359,6 +359,11 @@ export interface PlateEffectStyle {
   blurTarget: LensBlurTarget;
   /** Glass overlay sözleşmesi (variant + alpha). undefined = no glass. */
   glassOverlay: { background: string; borderTone: string } | undefined;
+  /** Phase 136 — BG Effects. Vignette radial dış-kenar alpha
+   *  (0 = no vignette). Grain monokrom overlay opacity (0 = no
+   *  grain). Tek-seçim: en fazla biri > 0. */
+  vignetteAlpha: number;
+  grainOpacity: number;
 }
 
 export function resolvePlateEffects(
@@ -391,7 +396,24 @@ export function resolvePlateEffects(
       };
     }
   }
-  return { filterBlurPx, blurTarget, glassOverlay };
+  /* Phase 136 — BG Effects (tek-seçimli; mode/glass/lensBlur'dan
+   *  bağımsız). undefined → ikisi de 0 (no-op). */
+  let vignetteAlpha = 0;
+  let grainOpacity = 0;
+  if (override.bgEffect) {
+    if (override.bgEffect.kind === "vignette") {
+      vignetteAlpha = BG_VIGNETTE_ALPHA[override.bgEffect.intensity];
+    } else {
+      grainOpacity = BG_GRAIN_OPACITY[override.bgEffect.intensity];
+    }
+  }
+  return {
+    filterBlurPx,
+    blurTarget,
+    glassOverlay,
+    vignetteAlpha,
+    grainOpacity,
+  };
 }
 
 /** Phase 109 — Shared device capability model.
