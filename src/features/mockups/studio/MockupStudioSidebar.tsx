@@ -1277,9 +1277,10 @@ function FrameBody({
             );
           })}
         </div>
-        {/* Phase 137 — Lens Blur target + intensity kontrolleri
-         *  EffectFlyout'a devredildi (Task 3). Tile click flyout
-         *  açar; inline blok silindi. Bkz. EffectFlyout.tsx. */}
+        {/* Lens Blur kontrolleri EffectFlyout'ta (Phase 137 tile
+         *  → flyout devri). Phase 139 — tek-davranışlı: flyout'ta
+         *  yalnız Intensity ("Blur target" segment KALDIRILDI).
+         *  Bkz. EffectFlyout.tsx. */}
       </div>
 
       {/* SCENE */}
