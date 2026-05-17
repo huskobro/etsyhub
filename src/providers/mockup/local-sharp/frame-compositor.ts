@@ -32,6 +32,7 @@
 import sharp from "sharp";
 
 import { resolveMediaOffsetPx } from "@/features/mockups/studio/media-position";
+import { resolvePlateEffects } from "@/features/mockups/studio/frame-scene";
 
 export interface FrameSlotInput {
   /** Slot index (0..N). */
@@ -168,6 +169,11 @@ export interface FrameSceneInput {
    *  config (target/intensity). normalizeFrameLensBlur ile
    *  backward-compat. */
   lensBlur?: boolean | FrameLensBlurConfig;
+  /** Phase 136 — BG Effects (Frame scene effect). frame-scene.ts
+   *  BgEffectConfig mirror; resolvePlateEffects ile çözülür
+   *  (preview = export aynı pure-TS resolver §11.0). undefined →
+   *  no-op (vignetteAlpha=0 && grainOpacity=0). */
+  bgEffect?: import("@/features/mockups/studio/frame-scene").BgEffectConfig;
   /** auto mode fallback (activePalette[0], activePalette[1]). */
   palette?: readonly [string, string];
 }
@@ -1207,6 +1213,64 @@ export async function composeFrameOutput(
     .png()
     .toBuffer();
 
+  /* Phase 136 — BG Effects çözümü (preview = export aynı pure-TS
+   *  resolver §11.0). mode:"auto" dummy — bgEffect mode'dan
+   *  bağımsız tek-seçimli eksen §4. undefined → vignetteAlpha=0
+   *  && grainOpacity=0 → aşağıdaki iki guard da false → hiçbir
+   *  composite çalışmaz = byte-identical no-op (Phase 135 baseline
+   *  bitwise korunur). */
+  const bgFx = resolvePlateEffects({
+    mode: "auto",
+    bgEffect: scene.bgEffect,
+  });
+
+  /* 4b) Layer 1b — Grain (deterministik monokrom; preview SVG
+   *     feTurbulence ile algısal eşdeğer — §11.0 parity, bit-exact
+   *     DEĞİL). Compositing order SABİT (bağlam §4 + Task 3 preview
+   *     parity): bg → GRAIN → glass → blur → cascade → vignette.
+   *     Grain bg'nin parçası → glass + lens-blur onu YUMUŞATIR
+   *     (istenen; film-grain hissi, dijital RGB gürültü değil §4).
+   *     plate-area dest-in mask = blur bloğu plateMaskSvg pattern'i
+   *     (aynı plate koordinatları). */
+  if (bgFx.grainOpacity > 0) {
+    const grainTile = await sharp({
+      create: {
+        width: 160,
+        height: 160,
+        channels: 3,
+        background: { r: 0, g: 0, b: 0 },
+        noise: { type: "gaussian", mean: 128, sigma: 36 },
+      },
+    })
+      .greyscale()
+      .png()
+      .toBuffer();
+    const grainPlate = await sharp({
+      create: {
+        width: outputW,
+        height: outputH,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .composite([
+        { input: grainTile, tile: true, blend: "over" },
+        {
+          input: Buffer.from(
+            `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg"><rect x="${plateLayout.plateX}" y="${plateLayout.plateY}" width="${plateLayout.plateW}" height="${plateLayout.plateH}" rx="${plateLayout.plateRadius}" ry="${plateLayout.plateRadius}" fill="white"/></svg>`,
+          ),
+          blend: "dest-in",
+        },
+      ])
+      .ensureAlpha(bgFx.grainOpacity)
+      .png()
+      .toBuffer();
+    canvasBuffer = await sharp(canvasBuffer)
+      .composite([{ input: grainPlate, top: 0, left: 0 }])
+      .png()
+      .toBuffer();
+  }
+
   /* 5) Layer 2a — Glass overlay (plate üstüne, cascade'DEN ÖNCE).
    *    Preview k-studio__plate-glass z-index 1, cascade z-index 2.
    *    Glass = plate üstü variant-tinted surface treatment; item'a
@@ -1269,6 +1333,31 @@ export async function composeFrameOutput(
   if (slotComposites.length > 0) {
     canvasBuffer = await sharp(canvasBuffer)
       .composite(slotComposites)
+      .png()
+      .toBuffer();
+  }
+
+  /* 7b) Layer 4 — Vignette EN ÜSTTE (cascade + glass + blur'dan
+   *     SONRA; lens kenar karartması optik son katman §4 — preview
+   *     zIndex:9 > cascade z:2 birebir). Merkez ~%60 ŞEFFAF
+   *     (offset 60% rgba(0,0,0,0) → 100% rgba(0,0,0,α)) → subject/
+   *     portrait boğmaz §4 guardrail. radialGradient Sharp raw API'de
+   *     yok → SVG radial gradient PNG composite (preview CSS radial-
+   *     gradient ile aynı stop'lar = §11.0 parity). plate-area
+   *     clipped (plateMaskSvg ile aynı koordinatlar). */
+  if (bgFx.vignetteAlpha > 0) {
+    const vignetteSvg = `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg">
+      <defs><radialGradient id="v" cx="50%" cy="50%" r="50%">
+        <stop offset="60%" stop-color="rgba(0,0,0,0)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,${bgFx.vignetteAlpha})"/>
+      </radialGradient></defs>
+      <rect x="${plateLayout.plateX}" y="${plateLayout.plateY}"
+        width="${plateLayout.plateW}" height="${plateLayout.plateH}"
+        rx="${plateLayout.plateRadius}" ry="${plateLayout.plateRadius}"
+        fill="url(#v)"/>
+    </svg>`;
+    canvasBuffer = await sharp(canvasBuffer)
+      .composite([{ input: Buffer.from(vignetteSvg), top: 0, left: 0 }])
       .png()
       .toBuffer();
   }
