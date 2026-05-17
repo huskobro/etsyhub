@@ -57,6 +57,18 @@ import type {
   StudioSlotMeta,
 } from "./types";
 
+/* Phase 136 — statik monokrom film-grain data-URI (bir kez
+ *  encode; render'da yeniden hesaplanmaz). Opacity ayrı prop. */
+const BG_GRAIN_DATA_URI =
+  'url("data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160">' +
+      '<filter id="g"><feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="2" seed="7" stitchTiles="stitch"/>' +
+      '<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.6 0.6 0.6 0 0"/></filter>' +
+      '<rect width="160" height="160" filter="url(#g)"/></svg>',
+  ) +
+  '")';
+
 /* Phase 88 — Hex → rgba conversion for asset-aware scene CSS
  * custom property injection. Stage scene'in radial gradient
  * layer'ları operator palette tone'larını subtle alpha ile
@@ -865,15 +877,7 @@ export function StageScene({
                 inset: 0,
                 pointerEvents: "none",
                 opacity: plateEffects.grainOpacity,
-                backgroundImage:
-                  "url(\"data:image/svg+xml;utf8," +
-                  encodeURIComponent(
-                    '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160">' +
-                      '<filter id="g"><feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="2" seed="7" stitchTiles="stitch"/>' +
-                      '<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.6 0.6 0.6 0 0"/></filter>' +
-                      '<rect width="160" height="160" filter="url(#g)"/></svg>',
-                  ) +
-                  "\")",
+                backgroundImage: BG_GRAIN_DATA_URI,
                 backgroundRepeat: "repeat",
                 zIndex: 1,
               }}

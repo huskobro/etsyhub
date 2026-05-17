@@ -1231,7 +1231,13 @@ export async function composeFrameOutput(
    *     Grain bg'nin parçası → glass + lens-blur onu YUMUŞATIR
    *     (istenen; film-grain hissi, dijital RGB gürültü değil §4).
    *     plate-area dest-in mask = blur bloğu plateMaskSvg pattern'i
-   *     (aynı plate koordinatları). */
+   *     (aynı plate koordinatları). dest-in mask rect'i ayrıca
+   *     fill-opacity=grainOpacity taşır → plate-clip + global alpha
+   *     TEK adımda (ensureAlpha Sharp'ta NO-OP: grainPlate zaten
+   *     channels:4 → alpha kanalı VAR → ensureAlpha hiçbir şey
+   *     yapmazdı, grain ~%100 opak basardı = §11.0 ihlali). Preview
+   *     MockupStudioStage.tsx grain bloğu ile SENKRON tutulmalı
+   *     (compositing order + alpha değişirse ikisi birlikte). */
   if (bgFx.grainOpacity > 0) {
     const grainTile = await sharp({
       create: {
@@ -1257,12 +1263,11 @@ export async function composeFrameOutput(
         { input: grainTile, tile: true, blend: "over" },
         {
           input: Buffer.from(
-            `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg"><rect x="${plateLayout.plateX}" y="${plateLayout.plateY}" width="${plateLayout.plateW}" height="${plateLayout.plateH}" rx="${plateLayout.plateRadius}" ry="${plateLayout.plateRadius}" fill="white"/></svg>`,
+            `<svg width="${outputW}" height="${outputH}" xmlns="http://www.w3.org/2000/svg"><rect x="${plateLayout.plateX}" y="${plateLayout.plateY}" width="${plateLayout.plateW}" height="${plateLayout.plateH}" rx="${plateLayout.plateRadius}" ry="${plateLayout.plateRadius}" fill="white" fill-opacity="${bgFx.grainOpacity}"/></svg>`,
           ),
           blend: "dest-in",
         },
       ])
-      .ensureAlpha(bgFx.grainOpacity)
       .png()
       .toBuffer();
     canvasBuffer = await sharp(canvasBuffer)

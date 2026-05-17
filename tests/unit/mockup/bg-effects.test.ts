@@ -63,4 +63,20 @@ describe("resolvePlateEffects — bgEffect", () => {
     expect(r.filterBlurPx).toBeGreaterThan(0);
     expect(r.vignetteAlpha).toBe(BG_VIGNETTE_ALPHA.soft);
   });
+  it("grain opacity resolver çıktısı = map değeri (export alpha = grainOpacity×255 invariant kaynağı)", () => {
+    const r = resolvePlateEffects({
+      mode: "auto",
+      bgEffect: { kind: "grain", intensity: "strong" },
+    });
+    // Export grain composite bu değeri dest-in mask fill-opacity
+    // olarak kullanır → plate-içi alpha = grainOpacity*255.
+    // ensureAlpha NO-OP bug'ı (Phase 136 4/8 fix): grainPlate zaten
+    // channels:4 → alpha kanalı VAR → Sharp ensureAlpha hiçbir şey
+    // yapmaz, grain ~%100 opak basardı (§11.0 ihlali). Fix: alpha
+    // dest-in mask rect fill-opacity'sine taşındı. Bu değer 0-1
+    // arası kalmalı, 1'e (opak) zorlanmamalı.
+    expect(r.grainOpacity).toBe(BG_GRAIN_OPACITY.strong);
+    expect(r.grainOpacity).toBeGreaterThan(0);
+    expect(r.grainOpacity).toBeLessThan(1);
+  });
 });
