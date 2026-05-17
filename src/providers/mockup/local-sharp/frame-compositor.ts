@@ -119,17 +119,16 @@ export function resolveDeviceShape(
   }
 }
 
-/* Phase 109 — Lens Blur structured config (server-side mirror of
- * frame-scene.ts LensBlurConfig; compositor UI import etmez —
- * bağımsız tip, mevcut pattern). target "plate" = yalnız plate
- * bg/scene bulanık (cascade items NET — Preview = Export Truth
- * §11.0); "all" = plate + items (legacy Phase 98-108). intensity
- * soft/medium/strong → 4/8/14px (Sharp .blur sigma karşılığı). */
-export type FrameLensBlurTarget = "plate" | "all";
+/* Lens Blur structured config — server-side mirror of
+ * frame-scene.ts LensBlurConfig (compositor UI import etmez —
+ * bağımsız tip). Phase 139 — `target` KALDIRILDI (tek-davranışlı).
+ * Export zaten Phase 113'ten beri target'ı OKUMUYOR (her durumda
+ * plate-area blur, cascade üstte NET); tip-paritesi için target
+ * field'ı da kaldırıldı. intensity soft/medium/strong → Sharp
+ * .blur sigma 3/6/11 (preview LENS_BLUR_PX 4/8/14 paritesi). */
 export type FrameLensBlurIntensity = "soft" | "medium" | "strong";
 export interface FrameLensBlurConfig {
   enabled: boolean;
-  target: FrameLensBlurTarget;
   intensity: FrameLensBlurIntensity;
 }
 
@@ -141,19 +140,21 @@ const FRAME_LENS_BLUR_SIGMA: Record<FrameLensBlurIntensity, number> = {
   strong: 11,
 };
 
-/** Backward-compat normalize: undefined/false → disabled;
- *  true (Phase 98-108) → enabled target "all" (eski davranış:
- *  tüm plate child blur); structured → as-is. */
+/** Backward-compat normalize (Phase 139 — target yok):
+ *  undefined/false → disabled; true (legacy Phase 98-108) →
+ *  enabled medium; structured → {enabled,intensity} (eski
+ *  persisted config'lerdeki `target` structural-typing ile yok
+ *  sayılır — export zaten okumuyordu). */
 function normalizeFrameLensBlur(
   raw: boolean | FrameLensBlurConfig | undefined,
 ): FrameLensBlurConfig {
   if (raw === undefined || raw === false) {
-    return { enabled: false, target: "plate", intensity: "medium" };
+    return { enabled: false, intensity: "medium" };
   }
   if (raw === true) {
-    return { enabled: true, target: "all", intensity: "medium" };
+    return { enabled: true, intensity: "medium" };
   }
-  return raw;
+  return { enabled: raw.enabled, intensity: raw.intensity };
 }
 
 export interface FrameSceneInput {

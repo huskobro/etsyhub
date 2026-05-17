@@ -5,10 +5,11 @@
 > DEĞİL. Tarihsel "Phase N candidate" gerekçeleri için
 > `docs/claude/archive/phase-log-97-135.md` (NOT authoritative).
 >
-> **Son güncelleme:** Phase 137 (2026-05-17) — Effect Settings
-> Flyout (Lens Blur + BG Effects secondary panel); Tilt/Portrait/
-> Watermark/VFX honest-disabled KORUNDU (flyout'a alınmadı).
-> Phase 136 — BG Effects §D'de "wire edildi" işaretlendi
+> **Son güncelleme:** Phase 139 (2026-05-17) — §A: Lens Blur
+> `target` (plate-only/all) KALDIRILDI (kenarda turuncu bant);
+> tek-davranışlı. Gerçek "plate-only" + dead
+> `supportsLensBlurTargeting` deferred maddeleri eklendi.
+> Phase 137 — Effect Settings Flyout. Phase 136 — BG Effects
 >
 > İlgili authoritative dokümanlar:
 > - `docs/claude/mockup-studio-contract.md` (§13 Future Direction
@@ -73,6 +74,38 @@
   eşleşmesi (asıl kritik metrik) mount dahil HER durumda
   birebir. Düşük öncelik; istenirse measure-sonrası recompute
   guard'ı.
+- **Gerçek "plate-only Lens Blur" (plate bg blur + items NET)
+  — DEFERRED, ayrı iş.** Phase 109 `target: "plate"|"all"`
+  ayrımı eklemişti. Phase 138-139'da (browser+DOM kanıtlandı)
+  `target="plate"` preview'da AYRI bir content-blur wrapper
+  gerektiriyordu; o wrapper'ın blur'u plate-bg gradyeninin
+  amber ucunu plate kenarına yayıp (plate `overflow:hidden`
+  sert kesim) **kenarda turuncu bant** üretiyordu. Phase 139
+  kararı (kullanıcı): problemli `target` ayrımı + bu kod yolu
+  TAMAMEN KALDIRILDI; Lens Blur tek-davranışlı = eski iyi
+  çalışan "all" (plate'in kendisine `filter:blur`; bkz.
+  Contract §7.5). **Teknik engel (gerçek plate-only yeniden
+  tasarlanırsa):** items (`.k-studio__media-pos`) plate'in
+  render bağlamı İÇİNDE; plate'e `filter:blur` → items de
+  blur. "Sadece plate blur + items NET" için items'ı bu
+  filter'dan izole etmek gerek — ama items'ı plate dışına/
+  ayrı layer'a almak `media-pos` translate/zoom/pan
+  (Phase 125/126/135 plate-relative) zincirini bozar; ayrı
+  content-blur wrapper ise kenarda turuncu bant + halo
+  (Phase 138 kanıtı) üretir. Çözüm: items'ı plate render
+  bağlamından zoom/framing/pan'i bozmadan izole eden YENİ
+  bir layer modeli (sıfırdan tasarım). Capability iskeleti
+  (`STUDIO_DEVICE_CAPABILITIES`) bu iş için referans olabilir.
+- **Dead `supportsLensBlurTargeting` field** —
+  `frame-scene.ts` `STUDIO_DEVICE_CAPABILITIES.supports
+  LensBlurTargeting` Phase 112'de Lens Blur targeting UI
+  gate'iydi; Phase 139'da Lens `target` kaldırılınca tek
+  tüketicisi gitti → field artık ölü. Bilinçli bırakıldı
+  (capability map iskeleti gerçek plate-only yeniden tasarımı
+  + diğer SVG-feature'lar için referans; tek field sökmek
+  map yapısını + Phase 105 client/server build-boundary
+  tekrarını etkiler — ayrı küçük temizlik turu). Misleading
+  değil: Contract §7.6'da "dead" olarak açıkça işaretli.
 
 ## B. Mockup Studio — framing / composition
 
@@ -245,11 +278,15 @@ Yeni tur bunları AÇMADAN ÖNCE Contract + açık karar gerekir:
   AÇILMAZ** (bugünkü 1 layout-family ihtiyacından kopuk;
   capability map Phase 109-112 dead-code dersi). Yeni layout =
   `cascadeLayoutForRaw` switch'e tek case.
-- **`STUDIO_DEVICE_CAPABILITIES`** Phase 112'de fiilen tüketime
-  bağlandı (Lens Blur targeting gate); future SVG-specific
-  feature (phone color / garment color / chrome tone) ilgili
-  shape capability entry'sine **FIELD eklenerek** gelir — kod
-  patlamaz. Feature şimdi açılmaz; effect/action sistemi
-  tasarlanırken hesaba katılır.
+- **`STUDIO_DEVICE_CAPABILITIES`** Phase 112'de Lens Blur
+  targeting gate'ine bağlanmıştı; **Phase 139'da Lens `target`
+  kaldırılınca o gate'in tek tüketicisi gitti →
+  `supportsLensBlurTargeting` artık ölü** (yukarı §A "dead
+  field"). Map iskeleti yapısal olarak korunuyor (future
+  SVG-specific feature — phone color / garment color / chrome
+  tone — ilgili shape entry'sine **FIELD eklenerek** gelir;
+  gerçek plate-only yeniden tasarımı için de referans). Feature
+  şimdi açılmaz; effect/action sistemi tasarlanırken hesaba
+  katılır.
 - **WorkflowRun tablosu** — IA Phase 11 kapsamı; eklenmez
   (lineage hâlâ `Job.metadata.batchId` schema-zero pattern).

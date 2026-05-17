@@ -3,6 +3,7 @@ import {
   BG_VIGNETTE_ALPHA,
   BG_GRAIN_OPACITY,
   resolvePlateEffects,
+  resolveLensBlurLayout,
   type BgEffectConfig,
   type SceneOverride,
 } from "@/features/mockups/studio/frame-scene";
@@ -56,7 +57,7 @@ describe("resolvePlateEffects — bgEffect", () => {
     const r = resolvePlateEffects({
       mode: "glass",
       glassVariant: "dark",
-      lensBlur: { enabled: true, target: "plate", intensity: "soft" },
+      lensBlur: { enabled: true, intensity: "soft" },
       bgEffect: { kind: "vignette", intensity: "soft" },
     });
     expect(r.glassOverlay).toBeDefined();
@@ -78,5 +79,73 @@ describe("resolvePlateEffects — bgEffect", () => {
     expect(r.grainOpacity).toBe(BG_GRAIN_OPACITY.strong);
     expect(r.grainOpacity).toBeGreaterThan(0);
     expect(r.grainOpacity).toBeLessThan(1);
+  });
+});
+
+
+/* Phase 139 — Lens Blur TEK-DAVRANIŞLI (target kaldırıldı).
+ *
+ * Phase 138'de `target="plate"` AYRI bir content-blur wrapper
+ * üretiyordu; o wrapper'ın blur'u plate-bg gradyeninin amber
+ * ucunu plate kenarına yayıp (plate overflow:hidden sert kesim)
+ * KENARDA TURUNCU BANT yaratıyordu. `target="all"` (plate'in
+ * KENDİSİNE filter) bu sorunu yaşamıyordu (kenar dahil tek-pass
+ * blur → koyu stage zemini ile organik harman). "Sadece plate
+ * blur, item'lar NET" davranışı mevcut render zincirinde
+ * (item'lar plate render bağlamı içinde; izolasyon zoom/framing
+ * zincirini riske atar) temiz değil.
+ *
+ * Karar (kullanıcı): problemli `target` ayrımını TAMAMEN KALDIR.
+ * Lens Blur tek-davranışlı = mevcut iyi çalışan "all" yolu
+ * (plate'in kendisine `filter:blur`). `LensBlurConfig` artık
+ * `{ enabled, intensity }` (target YOK). `resolveLensBlurLayout`
+ * enabled ise daima `{ plateFilter: "blur(Npx)" }`, disabled ise
+ * `{ plateFilter: null }`. `contentFilterBlur` SİLİNDİ. Gerçek
+ * `plate-only` ileride ayrı iş — temiz mimari (item-izolasyonu
+ * zoom/framing'i bozmadan) ile yeniden tasarlanır. */
+describe("resolveLensBlurLayout — tek-davranışlı (target yok, daima plate-filter)", () => {
+  it("disabled → plateFilter null (no-op)", () => {
+    const r = resolveLensBlurLayout(resolvePlateEffects({ mode: "auto" }));
+    expect(r.plateFilter).toBeNull();
+  });
+
+  it("enabled → plateFilter set (plate'in kendisine, tek-pass — mevcut working 'all' yolu)", () => {
+    const eff = resolvePlateEffects({
+      mode: "auto",
+      lensBlur: { enabled: true, intensity: "medium" },
+    });
+    const r = resolveLensBlurLayout(eff);
+    expect(r.plateFilter).toBe(`blur(${eff.filterBlurPx}px)`);
+  });
+
+  it("plateBgRaw'dan BAĞIMSIZ çalışır (auto+palette-yok'ta da blur)", () => {
+    const eff = resolvePlateEffects({
+      mode: "auto",
+      lensBlur: { enabled: true, intensity: "soft" },
+    });
+    const r = resolveLensBlurLayout(eff);
+    expect(r.plateFilter).toBe(`blur(${eff.filterBlurPx}px)`);
+  });
+
+  it("intensity → filterBlurPx yansır (soft/medium/strong farklı px)", () => {
+    const soft = resolveLensBlurLayout(
+      resolvePlateEffects({
+        mode: "auto",
+        lensBlur: { enabled: true, intensity: "soft" },
+      }),
+    );
+    const strong = resolveLensBlurLayout(
+      resolvePlateEffects({
+        mode: "auto",
+        lensBlur: { enabled: true, intensity: "strong" },
+      }),
+    );
+    expect(soft.plateFilter).not.toBe(strong.plateFilter);
+  });
+
+  it("legacy boolean true → enabled (backward-compat; target normalize KALDIRILDI)", () => {
+    const eff = resolvePlateEffects({ mode: "auto", lensBlur: true });
+    const r = resolveLensBlurLayout(eff);
+    expect(r.plateFilter).toBe(`blur(${eff.filterBlurPx}px)`);
   });
 });

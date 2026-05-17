@@ -25,6 +25,7 @@ import {
   resolveSceneStyle,
   resolvePlateEffects,
   resolvePlateBackground,
+  resolveLensBlurLayout,
   type SceneOverride,
 } from "./frame-scene";
 import {
@@ -301,8 +302,9 @@ function MockupComposition({
         /* Phase 113 — Layer 3 (item layer) effect layer'ın (Layer
          * 2, z-index 1) ÜSTÜNDE. Cascade DOM'da glass'tan sonra
          * gelir; explicit z-index 2 stacking context robustluğu
-         * (plate-surface z0 + glass z1 < cascade z2). Glass/blur
-         * item'ları etkilemez. */
+         * (grain/glass z1 < cascade z2). Phase 139 — Lens Blur
+         * tek-davranışlı: blur plate'in KENDİSİNE (target ayrımı
+         * + ayrı content-blur layer KALDIRILDI). */
         position: "relative",
         zIndex: 2,
       }}
@@ -607,7 +609,7 @@ function FrameComposition({
  * görsel sistem ("benzetmeye çalışan ikinci renderer").
  *
  * Doğru model (Phase 117): TEK render component, İKİ ölçek.
- * `StageScene` = scene→amb→floor→plate→(plate-surface/glass)→
+ * `StageScene` = scene→amb→floor→plate→(grain/glass)→
  * MockupComposition/FrameComposition bloğunun tamamı. Stage büyük
  * ekranda render eder (selected layoutVariant); rail thumb AYNI
  * `StageScene`'i CSS `transform: scale()` ile küçültülmüş + küçük
@@ -726,9 +728,6 @@ export function StageScene({
   );
   const plateEffects = resolvePlateEffects(sceneOverride ?? { mode: "auto" });
   const lensBlurActive = plateEffects.filterBlurPx > 0;
-  const blurPlateOnly =
-    lensBlurActive && plateEffects.blurTarget === "plate";
-  const blurAll = lensBlurActive && plateEffects.blurTarget === "all";
   /* Phase 136 — BG Effects (tek-seçimli; resolvePlateEffects'ten
    *  okunur — preview = export aynı pure-TS resolver §11.0).
    *  bgEffect yokken ikisi de 0 → hiçbir layer render edilmez
@@ -778,28 +777,29 @@ export function StageScene({
   )}px 0 rgba(0,0,0,0.32), 0 ${Math.round(sW * 0.047)}px ${Math.round(
     sW * 0.076,
   )}px 0 rgba(0,0,0,0.30)`;
+  /* Lens Blur — TEK-DAVRANIŞLI (Phase 139; target kaldırıldı).
+   *  Phase 138 `target="plate"` AYRI content-blur wrapper
+   *  kullanıyordu → plate-bg gradyen amber ucu plate kenarına
+   *  yayılıp KENARDA TURUNCU BANT (plate overflow:hidden sert
+   *  kesim). Çözüm: problemli plate-only yolu KALDIRILDI; tek
+   *  yol = eski iyi çalışan "all" davranışı — `filter:blur`
+   *  plate'in KENDİSİNE (kenar dahil tüm subtree tek-pass →
+   *  koyu stage zemini ile organik harman, turuncu bant YOK,
+   *  halo YOK). bg plate'in kendisinde (normal/working yol).
+   *  Gerçek plate-only ileride ayrı iş — temiz mimari
+   *  (item-izolasyonu zoom/framing'i bozmadan;
+   *  known-issues-and-deferred.md). */
+  const lensLayout = resolveLensBlurLayout(plateEffects);
   const plateStyle: React.CSSProperties = {
     width: plateDims.w,
     height: plateDims.h,
     borderRadius: `${plateRadius}px`,
     boxShadow: plateBoxShadow,
-    ...(plateBgRaw && !blurPlateOnly ? { background: plateBgRaw } : {}),
-    ...(blurAll
-      ? { filter: `blur(${plateEffects.filterBlurPx}px)` }
+    ...(plateBgRaw ? { background: plateBgRaw } : {}),
+    ...(lensLayout.plateFilter
+      ? { filter: lensLayout.plateFilter }
       : {}),
   };
-  const plateSurfaceStyle: React.CSSProperties | undefined =
-    blurPlateOnly && plateBgRaw
-      ? {
-          position: "absolute",
-          inset: 0,
-          background: plateBgRaw,
-          borderRadius: "inherit",
-          filter: `blur(${plateEffects.filterBlurPx}px)`,
-          pointerEvents: "none",
-          zIndex: 0,
-        }
-      : undefined;
   return (
     <div
       className="k-studio__stage"
@@ -848,18 +848,9 @@ export function StageScene({
               : ""
           }
           data-lens-blur={lensBlurActive ? "true" : "false"}
-          data-blur-target={lensBlurActive ? plateEffects.blurTarget : ""}
           data-preview-zoom={String(effectiveZoom)}
           style={plateStyle}
         >
-          {plateSurfaceStyle ? (
-            <div
-              className="k-studio__plate-surface"
-              data-testid="studio-stage-plate-surface"
-              aria-hidden
-              style={plateSurfaceStyle}
-            />
-          ) : null}
           {/* Phase 136 — Grain layer (compositing: glass'tan ÖNCE
               = altında; plate-bg üstünde). Monokrom film-grain
               (feColorMatrix grayscale çıkış — dijital RGB gürültü
@@ -1138,7 +1129,7 @@ export function MockupStudioStage({
    * artık paylaşılan `StageScene` component'inde. Stage main fn
    * yalnız viewport-aware `plateDims`'i hesaplar (Stage-shell
    * concern) ve `<StageScene>`'e geçirir; scene/plate resolution
-   * (sceneTones/plateBgRaw/plateEffects/plateStyle/plateSurfaceStyle)
+   * (sceneTones/plateBgRaw/plateEffects/plateStyle/lensLayout)
    * StageScene İÇİNDE yapılır (lokal duplicate kaldırıldı, tek
    * tanım — sessiz drift §12 YASAK). Overlay'ler (empty-cap /
    * render-ov / render-banner / edit-pill / zoom-pill) StageScene

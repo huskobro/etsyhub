@@ -51,12 +51,10 @@ import {
 } from "./frame-aspects";
 import {
   type BgEffectConfig,
-  deviceKindToShape,
   type EffectPanelKey,
   type LensBlurConfig,
   SCENE_AUTO,
   type SceneOverride,
-  studioDeviceCapability,
 } from "./frame-scene";
 import {
   stageDeviceForProductType,
@@ -995,18 +993,12 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
          *  dışına taşırken clip + scroll'la kaydırıyordu (guardrail
          *  4+6). Konumlama studio.css `.k-studio__effect-flyout`
          *  (body position:relative, left = sidebar genişliği).
-         *  lensTargetingSupported = Sidebar'daki kanonik formülün
-         *  birebir aynısı (studioDeviceCapability ∘ deviceKindToShape);
-         *  Shell'de gerçek `deviceKind` (stageDeviceForProductType)
-         *  kullanılır — körü körüne true DEĞİL. */}
+         *  Phase 139 — Lens Blur tek-davranışlı (target ayrımı +
+         *  lensTargetingSupported prop KALDIRILDI). */}
         {activeEffectPanel === "lens" || activeEffectPanel === "bgfx" ? (
           <EffectFlyout
             panel={activeEffectPanel}
             activeScene={sceneOverride ?? SCENE_AUTO}
-            lensTargetingSupported={
-              studioDeviceCapability(deviceKindToShape(deviceKind))
-                .supportsLensBlurTargeting
-            }
             onChangeSceneOverride={setSceneOverride}
             onClose={() => setActiveEffectPanel(null)}
           />

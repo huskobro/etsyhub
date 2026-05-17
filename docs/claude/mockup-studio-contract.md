@@ -7,10 +7,12 @@
 > + kod. Tarihsel Phase narrative'leri için → `docs/claude/archive/`
 > (orası authoritative DEĞİL — yalnız "nasıl bu hâle geldi").
 >
-> **Son güncelleme:** Phase 137 (2026-05-17) — §7.8 Effect
-> Settings Flyout (Lens Blur + BG Effects sol-sidebar-bitişik
-> secondary panel; tile cycle/toggle kaldırıldı; selected≠open).
-> Phase 136 — §7.7 BG Effects
+> **Son güncelleme:** Phase 139 (2026-05-17) — §7.5 Lens Blur
+> TEK-DAVRANIŞLI (problemli `target` plate-only/all ayrımı +
+> kenarda turuncu bant üreten content-blur yolu KALDIRILDI;
+> tek yol = plate'e filter; §7.6 supportsLensBlurTargeting dead;
+> §7.8 etiket sade "Blur"). Phase 137 — §7.8 Effect Settings
+> Flyout. Phase 136 — §7.7 BG Effects
 > (Frame scene effect: vignette+grain, tek-seçim, mode/glass/
 > lensBlur'dan bağımsız eksen; compositing order bg → grain →
 > glass → blur → cascade → vignette; Preview = Export §11.0).
@@ -289,37 +291,53 @@
 - Hover preview / replace flow operator için non-blocking; stage
   composition bozulmaz.
 
-### 7.5 Lens Blur / effect targeting (Phase 109)
+### 7.5 Lens Blur (TEK-DAVRANIŞLI — Phase 139; `target` kaldırıldı)
 
-- Lens Blur **monolitik boolean DEĞİL** — structured config
-  `{ enabled, target, intensity }` (`SceneOverride.lensBlur`;
-  backward-compat: legacy `boolean true` → `{enabled:true,
-  target:"all", intensity:"medium"}`, `undefined/false` →
-  disabled; `normalizeLensBlur` helper tek normalize noktası).
-- **target** `"plate"` (default) | `"all"`:
-  - `"plate"`: yalnız plate bg/scene bulanık; **cascade items
-    NET**. Operatör eğilimi ("itemler blur'lu olmamalı") +
-    Preview = Export Truth §11.0 (items keskin, sahne
-    atmospheric). Preview: plate bg AYRI absolute surface
-    layer (`k-studio__plate-surface`, z-index 0) + ona CSS
-    `filter:blur`; cascade composition (`k-studio__stage-inner`
-    z-index 1) NET. Export: Sharp pipeline cascade-SİZ canvas
-    blur → plate-area rounded mask → net canvas + slotComposites
-    blur'suz EN ÜSTE (preview z-index 0/1 birebir).
-  - `"all"`: plate + cascade items hepsi blur (legacy Phase
-    98-108 davranış — backward-compat). Preview: plate div'in
-    tümüne filter. Export: Phase 108 baseline (full canvas blur
-    → plate-area mask).
+- Lens Blur config `{ enabled, intensity }` (`SceneOverride.
+  lensBlur`; backward-compat: legacy `boolean true` →
+  `{enabled:true, intensity:"medium"}`, `undefined/false` →
+  disabled; `normalizeLensBlur` tek normalize noktası — eski
+  persisted config'lerdeki `target` alanı structural-typing
+  ile yok sayılır).
+- **`target` ("plate" | "all") TAMAMEN KALDIRILDI.** Phase 109
+  bu ayrımı eklemişti; `target="plate"` ("yalnız plate bg
+  bulanık, items NET") preview'da AYRI bir content-blur
+  wrapper gerektiriyordu — o wrapper'ın blur'u plate-bg
+  gradyeninin amber ucunu plate kenarına yayıp (plate
+  `overflow:hidden` sert kesim) **kenarda turuncu bant**
+  üretiyordu (Phase 138-139, browser+DOM kanıtlandı).
+  `target="all"` bu sorunu yaşamıyordu (plate'in KENDİSİNE
+  `filter:blur` → kenar dahil tek-pass blur, koyu stage
+  zemini ile organik harman). "Sadece plate blur + items
+  NET" davranışı, mevcut render zincirinde (items plate'in
+  render bağlamı içinde; izolasyon zoom/framing/pan zincirini
+  riske atar) temiz şekilde yapılamıyor.
+- **Tek davranış** = eski iyi çalışan "all" yolu: Lens Blur
+  açıkken `filter:blur` plate element'inin KENDİSİNE
+  uygulanır (`resolveLensBlurLayout` → `plateFilter`; tüm
+  subtree — bg+grain+glass+cascade — tek-pass birlikte blur;
+  ayrı surface/content-blur layer YOK → kenar-sızma/halo
+  YOK). `resolveLensBlurLayout(effects)` enabled →
+  `{ plateFilter: "blur(Npx)" }`, disabled →
+  `{ plateFilter: null }` (DOM byte-identical no-op).
 - **intensity** `"soft" | "medium" | "strong"` → CSS 4/8/14px
   (preview) / Sharp sigma 3/6/11 (export). Default `medium`.
-- Lens Blur enable iken Frame sidebar'da **target + intensity
-  seçim UI** (Plate only / Plate + items + Soft/Medium/Strong
-  segment'leri). Shots.so'da ayrı Lens Blur tile YOK (blur
-  STYLE/Glass içinden) — Kivasy Lens Blur **Kivasy-özgü**;
-  parity zorlaması yok, tasarım kararı bize ait.
-- Banner stale: enabled + target + intensity hepsi export'a
-  yansır (Preview = Export Truth) → herhangi biri değişirse
-  "Preview changed — re-export?" (sözleşme #12 no silent magic).
+- Lens Blur enable iken Frame Effect Settings Flyout'ta
+  **yalnız Intensity** segment'i (target UI KALDIRILDI). Lens
+  Blur Kivasy-özgü (Shots.so'da ayrı tile yok); tasarım
+  kararı bize ait.
+- **Export parity (§11.0):** `frame-compositor.ts` Phase
+  113'ten beri zaten `target`'ı OKUMUYOR (her durumda
+  plate-area blur, cascade üstte NET) → `target` kaldırma
+  export davranışını DEĞİŞTİRMEDİ. Preview tek-pass plate
+  filter ile export plate-area blur algısal eşdeğer.
+- Banner stale: enabled + intensity export'a yansır → değişirse
+  "Preview changed — re-export?" (sözleşme #12).
+- **Gerçek `plate-only` ileride AYRI bir iş.** "plate bg blur
+  + items NET" temiz mimari (items'ı plate render bağlamından
+  zoom/framing/pan zincirini bozmadan izole eden bir layer
+  modeli) ile sıfırdan tasarlanır. Teknik engel + bu kaldırma
+  kararının gerekçesi → `known-issues-and-deferred.md`.
 
 ### 7.6 Shared device capability model (Phase 109 + Phase 112 fiilen tüketim)
 
@@ -328,18 +346,20 @@
   `{ supportsLensBlurTargeting, supportsColorVariant,
   supportsChromeTone }`). `studioDeviceCapability(shape)` tek
   erişim noktası.
-- **Phase 112 — capability map artık FİİLEN tüketiliyor.** Phase
-  109'da map kuruldu ama **sıfır tüketici** idi (dead future-only
-  abstraction — kullanıcının "gelecekte gerekebilir diye yazılmış,
-  bugünden kopuk" eleştirdiği tam örnek). Phase 112: Sidebar Lens
-  Blur targeting UI'ı `studioDeviceCapability(deviceKindToShape(
-  deviceKind)).supportsLensBlurTargeting` ile **gate'lenir** —
-  shape `false` ise target/intensity UI gizlenir (ad-hoc if-else
-  yerine tek capability kapısı). Şu an tüm shape `true` →
-  **davranış birebir aynı** (Lens Blur targeting hâlâ görünür),
-  ama capability model artık canlı (dead-code canlandı). Future
-  SVG-specific shape `supportsLensBlurTargeting=false` set ederse
-  UI otomatik gizlenir.
+- **Phase 112-139 — `supportsLensBlurTargeting` artık tekrar
+  TÜKETİLMİYOR (dead field).** Phase 112'de Lens Blur targeting
+  UI'ı `studioDeviceCapability(...).supportsLensBlurTargeting`
+  ile gate'leniyordu. Phase 139'da Lens Blur `target` ayrımı
+  TAMAMEN KALDIRILDI (§7.5) → bu gate'in tek tüketicisi gitti.
+  `STUDIO_DEVICE_CAPABILITIES` map + `studioDeviceCapability()`
+  yapısal olarak duruyor (future SVG-specific feature için
+  altyapı; `supportsColorVariant`/`supportsChromeTone` zaten
+  hep `false`-future) ama `supportsLensBlurTargeting` field'ı
+  şu an **ölü** — bilinçli bırakıldı (capability map iskeleti
+  ileride "gerçek plate-only" yeniden tasarımı + diğer
+  SVG-feature'lar için referans; tek field sökmek map
+  yapısını/Phase 105 build-boundary tekrarını etkiler).
+  Temizlik notu → `known-issues-and-deferred.md`.
 - **`deviceKindToShape(deviceKind)`** (Phase 112, `frame-scene.ts`
   client-safe) — `resolveDeviceShape` (frame-compositor.ts,
   server-side) ile **birebir aynı mapping**. Build-boundary
@@ -348,9 +368,10 @@
   client modülü compositor'ı import edemez). Tek client-side
   kaynak: capability erişimi + ileride shape-aware client logic
   buradan okur, ad-hoc switch büyütülmez.
-- Phase 109'da yalnız `supportsLensBlurTargeting: true` (tüm
-  shape — Lens Blur target/intensity evrensel). `supports
-  ColorVariant` / `supportsChromeTone` tip+map'te var ama hepsi
+- `supportsLensBlurTargeting: true` (tüm shape) — Phase 139'da
+  Lens Blur `target` kaldırıldığı için bu field artık ölü
+  (yukarı bkz.). `supportsColorVariant` /
+  `supportsChromeTone` tip+map'te var ama hepsi
   **false** (feature açılmadı — future SVG readiness §13 / §7).
 - **Future SVG-specific feature** (phone color, button color,
   browser frame style, chrome/material tone): ilgili shape'in
@@ -423,15 +444,18 @@ secondary **flyout** ile ayarlanır. Normatif kurallar:
   (bitişik), dar (~252px), hafif floating (kaba modal/backdrop
   DEĞİL).
 - **Selected ≠ Open (ayrı sinyal, KARIŞTIRILMAZ):** tile
-  `aria-pressed`/turuncu-active + kısa etiket (`Blur · Plate`/
-  `Blur · All`/`Vignette`/`Grain`) = **selected** (flyout
-  kapalıyken de görünür — operatör tile'dan seçili effect'i
-  anlar). `aria-expanded` = **open**. Flyout kapanınca seçim
-  KAYBOLMAZ (sceneOverride korunur).
-- **Disabled-state (net):** Lens off → flyout'ta target/intensity
-  segment'leri GİZLİ + "Lens Blur is off — enable to adjust."
-  notu. BG kind=None → intensity segment DISABLED (opacity 0.4,
-  not-allowed; **gizlenmez** — layout zıplamaz).
+  `aria-pressed`/turuncu-active + kısa etiket (`Blur` /
+  `Vignette` / `Grain`) = **selected** (flyout kapalıyken de
+  görünür — operatör tile'dan seçili effect'i anlar; Phase 139
+  — Lens etiketi `Blur · Plate/All` değil sade `Blur`, target
+  ayrımı kaldırıldı). `aria-expanded` = **open**. Flyout
+  kapanınca seçim KAYBOLMAZ (sceneOverride korunur).
+- **Disabled-state (net):** Lens off → flyout'ta Intensity
+  segment'i GİZLİ + "Lens Blur is off — enable to adjust."
+  notu (Phase 139 — Lens'te yalnız Intensity segment'i var;
+  "Blur target" segment KALDIRILDI). BG kind=None → intensity
+  segment DISABLED (opacity 0.4, not-allowed; **gizlenmez** —
+  layout zıplamaz).
 - **sceneOverride modeli DEĞİŞMEZ:** flyout yalnız mevcut
   `lensBlur`/`bgEffect` alanlarını set eden UI yüzeyi —
   resolver/compositor/snapshot/parity (§11.0) RİSKİ SIFIR.
@@ -550,12 +574,18 @@ düşünülür ve hem preview hem export bu modeli birebir izler:
   KALDIRILDI (item'ları bulanıklaştırıyor + plate kenarında
   inner-border üretiyordu).
 - **Layer 3 — item layer**: cascade composition (preview
-  z-index 2; export compose'da slotComposites EN ÜSTE). Effect'ten
-  **ETKİLENMEZ** — itemler varsayılan olarak blur/tint ALMAZ
-  (operatör eğilimi + §11.0). Lens Blur target "plate" (default)
-  vs "all" export'ta artık aynı: ikisi de plate-area bg blur,
-  item NET (Phase 113 — "all" eski "cascade dahil blur" semantiği
-  layered model ile geçersiz; backward-compat normalize korunur).
+  z-index 2; export compose'da slotComposites EN ÜSTE).
+  **Export'ta** effect'ten ETKİLENMEZ — Sharp pipeline blur'u
+  plate-area'ya uygular, cascade SONRA blur'suz EN ÜSTE
+  composite (Phase 113 — `frame-compositor.ts` target'ı zaten
+  okumuyordu). **Preview'da (Phase 139 tek-davranışlı):** Lens
+  Blur `filter:blur` plate'in KENDİSİNE → tüm subtree
+  (bg+grain+glass+cascade) tek-pass birlikte blur (eski "all"
+  davranışı; `target="plate"` ayrı content-blur yolu kenarda
+  turuncu bant ürettiği için KALDIRILDI — §7.5). Yani
+  preview'da items da hafif blur olur; export'ta items NET —
+  algısal eşdeğer, parity §11.0 (gerçek "items NET preview"
+  ileride temiz mimari ile, known-issues).
 
 Future SVG/effect readiness: yeni efekt (phone color / button
 color / browser window style / chrome tone) bu 3-layer modele

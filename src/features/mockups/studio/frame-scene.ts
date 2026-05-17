@@ -38,42 +38,46 @@ export type SceneMode = "auto" | "solid" | "gradient" | "glass";
 /** Phase 98 — Glass scene variants. */
 export type GlassVariant = "light" | "dark" | "frosted";
 
-/** Phase 109 — Lens Blur targeting model.
+/** Lens Blur — TEK-DAVRANIŞLI (Phase 139: `target` kaldırıldı).
  *
- *  Phase 98-108 baseline `lensBlur: boolean` monolitikti (tek
- *  sabit 8px; plate'in TÜM child'ları — cascade items dahil —
- *  blur'lanıyordu). Shots.so canlı davranış araştırması: Shots'ta
- *  ayrı "Lens Blur" tile YOK (blur STYLE/Glass içinden) → Kivasy
- *  Lens Blur Kivasy-özgü; parity zorlaması yok, tasarım kararı
- *  bize ait.
+ *  Phase 98-108 baseline `lensBlur: boolean` (tek 8px; plate'in
+ *  TÜM subtree'si blur). Phase 109 `target: "plate"|"all"` ayrımı
+ *  eklenmişti ("plate" = yalnız plate bg bulanık, items NET).
  *
- *  Phase 109 structured model (geleceğe açık, minimal):
- *   - target "plate": yalnız plate bg/scene bulanık, cascade
- *     items NET (default — operatör eğilimi "itemler blur'lu
- *     olmamalı" + Preview = Export Truth §11.0: items keskin,
- *     sahne atmospheric).
- *   - target "all": plate + cascade items (Phase 98-108 eski
- *     davranış — backward-compat).
- *   - intensity soft/medium/strong → 4/8/14px CSS blur. */
-export type LensBlurTarget = "plate" | "all";
+ *  Phase 138-139 (browser+DOM kanıtlandı): `target="plate"` AYRI
+ *  bir content-blur wrapper gerektiriyordu; o wrapper'ın blur'u
+ *  plate-bg gradyeninin amber ucunu plate kenarına yayıp
+ *  (plate overflow:hidden sert kesim) KENARDA TURUNCU BANT
+ *  üretiyordu. `target="all"` (plate'in KENDİSİNE filter:blur)
+ *  bu sorunu yaşamıyordu — kenar dahil tek-pass blur, koyu
+ *  stage zemini ile organik harman. "Sadece plate blur + items
+ *  NET" davranışı, mevcut render zincirinde (items plate'in
+ *  render bağlamı içinde; izolasyon zoom/framing/pan zincirini
+ *  riske atar) temiz şekilde yapılamıyor.
+ *
+ *  Karar (kullanıcı): problemli `target` ayrımı TAMAMEN KALDIRILDI.
+ *  Lens Blur tek-davranışlı = eski iyi çalışan "all" yolu
+ *  (plate'in kendisine `filter:blur`). intensity korunur
+ *  (soft/medium/strong → 4/8/14px). Gerçek `plate-only` ileride
+ *  ayrı iş olarak temiz mimari (item-izolasyonu zoom/framing'i
+ *  bozmadan) ile yeniden tasarlanır — teknik engel
+ *  `known-issues-and-deferred.md`'de. */
 export type LensBlurIntensity = "soft" | "medium" | "strong";
 export interface LensBlurConfig {
   enabled: boolean;
-  target: LensBlurTarget;
   intensity: LensBlurIntensity;
 }
 
-/** Phase 109 — intensity → CSS blur px. */
+/** intensity → CSS blur px. */
 export const LENS_BLUR_PX: Record<LensBlurIntensity, number> = {
   soft: 4,
   medium: 8,
   strong: 14,
 };
 
-/** Phase 109 — Lens Blur default (target=plate, items NET). */
+/** Lens Blur default (enabled, medium). Phase 139 — target yok. */
 export const LENS_BLUR_DEFAULT: LensBlurConfig = {
   enabled: true,
-  target: "plate",
   intensity: "medium",
 };
 
@@ -118,26 +122,23 @@ export const BG_GRAIN_OPACITY: Record<BgEffectIntensity, number> = {
   strong: 0.11,
 };
 
-/** Phase 109 — Normalize lensBlur field (backward-compat).
- *  - undefined / false        → disabled
- *  - true (Phase 98-108)      → enabled, target "all" (eski
- *    davranış: tüm plate child blur), intensity medium (8px)
- *  - LensBlurConfig (Phase 109) → as-is
- *
- *  Phase 98-108 `lensBlur: true` semantiği "plate'in tüm child'ı
- *  blur" idi → backward-compat için legacy boolean true →
- *  target "all" (mevcut export'lar aynı kalır; yeni Phase 109
- *  default'u explicit structured config ile target "plate"). */
+/** Normalize lensBlur field (backward-compat; Phase 139 — target
+ *  yok, tek-davranışlı).
+ *  - undefined / false → disabled
+ *  - true (legacy Phase 98-108) → enabled, intensity medium
+ *  - LensBlurConfig → as-is (eski persisted config'lerdeki
+ *    `target` alanı varsa structural-typing ile yok sayılır —
+ *    artık okunmuyor; davranış tek yol). */
 export function normalizeLensBlur(
   raw: boolean | LensBlurConfig | undefined,
 ): LensBlurConfig {
   if (raw === undefined || raw === false) {
-    return { enabled: false, target: "plate", intensity: "medium" };
+    return { enabled: false, intensity: "medium" };
   }
   if (raw === true) {
-    return { enabled: true, target: "all", intensity: "medium" };
+    return { enabled: true, intensity: "medium" };
   }
-  return raw;
+  return { enabled: raw.enabled, intensity: raw.intensity };
 }
 
 export interface SceneOverride {
@@ -358,12 +359,10 @@ export function resolvePlateBackground(
  *     "cam üstü gibi" presentation hissi.
  */
 export interface PlateEffectStyle {
-  /** Plate-içi blur px (Lens Blur Frame effect; 0 = no blur). */
+  /** Plate-içi blur px (Lens Blur Frame effect; 0 = no blur).
+   *  Phase 139 — tek-davranışlı: >0 ise plate'in kendisine
+   *  `filter:blur` (target ayrımı kaldırıldı). */
   filterBlurPx: number;
-  /** Phase 109 — blur target. "plate" = yalnız plate bg/scene
-   *  bulanık (cascade items NET); "all" = plate + items (legacy
-   *  Phase 98-108 davranış). filterBlurPx=0 iken anlamsız. */
-  blurTarget: LensBlurTarget;
   /** Glass overlay sözleşmesi (variant + alpha). undefined = no glass. */
   glassOverlay: { background: string; borderTone: string } | undefined;
   /** Phase 136 — BG Effects. Vignette radial dış-kenar alpha
@@ -376,12 +375,10 @@ export interface PlateEffectStyle {
 export function resolvePlateEffects(
   override: SceneOverride,
 ): PlateEffectStyle {
-  /* Phase 109 — structured Lens Blur (backward-compat normalize).
-   * legacy boolean true → target "all" (Phase 98-108 parity);
-   * Phase 109 explicit config → target/intensity as-is. */
+  /* Lens Blur — tek-davranışlı (Phase 139; target kaldırıldı).
+   * normalize: legacy boolean true → enabled medium. */
   const lb = normalizeLensBlur(override.lensBlur);
   const filterBlurPx = lb.enabled ? LENS_BLUR_PX[lb.intensity] : 0;
-  const blurTarget = lb.target;
   let glassOverlay: PlateEffectStyle["glassOverlay"];
   if (override.mode === "glass") {
     const variant = override.glassVariant ?? "light";
@@ -416,11 +413,54 @@ export function resolvePlateEffects(
   }
   return {
     filterBlurPx,
-    blurTarget,
     glassOverlay,
     vignetteAlpha,
     grainOpacity,
   };
+}
+
+/** Lens Blur layout — TEK-DAVRANIŞLI (Phase 139; preview=export
+ *  §11.0).
+ *
+ * Phase 138 `target="plate"` AYRI bir content-blur wrapper
+ * gerektiriyordu; o wrapper'ın blur'u plate-bg gradyeninin amber
+ * ucunu plate kenarına yayıp (plate overflow:hidden sert kesim)
+ * KENARDA TURUNCU BANT üretiyordu. `target="all"` (plate'in
+ * KENDİSİNE filter:blur) bu sorunu yaşamıyordu — kenar dahil
+ * tek-pass blur, koyu stage zemini ile organik harman (working,
+ * kullanıcı doğruladı). "Sadece plate blur + items NET" davranışı
+ * mevcut render zincirinde (items plate render bağlamı içinde;
+ * izolasyon zoom/framing/pan zincirini riske atar) temiz değil.
+ *
+ * Karar (kullanıcı): `target` ayrımı TAMAMEN KALDIRILDI. Tek yol
+ * = `plateFilter` (plate'in kendisine `filter:blur`; tüm subtree
+ * tek-pass — eski iyi çalışan "all" davranışı). `contentFilterBlur`
+ * SİLİNDİ. enabled → `{ plateFilter: "blur(Npx)" }`, disabled →
+ * `{ plateFilter: null }` (DOM byte-identical no-op).
+ *
+ * Export parity: `frame-compositor.ts` Phase 113'ten beri zaten
+ * target'ı OKUMUYOR (her durumda plate-area blur, cascade üstte
+ * NET) → bu kaldırma export'u DEĞİŞTİRMEZ. Saf-fonksiyon: yalnız
+ * `PlateEffectStyle.filterBlurPx`'e bakar (DOM/zoom/bg-bağımsız).
+ *
+ * Gerçek `plate-only` (plate blur + items NET) ileride AYRI bir
+ * iş — temiz mimari (item'ları plate render bağlamından
+ * zoom/framing/pan zincirini bozmadan izole eden bir layer
+ * modeli) ile yeniden tasarlanır. Teknik engel:
+ * `known-issues-and-deferred.md`. */
+export interface LensBlurLayout {
+  /** Lens Blur açıkken plate element'inin KENDİSİNE uygulanan
+   *  CSS `filter` (tüm subtree tek-pass blur). null = kapalı. */
+  plateFilter: string | null;
+}
+
+export function resolveLensBlurLayout(
+  effects: PlateEffectStyle,
+): LensBlurLayout {
+  if (effects.filterBlurPx <= 0) {
+    return { plateFilter: null };
+  }
+  return { plateFilter: `blur(${effects.filterBlurPx}px)` };
 }
 
 /** Phase 109 — Shared device capability model.

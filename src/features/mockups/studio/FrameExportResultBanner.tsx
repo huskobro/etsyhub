@@ -74,16 +74,15 @@ export function FrameExportResultBanner({
   isExporting,
 }: FrameExportResultBannerProps): ReactNode {
   const sizeKb = (result.sizeBytes / 1024).toFixed(1);
-  /* Phase 109 — Lens Blur stale: enabled + target + intensity
-   *  hepsi export'a yansır (Preview = Export Truth §11.0) →
-   *  herhangi biri değişirse "Preview changed — re-export?". */
+  /* Lens Blur stale: enabled + intensity export'a yansır
+   *  (Preview = Export Truth §11.0) → değişirse "Preview
+   *  changed — re-export?". Phase 139 — `target` KALDIRILDI
+   *  (tek-davranışlı; karşılaştırma da target'sız). */
   const curLb = normalizeLensBlur(currentSceneSnapshot.lensBlur);
   const snapLb = normalizeLensBlur(result.sceneSnapshot.lensBlur);
   const lensBlurChanged =
     curLb.enabled !== snapLb.enabled ||
-    (curLb.enabled &&
-      (curLb.target !== snapLb.target ||
-        curLb.intensity !== snapLb.intensity));
+    (curLb.enabled && curLb.intensity !== snapLb.intensity);
   /* Phase 126 — Media-position stale: canonical (export'a girer
    *  §11.0) → değişirse "Preview changed — re-export?". Epsilon
    *  eşitlik (mediaPositionsEqual 1e-3) float drift'ten sahte

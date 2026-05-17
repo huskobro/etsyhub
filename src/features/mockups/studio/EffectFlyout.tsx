@@ -19,7 +19,6 @@ import {
   type EffectPanelKey,
   LENS_BLUR_DEFAULT,
   type LensBlurIntensity,
-  type LensBlurTarget,
   normalizeLensBlur,
   type SceneOverride,
 } from "./frame-scene";
@@ -27,7 +26,6 @@ import {
 interface EffectFlyoutProps {
   panel: EffectPanelKey;
   activeScene: SceneOverride;
-  lensTargetingSupported: boolean;
   onChangeSceneOverride: (next: SceneOverride) => void;
   onClose: () => void;
 }
@@ -48,7 +46,6 @@ const SEG_LABEL_STYLE: React.CSSProperties = {
 export function EffectFlyout({
   panel,
   activeScene,
-  lensTargetingSupported,
   onChangeSceneOverride,
   onClose,
 }: EffectFlyoutProps): React.ReactElement {
@@ -149,94 +146,53 @@ export function EffectFlyout({
             >
               Lens Blur is off — enable to adjust.
             </div>
-          ) : !lensTargetingSupported ? null : (
-            <>
-              <div>
-                <div style={SEG_LABEL_STYLE}>Blur target</div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  {(
-                    [
-                      ["plate", "Plate only"],
-                      ["all", "Plate + items"],
-                    ] as [LensBlurTarget, string][]
-                  ).map(([t, lbl]) => {
-                    const active = lensCfg.target === t;
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        className="k-studio__tile"
-                        data-testid={`studio-lens-target-${t}`}
-                        data-active={active ? "true" : "false"}
-                        aria-pressed={active}
-                        onClick={() =>
-                          onChangeSceneOverride({
-                            ...activeScene,
-                            lensBlur: { ...lensCfg, target: t },
-                          })
-                        }
-                        style={{
-                          flex: 1,
-                          minHeight: 30,
-                          fontSize: 10.5,
-                          color: active
-                            ? "var(--ks-or-bright)"
-                            : "var(--ks-t2)",
-                          borderColor: active
-                            ? "var(--ks-orb)"
-                            : "rgba(255,255,255,0.12)",
-                        }}
-                      >
-                        {lbl}
-                      </button>
-                    );
-                  })}
-                </div>
+          ) : (
+            /* Phase 139 — "Blur target" segment KALDIRILDI
+               (plate-only/all ayrımı problemli; tek-davranışlı).
+               Yalnız Intensity. */
+            <div>
+              <div style={SEG_LABEL_STYLE}>Intensity</div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {(
+                  [
+                    ["soft", "Soft"],
+                    ["medium", "Medium"],
+                    ["strong", "Strong"],
+                  ] as [LensBlurIntensity, string][]
+                ).map(([iv, lbl]) => {
+                  const active = lensCfg.intensity === iv;
+                  return (
+                    <button
+                      key={iv}
+                      type="button"
+                      className="k-studio__tile"
+                      data-testid={`studio-lens-intensity-${iv}`}
+                      data-active={active ? "true" : "false"}
+                      aria-pressed={active}
+                      onClick={() =>
+                        onChangeSceneOverride({
+                          ...activeScene,
+                          lensBlur: { ...lensCfg, intensity: iv },
+                        })
+                      }
+                      style={{
+                        flex: 1,
+                        minHeight: 30,
+                        fontSize: 10.5,
+                        color: active
+                          ? "var(--ks-or-bright)"
+                          : "var(--ks-t2)",
+                        borderColor: active
+                          ? "var(--ks-orb)"
+                          : "rgba(255,255,255,0.12)",
+                      }}
+                    >
+                      {lbl}
+                    </button>
+                  );
+                })}
               </div>
-              <div>
-                <div style={SEG_LABEL_STYLE}>Intensity</div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  {(
-                    [
-                      ["soft", "Soft"],
-                      ["medium", "Medium"],
-                      ["strong", "Strong"],
-                    ] as [LensBlurIntensity, string][]
-                  ).map(([iv, lbl]) => {
-                    const active = lensCfg.intensity === iv;
-                    return (
-                      <button
-                        key={iv}
-                        type="button"
-                        className="k-studio__tile"
-                        data-testid={`studio-lens-intensity-${iv}`}
-                        data-active={active ? "true" : "false"}
-                        aria-pressed={active}
-                        onClick={() =>
-                          onChangeSceneOverride({
-                            ...activeScene,
-                            lensBlur: { ...lensCfg, intensity: iv },
-                          })
-                        }
-                        style={{
-                          flex: 1,
-                          minHeight: 30,
-                          fontSize: 10.5,
-                          color: active
-                            ? "var(--ks-or-bright)"
-                            : "var(--ks-t2)",
-                          borderColor: active
-                            ? "var(--ks-orb)"
-                            : "rgba(255,255,255,0.12)",
-                        }}
-                      >
-                        {lbl}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
+            </div>
           )}
         </div>
       ) : (

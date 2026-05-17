@@ -1262,8 +1262,11 @@ function FrameBody({
                   color={on ? "rgba(232,93,37,0.8)" : "rgba(255,255,255,0.3)"}
                 />
                 <span className="k-studio__tile-label">
+                  {/* Phase 139 — Lens Blur tek-davranışlı:
+                      "Blur · Plate/All" target etiketi KALDIRILDI
+                      (target ayrımı yok). enabled → "Blur". */}
                   {k === "lens" && lensCfg.enabled
-                    ? `Blur · ${lensCfg.target === "plate" ? "Plate" : "All"}`
+                    ? "Blur"
                     : k === "bgfx" && bgKind === "vignette"
                       ? "Vignette"
                       : k === "bgfx" && bgKind === "grain"

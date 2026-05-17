@@ -248,15 +248,19 @@ export async function exportFrameComposition(
         sceneSnapshot: {
           mode: input.scene.mode,
           glassVariant: input.scene.glassVariant ?? null,
+          // Phase 139 — Lens Blur tek-davranışlı (target
+          // KALDIRILDI). legacy boolean true → enabled medium;
+          // structured → {enabled,intensity} (eski persisted
+          // config'lerdeki `target` yok sayılır — export zaten
+          // okumuyordu).
           lensBlur:
             input.scene.lensBlur === undefined ||
             input.scene.lensBlur === false
               ? false
               : input.scene.lensBlur === true
-                ? { enabled: true, target: "all", intensity: "medium" }
+                ? { enabled: true, intensity: "medium" }
                 : {
                     enabled: input.scene.lensBlur.enabled,
-                    target: input.scene.lensBlur.target,
                     intensity: input.scene.lensBlur.intensity,
                   },
           color: input.scene.color ?? null,
