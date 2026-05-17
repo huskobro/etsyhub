@@ -1201,11 +1201,19 @@ function FrameBody({
         >
           {efx.map(({ k, l, n }) => {
             const isLens = k === "lens";
-            const isWired = isLens;
+            // Phase 136 — BG Effects wired (vignette/grain tek-seçim).
+            const isBgfx = k === "bgfx";
+            const isWired = isLens || isBgfx;
             // Phase 109 — structured Lens Blur (backward-compat).
             const lensCfg = normalizeLensBlur(activeScene.lensBlur);
             const lensActive = isLens && lensCfg.enabled;
-            const on = isLens ? lensActive : effect === k;
+            // Phase 136 — bgEffect set → tile active (kind !== null).
+            const bgKind = activeScene.bgEffect?.kind ?? null;
+            const on = isLens
+              ? lensActive
+              : isBgfx
+                ? bgKind !== null
+                : effect === k;
             return (
               <button
                 key={k}
@@ -1224,6 +1232,33 @@ function FrameBody({
                       onChangeSceneOverride({
                         ...activeScene,
                         lensBlur: next,
+                      });
+                    }
+                    return;
+                  }
+                  if (isBgfx) {
+                    if (onChangeSceneOverride) {
+                      // Phase 136 — Tek-seçim cycle: none →
+                      // vignette·medium → grain·medium → none
+                      // (Shots.so popover yerine sade toggle-cycle;
+                      // CLAUDE.md sade-güçlü). bgEffect undefined =
+                      // none → resolvePlateEffects no-op.
+                      const cur = activeScene.bgEffect?.kind ?? null;
+                      const next =
+                        cur === null
+                          ? ({
+                              kind: "vignette",
+                              intensity: "medium",
+                            } as const)
+                          : cur === "vignette"
+                            ? ({
+                                kind: "grain",
+                                intensity: "medium",
+                              } as const)
+                            : undefined;
+                      onChangeSceneOverride({
+                        ...activeScene,
+                        bgEffect: next,
                       });
                     }
                     return;
