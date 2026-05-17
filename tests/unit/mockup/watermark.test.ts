@@ -193,3 +193,53 @@ describe("resolveWatermarkLayout — placement geometry", () => {
     expect(portrait.glyphs.length).toBeGreaterThan(square.glyphs.length);
   });
 });
+
+describe("resolveWatermarkLayout — cross-dimension parity (§11.0)", () => {
+  // Preview passes a small-integer aspect frame (e.g. {w:4,h:5}); export
+  // passes absolute pixels of the SAME ratio (e.g. {w:1080,h:1350}). The
+  // percent-based geometry MUST yield byte-identical WatermarkLayout for
+  // the same ratio regardless of absolute dimensions — this is the single
+  // source of the "Preview = Export Truth" guarantee.
+  const RATIO_PAIRS: Array<
+    [{ w: number; h: number }, { w: number; h: number }]
+  > = [
+    [{ w: 1, h: 1 }, { w: 1080, h: 1080 }],
+    [{ w: 4, h: 5 }, { w: 1080, h: 1350 }],
+    [{ w: 9, h: 16 }, { w: 1080, h: 1920 }],
+  ];
+
+  it("tile geometry is identical for same ratio, different absolute dims", () => {
+    for (const [a, b] of RATIO_PAIRS) {
+      const cfg: WatermarkConfig = {
+        enabled: true,
+        text: "© Kivasy",
+        opacity: "medium",
+        placement: "tile",
+      };
+      // Whole-object deep equality: glyph count AND every per-glyph
+      // xPct/yPct/rotateDeg/text, plus anchor/fontPctOfMin/opacity.
+      // If the resolver used absolute px instead of percent, the tiny
+      // {w:4,h:5} frame would produce a near-empty grid while
+      // {w:1080,h:1350} produced a full one → this toEqual would FAIL.
+      expect(resolveWatermarkLayout(cfg, a)).toEqual(
+        resolveWatermarkLayout(cfg, b),
+      );
+    }
+  });
+
+  it("br and center geometry is ratio-invariant across absolute dims", () => {
+    for (const [a, b] of RATIO_PAIRS) {
+      for (const placement of ["br", "center"] as const) {
+        const cfg: WatermarkConfig = {
+          enabled: true,
+          text: "Shop Name",
+          opacity: "soft",
+          placement,
+        };
+        expect(resolveWatermarkLayout(cfg, a)).toEqual(
+          resolveWatermarkLayout(cfg, b),
+        );
+      }
+    }
+  });
+});
