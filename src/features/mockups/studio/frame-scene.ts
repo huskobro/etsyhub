@@ -77,6 +77,40 @@ export const LENS_BLUR_DEFAULT: LensBlurConfig = {
   intensity: "medium",
 };
 
+/* Phase 136 — BG Effects (Frame scene effect).
+ *
+ *  Tek-seçimli atmosfer effect'i: vignette VEYA grain (ikisi
+ *  aynı anda değil). mode/glassVariant/lensBlur'dan BAĞIMSIZ
+ *  eksen — kombinlenebilir (mutual-exclusion yok). undefined =
+ *  none. Frame-only (Mockup mode'a sızmaz). Canonical kategori 1
+ *  (export'a yansır + sceneSnapshot'lanır — §11.0). Shots.so
+ *  referansı "Background effects" = Noise+Blur slider; Kivasy
+ *  kararı: blur tekrar etme (lensBlur var), vignette ekle
+ *  (Etsy hero değeri), tek-seçim (sade). */
+export type BgEffectKind = "vignette" | "grain";
+export type BgEffectIntensity = "soft" | "medium" | "strong";
+export interface BgEffectConfig {
+  kind: BgEffectKind;
+  intensity: BgEffectIntensity;
+}
+
+/* Vignette: radial-gradient dış-kenar alpha (merkez ŞEFFAF).
+ * strong<=0.42 — ürün fotoğrafını öldürmez (guardrail). */
+export const BG_VIGNETTE_ALPHA: Record<BgEffectIntensity, number> = {
+  soft: 0.14,
+  medium: 0.26,
+  strong: 0.42,
+};
+
+/* Grain: monokrom film-grain overlay opacity (dijital RGB
+ * noise DEĞİL). strong<=0.11 — mockup kirletmez (guardrail).
+ * Browser doğrulamasında kalibre edilir; bunlar tavan. */
+export const BG_GRAIN_OPACITY: Record<BgEffectIntensity, number> = {
+  soft: 0.04,
+  medium: 0.07,
+  strong: 0.11,
+};
+
 /** Phase 109 — Normalize lensBlur field (backward-compat).
  *  - undefined / false        → disabled
  *  - true (Phase 98-108)      → enabled, target "all" (eski
@@ -133,6 +167,13 @@ export interface SceneOverride {
    *  cam-effect ile kaplar; Lens Blur plate bg'sini bulanıklaştırır
    *  (sahnede yumuşak/atmospheric hissi). */
   lensBlur?: boolean | LensBlurConfig;
+  /** Phase 136 — BG Effects (Frame scene effect). Tek-seçimli
+   *  vignette|grain × soft/medium/strong. undefined = none.
+   *  mode/glassVariant/lensBlur'dan bağımsız eksen (kombinlenebilir).
+   *  Frame-only; export'a yansır + sceneSnapshot'lanır (§11.0).
+   *  Compositing order SABİT: bg → grain → glass → lensBlur →
+   *  vignette (bkz. resolvePlateEffects + frame-compositor). */
+  bgEffect?: BgEffectConfig;
 }
 
 /** Phase 89 — Auto mode default (Phase 88 baseline parity). */
