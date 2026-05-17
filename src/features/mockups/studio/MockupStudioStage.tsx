@@ -717,6 +717,12 @@ export function StageScene({
   const blurPlateOnly =
     lensBlurActive && plateEffects.blurTarget === "plate";
   const blurAll = lensBlurActive && plateEffects.blurTarget === "all";
+  /* Phase 136 — BG Effects (tek-seçimli; resolvePlateEffects'ten
+   *  okunur — preview = export aynı pure-TS resolver §11.0).
+   *  bgEffect yokken ikisi de 0 → hiçbir layer render edilmez
+   *  (DOM byte-identical no-op). */
+  const vignetteActive = plateEffects.vignetteAlpha > 0;
+  const grainActive = plateEffects.grainOpacity > 0;
   /* Phase 125 — Shots.so canonical zoom: plate SABİT-boyut,
    * composition İÇERİĞİ scale (plate `overflow:hidden` kırpar =
    * preview-inspection). Phase 123/124 plate'i scale ediyordu
@@ -842,6 +848,37 @@ export function StageScene({
               style={plateSurfaceStyle}
             />
           ) : null}
+          {/* Phase 136 — Grain layer (compositing: glass'tan ÖNCE
+              = altında; plate-bg üstünde). Monokrom film-grain
+              (feColorMatrix grayscale çıkış — dijital RGB gürültü
+              DEĞİL §4 guardrail). zIndex:1 + DOM'da glass'tan önce
+              → eşit zIndex'te glass üstte paint edilir (grain<glass
+              composite order). Sharp export greyscale gaussian noise
+              ile algısal eşdeğer (§11.0 parity, bit-exact değil). */}
+          {grainActive ? (
+            <div
+              aria-hidden
+              data-bg-grain
+              data-testid="studio-stage-plate-grain"
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                opacity: plateEffects.grainOpacity,
+                backgroundImage:
+                  "url(\"data:image/svg+xml;utf8," +
+                  encodeURIComponent(
+                    '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160">' +
+                      '<filter id="g"><feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="2" seed="7" stitchTiles="stitch"/>' +
+                      '<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.6 0.6 0.6 0 0"/></filter>' +
+                      '<rect width="160" height="160" filter="url(#g)"/></svg>',
+                  ) +
+                  "\")",
+                backgroundRepeat: "repeat",
+                zIndex: 1,
+              }}
+            />
+          ) : null}
           {plateEffects.glassOverlay ? (
             <div
               className="k-studio__plate-glass"
@@ -947,6 +984,30 @@ export function StageScene({
               </div>
             );
           })()}
+          {/* Phase 136 — Vignette EN ÜSTTE (glassOverlay + cascade
+              composition'dan SONRA DOM'da; zIndex:9 > cascade z:2).
+              Lens kenar karartması optik son katman §4. Merkez ~%60
+              ŞEFFAF (rgba 0%→60% fully transparent) → subject/portrait
+              boğmaz §4 guardrail. Sharp export aynı radial stop'ları
+              SVG radialGradient ile composite eder (§11.0 parity). */}
+          {vignetteActive ? (
+            <div
+              aria-hidden
+              data-bg-vignette
+              data-testid="studio-stage-plate-vignette"
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                background:
+                  "radial-gradient(ellipse at center, " +
+                  "rgba(0,0,0,0) 60%, rgba(0,0,0," +
+                  plateEffects.vignetteAlpha +
+                  ") 100%)",
+                zIndex: 9,
+              }}
+            />
+          ) : null}
         </div>
       ) : null}
       {children}
