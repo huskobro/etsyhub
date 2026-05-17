@@ -25,21 +25,18 @@
 
 import { useState } from "react";
 import { StudioIcon } from "./icons";
-import { EffectFlyout } from "./EffectFlyout";
 import {
   FRAME_ASPECT_CONFIG,
   FRAME_ASPECT_KEYS,
   type FrameAspectKey,
 } from "./frame-aspects";
 import {
-  deviceKindToShape,
   type EffectPanelKey,
   GRADIENT_PRESETS,
   normalizeLensBlur,
   SCENE_AUTO,
   SOLID_PRESETS,
   type SceneOverride,
-  studioDeviceCapability,
 } from "./frame-scene";
 import {
   MagicPresetThumb,
@@ -53,10 +50,6 @@ import type {
   StudioSlotAssignmentMap,
   StudioSlotMeta,
 } from "./types";
-
-/** Phase 137 — EffectFlyout onClose fallback. Modül-seviye sabit:
- *  her render yeni inline `() => undefined` üretmez (stabil ref). */
-const EFFECT_FLYOUT_NOOP = () => undefined;
 
 interface SectionLabelProps {
   children: React.ReactNode;
@@ -935,13 +928,11 @@ function FrameBody({
    *  fiilen tüketilir; tek tek hack yerine tek kapı. */
   deviceKind?: string;
 }) {
-  /* Phase 112 — Lens Blur targeting capability-driven. Şu an tüm
-   * shape true → davranış birebir aynı; future SVG-specific shape
-   * supportsLensBlurTargeting=false set ederse target/intensity
-   * UI otomatik gizlenir (ad-hoc if-else büyütülmez). */
-  const lensTargetingSupported = studioDeviceCapability(
-    deviceKindToShape(deviceKind),
-  ).supportsLensBlurTargeting;
+  /* Phase 137 (4/5 fu) — `lensTargetingSupported` hesabı + EffectFlyout
+   *  render'ı MockupStudioShell `k-studio__body`'ye taşındı (Sidebar
+   *  overflow zinciri flyout'u clip ediyordu). FrameBody artık flyout'u
+   *  host etmez; `deviceKind` prop'u Shell→Sidebar→FrameBody prop
+   *  surface'inde korunur (capability gating Shell'de uygulanır). */
   const [effect, setEffect] = useState<"lens" | "portrait" | "watermark" | "bgfx">(
     "lens",
   );
@@ -1555,20 +1546,12 @@ function FrameBody({
           })}
         </div>
       </div>
-      {/* Phase 137 — Effect Settings Flyout (Task 3). Tile click
-       *  flyout açar; sceneOverride değişimi buradan gelir (inline
-       *  Lens blok devredildi). Yalnız wired panel + callback
-       *  varsa render — honest-disabled effect flyout açmaz. */}
-      {(activeEffectPanel === "lens" || activeEffectPanel === "bgfx") &&
-      onChangeSceneOverride ? (
-        <EffectFlyout
-          panel={activeEffectPanel}
-          activeScene={activeScene}
-          lensTargetingSupported={lensTargetingSupported}
-          onChangeSceneOverride={onChangeSceneOverride}
-          onClose={onCloseEffectPanel ?? EFFECT_FLYOUT_NOOP}
-        />
-      ) : null}
+      {/* Phase 137 (4/5 fu) — Effect Settings Flyout render'ı
+       *  MockupStudioShell `k-studio__body`'ye taşındı (Sidebar/Stage
+       *  sibling). Sidebar `.k-studio__sb-scroll` overflow zinciri
+       *  flyout'u sidebar dışına taşırken clip + scroll'la
+       *  kaydırıyordu (guardrail 4+6). Tile click davranışı burada
+       *  kalır (onOpenEffectPanel); flyout DOM'u Shell'de. */}
     </div>
   );
 }

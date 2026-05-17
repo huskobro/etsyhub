@@ -1,4 +1,16 @@
 "use client";
+/* eslint-disable no-restricted-syntax */
+
+/* Phase 137 — Effect Settings Flyout (Lens Blur + BG Effects
+ * secondary panel).
+ *
+ * File-level eslint-disable rationale: studio shell konvansiyonu —
+ * MockupStudioSidebar'dan taşınan Lens segment + BG segment tile
+ * button gridleri tone-aware dynamic inline visual (active/disabled
+ * renk, --ks-* CSS variable) kullanıyor (Sidebar/Stage/
+ * FrameExportResultBanner ile aynı pattern). Stable recipe'ler
+ * studio.css'de namespace-d (k-studio__effect-flyout*); geri kalan
+ * dynamic style'lar JSX'te (sibling studio dosyalarıyla tutarlı). */
 
 import { useEffect, useRef } from "react";
 import {

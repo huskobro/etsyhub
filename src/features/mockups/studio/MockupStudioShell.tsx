@@ -39,6 +39,7 @@ import { useMockupTemplates } from "@/features/mockups/hooks/useMockupTemplates"
 import { MockupStudioPresetRail } from "./MockupStudioPresetRail";
 import { MockupStudioSidebar } from "./MockupStudioSidebar";
 import { MockupStudioStage } from "./MockupStudioStage";
+import { EffectFlyout } from "./EffectFlyout";
 import { cascadeLayoutFor } from "./cascade-layout";
 import type { MediaPosition } from "./media-position";
 import { ZOOM_DEFAULT } from "./zoom-bounds";
@@ -50,10 +51,12 @@ import {
 } from "./frame-aspects";
 import {
   type BgEffectConfig,
+  deviceKindToShape,
   type EffectPanelKey,
   type LensBlurConfig,
   SCENE_AUTO,
   type SceneOverride,
+  studioDeviceCapability,
 } from "./frame-scene";
 import {
   stageDeviceForProductType,
@@ -984,6 +987,28 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
             }
             mediaPosition={mediaPosition}
             onChangeMediaPosition={setMediaPosition}
+          />
+        ) : null}
+        {/* Phase 137 (4/5 fu) — Effect Settings Flyout. Sidebar/Stage
+         *  SİBLİNG'i (k-studio__body doğrudan çocuğu): Sidebar
+         *  `.k-studio__sb-scroll` overflow zinciri flyout'u sidebar
+         *  dışına taşırken clip + scroll'la kaydırıyordu (guardrail
+         *  4+6). Konumlama studio.css `.k-studio__effect-flyout`
+         *  (body position:relative, left = sidebar genişliği).
+         *  lensTargetingSupported = Sidebar'daki kanonik formülün
+         *  birebir aynısı (studioDeviceCapability ∘ deviceKindToShape);
+         *  Shell'de gerçek `deviceKind` (stageDeviceForProductType)
+         *  kullanılır — körü körüne true DEĞİL. */}
+        {activeEffectPanel === "lens" || activeEffectPanel === "bgfx" ? (
+          <EffectFlyout
+            panel={activeEffectPanel}
+            activeScene={sceneOverride ?? SCENE_AUTO}
+            lensTargetingSupported={
+              studioDeviceCapability(deviceKindToShape(deviceKind))
+                .supportsLensBlurTargeting
+            }
+            onChangeSceneOverride={setSceneOverride}
+            onClose={() => setActiveEffectPanel(null)}
           />
         ) : null}
       </div>
