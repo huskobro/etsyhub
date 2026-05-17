@@ -98,10 +98,74 @@ export type BgEffectIntensity = "soft" | "medium" | "strong";
  *  kimliği. Shell + Sidebar + EffectFlyout ortak tek kaynak
  *  (drift önleme — SceneOverride/LensBlurConfig paylaşılan-tip
  *  pattern'i). */
-export type EffectPanelKey = "lens" | "bgfx";
+export type EffectPanelKey = "lens" | "bgfx" | "watermark";
 export interface BgEffectConfig {
   kind: BgEffectKind;
   intensity: BgEffectIntensity;
+}
+
+/* Phase 140 — Watermark (text). Frame-only effect; mode/glass/
+ * lensBlur/bgEffect'ten bağımsız eksen (SceneOverride.watermark?).
+ * Preview = export aynı resolveWatermarkLayout (§11.0). Image/logo,
+ * size, color, font, rotation Phase 2 (scope dışı). */
+export type WmOpacity = "soft" | "medium" | "strong";
+export type WmPlacement = "br" | "center" | "tile";
+export type WmAnchor = "start" | "middle" | "end";
+
+export interface WatermarkConfig {
+  enabled: boolean;
+  text: string;
+  opacity: WmOpacity;
+  placement: WmPlacement;
+}
+
+export const WM_OPACITY: Record<WmOpacity, number> = {
+  soft: 0.18,
+  medium: 0.3,
+  strong: 0.45,
+};
+
+/** Layout-safe text clamp (spec §5.2 guardrail 2). */
+export const WM_TEXT_MAX = 48;
+
+export const WM_DEFAULT: WatermarkConfig = {
+  enabled: false,
+  text: "",
+  opacity: "medium",
+  placement: "br",
+};
+
+/** Normalize raw watermark input. Unknown enum → default;
+ *  text trimmed, newlines→space (single-line), clamped to
+ *  WM_TEXT_MAX. Always returns a fresh object. */
+export function normalizeWatermark(
+  raw: WatermarkConfig | null | undefined,
+): WatermarkConfig {
+  if (!raw) {
+    return { ...WM_DEFAULT };
+  }
+  const opacity: WmOpacity =
+    raw.opacity === "soft" ||
+    raw.opacity === "medium" ||
+    raw.opacity === "strong"
+      ? raw.opacity
+      : WM_DEFAULT.opacity;
+  const placement: WmPlacement =
+    raw.placement === "br" ||
+    raw.placement === "center" ||
+    raw.placement === "tile"
+      ? raw.placement
+      : WM_DEFAULT.placement;
+  const text = String(raw.text ?? "")
+    .replace(/[\r\n]+/g, " ")
+    .trim()
+    .slice(0, WM_TEXT_MAX);
+  return {
+    enabled: Boolean(raw.enabled),
+    text,
+    opacity,
+    placement,
+  };
 }
 
 /* Vignette: radial-gradient dış-kenar alpha (merkez ŞEFFAF).
