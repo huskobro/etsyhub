@@ -10,6 +10,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  type BgEffectConfig,
   type LensBlurConfig,
   normalizeLensBlur,
 } from "./frame-scene";
@@ -33,7 +34,7 @@ export interface FrameExportResultSnapshot {
   /** Phase 136 — BG Effects (vignette/grain); kind+intensity
    *  export'a yansır (§11.0). undefined = none (eski export'lar
    *  efektsiz — neutral backward-compat). */
-  bgEffect?: import("@/features/mockups/studio/frame-scene").BgEffectConfig;
+  bgEffect?: BgEffectConfig;
 }
 
 export interface FrameExportResultBannerProps {

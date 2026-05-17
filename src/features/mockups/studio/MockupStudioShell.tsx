@@ -49,6 +49,7 @@ import {
   type FrameAspectKey,
 } from "./frame-aspects";
 import {
+  type BgEffectConfig,
   type LensBlurConfig,
   SCENE_AUTO,
   type SceneOverride,
@@ -143,7 +144,7 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       mediaPosition?: MediaPosition;
       /** Phase 136 — BG Effects (export anı; banner stale
        *  karşılaştırması — §11.0). undefined = none. */
-      bgEffect?: import("@/features/mockups/studio/frame-scene").BgEffectConfig;
+      bgEffect?: BgEffectConfig;
     };
   } | null>(null);
   /* Phase 83 — Frame mode aspect ratio (presentation surface).
