@@ -7,9 +7,12 @@
 > + kod. Tarihsel Phase narrative'leri için → `docs/claude/archive/`
 > (orası authoritative DEĞİL — yalnız "nasıl bu hâle geldi").
 >
-> **Son güncelleme:** Phase 135 (2026-05-16) — zoom-aware pan reach
-> (§5/§7 ile ilgili: marker visibility ≠ pan reach; rectangle overflow
-> serbest).
+> **Son güncelleme:** Phase 136 (2026-05-17) — §7.7 BG Effects
+> (Frame scene effect: vignette+grain, tek-seçim, mode/glass/
+> lensBlur'dan bağımsız eksen; compositing order bg → grain →
+> glass → blur → cascade → vignette; Preview = Export §11.0).
+> Phase 135 — zoom-aware pan reach (§5/§7: marker visibility ≠
+> pan reach; rectangle overflow serbest).
 >
 > **İlgili authoritative topic docs:** zoom/navigator/marker davranışı
 > → [`mockup-studio-zoom-navigator.md`](./mockup-studio-zoom-navigator.md) ·
@@ -353,6 +356,45 @@
   şimdi açılmaz; effect/action sistemi tasarlanırken hesaba
   katılır (kullanıcı kısıtı: "ortak capability/parameter
   modeliyle ilerlesin, tek tek hack değil").
+
+### 7.7 BG Effects (Frame scene effect — Phase 136)
+
+- `SceneOverride.bgEffect?` — tek-seçimli (`vignette`|`grain` ×
+  `soft/medium/strong`); undefined = none.
+- **Frame-only**: Mockup mode'a sızmaz (Frame scene kararı).
+- **Export'a yansır + snapshot'lanır**: canonical kategori 1;
+  `sceneSnapshot`'a girer, `FrameExportResultBanner` `isStale`
+  karşılaştırmasına dahil (glass/lensBlur ile birebir —
+  değişirse "Preview changed — re-export?").
+- `mode`/`glassVariant`/`lensBlur`'dan **bağımsız eksen**:
+  kombinlenebilir, mutual-exclusion YOK.
+- **Compositing order SABİT** (preview CSS layer-order = Sharp
+  composite çağrı sırası): scene bg → **grain** → glass →
+  lens blur → cascade → **vignette**. Grain bg'nin parçası
+  (glass/blur onu yumuşatır); vignette EN ÜSTTE (optik kenar
+  karartması son katman). `resolvePlateEffects` tek pure-TS
+  resolver (preview + export aynı).
+- **Preview = Export parity zorunlu** (§11.0): deterministik —
+  vignette saf radial-gradient formülü; grain sabit-seed
+  monokrom noise. Preview SVG feTurbulence ↔ Sharp greyscale
+  gaussian: **algısal eşdeğer, bit-exact değil** (§11.0
+  "birebir" = yapısal/algısal). Grain export alpha = dest-in
+  mask `fill-opacity=grainOpacity` (Sharp `ensureAlpha`
+  NO-OP olduğu için — grainPlate zaten channels:4).
+- Vignette merkez ~%60 ŞEFFAF (radial `transparent 60% →
+  alpha 100%`); subject boğmaz, portrait/vertical güvenli.
+  Grain monokrom film-grain (dijital RGB gürültü DEĞİL).
+- Intensity (browser-kalibre tavan): vignette α
+  soft/medium/strong = 0.14/0.26/0.42; grain opacity =
+  0.04/0.07/0.11. `BG_VIGNETTE_ALPHA`/`BG_GRAIN_OPACITY`
+  (frame-scene.ts) — değişirse unit-test tavanı (≤0.42/≤0.11)
+  korunmalı.
+- Sidebar: `bgfx` tile tek-seçim **cycle** (none → vignette·
+  medium → grain·medium → none); Shots.so popover yerine sade
+  toggle (CLAUDE.md sade-güçlü).
+- Scope-dışı (Phase 136): pattern overlay, eşzamanlı çift-effect
+  (blur zaten `lensBlur`), Portrait/Watermark/Tilt/VFX
+  (honest-disabled korunur).
 
 ### 8. Layout count behavior
 

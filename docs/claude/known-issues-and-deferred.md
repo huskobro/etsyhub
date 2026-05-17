@@ -5,7 +5,8 @@
 > DEĞİL. Tarihsel "Phase N candidate" gerekçeleri için
 > `docs/claude/archive/phase-log-97-135.md` (NOT authoritative).
 >
-> **Son güncelleme:** Phase 135 (2026-05-16)
+> **Son güncelleme:** Phase 136 (2026-05-17) — BG Effects §D'de
+> "wire edildi" işaretlendi (Portrait/Watermark hâlâ honest-disabled)
 >
 > İlgili authoritative dokümanlar:
 > - `docs/claude/mockup-studio-contract.md` (§13 Future Direction
@@ -99,11 +100,18 @@ kalan)
   cover entry + FrameExport row + `image-upload.service`
   orderForUpload + `storage.download(outputKey)` + entryId
   narrow). Gerçek Etsy POST açıkça scope dışı (production risk).
-- **Portrait / Watermark / BG Effects** (§13.D) — Frame sidebar'da
-  görünür ama `data-wired="false"` (honest disclosure preview-
-  only). `sceneOverride` field genişletmesiyle aynı pattern'le
-  ileride wire (Glass + Lens Blur Phase 98-109'da aktif edildi —
-  pattern hazır).
+- **BG Effects** (§13.D) — **Phase 136'da wire edildi**
+  (vignette + grain, tek-seçim, mode/glass/lensBlur'dan bağımsız
+  eksen; preview = export parity, snapshot/isStale dahil). Artık
+  honest-disabled DEĞİL — canonical davranış
+  `mockup-studio-contract.md` §7.7. Pattern (Glass + Lens Blur
+  Phase 98-109 + BG Effects Phase 136) kanıtlandı.
+- **Portrait / Watermark** (§13.D) — Frame sidebar'da görünür
+  ama `data-wired="false"` (honest disclosure preview-only) ve
+  **hâlâ honest-disabled** (yalnız BG Effects wire edildi; bu
+  ayrım korunmalı). `sceneOverride` field genişletmesiyle aynı
+  pattern'le ileride wire (BG Effects Phase 136 emsali — pattern
+  hazır).
 - **Operator-uploaded BG image** (§13.E) — Frame BACKGROUND
   Image/Upload tile'ları; asset upload pipeline (Phase 67 mockup
   template upload + Phase 30 asset-url) reuse edilebilir. Phase

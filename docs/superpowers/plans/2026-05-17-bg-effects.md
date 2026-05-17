@@ -412,9 +412,18 @@ Blur composite bloğunun (satır ~1240 `const lb = normalizeFrameLensBlur(scene.
 
 (Not: yalnız `vignetteAlpha`/`grainOpacity` okunacak; `mode:"auto"` dummy — bgEffect mode'dan bağımsız §4.)
 
-- [ ] **Step 4: Grain composite — glass'tan SONRA, blur'dan ÖNCE**
+- [ ] **Step 4: Grain composite — glass'tan ÖNCE, plate base'den SONRA, lens-blur'dan ÖNCE**
 
-Compositing order §4: grain glass üstünde ama lens-blur'dan ÖNCE (blur grain'i de yumuşatır — istenen "bg'nin parçası"). Blur bloğunun (`const lb = normalizeFrameLensBlur...`) HEMEN ÖNCESİNE (Step 3'te eklediğin `bgFx`'ten sonra) ekle:
+> **(Düzeltme: ilk taslak "glass'tan sonra" diyordu — canonical
+> compositing order'a göre grain glass'tan ÖNCE; implementasyon
+> doğru, plan metni netleştirildi.)** Canonical compositing order
+> (plan §7 Architecture + Task 3 + Behavior Contract §7.7): scene
+> bg → **grain** → glass → lens blur → cascade → vignette. Grain
+> **bg'nin parçası** — glass ve lens-blur onu yumuşatır (istenen
+> atmosfer). Bu yüzden grain composite **glass composite'ten ÖNCE**
+> uygulanır (plate base'den sonra, glass'tan önce). Glass composite
+> bloğunun HEMEN ÖNCESİNE (Step 3'te eklediğin `bgFx`'ten sonra,
+> plate layer composite'ten sonra) ekle:
 
 ```ts
   /* Phase 136 — Grain (deterministik monokrom; preview SVG
