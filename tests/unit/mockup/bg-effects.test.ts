@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   BG_VIGNETTE_ALPHA,
   BG_GRAIN_OPACITY,
+  resolvePlateEffects,
   type BgEffectConfig,
   type SceneOverride,
 } from "@/features/mockups/studio/frame-scene";
@@ -28,8 +29,6 @@ describe("bgEffect type + intensity maps", () => {
     expect(cfg.kind).toBe("vignette");
   });
 });
-
-import { resolvePlateEffects } from "@/features/mockups/studio/frame-scene";
 
 describe("resolvePlateEffects — bgEffect", () => {
   it("bgEffect undefined → vignetteAlpha 0, grainOpacity 0", () => {

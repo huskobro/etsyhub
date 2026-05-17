@@ -95,7 +95,8 @@ export interface BgEffectConfig {
 }
 
 /* Vignette: radial-gradient dış-kenar alpha (merkez ŞEFFAF).
- * strong<=0.42 — ürün fotoğrafını öldürmez (guardrail). */
+ * strong<=0.42 — ürün fotoğrafını öldürmez (guardrail).
+ * Browser doğrulamasında kalibre edilir; bunlar tavan. */
 export const BG_VIGNETTE_ALPHA: Record<BgEffectIntensity, number> = {
   soft: 0.14,
   medium: 0.26,
