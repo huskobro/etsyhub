@@ -47,12 +47,13 @@ export function EffectFlyout({
     }
     function onPointer(e: PointerEvent) {
       const el = ref.current;
-      const target = e.target as Node | null;
-      if (!el || !target) return;
-      if (el.contains(target)) return;
-      const tileWrap = (target as Element).closest?.(
-        "[data-effect-tile]",
-      );
+      const node = e.target;
+      if (!el || !(node instanceof Node)) return;
+      if (el.contains(node)) return;
+      const tileWrap =
+        node instanceof Element
+          ? node.closest("[data-effect-tile]")
+          : null;
       if (tileWrap) return;
       onClose();
     }
