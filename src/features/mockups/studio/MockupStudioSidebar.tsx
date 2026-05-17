@@ -1234,7 +1234,7 @@ function FrameBody({
                   // Phase 137 — tile artık cycle/toggle YAPMAZ.
                   // Wired effect (lens/bgfx/watermark) → flyout aç
                   // (exclusive toggle: aynı panel açıksa kapat).
-                  // Honest-disabled (portrait/vfx) → flyout açmaz,
+                  // Honest-disabled (portrait) → flyout açmaz,
                   // no-op.
                   if (
                     k === "lens" ||
