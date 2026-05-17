@@ -36,6 +36,14 @@ const SceneSchema = z.object({
   colorTo: z.string().optional(),
   glassVariant: GlassVariantSchema.optional(),
   lensBlur: z.union([z.boolean(), LensBlurConfigSchema]).optional(),
+  // Phase 136 — BG Effects (vignette/grain × soft/medium/strong).
+  // Optional → undefined = none (resolvePlateEffects no-op).
+  bgEffect: z
+    .object({
+      kind: z.enum(["vignette", "grain"]),
+      intensity: z.enum(["soft", "medium", "strong"]),
+    })
+    .optional(),
   palette: z
     .tuple([z.string(), z.string()])
     .optional()
@@ -103,6 +111,8 @@ export const POST = withErrorHandling(async (req: Request) => {
       colorTo: parsed.data.scene.colorTo,
       glassVariant: parsed.data.scene.glassVariant,
       lensBlur: parsed.data.scene.lensBlur,
+      // Phase 136 — BG Effects → compositor (resolvePlateEffects).
+      bgEffect: parsed.data.scene.bgEffect,
       palette: parsed.data.scene.palette ?? undefined,
     },
     slots: parsed.data.slots,

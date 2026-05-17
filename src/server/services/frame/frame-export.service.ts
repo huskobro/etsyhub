@@ -265,6 +265,17 @@ export async function exportFrameComposition(
           // Phase 126 — canonical media-position (re-export kaynağı;
           // stale-indicator karşılaştırması Task 7). {0,0} no-op.
           mediaPosition: input.mediaPosition ?? { x: 0, y: 0 },
+          // Phase 136 — BG Effects (vignette/grain); JSON-safe plain
+          // shape (Prisma InputJsonValue — interface index-signature
+          // yok, lensBlur ile aynı plain-obje pattern). undefined →
+          // null (eski export'lar efektsiz — backward-compat;
+          // re-export kaynağı + stale karşılaştırma).
+          bgEffect: input.scene.bgEffect
+            ? {
+                kind: input.scene.bgEffect.kind,
+                intensity: input.scene.bgEffect.intensity,
+              }
+            : null,
         },
       },
       select: { id: true },
