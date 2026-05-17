@@ -12,7 +12,7 @@
  * studio.css'de namespace-d (k-studio__effect-flyout*); geri kalan
  * dynamic style'lar JSX'te (sibling studio dosyalarıyla tutarlı). */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   type BgEffectIntensity,
   type BgEffectKind,
@@ -85,6 +85,31 @@ export function EffectFlyout({
   const bgIntensity: BgEffectIntensity =
     activeScene.bgEffect?.intensity ?? "medium";
   const wmCfg = normalizeWatermark(activeScene.watermark);
+
+  /* Watermark text: keep the operator's RAW typed text in local
+   * draft state so inter-word spaces survive word-by-word typing
+   * (`value={wmCfg.text}` would snap "My " → "My" because
+   * normalizeWatermark trims, eating the space before the next
+   * keystroke). Normalization stays downstream (resolver/persist
+   * still calls normalizeWatermark) — this is display-only.
+   *
+   * Resync guard: compare the incoming NORMALIZED text against the
+   * NORMALIZED form of the last value this input emitted. If they
+   * match, the change came from our own typing (e.g. normalize just
+   * trimmed a trailing space) → do NOT clobber the draft / yank the
+   * cursor. If they differ, the watermark changed from OUTSIDE this
+   * input (scene switch, enable/disable preserving different text)
+   * → resync the draft. The On/Off toggle preserves text
+   * (`{ ...wmCfg, enabled }`), so wmCfg.text is stable across it
+   * and the draft is left intact. */
+  const [wmTextDraft, setWmTextDraft] = useState(wmCfg.text);
+  const wmEmittedNormRef = useRef(wmCfg.text);
+  useEffect(() => {
+    if (wmCfg.text !== wmEmittedNormRef.current) {
+      setWmTextDraft(wmCfg.text);
+      wmEmittedNormRef.current = wmCfg.text;
+    }
+  }, [wmCfg.text]);
 
   return (
     <div
@@ -257,15 +282,29 @@ export function EffectFlyout({
             <input
               type="text"
               data-testid="studio-wm-text"
-              value={wmCfg.text}
+              aria-label="Watermark text"
+              value={wmTextDraft}
               maxLength={WM_TEXT_MAX}
               placeholder="e.g. © Your Shop"
-              onChange={(e) =>
+              onChange={(e) => {
+                const raw = e.target.value;
+                setWmTextDraft(raw);
+                /* Mark the resync guard with the NORMALIZED form of
+                 * what we just emitted. On the next render
+                 * wmCfg.text === normalizeWatermark(...).text for
+                 * this raw value, so the effect's
+                 * `wmCfg.text !== wmEmittedNormRef.current` is
+                 * FALSE → trailing/edge spaces the user is mid-
+                 * typing are NOT trimmed away under the cursor. */
+                wmEmittedNormRef.current = normalizeWatermark({
+                  ...wmCfg,
+                  text: raw,
+                }).text;
                 onChangeSceneOverride({
                   ...activeScene,
-                  watermark: { ...wmCfg, text: e.target.value },
-                })
-              }
+                  watermark: { ...wmCfg, text: raw },
+                });
+              }}
               style={{
                 width: "100%",
                 boxSizing: "border-box",
