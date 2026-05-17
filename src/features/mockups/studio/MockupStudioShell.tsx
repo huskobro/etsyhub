@@ -53,8 +53,10 @@ import {
   type BgEffectConfig,
   type EffectPanelKey,
   type LensBlurConfig,
+  normalizeWatermark,
   SCENE_AUTO,
   type SceneOverride,
+  type WatermarkConfig,
 } from "./frame-scene";
 import {
   stageDeviceForProductType,
@@ -147,6 +149,11 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
       /** Phase 136 — BG Effects (export anı; banner stale
        *  karşılaştırması — §11.0). undefined = none. */
       bgEffect?: BgEffectConfig;
+      /** Watermark (5/12) — export anındaki canonical watermark.
+       *  Always normalized (normalizeWatermark → fresh non-null
+       *  WatermarkConfig); banner stale karşılaştırması §11.0.
+       *  Task 9 stale-detection + Task 10 persist bu shape'i okur. */
+      watermark: WatermarkConfig;
     };
   } | null>(null);
   /* Phase 83 — Frame mode aspect ratio (presentation surface).
@@ -762,6 +769,10 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
           // Phase 136 — export anındaki BG Effects (banner stale:
           // sonra vignette/grain değişirse "re-export?").
           bgEffect: sceneOverride.bgEffect,
+          // Watermark (5/12) — export anındaki canonical watermark
+          // (normalized; banner stale karşılaştırması §11.0). Task 9
+          // stale-detection + Task 10 persist bu stable shape'i okur.
+          watermark: normalizeWatermark(sceneOverride.watermark),
         },
       });
     } catch (err) {
@@ -995,7 +1006,9 @@ export function MockupStudioShell({ setId, setName }: MockupStudioShellProps) {
          *  (body position:relative, left = sidebar genişliği).
          *  Phase 139 — Lens Blur tek-davranışlı (target ayrımı +
          *  lensTargetingSupported prop KALDIRILDI). */}
-        {activeEffectPanel === "lens" || activeEffectPanel === "bgfx" ? (
+        {activeEffectPanel === "lens" ||
+        activeEffectPanel === "bgfx" ||
+        activeEffectPanel === "watermark" ? (
           <EffectFlyout
             panel={activeEffectPanel}
             activeScene={sceneOverride ?? SCENE_AUTO}
