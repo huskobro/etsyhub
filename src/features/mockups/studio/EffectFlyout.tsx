@@ -20,7 +20,11 @@ import {
   LENS_BLUR_DEFAULT,
   type LensBlurIntensity,
   normalizeLensBlur,
+  normalizeWatermark,
   type SceneOverride,
+  WM_TEXT_MAX,
+  type WmOpacity,
+  type WmPlacement,
 } from "./frame-scene";
 
 interface EffectFlyoutProps {
@@ -80,6 +84,7 @@ export function EffectFlyout({
     activeScene.bgEffect?.kind ?? "none";
   const bgIntensity: BgEffectIntensity =
     activeScene.bgEffect?.intensity ?? "medium";
+  const wmCfg = normalizeWatermark(activeScene.watermark);
 
   return (
     <div
@@ -87,10 +92,20 @@ export function EffectFlyout({
       className="k-studio__effect-flyout"
       data-testid={`studio-effect-flyout-${panel}`}
       role="dialog"
-      aria-label={panel === "lens" ? "Lens Blur settings" : "BG Effects settings"}
+      aria-label={
+        panel === "lens"
+          ? "Lens Blur settings"
+          : panel === "watermark"
+            ? "Watermark settings"
+            : "BG Effects settings"
+      }
     >
       <div className="k-studio__effect-flyout-title">
-        {panel === "lens" ? "Lens Blur" : "BG Effects"}
+        {panel === "lens"
+          ? "Lens Blur"
+          : panel === "watermark"
+            ? "Watermark"
+            : "BG Effects"}
       </div>
 
       {panel === "lens" ? (
@@ -194,6 +209,189 @@ export function EffectFlyout({
               </div>
             </div>
           )}
+        </div>
+      ) : panel === "watermark" ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          {/* Enable On/Off */}
+          <div style={{ display: "flex", gap: 4 }}>
+            {(
+              [
+                [true, "On"],
+                [false, "Off"],
+              ] as [boolean, string][]
+            ).map(([en, lbl]) => {
+              const active = wmCfg.enabled === en;
+              return (
+                <button
+                  key={String(en)}
+                  type="button"
+                  className="k-studio__tile"
+                  data-testid={`studio-wm-enable-${en ? "on" : "off"}`}
+                  data-active={active ? "true" : "false"}
+                  aria-pressed={active}
+                  onClick={() =>
+                    onChangeSceneOverride({
+                      ...activeScene,
+                      watermark: { ...wmCfg, enabled: en },
+                    })
+                  }
+                  style={{
+                    flex: 1,
+                    minHeight: 30,
+                    fontSize: 10.5,
+                    color: active ? "var(--ks-or-bright)" : "var(--ks-t2)",
+                    borderColor: active
+                      ? "var(--ks-orb)"
+                      : "rgba(255,255,255,0.12)",
+                  }}
+                >
+                  {lbl}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Text input + counter */}
+          <div>
+            <div style={SEG_LABEL_STYLE}>Text</div>
+            <input
+              type="text"
+              data-testid="studio-wm-text"
+              value={wmCfg.text}
+              maxLength={WM_TEXT_MAX}
+              placeholder="e.g. © Your Shop"
+              onChange={(e) =>
+                onChangeSceneOverride({
+                  ...activeScene,
+                  watermark: { ...wmCfg, text: e.target.value },
+                })
+              }
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                minHeight: 30,
+                fontSize: 11,
+                padding: "4px 8px",
+                color: "var(--ks-t1)",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 4,
+              }}
+            />
+            <div
+              data-testid="studio-wm-counter"
+              style={{
+                fontSize: 9.5,
+                color: "var(--ks-t3)",
+                textAlign: "right",
+                marginTop: 2,
+              }}
+            >
+              {wmCfg.text.trim().length} / {WM_TEXT_MAX}
+            </div>
+            {wmCfg.text.trim().length === 0 ? (
+              <div
+                data-testid="studio-wm-empty-note"
+                style={{
+                  fontSize: 10.5,
+                  color: "var(--ks-t3)",
+                  padding: "2px 0",
+                }}
+              >
+                Enter watermark text to preview.
+              </div>
+            ) : null}
+          </div>
+
+          {/* Opacity segment */}
+          <div>
+            <div style={SEG_LABEL_STYLE}>Opacity</div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {(
+                [
+                  ["soft", "Soft"],
+                  ["medium", "Medium"],
+                  ["strong", "Strong"],
+                ] as [WmOpacity, string][]
+              ).map(([iv, lbl]) => {
+                const active = wmCfg.opacity === iv;
+                return (
+                  <button
+                    key={iv}
+                    type="button"
+                    className="k-studio__tile"
+                    data-testid={`studio-wm-opacity-${iv}`}
+                    data-active={active ? "true" : "false"}
+                    aria-pressed={active}
+                    onClick={() =>
+                      onChangeSceneOverride({
+                        ...activeScene,
+                        watermark: { ...wmCfg, opacity: iv },
+                      })
+                    }
+                    style={{
+                      flex: 1,
+                      minHeight: 30,
+                      fontSize: 10.5,
+                      color: active
+                        ? "var(--ks-or-bright)"
+                        : "var(--ks-t2)",
+                      borderColor: active
+                        ? "var(--ks-orb)"
+                        : "rgba(255,255,255,0.12)",
+                    }}
+                  >
+                    {lbl}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Placement segment */}
+          <div>
+            <div style={SEG_LABEL_STYLE}>Placement</div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {(
+                [
+                  ["br", "Bottom-right"],
+                  ["center", "Center"],
+                  ["tile", "Diagonal"],
+                ] as [WmPlacement, string][]
+              ).map(([pv, lbl]) => {
+                const active = wmCfg.placement === pv;
+                return (
+                  <button
+                    key={pv}
+                    type="button"
+                    className="k-studio__tile"
+                    data-testid={`studio-wm-placement-${pv}`}
+                    data-active={active ? "true" : "false"}
+                    aria-pressed={active}
+                    onClick={() =>
+                      onChangeSceneOverride({
+                        ...activeScene,
+                        watermark: { ...wmCfg, placement: pv },
+                      })
+                    }
+                    style={{
+                      flex: 1,
+                      minHeight: 30,
+                      fontSize: 10,
+                      color: active
+                        ? "var(--ks-or-bright)"
+                        : "var(--ks-t2)",
+                      borderColor: active
+                        ? "var(--ks-orb)"
+                        : "rgba(255,255,255,0.12)",
+                    }}
+                  >
+                    {lbl}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
