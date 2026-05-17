@@ -7,7 +7,10 @@
 > + kod. Tarihsel Phase narrative'leri için → `docs/claude/archive/`
 > (orası authoritative DEĞİL — yalnız "nasıl bu hâle geldi").
 >
-> **Son güncelleme:** Phase 136 (2026-05-17) — §7.7 BG Effects
+> **Son güncelleme:** Phase 137 (2026-05-17) — §7.8 Effect
+> Settings Flyout (Lens Blur + BG Effects sol-sidebar-bitişik
+> secondary panel; tile cycle/toggle kaldırıldı; selected≠open).
+> Phase 136 — §7.7 BG Effects
 > (Frame scene effect: vignette+grain, tek-seçim, mode/glass/
 > lensBlur'dan bağımsız eksen; compositing order bg → grain →
 > glass → blur → cascade → vignette; Preview = Export §11.0).
@@ -389,12 +392,52 @@
   0.04/0.07/0.11. `BG_VIGNETTE_ALPHA`/`BG_GRAIN_OPACITY`
   (frame-scene.ts) — değişirse unit-test tavanı (≤0.42/≤0.11)
   korunmalı.
-- Sidebar: `bgfx` tile tek-seçim **cycle** (none → vignette·
-  medium → grain·medium → none); Shots.so popover yerine sade
-  toggle (CLAUDE.md sade-güçlü).
+- Sidebar (Phase 137'de güncellendi): `bgfx` tile artık cycle
+  YAPMAZ — Effect Settings Flyout açar (kind+intensity segment).
+  Bkz. §7.8.
 - Scope-dışı (Phase 136): pattern overlay, eşzamanlı çift-effect
   (blur zaten `lensBlur`), Portrait/Watermark/Tilt/VFX
   (honest-disabled korunur).
+
+### 7.8 Effect Settings Flyout (ayarlı effect interaction — Phase 137)
+
+Ayarlı effect'ler (Lens Blur + BG Effects) sol-sidebar-bitişik
+secondary **flyout** ile ayarlanır. Normatif kurallar:
+
+- **Tile = giriş noktası, flyout = ayar yüzeyi.** `lens`/`bgfx`
+  tile artık cycle/toggle YAPMAZ — yalnız flyout açar
+  (`onOpenEffectPanel`). Seçim flyout'ta yapılır, `sceneOverride`'a
+  yazılır, tile yansıtır.
+- **Tek state, exclusive:** `activeEffectPanel: EffectPanelKey |
+  null` (`EffectPanelKey = "lens"|"bgfx"`, frame-scene.ts tek
+  kaynak). En fazla 1 flyout açık; biri açılınca diğeri kapanır.
+- **Kapanma:** aynı tile tekrar tık · `Esc` · dışarı-tık
+  (`[data-effect-tile]` muaf) · **mode değişimi (Mockup↔Frame →
+  Shell `useEffect([mode])` reset)**. Flyout DOM unmount →
+  `useEffect` cleanup keydown/pointerdown listener'ları kaldırır
+  (sızıntı YOK).
+- **Render konumu:** flyout Shell'de `k-studio__body`'nin
+  DOĞRUDAN çocuğu (Sidebar/Stage sibling) — `.k-studio__sidebar`
+  overflow zincirinin DIŞINDA (clip + sidebar-scroll-kayması
+  YOK). CSS `position:absolute`, `left` = sidebar genişliği
+  (bitişik), dar (~252px), hafif floating (kaba modal/backdrop
+  DEĞİL).
+- **Selected ≠ Open (ayrı sinyal, KARIŞTIRILMAZ):** tile
+  `aria-pressed`/turuncu-active + kısa etiket (`Blur · Plate`/
+  `Blur · All`/`Vignette`/`Grain`) = **selected** (flyout
+  kapalıyken de görünür — operatör tile'dan seçili effect'i
+  anlar). `aria-expanded` = **open**. Flyout kapanınca seçim
+  KAYBOLMAZ (sceneOverride korunur).
+- **Disabled-state (net):** Lens off → flyout'ta target/intensity
+  segment'leri GİZLİ + "Lens Blur is off — enable to adjust."
+  notu. BG kind=None → intensity segment DISABLED (opacity 0.4,
+  not-allowed; **gizlenmez** — layout zıplamaz).
+- **sceneOverride modeli DEĞİŞMEZ:** flyout yalnız mevcut
+  `lensBlur`/`bgEffect` alanlarını set eden UI yüzeyi —
+  resolver/compositor/snapshot/parity (§11.0) RİSKİ SIFIR.
+- **Kapsam:** yalnız Lens Blur + BG Effects (wired+ayarlı).
+  Portrait/Watermark/VFX/Tilt ana tile + honest-disabled KORUNUR
+  (flyout açmaz; ileride wire edilirse aynı pattern).
 
 ### 8. Layout count behavior
 

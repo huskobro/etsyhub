@@ -5,8 +5,10 @@
 > DEĞİL. Tarihsel "Phase N candidate" gerekçeleri için
 > `docs/claude/archive/phase-log-97-135.md` (NOT authoritative).
 >
-> **Son güncelleme:** Phase 136 (2026-05-17) — BG Effects §D'de
-> "wire edildi" işaretlendi (Portrait/Watermark hâlâ honest-disabled)
+> **Son güncelleme:** Phase 137 (2026-05-17) — Effect Settings
+> Flyout (Lens Blur + BG Effects secondary panel); Tilt/Portrait/
+> Watermark/VFX honest-disabled KORUNDU (flyout'a alınmadı).
+> Phase 136 — BG Effects §D'de "wire edildi" işaretlendi
 >
 > İlgili authoritative dokümanlar:
 > - `docs/claude/mockup-studio-contract.md` (§13 Future Direction
@@ -52,7 +54,11 @@
 - **Tilt (media rotate)** — honest-disabled (`Tilt · Soon`,
   no-op sahte kontrol YOK). Media-rotate preview-inspect ileride
   **ayrı preview-only disiplinle** (export-bağımsız, rail-bağımsız;
-  Shots.so canlı inceleme ile) wire edilir.
+  Shots.so canlı inceleme ile) wire edilir. **Phase 137 notu:**
+  Effect Settings Flyout yalnız Lens Blur + BG Effects'i aldı;
+  Tilt (rail-head) honest-disabled KORUNDU — flyout'a alınmadı
+  (boş/sahte panel YASAK; wire edilince aynı flyout pattern'ine
+  takılır — Contract §7.8).
 - **Precision** — ayrı mode/tab DEĞİL; yalnız Shift modifier
   (delta ÷4, Phase 126). Canlı browser e2e doğrulaması test-aracı
   sınırlı (Chrome synthetic-drag `shiftKey` iletmiyor); unit-test
@@ -106,12 +112,15 @@ kalan)
   honest-disabled DEĞİL — canonical davranış
   `mockup-studio-contract.md` §7.7. Pattern (Glass + Lens Blur
   Phase 98-109 + BG Effects Phase 136) kanıtlandı.
-- **Portrait / Watermark** (§13.D) — Frame sidebar'da görünür
-  ama `data-wired="false"` (honest disclosure preview-only) ve
-  **hâlâ honest-disabled** (yalnız BG Effects wire edildi; bu
-  ayrım korunmalı). `sceneOverride` field genişletmesiyle aynı
-  pattern'le ileride wire (BG Effects Phase 136 emsali — pattern
-  hazır).
+- **Portrait / Watermark / VFX** (§13.D) — Frame sidebar'da
+  görünür ama `data-wired="false"` (honest disclosure
+  preview-only) ve **hâlâ honest-disabled** (Phase 136 yalnız
+  BG Effects wire etti; **Phase 137 Effect Settings Flyout da
+  yalnız Lens Blur + BG Effects'i aldı — bunlar flyout'a
+  ALINMADI**, boş/sahte panel YASAK; ayrım korunmalı).
+  `sceneOverride` field genişletmesiyle wire + Effect Settings
+  Flyout pattern'ine takma (Contract §7.7/§7.8 emsali —
+  pattern hazır).
 - **Operator-uploaded BG image** (§13.E) — Frame BACKGROUND
   Image/Upload tile'ları; asset upload pipeline (Phase 67 mockup
   template upload + Phase 30 asset-url) reuse edilebilir. Phase
