@@ -1594,11 +1594,10 @@
  *  Phase 77 baseline'da statik flex container; positioned
  *  context kurmak için relative ekleniyor (flex layout'a
  *  görsel etkisi yok; mevcut sidebar/stage/rail kuralları
- *  bozulmaz). NOT: flyout JSX'te şu an `.k-studio__sb-scroll`
- *  (overflow-y:auto) > `.k-studio__sidebar` (overflow:hidden)
- *  içinde render ediliyor — bu overflow zinciri absolute
- *  çocuğu clip eder; CSS-only düzeltilemeyen DOM-yapısı
- *  sorunu (re-parent gerekir; ayrı concern olarak raporlandı). */
+ *  bozulmaz). Flyout Shell'de `.k-studio__body`'nin DOĞRUDAN
+ *  çocuğu olarak render edilir (Sidebar/Stage sibling) — yani
+ *  `.k-studio__sidebar` overflow zincirinin DIŞINDA; clip +
+ *  sidebar-scroll-kayması yok (Phase 137 — Contract §7.8). */
 .k-studio__body {
   position: relative;
 }
